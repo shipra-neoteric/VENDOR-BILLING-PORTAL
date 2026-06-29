@@ -37,6 +37,7 @@ import dayjs from "dayjs";
 
 import PageShell from "../../components/PageShell";
 import apiClient from "../../services/apiClient";
+import { useCategories } from "../../hooks/useCategories";
 import type {
   Contractor,
   Project,
@@ -67,6 +68,10 @@ const SCOPE_STATUS_CFG: Record<ScopeItemStatus, { color: string; bg: string; lab
   running:   { color: "#f37916", bg: "#fff8f3", label: "Running" },
   completed: { color: "#16a85a", bg: "#f0faf4", label: "Completed" },
 };
+
+// ── Work Categories ───────────────────────────────────────────
+
+// Categories are now loaded from API via useCategories() hook inside the component.
 
 const UNIT_OPTIONS = [
   { label: "Sq.Ft (Square Feet)",  value: "sq.ft" },
@@ -1073,6 +1078,21 @@ function WOFormFields({
           </Form.Item>
         </Col>
         <Col span={12}>
+          <Form.Item label="Category" name="category">
+            <Select
+              placeholder="Select category (optional)"
+              allowClear
+              options={apiCategories.filter(c => c.isActive).map(c => ({
+                label: c.name,
+                value: c.name,
+              }))}
+              getPopupContainer={(trigger) => trigger.parentElement || document.body}
+            />
+          </Form.Item>
+        </Col>
+      </Row>
+      <Row gutter={16}>
+        <Col span={12}>
           <Form.Item label="Status" name="status" rules={[{ required: true }]}>
             <Select
               options={STATUS_OPTIONS}
@@ -1137,6 +1157,24 @@ function WOFormFields({
 // ── Main Component ────────────────────────────────────────────
 
 export default function WorkItems() {
+  const { categories: apiCategories, lighten } = useCategories();
+
+  // Resolve color/bg for a category name from API data
+  function getCatColor(name?: string) {
+    const found = apiCategories.find(c => c.name === name);
+    return { color: found?.color ?? "#6B7280", bg: found ? lighten(found.color) : "#F3F4F6" };
+  }
+
+  function CategoryBadge({ cat }: { cat?: string }) {
+    if (!cat) return null;
+    const { color, bg } = getCatColor(cat);
+    return (
+      <span style={{ background: bg, color, border: `1px solid ${color}30`, borderRadius: 5, padding: "2px 8px", fontSize: 11, fontWeight: 600, whiteSpace: "nowrap" }}>
+        {cat}
+      </span>
+    );
+  }
+
   const [workOrders,   setWorkOrders]   = useState<WorkOrder[]>([]);
   const [contractors,  setContractors]  = useState<Contractor[]>([]);
   const [projects,     setProjects]     = useState<Project[]>([]);
@@ -1144,8 +1182,11 @@ export default function WorkItems() {
   const [saving,       setSaving]       = useState(false);
 
   const [createDrawerOpen, setCreateDrawerOpen] = useState(false);
-  const [search,       setSearch]       = useState("");
-  const [statusFilter, setStatusFilter] = useState<WorkOrderStatus | "all">("all");
+  const [search,          setSearch]          = useState("");
+  const [statusFilter,    setStatusFilter]    = useState<WorkOrderStatus | "all">("all");
+  const [categoryFilter,  setCategoryFilter]  = useState<string>("all");
+  // bills keyed by workOrderId for billing tape in view drawer
+  const [woBillsMap, setWoBillsMap] = useState<Record<string, { amount: number; status: string }[]>>({});
 
   const [selectedWOId, setSelectedWOId] = useState<string | null>(null);
   const [drawerOpen,   setDrawerOpen]   = useState(false);
@@ -1173,14 +1214,24 @@ export default function WorkItems() {
   // ── Load all data ─────────────────────────────────────────────
   useEffect(() => {
     Promise.all([
-      apiClient.get<{ workOrders: WorkOrder[] }>("/work-orders"),
-      apiClient.get<{ contractors: Contractor[] }>("/contractors"),
-      apiClient.get<{ projects: Project[] }>("/projects"),
+      apiClient.get<{ workOrders: any[] }>("/work-orders"),
+      apiClient.get<{ contractors: any[] }>("/contractors"),
+      apiClient.get<{ projects: any[] }>("/projects"),
+      apiClient.get<{ bills: any[] }>("/bills"),
     ])
-      .then(([woRes, cRes, pRes]) => {
+      .then(([woRes, cRes, pRes, billRes]) => {
         setWorkOrders(woRes.data.workOrders.map(normalizeWO));
         setContractors(cRes.data.contractors.map(normalizeId));
         setProjects(pRes.data.projects.map(normalizeId));
+        // Build map: workOrderId → [{amount, status}]
+        const map: Record<string, { amount: number; status: string }[]> = {};
+        for (const b of (billRes.data.bills || [])) {
+          const wid = b.workOrderId?.toString();
+          if (!wid) continue;
+          if (!map[wid]) map[wid] = [];
+          map[wid].push({ amount: b.amount || 0, status: b.status });
+        }
+        setWoBillsMap(map);
       })
       .catch(() => {})
       .finally(() => setLoadingData(false));
@@ -1197,10 +1248,11 @@ export default function WorkItems() {
         wo.projectName.toLowerCase().includes(q) ||
         wo.vendorCode.toLowerCase().includes(q) ||
         wo.vendorName.toLowerCase().includes(q);
-      const matchStatus = statusFilter === "all" || wo.status === statusFilter;
-      return matchSearch && matchStatus;
+      const matchStatus   = statusFilter   === "all" || wo.status   === statusFilter;
+      const matchCategory = categoryFilter === "all" || wo.category === categoryFilter;
+      return matchSearch && matchStatus && matchCategory;
     });
-  }, [workOrders, search, statusFilter]);
+  }, [workOrders, search, statusFilter, categoryFilter]);
 
   const nextWONo = useMemo(() => {
     const max = workOrders.reduce((m, wo) => {
@@ -1226,6 +1278,7 @@ export default function WorkItems() {
         vendorName:   values.vendorName  || "",
         ownerName:    values.ownerName   || "",
         mobile:       values.mobile      || "",
+        category:     values.category    || "",
         scopeOfWork,
         scopeItems:   createScopeItems.map(draftToNewItem),
         contractValue: totalAmt,
@@ -1248,7 +1301,7 @@ export default function WorkItems() {
 
   const openEdit = (wo: WorkOrder) => {
     setEditWOId(wo.id);
-    editForm.setFieldsValue({ ...wo, issueDate: dayjs(wo.issueDate) });
+    editForm.setFieldsValue({ ...wo, issueDate: dayjs(wo.issueDate), category: wo.category || "" });
     setEditScopeItems((wo.scopeItems || []).map(toDraft));
     setEditModalOpen(true);
   };
@@ -1272,6 +1325,7 @@ export default function WorkItems() {
         vendorName:   values.vendorName   || currentEditWO.vendorName,
         ownerName:    values.ownerName    || currentEditWO.ownerName,
         mobile:       values.mobile       || currentEditWO.mobile,
+        category:     values.category     ?? currentEditWO.category ?? "",
         issueDate:    values.issueDate ? dayjs(values.issueDate).format("YYYY-MM-DD") : currentEditWO.issueDate,
         scopeOfWork,
         scopeItems:   savedItems,
@@ -1338,6 +1392,12 @@ export default function WorkItems() {
       render: (d: string) => dayjs(d).format("DD MMM YYYY"),
     },
     { title: "Project", dataIndex: "projectName" },
+    {
+      title: "Category",
+      dataIndex: "category",
+      width: 140,
+      render: (cat: string) => <CategoryBadge cat={cat} />,
+    },
     {
       title: "Vendor Code",
       dataIndex: "vendorCode",
@@ -1496,6 +1556,29 @@ export default function WorkItems() {
             </Button>
           ))}
         </div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginLeft: 8 }}>
+          <Button
+            size="small"
+            type={categoryFilter === "all" ? "primary" : "default"}
+            onClick={() => setCategoryFilter("all")}
+            style={categoryFilter === "all" ? { background: "#6b7280", borderColor: "#6b7280" } : {}}
+          >
+            All Categories
+          </Button>
+          {apiCategories.filter(c => c.isActive).map(cat => (
+            <Button
+              key={cat._id}
+              size="small"
+              onClick={() => setCategoryFilter(categoryFilter === cat.name ? "all" : cat.name)}
+              style={categoryFilter === cat.name
+                ? { background: cat.color, borderColor: cat.color, color: "#fff" }
+                : { borderColor: cat.color, color: cat.color }
+              }
+            >
+              {cat.name}
+            </Button>
+          ))}
+        </div>
         <span style={{ marginLeft: "auto", color: "#9CA3AF", fontSize: 12 }}>
           {filtered.length} work order{filtered.length !== 1 ? "s" : ""}
         </span>
@@ -1647,6 +1730,42 @@ export default function WorkItems() {
                 </Descriptions.Item>
               )}
             </Descriptions>
+
+            {/* ── Billing Tape ─────────────────────────────── */}
+            {(() => {
+              const bills = woBillsMap[currentSelectedWO.id] ?? [];
+              const contractVal = currentSelectedWO.contractValue ?? 0;
+              const certifiedAmt = bills.filter(b => b.status === "approved" || b.status === "paid").reduce((s, b) => s + b.amount, 0);
+              const pendingAmt = bills.filter(b => b.status === "submitted" || b.status === "verified").reduce((s, b) => s + b.amount, 0);
+              const remaining = Math.max(0, contractVal - certifiedAmt - pendingAmt);
+              const certPct = contractVal > 0 ? (certifiedAmt / contractVal) * 100 : 0;
+              const pendPct = contractVal > 0 ? (pendingAmt / contractVal) * 100 : 0;
+              return (
+                <div style={{ background: "#F9FAFB", border: "1px solid #E5E7EB", borderRadius: 10, padding: "16px 20px", marginBottom: 20 }}>
+                  <div style={{ fontWeight: 600, fontSize: 13, color: "#374151", marginBottom: 12 }}>Billing Summary</div>
+                  <div style={{ display: "flex", height: 12, borderRadius: 6, overflow: "hidden", background: "#E5E7EB", marginBottom: 14 }}>
+                    {certPct > 0 && <div style={{ width: `${certPct}%`, background: "#16a34a" }} title={`Certified: ${fmt(certifiedAmt)}`} />}
+                    {pendPct > 0 && <div style={{ width: `${pendPct}%`, background: "#f59e0b" }} title={`Pending: ${fmt(pendingAmt)}`} />}
+                  </div>
+                  <div style={{ display: "flex", gap: 0, borderTop: "1px solid #E5E7EB", paddingTop: 12 }}>
+                    {[
+                      { label: "Contract Value", value: fmt(contractVal), color: "#374151", dot: "#6B7280" },
+                      { label: "Certified ✓", value: fmt(certifiedAmt), color: "#16a34a", dot: "#16a34a" },
+                      { label: "Pending ⏳", value: fmt(pendingAmt), color: "#d97706", dot: "#f59e0b" },
+                      { label: "Remaining", value: fmt(remaining), color: "#6B7280", dot: "#D1D5DB" },
+                    ].map((s, i) => (
+                      <div key={i} style={{ flex: 1, textAlign: i === 0 ? "left" : "center", borderRight: i < 3 ? "1px solid #E5E7EB" : "none", paddingRight: 12, paddingLeft: i > 0 ? 12 : 0 }}>
+                        <div style={{ fontSize: 11, color: "#9CA3AF", marginBottom: 3, display: "flex", alignItems: "center", gap: 5, justifyContent: i === 0 ? "flex-start" : "center" }}>
+                          <span style={{ width: 8, height: 8, borderRadius: "50%", background: s.dot, display: "inline-block" }} />
+                          {s.label}
+                        </div>
+                        <div style={{ fontWeight: 700, fontFamily: "monospace", fontSize: 13, color: s.color }}>{s.value}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
 
             {currentSelectedWO.scopeItems.length > 0 ? (
               <ScopeItemsViewer

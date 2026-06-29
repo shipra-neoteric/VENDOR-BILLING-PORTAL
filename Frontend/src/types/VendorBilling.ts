@@ -103,6 +103,15 @@ export interface ScopeItem {
 
 export type WorkOrderStatus = "draft" | "issued" | "in-progress" | "completed";
 
+export type WorkCategory =
+  | "Civil / RCC"
+  | "Finishing"
+  | "MEP"
+  | "Interior"
+  | "External Works"
+  | "Hospitality"
+  | "";
+
 export interface WorkOrder {
   id: string;
   workOrderNo: string;
@@ -113,6 +122,7 @@ export interface WorkOrder {
   vendorName: string;
   ownerName: string;
   mobile: string;
+  category?: WorkCategory;
   scopeOfWork?: string;
   scopeItems: ScopeItem[];
   contractValue: number;

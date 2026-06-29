@@ -200,14 +200,19 @@ function printBill(bill: Bill, contractor: ContractorOpt | null) {
 </table>
 
 <div style="display:flex;justify-content:flex-end;margin-bottom:24px">
-  <div style="min-width:220px;border:1px solid #e8e8e8;border-radius:6px;overflow:hidden">
-    <div style="display:flex;justify-content:space-between;padding:10px 14px;border-bottom:1px solid #eee">
-      <span>Sub Total</span><span>₹${(bill.amount || 0).toLocaleString("en-IN")}</span>
+  <div style="min-width:280px;border:1px solid #e8e8e8;border-radius:6px;overflow:hidden">
+    <div style="display:flex;justify-content:space-between;padding:9px 14px;border-bottom:1px solid #eee">
+      <span>Gross Amount</span><span>₹${(bill.amount || 0).toLocaleString("en-IN")}</span>
     </div>
-    <div style="display:flex;justify-content:space-between;padding:10px 14px;background:#fff7ed;font-weight:bold;font-size:15px;color:#f47b20">
-      <span>Total Amount</span><span>₹${(bill.amount || 0).toLocaleString("en-IN")}</span>
+    <div style="display:flex;justify-content:space-between;padding:9px 14px;border-bottom:1px solid #eee;color:#16a34a">
+      <span>GST @ ${bill.gstPercent ?? 18}%</span><span>+ ₹${Math.round((bill.amount || 0) * (bill.gstPercent ?? 18) / 100).toLocaleString("en-IN")}</span>
     </div>
-    <div style="padding:6px 14px;font-size:11px;color:#999;border-top:1px solid #eee">GST &amp; TDS applicable as per norms</div>
+    <div style="display:flex;justify-content:space-between;padding:9px 14px;border-bottom:1px solid #eee;color:#dc2626">
+      <span>TDS @ ${bill.tdsPercent ?? 1}%</span><span>- ₹${Math.round((bill.amount || 0) * (bill.tdsPercent ?? 1) / 100).toLocaleString("en-IN")}</span>
+    </div>
+    <div style="display:flex;justify-content:space-between;padding:11px 14px;background:#fff7ed;font-weight:bold;font-size:15px;color:#f47b20">
+      <span>Net Payable</span><span>₹${Math.round((bill.amount || 0) * (1 + (bill.gstPercent ?? 18) / 100 - (bill.tdsPercent ?? 1) / 100)).toLocaleString("en-IN")}</span>
+    </div>
   </div>
 </div>
 
@@ -239,7 +244,13 @@ ${bill.remarks ? `<div style="border:1px solid #e8e8e8;border-radius:6px;padding
 </body></html>`;
 
   const win = window.open("", "_blank", "width=900,height=950");
-  if (win) { win.document.write(html); win.document.close(); }
+  if (win) {
+    win.document.write(html);
+    win.document.close();
+    win.addEventListener("load", () => { win.focus(); win.print(); });
+    // fallback if load already fired (cached)
+    if (win.document.readyState === "complete") { win.focus(); win.print(); }
+  }
 }
 
 // ── StatCard ─────────────────────────────────────────────────────

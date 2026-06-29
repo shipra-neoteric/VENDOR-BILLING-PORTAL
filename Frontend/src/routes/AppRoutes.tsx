@@ -3,6 +3,7 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import Dashboard from "../pages/Dashboard";
 import Projects from "../pages/Projects";
 import Contractors from "../pages/Contractors";
+import Categories from "../pages/Categories";
 import WorkItems from "../pages/WorkItems";
 import WorkProgress from "../pages/WorkProgress";
 import Bills from "../pages/Bills";
@@ -27,6 +28,7 @@ const AppRoutes = () => {
                 <Route path="/dashboard" element={<Dashboard />} />
                 <Route path="/projects" element={<Projects />} />
                 <Route path="/contractors" element={<Contractors />} />
+                <Route path="/categories" element={<Categories />} />
                 <Route path="/work-items" element={<WorkItems />} />
                 <Route path="/work-progress" element={<WorkProgress />} />
                 <Route path="/bills" element={<Bills />} />

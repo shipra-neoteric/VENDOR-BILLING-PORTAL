@@ -47,6 +47,11 @@ const workOrderSchema = new mongoose.Schema(
     vendorName:    { type: String },
     ownerName:     { type: String },
     mobile:        { type: String },
+    category: {
+      type: String,
+      enum: ['Civil / RCC', 'Finishing', 'MEP', 'Interior', 'External Works', 'Hospitality', ''],
+      default: '',
+    },
     scopeOfWork:   { type: String },
     scopeItems:    [scopeItemSchema],
     contractValue: { type: Number, default: 0 },

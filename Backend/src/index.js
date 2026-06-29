@@ -6,7 +6,8 @@ const dotenv  = require('dotenv');
 dotenv.config();
 
 const connectDB = require('./config/db');
-connectDB();
+const seedCategories = require('./utils/seedCategories');
+connectDB().then(() => seedCategories());
 
 const app = express();
 
@@ -32,6 +33,7 @@ app.use(morgan('dev'));
 app.use('/api/auth',        require('./routes/auth'));
 app.use('/api/projects',    require('./routes/projects'));
 app.use('/api/contractors', require('./routes/contractors'));
+app.use('/api/categories',  require('./routes/categories'));
 app.use('/api/work-orders', require('./routes/workOrders'));
 app.use('/api/bills',       require('./routes/bills'));
 app.use('/api/ledger',      require('./routes/ledger'));

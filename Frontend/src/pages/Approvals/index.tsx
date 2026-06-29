@@ -1,29 +1,56 @@
-import { useState, useMemo } from "react";
+import { useEffect, useState, useCallback } from "react";
 import {
-  Tabs,
-  Table,
-  Button,
-  Tag,
-  Modal,
-  Form,
-  Input,
-  Descriptions,
-  Row,
-  Col,
-  Empty,
-  message,
+  Tabs, Button, Tag, Modal, Form, Input,
+  Descriptions, Row, Col, Empty, Spin, Alert, message,
 } from "antd";
 import {
-  CheckOutlined,
-  CloseOutlined,
-  SafetyCertificateOutlined,
+  CheckOutlined, CloseOutlined, SafetyCertificateOutlined, ReloadOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
-import {
-  runningBills as seedBills,
-  workOrders as seedWorkOrders,
-} from "../../services/mockData";
-import type { RunningBill, BillStatus } from "../../types/VendorBilling";
+import apiClient from "../../services/apiClient";
+
+// ── Types ─────────────────────────────────────────────────────
+type BillStatus = "draft" | "submitted" | "verified" | "approved" | "rejected" | "paid";
+type ActionType = "verify" | "approve" | "reject";
+
+interface BillUser { name?: string; role?: string; }
+interface Bill {
+  _id: string;
+  billNo: string;
+  workOrderId?: string;
+  workOrderNo?: string;
+  projectName?: string;
+  vendorCode?: string;
+  vendorName?: string;
+  billDate: string;
+  billRefNo?: string;
+  generatedBy?: string;
+  lineItems?: { description: string; unit: string; billedQty: number; rate: number; amount: number }[];
+  amount: number;
+  gstPercent: number;
+  tdsPercent: number;
+  remarks?: string;
+  status: BillStatus;
+  submittedAt?: string;
+  verifiedBy?: BillUser | null;
+  verifiedAt?: string;
+  approvedBy?: BillUser | null;
+  approvedAt?: string;
+  rejectedBy?: BillUser | null;
+  rejectReason?: string;
+  createdAt?: string;
+}
+
+// ── Helpers ───────────────────────────────────────────────────
+const fmt = (n: number) => "₹" + Math.round(n || 0).toLocaleString("en-IN");
+
+function calcAmounts(b: Bill) {
+  const gstAmt = (b.amount * (b.gstPercent ?? 18)) / 100;
+  const gross  = b.amount + gstAmt;
+  const tdsAmt = (gross * (b.tdsPercent ?? 1)) / 100;
+  const net    = gross - tdsAmt;
+  return { gstAmt, gross, tdsAmt, net };
+}
 
 const STATUS_CFG: Record<BillStatus, { color: string; label: string }> = {
   draft:     { color: "default", label: "Draft" },
@@ -34,169 +61,72 @@ const STATUS_CFG: Record<BillStatus, { color: string; label: string }> = {
   paid:      { color: "purple",  label: "Paid" },
 };
 
-type ActionType = "verify" | "approve" | "reject";
-
-const fmt = (n: number) => "₹" + Math.round(n).toLocaleString("en-IN");
-
-function calcAmounts(b: RunningBill) {
-  const gstAmt = (b.amount * b.gstPercent) / 100;
-  const gross  = b.amount + gstAmt;
-  const tdsAmt = (gross * b.tdsPercent) / 100;
-  const net    = gross - tdsAmt;
-  return { gstAmt, gross, tdsAmt, net };
-}
-
-// ── Bill action card (module-level to avoid remount on re-render) ─────────────
+// ── Bill action card ──────────────────────────────────────────
 function BillCard({
-  bill,
-  showVerify,
-  showApprove,
-  onAction,
+  bill, showVerify, showApprove, onAction,
 }: {
-  bill: RunningBill;
-  showVerify?: boolean;
-  showApprove?: boolean;
-  onAction: (bill: RunningBill, type: ActionType) => void;
+  bill: Bill; showVerify?: boolean; showApprove?: boolean;
+  onAction: (bill: Bill, type: ActionType) => void;
 }) {
-  const wo = seedWorkOrders.find((w) => w.id === bill.workOrderId);
   const { gross, net } = calcAmounts(bill);
-
   return (
     <div
       style={{
-        background: "#fff",
-        border: "1px solid #e4e7ee",
-        borderRadius: 12,
-        padding: 16,
-        marginBottom: 10,
-        display: "flex",
-        alignItems: "flex-start",
-        gap: 16,
-        boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
-        transition: "border-color 0.15s, box-shadow 0.15s",
+        background: "#fff", border: "1px solid #e4e7ee", borderRadius: 12,
+        padding: 16, marginBottom: 10, display: "flex", alignItems: "flex-start",
+        gap: 16, boxShadow: "0 1px 3px rgba(0,0,0,0.04)", transition: "border-color 0.15s, box-shadow 0.15s",
       }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.borderColor = "#f8c9a0";
-        e.currentTarget.style.boxShadow = "0 3px 10px rgba(243,121,22,0.08)";
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.borderColor = "#e4e7ee";
-        e.currentTarget.style.boxShadow = "0 1px 3px rgba(0,0,0,0.04)";
-      }}
+      onMouseEnter={e => { e.currentTarget.style.borderColor = "#f8c9a0"; e.currentTarget.style.boxShadow = "0 3px 10px rgba(243,121,22,0.08)"; }}
+      onMouseLeave={e => { e.currentTarget.style.borderColor = "#e4e7ee"; e.currentTarget.style.boxShadow = "0 1px 3px rgba(0,0,0,0.04)"; }}
     >
-      {/* Left: bill info */}
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            marginBottom: 5,
-            flexWrap: "wrap",
-          }}
-        >
-          <span
-            style={{
-              fontFamily: "monospace",
-              fontWeight: 700,
-              color: "#f37916",
-              fontSize: 14,
-            }}
-          >
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5, flexWrap: "wrap" }}>
+          <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#f37916", fontSize: 14 }}>
             {bill.billNo}
           </span>
-          <Tag color="orange" style={{ fontFamily: "monospace", marginLeft: 0 }}>
-            {bill.workOrderNo}
-          </Tag>
-          <Tag
-            color={STATUS_CFG[bill.status].color}
-            style={{ marginLeft: 0 }}
-          >
+          {bill.workOrderNo && (
+            <Tag color="orange" style={{ fontFamily: "monospace", marginLeft: 0 }}>{bill.workOrderNo}</Tag>
+          )}
+          <Tag color={STATUS_CFG[bill.status].color} style={{ marginLeft: 0 }}>
             {STATUS_CFG[bill.status].label.toUpperCase()}
           </Tag>
         </div>
-
-        <div style={{ fontWeight: 600, fontSize: 13, color: "#1a1f2e" }}>
-          {bill.vendorName}
-        </div>
+        <div style={{ fontWeight: 600, fontSize: 13, color: "#1a1f2e" }}>{bill.vendorName || "—"}</div>
         <div style={{ fontSize: 11, color: "#5a6278", marginTop: 2 }}>
           {bill.projectName}
-          {wo?.scopeOfWork &&
-            ` · ${wo.scopeOfWork.slice(0, 60)}${
-              wo.scopeOfWork.length > 60 ? "…" : ""
-            }`}
+          {bill.billRefNo && ` · Ref: ${bill.billRefNo}`}
         </div>
-        {bill.description && (
-          <div style={{ fontSize: 11, color: "#9ba3b8", marginTop: 3 }}>
-            {bill.description}
-          </div>
-        )}
         <div style={{ fontSize: 11, color: "#9ba3b8", marginTop: 3 }}>
-          {bill.billRefNo && `Ref: ${bill.billRefNo} · `}
           {dayjs(bill.billDate).format("DD MMM YYYY")}
-          {bill.submittedAt &&
-            ` · Submitted ${dayjs(bill.submittedAt).format("DD MMM YYYY")}`}
+          {bill.submittedAt && ` · Submitted ${dayjs(bill.submittedAt).format("DD MMM YYYY")}`}
         </div>
-
-        <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
+        {bill.remarks && (
+          <div style={{ fontSize: 11, color: "#9ba3b8", marginTop: 3, fontStyle: "italic" }}>{bill.remarks}</div>
+        )}
+        <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
           {showVerify && (
-            <Button
-              size="small"
-              icon={<CheckOutlined />}
-              style={{
-                background: "#16a85a",
-                borderColor: "#16a85a",
-                color: "#fff",
-              }}
+            <Button size="small" icon={<CheckOutlined />}
+              style={{ background: "#16a85a", borderColor: "#16a85a", color: "#fff" }}
               onClick={() => onAction(bill, "verify")}
-            >
-              Verify
-            </Button>
+            >Verify</Button>
           )}
           {showApprove && (
-            <Button
-              size="small"
-              icon={<SafetyCertificateOutlined />}
-              type="primary"
+            <Button size="small" icon={<SafetyCertificateOutlined />} type="primary"
               style={{ background: "#f37916", borderColor: "#f37916" }}
               onClick={() => onAction(bill, "approve")}
-            >
-              Approve
-            </Button>
+            >Approve & Certify</Button>
           )}
-          <Button
-            size="small"
-            icon={<CloseOutlined />}
-            danger
-            onClick={() => onAction(bill, "reject")}
-          >
+          <Button size="small" icon={<CloseOutlined />} danger onClick={() => onAction(bill, "reject")}>
             Reject
           </Button>
         </div>
       </div>
-
-      {/* Right: amount summary */}
       <div style={{ textAlign: "right", flexShrink: 0 }}>
-        <div
-          style={{
-            fontFamily: "monospace",
-            fontSize: 18,
-            fontWeight: 700,
-            color: "#f37916",
-          }}
-        >
+        <div style={{ fontFamily: "monospace", fontSize: 18, fontWeight: 700, color: "#f37916" }}>
           {fmt(gross)}
         </div>
         <div style={{ fontSize: 10, color: "#9ba3b8" }}>incl. GST</div>
-        <div
-          style={{
-            fontFamily: "monospace",
-            fontSize: 13,
-            color: "#16a85a",
-            fontWeight: 600,
-            marginTop: 6,
-          }}
-        >
+        <div style={{ fontFamily: "monospace", fontSize: 13, color: "#16a85a", fontWeight: 600, marginTop: 6 }}>
           {fmt(net)}
         </div>
         <div style={{ fontSize: 10, color: "#9ba3b8" }}>net payable</div>
@@ -205,238 +135,111 @@ function BillCard({
   );
 }
 
-// ── History table columns ─────────────────────────────────────────────────────
-const historyColumns = [
-  {
-    title: "Bill No.",
-    dataIndex: "billNo",
-    render: (v: string) => (
-      <span
-        style={{ fontFamily: "monospace", color: "#f37916", fontWeight: 600 }}
-      >
-        {v}
-      </span>
-    ),
-  },
-  {
-    title: "Date",
-    dataIndex: "billDate",
-    render: (v: string) => dayjs(v).format("DD MMM YYYY"),
-  },
-  {
-    title: "Work Order",
-    dataIndex: "workOrderNo",
-    render: (v: string) => (
-      <Tag color="orange" style={{ fontFamily: "monospace" }}>
-        {v}
-      </Tag>
-    ),
-  },
-  { title: "Vendor", dataIndex: "vendorName" },
-  {
-    title: "Net Payable",
-    render: (_: unknown, r: RunningBill) => (
-      <span
-        style={{
-          fontFamily: "monospace",
-          color: "#16a85a",
-          fontWeight: 600,
-        }}
-      >
-        {fmt(calcAmounts(r).net)}
-      </span>
-    ),
-  },
-  {
-    title: "Status",
-    dataIndex: "status",
-    render: (v: BillStatus) => (
-      <Tag color={STATUS_CFG[v].color}>
-        {STATUS_CFG[v].label.toUpperCase()}
-      </Tag>
-    ),
-  },
-  {
-    title: "Verified By",
-    render: (_: unknown, r: RunningBill) =>
-      r.verifiedBy ? (
-        <span style={{ fontSize: 12 }}>
-          {r.verifiedBy}
-          <br />
-          <span style={{ color: "#9ba3b8", fontSize: 11 }}>
-            {r.verifiedAt && dayjs(r.verifiedAt).format("DD MMM YYYY")}
-          </span>
-        </span>
-      ) : (
-        <span style={{ color: "#9ba3b8" }}>—</span>
-      ),
-  },
-  {
-    title: "Approved / Rejected By",
-    render: (_: unknown, r: RunningBill) => {
-      if (r.approvedBy)
-        return (
-          <span style={{ fontSize: 12 }}>
-            {r.approvedBy}
-            <br />
-            <span style={{ color: "#9ba3b8", fontSize: 11 }}>
-              {r.approvedAt && dayjs(r.approvedAt).format("DD MMM YYYY")}
-            </span>
-          </span>
-        );
-      if (r.rejectedBy)
-        return (
-          <span style={{ fontSize: 12, color: "#e03b3b" }}>
-            {r.rejectedBy}
-            {r.rejectReason ? ` — ${r.rejectReason}` : ""}
-          </span>
-        );
-      return <span style={{ color: "#9ba3b8" }}>—</span>;
-    },
-  },
-];
-
-// ── Main component ────────────────────────────────────────────────────────────
+// ── Main component ────────────────────────────────────────────
 export default function Approvals() {
-  const [bills, setBills] = useState<RunningBill[]>(seedBills);
+  const [bills, setBills]       = useState<Bill[]>([]);
+  const [loading, setLoading]   = useState(true);
+  const [error, setError]       = useState("");
   const [activeTab, setActiveTab] = useState("queue");
-  const [actionBill, setActionBill] = useState<RunningBill | null>(null);
+  const [actionBill, setActionBill] = useState<Bill | null>(null);
   const [actionType, setActionType] = useState<ActionType>("verify");
-  const [modalOpen, setModalOpen] = useState(false);
-  const [remarks, setRemarks] = useState("");
+  const [modalOpen, setModalOpen]   = useState(false);
+  const [remarks, setRemarks]       = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
-  const submitted = useMemo(
-    () => bills.filter((b) => b.status === "submitted"),
-    [bills]
-  );
-  const verified = useMemo(
-    () => bills.filter((b) => b.status === "verified"),
-    [bills]
-  );
-  const approved = useMemo(
-    () => bills.filter((b) => b.status === "approved"),
-    [bills]
-  );
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await apiClient.get("/bills");
+      setBills(res.data.bills ?? []);
+    } catch (e: unknown) {
+      setError((e as Error).message || "Failed to load bills");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const submitted = bills.filter(b => b.status === "submitted");
+  const verified  = bills.filter(b => b.status === "verified");
+  const approved  = bills.filter(b => b.status === "approved" || b.status === "paid");
+  const rejected  = bills.filter(b => b.status === "rejected");
   const totalPending = submitted.length + verified.length;
 
-  function openAction(bill: RunningBill, type: ActionType) {
+  function openAction(bill: Bill, type: ActionType) {
     setActionBill(bill);
     setActionType(type);
     setRemarks("");
     setModalOpen(true);
   }
 
-  function executeAction() {
+  async function executeAction() {
     if (!actionBill) return;
-    const today = dayjs().format("YYYY-MM-DD");
-
-    setBills((prev) =>
-      prev.map((b) => {
-        if (b.id !== actionBill.id) return b;
-        if (actionType === "verify")
-          return {
-            ...b,
-            status: "verified" as BillStatus,
-            verifiedBy: "Site Engineer",
-            verifiedAt: today,
-          };
-        if (actionType === "approve")
-          return {
-            ...b,
-            status: "approved" as BillStatus,
-            approvedBy: "GM / Owner",
-            approvedAt: today,
-          };
-        return {
-          ...b,
-          status: "rejected" as BillStatus,
-          rejectedBy: "GM / Owner",
-          rejectReason: remarks || "No reason given",
-        };
-      })
-    );
-
-    const msgs: Record<ActionType, string> = {
-      verify:  "Bill verified — forwarded for GM approval",
-      approve: "Bill approved & certified",
-      reject:  "Bill rejected",
-    };
-    message.success(msgs[actionType]);
-    setModalOpen(false);
+    setSubmitting(true);
+    try {
+      const endpoint = actionType === "verify" ? "verify"
+                     : actionType === "approve" ? "approve"
+                     : "reject";
+      const body = actionType === "reject"
+        ? { reason: remarks || "No reason given" }
+        : { remarks };
+      await apiClient.patch(`/bills/${actionBill._id}/${endpoint}`, body);
+      const msgs: Record<ActionType, string> = {
+        verify:  "Bill verified — forwarded for GM approval",
+        approve: "Bill approved & certified",
+        reject:  "Bill rejected",
+      };
+      message.success(msgs[actionType]);
+      setModalOpen(false);
+      await load();
+    } catch (e: unknown) {
+      message.error((e as { response?: { data?: { message?: string } } }).response?.data?.message || "Action failed");
+    } finally {
+      setSubmitting(false);
+    }
   }
+
+  if (loading) {
+    return (
+      <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: 300 }}>
+        <Spin size="large" tip="Loading approvals…" />
+      </div>
+    );
+  }
+
+  if (error) return <Alert type="error" message={error} style={{ margin: 24 }} />;
+
+  const allBillsSorted = [...bills].sort((a, b) =>
+    (b.billDate || "").localeCompare(a.billDate || "")
+  );
 
   return (
     <div>
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold">Approvals</h1>
-        <p className="text-gray-500 text-sm mt-1">
-          Review and action running bills through the verification → approval
-          workflow.
-        </p>
+      <div style={{ marginBottom: 24, display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
+        <div>
+          <h1 style={{ fontSize: 26, fontWeight: 700, margin: 0, color: "#1a1f2e" }}>Approvals</h1>
+          <p style={{ color: "#5a6278", marginTop: 4, marginBottom: 0, fontSize: 13 }}>
+            Review and action running bills through the verification → approval workflow.
+          </p>
+        </div>
+        <Button icon={<ReloadOutlined />} onClick={load}>Refresh</Button>
       </div>
 
       {/* Stats row */}
       <Row gutter={12} style={{ marginBottom: 24 }}>
         {[
-          {
-            label: "Pending Action",
-            value: totalPending,
-            color: "#f37916",
-            sub: "bills awaiting review",
-          },
-          {
-            label: "Needs Verification",
-            value: submitted.length,
-            color: "#2563eb",
-            sub: "submitted by contractor",
-          },
-          {
-            label: "Needs Approval",
-            value: verified.length,
-            color: "#0d9488",
-            sub: "verified by site engineer",
-          },
-          {
-            label: "Approved",
-            value: approved.length,
-            color: "#16a85a",
-            sub: "certified & closed",
-          },
-        ].map((s) => (
+          { label: "Pending Action", value: totalPending, color: "#f37916", sub: "bills awaiting review" },
+          { label: "Needs Verification", value: submitted.length, color: "#2563eb", sub: "submitted by contractor" },
+          { label: "Needs Approval", value: verified.length, color: "#0d9488", sub: "verified by site engineer" },
+          { label: "Approved / Paid", value: approved.length, color: "#16a85a", sub: "certified & closed" },
+        ].map(s => (
           <Col key={s.label} xs={12} sm={6}>
-            <div
-              style={{
-                background: "#fff",
-                border: "1px solid #e4e7ee",
-                borderRadius: 12,
-                padding: "16px 18px",
-                boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
-              }}
-            >
-              <div
-                style={{
-                  fontSize: 10,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.08em",
-                  color: "#9ba3b8",
-                  marginBottom: 6,
-                }}
-              >
-                {s.label}
-              </div>
-              <div
-                style={{
-                  fontFamily: "monospace",
-                  fontSize: 26,
-                  fontWeight: 700,
-                  color: s.color,
-                }}
-              >
-                {s.value}
-              </div>
-              <div style={{ fontSize: 11, color: "#5a6278", marginTop: 3 }}>
-                {s.sub}
-              </div>
+            <div style={{ background: "#fff", border: "1px solid #e4e7ee", borderRadius: 12, padding: "16px 18px", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
+              <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", color: "#9ba3b8", marginBottom: 6 }}>{s.label}</div>
+              <div style={{ fontFamily: "monospace", fontSize: 26, fontWeight: 700, color: s.color }}>{s.value}</div>
+              <div style={{ fontSize: 11, color: "#5a6278", marginTop: 3 }}>{s.sub}</div>
             </div>
           </Col>
         ))}
@@ -452,153 +255,141 @@ export default function Approvals() {
             children: (
               <>
                 {/* Pending Verification */}
-                <div style={{ marginBottom: 20 }}>
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 10,
-                      marginBottom: 12,
-                    }}
-                  >
-                    <span
-                      style={{
-                        fontSize: 12,
-                        fontWeight: 600,
-                        color: "#5a6278",
-                        textTransform: "uppercase",
-                        letterSpacing: "0.06em",
-                      }}
-                    >
+                <div style={{ marginBottom: 24 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: "#5a6278", textTransform: "uppercase", letterSpacing: "0.06em" }}>
                       Pending Verification
                     </span>
-                    <span
-                      style={{
-                        background: "#eff4ff",
-                        color: "#2563eb",
-                        borderRadius: 10,
-                        padding: "2px 8px",
-                        fontSize: 11,
-                        fontWeight: 600,
-                      }}
-                    >
+                    <span style={{ background: "#eff4ff", color: "#2563eb", borderRadius: 10, padding: "2px 8px", fontSize: 11, fontWeight: 600 }}>
                       {submitted.length}
                     </span>
                   </div>
-                  {submitted.length === 0 ? (
-                    <Empty
-                      description="No bills pending verification"
-                      image={Empty.PRESENTED_IMAGE_SIMPLE}
-                    />
-                  ) : (
-                    submitted.map((b) => (
-                      <BillCard
-                        key={b.id}
-                        bill={b}
-                        showVerify
-                        onAction={openAction}
-                      />
-                    ))
-                  )}
+                  {submitted.length === 0
+                    ? <Empty description="No bills pending verification" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                    : submitted.map(b => (
+                        <BillCard key={b._id} bill={b} showVerify onAction={openAction} />
+                      ))
+                  }
                 </div>
 
-                <div
-                  style={{
-                    height: 1,
-                    background: "#e4e7ee",
-                    margin: "24px 0",
-                  }}
-                />
+                <div style={{ height: 1, background: "#e4e7ee", margin: "24px 0" }} />
 
                 {/* Pending Approval */}
                 <div>
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 10,
-                      marginBottom: 12,
-                    }}
-                  >
-                    <span
-                      style={{
-                        fontSize: 12,
-                        fontWeight: 600,
-                        color: "#5a6278",
-                        textTransform: "uppercase",
-                        letterSpacing: "0.06em",
-                      }}
-                    >
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: "#5a6278", textTransform: "uppercase", letterSpacing: "0.06em" }}>
                       Pending Approval
                     </span>
-                    <span
-                      style={{
-                        background: "#e8fff8",
-                        color: "#0d9488",
-                        borderRadius: 10,
-                        padding: "2px 8px",
-                        fontSize: 11,
-                        fontWeight: 600,
-                      }}
-                    >
+                    <span style={{ background: "#e8fff8", color: "#0d9488", borderRadius: 10, padding: "2px 8px", fontSize: 11, fontWeight: 600 }}>
                       {verified.length}
                     </span>
                   </div>
-                  {verified.length === 0 ? (
-                    <Empty
-                      description="No bills pending approval"
-                      image={Empty.PRESENTED_IMAGE_SIMPLE}
-                    />
-                  ) : (
-                    verified.map((b) => (
-                      <BillCard
-                        key={b.id}
-                        bill={b}
-                        showApprove
-                        onAction={openAction}
-                      />
-                    ))
-                  )}
+                  {verified.length === 0
+                    ? <Empty description="No bills pending approval" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                    : verified.map(b => (
+                        <BillCard key={b._id} bill={b} showApprove onAction={openAction} />
+                      ))
+                  }
                 </div>
 
                 {totalPending === 0 && (
-                  <div
-                    style={{
-                      textAlign: "center",
-                      padding: "48px 20px",
-                      color: "#9ba3b8",
-                    }}
-                  >
+                  <div style={{ textAlign: "center", padding: "48px 20px", color: "#9ba3b8" }}>
                     <div style={{ fontSize: 40, marginBottom: 12 }}>✅</div>
-                    <div
-                      style={{
-                        fontSize: 14,
-                        color: "#5a6278",
-                        fontWeight: 600,
-                      }}
-                    >
-                      All clear!
-                    </div>
-                    <div style={{ fontSize: 12, marginTop: 4 }}>
-                      No bills pending your action right now.
-                    </div>
+                    <div style={{ fontSize: 14, color: "#5a6278", fontWeight: 600 }}>All clear!</div>
+                    <div style={{ fontSize: 12, marginTop: 4 }}>No bills pending your action right now.</div>
                   </div>
                 )}
               </>
             ),
           },
           {
+            key: "approved",
+            label: `Approved (${approved.length})`,
+            children: approved.length === 0
+              ? <Empty description="No approved bills yet" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+              : approved.map(b => <BillCard key={b._id} bill={b} onAction={openAction} />),
+          },
+          {
+            key: "rejected",
+            label: `Rejected (${rejected.length})`,
+            children: rejected.length === 0
+              ? <Empty description="No rejected bills" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+              : rejected.map(b => (
+                  <div key={b._id} style={{ background: "#fff", border: "1px solid #fecaca", borderRadius: 12, padding: "14px 16px", marginBottom: 10 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                      <div>
+                        <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#f37916" }}>{b.billNo}</span>
+                        {" "}<Tag color="red">REJECTED</Tag>
+                        <div style={{ fontSize: 12, color: "#5a6278", marginTop: 4 }}>{b.vendorName} · {b.projectName}</div>
+                        {b.rejectReason && (
+                          <div style={{ fontSize: 12, color: "#e03b3b", marginTop: 6, background: "#fef2f2", padding: "6px 10px", borderRadius: 6 }}>
+                            Reason: {b.rejectReason}
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ textAlign: "right" }}>
+                        <div style={{ fontFamily: "monospace", fontWeight: 700, color: "#9ba3b8" }}>{fmt(calcAmounts(b).gross)}</div>
+                        <div style={{ fontSize: 11, color: "#9ba3b8" }}>{dayjs(b.billDate).format("DD MMM YYYY")}</div>
+                      </div>
+                    </div>
+                  </div>
+                )),
+          },
+          {
             key: "history",
             label: "All Bills",
             children: (
-              <Table
-                rowKey="id"
-                dataSource={[...bills].sort((a, b) =>
-                  b.billDate.localeCompare(a.billDate)
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ background: "#f5f6f8" }}>
+                      {["Bill No.", "Date", "Work Order", "Vendor", "Gross (incl. GST)", "Net Payable", "Status", "Verified By", "Approved/Rejected"].map(h => (
+                        <th key={h} style={{ padding: "10px 12px", textAlign: "left", fontSize: 11, fontWeight: 600, color: "#9ba3b8", textTransform: "uppercase", letterSpacing: "0.05em", borderBottom: "1px solid #e4e7ee", whiteSpace: "nowrap" }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {allBillsSorted.map(b => {
+                      const { gross, net } = calcAmounts(b);
+                      return (
+                        <tr key={b._id} style={{ borderBottom: "1px solid #f0f0f0" }}
+                          onMouseEnter={e => (e.currentTarget.style.background = "#fffaf6")}
+                          onMouseLeave={e => (e.currentTarget.style.background = "")}
+                        >
+                          <td style={{ padding: "10px 12px", fontFamily: "monospace", color: "#f37916", fontWeight: 600 }}>{b.billNo}</td>
+                          <td style={{ padding: "10px 12px", whiteSpace: "nowrap" }}>{dayjs(b.billDate).format("DD MMM YYYY")}</td>
+                          <td style={{ padding: "10px 12px" }}>
+                            {b.workOrderNo ? <Tag color="orange" style={{ fontFamily: "monospace" }}>{b.workOrderNo}</Tag> : <span style={{ color: "#9ba3b8" }}>—</span>}
+                          </td>
+                          <td style={{ padding: "10px 12px" }}>{b.vendorName || "—"}</td>
+                          <td style={{ padding: "10px 12px", fontFamily: "monospace", color: "#f37916" }}>{fmt(gross)}</td>
+                          <td style={{ padding: "10px 12px", fontFamily: "monospace", color: "#16a85a", fontWeight: 600 }}>{fmt(net)}</td>
+                          <td style={{ padding: "10px 12px" }}>
+                            <Tag color={STATUS_CFG[b.status].color}>{STATUS_CFG[b.status].label.toUpperCase()}</Tag>
+                          </td>
+                          <td style={{ padding: "10px 12px", fontSize: 12 }}>
+                            {b.verifiedBy ? (
+                              <span>{typeof b.verifiedBy === "object" ? b.verifiedBy.name : b.verifiedBy}
+                                <br /><span style={{ color: "#9ba3b8", fontSize: 11 }}>{b.verifiedAt ? dayjs(b.verifiedAt).format("DD MMM") : ""}</span>
+                              </span>
+                            ) : <span style={{ color: "#9ba3b8" }}>—</span>}
+                          </td>
+                          <td style={{ padding: "10px 12px", fontSize: 12 }}>
+                            {b.approvedBy ? (
+                              <span style={{ color: "#16a85a" }}>{typeof b.approvedBy === "object" ? b.approvedBy.name : b.approvedBy}</span>
+                            ) : b.rejectedBy ? (
+                              <span style={{ color: "#e03b3b" }}>{typeof b.rejectedBy === "object" ? b.rejectedBy.name : b.rejectedBy}{b.rejectReason ? ` — ${b.rejectReason}` : ""}</span>
+                            ) : <span style={{ color: "#9ba3b8" }}>—</span>}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                {allBillsSorted.length === 0 && (
+                  <Empty description="No bills yet" image={Empty.PRESENTED_IMAGE_SIMPLE} style={{ padding: "40px 0" }} />
                 )}
-                columns={historyColumns}
-                scroll={{ x: true }}
-              />
+              </div>
             ),
           },
         ]}
@@ -608,177 +399,104 @@ export default function Approvals() {
       <Modal
         open={modalOpen}
         title={
-          actionType === "verify"
-            ? "Verify Bill — Site Engineer"
-            : actionType === "approve"
-            ? "Approve Bill — GM / Owner"
-            : "Reject Bill"
+          actionType === "verify" ? "Verify Bill — Site Engineer"
+          : actionType === "approve" ? "Approve Bill — GM / Owner"
+          : "Reject Bill"
         }
         onCancel={() => setModalOpen(false)}
         onOk={executeAction}
         okText={
-          actionType === "verify"
-            ? "✓  Verify"
-            : actionType === "approve"
-            ? "✓  Approve & Certify"
-            : "✗  Reject Bill"
+          actionType === "verify" ? "✓  Verify"
+          : actionType === "approve" ? "✓  Approve & Certify"
+          : "✗  Reject Bill"
         }
+        confirmLoading={submitting}
         okButtonProps={{
-          style:
-            actionType === "reject"
-              ? { background: "#e03b3b", borderColor: "#e03b3b" }
-              : actionType === "approve"
-              ? { background: "#f37916", borderColor: "#f37916" }
-              : { background: "#16a85a", borderColor: "#16a85a" },
+          style: actionType === "reject"
+            ? { background: "#e03b3b", borderColor: "#e03b3b" }
+            : actionType === "approve"
+            ? { background: "#f37916", borderColor: "#f37916" }
+            : { background: "#16a85a", borderColor: "#16a85a" },
         }}
         destroyOnHidden
         width={480}
       >
-        {actionBill &&
-          (() => {
-            const { gstAmt, gross, tdsAmt, net } = calcAmounts(actionBill);
-            return (
-              <>
-                <Descriptions
-                  size="small"
-                  column={1}
-                  style={{ marginBottom: 16, marginTop: 8 }}
-                >
-                  <Descriptions.Item label="Bill No.">
-                    <span
-                      style={{
-                        fontFamily: "monospace",
-                        color: "#f37916",
-                        fontWeight: 600,
-                      }}
-                    >
-                      {actionBill.billNo}
-                    </span>
-                  </Descriptions.Item>
+        {actionBill && (() => {
+          const { gstAmt, gross, tdsAmt, net } = calcAmounts(actionBill);
+          return (
+            <>
+              <Descriptions size="small" column={1} style={{ marginBottom: 16, marginTop: 8 }}>
+                <Descriptions.Item label="Bill No.">
+                  <span style={{ fontFamily: "monospace", color: "#f37916", fontWeight: 600 }}>{actionBill.billNo}</span>
+                </Descriptions.Item>
+                {actionBill.workOrderNo && (
                   <Descriptions.Item label="Work Order">
-                    <Tag
-                      color="orange"
-                      style={{ fontFamily: "monospace" }}
-                    >
-                      {actionBill.workOrderNo}
-                    </Tag>
+                    <Tag color="orange" style={{ fontFamily: "monospace" }}>{actionBill.workOrderNo}</Tag>
                   </Descriptions.Item>
-                  <Descriptions.Item label="Vendor">
-                    {actionBill.vendorName}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="Date">
-                    {dayjs(actionBill.billDate).format("DD MMM YYYY")}
-                  </Descriptions.Item>
-                  {actionBill.billRefNo && (
-                    <Descriptions.Item label="Ref">
-                      {actionBill.billRefNo}
-                    </Descriptions.Item>
-                  )}
-                  {actionBill.description && (
-                    <Descriptions.Item label="Work Done">
-                      {actionBill.description}
-                    </Descriptions.Item>
-                  )}
-                </Descriptions>
+                )}
+                <Descriptions.Item label="Vendor">{actionBill.vendorName}</Descriptions.Item>
+                <Descriptions.Item label="Project">{actionBill.projectName}</Descriptions.Item>
+                <Descriptions.Item label="Date">{dayjs(actionBill.billDate).format("DD MMM YYYY")}</Descriptions.Item>
+                {actionBill.remarks && (
+                  <Descriptions.Item label="Remarks">{actionBill.remarks}</Descriptions.Item>
+                )}
+              </Descriptions>
 
-                {/* Calc breakdown */}
-                <div
-                  style={{
-                    background: "#fff8f3",
-                    border: "1px solid #f8c9a0",
-                    borderRadius: 10,
-                    padding: "14px 16px",
-                    marginBottom: 16,
-                    fontFamily: "monospace",
-                    fontSize: 13,
-                  }}
-                >
-                  {[
-                    {
-                      label: "Base Amount",
-                      value: fmt(actionBill.amount),
-                      color: "#5a6278",
-                    },
-                    {
-                      label: `GST @ ${actionBill.gstPercent}%`,
-                      value: fmt(gstAmt),
-                      color: "#5a6278",
-                    },
-                  ].map((r) => (
-                    <div
-                      key={r.label}
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        padding: "3px 0",
-                        color: r.color,
-                      }}
-                    >
-                      <span>{r.label}</span>
-                      <span>{r.value}</span>
-                    </div>
-                  ))}
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      padding: "6px 0 3px",
-                      borderTop: "1px solid #f8c9a0",
-                      marginTop: 4,
-                      color: "#d4620c",
-                      fontWeight: 700,
-                    }}
-                  >
-                    <span>GROSS AMOUNT</span>
-                    <span>{fmt(gross)}</span>
+              {/* Financial breakdown */}
+              <div style={{ background: "#fff8f3", border: "1px solid #f8c9a0", borderRadius: 10, padding: "14px 16px", marginBottom: 16, fontFamily: "monospace", fontSize: 13 }}>
+                {[
+                  { label: "Base Amount",              value: fmt(actionBill.amount), color: "#5a6278" },
+                  { label: `GST @ ${actionBill.gstPercent ?? 18}%`, value: `+ ${fmt(gstAmt)}`, color: "#16a34a" },
+                  { label: "Gross Amount",             value: fmt(gross),   color: "#d4620c", bold: true },
+                  { label: `TDS @ ${actionBill.tdsPercent ?? 1}%`,  value: `(${fmt(tdsAmt)})`, color: "#dc2626" },
+                ].map(r => (
+                  <div key={r.label} style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", color: r.color, fontWeight: r.bold ? 700 : 400, borderTop: r.bold ? "1px solid #f8c9a0" : undefined, marginTop: r.bold ? 4 : 0, paddingTop: r.bold ? 8 : 4 }}>
+                    <span>{r.label}</span><span>{r.value}</span>
                   </div>
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      padding: "3px 0",
-                      color: "#5a6278",
-                    }}
-                  >
-                    <span>TDS @ {actionBill.tdsPercent}%</span>
-                    <span>({fmt(tdsAmt)})</span>
-                  </div>
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      padding: "6px 0 0",
-                      borderTop: "1px solid #f8c9a0",
-                      marginTop: 4,
-                      color: "#16a85a",
-                      fontWeight: 700,
-                      fontSize: 14,
-                    }}
-                  >
-                    <span>NET PAYABLE</span>
-                    <span>{fmt(net)}</span>
-                  </div>
+                ))}
+                <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0 0", borderTop: "1px solid #f8c9a0", marginTop: 4, color: "#16a85a", fontWeight: 700, fontSize: 14 }}>
+                  <span>NET PAYABLE</span><span>{fmt(net)}</span>
                 </div>
+              </div>
 
-                <Form.Item
-                  label="Remarks"
-                  style={{ marginBottom: 0 }}
-                  required={actionType === "reject"}
-                >
-                  <Input.TextArea
-                    rows={2}
-                    placeholder={
-                      actionType === "reject"
-                        ? "Reason for rejection…"
-                        : "Add remarks or conditions (optional)…"
-                    }
-                    value={remarks}
-                    onChange={(e) => setRemarks(e.target.value)}
-                  />
-                </Form.Item>
-              </>
-            );
-          })()}
+              {/* Line items if present */}
+              {actionBill.lineItems && actionBill.lineItems.length > 0 && (
+                <div style={{ marginBottom: 16, overflowX: "auto" }}>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: "#9ba3b8", textTransform: "uppercase", marginBottom: 6 }}>Work Items</div>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                    <thead>
+                      <tr style={{ background: "#f5f6f8" }}>
+                        {["Description", "Unit", "Qty", "Rate", "Amount"].map(h => (
+                          <th key={h} style={{ padding: "6px 8px", textAlign: h === "Description" ? "left" : "right", fontSize: 10, fontWeight: 600, color: "#9ba3b8", borderBottom: "1px solid #e4e7ee" }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {actionBill.lineItems.map((li, i) => (
+                        <tr key={i} style={{ borderBottom: "1px solid #f0f0f0" }}>
+                          <td style={{ padding: "6px 8px" }}>{li.description}</td>
+                          <td style={{ padding: "6px 8px", textAlign: "right", color: "#9ba3b8" }}>{li.unit}</td>
+                          <td style={{ padding: "6px 8px", textAlign: "right", fontFamily: "monospace" }}>{li.billedQty?.toLocaleString("en-IN")}</td>
+                          <td style={{ padding: "6px 8px", textAlign: "right", fontFamily: "monospace" }}>₹{li.rate?.toLocaleString("en-IN")}</td>
+                          <td style={{ padding: "6px 8px", textAlign: "right", fontFamily: "monospace", fontWeight: 600, color: "#f37916" }}>{fmt(li.amount)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              <Form.Item label="Remarks" style={{ marginBottom: 0 }} required={actionType === "reject"}>
+                <Input.TextArea
+                  rows={2}
+                  placeholder={actionType === "reject" ? "Reason for rejection…" : "Add remarks or conditions (optional)…"}
+                  value={remarks}
+                  onChange={e => setRemarks(e.target.value)}
+                />
+              </Form.Item>
+            </>
+          );
+        })()}
       </Modal>
     </div>
   );
