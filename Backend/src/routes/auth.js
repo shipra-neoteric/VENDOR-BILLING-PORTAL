@@ -19,7 +19,9 @@ router.post(
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
-    const { name, email, password, role, vendorCode } = req.body;
+    const { name, role, vendorCode } = req.body;
+    const email = req.body.email?.trim().toLowerCase();
+    const password = req.body.password;
 
     try {
       if (await User.findOne({ email })) {
@@ -50,7 +52,8 @@ router.post(
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
-    const { email, password } = req.body;
+    const { email: rawEmail, password } = req.body;
+    const email = rawEmail.trim().toLowerCase();
 
     try {
       const user = await User.findOne({ email }).select('+password');
