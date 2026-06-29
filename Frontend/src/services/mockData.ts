@@ -1047,6 +1047,5 @@ export const verifiedBills: VerifiedBill[] = [
     netPayable: vb002Net,
     approvalChain: makeApprovalChain(2),  // Site Engineer + PM approved, GM pending
     status: "under-approval",
-    contractorBillNo: "CB-0003",
   },
 ];

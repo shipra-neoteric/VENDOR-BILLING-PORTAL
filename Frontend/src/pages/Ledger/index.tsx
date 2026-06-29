@@ -849,7 +849,7 @@ export default function Ledger() {
               columns={summaryColumns}
               scroll={{ x: true }}
               pagination={false}
-              onRow={(r) => ({
+              onRow={(_r) => ({
                 style: { cursor: "pointer" },
                 onMouseEnter: (e) => {
                   (e.currentTarget as HTMLElement).style.background = "#fffaf6";

@@ -22,9 +22,6 @@ import {
 } from "antd";
 import {
   ExclamationCircleOutlined,
-  CheckCircleOutlined,
-  ClockCircleOutlined,
-  BarChartOutlined,
   DollarOutlined,
   InfoCircleOutlined,
   HistoryOutlined,
@@ -411,7 +408,6 @@ function WorkOrderCard({
                 style={{
                   display: "flex",
                   alignItems: "center",
-                  gap: 12,
                   padding: "10px 12px",
                   marginBottom: idx < items.length - 1 ? 8 : 0,
                   border: `1px solid ${del ? "#ffcdd2" : "#e4e7ee"}`,
