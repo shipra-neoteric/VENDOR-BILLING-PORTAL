@@ -56,7 +56,6 @@ router.post(
   '/',
   authorize('owner', 'gm', 'accounts', 'engineer', 'contractor'),
   [
-    body('workOrderId').notEmpty().withMessage('Work order is required'),
     body('billDate').isISO8601().withMessage('Valid bill date is required'),
   ],
   async (req, res) => {
@@ -64,10 +63,18 @@ router.post(
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
     try {
-      const workOrder = await WorkOrder.findById(req.body.workOrderId);
-      if (!workOrder) return res.status(404).json({ message: 'Work order not found' });
+      // workOrderId is optional — bill can be raised without one
+      const workOrder = req.body.workOrderId
+        ? await WorkOrder.findById(req.body.workOrderId)
+        : null;
+      if (req.body.workOrderId && !workOrder) {
+        return res.status(404).json({ message: 'Work order not found' });
+      }
 
       const lineItems = Array.isArray(req.body.lineItems) ? req.body.lineItems : [];
+      if (lineItems.length === 0) {
+        return res.status(400).json({ message: 'At least one work item is required' });
+      }
       const amount = lineItems.reduce((sum, li) => sum + (Number(li.amount) || 0), 0);
 
       const billNo = await nextBillNo();
@@ -76,18 +83,20 @@ router.post(
         billNo,
         amount,
         lineItems,
-        workOrderNo: workOrder.workOrderNo,
-        projectId:   workOrder.projectId,
-        projectName: workOrder.projectName,
-        vendorCode:  workOrder.vendorCode,
-        vendorName:  workOrder.vendorName,
+        ...(workOrder ? {
+          workOrderNo: workOrder.workOrderNo,
+          projectId:   workOrder.projectId,
+          projectName: workOrder.projectName,
+          vendorCode:  workOrder.vendorCode,
+          vendorName:  workOrder.vendorName,
+        } : {}),
         status:      'submitted',
         submittedAt: new Date(),
         createdBy:   req.user._id,
       });
 
       // Update work order scope item completedQty for each billed line item
-      if (lineItems.length > 0) {
+      if (workOrder && lineItems.length > 0) {
         try {
           const woDoc = await WorkOrder.findById(workOrder._id);
           if (woDoc) {

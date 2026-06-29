@@ -13,7 +13,7 @@ const lineItemSchema = new mongoose.Schema({
 const runningBillSchema = new mongoose.Schema(
   {
     billNo:      { type: String, required: true, unique: true },
-    workOrderId: { type: mongoose.Schema.Types.ObjectId, ref: 'WorkOrder', required: true },
+    workOrderId: { type: mongoose.Schema.Types.ObjectId, ref: 'WorkOrder' },
     workOrderNo: { type: String },
     projectId:   { type: mongoose.Schema.Types.ObjectId, ref: 'Project' },
     projectName: { type: String },

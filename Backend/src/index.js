@@ -24,6 +24,10 @@ app.use(cors({
 app.use(express.json());
 app.use(morgan('dev'));
 
+// app.get("/",(req,res)=>{
+//   res.send("working")
+// })
+
 // Routes
 app.use('/api/auth',        require('./routes/auth'));
 app.use('/api/projects',    require('./routes/projects'));
@@ -45,6 +49,10 @@ app.use((err, _req, res, _next) => {
   console.error(err.stack);
   res.status(err.status || 500).json({ message: err.message || 'Internal server error' });
 });
+
+app.get("/",(req,res)=>{
+  res.send("working")
+})
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`\n🚀  Server running on http://localhost:${PORT}\n`));
