@@ -976,12 +976,14 @@ function WOFormFields({
   nextWONo,
   contractorsList,
   projectsList,
+  categoriesList,
 }: {
   form: FormInstance;
   isEdit?: boolean;
   nextWONo: string;
   contractorsList: Contractor[];
   projectsList: Project[];
+  categoriesList: { _id: string; name: string; isActive: boolean }[];
 }) {
   const fillVendor = (vendorCode: string) => {
     const c = contractorsList.find(x => x.vendorCode === vendorCode);
@@ -1082,7 +1084,7 @@ function WOFormFields({
             <Select
               placeholder="Select category (optional)"
               allowClear
-              options={apiCategories.filter(c => c.isActive).map(c => ({
+              options={categoriesList.filter(c => c.isActive).map(c => ({
                 label: c.name,
                 value: c.name,
               }))}
@@ -1649,6 +1651,7 @@ export default function WorkItems() {
             nextWONo={nextWONo}
             contractorsList={contractors}
             projectsList={projects}
+            categoriesList={apiCategories}
           />
         </Form>
         <div style={{ borderTop: "1px solid #E5E7EB", marginTop: 16, paddingTop: 16 }}>
@@ -1833,6 +1836,7 @@ export default function WorkItems() {
             nextWONo={nextWONo}
             contractorsList={contractors}
             projectsList={projects}
+            categoriesList={apiCategories}
           />
         </Form>
         <div style={{ borderTop: "1px solid #E5E7EB", marginTop: 16, paddingTop: 16 }}>
