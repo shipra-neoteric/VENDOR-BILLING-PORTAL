@@ -1,8 +1,11 @@
 import axios from "axios";
 import { message } from "antd";
 
+// Strip BOM (﻿) that PowerShell can inject into env vars
+const rawApiUrl = (import.meta.env.VITE_API_URL || "http://localhost:5000/api").replace(/^﻿/, "");
+
 const apiClient = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || "http://localhost:5000/api",
+  baseURL: rawApiUrl,
   headers: { "Content-Type": "application/json" },
   timeout: 15000,
 });
