@@ -1,0 +1,581 @@
+<title>VBP · Developer Brief</title>
+<style>
+:root {
+  --bg: #F1F5F9;
+  --surface: #fff;
+  --border: #E2E8F0;
+  --border-strong: #CBD5E1;
+  --text-1: #0F172A;
+  --text-2: #475569;
+  --text-3: #94A3B8;
+  --accent: #F97316;
+  --accent-pale: #FFF7ED;
+  --code-bg: #0F172A;
+  --code-text: #CBD5E1;
+  --green: #059669;
+  --green-pale: #ECFDF5;
+  --amber: #B45309;
+  --amber-pale: #FFFBEB;
+  --red: #DC2626;
+  --red-pale: #FEF2F2;
+  --blue: #1D4ED8;
+  --mono: 'Cascadia Code','JetBrains Mono','Fira Code',Consolas,'SF Mono',monospace;
+  --sans: -apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+html{scroll-behavior:smooth;}
+body{font-family:var(--sans);background:var(--bg);color:var(--text-1);line-height:1.65;-webkit-font-smoothing:antialiased;}
+
+/* TOC */
+.toc{position:sticky;top:0;z-index:100;background:rgba(255,255,255,0.94);backdrop-filter:blur(8px);border-bottom:1px solid var(--border);display:flex;align-items:center;height:42px;padding:0 20px;overflow-x:auto;scrollbar-width:none;gap:0;}
+.toc::-webkit-scrollbar{display:none;}
+.toc a{font-family:var(--mono);font-size:11px;color:var(--text-3);text-decoration:none;padding:0 12px;height:42px;display:flex;align-items:center;white-space:nowrap;border-bottom:2px solid transparent;transition:color .15s,border-color .15s;letter-spacing:.04em;}
+.toc a:hover{color:var(--accent);border-bottom-color:var(--accent);}
+.toc-sep{color:var(--border);font-size:11px;padding:0 2px;}
+
+/* Masthead */
+.mast{background:var(--code-bg);padding:52px 0 44px;}
+.mast-inner{max-width:900px;margin:0 auto;padding:0 40px;}
+.mast-eye{font-family:var(--mono);font-size:12px;color:var(--accent);letter-spacing:.08em;text-transform:uppercase;margin-bottom:10px;}
+.mast-h1{font-family:var(--mono);font-size:clamp(26px,4vw,38px);font-weight:700;color:#fff;line-height:1.2;text-wrap:balance;margin-bottom:14px;}
+.mast-sub{font-size:14px;color:var(--text-3);max-width:540px;margin-bottom:22px;}
+.mast-meta{display:flex;flex-wrap:wrap;gap:18px;}
+.mast-meta span{font-family:var(--mono);font-size:12px;color:var(--text-2);}
+.mast-meta b{color:var(--text-3);font-weight:400;margin-right:5px;}
+
+/* Content */
+.content{max-width:900px;margin:0 auto;padding:40px 40px 80px;display:flex;flex-direction:column;gap:28px;}
+
+/* Section card */
+.sec{background:var(--surface);border:1px solid var(--border);border-radius:8px;overflow:hidden;}
+.sec-hd{padding:16px 24px;border-bottom:1px solid var(--border);display:flex;align-items:baseline;gap:10px;}
+.sec-eye{font-family:var(--mono);font-size:10px;color:var(--accent);letter-spacing:.1em;text-transform:uppercase;flex-shrink:0;}
+.sec-title{font-family:var(--mono);font-size:14px;font-weight:600;color:var(--text-1);}
+.sec-bd{padding:22px 24px;}
+
+/* Badge grid */
+.badge-grid{display:flex;flex-wrap:wrap;gap:7px;}
+.badge{font-family:var(--mono);font-size:12px;padding:4px 10px;border-radius:4px;border:1px solid var(--border);background:var(--bg);color:var(--text-2);display:flex;align-items:center;gap:6px;white-space:nowrap;}
+.bd{width:6px;height:6px;border-radius:50%;flex-shrink:0;}
+.badge b{color:var(--text-1);}
+.badge s{text-decoration:none;color:var(--text-3);}
+
+/* File tree */
+.tree{font-family:var(--mono);font-size:13px;line-height:2;color:var(--text-2);}
+.tl{display:flex;align-items:center;gap:0;}
+.ti{color:var(--text-3);white-space:pre;user-select:none;}
+.tn{color:var(--text-1);}
+.tn.dir{font-weight:600;}
+.tag{font-size:10px;padding:1px 6px;border-radius:3px;letter-spacing:.03em;margin-left:8px;font-family:var(--mono);}
+.t-empty{background:var(--bg);color:var(--text-3);border:1px solid var(--border);}
+.t-partial{background:var(--amber-pale);color:var(--amber);}
+.t-ph{background:var(--red-pale);color:var(--red);}
+.t-done{background:var(--green-pale);color:var(--green);}
+
+/* Status table */
+.stbl{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums;}
+.stbl th{font-family:var(--mono);font-size:10px;font-weight:500;letter-spacing:.07em;text-transform:uppercase;color:var(--text-3);text-align:left;padding:8px 14px;border-bottom:1px solid var(--border);}
+.stbl td{padding:10px 14px;border-bottom:1px solid var(--border);vertical-align:top;}
+.stbl tr:last-child td{border-bottom:none;}
+.stbl tr:hover td{background:var(--bg);}
+.chip{display:inline-flex;align-items:center;gap:4px;font-family:var(--mono);font-size:11px;padding:2px 7px;border-radius:3px;white-space:nowrap;font-weight:500;}
+.cd{width:5px;height:5px;border-radius:50%;flex-shrink:0;}
+.c-part{background:var(--amber-pale);color:var(--amber);}
+.c-ph{background:var(--red-pale);color:var(--red);}
+.c-miss{background:var(--bg);color:var(--text-3);border:1px solid var(--border);}
+td.mono{font-family:var(--mono);color:var(--text-2);}
+td.route{font-family:var(--mono);color:var(--blue);}
+td.note{font-size:13px;color:var(--text-2);}
+code{font-family:var(--mono);font-size:12px;background:var(--bg);border:1px solid var(--border);padding:1px 5px;border-radius:3px;}
+
+/* Code block */
+.cb{background:var(--code-bg);border-radius:6px;padding:18px 22px;overflow-x:auto;font-family:var(--mono);font-size:13px;line-height:1.85;}
+.cc{color:#475569;}
+.ck{color:#93C5FD;}
+.cs{color:#86EFAC;}
+.cp{color:#FDBA74;}
+.cd2{color:var(--code-text);}
+.ci{color:#C4B5FD;}
+
+/* Pattern items */
+.pat-list{display:flex;flex-direction:column;gap:14px;}
+.pat{border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:0 6px 6px 0;padding:12px 16px;}
+.pat-lbl{font-family:var(--mono);font-size:10px;color:var(--accent);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;}
+.pat-val{font-family:var(--mono);font-size:12px;color:var(--code-text);background:var(--code-bg);padding:8px 12px;border-radius:4px;overflow-x:auto;white-space:pre;}
+.pat-note{font-size:13px;color:var(--text-2);margin-top:7px;}
+
+/* Build order */
+.bl{display:flex;flex-direction:column;}
+.bi{display:grid;grid-template-columns:44px 1fr;border-bottom:1px solid var(--border);padding:14px 0;}
+.bi:last-child{border-bottom:none;}
+.bn{font-family:var(--mono);font-size:20px;font-weight:700;color:var(--border);line-height:1;padding-top:2px;font-variant-numeric:tabular-nums;}
+.bt{font-weight:600;font-size:14px;margin-bottom:4px;}
+.bd2{font-size:13px;color:var(--text-2);}
+.bf{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px;}
+.fc{font-family:var(--mono);font-size:11px;padding:2px 7px;background:var(--bg);border:1px solid var(--border);border-radius:3px;color:var(--text-2);}
+
+/* Layout cards */
+.lc-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px;}
+.lc{border:1px solid var(--border);border-radius:6px;overflow:hidden;}
+.lc-hd{background:var(--bg);padding:9px 14px;font-family:var(--mono);font-size:10px;color:var(--text-3);letter-spacing:.07em;text-transform:uppercase;border-bottom:1px solid var(--border);}
+.lc-bd{padding:13px 16px;font-size:13px;line-height:1.7;color:var(--text-2);}
+
+/* Blocker */
+.blocker{background:#FFFBEB;border:1px solid #FCD34D;border-radius:8px;overflow:hidden;}
+.blocker-hd{padding:14px 22px;border-bottom:1px solid #FCD34D;font-family:var(--mono);font-size:13px;font-weight:600;color:var(--amber);display:flex;align-items:center;gap:8px;}
+.blocker-bd{padding:20px 22px;}
+.cl{list-style:none;display:flex;flex-direction:column;gap:14px;}
+.cl li{display:grid;grid-template-columns:20px 1fr;gap:10px;font-size:13px;}
+.ci2{font-family:var(--mono);font-size:14px;margin-top:1px;flex-shrink:0;}
+.cr{font-family:var(--mono);font-size:13px;color:var(--text-1);font-weight:600;margin-bottom:3px;}
+.cw{font-size:13px;color:var(--text-2);}
+
+/* Responsive */
+@media(max-width:640px){
+  .mast-inner,.content{padding-left:18px;padding-right:18px;}
+  .sec-bd{padding:18px;}
+  .lc-grid{grid-template-columns:1fr;}
+  .mast{padding:36px 0 32px;}
+}
+a:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:2px;}
+</style>
+
+<nav class="toc">
+  <a href="#tech">Tech Stack</a><span class="toc-sep">/</span>
+  <a href="#arch">Architecture</a><span class="toc-sep">/</span>
+  <a href="#pages">Page Status</a><span class="toc-sep">/</span>
+  <a href="#routing">Routing</a><span class="toc-sep">/</span>
+  <a href="#layout">Layout System</a><span class="toc-sep">/</span>
+  <a href="#structure">New Structure</a><span class="toc-sep">/</span>
+  <a href="#patterns">Design Patterns</a><span class="toc-sep">/</span>
+  <a href="#build">Build Order</a><span class="toc-sep">/</span>
+  <a href="#blockers">Blockers</a>
+</nav>
+
+<header class="mast">
+  <div class="mast-inner">
+    <p class="mast-eye">Vendor Billing Portal · Nexora Module</p>
+    <h1 class="mast-h1">Developer Brief<br/>HTML → React Conversion Spec</h1>
+    <p class="mast-sub">Full project context for converting the HTML prototype into production-ready React/TypeScript files that slot directly into the existing architecture.</p>
+    <div class="mast-meta">
+      <span><b>Generated</b>25 Jun 2026</span>
+      <span><b>Workspace</b>c:\Vendor Billing Portal</span>
+      <span><b>Framework</b>React 19 · Vite 8 · TypeScript 6</span>
+      <span><b>UI Libs</b>Ant Design 6 + Tailwind CSS 4</span>
+    </div>
+  </div>
+</header>
+
+<main class="content">
+
+  <!-- 01 TECH STACK -->
+  <section class="sec" id="tech">
+    <div class="sec-hd"><span class="sec-eye">01</span><span class="sec-title">Confirmed Tech Stack — from package.json</span></div>
+    <div class="sec-bd">
+      <div class="badge-grid">
+        <span class="badge"><span class="bd" style="background:#61DAFB"></span><b>React</b><s>19.2.7</s></span>
+        <span class="badge"><span class="bd" style="background:#3178C6"></span><b>TypeScript</b><s>~6.0.2</s></span>
+        <span class="badge"><span class="bd" style="background:#646CFF"></span><b>Vite</b><s>8.1.0</s></span>
+        <span class="badge"><span class="bd" style="background:#0958D9"></span><b>Ant Design</b><s>6.4.5</s></span>
+        <span class="badge"><span class="bd" style="background:#38BDF8"></span><b>Tailwind CSS</b><s>4.3.1</s></span>
+        <span class="badge"><span class="bd" style="background:#764ABC"></span><b>Redux Toolkit</b><s>2.12.0</s></span>
+        <span class="badge"><span class="bd" style="background:#FF4154"></span><b>TanStack Query</b><s>5.101.1</s></span>
+        <span class="badge"><span class="bd" style="background:#CA4245"></span><b>React Router DOM</b><s>7.18.0</s></span>
+        <span class="badge"><span class="bd" style="background:#EC5990"></span><b>React Hook Form</b><s>7.80.0</s></span>
+        <span class="badge"><span class="bd" style="background:#3068B7"></span><b>Zod</b><s>4.4.3</s></span>
+        <span class="badge"><span class="bd" style="background:#F97316"></span><b>Axios</b><s>1.18.1</s></span>
+        <span class="badge"><span class="bd" style="background:#F97316"></span><b>Dayjs</b><s>1.11.21</s></span>
+        <span class="badge"><span class="bd" style="background:#22C55E"></span><b>Recharts</b><s>3.9.0</s></span>
+        <span class="badge"><span class="bd" style="background:#FBBF24"></span><b>React Hot Toast</b><s>2.6.0</s></span>
+        <span class="badge"><span class="bd" style="background:#94A3B8"></span><b>clsx</b><s>2.1.1</s></span>
+      </div>
+    </div>
+  </section>
+
+  <!-- 02 ARCHITECTURE -->
+  <section class="sec" id="arch">
+    <div class="sec-hd"><span class="sec-eye">02</span><span class="sec-title">Existing File Architecture — src/</span></div>
+    <div class="sec-bd">
+      <div class="tree">
+        <div class="tl"><span class="tn dir">src/</span></div>
+        <div class="tl"><span class="ti">├── </span><span class="tn dir">app/</span><span class="tag t-empty">empty</span></div>
+        <div class="tl"><span class="ti">├── </span><span class="tn dir">components/</span></div>
+        <div class="tl"><span class="ti">│   ├── </span><span class="tn">cards/</span><span class="tag t-empty">empty</span></div>
+        <div class="tl"><span class="ti">│   ├── </span><span class="tn">charts/</span><span class="tag t-empty">empty</span></div>
+        <div class="tl"><span class="ti">│   ├── </span><span class="tn">common/</span><span class="tag t-empty">empty</span></div>
+        <div class="tl"><span class="ti">│   ├── </span><span class="tn">forms/</span><span class="tag t-empty">empty</span></div>
+        <div class="tl"><span class="ti">│   └── </span><span class="tn">tables/</span><span class="tag t-empty">empty</span></div>
+        <div class="tl"><span class="ti">├── </span><span class="tn dir">constants/</span><span class="tag t-empty">empty</span></div>
+        <div class="tl"><span class="ti">├── </span><span class="tn dir">hooks/</span><span class="tag t-empty">empty</span></div>
+        <div class="tl"><span class="ti">├── </span><span class="tn dir">layouts/</span></div>
+        <div class="tl"><span class="ti">│   ├── </span><span class="tn">Header/Header.tsx</span><span class="tag t-done">built</span></div>
+        <div class="tl"><span class="ti">│   ├── </span><span class="tn">MainLayout/MainLayout.tsx</span><span class="tag t-done">built</span></div>
+        <div class="tl"><span class="ti">│   └── </span><span class="tn">Sidebar/Sidebar.tsx</span><span class="tag t-done">built</span></div>
+        <div class="tl"><span class="ti">├── </span><span class="tn dir">pages/</span></div>
+        <div class="tl"><span class="ti">│   ├── </span><span class="tn">Approvals/index.tsx</span><span class="tag t-ph">placeholder</span></div>
+        <div class="tl"><span class="ti">│   ├── </span><span class="tn">Bills/index.tsx</span><span class="tag t-ph">placeholder</span></div>
+        <div class="tl"><span class="ti">│   ├── </span><span class="tn">Contractors/index.tsx</span><span class="tag t-ph">placeholder</span></div>
+        <div class="tl"><span class="ti">│   ├── </span><span class="tn">Dashboard/index.tsx</span><span class="tag t-partial">partial</span></div>
+        <div class="tl"><span class="ti">│   ├── </span><span class="tn">Ledger/index.tsx</span><span class="tag t-ph">placeholder</span></div>
+        <div class="tl"><span class="ti">│   ├── </span><span class="tn">Login/</span><span class="tag t-ph">folder only — no index.tsx</span></div>
+        <div class="tl"><span class="ti">│   ├── </span><span class="tn">Projects/index.tsx</span><span class="tag t-ph">placeholder</span></div>
+        <div class="tl"><span class="ti">│   └── </span><span class="tn">WorkItems/index.tsx</span><span class="tag t-ph">placeholder</span></div>
+        <div class="tl"><span class="ti">├── </span><span class="tn dir">routes/AppRoutes.tsx</span><span class="tag t-done">built</span></div>
+        <div class="tl"><span class="ti">├── </span><span class="tn dir">services/</span><span class="tag t-empty">empty</span></div>
+        <div class="tl"><span class="ti">├── </span><span class="tn dir">store/</span><span class="tag t-empty">empty</span></div>
+        <div class="tl"><span class="ti">├── </span><span class="tn dir">theme/</span><span class="tag t-empty">empty</span></div>
+        <div class="tl"><span class="ti">├── </span><span class="tn dir">types/</span><span class="tag t-empty">empty</span></div>
+        <div class="tl"><span class="ti">├── </span><span class="tn dir">utils/</span><span class="tag t-empty">empty</span></div>
+        <div class="tl"><span class="ti">├── </span><span class="tn">App.tsx</span><span class="tag t-done">built</span></div>
+        <div class="tl"><span class="ti">└── </span><span class="tn">main.tsx</span><span class="tag t-done">built</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 03 PAGE STATUS -->
+  <section class="sec" id="pages">
+    <div class="sec-hd"><span class="sec-eye">03</span><span class="sec-title">Page Status</span></div>
+    <div style="overflow-x:auto;">
+      <table class="stbl">
+        <thead>
+          <tr><th>Page</th><th>Route</th><th>File</th><th>Status</th><th>Notes</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Dashboard</strong></td>
+            <td class="route">/dashboard</td>
+            <td class="mono">pages/Dashboard/index.tsx</td>
+            <td><span class="chip c-part"><span class="cd" style="background:#B45309"></span>Partial</span></td>
+            <td class="note">5 stat cards only. Recharts installed but unused. No quick actions.</td>
+          </tr>
+          <tr>
+            <td><strong>Projects</strong></td>
+            <td class="route">/projects</td>
+            <td class="mono">pages/Projects/index.tsx</td>
+            <td><span class="chip c-ph"><span class="cd" style="background:#DC2626"></span>Placeholder</span></td>
+            <td class="note">Returns <code>&lt;h1&gt;Projects&lt;/h1&gt;</code> only.</td>
+          </tr>
+          <tr>
+            <td><strong>Contractors</strong></td>
+            <td class="route">/contractors</td>
+            <td class="mono">pages/Contractors/index.tsx</td>
+            <td><span class="chip c-ph"><span class="cd" style="background:#DC2626"></span>Placeholder</span></td>
+            <td class="note">Returns <code>&lt;h1&gt;Contractors&lt;/h1&gt;</code> only.</td>
+          </tr>
+          <tr>
+            <td><strong>Work Items</strong></td>
+            <td class="route">/work-items</td>
+            <td class="mono">pages/WorkItems/index.tsx</td>
+            <td><span class="chip c-ph"><span class="cd" style="background:#DC2626"></span>Placeholder</span></td>
+            <td class="note">Returns <code>&lt;h1&gt;Work Items&lt;/h1&gt;</code> only.</td>
+          </tr>
+          <tr>
+            <td><strong>Running Bills</strong></td>
+            <td class="route">/bills</td>
+            <td class="mono">pages/Bills/index.tsx</td>
+            <td><span class="chip c-ph"><span class="cd" style="background:#DC2626"></span>Placeholder</span></td>
+            <td class="note">Returns <code>&lt;h1&gt;Bills&lt;/h1&gt;</code> only.</td>
+          </tr>
+          <tr>
+            <td><strong>Approvals</strong></td>
+            <td class="route">/approvals</td>
+            <td class="mono">pages/Approvals/index.tsx</td>
+            <td><span class="chip c-ph"><span class="cd" style="background:#DC2626"></span>Placeholder</span></td>
+            <td class="note">Returns <code>&lt;h1&gt;Approvals&lt;/h1&gt;</code> only.</td>
+          </tr>
+          <tr>
+            <td><strong>Ledger</strong></td>
+            <td class="route">/ledger</td>
+            <td class="mono">pages/Ledger/index.tsx</td>
+            <td><span class="chip c-ph"><span class="cd" style="background:#DC2626"></span>Placeholder</span></td>
+            <td class="note">Returns <code>&lt;h1&gt;Ledger&lt;/h1&gt;</code> only.</td>
+          </tr>
+          <tr>
+            <td><strong>Login</strong></td>
+            <td class="route">—</td>
+            <td class="mono">pages/Login/ (folder only)</td>
+            <td><span class="chip c-miss"><span class="cd" style="background:#94A3B8"></span>Missing</span></td>
+            <td class="note">No index.tsx. No route registered in AppRoutes.tsx.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- 04 ROUTING -->
+  <section class="sec" id="routing">
+    <div class="sec-hd"><span class="sec-eye">04</span><span class="sec-title">Routing — src/routes/AppRoutes.tsx</span></div>
+    <div class="sec-bd">
+      <div class="cb"><span class="cc">// BrowserRouter lives in main.tsx. AppRoutes uses Routes directly.</span>
+<span class="cc">// All 7 routes are wrapped inside MainLayout (sidebar + header always visible).</span>
+
+<span class="ck">const</span> <span class="cd2">AppRoutes</span> = () => (
+  &lt;<span class="cp">MainLayout</span>&gt;
+    &lt;<span class="cp">Routes</span>&gt;
+      &lt;<span class="cp">Route</span> path=<span class="cs">"/"</span>            element={&lt;<span class="cp">Navigate</span> to=<span class="cs">"/dashboard"</span> /&gt;} /&gt;
+      &lt;<span class="cp">Route</span> path=<span class="cs">"/dashboard"</span>  element={&lt;<span class="cp">Dashboard</span>   /&gt;} /&gt;
+      &lt;<span class="cp">Route</span> path=<span class="cs">"/projects"</span>   element={&lt;<span class="cp">Projects</span>    /&gt;} /&gt;
+      &lt;<span class="cp">Route</span> path=<span class="cs">"/contractors"</span> element={&lt;<span class="cp">Contractors</span> /&gt;} /&gt;
+      &lt;<span class="cp">Route</span> path=<span class="cs">"/work-items"</span>  element={&lt;<span class="cp">WorkItems</span>   /&gt;} /&gt;
+      &lt;<span class="cp">Route</span> path=<span class="cs">"/bills"</span>       element={&lt;<span class="cp">Bills</span>       /&gt;} /&gt;
+      &lt;<span class="cp">Route</span> path=<span class="cs">"/approvals"</span>   element={&lt;<span class="cp">Approvals</span>   /&gt;} /&gt;
+      &lt;<span class="cp">Route</span> path=<span class="cs">"/ledger"</span>      element={&lt;<span class="cp">Ledger</span>      /&gt;} /&gt;
+    &lt;/<span class="cp">Routes</span>&gt;
+  &lt;/<span class="cp">MainLayout</span>&gt;
+);</div>
+      <p style="margin-top:13px;font-size:13px;color:var(--text-2);"><strong>Login note:</strong> Add Login route <em>outside</em> the MainLayout wrapper so it renders without sidebar/header.</p>
+    </div>
+  </section>
+
+  <!-- 05 LAYOUT -->
+  <section class="sec" id="layout">
+    <div class="sec-hd"><span class="sec-eye">05</span><span class="sec-title">Layout System</span></div>
+    <div class="sec-bd">
+      <div class="lc-grid">
+        <div class="lc">
+          <div class="lc-hd">MainLayout.tsx</div>
+          <div class="lc-bd">
+            <p style="font-family:var(--mono);color:var(--text-2);margin-bottom:6px;">flex row, full height</p>
+            <p>&#9656; <code>Sidebar</code> — fixed left, w-64</p>
+            <p>&#9656; <code>div.flex-1</code></p>
+            <p style="padding-left:16px;">&#9656; <code>Header</code> — h-16</p>
+            <p style="padding-left:16px;">&#9656; <code>div.p-6</code> — page content slot</p>
+          </div>
+        </div>
+        <div class="lc">
+          <div class="lc-hd">Sidebar.tsx</div>
+          <div class="lc-bd">
+            <p><code>w-64</code> · <code>bg-white border-r h-screen</code></p>
+            <p>Active: <code style="color:var(--accent)">bg-orange-50 text-orange-500</code></p>
+            <p>Inactive: <code>text-gray-600 hover:bg-gray-100</code></p>
+            <p>Component: <code>NavLink</code> from React Router</p>
+            <p style="margin-top:6px;color:var(--text-3);">7 menu items match the 7 routes exactly.</p>
+          </div>
+        </div>
+      </div>
+      <div class="lc">
+        <div class="lc-hd">Header.tsx</div>
+        <div class="lc-bd">
+          <p><code>h-16</code> · <code>bg-white border-b px-6</code> · flex justify-between</p>
+          <p>Left: static text "Vendor Billing Portal"</p>
+          <p>Right: avatar <code>bg-purple-600</code> · hardcoded name "Shipra Khandelwal" · role "Executive"</p>
+          <p style="margin-top:6px;color:var(--text-3);">User data is hardcoded — needs authSlice integration once Login is built.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 06 NEW STRUCTURE -->
+  <section class="sec" id="structure">
+    <div class="sec-hd"><span class="sec-eye">06</span><span class="sec-title">Recommended New File Structure — Option A (Feature-co-located)</span></div>
+    <div class="sec-bd">
+      <p style="font-size:13px;color:var(--text-2);margin-bottom:16px;">Each page owns its sub-components, hooks, and types. Shared entities (used by 2+ pages) graduate to <code>src/types/</code> and <code>src/services/</code>.</p>
+      <div class="cb"><span class="cc">// Per-page pattern — repeat for Bills, WorkItems, Approvals, Ledger, Projects, Contractors</span>
+
+<span class="cp">src/pages/Bills/</span>
+<span class="cd2">├── index.tsx               </span><span class="cc">← re-exports BillsPage (keeps routes clean)</span>
+<span class="cd2">├── BillsPage.tsx           </span><span class="cc">← layout + state orchestration</span>
+<span class="cd2">├── components/</span>
+<span class="cd2">│   ├── BillsTable.tsx      </span><span class="cc">← Ant Design Table</span>
+<span class="cd2">│   ├── AddBillModal.tsx    </span><span class="cc">← Modal + RHF + Zod</span>
+<span class="cd2">│   └── BillStatusChip.tsx</span>
+<span class="cd2">├── hooks/</span>
+<span class="cd2">│   └── useBills.ts         </span><span class="cc">← TanStack Query + axios</span>
+<span class="cd2">├── types.ts                </span><span class="cc">← Bill, BillStatus interfaces</span>
+<span class="cd2">└── constants.ts            </span><span class="cc">← column defs, status options</span>
+
+<span class="cc">// Global shared infrastructure (build first):</span>
+<span class="cp">src/types/index.ts          </span><span class="cc">← Contractor, Project, WorkItem, User</span>
+<span class="cp">src/services/api.ts         </span><span class="cc">← axios instance, base URL, interceptors</span>
+<span class="cp">src/services/billsService.ts</span>
+<span class="cp">src/store/index.ts          </span><span class="cc">← configureStore</span>
+<span class="cp">src/store/slices/authSlice.ts</span>
+<span class="cp">src/theme/antdTheme.ts      </span><span class="cc">← token: { colorPrimary: '#F97316' }</span></div>
+    </div>
+  </section>
+
+  <!-- 07 DESIGN PATTERNS -->
+  <section class="sec" id="patterns">
+    <div class="sec-hd"><span class="sec-eye">07</span><span class="sec-title">Design Patterns — Existing Code to Follow</span></div>
+    <div class="sec-bd">
+      <div class="pat-list">
+        <div class="pat">
+          <div class="pat-lbl">Stat Card (Dashboard)</div>
+          <div class="pat-val">className="bg-white rounded-2xl p-6 shadow-sm border"</div>
+          <p class="pat-note">Use for all KPI cards. Grid wrapper: <code>grid grid-cols-N gap-5</code>.</p>
+        </div>
+        <div class="pat">
+          <div class="pat-lbl">Orange Accent — only accent color</div>
+          <div class="pat-val">isActive ? "bg-orange-50 text-orange-500" : "text-gray-600 hover:bg-gray-100"</div>
+          <p class="pat-note">Do not introduce blue or green as primary action colors. Orange is the sole accent.</p>
+        </div>
+        <div class="pat">
+          <div class="pat-lbl">Page Content Padding</div>
+          <div class="pat-val">MainLayout already wraps content in: className="p-6"</div>
+          <p class="pat-note">Pages must NOT add their own outer padding. Only add internal spacing (e.g., <code>mb-6</code> for headings).</p>
+        </div>
+        <div class="pat">
+          <div class="pat-lbl">Ant Design + Tailwind split</div>
+          <div class="pat-val">antd   → Table, Modal, Form, Select, DatePicker, Tabs
+tailwind → layout, spacing, color, flex/grid</div>
+          <p class="pat-note">Both are installed. Use Ant Design for data-heavy UI; Tailwind for everything else.</p>
+        </div>
+        <div class="pat">
+          <div class="pat-lbl">Form Pattern</div>
+          <div class="pat-val">useForm({ resolver: zodResolver(schema) }) + antd Form.Item</div>
+          <p class="pat-note"><code>@hookform/resolvers</code> and <code>zod</code> are both installed. Use this stack for all modals and forms.</p>
+        </div>
+        <div class="pat">
+          <div class="pat-lbl">Avatar (Header)</div>
+          <div class="pat-val">className="w-10 h-10 rounded-full bg-purple-600 text-white flex items-center justify-center"</div>
+          <p class="pat-note">Purple is reserved for user avatars only. Do not repurpose as an accent.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 08 BUILD ORDER -->
+  <section class="sec" id="build">
+    <div class="sec-hd"><span class="sec-eye">08</span><span class="sec-title">Recommended Build Order</span></div>
+    <div class="sec-bd">
+      <div class="bl">
+        <div class="bi">
+          <span class="bn">1</span>
+          <div>
+            <div class="bt">Global Foundation</div>
+            <div class="bd2">Set up shared infrastructure before any page. These are required by all downstream work.</div>
+            <div class="bf">
+              <span class="fc">src/types/index.ts</span>
+              <span class="fc">src/services/api.ts</span>
+              <span class="fc">src/store/index.ts</span>
+              <span class="fc">src/store/slices/authSlice.ts</span>
+              <span class="fc">src/theme/antdTheme.ts</span>
+            </div>
+          </div>
+        </div>
+        <div class="bi">
+          <span class="bn">2</span>
+          <div>
+            <div class="bt">Dashboard — Enrich existing</div>
+            <div class="bd2">Add Recharts billing chart. Keep the stat card grid untouched.</div>
+            <div class="bf">
+              <span class="fc">pages/Dashboard/index.tsx</span>
+              <span class="fc">components/charts/BillingChart.tsx</span>
+            </div>
+          </div>
+        </div>
+        <div class="bi">
+          <span class="bn">3</span>
+          <div>
+            <div class="bt">Work Items — Core entity</div>
+            <div class="bd2">Bills and Approvals both reference WorkItem types. Stabilize this model first.</div>
+            <div class="bf">
+              <span class="fc">pages/WorkItems/types.ts</span>
+              <span class="fc">pages/WorkItems/WorkItemsPage.tsx</span>
+              <span class="fc">pages/WorkItems/components/WorkItemsTable.tsx</span>
+              <span class="fc">pages/WorkItems/components/AddWorkModal.tsx</span>
+              <span class="fc">pages/WorkItems/hooks/useWorkItems.ts</span>
+            </div>
+          </div>
+        </div>
+        <div class="bi">
+          <span class="bn">4</span>
+          <div>
+            <div class="bt">Running Bills</div>
+            <div class="bd2">Depends on WorkItem. Status flow: Draft → Submitted → Certified → Approved → Paid.</div>
+            <div class="bf">
+              <span class="fc">pages/Bills/BillsPage.tsx</span>
+              <span class="fc">pages/Bills/components/BillsTable.tsx</span>
+              <span class="fc">pages/Bills/components/AddBillModal.tsx</span>
+              <span class="fc">pages/Bills/hooks/useBills.ts</span>
+            </div>
+          </div>
+        </div>
+        <div class="bi">
+          <span class="bn">5</span>
+          <div>
+            <div class="bt">Approvals</div>
+            <div class="bd2">Reads from Bills. Flow: Pending → Approved / Rejected. Needs role-based visibility.</div>
+            <div class="bf">
+              <span class="fc">pages/Approvals/ApprovalsPage.tsx</span>
+              <span class="fc">pages/Approvals/components/ApprovalQueue.tsx</span>
+              <span class="fc">pages/Approvals/components/RoleModal.tsx</span>
+            </div>
+          </div>
+        </div>
+        <div class="bi">
+          <span class="bn">6</span>
+          <div>
+            <div class="bt">Ledger</div>
+            <div class="bd2">Read-only. Aggregates Bills + Approvals. Build last — depends on upstream data shapes.</div>
+            <div class="bf">
+              <span class="fc">pages/Ledger/LedgerPage.tsx</span>
+              <span class="fc">pages/Ledger/components/LedgerTable.tsx</span>
+            </div>
+          </div>
+        </div>
+        <div class="bi">
+          <span class="bn">7</span>
+          <div>
+            <div class="bt">Projects &amp; Contractors — Master data</div>
+            <div class="bd2">CRUD pages for reference data. Referenced by Work Items but not dependent on it.</div>
+            <div class="bf">
+              <span class="fc">pages/Projects/ProjectsPage.tsx</span>
+              <span class="fc">pages/Contractors/ContractorsPage.tsx</span>
+            </div>
+          </div>
+        </div>
+        <div class="bi">
+          <span class="bn">8</span>
+          <div>
+            <div class="bt">Login — Auth gate</div>
+            <div class="bd2">After core pages work. Route goes outside MainLayout. Header user data wired to authSlice.</div>
+            <div class="bf">
+              <span class="fc">pages/Login/LoginPage.tsx</span>
+              <span class="fc">routes/AppRoutes.tsx (update)</span>
+              <span class="fc">layouts/Header/Header.tsx (dynamic user)</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- BLOCKERS -->
+  <div class="blocker" id="blockers">
+    <div class="blocker-hd">&#9888; Blocked — Required Before Code Generation</div>
+    <div class="blocker-bd">
+      <ul class="cl">
+        <li>
+          <span class="ci2" style="color:var(--red)">&#x2717;</span>
+          <div>
+            <div class="cr">Complete HTML prototype file</div>
+            <div class="cw">The uploaded HTML was truncated. The full JavaScript — state management, modal logic, approval workflow, ledger tape — is missing. Generated components will be incomplete skeletons without it. Paste or re-upload the full file.</div>
+          </div>
+        </li>
+        <li>
+          <span class="ci2" style="color:var(--amber)">?</span>
+          <div>
+            <div class="cr">API contract or mock data shapes</div>
+            <div class="cw"><code>src/services/</code> is empty. Confirm: real REST API or mock data first? If mocks, provide sample JSON for WorkItem, Bill, Contractor, Project so types and hooks can be generated correctly.</div>
+          </div>
+        </li>
+        <li>
+          <span class="ci2" style="color:var(--amber)">?</span>
+          <div>
+            <div class="cr">Ant Design theme token config</div>
+            <div class="cw"><code>src/theme/</code> is empty. The primary color token needs to be orange (<code>#F97316</code>) to match the sidebar. Confirm whether to generate this file or if you have an existing config.</div>
+          </div>
+        </li>
+        <li>
+          <span class="ci2" style="color:var(--amber)">?</span>
+          <div>
+            <div class="cr">Role and permission model</div>
+            <div class="cw">The HTML prototype references a roles workflow in Approvals. Confirm which roles exist (Admin / Executive / Contractor?) and what each role can view or action.</div>
+          </div>
+        </li>
+      </ul>
+    </div>
+  </div>
+
+</main>

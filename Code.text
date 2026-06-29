@@ -1,0 +1,1412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Neoteric — Vendor Billing Portal</title>
+<style>
+/* ── TOKENS ──────────────────────────────────────────── */
+:root {
+  --bg:       #f5f6f8;
+  --surface:  #ffffff;
+  --card:     #ffffff;
+  --border:   #e4e7ee;
+  --border2:  #cdd1dd;
+  --amber:    #f37916;
+  --amber-d:  #d4620c;
+  --amber-l:  #ff9a45;
+  --amber-bg: #fff4ec;
+  --green:    #16a85a;
+  --green-bg: #edfbf3;
+  --red:      #e03b3b;
+  --red-bg:   #fef0f0;
+  --blue:     #2563eb;
+  --blue-bg:  #eff4ff;
+  --text:     #1a1f2e;
+  --text2:    #5a6278;
+  --text3:    #9ba3b8;
+  --mono:     'JetBrains Mono', 'Courier New', monospace;
+  --sans:     'Inter', system-ui, sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 14px; }
+body { background: var(--bg); color: var(--text); font-family: var(--sans);
+       min-height: 100vh; line-height: 1.5; }
+
+/* ── SCROLLBAR ───────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+
+/* ── TOP ORANGE STRIPE ───────────────────────────────── */
+.topbar::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0;
+  height: 3px; background: linear-gradient(90deg, #f37916, #ff9a45);
+}
+
+/* ── TOP BAR ─────────────────────────────────────────── */
+.topbar {
+  position: sticky; top: 0; z-index: 100;
+  background: var(--surface); border-bottom: 1px solid var(--border);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+  display: flex; align-items: center; gap: 16px;
+  padding: 0 20px; height: 52px;
+}
+.logo { font-family: var(--mono); font-size: 13px; font-weight: 700;
+        color: var(--amber); letter-spacing: 0.08em; white-space: nowrap; }
+.logo span { color: var(--text3); font-weight: 400; }
+.project-badge {
+  background: var(--amber-bg); border: 1px solid #f8c9a0;
+  border-radius: 6px; padding: 4px 10px;
+  font-size: 11px; color: var(--text2); cursor: pointer;
+  display: flex; align-items: center; gap: 6px;
+}
+.project-badge strong { color: var(--amber-d); font-size: 12px; }
+.spacer { flex: 1; }
+.role-pill {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: 20px; padding: 4px 12px; cursor: pointer;
+}
+.role-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--amber); }
+.role-label { font-size: 11px; color: var(--text3); }
+.role-name { font-size: 12px; font-weight: 600; color: var(--text); }
+
+/* ── NAV TABS ────────────────────────────────────────── */
+.nav {
+  background: var(--surface); border-bottom: 1px solid var(--border);
+  display: flex; overflow-x: auto; padding: 0 20px; gap: 0;
+}
+.nav::-webkit-scrollbar { height: 0; }
+.nav-tab {
+  padding: 12px 16px; font-size: 12px; font-weight: 500;
+  color: var(--text2); cursor: pointer; border-bottom: 2px solid transparent;
+  white-space: nowrap; transition: all 0.15s; user-select: none;
+}
+.nav-tab.active { color: var(--amber); border-bottom-color: var(--amber); font-weight: 600; }
+.nav-tab:hover:not(.active) { color: var(--text); background: var(--bg); }
+
+/* ── MAIN LAYOUT ─────────────────────────────────────── */
+.main { padding: 20px; max-width: 1400px; margin: 0 auto; }
+
+/* ── STAT CARDS ──────────────────────────────────────── */
+.stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px,1fr)); gap: 12px; margin-bottom: 20px; }
+.stat-card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 12px; padding: 16px 18px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+.stat-card .label { font-size: 10px; text-transform: uppercase;
+                    letter-spacing: 0.08em; color: var(--text3); margin-bottom: 6px; }
+.stat-card .value { font-family: var(--mono); font-size: 20px; font-weight: 700; color: var(--text); }
+.stat-card .sub { font-size: 10px; color: var(--text2); margin-top: 3px; }
+.stat-card.amber .value { color: var(--amber); }
+.stat-card.green .value { color: var(--green); }
+.stat-card.red .value   { color: var(--red); }
+.stat-card.blue .value  { color: var(--blue); }
+
+/* ── SECTION HEADER ──────────────────────────────────── */
+.section-hdr {
+  display: flex; align-items: center; gap: 12px;
+  margin-bottom: 14px; margin-top: 4px;
+}
+.section-hdr h2 { font-size: 13px; font-weight: 600; color: var(--text); }
+.section-hdr .count {
+  background: var(--border); border-radius: 10px;
+  padding: 2px 8px; font-size: 11px; color: var(--text2);
+}
+.btn {
+  padding: 7px 14px; border-radius: 8px; font-size: 12px;
+  font-weight: 600; cursor: pointer; border: none; transition: all 0.15s;
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.btn-amber { background: var(--amber); color: #fff; box-shadow: 0 2px 6px rgba(243,121,22,0.3); }
+.btn-amber:hover { background: var(--amber-d); box-shadow: 0 3px 10px rgba(243,121,22,0.4); }
+.btn-ghost { background: var(--surface); color: var(--text2);
+             border: 1px solid var(--border); }
+.btn-ghost:hover { border-color: var(--border2); color: var(--text); background: var(--bg); }
+.btn-green { background: var(--green); color: #fff; }
+.btn-red { background: var(--red); color: #fff; }
+.btn-blue { background: var(--blue); color: #fff; }
+.ml-auto { margin-left: auto; }
+
+/* ── WORK ITEM CARD ──────────────────────────────────── */
+.work-item {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 12px; margin-bottom: 10px; overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.work-item:hover { border-color: #f8c9a0; box-shadow: 0 3px 10px rgba(243,121,22,0.08); }
+.work-item-header {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 16px; cursor: pointer;
+}
+.wi-cat-badge {
+  font-size: 10px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.06em; padding: 3px 8px; border-radius: 5px;
+  white-space: nowrap; flex-shrink: 0;
+}
+.cat-civil    { background: #e8f0ff; color: #2563eb; }
+.cat-finish   { background: #f3e8ff; color: #7c3aed; }
+.cat-mep      { background: #e8fff3; color: #16a85a; }
+.cat-interior { background: #fff4ec; color: #f37916; }
+.cat-external { background: #e8fff8; color: #0d9488; }
+.cat-hosp     { background: #fff0f0; color: #e03b3b; }
+
+.wi-name { font-size: 13px; font-weight: 600; color: var(--text); flex: 1; min-width: 0; }
+.wi-name small { display: block; font-size: 11px; font-weight: 400; color: var(--text2); margin-top: 1px; }
+.wi-rate {
+  font-family: var(--mono); font-size: 12px; color: var(--amber);
+  text-align: right; flex-shrink: 0;
+}
+.wi-rate small { display: block; font-size: 10px; color: var(--text3); }
+
+/* ── TAPE PROGRESS ───────────────────────────────────── */
+.tape-wrap { padding: 0 16px 14px; }
+.tape-labels {
+  display: flex; justify-content: space-between;
+  font-size: 10px; color: var(--text3); margin-bottom: 5px;
+  font-family: var(--mono);
+}
+.tape-bar {
+  height: 10px; background: #edf0f7;
+  border-radius: 5px; overflow: hidden; position: relative;
+  display: flex;
+}
+.tape-certified { background: var(--green); transition: width 0.4s; }
+.tape-pending   { background: var(--amber); opacity: 0.5; transition: width 0.4s; }
+.tape-remaining { flex: 1; }
+
+.tape-stats {
+  display: grid; grid-template-columns: repeat(4,1fr); gap: 8px; margin-top: 10px;
+}
+.ts-item { }
+.ts-label { font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.05em; }
+.ts-val { font-family: var(--mono); font-size: 13px; font-weight: 700; color: var(--text); }
+.ts-val.green { color: var(--green); }
+.ts-val.amber { color: var(--amber); }
+.ts-val.red   { color: var(--red); }
+.ts-val.blue  { color: var(--blue); }
+
+/* ── BILLS TABLE ─────────────────────────────────────── */
+.bills-section { padding: 0 16px 14px; border-top: 1px solid var(--border); }
+.bills-hdr {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 0 8px; font-size: 11px; font-weight: 600;
+  color: var(--text2); text-transform: uppercase; letter-spacing: 0.06em;
+}
+.bills-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.bills-table th {
+  text-align: left; padding: 6px 8px; font-size: 10px;
+  color: var(--text3); font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.06em; border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+.bills-table td {
+  padding: 8px 8px; border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+.bills-table tr:last-child td { border-bottom: none; }
+.bills-table tr:hover td { background: var(--bg); }
+.bills-table .mono { font-family: var(--mono); }
+.status-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 600;
+}
+.s-draft     { background: #f1f2f6; color: var(--text2); }
+.s-submitted { background: var(--blue-bg); color: var(--blue); }
+.s-verified  { background: #e8fff8; color: #0d9488; }
+.s-approved  { background: var(--green-bg); color: var(--green); }
+.s-rejected  { background: var(--red-bg); color: var(--red); }
+
+/* ── MODAL ───────────────────────────────────────────── */
+.modal-bg {
+  display: none; position: fixed; inset: 0;
+  background: rgba(15,20,40,0.4); z-index: 200;
+  align-items: center; justify-content: center; padding: 20px;
+  backdrop-filter: blur(3px);
+}
+.modal-bg.open { display: flex; }
+.modal {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 16px; width: 100%; max-width: 560px;
+  max-height: 90vh; overflow-y: auto; padding: 24px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+}
+.modal-title { font-size: 16px; font-weight: 700; color: var(--text); margin-bottom: 6px; }
+.modal-sub   { font-size: 12px; color: var(--text2); margin-bottom: 20px; }
+.form-row    { margin-bottom: 14px; }
+.form-row label { display: block; font-size: 11px; font-weight: 600;
+                  color: var(--text2); margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.05em; }
+.form-row input, .form-row select, .form-row textarea {
+  width: 100%; background: var(--bg); border: 1px solid var(--border);
+  border-radius: 8px; padding: 9px 12px; font-size: 13px; color: var(--text);
+  font-family: var(--sans); outline: none; transition: border-color 0.15s;
+}
+.form-row input:focus, .form-row select:focus, .form-row textarea:focus {
+  border-color: var(--amber); box-shadow: 0 0 0 3px rgba(243,121,22,0.1);
+}
+.form-row select option { background: var(--surface); }
+.form-row textarea { resize: vertical; min-height: 70px; }
+.form-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
+.calc-box {
+  background: #fff8f3; border: 1px solid #f8c9a0;
+  border-radius: 10px; padding: 14px; margin-top: 10px;
+  font-family: var(--mono); font-size: 12px;
+}
+.calc-row { display: flex; justify-content: space-between; padding: 4px 0; color: var(--text2); }
+.calc-row.total { border-top: 1px solid #f8c9a0; margin-top: 6px; padding-top: 8px;
+                  color: var(--amber-d); font-weight: 700; font-size: 13px; }
+.calc-row.net { color: var(--green); font-weight: 700; font-size: 14px; }
+
+/* ── FILTERS ─────────────────────────────────────────── */
+.filters {
+  display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; align-items: center;
+}
+.filter-chip {
+  padding: 5px 12px; border-radius: 16px; font-size: 11px; font-weight: 600;
+  cursor: pointer; border: 1px solid var(--border); color: var(--text2);
+  background: var(--surface); transition: all 0.15s; white-space: nowrap;
+}
+.filter-chip.active { background: var(--amber); color: #fff; border-color: var(--amber); box-shadow: 0 2px 6px rgba(243,121,22,0.3); }
+.filter-chip:hover:not(.active) { border-color: var(--amber); color: var(--amber); }
+.search-box {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; padding: 6px 12px; font-size: 12px;
+  color: var(--text); font-family: var(--sans); outline: none;
+  width: 200px; transition: border-color 0.15s;
+}
+.search-box:focus { border-color: var(--amber); box-shadow: 0 0 0 3px rgba(243,121,22,0.1); }
+.search-box::placeholder { color: var(--text3); }
+
+/* ── APPROVAL VIEW ───────────────────────────────────── */
+.approval-card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 12px; padding: 16px; margin-bottom: 10px;
+  display: flex; align-items: flex-start; gap: 14px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+.appr-meta { flex: 1; }
+.appr-title { font-size: 13px; font-weight: 600; color: var(--text); }
+.appr-sub { font-size: 11px; color: var(--text2); margin-top: 2px; }
+.appr-amount { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--amber); text-align: right; }
+.appr-actions { display: flex; gap: 8px; margin-top: 12px; }
+
+/* ── DASHBOARD CHART ─────────────────────────────────── */
+.chart-bar-wrap { margin-bottom: 10px; }
+.chart-bar-label { display: flex; justify-content: space-between;
+                   font-size: 11px; color: var(--text2); margin-bottom: 4px; }
+.chart-bar-track { height: 8px; background: #edf0f7; border-radius: 4px; overflow: hidden; }
+.chart-bar-fill  { height: 100%; border-radius: 4px; transition: width 0.5s; }
+
+/* ── EMPTY STATE ─────────────────────────────────────── */
+.empty { text-align: center; padding: 48px 20px; color: var(--text3); }
+.empty .icon { font-size: 36px; margin-bottom: 12px; }
+.empty h3 { font-size: 14px; color: var(--text2); margin-bottom: 6px; }
+.empty p { font-size: 12px; }
+
+/* ── TOAST ───────────────────────────────────────────── */
+.toast {
+  position: fixed; bottom: 20px; right: 20px; z-index: 999;
+  background: var(--surface); border: 1px solid var(--border);
+  border-left: 3px solid var(--amber);
+  border-radius: 10px; padding: 12px 16px; font-size: 13px;
+  display: flex; align-items: center; gap: 10px;
+  transform: translateY(80px); opacity: 0; transition: all 0.3s;
+  max-width: 320px; box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+}
+.toast.show { transform: translateY(0); opacity: 1; }
+.toast .t-icon { font-size: 16px; }
+
+/* ── ROLE SWITCHER MODAL ─────────────────────────────── */
+.role-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+.role-card {
+  background: var(--bg); border: 2px solid var(--border);
+  border-radius: 12px; padding: 16px; cursor: pointer; transition: all 0.15s;
+}
+.role-card:hover { border-color: var(--amber); background: var(--amber-bg); }
+.role-card.selected { border-color: var(--amber); background: var(--amber-bg); }
+.role-card .rc-icon { font-size: 24px; margin-bottom: 8px; }
+.role-card .rc-name { font-size: 13px; font-weight: 600; color: var(--text); }
+.role-card .rc-desc { font-size: 11px; color: var(--text2); margin-top: 3px; }
+
+/* ── RESPONSIVE ──────────────────────────────────────── */
+@media (max-width: 600px) {
+  .tape-stats { grid-template-columns: repeat(2,1fr); }
+  .form-grid-2 { grid-template-columns: 1fr; }
+  .stat-grid { grid-template-columns: repeat(2,1fr); }
+  .main { padding: 12px; }
+  .topbar { padding: 0 12px; }
+  .search-box { width: 140px; }
+}
+
+.chevron { transition: transform 0.2s; display: inline-block; color: var(--text3); font-size: 12px; }
+.chevron.open { transform: rotate(180deg); }
+.collapsible { display: none; }
+.collapsible.open { display: block; }
+
+.divider { height: 1px; background: var(--border); margin: 16px 0; }
+.tag { display: inline-flex; align-items: center; gap: 4px;
+       background: var(--bg); border: 1px solid var(--border);
+       border-radius: 4px; padding: 2px 6px;
+       font-size: 10px; color: var(--text2); }
+
+/* Pending actions badge */
+.pending-badge {
+  background: var(--red); color: #fff; border-radius: 50%;
+  width: 16px; height: 16px; display: inline-flex; align-items: center;
+  justify-content: center; font-size: 9px; font-weight: 700;
+}
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <div class="logo">NEOTERIC <span>// BILLING</span></div>
+  <div class="project-badge" onclick="showProjectModal()">
+    <span>📍</span>
+    <strong id="activeProject">Nature Park Hotel</strong>
+    <span style="color:var(--text3)">▾</span>
+  </div>
+  <div class="spacer"></div>
+  <div class="role-pill" onclick="showRoleModal()">
+    <div class="role-dot" id="roleDot"></div>
+    <span class="role-label">Viewing as</span>
+    <span class="role-name" id="roleName">Owner</span>
+    <span style="color:var(--text3);font-size:10px;margin-left:4px">▾</span>
+  </div>
+</div>
+
+<!-- NAV -->
+<div class="nav">
+  <div class="nav-tab active" onclick="switchTab('dashboard',this)">Dashboard</div>
+  <div class="nav-tab" onclick="switchTab('works',this)">Work Items <span id="worksCount" class="tag" style="margin-left:4px">0</span></div>
+  <div class="nav-tab" onclick="switchTab('bills',this)">Bills <span id="pendingBadge" class="pending-badge" style="margin-left:4px;display:none">0</span></div>
+  <div class="nav-tab" onclick="switchTab('approvals',this)">Approvals</div>
+  <div class="nav-tab" onclick="switchTab('ledger',this)">Ledger</div>
+</div>
+
+<!-- MAIN -->
+<div class="main">
+
+  <!-- ═══ DASHBOARD ════════════════════════════════════ -->
+  <div id="tab-dashboard">
+    <div class="stat-grid" id="dashStats"></div>
+    <div class="section-hdr"><h2>Category Progress</h2></div>
+    <div id="catProgress" style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:20px;"></div>
+    <div class="section-hdr"><h2>Recent Activity</h2></div>
+    <div id="recentActivity" style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px;"></div>
+  </div>
+
+  <!-- ═══ WORK ITEMS ═══════════════════════════════════ -->
+  <div id="tab-works" style="display:none">
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap;">
+      <input class="search-box" placeholder="Search work items…" oninput="renderWorks()" id="workSearch">
+      <div class="spacer"></div>
+      <button class="btn btn-amber" onclick="openAddWorkModal()">+ Add Work Item</button>
+    </div>
+    <div class="filters" id="catFilters"></div>
+    <div id="worksList"></div>
+  </div>
+
+  <!-- ═══ BILLS ════════════════════════════════════════ -->
+  <div id="tab-bills" style="display:none">
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap;">
+      <input class="search-box" placeholder="Search bills…" oninput="renderBills()" id="billSearch">
+      <div class="spacer"></div>
+      <button class="btn btn-amber" onclick="openAddBillModal()">+ Submit Bill</button>
+    </div>
+    <div class="filters" id="billFilters"></div>
+    <div id="billsList"></div>
+  </div>
+
+  <!-- ═══ APPROVALS ════════════════════════════════════ -->
+  <div id="tab-approvals" style="display:none">
+    <div id="approvalsList"></div>
+  </div>
+
+  <!-- ═══ LEDGER ═══════════════════════════════════════ -->
+  <div id="tab-ledger" style="display:none">
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap;">
+      <select id="ledgerWork" class="search-box" style="width:280px" onchange="renderLedger()">
+        <option value="">Select Work Item…</option>
+      </select>
+    </div>
+    <div id="ledgerContent"></div>
+  </div>
+
+</div><!-- /main -->
+
+<!-- ═══ TOAST ══════════════════════════════════════════ -->
+<div class="toast" id="toast">
+  <span class="t-icon" id="toastIcon">✓</span>
+  <span id="toastMsg"></span>
+</div>
+
+<!-- ═══ ROLE MODAL ══════════════════════════════════════ -->
+<div class="modal-bg" id="roleModal">
+  <div class="modal" style="max-width:400px">
+    <div class="modal-title">Switch Role</div>
+    <div class="modal-sub">Choose your role to see the appropriate view and actions.</div>
+    <div class="role-grid">
+      <div class="role-card" onclick="setRole('owner')" id="rc-owner">
+        <div class="rc-icon">👑</div>
+        <div class="rc-name">Owner / CMD</div>
+        <div class="rc-desc">Full dashboard, approve all</div>
+      </div>
+      <div class="role-card" onclick="setRole('gm')" id="rc-gm">
+        <div class="rc-icon">👔</div>
+        <div class="rc-name">GM / AGM</div>
+        <div class="rc-desc">Approve bills after site verify</div>
+      </div>
+      <div class="role-card" onclick="setRole('engineer')" id="rc-engineer">
+        <div class="rc-icon">🏗️</div>
+        <div class="rc-name">Site Engineer</div>
+        <div class="rc-desc">Verify measurements on site</div>
+      </div>
+      <div class="role-card" onclick="setRole('contractor')" id="rc-contractor">
+        <div class="rc-icon">🔧</div>
+        <div class="rc-name">Contractor</div>
+        <div class="rc-desc">Submit bills & track payments</div>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('roleModal')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ ADD WORK ITEM MODAL ══════════════════════════════ -->
+<div class="modal-bg" id="addWorkModal">
+  <div class="modal">
+    <div class="modal-title">Add Work Item</div>
+    <div class="modal-sub">Define the contracted scope — this becomes the opening ledger balance.</div>
+    <div class="form-row">
+      <label>Work Item Name</label>
+      <input id="wi-name" placeholder="e.g. Retaining Wall — Block A">
+    </div>
+    <div class="form-grid-2">
+      <div class="form-row">
+        <label>Category</label>
+        <select id="wi-cat">
+          <option value="Civil / RCC">Civil / RCC</option>
+          <option value="Finishing">Finishing</option>
+          <option value="MEP">MEP</option>
+          <option value="Interior">Interior</option>
+          <option value="External Works">External Works</option>
+          <option value="Hospitality">Hospitality</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label>Rate Type</label>
+        <select id="wi-rateType" onchange="updateRateType()">
+          <option value="sqft">Per Sq.Ft.</option>
+          <option value="unit">Per Unit</option>
+          <option value="rmt">Per RMT</option>
+          <option value="cum">Per CUM</option>
+          <option value="lumpsum">Lump Sum</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-grid-2" id="wi-qty-rate-row">
+      <div class="form-row">
+        <label id="wi-qty-label">Contracted Quantity (Sq.Ft.)</label>
+        <input id="wi-qty" type="number" placeholder="e.g. 10118.16" oninput="calcWI()">
+      </div>
+      <div class="form-row">
+        <label>Rate (Rs.)</label>
+        <input id="wi-rate" type="number" placeholder="e.g. 150" oninput="calcWI()">
+      </div>
+    </div>
+    <div class="form-row" id="wi-lumpsum-row" style="display:none">
+      <label>Lump Sum Contract Value (Rs.)</label>
+      <input id="wi-lumpsum" type="number" placeholder="e.g. 2500000" oninput="calcWI()">
+    </div>
+    <div class="form-row">
+      <label>Contractor</label>
+      <input id="wi-contractor" placeholder="e.g. M/s R.K. Constructions">
+    </div>
+    <div class="form-row">
+      <label>Description / Notes</label>
+      <textarea id="wi-desc" placeholder="Scope details, floor reference, drawing number…"></textarea>
+    </div>
+    <div class="calc-box" id="wi-calc" style="display:none">
+      <div class="calc-row"><span>Contracted Qty</span><span id="wc-qty">—</span></div>
+      <div class="calc-row"><span>Rate</span><span id="wc-rate">—</span></div>
+      <div class="calc-row total"><span>CONTRACT VALUE</span><span id="wc-total">—</span></div>
+      <div class="calc-row"><span>GST @ 18%</span><span id="wc-gst">—</span></div>
+      <div class="calc-row net"><span>GROSS (incl. GST)</span><span id="wc-gross">—</span></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('addWorkModal')">Cancel</button>
+      <button class="btn btn-amber" onclick="saveWorkItem()">Save Work Item</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ ADD BILL MODAL ═══════════════════════════════════ -->
+<div class="modal-bg" id="addBillModal">
+  <div class="modal">
+    <div class="modal-title">Submit Running Bill</div>
+    <div class="modal-sub">Enter the quantity completed in this billing cycle.</div>
+    <div class="form-row">
+      <label>Work Item</label>
+      <select id="bill-work" onchange="onBillWorkChange()">
+        <option value="">Select work item…</option>
+      </select>
+    </div>
+    <div id="bill-remaining-info" style="display:none;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:12px;">
+      <div style="display:flex;gap:20px;flex-wrap:wrap;">
+        <span>Contracted: <strong id="br-contracted" style="color:var(--text);font-family:var(--mono)">—</strong></span>
+        <span>Certified so far: <strong id="br-certified" style="color:var(--green);font-family:var(--mono)">—</strong></span>
+        <span>Remaining: <strong id="br-remaining" style="color:var(--amber);font-family:var(--mono)">—</strong></span>
+      </div>
+    </div>
+    <div class="form-grid-2">
+      <div class="form-row">
+        <label id="bill-qty-label">Qty This Bill</label>
+        <input id="bill-qty" type="number" placeholder="0" oninput="calcBill()">
+      </div>
+      <div class="form-row">
+        <label>Bill Date</label>
+        <input id="bill-date" type="date">
+      </div>
+    </div>
+    <div class="form-row">
+      <label>Bill Reference No.</label>
+      <input id="bill-ref" placeholder="e.g. RKC/2026/001">
+    </div>
+    <div class="form-row">
+      <label>Remarks</label>
+      <textarea id="bill-remarks" placeholder="Location, floor, axis reference, measurement book entry…" style="min-height:55px"></textarea>
+    </div>
+    <div class="calc-box" id="bill-calc" style="display:none">
+      <div class="calc-row"><span>Qty this Bill</span><span id="bc-qty">—</span></div>
+      <div class="calc-row"><span>Rate</span><span id="bc-rate">—</span></div>
+      <div class="calc-row total"><span>BASE AMOUNT</span><span id="bc-base">—</span></div>
+      <div class="calc-row"><span>GST @ 18%</span><span id="bc-gst">—</span></div>
+      <div class="calc-row net"><span>GROSS AMOUNT</span><span id="bc-gross">—</span></div>
+      <div class="calc-row" style="color:var(--text2);margin-top:6px;padding-top:6px;border-top:1px solid var(--border)">
+        <span>Remaining after this bill</span><span id="bc-remaining" style="color:var(--amber)">—</span>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('addBillModal')">Cancel</button>
+      <button class="btn btn-amber" onclick="saveBill()">Submit Bill</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ APPROVE/REJECT MODAL ══════════════════════════════ -->
+<div class="modal-bg" id="approveModal">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-title" id="appr-modal-title">Review Bill</div>
+    <div class="modal-sub" id="appr-modal-sub"></div>
+    <div class="calc-box" id="appr-calc"></div>
+    <div class="form-row" style="margin-top:14px">
+      <label>Remarks</label>
+      <textarea id="appr-remarks" placeholder="Add any remarks or conditions…" style="min-height:55px"></textarea>
+    </div>
+    <div class="modal-actions" id="appr-actions"></div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════════════════════
+let role = 'owner';
+let activeFilter = 'All';
+let billFilter = 'All';
+
+const ROLES = {
+  owner:      { name: 'Owner / CMD', dot: '#f0a500' },
+  gm:         { name: 'GM / AGM',    dot: '#4a9eff' },
+  engineer:   { name: 'Site Engr.',  dot: '#22c97a' },
+  contractor: { name: 'Contractor',  dot: '#c97af0' },
+};
+
+const CATS = [
+  { key: 'Civil / RCC',    cls: 'cat-civil',    icon: '🏛️' },
+  { key: 'Finishing',      cls: 'cat-finish',   icon: '🎨' },
+  { key: 'MEP',            cls: 'cat-mep',      icon: '⚡' },
+  { key: 'Interior',       cls: 'cat-interior', icon: '🛋️' },
+  { key: 'External Works', cls: 'cat-external', icon: '🌿' },
+  { key: 'Hospitality',   cls: 'cat-hosp',     icon: '🏨' },
+];
+
+function catClass(c) {
+  const found = CATS.find(x => x.key === c);
+  return found ? found.cls : 'cat-civil';
+}
+function catIcon(c) {
+  const found = CATS.find(x => x.key === c);
+  return found ? found.icon : '📦';
+}
+
+// ── SEED DATA ────────────────────────────────────────────
+let works = [
+  { id: 'w1', name: 'Retaining Wall', cat: 'Civil / RCC', rateType: 'sqft', qty: 10118.16, rate: 150, contractor: 'M/s R.K. Constructions', desc: 'Full perimeter retaining wall, basement level' },
+  { id: 'w2', name: 'Foundation (Extra) + Raft & Pedestal', cat: 'Civil / RCC', rateType: 'sqft', qty: 9827.53, rate: 50, contractor: 'M/s R.K. Constructions', desc: '' },
+  { id: 'w3', name: 'Basement Floor Slab', cat: 'Civil / RCC', rateType: 'sqft', qty: 22317.22, rate: 145, contractor: 'M/s R.K. Constructions', desc: '' },
+  { id: 'w4', name: 'Ground Floor Slab', cat: 'Civil / RCC', rateType: 'sqft', qty: 12543.94, rate: 145, contractor: 'M/s R.K. Constructions', desc: '' },
+  { id: 'w5', name: 'First Floor Slab (Single Height)', cat: 'Civil / RCC', rateType: 'sqft', qty: 12832.21, rate: 145, contractor: 'M/s R.K. Constructions', desc: '' },
+  { id: 'w6', name: 'First Floor Slab (Double Height)', cat: 'Civil / RCC', rateType: 'sqft', qty: 2701.00, rate: 210, contractor: 'M/s R.K. Constructions', desc: '' },
+  { id: 'w7', name: 'Second Floor Slab + Curtain Wall', cat: 'Civil / RCC', rateType: 'sqft', qty: 10868.85, rate: 145, contractor: 'M/s R.K. Constructions', desc: '' },
+  { id: 'w8', name: 'Third Floor Slab + Curtain Wall', cat: 'Civil / RCC', rateType: 'sqft', qty: 10868.85, rate: 145, contractor: 'M/s R.K. Constructions', desc: '' },
+  { id: 'w9', name: 'Internal Plaster — Hotel Rooms', cat: 'Finishing', rateType: 'sqft', qty: 85000, rate: 28, contractor: 'M/s Shree Finishers', desc: '12mm thick plaster, hotel room walls' },
+  { id: 'w10', name: 'Lobby Flooring — Marble', cat: 'Finishing', rateType: 'sqft', qty: 4200, rate: 380, contractor: 'M/s Marble Kraft', desc: 'Italian marble, lobby + corridors' },
+  { id: 'w11', name: 'HT/LT Electrical Panel & Wiring', cat: 'MEP', rateType: 'lumpsum', qty: 1, rate: 4500000, contractor: 'M/s PowerTech Infra', desc: 'Complete electrical package' },
+  { id: 'w12', name: 'Plumbing — Water Supply & Drainage', cat: 'MEP', rateType: 'lumpsum', qty: 1, rate: 3200000, contractor: 'M/s HydroServ', desc: 'All floors' },
+  { id: 'w13', name: 'Hotel Room Furniture — 80 rooms', cat: 'Interior', rateType: 'unit', qty: 80, rate: 185000, contractor: 'M/s Woodcraft Interiors', desc: 'Bed, wardrobe, TV unit, side tables per room' },
+  { id: 'w14', name: 'Swimming Pool Construction', cat: 'Hospitality', rateType: 'lumpsum', qty: 1, rate: 2800000, contractor: 'M/s AquaBuild', desc: 'Rooftop pool 15m x 6m' },
+  { id: 'w15', name: 'Compound Boundary Wall', cat: 'External Works', rateType: 'rmt', qty: 480, rate: 3200, contractor: 'M/s R.K. Constructions', desc: 'RCC boundary wall 2.4m high' },
+];
+
+let bills = [
+  { id: 'b1', workId: 'w1', ref: 'RKC/2026/001', qty: 5000, date: '2026-05-05', remarks: 'First half retaining wall — north side', status: 'approved', verifiedBy: 'Rishabh (Site Engr.)', approvedBy: 'Jalaj Gupta (GM)', submittedAt: '2026-05-05', verifiedAt: '2026-05-07', approvedAt: '2026-05-09' },
+  { id: 'b2', workId: 'w1', ref: 'RKC/2026/002', qty: 3000, date: '2026-05-25', remarks: 'South + east wing retaining wall', status: 'verified', verifiedBy: 'Rishabh (Site Engr.)', submittedAt: '2026-05-25', verifiedAt: '2026-05-27' },
+  { id: 'b3', workId: 'w2', ref: 'RKC/2026/003', qty: 4000, date: '2026-06-01', remarks: 'Raft slab — zones A & B', status: 'submitted', submittedAt: '2026-06-01' },
+  { id: 'b4', workId: 'w3', ref: 'RKC/2026/004', qty: 8000, date: '2026-06-15', remarks: 'Basement slab — grid 1 to 6', status: 'submitted', submittedAt: '2026-06-15' },
+  { id: 'b5', workId: 'w9', ref: 'SFN/2026/001', qty: 12000, date: '2026-06-10', remarks: 'Plaster — 2nd floor hotel rooms 201–224', status: 'draft', submittedAt: '2026-06-10' },
+  { id: 'b6', workId: 'w13', ref: 'WCI/2026/001', qty: 20, date: '2026-06-20', remarks: 'Rooms 101–120 furniture delivery & installation', status: 'approved', verifiedBy: 'Deepti (PM)', approvedBy: 'Jalaj Gupta (GM)', submittedAt: '2026-06-20', verifiedAt: '2026-06-22', approvedAt: '2026-06-23' },
+];
+
+let nextWorkId = works.length + 1;
+let nextBillId = bills.length + 1;
+let currentApprovalBillId = null;
+let approvalAction = null;
+
+// ═══════════════════════════════════════════════════════════
+//  HELPERS
+// ═══════════════════════════════════════════════════════════
+const fmt = n => '₹' + Math.round(n).toLocaleString('en-IN');
+const fmtQ = (n, rt) => {
+  if (rt === 'lumpsum') return 'Lump Sum';
+  const units = { sqft: 'sq.ft.', unit: 'units', rmt: 'RMT', cum: 'CUM' };
+  return n.toLocaleString('en-IN') + ' ' + (units[rt] || '');
+};
+const fmtUnit = rt => ({ sqft: 'sq.ft.', unit: 'units', rmt: 'RMT', cum: 'CUM', lumpsum: 'LS' }[rt] || rt);
+
+function certifiedQty(workId) {
+  return bills
+    .filter(b => b.workId === workId && b.status === 'approved')
+    .reduce((s, b) => s + b.qty, 0);
+}
+function pendingQty(workId) {
+  return bills
+    .filter(b => b.workId === workId && ['submitted','verified'].includes(b.status))
+    .reduce((s, b) => s + b.qty, 0);
+}
+function workValue(w) {
+  return w.rateType === 'lumpsum' ? w.rate : w.qty * w.rate;
+}
+
+// ═══════════════════════════════════════════════════════════
+//  ROLE
+// ═══════════════════════════════════════════════════════════
+function setRole(r) {
+  role = r;
+  document.getElementById('roleName').textContent = ROLES[r].name;
+  document.getElementById('roleDot').style.background = ROLES[r].dot;
+  document.querySelectorAll('.role-card').forEach(c => c.classList.remove('selected'));
+  document.getElementById('rc-' + r)?.classList.add('selected');
+  closeModal('roleModal');
+  renderAll();
+  showToast('✓', `Viewing as ${ROLES[r].name}`);
+}
+
+function showRoleModal() { openModal('roleModal'); }
+
+// ═══════════════════════════════════════════════════════════
+//  TABS
+// ═══════════════════════════════════════════════════════════
+function switchTab(tab, el) {
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  ['dashboard','works','bills','approvals','ledger'].forEach(t => {
+    document.getElementById('tab-' + t).style.display = t === tab ? '' : 'none';
+  });
+  if (tab === 'dashboard') renderDashboard();
+  if (tab === 'works') renderWorks();
+  if (tab === 'bills') renderBills();
+  if (tab === 'approvals') renderApprovals();
+  if (tab === 'ledger') renderLedger();
+}
+
+// ═══════════════════════════════════════════════════════════
+//  DASHBOARD
+// ═══════════════════════════════════════════════════════════
+function renderDashboard() {
+  const totalContract = works.reduce((s, w) => s + workValue(w), 0);
+  const totalCertified = works.reduce((s, w) => s + certifiedQty(w.id) * (w.rateType === 'lumpsum' ? 1 : w.rate), 0);
+  const pendingAppr = bills.filter(b => b.status === 'submitted' || b.status === 'verified').length;
+  const draftCount = bills.filter(b => b.status === 'draft').length;
+
+  document.getElementById('dashStats').innerHTML = `
+    <div class="stat-card blue"><div class="label">Contract Value</div><div class="value">${fmt(totalContract)}</div><div class="sub">${works.length} work items</div></div>
+    <div class="stat-card green"><div class="label">Certified (Paid)</div><div class="value">${fmt(totalCertified)}</div><div class="sub">${((totalCertified/totalContract)*100).toFixed(1)}% of contract</div></div>
+    <div class="stat-card amber"><div class="label">Pending Approval</div><div class="value">${pendingAppr}</div><div class="sub">bills awaiting action</div></div>
+    <div class="stat-card"><div class="label">Balance Left</div><div class="value">${fmt(totalContract - totalCertified)}</div><div class="sub">yet to be certified</div></div>
+  `;
+
+  // Category progress
+  const catDiv = document.getElementById('catProgress');
+  catDiv.innerHTML = CATS.map(cat => {
+    const cWorks = works.filter(w => w.cat === cat.key);
+    if (!cWorks.length) return '';
+    const total = cWorks.reduce((s, w) => s + workValue(w), 0);
+    const cert  = cWorks.reduce((s, w) => s + certifiedQty(w.id) * (w.rateType === 'lumpsum' ? w.rate / w.qty : w.rate), 0);
+    const pct = total ? (cert / total * 100) : 0;
+    const colors = { 'Civil / RCC':'#4a9eff','Finishing':'#c97af0','MEP':'#22c97a','Interior':'#f0a500','External Works':'#4af0c0','Hospitality':'#f05f5c' };
+    return `<div class="chart-bar-wrap">
+      <div class="chart-bar-label"><span>${cat.icon} ${cat.key}</span><span style="font-family:var(--mono)">${fmt(cert)} / ${fmt(total)} &nbsp; <strong style="color:${colors[cat.key]}">${pct.toFixed(0)}%</strong></span></div>
+      <div class="chart-bar-track"><div class="chart-bar-fill" style="width:${pct}%;background:${colors[cat.key]}"></div></div>
+    </div>`;
+  }).join('');
+
+  // Recent activity
+  const recent = [...bills].sort((a,b) => b.submittedAt?.localeCompare(a.submittedAt)).slice(0,6);
+  const actDiv = document.getElementById('recentActivity');
+  if (!recent.length) { actDiv.innerHTML = '<div class="empty"><div class="icon">📋</div><h3>No activity yet</h3></div>'; return; }
+  actDiv.innerHTML = recent.map(b => {
+    const w = works.find(x => x.id === b.workId);
+    if (!w) return '';
+    const base = b.qty * (w.rateType === 'lumpsum' ? w.rate / w.qty : w.rate);
+    const statusColors = { draft:'var(--text3)',submitted:'var(--blue)',verified:'#0d9488',approved:'var(--green)',rejected:'var(--red)' };
+    return `<div style="display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid var(--border)">
+      <div style="width:6px;height:6px;border-radius:50%;background:${statusColors[b.status]};flex-shrink:0"></div>
+      <div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${w.name}</div>
+      <div style="font-size:11px;color:var(--text2)">${b.ref} · ${b.date}</div></div>
+      <div style="text-align:right;flex-shrink:0"><div style="font-family:var(--mono);font-size:12px;color:var(--amber)">${fmt(base)}</div>
+      <div style="font-size:10px;color:${statusColors[b.status]};text-transform:uppercase">${b.status}</div></div>
+    </div>`;
+  }).join('');
+}
+
+// ═══════════════════════════════════════════════════════════
+//  WORK ITEMS
+// ═══════════════════════════════════════════════════════════
+function renderWorks() {
+  // Category filters
+  const fDiv = document.getElementById('catFilters');
+  const cats = ['All', ...CATS.map(c => c.key)];
+  fDiv.innerHTML = cats.map(c => `
+    <div class="filter-chip ${activeFilter===c?'active':''}" onclick="setFilter('${c}')">${c}</div>
+  `).join('') + `<input class="search-box" placeholder="Search…" oninput="renderWorks()" id="workSearch" style="margin-left:auto" value="${document.getElementById('workSearch')?.value||''}">`;
+
+  const q = document.getElementById('workSearch')?.value?.toLowerCase() || '';
+  let filtered = works.filter(w =>
+    (activeFilter === 'All' || w.cat === activeFilter) &&
+    (w.name.toLowerCase().includes(q) || w.contractor.toLowerCase().includes(q))
+  );
+
+  document.getElementById('worksCount').textContent = filtered.length;
+  const el = document.getElementById('worksList');
+  if (!filtered.length) {
+    el.innerHTML = '<div class="empty"><div class="icon">🔍</div><h3>No work items found</h3><p>Try a different filter or add a new item.</p></div>';
+    return;
+  }
+  el.innerHTML = filtered.map(w => buildWorkCard(w)).join('');
+}
+
+function setFilter(cat) {
+  activeFilter = cat;
+  renderWorks();
+}
+
+function buildWorkCard(w) {
+  const cert = certifiedQty(w.id);
+  const pend = pendingQty(w.id);
+  const contracted = w.qty;
+  const remaining = contracted - cert - pend;
+  const pctCert = contracted ? (cert / contracted * 100) : 0;
+  const pctPend = contracted ? (pend / contracted * 100) : 0;
+  const value = workValue(w);
+  const certVal = cert * (w.rateType === 'lumpsum' ? w.rate / w.qty : w.rate);
+  const wBills = bills.filter(b => b.workId === w.id);
+
+  const billsHtml = wBills.length ? `
+    <div class="bills-section">
+      <div class="bills-hdr">
+        <span>Bills (${wBills.length})</span>
+        <div style="margin-left:auto"></div>
+        ${canSubmitBill() ? `<button class="btn btn-ghost" style="padding:4px 10px;font-size:11px" onclick="openAddBillModal('${w.id}')">+ Submit Bill</button>` : ''}
+      </div>
+      <table class="bills-table">
+        <thead><tr>
+          <th>Ref</th><th>Date</th><th>Qty</th><th>Amount</th><th>Status</th><th></th>
+        </tr></thead>
+        <tbody>
+          ${wBills.map(b => {
+            const base = b.qty * (w.rateType === 'lumpsum' ? w.rate / w.qty : w.rate);
+            const gross = base * 1.18;
+            return `<tr>
+              <td class="mono" style="color:var(--text2)">${b.ref}</td>
+              <td>${b.date}</td>
+              <td class="mono">${b.qty.toLocaleString('en-IN')} ${fmtUnit(w.rateType)}</td>
+              <td class="mono" style="color:var(--amber)">${fmt(gross)}</td>
+              <td><span class="status-badge s-${b.status}">${b.status}</span></td>
+              <td>${getActionBtn(b)}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+  ` : (canSubmitBill() ? `<div class="bills-section"><div class="bills-hdr"><span>No bills yet</span><button class="btn btn-ghost" style="padding:4px 10px;font-size:11px;margin-left:auto" onclick="openAddBillModal('${w.id}')">+ Submit First Bill</button></div></div>` : '');
+
+  return `<div class="work-item">
+    <div class="work-item-header" onclick="toggleCard('wc-${w.id}')">
+      <span class="wi-cat-badge ${catClass(w.cat)}">${catIcon(w.cat)} ${w.cat}</span>
+      <div class="wi-name">${w.name}<small>${w.contractor}</small></div>
+      <div class="wi-rate">${fmt(value)}<small>${w.rateType === 'lumpsum' ? 'Lump Sum' : `₹${w.rate}/${fmtUnit(w.rateType)}`}</small></div>
+      <span class="chevron" id="chv-${w.id}">▾</span>
+    </div>
+    <div class="tape-wrap">
+      <div class="tape-labels">
+        <span>0</span>
+        <span style="color:var(--green)">${cert.toLocaleString('en-IN')} certified</span>
+        <span style="color:var(--amber)">${pend ? pend.toLocaleString('en-IN')+' pending' : ''}</span>
+        <span>${contracted.toLocaleString('en-IN')} ${fmtUnit(w.rateType)}</span>
+      </div>
+      <div class="tape-bar">
+        <div class="tape-certified" style="width:${Math.min(pctCert,100)}%"></div>
+        <div class="tape-pending"   style="width:${Math.min(pctPend,100-pctCert)}%"></div>
+        <div class="tape-remaining"></div>
+      </div>
+      <div class="tape-stats">
+        <div class="ts-item"><div class="ts-label">Contracted</div><div class="ts-val blue">${contracted.toLocaleString('en-IN')}</div></div>
+        <div class="ts-item"><div class="ts-label">Certified ✓</div><div class="ts-val green">${cert.toLocaleString('en-IN')}</div></div>
+        <div class="ts-item"><div class="ts-label">Pending ⏳</div><div class="ts-val amber">${pend.toLocaleString('en-IN')}</div></div>
+        <div class="ts-item"><div class="ts-label">Remaining</div><div class="ts-val ${remaining < 0 ? 'red' : ''}">${remaining.toLocaleString('en-IN')}</div></div>
+      </div>
+    </div>
+    <div class="collapsible" id="wc-${w.id}">
+      ${billsHtml}
+    </div>
+  </div>`;
+}
+
+function toggleCard(id) {
+  const el = document.getElementById(id);
+  const chv = document.getElementById('chv-' + id.replace('wc-',''));
+  if (!el) return;
+  el.classList.toggle('open');
+  if (chv) chv.classList.toggle('open');
+}
+
+function getActionBtn(b) {
+  if (role === 'engineer' && b.status === 'submitted') {
+    return `<button class="btn btn-ghost" style="padding:3px 8px;font-size:11px" onclick="openApproval('${b.id}','verify')">Verify</button>`;
+  }
+  if (role === 'gm' && b.status === 'verified') {
+    return `<button class="btn btn-ghost" style="padding:3px 8px;font-size:11px" onclick="openApproval('${b.id}','approve')">Approve</button>`;
+  }
+  if (role === 'owner' && (b.status === 'submitted' || b.status === 'verified')) {
+    return `<button class="btn btn-ghost" style="padding:3px 8px;font-size:11px" onclick="openApproval('${b.id}','approve')">Review</button>`;
+  }
+  return '';
+}
+
+function canSubmitBill() {
+  return role === 'contractor' || role === 'owner';
+}
+
+// ═══════════════════════════════════════════════════════════
+//  BILLS TAB
+// ═══════════════════════════════════════════════════════════
+function renderBills() {
+  const statuses = ['All','draft','submitted','verified','approved','rejected'];
+  const fDiv = document.getElementById('billFilters');
+  fDiv.innerHTML = statuses.map(s => `
+    <div class="filter-chip ${billFilter===s?'active':''}" onclick="setBillFilter('${s}')">${s.charAt(0).toUpperCase()+s.slice(1)}</div>
+  `).join('');
+
+  const q = document.getElementById('billSearch')?.value?.toLowerCase() || '';
+  let filtered = bills.filter(b => {
+    const w = works.find(x => x.id === b.workId);
+    const matchStatus = billFilter === 'All' || b.status === billFilter;
+    const matchQ = !q || b.ref.toLowerCase().includes(q) || w?.name.toLowerCase().includes(q);
+    // Role filter
+    if (role === 'contractor') return matchStatus && matchQ;
+    if (role === 'engineer') return matchStatus && matchQ && ['submitted','verified','approved'].includes(b.status);
+    return matchStatus && matchQ;
+  });
+
+  const pendingN = bills.filter(b => b.status === 'submitted' || b.status === 'verified').length;
+  const pb = document.getElementById('pendingBadge');
+  pb.textContent = pendingN;
+  pb.style.display = pendingN ? '' : 'none';
+
+  const el = document.getElementById('billsList');
+  if (!filtered.length) {
+    el.innerHTML = '<div class="empty"><div class="icon">📄</div><h3>No bills found</h3><p>Submit a bill or change the filter.</p></div>';
+    return;
+  }
+
+  el.innerHTML = filtered.sort((a,b) => b.submittedAt?.localeCompare(a.submittedAt)).map(b => {
+    const w = works.find(x => x.id === b.workId);
+    if (!w) return '';
+    const base = b.qty * (w.rateType === 'lumpsum' ? w.rate / w.qty : w.rate);
+    const gst  = base * 0.18;
+    const gross = base + gst;
+    const tds = gross * 0.01;
+    return `<div class="work-item">
+      <div style="padding:14px 16px;display:flex;align-items:flex-start;gap:12px;">
+        <span class="wi-cat-badge ${catClass(w.cat)}">${catIcon(w.cat)}</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:600">${w.name}</div>
+          <div style="font-size:11px;color:var(--text2);margin-top:2px">${b.ref} · ${b.date} · <em>${w.contractor}</em></div>
+          ${b.remarks ? `<div style="font-size:11px;color:var(--text3);margin-top:3px">${b.remarks}</div>` : ''}
+        </div>
+        <div style="text-align:right;flex-shrink:0">
+          <div style="font-family:var(--mono);font-size:15px;font-weight:700;color:var(--amber)">${fmt(gross)}</div>
+          <div style="font-size:10px;color:var(--text2)">incl. GST</div>
+          <span class="status-badge s-${b.status}" style="margin-top:4px;display:inline-flex">${b.status}</span>
+        </div>
+      </div>
+      <div style="padding:0 16px 14px;display:flex;gap:16px;font-size:11px;color:var(--text2);flex-wrap:wrap;border-top:1px solid var(--border);padding-top:10px">
+        <span>Qty: <strong style="color:var(--text);font-family:var(--mono)">${b.qty.toLocaleString('en-IN')} ${fmtUnit(w.rateType)}</strong></span>
+        <span>Base: <strong style="color:var(--text);font-family:var(--mono)">${fmt(base)}</strong></span>
+        <span>GST 18%: <strong style="font-family:var(--mono)">${fmt(gst)}</strong></span>
+        <span>TDS 1%: <strong style="font-family:var(--mono)">(${fmt(tds)})</strong></span>
+        <span style="margin-left:auto">${getActionBtn(b)}</span>
+      </div>
+      ${b.verifiedBy ? `<div style="padding:6px 16px 10px;font-size:11px;color:var(--text3)">Verified by: ${b.verifiedBy} · Approved by: ${b.approvedBy||'—'}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function setBillFilter(s) { billFilter = s; renderBills(); }
+
+// ═══════════════════════════════════════════════════════════
+//  APPROVALS
+// ═══════════════════════════════════════════════════════════
+function renderApprovals() {
+  const el = document.getElementById('approvalsList');
+  let queue = [];
+
+  if (role === 'engineer') {
+    queue = bills.filter(b => b.status === 'submitted');
+  } else if (role === 'gm') {
+    queue = bills.filter(b => b.status === 'verified');
+  } else if (role === 'owner') {
+    queue = bills.filter(b => ['submitted','verified'].includes(b.status));
+  } else {
+    el.innerHTML = `<div class="empty"><div class="icon">🔒</div><h3>No approvals for contractors</h3><p>Approvals are handled by Site Engineer, GM, and Owner.</p></div>`;
+    return;
+  }
+
+  if (!queue.length) {
+    el.innerHTML = `<div class="empty"><div class="icon">✅</div><h3>All clear!</h3><p>No bills pending your action right now.</p></div>`;
+    return;
+  }
+
+  el.innerHTML = `<div class="section-hdr"><h2>Pending Your Action</h2><span class="count">${queue.length}</span></div>` +
+    queue.map(b => {
+      const w = works.find(x => x.id === b.workId);
+      if (!w) return '';
+      const base = b.qty * (w.rateType === 'lumpsum' ? w.rate / w.qty : w.rate);
+      const gross = base * 1.18;
+      const action = role === 'engineer' ? 'Verify' : 'Approve';
+      return `<div class="approval-card">
+        <div class="appr-meta">
+          <div class="appr-title">${w.name}</div>
+          <div class="appr-sub">${b.ref} · ${b.date} · ${w.contractor}</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:4px">${b.remarks || '—'}</div>
+          <div style="font-size:11px;color:var(--text2);margin-top:6px">
+            Qty: <strong style="font-family:var(--mono)">${b.qty.toLocaleString('en-IN')} ${fmtUnit(w.rateType)}</strong> &nbsp;·&nbsp;
+            Status: <span class="status-badge s-${b.status}">${b.status}</span>
+          </div>
+          <div class="appr-actions">
+            <button class="btn btn-green" onclick="openApproval('${b.id}','${role==='engineer'?'verify':'approve'}')">✓ ${action}</button>
+            <button class="btn btn-red"   onclick="openApproval('${b.id}','reject')">✗ Reject</button>
+          </div>
+        </div>
+        <div style="text-align:right;flex-shrink:0">
+          <div class="appr-amount">${fmt(gross)}</div>
+          <div style="font-size:10px;color:var(--text2)">incl. GST</div>
+        </div>
+      </div>`;
+    }).join('');
+}
+
+// ═══════════════════════════════════════════════════════════
+//  LEDGER
+// ═══════════════════════════════════════════════════════════
+function renderLedger() {
+  const sel = document.getElementById('ledgerWork');
+  const current = sel.value;
+  sel.innerHTML = '<option value="">Select Work Item…</option>' +
+    works.map(w => `<option value="${w.id}" ${w.id===current?'selected':''}>${w.name}</option>`).join('');
+
+  const el = document.getElementById('ledgerContent');
+  if (!sel.value) {
+    el.innerHTML = `<div class="empty"><div class="icon">📒</div><h3>Select a work item</h3><p>View the full quantity ledger and running balance.</p></div>`;
+    return;
+  }
+
+  const w = works.find(x => x.id === sel.value);
+  if (!w) return;
+  const wBills = bills.filter(b => b.workId === w.id).sort((a,b) => a.date.localeCompare(b.date));
+
+  let runningBalance = w.qty;
+  let runningCertified = 0;
+  const rows = wBills.map(b => {
+    const isCert = b.status === 'approved';
+    const base = b.qty * (w.rateType === 'lumpsum' ? w.rate / w.qty : w.rate);
+    const gross = base * 1.18;
+    if (isCert) { runningBalance -= b.qty; runningCertified += b.qty; }
+    return { b, w, base, gross, balanceAfter: runningBalance, certAfter: runningCertified, isCert };
+  });
+
+  const cert = certifiedQty(w.id);
+  const pend = pendingQty(w.id);
+  const remaining = w.qty - cert - pend;
+
+  el.innerHTML = `
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:16px">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px">
+        <div class="ts-item"><div class="ts-label">Opening Balance</div><div class="ts-val blue">${w.qty.toLocaleString('en-IN')} ${fmtUnit(w.rateType)}</div><div style="font-size:11px;color:var(--text2)">${fmt(workValue(w))}</div></div>
+        <div class="ts-item"><div class="ts-label">Certified (Paid)</div><div class="ts-val green">${cert.toLocaleString('en-IN')}</div><div style="font-size:11px;color:var(--text2)">${fmt(cert*w.rate)}</div></div>
+        <div class="ts-item"><div class="ts-label">Pending Approval</div><div class="ts-val amber">${pend.toLocaleString('en-IN')}</div></div>
+        <div class="ts-item"><div class="ts-label">Balance Remaining</div><div class="ts-val ${remaining<0?'red':''}">${remaining.toLocaleString('en-IN')} ${fmtUnit(w.rateType)}</div></div>
+      </div>
+      <!-- Tape -->
+      <div style="margin-top:14px">
+        <div class="tape-bar" style="height:14px">
+          <div class="tape-certified" style="width:${Math.min(cert/w.qty*100,100)}%"></div>
+          <div class="tape-pending"   style="width:${Math.min(pend/w.qty*100,100)}%"></div>
+          <div class="tape-remaining"></div>
+        </div>
+        <div style="display:flex;gap:16px;margin-top:6px;font-size:10px;color:var(--text3)">
+          <span style="color:var(--green)">■ Certified</span>
+          <span style="color:var(--amber)">■ Pending</span>
+          <span style="color:var(--border2)">■ Remaining</span>
+        </div>
+      </div>
+    </div>
+
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;overflow:hidden">
+      <div style="padding:12px 16px;border-bottom:1px solid var(--border);font-size:12px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:0.06em">
+        Quantity Ledger — ${w.name}
+      </div>
+      <div style="overflow-x:auto">
+      <table class="bills-table" style="min-width:700px">
+        <thead><tr>
+          <th>#</th><th>Ref / Date</th><th>Qty This Bill</th><th>Base Amount</th><th>Gross (GST 18%)</th>
+          <th>Balance After</th><th>Status</th>
+        </tr></thead>
+        <tbody>
+          <tr style="background:var(--surface)">
+            <td class="mono" style="color:var(--text3)">OB</td>
+            <td style="color:var(--text2);font-size:11px">Opening Balance</td>
+            <td class="mono" style="color:var(--blue);font-weight:700">${w.qty.toLocaleString('en-IN')} ${fmtUnit(w.rateType)}</td>
+            <td class="mono" style="color:var(--blue)">${fmt(workValue(w))}</td>
+            <td class="mono" style="color:var(--blue)">${fmt(workValue(w)*1.18)}</td>
+            <td class="mono" style="color:var(--blue);font-weight:700">${w.qty.toLocaleString('en-IN')}</td>
+            <td><span class="status-badge" style="background:var(--blue-bg);color:var(--blue)">CONTRACT</span></td>
+          </tr>
+          ${rows.map((r, i) => `<tr>
+            <td class="mono" style="color:var(--text3)">${i+1}</td>
+            <td><div style="font-size:12px;font-weight:600;font-family:var(--mono)">${r.b.ref}</div><div style="font-size:11px;color:var(--text2)">${r.b.date}</div></td>
+            <td class="mono" style="color:var(--amber)">${r.b.qty.toLocaleString('en-IN')} ${fmtUnit(w.rateType)}</td>
+            <td class="mono">${fmt(r.base)}</td>
+            <td class="mono" style="color:var(--amber);font-weight:600">${fmt(r.gross)}</td>
+            <td class="mono" style="color:${r.isCert?'var(--green)':'var(--text3)'};font-weight:${r.isCert?'700':'400'}">${r.isCert ? r.balanceAfter.toLocaleString('en-IN') : '—'}</td>
+            <td><span class="status-badge s-${r.b.status}">${r.b.status}</span></td>
+          </tr>`).join('')}
+          <tr style="background:var(--surface)">
+            <td colspan="2" style="font-weight:700;color:var(--text);font-size:12px">CLOSING BALANCE</td>
+            <td class="mono" style="color:var(--green);font-weight:700">${cert.toLocaleString('en-IN')} certified</td>
+            <td class="mono" style="color:var(--green);font-weight:700">${fmt(cert*w.rate)}</td>
+            <td class="mono" style="color:var(--green);font-weight:700">${fmt(cert*w.rate*1.18)}</td>
+            <td class="mono" style="color:${remaining<0?'var(--red)':'var(--amber)'};font-weight:700">${remaining.toLocaleString('en-IN')} left</td>
+            <td></td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+    </div>
+  `;
+}
+
+// ═══════════════════════════════════════════════════════════
+//  ADD WORK ITEM
+// ═══════════════════════════════════════════════════════════
+function openAddWorkModal() {
+  document.getElementById('wi-name').value = '';
+  document.getElementById('wi-qty').value = '';
+  document.getElementById('wi-rate').value = '';
+  document.getElementById('wi-contractor').value = '';
+  document.getElementById('wi-desc').value = '';
+  document.getElementById('wi-lumpsum').value = '';
+  document.getElementById('wi-rateType').value = 'sqft';
+  updateRateType();
+  document.getElementById('wi-calc').style.display = 'none';
+  openModal('addWorkModal');
+}
+
+function updateRateType() {
+  const rt = document.getElementById('wi-rateType').value;
+  const isLS = rt === 'lumpsum';
+  document.getElementById('wi-qty-rate-row').style.display = isLS ? 'none' : '';
+  document.getElementById('wi-lumpsum-row').style.display = isLS ? '' : 'none';
+  const labels = { sqft:'Contracted Quantity (Sq.Ft.)', unit:'Contracted Quantity (Units)', rmt:'Contracted Quantity (RMT)', cum:'Contracted Quantity (CUM)' };
+  if (!isLS) document.getElementById('wi-qty-label').textContent = labels[rt] || 'Contracted Quantity';
+  calcWI();
+}
+
+function calcWI() {
+  const rt = document.getElementById('wi-rateType').value;
+  let value, qty, rate;
+  if (rt === 'lumpsum') {
+    value = parseFloat(document.getElementById('wi-lumpsum').value) || 0;
+    qty = 1; rate = value;
+  } else {
+    qty  = parseFloat(document.getElementById('wi-qty').value) || 0;
+    rate = parseFloat(document.getElementById('wi-rate').value) || 0;
+    value = qty * rate;
+  }
+  if (!value) { document.getElementById('wi-calc').style.display='none'; return; }
+  document.getElementById('wi-calc').style.display = '';
+  document.getElementById('wc-qty').textContent   = rt==='lumpsum' ? 'Lump Sum' : qty.toLocaleString('en-IN')+' '+fmtUnit(rt);
+  document.getElementById('wc-rate').textContent  = rt==='lumpsum' ? 'Lump Sum' : fmt(rate)+'/'+fmtUnit(rt);
+  document.getElementById('wc-total').textContent = fmt(value);
+  document.getElementById('wc-gst').textContent   = fmt(value*0.18);
+  document.getElementById('wc-gross').textContent = fmt(value*1.18);
+}
+
+function saveWorkItem() {
+  const name = document.getElementById('wi-name').value.trim();
+  const rt   = document.getElementById('wi-rateType').value;
+  if (!name) { showToast('⚠️','Enter work item name'); return; }
+
+  let qty, rate;
+  if (rt === 'lumpsum') {
+    const ls = parseFloat(document.getElementById('wi-lumpsum').value);
+    if (!ls) { showToast('⚠️','Enter lump sum value'); return; }
+    qty = 1; rate = ls;
+  } else {
+    qty  = parseFloat(document.getElementById('wi-qty').value);
+    rate = parseFloat(document.getElementById('wi-rate').value);
+    if (!qty || !rate) { showToast('⚠️','Enter quantity and rate'); return; }
+  }
+
+  works.push({
+    id: 'w' + (++nextWorkId),
+    name,
+    cat: document.getElementById('wi-cat').value,
+    rateType: rt,
+    qty, rate,
+    contractor: document.getElementById('wi-contractor').value.trim() || 'TBD',
+    desc: document.getElementById('wi-desc').value.trim(),
+  });
+  closeModal('addWorkModal');
+  renderWorks();
+  renderAll();
+  showToast('✅', 'Work item added — opening ledger created');
+}
+
+// ═══════════════════════════════════════════════════════════
+//  ADD BILL
+// ═══════════════════════════════════════════════════════════
+function openAddBillModal(preselect) {
+  const sel = document.getElementById('bill-work');
+  sel.innerHTML = '<option value="">Select work item…</option>' +
+    works.map(w => `<option value="${w.id}" ${w.id===preselect?'selected':''}>${w.name}</option>`).join('');
+  document.getElementById('bill-qty').value = '';
+  document.getElementById('bill-ref').value = '';
+  document.getElementById('bill-remarks').value = '';
+  document.getElementById('bill-date').value = new Date().toISOString().slice(0,10);
+  document.getElementById('bill-calc').style.display = 'none';
+  document.getElementById('bill-remaining-info').style.display = 'none';
+  if (preselect) { sel.value = preselect; onBillWorkChange(); }
+  openModal('addBillModal');
+}
+
+function onBillWorkChange() {
+  const wid = document.getElementById('bill-work').value;
+  const info = document.getElementById('bill-remaining-info');
+  if (!wid) { info.style.display='none'; return; }
+  const w = works.find(x => x.id === wid);
+  if (!w) return;
+  const cert = certifiedQty(wid);
+  const pend = pendingQty(wid);
+  const rem  = w.qty - cert - pend;
+  document.getElementById('br-contracted').textContent = w.qty.toLocaleString('en-IN')+' '+fmtUnit(w.rateType);
+  document.getElementById('br-certified').textContent  = cert.toLocaleString('en-IN');
+  document.getElementById('br-remaining').textContent  = rem.toLocaleString('en-IN');
+  document.getElementById('bill-qty-label').textContent = `Qty This Bill (${fmtUnit(w.rateType)})`;
+  info.style.display = '';
+  calcBill();
+}
+
+function calcBill() {
+  const wid = document.getElementById('bill-work').value;
+  if (!wid) return;
+  const w = works.find(x => x.id === wid);
+  if (!w) return;
+  const qty  = parseFloat(document.getElementById('bill-qty').value) || 0;
+  if (!qty) { document.getElementById('bill-calc').style.display='none'; return; }
+  const rate = w.rateType === 'lumpsum' ? w.rate / w.qty : w.rate;
+  const base = qty * rate;
+  const gst  = base * 0.18;
+  const gross = base + gst;
+  const cert  = certifiedQty(wid);
+  const pend  = pendingQty(wid);
+  const remaining = w.qty - cert - pend - qty;
+  document.getElementById('bill-calc').style.display = '';
+  document.getElementById('bc-qty').textContent    = qty.toLocaleString('en-IN')+' '+fmtUnit(w.rateType);
+  document.getElementById('bc-rate').textContent   = fmt(rate)+'/'+fmtUnit(w.rateType);
+  document.getElementById('bc-base').textContent   = fmt(base);
+  document.getElementById('bc-gst').textContent    = fmt(gst);
+  document.getElementById('bc-gross').textContent  = fmt(gross);
+  document.getElementById('bc-remaining').textContent = remaining.toLocaleString('en-IN')+' '+fmtUnit(w.rateType)+(remaining<0?' ⚠️ EXCEEDS CONTRACT':'');
+}
+
+function saveBill() {
+  const wid = document.getElementById('bill-work').value;
+  const qty = parseFloat(document.getElementById('bill-qty').value);
+  const ref = document.getElementById('bill-ref').value.trim();
+  if (!wid) { showToast('⚠️','Select work item'); return; }
+  if (!qty)  { showToast('⚠️','Enter quantity'); return; }
+
+  const w = works.find(x => x.id === wid);
+  const cert = certifiedQty(wid), pend = pendingQty(wid);
+  if (qty > w.qty - cert - pend) {
+    if (!confirm(`This quantity (${qty.toLocaleString('en-IN')}) exceeds the remaining balance. Submit anyway?`)) return;
+  }
+
+  bills.push({
+    id: 'b' + (++nextBillId),
+    workId: wid,
+    ref: ref || ('BILL/' + nextBillId),
+    qty,
+    date: document.getElementById('bill-date').value,
+    remarks: document.getElementById('bill-remarks').value.trim(),
+    status: 'submitted',
+    submittedAt: new Date().toISOString().slice(0,10),
+  });
+  closeModal('addBillModal');
+  renderAll();
+  showToast('✅', 'Bill submitted — awaiting site verification');
+}
+
+// ═══════════════════════════════════════════════════════════
+//  APPROVE / VERIFY / REJECT
+// ═══════════════════════════════════════════════════════════
+function openApproval(billId, action) {
+  currentApprovalBillId = billId;
+  approvalAction = action;
+  const b = bills.find(x => x.id === billId);
+  const w = works.find(x => x.id === b?.workId);
+  if (!b || !w) return;
+  const base = b.qty * (w.rateType === 'lumpsum' ? w.rate / w.qty : w.rate);
+  const gst  = base * 0.18;
+  const tds  = (base + gst) * 0.01;
+  const gross = base + gst;
+  document.getElementById('appr-modal-title').textContent =
+    action === 'verify' ? 'Verify Bill (Site Engineer)' :
+    action === 'approve' ? 'Approve Bill (GM / Owner)' : 'Reject Bill';
+  document.getElementById('appr-modal-sub').textContent = `${w.name} · ${b.ref} · ${b.date}`;
+  document.getElementById('appr-calc').innerHTML = `
+    <div class="calc-row"><span>Work Item</span><span style="color:var(--text)">${w.name}</span></div>
+    <div class="calc-row"><span>Qty</span><span style="color:var(--text);font-family:var(--mono)">${b.qty.toLocaleString('en-IN')} ${fmtUnit(w.rateType)}</span></div>
+    <div class="calc-row"><span>Base Amount</span><span>${fmt(base)}</span></div>
+    <div class="calc-row"><span>GST @ 18%</span><span>${fmt(gst)}</span></div>
+    <div class="calc-row total"><span>GROSS AMOUNT</span><span>${fmt(gross)}</span></div>
+    <div class="calc-row"><span>TDS @ 1%</span><span>(${fmt(tds)})</span></div>
+    <div class="calc-row net"><span>NET PAYABLE</span><span>${fmt(gross - tds)}</span></div>
+  `;
+  document.getElementById('appr-remarks').value = '';
+  const actDiv = document.getElementById('appr-actions');
+  if (action === 'reject') {
+    actDiv.innerHTML = `<button class="btn btn-ghost" onclick="closeModal('approveModal')">Cancel</button>
+      <button class="btn btn-red" onclick="executeApproval('reject')">✗ Reject Bill</button>`;
+  } else if (action === 'verify') {
+    actDiv.innerHTML = `<button class="btn btn-ghost" onclick="closeModal('approveModal')">Cancel</button>
+      <button class="btn btn-red" onclick="executeApproval('reject')">✗ Reject</button>
+      <button class="btn btn-green" onclick="executeApproval('verify')">✓ Verify</button>`;
+  } else {
+    actDiv.innerHTML = `<button class="btn btn-ghost" onclick="closeModal('approveModal')">Cancel</button>
+      <button class="btn btn-red" onclick="executeApproval('reject')">✗ Reject</button>
+      <button class="btn btn-amber" onclick="executeApproval('approve')">✓ Approve & Certify</button>`;
+  }
+  openModal('approveModal');
+}
+
+function executeApproval(action) {
+  const b = bills.find(x => x.id === currentApprovalBillId);
+  if (!b) return;
+  const remarks = document.getElementById('appr-remarks').value.trim();
+  if (action === 'verify') {
+    b.status = 'verified';
+    b.verifiedBy = ROLES[role].name;
+    b.verifiedAt = new Date().toISOString().slice(0,10);
+    if (remarks) b.verifyRemarks = remarks;
+    showToast('✓','Bill verified — awaiting GM approval');
+  } else if (action === 'approve') {
+    b.status = 'approved';
+    b.approvedBy = ROLES[role].name;
+    b.approvedAt = new Date().toISOString().slice(0,10);
+    if (remarks) b.approveRemarks = remarks;
+    showToast('✅','Bill approved & certified — quantity deducted from ledger');
+  } else {
+    b.status = 'rejected';
+    b.rejectedBy = ROLES[role].name;
+    b.rejectReason = remarks;
+    showToast('✗','Bill rejected');
+  }
+  closeModal('approveModal');
+  renderAll();
+}
+
+// ═══════════════════════════════════════════════════════════
+//  MODALS / UTILS
+// ═══════════════════════════════════════════════════════════
+function openModal(id)  { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+function showProjectModal() {
+  // Simple inline — could be expanded
+  const name = prompt('Project name:', document.getElementById('activeProject').textContent);
+  if (name) document.getElementById('activeProject').textContent = name;
+}
+
+let toastTimer;
+function showToast(icon, msg) {
+  const t = document.getElementById('toast');
+  document.getElementById('toastIcon').textContent = icon;
+  document.getElementById('toastMsg').textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+function renderAll() {
+  renderDashboard();
+  renderWorks();
+  renderBills();
+  renderApprovals();
+  renderLedger();
+}
+
+// ═══════════════════════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════════════════════
+setRole('owner');
+renderAll();
+
+// Close modal on backdrop click
+document.querySelectorAll('.modal-bg').forEach(bg => {
+  bg.addEventListener('click', e => {
+    if (e.target === bg) bg.classList.remove('open');
+  });
+});
+</script>
+</body>
+</html>

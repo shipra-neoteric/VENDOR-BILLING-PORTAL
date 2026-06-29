@@ -1,0 +1,94 @@
+@import "tailwindcss";
+
+:root {
+  --nx-orange: #FF7A00;
+  --nx-orange-50: #FFF4E8;
+  --nx-orange-hover: #E56E00;
+  --nx-bg: #F8FAFC;
+  --nx-text: #111827;
+  --nx-text-2: #6B7280;
+  --nx-border: #E5E7EB;
+  --nx-white: #ffffff;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--nx-bg);
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: var(--nx-text);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Ant Design global overrides ─────────────────────────── */
+
+/* Tables */
+.ant-table {
+  border-radius: 10px !important;
+  overflow: hidden;
+}
+.ant-table-thead > tr > th {
+  font-weight: 700 !important;
+  font-size: 11px !important;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #374151 !important;
+}
+.ant-table-row:hover > td {
+  background: #FFFAF5 !important;
+}
+
+/* Drawer */
+.ant-drawer-header {
+  border-bottom: 1px solid #E5E7EB !important;
+  padding: 20px 24px !important;
+}
+.ant-drawer-title {
+  font-size: 16px !important;
+  font-weight: 700 !important;
+  color: #111827 !important;
+}
+.ant-drawer-footer {
+  border-top: 1px solid #E5E7EB !important;
+  background: #FAFAFA !important;
+  padding: 16px 24px !important;
+}
+.ant-drawer-body {
+  padding: 24px !important;
+  background: #fff !important;
+}
+
+/* Cards */
+.ant-card {
+  border: 1px solid #E5E7EB !important;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06) !important;
+}
+
+/* Form labels */
+.ant-form-item-label > label {
+  font-weight: 600 !important;
+  font-size: 13px !important;
+  color: #374151 !important;
+}
+
+/* Tabs card type */
+.ant-tabs-card > .ant-tabs-nav .ant-tabs-tab {
+  border-radius: 8px 8px 0 0 !important;
+}
+
+/* Tags */
+.ant-tag {
+  font-size: 11px !important;
+  font-weight: 600 !important;
+}
+
+/* Page section divider */
+.nx-section-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: #9CA3AF;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 16px 20px 6px;
+}
