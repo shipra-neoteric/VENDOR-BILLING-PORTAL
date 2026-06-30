@@ -35,6 +35,9 @@ app.use('/api/categories',  require('./routes/categories'));
 app.use('/api/work-orders', require('./routes/workOrders'));
 app.use('/api/bills',       require('./routes/bills'));
 app.use('/api/ledger',      require('./routes/ledger'));
+app.use('/api/stages',     require('./routes/stages'));
+app.use('/api/activities', require('./routes/activities'));
+app.use('/api/milestones', require('./routes/milestones'));
 
 // Health check
 app.get('/api/health', (_req, res) =>
