@@ -56,6 +56,13 @@ exports.getMe = asyncHandler(async (req, res) => {
   success(res, { user: req.user });
 });
 
+exports.listUsers = asyncHandler(async (req, res) => {
+  const filter = {};
+  if (req.query.role) filter.role = req.query.role;
+  const users = await User.find(filter).select('name email role isActive').sort({ name: 1 });
+  success(res, { users });
+});
+
 exports.changePassword = asyncHandler(async (req, res) => {
   const { currentPassword, newPassword } = req.body;
   if (!currentPassword || !newPassword) {

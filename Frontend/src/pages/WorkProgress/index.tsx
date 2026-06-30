@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   Select, Button, Collapse, Table, Modal, Form, Input, InputNumber,
-  Progress, Tag, Tabs, Card, Tooltip, message, Spin, Empty,
+  Progress, Tag, Tabs, Card, Tooltip, message, Spin, Empty, DatePicker,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
+import dayjs from "dayjs";
 import apiClient from "../../services/apiClient";
 import { useAuth } from "../../context/AuthContext";
 import toast from "react-hot-toast";
@@ -67,8 +68,8 @@ const MILESTONE_STATUS_LABEL: Record<string, string> = {
   "paid":           "Paid",
 };
 
-// ── Main Component ───────────────────────────────────────────────────────────
-export default function WorkProgress() {
+// ── Main Component (Admin) ───────────────────────────────────────────────────
+function WorkProgressAdmin() {
   const { user } = useAuth();
   const isEngineer = user?.role === "engineer" || user?.role === "owner" || user?.role === "gm";
   const canManage  = user?.role === "owner" || user?.role === "gm";
@@ -622,4 +623,328 @@ export default function WorkProgress() {
       </Modal>
     </div>
   );
+}
+
+// ── DRI Dashboard ─────────────────────────────────────────────────────────────
+interface WOSummary  { _id: string; workOrderNo: string; projectName: string; category?: string; subCategory?: string; vendorName?: string; }
+interface ScopeItemR { _id: string; description: string; unit: string; plannedQty: number; completedQty: number; rate: number; }
+interface WODetail   { _id: string; workOrderNo: string; projectName: string; category?: string; subCategory?: string; vendorName?: string; scopeItems: ScopeItemR[]; }
+interface BRSummary  { _id: string; reqNo: string; status: string; items: { description: string; unit: string; billedQty: number }[]; createdAt: string; billId?: { billNo: string } | null; }
+
+const STATUS_COLOR_DRI: Record<string, string> = { pending: "#f59e0b", approved: "#16a34a", rejected: "#ef4444" };
+const STATUS_LABEL_DRI: Record<string, string> = { pending: "Pending",  approved: "Approved", rejected: "Rejected" };
+const fmtN = (n: number) => n.toLocaleString("en-IN");
+const pctOf = (c: number, p: number) => p > 0 ? Math.min(100, Math.round((c / p) * 100)) : 0;
+
+function DRIDashboard() {
+  const { user } = useAuth();
+
+  const [workOrders, setWorkOrders] = useState<WOSummary[]>([]);
+  const [selWOId,    setSelWOId]    = useState<string | undefined>();
+  const [woDetail,   setWODetail]   = useState<WODetail | null>(null);
+  const [billReqs,   setBillReqs]   = useState<BRSummary[]>([]);
+  const [loading,    setLoading]    = useState(false);
+  const [woLoading,  setWOLoading]  = useState(false);
+  const [saving,     setSaving]     = useState(false);
+
+  const [progModal, setProgModal] = useState(false);
+  const [progItem,  setProgItem]  = useState<ScopeItemR | null>(null);
+  const [progForm]                = Form.useForm();
+
+  const [billModal,   setBillModal]   = useState(false);
+  const [billQtys,    setBillQtys]    = useState<Record<string, number>>({});
+  const [billRemarks, setBillRemarks] = useState("");
+
+  useEffect(() => {
+    setLoading(true);
+    Promise.all([
+      apiClient.get("/work-orders"),
+      apiClient.get("/bill-requests"),
+    ]).then(([woR, brR]) => {
+      setWorkOrders(woR.data.workOrders ?? []);
+      setBillReqs(brR.data.billRequests ?? []);
+    }).finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    if (!selWOId) { setWODetail(null); return; }
+    setWOLoading(true);
+    apiClient.get(`/work-orders/${selWOId}`)
+      .then(r => setWODetail(r.data.workOrder))
+      .finally(() => setWOLoading(false));
+  }, [selWOId]);
+
+  const reloadWO = async () => {
+    if (!selWOId) return;
+    const r = await apiClient.get(`/work-orders/${selWOId}`);
+    setWODetail(r.data.workOrder);
+  };
+
+  const handleAddProgress = async () => {
+    if (!woDetail || !progItem) return;
+    const vals = await progForm.validateFields();
+    setSaving(true);
+    try {
+      await apiClient.post(`/work-orders/${woDetail._id}/scope-items/${progItem._id}/progress`, {
+        date:     vals.date ? dayjs(vals.date).format("YYYY-MM-DD") : dayjs().format("YYYY-MM-DD"),
+        qtyAdded: vals.qtyAdded,
+        remarks:  vals.remarks || "",
+      });
+      message.success(`Progress recorded: +${fmtN(vals.qtyAdded)} ${progItem.unit}`);
+      setProgModal(false);
+      progForm.resetFields();
+      await reloadWO();
+    } catch { /* apiClient interceptor handles display */ }
+    finally { setSaving(false); }
+  };
+
+  const openBillModal = () => {
+    const qtys: Record<string, number> = {};
+    (woDetail?.scopeItems ?? []).forEach(si => { qtys[si._id] = 0; });
+    setBillQtys(qtys);
+    setBillRemarks("");
+    setBillModal(true);
+  };
+
+  const handleBillRequest = async () => {
+    if (!woDetail) return;
+    const items = woDetail.scopeItems
+      .filter(si => (billQtys[si._id] ?? 0) > 0)
+      .map(si => ({ scopeItemId: si._id, description: si.description, unit: si.unit, billedQty: billQtys[si._id] }));
+    if (!items.length) { message.error("Enter qty for at least one item"); return; }
+    setSaving(true);
+    try {
+      await apiClient.post("/bill-requests", { workOrderId: woDetail._id, items, remarks: billRemarks });
+      message.success("Bill request submitted successfully");
+      setBillModal(false);
+      const r = await apiClient.get("/bill-requests");
+      setBillReqs(r.data.billRequests ?? []);
+    } catch { /* handled */ }
+    finally { setSaving(false); }
+  };
+
+  if (loading) return <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "60vh" }}><Spin size="large" /></div>;
+
+  return (
+    <div style={{ padding: "24px", maxWidth: 1100, margin: "0 auto" }}>
+      {/* Header */}
+      <div style={{ marginBottom: 24 }}>
+        <div style={{ fontSize: 22, fontWeight: 800, color: "#111827" }}>Welcome, {user?.name}</div>
+        <div style={{ fontSize: 13, color: "#6B7280", marginTop: 2 }}>Site Progress Dashboard — track your work and submit bill requests</div>
+      </div>
+
+      {/* Work Order Selector */}
+      <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 12, padding: 20, marginBottom: 20 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: "#9CA3AF", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 10 }}>Select Work Order</div>
+        <Select
+          style={{ width: "100%" }} size="large" showSearch placeholder="Select your assigned work order..."
+          value={selWOId} onChange={setSelWOId}
+          filterOption={(inp, opt) => String(opt?.label ?? "").toLowerCase().includes(inp.toLowerCase())}
+          options={workOrders.map(wo => ({
+            label: `${wo.workOrderNo} — ${wo.projectName}${wo.category ? " (" + wo.category + ")" : ""}`,
+            value: wo._id,
+          }))}
+        />
+        {workOrders.length === 0 && (
+          <div style={{ fontSize: 12, color: "#9CA3AF", marginTop: 8 }}>No work orders assigned yet. Contact your project coordinator.</div>
+        )}
+      </div>
+
+      {/* Scope Items Progress */}
+      {selWOId && (
+        <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 12, overflow: "hidden", marginBottom: 20 }}>
+          <div style={{ background: "#1F2937", padding: "14px 20px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div>
+              <div style={{ color: "#fff", fontWeight: 700, fontSize: 15 }}>{woDetail?.workOrderNo ?? "..."}</div>
+              <div style={{ color: "#9CA3AF", fontSize: 12, marginTop: 2 }}>
+                {woDetail?.projectName}{woDetail?.category ? ` · ${woDetail.category}` : ""}{woDetail?.subCategory ? ` › ${woDetail.subCategory}` : ""}
+              </div>
+            </div>
+            <Button
+              onClick={openBillModal} disabled={!woDetail?.scopeItems?.length}
+              style={{ background: "#FF7A00", borderColor: "#FF7A00", color: "#fff", fontWeight: 600 }}
+            >
+              Generate Bill Request
+            </Button>
+          </div>
+
+          {woLoading ? (
+            <div style={{ padding: 40, textAlign: "center" }}><Spin /></div>
+          ) : !woDetail?.scopeItems?.length ? (
+            <div style={{ padding: 40 }}><Empty description="No scope items defined" /></div>
+          ) : (
+            <>
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead>
+                    <tr style={{ background: "#F3F4F6" }}>
+                      {["#","Description","Unit","Total Qty","Completed","Remaining","Progress",""].map(h => (
+                        <th key={h} style={{ padding: "10px 14px", fontSize: 11, fontWeight: 700, color: "#374151", textAlign: "left", textTransform: "uppercase", letterSpacing: "0.05em", whiteSpace: "nowrap", borderBottom: "1px solid #E5E7EB" }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {woDetail.scopeItems.map((si, idx) => {
+                      const p = pctOf(si.completedQty, si.plannedQty);
+                      const rem = Math.max(0, si.plannedQty - si.completedQty);
+                      return (
+                        <tr key={si._id} style={{ borderBottom: "1px solid #F3F4F6", background: idx % 2 === 0 ? "#fff" : "#FAFAFA" }}>
+                          <td style={{ padding: "12px 14px", color: "#9CA3AF", fontSize: 12 }}>{idx + 1}</td>
+                          <td style={{ padding: "12px 14px", fontWeight: 600, color: "#111827", fontSize: 13 }}>{si.description}</td>
+                          <td style={{ padding: "12px 14px", color: "#6B7280" }}>{si.unit}</td>
+                          <td style={{ padding: "12px 14px", fontFamily: "monospace" }}>{fmtN(si.plannedQty)}</td>
+                          <td style={{ padding: "12px 14px", fontFamily: "monospace", color: si.completedQty > 0 ? "#16a34a" : "#9CA3AF" }}>{fmtN(si.completedQty)}</td>
+                          <td style={{ padding: "12px 14px", fontFamily: "monospace", color: rem > 0 ? "#374151" : "#16a34a" }}>{rem > 0 ? fmtN(rem) : "✓"}</td>
+                          <td style={{ padding: "12px 14px", minWidth: 140 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                              <div style={{ flex: 1, height: 8, background: "#E5E7EB", borderRadius: 4, overflow: "hidden" }}>
+                                <div style={{ width: `${p}%`, height: "100%", background: p >= 100 ? "#16a34a" : "#FF7A00", borderRadius: 4 }} />
+                              </div>
+                              <span style={{ fontSize: 11, fontWeight: 700, color: p >= 100 ? "#16a34a" : "#FF7A00", minWidth: 30 }}>{p}%</span>
+                            </div>
+                          </td>
+                          <td style={{ padding: "12px 14px" }}>
+                            <Button
+                              size="small" disabled={p >= 100}
+                              onClick={() => { setProgItem(si); progForm.resetFields(); progForm.setFieldsValue({ date: dayjs() }); setProgModal(true); }}
+                              style={p < 100 ? { background: "#FF7A00", borderColor: "#FF7A00", color: "#fff", fontWeight: 600 } : {}}
+                            >
+                              {p >= 100 ? "Done" : "+ Progress"}
+                            </Button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <div style={{ padding: "14px 20px", background: "#F9FAFB", borderTop: "1px solid #E5E7EB", display: "flex", gap: 32 }}>
+                {(() => {
+                  const its = woDetail.scopeItems;
+                  const done = its.filter(si => pctOf(si.completedQty, si.plannedQty) >= 100).length;
+                  const avgPct = Math.round(its.reduce((s, si) => s + pctOf(si.completedQty, si.plannedQty), 0) / (its.length || 1));
+                  return [
+                    { label: "Overall Progress", value: `${avgPct}%` },
+                    { label: "Items Complete",   value: `${done} / ${its.length}` },
+                    { label: "Items Pending",    value: `${its.length - done}` },
+                  ].map(({ label, value }) => (
+                    <div key={label}>
+                      <div style={{ fontSize: 10, color: "#9CA3AF", textTransform: "uppercase", letterSpacing: "0.07em" }}>{label}</div>
+                      <div style={{ fontSize: 18, fontWeight: 800, color: "#111827", marginTop: 2 }}>{value}</div>
+                    </div>
+                  ));
+                })()}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Bill Requests — My Stages */}
+      <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 12, overflow: "hidden" }}>
+        <div style={{ padding: "14px 20px", borderBottom: "1px solid #E5E7EB", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div style={{ fontWeight: 700, fontSize: 15, color: "#111827" }}>My Bill Requests (Stages)</div>
+          <div style={{ fontSize: 12, color: "#6B7280" }}>{billReqs.length} request{billReqs.length !== 1 ? "s" : ""}</div>
+        </div>
+        {billReqs.length === 0 ? (
+          <div style={{ padding: 40 }}><Empty description="No bill requests yet." /></div>
+        ) : (
+          billReqs.map((br, i) => {
+            const stageNum = billReqs.length - i;
+            const color = STATUS_COLOR_DRI[br.status] ?? "#9CA3AF";
+            return (
+              <div key={br._id} style={{ padding: "16px 20px", borderBottom: "1px solid #F3F4F6", display: "flex", alignItems: "center", gap: 16 }}>
+                <div style={{ background: "#FFF4E8", border: "2px solid #FF7A00", borderRadius: 8, padding: "8px 14px", minWidth: 72, textAlign: "center", flexShrink: 0 }}>
+                  <div style={{ fontSize: 9, fontWeight: 700, color: "#FF7A00", textTransform: "uppercase" }}>Stage</div>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: "#FF7A00" }}>{stageNum}</div>
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                    <span style={{ fontWeight: 700, fontSize: 14, color: "#111827", fontFamily: "monospace" }}>{br.reqNo}</span>
+                    <span style={{ background: color, color: "#fff", fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 12, textTransform: "uppercase" }}>
+                      {STATUS_LABEL_DRI[br.status] ?? br.status}
+                    </span>
+                    {br.status === "approved" && br.billId && (
+                      <span style={{ background: "#3b82f6", color: "#fff", fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 12 }}>
+                        Bill: {br.billId.billNo}
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 12, color: "#6B7280" }}>{br.items.length} item{br.items.length !== 1 ? "s" : ""} · {dayjs(br.createdAt).format("DD MMM YYYY")}</div>
+                  <div style={{ fontSize: 11, color: "#9CA3AF", marginTop: 2 }}>
+                    {br.items.map(it => `${it.description}: ${fmtN(it.billedQty)} ${it.unit}`).join(" | ")}
+                  </div>
+                </div>
+                {br.status === "approved" && <div style={{ background: "#f0fdf4", border: "1px solid #86efac", borderRadius: 8, padding: "6px 12px", fontSize: 12, color: "#16a34a", fontWeight: 600, whiteSpace: "nowrap" }}>✓ Milestone Eligible</div>}
+                {br.status === "rejected" && <div style={{ background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: 8, padding: "6px 12px", fontSize: 12, color: "#ef4444", whiteSpace: "nowrap" }}>✗ Rejected</div>}
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {/* Add Progress Modal */}
+      <Modal
+        open={progModal} onCancel={() => { setProgModal(false); progForm.resetFields(); }}
+        title={`Add Progress — ${progItem?.description}`}
+        onOk={handleAddProgress} okText="Save Progress"
+        okButtonProps={{ loading: saving, style: { background: "#FF7A00", borderColor: "#FF7A00" } }}
+        destroyOnClose
+      >
+        <Form form={progForm} layout="vertical" style={{ marginTop: 8 }}>
+          <Form.Item label="Date" name="date" rules={[{ required: true, message: "Select date" }]}>
+            <DatePicker style={{ width: "100%" }} format="DD/MM/YYYY" />
+          </Form.Item>
+          <Form.Item label={`Quantity Added (${progItem?.unit})`} name="qtyAdded" rules={[{ required: true, type: "number", min: 0.01 }]}>
+            <InputNumber style={{ width: "100%" }} min={0.01} placeholder="e.g. 500" />
+          </Form.Item>
+          <Form.Item label="Remarks (optional)" name="remarks">
+            <Input.TextArea rows={2} placeholder="Notes for today's work..." />
+          </Form.Item>
+          {progItem && (
+            <div style={{ background: "#F9FAFB", border: "1px solid #E5E7EB", borderRadius: 8, padding: 12, fontSize: 12, color: "#374151" }}>
+              Planned: <strong>{fmtN(progItem.plannedQty)}</strong> · Done: <strong>{fmtN(progItem.completedQty)}</strong> · Remaining: <strong>{fmtN(Math.max(0, progItem.plannedQty - progItem.completedQty))} {progItem.unit}</strong>
+            </div>
+          )}
+        </Form>
+      </Modal>
+
+      {/* Bill Request Modal */}
+      <Modal
+        open={billModal} onCancel={() => setBillModal(false)}
+        title="Generate Bill Request" onOk={handleBillRequest}
+        okText="Submit Bill Request" width={600}
+        okButtonProps={{ loading: saving, style: { background: "#FF7A00", borderColor: "#FF7A00" } }}
+        destroyOnClose
+      >
+        <div style={{ marginTop: 8 }}>
+          <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 14, padding: 10, background: "#FFF4E8", borderRadius: 8, border: "1px solid #FED7AA" }}>
+            Enter the quantity to bill for each item (leave 0 to skip). Rates and amounts are calculated by admin — you only see quantities.
+          </div>
+          {woDetail?.scopeItems.map(si => (
+            <div key={si._id} style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10, padding: "10px 14px", background: "#F9FAFB", borderRadius: 8, border: "1px solid #E5E7EB" }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 600, fontSize: 13, color: "#111827" }}>{si.description}</div>
+                <div style={{ fontSize: 11, color: "#9CA3AF" }}>Done: {fmtN(si.completedQty)} / {fmtN(si.plannedQty)} {si.unit}</div>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <InputNumber min={0} placeholder="0" value={billQtys[si._id] ?? 0} onChange={v => setBillQtys(p => ({ ...p, [si._id]: v ?? 0 }))} style={{ width: 100 }} />
+                <span style={{ fontSize: 12, color: "#6B7280" }}>{si.unit}</span>
+              </div>
+            </div>
+          ))}
+          <div style={{ marginTop: 12 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: "#374151", marginBottom: 6 }}>Remarks (optional)</div>
+            <Input.TextArea rows={2} placeholder="Any notes for this bill request..." value={billRemarks} onChange={e => setBillRemarks(e.target.value)} />
+          </div>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
+// ── Router wrapper ────────────────────────────────────────────────────────────
+export default function WorkProgress() {
+  const { user } = useAuth();
+  return user?.role === "dri" ? <DRIDashboard /> : <WorkProgressAdmin />;
 }

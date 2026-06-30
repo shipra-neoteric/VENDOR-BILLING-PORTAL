@@ -704,10 +704,9 @@ function ScopeItemsBuilder({ items, onChange }: ScopeItemsBuilderProps) {
 
 interface ScopeItemsViewerProps {
   scopeItems: ScopeItem[];
-  onAddProgress: (item: ScopeItem) => void;
 }
 
-function ScopeItemsViewer({ scopeItems, onAddProgress }: ScopeItemsViewerProps) {
+function ScopeItemsViewer({ scopeItems }: ScopeItemsViewerProps) {
   const totalPlanned  = scopeItems.reduce((s, it) => s + it.amount, 0);
   const totalBillable = scopeItems.reduce((s, it) => {
     if (it.subItems.length > 0) return s;
@@ -809,16 +808,7 @@ function ScopeItemsViewer({ scopeItems, onAddProgress }: ScopeItemsViewerProps) 
                     </div>
                   )}
                 </div>
-                {item.status !== "completed" && (
-                  <Button
-                    size="small"
-                    icon={<PlusOutlined />}
-                    onClick={() => onAddProgress(item)}
-                    style={{ borderColor: "#f37916", color: "#f37916", flexShrink: 0 }}
-                  >
-                    Add Progress
-                  </Button>
-                )}
+                {/* Progress is entered via the Work Progress module */}
               </div>
 
               {item.status !== "pending" && (
@@ -981,6 +971,7 @@ function WOFormFields({
   projectsList,
   categoriesList,
   companiesList = [],
+  driList = [],
 }: {
   form: FormInstance;
   isEdit?: boolean;
@@ -989,6 +980,7 @@ function WOFormFields({
   projectsList: Project[];
   categoriesList: { _id: string; name: string; isActive: boolean; parentId?: string | null }[];
   companiesList?: any[];
+  driList?: { _id: string; name: string; email: string }[];
 }) {
   const selectedCatName = Form.useWatch("category", form) as string | undefined;
   const selectedCatObj  = categoriesList.find(c => !c.parentId && c.name === selectedCatName);
@@ -1143,6 +1135,22 @@ function WOFormFields({
         </Col>
       </Row>
 
+      {driList.length > 0 && (
+        <Row gutter={16}>
+          <Col span={24}>
+            <Form.Item label="Assign DRI (Site Engineer)" name="assignedDRI" tooltip="Site engineers who will track progress on this work order">
+              <Select
+                mode="multiple"
+                placeholder="Select DRI(s) to assign (optional)"
+                allowClear
+                options={driList.map(d => ({ label: `${d.name} (${d.email})`, value: d._id }))}
+                getPopupContainer={(trigger) => trigger.parentElement || document.body}
+              />
+            </Form.Item>
+          </Col>
+        </Row>
+      )}
+
       <div
         style={{
           background: "#f5f6f8",
@@ -1223,6 +1231,7 @@ export default function WorkItems() {
   const [contractors,  setContractors]  = useState<Contractor[]>([]);
   const [projects,     setProjects]     = useState<Project[]>([]);
   const [companies,    setCompanies]    = useState<any[]>([]);
+  const [driList,      setDriList]      = useState<{ _id: string; name: string; email: string }[]>([]);
   const [loadingData,  setLoadingData]  = useState(true);
   const [saving,       setSaving]       = useState(false);
   const [pdfLoading,   setPdfLoading]   = useState(false);
@@ -1267,12 +1276,14 @@ export default function WorkItems() {
       apiClient.get<{ projects: any[] }>("/projects"),
       apiClient.get<{ bills: any[] }>("/bills"),
       apiClient.get<{ companies: any[] }>("/companies"),
+      apiClient.get<{ users: any[] }>("/auth/users?role=dri"),
     ])
-      .then(([woRes, cRes, pRes, billRes, coRes]) => {
+      .then(([woRes, cRes, pRes, billRes, coRes, driRes]) => {
         setWorkOrders(woRes.data.workOrders.map(normalizeWO));
         setContractors(cRes.data.contractors.map(normalizeId));
         setProjects(pRes.data.projects.map(normalizeId));
         setCompanies(coRes.data.companies ?? []);
+        setDriList(driRes.data.users ?? []);
         // Build map: workOrderId → [{amount, status}]
         const map: Record<string, { amount: number; status: string }[]> = {};
         for (const b of (billRes.data.bills || [])) {
@@ -1366,8 +1377,9 @@ export default function WorkItems() {
         ownerName:    values.ownerName   || "",
         mobile:       values.mobile      || "",
         category:     values.category    || "",
-        subCategory:  values.subCategory || "",
+        subCategory:  values.subCategory  || "",
         companyId:    values.companyId   || null,
+        assignedDRI:  values.assignedDRI || [],
         scopeOfWork,
         scopeItems:   createScopeItems.map(draftToNewItem),
         contractValue: totalAmt,
@@ -1391,7 +1403,7 @@ export default function WorkItems() {
 
   const openEdit = (wo: WorkOrder) => {
     setEditWOId(wo.id);
-    editForm.setFieldsValue({ ...wo, issueDate: dayjs(wo.issueDate), category: wo.category || "", subCategory: wo.subCategory || "" });
+    editForm.setFieldsValue({ ...wo, issueDate: dayjs(wo.issueDate), category: wo.category || "", subCategory: wo.subCategory || "", assignedDRI: ((wo as any).assignedDRI || []).map((d: any) => d._id || d) });
     setEditScopeItems((wo.scopeItems || []).map(toDraft));
     setEditModalOpen(true);
   };
@@ -1417,6 +1429,7 @@ export default function WorkItems() {
         mobile:       values.mobile       || currentEditWO.mobile,
         category:     values.category     ?? currentEditWO.category ?? "",
         subCategory:  values.subCategory  ?? currentEditWO.subCategory ?? "",
+        assignedDRI:  values.assignedDRI  ?? (currentEditWO as any).assignedDRI ?? [],
         issueDate:    values.issueDate ? dayjs(values.issueDate).format("YYYY-MM-DD") : currentEditWO.issueDate,
         scopeOfWork,
         scopeItems:   savedItems,
@@ -1840,6 +1853,7 @@ export default function WorkItems() {
             projectsList={projects}
             categoriesList={apiCategories}
             companiesList={companies}
+            driList={driList}
           />
         </Form>
         <div style={{ borderTop: "1px solid #E5E7EB", marginTop: 16, paddingTop: 16 }}>
@@ -1969,15 +1983,7 @@ export default function WorkItems() {
             })()}
 
             {currentSelectedWO.scopeItems.length > 0 ? (
-              <ScopeItemsViewer
-                scopeItems={currentSelectedWO.scopeItems}
-                onAddProgress={item => {
-                  setProgressItem(item);
-                  progressForm.resetFields();
-                  progressForm.setFieldsValue({ date: dayjs() });
-                  setProgressModalOpen(true);
-                }}
-              />
+              <ScopeItemsViewer scopeItems={currentSelectedWO.scopeItems} />
             ) : (
               <div style={{ border: "1px dashed #E5E7EB", borderRadius: 8, padding: 24, textAlign: "center", color: "#9CA3AF" }}>
                 No scope items defined. Click Edit to add work items.
@@ -2036,6 +2042,7 @@ export default function WorkItems() {
             projectsList={projects}
             categoriesList={apiCategories}
             companiesList={companies}
+            driList={driList}
           />
         </Form>
         <div style={{ borderTop: "1px solid #E5E7EB", marginTop: 16, paddingTop: 16 }}>

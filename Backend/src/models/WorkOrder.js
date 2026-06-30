@@ -67,6 +67,7 @@ const workOrderSchema = new mongoose.Schema(
       enum: ['draft', 'issued', 'in-progress', 'completed'],
       default: 'draft',
     },
+    assignedDRI: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },
   { timestamps: true }

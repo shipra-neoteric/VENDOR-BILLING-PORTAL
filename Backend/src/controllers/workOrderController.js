@@ -8,11 +8,15 @@ const { success, created, notFound, badRequest, conflict } = require('../utils/r
 const { nextWorkOrderNo } = require('../utils/codeGen');
 
 exports.listWorkOrders = asyncHandler(async (req, res) => {
-  const { projectId, vendorCode, status, search } = req.query;
+  const { projectId, vendorCode, status, search, assignedToMe } = req.query;
   const filter = {};
   if (projectId)  filter.projectId  = projectId;
   if (vendorCode) filter.vendorCode = vendorCode;
   if (status)     filter.status     = status;
+  // DRI auto-filter: only their assigned work orders
+  if (req.user.role === 'dri' || assignedToMe === 'true') {
+    filter.assignedDRI = req.user._id;
+  }
   if (search) {
     filter.$or = [
       { workOrderNo: { $regex: search, $options: 'i' } },
@@ -22,6 +26,7 @@ exports.listWorkOrders = asyncHandler(async (req, res) => {
   }
   const workOrders = await WorkOrder.find(filter)
     .populate('projectId', 'code name')
+    .populate('assignedDRI', 'name email')
     .sort({ createdAt: -1 });
   success(res, { workOrders });
 });
