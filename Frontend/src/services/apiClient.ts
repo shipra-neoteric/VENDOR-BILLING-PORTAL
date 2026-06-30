@@ -17,7 +17,19 @@ apiClient.interceptors.request.use((config) => {
 });
 
 apiClient.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // Unwrap the { success, message, data } envelope added by the backend responseFormatter
+    // so every caller can still do `res.data.bills`, `res.data.token`, etc.
+    if (
+      response.data &&
+      typeof response.data === "object" &&
+      "success" in response.data &&
+      "data" in response.data
+    ) {
+      response.data = response.data.data;
+    }
+    return response;
+  },
   (error) => {
     if (!error.response) {
       message.error(
