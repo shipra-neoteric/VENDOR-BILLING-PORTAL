@@ -9,8 +9,8 @@ interface Props { bills: BillRow[]; }
 const tickFmt = (v: number) =>
   v >= 100_000 ? `${(v / 100_000).toFixed(0)}L` : v >= 1000 ? `${(v / 1000).toFixed(0)}K` : String(v);
 
-const tooltipFmt = (v: string | number | (string | number)[]) =>
-  [`₹${Number(v ?? 0).toLocaleString("en-IN")}`, ""] as [string, string];
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const tooltipFmt = (v: any) => [`₹${Number(v ?? 0).toLocaleString("en-IN")}`, ""];
 
 export function BillingChart({ bills }: Props) {
   const data = getMonthlyBillingTrend(bills);
