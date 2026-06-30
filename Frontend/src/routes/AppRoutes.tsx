@@ -11,33 +11,32 @@ import Approvals    from "../features/approvals";
 import Ledger       from "../features/ledger";
 import Login        from "../features/auth";
 
-import MainLayout    from "../layouts/MainLayout/MainLayout";
+import MainLayout     from "../layouts/MainLayout/MainLayout";
 import ProtectedRoute from "../components/ProtectedRoute";
 
 const AppRoutes = () => (
   <Routes>
+    {/* Public */}
     <Route path="/login" element={<Login />} />
-    <Route
-      path="/*"
-      element={
-        <ProtectedRoute>
-          <MainLayout>
-            <Routes>
-              <Route path="/"              element={<Navigate to="/dashboard" />} />
-              <Route path="/dashboard"     element={<Dashboard />} />
-              <Route path="/projects"      element={<Projects />} />
-              <Route path="/contractors"   element={<Contractors />} />
-              <Route path="/categories"    element={<Categories />} />
-              <Route path="/work-items"    element={<WorkItems />} />
-              <Route path="/work-progress" element={<WorkProgress />} />
-              <Route path="/bills"         element={<Bills />} />
-              <Route path="/approvals"     element={<Approvals />} />
-              <Route path="/ledger"        element={<Ledger />} />
-            </Routes>
-          </MainLayout>
-        </ProtectedRoute>
-      }
-    />
+
+    {/* Protected — renders ProtectedRoute → MainLayout → page via Outlet */}
+    <Route element={<ProtectedRoute />}>
+      <Route element={<MainLayout />}>
+        <Route index                   element={<Navigate to="/dashboard" replace />} />
+        <Route path="/dashboard"       element={<Dashboard />} />
+        <Route path="/projects"        element={<Projects />} />
+        <Route path="/contractors"     element={<Contractors />} />
+        <Route path="/categories"      element={<Categories />} />
+        <Route path="/work-items"      element={<WorkItems />} />
+        <Route path="/work-progress"   element={<WorkProgress />} />
+        <Route path="/bills"           element={<Bills />} />
+        <Route path="/approvals"       element={<Approvals />} />
+        <Route path="/ledger"          element={<Ledger />} />
+      </Route>
+    </Route>
+
+    {/* Fallback */}
+    <Route path="*" element={<Navigate to="/dashboard" replace />} />
   </Routes>
 );
 

@@ -1,8 +1,12 @@
-import { Navigate } from "react-router-dom";
+import { Navigate, Outlet } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import type { ReactNode } from "react";
 
-export default function ProtectedRoute({ children }: { children: ReactNode }) {
+interface Props { children?: ReactNode; }
+
+export default function ProtectedRoute({ children }: Props) {
   const { isAuthenticated } = useAuth();
-  return isAuthenticated ? <>{children}</> : <Navigate to="/login" replace />;
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  // Supports both legacy children usage and React Router Outlet pattern
+  return children ? <>{children}</> : <Outlet />;
 }
