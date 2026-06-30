@@ -7,9 +7,19 @@ dotenv.config();
 
 const connectDB       = require('./config/db');
 const seedCategories  = require('./utils/seedCategories');
+const seedCompanies   = require('./utils/seedCompanies');
 const errorHandler    = require('./middleware/errorMiddleware');
 
-connectDB().then(() => seedCategories());
+connectDB().then(async () => {
+  // Drop legacy single-field unique index on categories.name (replaced by compound index)
+  try {
+    const mongoose = require('mongoose');
+    await mongoose.connection.collection('categories').dropIndex('name_1');
+    console.log('✅  Dropped legacy categories.name_1 index');
+  } catch (_) { /* index may not exist — ignore */ }
+  await seedCategories();
+  await seedCompanies();
+});
 
 const app = express();
 
@@ -35,6 +45,7 @@ app.use('/api/categories',  require('./routes/categories'));
 app.use('/api/work-orders', require('./routes/workOrders'));
 app.use('/api/bills',       require('./routes/bills'));
 app.use('/api/ledger',      require('./routes/ledger'));
+app.use('/api/companies',  require('./routes/companies'));
 app.use('/api/stages',     require('./routes/stages'));
 app.use('/api/activities', require('./routes/activities'));
 app.use('/api/milestones', require('./routes/milestones'));

@@ -18,6 +18,7 @@ import {
   Progress,
   Tooltip,
   Spin,
+  Popconfirm,
 } from "antd";
 import type { FormInstance } from "antd";
 import {
@@ -26,18 +27,20 @@ import {
   EditOutlined,
   EyeOutlined,
   LinkOutlined,
-  FileTextOutlined,
   DeleteOutlined,
   DownOutlined,
   UpOutlined,
   ExclamationCircleOutlined,
   HistoryOutlined,
+  FilePdfOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 
 import PageShell from "../../components/PageShell";
 import apiClient from "../../services/apiClient";
+import { useAuth } from "../../context/AuthContext";
 import { useCategories } from "../../hooks/useCategories";
+import { downloadWorkOrderPDF } from "../../components/WorkOrderPDF";
 import type {
   Contractor,
   Project,
@@ -977,14 +980,22 @@ function WOFormFields({
   contractorsList,
   projectsList,
   categoriesList,
+  companiesList = [],
 }: {
   form: FormInstance;
   isEdit?: boolean;
   nextWONo: string;
   contractorsList: Contractor[];
   projectsList: Project[];
-  categoriesList: { _id: string; name: string; isActive: boolean }[];
+  categoriesList: { _id: string; name: string; isActive: boolean; parentId?: string | null }[];
+  companiesList?: any[];
 }) {
+  const selectedCatName = Form.useWatch("category", form) as string | undefined;
+  const selectedCatObj  = categoriesList.find(c => !c.parentId && c.name === selectedCatName);
+  const formSubCats     = selectedCatObj
+    ? categoriesList.filter(c => c.isActive && c.parentId === selectedCatObj._id)
+    : [];
+
   const fillVendor = (vendorCode: string) => {
     const c = contractorsList.find(x => x.vendorCode === vendorCode);
     if (c) {
@@ -1003,28 +1014,43 @@ function WOFormFields({
 
   return (
     <>
-      {!isEdit && (
-        <div
-          style={{
-            background: "#fff8f3",
-            border: "1px solid #f8c9a0",
-            borderRadius: 8,
-            padding: "10px 16px",
-            marginBottom: 20,
-            fontSize: 12,
-            color: "#5a6278",
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-          }}
-        >
-          <FileTextOutlined style={{ color: "#f37916" }} />
-          Work Order Number will be auto-assigned:{" "}
-          <strong style={{ color: "#d4620c", fontFamily: "monospace", fontSize: 13 }}>
-            {nextWONo}
-          </strong>
-        </div>
-      )}
+      <Row gutter={16} style={{ marginBottom: 4 }}>
+        <Col span={12}>
+          <Form.Item
+            label="Work Order Number"
+            name="workOrderNo"
+            tooltip={!isEdit ? `Leave blank to auto-assign (${nextWONo})` : undefined}
+          >
+            <Input
+              placeholder={isEdit ? undefined : `Auto-assign: ${nextWONo}`}
+              disabled={isEdit}
+              style={{ fontFamily: "monospace" }}
+              maxLength={20}
+            />
+          </Form.Item>
+        </Col>
+        <Col span={12}>
+          <Form.Item
+            label="Issuing Company"
+            name="companyId"
+            tooltip="Which Neoteric entity is issuing this work order? (printed on the WO PDF)"
+          >
+            <Select
+              placeholder="Select company (optional)"
+              allowClear
+              showSearch
+              filterOption={(inp, opt) =>
+                String(opt?.label ?? "").toLowerCase().includes(inp.toLowerCase())
+              }
+              options={companiesList.filter((c: any) => c.isActive).map((c: any) => ({
+                label: `${c.shortCode} – ${c.name}`,
+                value: c._id,
+              }))}
+              getPopupContainer={(trigger) => trigger.parentElement || document.body}
+            />
+          </Form.Item>
+        </Col>
+      </Row>
 
       <Row gutter={16}>
         <Col span={12}>
@@ -1084,16 +1110,29 @@ function WOFormFields({
             <Select
               placeholder="Select category (optional)"
               allowClear
-              options={categoriesList.filter(c => c.isActive).map(c => ({
+              options={categoriesList.filter(c => c.isActive && !c.parentId).map(c => ({
                 label: c.name,
                 value: c.name,
               }))}
+              onChange={() => form.setFieldValue("subCategory", undefined)}
               getPopupContainer={(trigger) => trigger.parentElement || document.body}
             />
           </Form.Item>
         </Col>
       </Row>
       <Row gutter={16}>
+        {formSubCats.length > 0 && (
+          <Col span={12}>
+            <Form.Item label="Sub-category" name="subCategory">
+              <Select
+                placeholder="Select sub-category (optional)"
+                allowClear
+                options={formSubCats.map(c => ({ label: c.name, value: c.name }))}
+                getPopupContainer={(trigger) => trigger.parentElement || document.body}
+              />
+            </Form.Item>
+          </Col>
+        )}
         <Col span={12}>
           <Form.Item label="Status" name="status" rules={[{ required: true }]}>
             <Select
@@ -1159,6 +1198,9 @@ function WOFormFields({
 // ── Main Component ────────────────────────────────────────────
 
 export default function WorkItems() {
+  const { user } = useAuth();
+  const isOwner = user?.role === "owner";
+
   const { categories: apiCategories, lighten } = useCategories();
 
   // Resolve color/bg for a category name from API data
@@ -1180,13 +1222,17 @@ export default function WorkItems() {
   const [workOrders,   setWorkOrders]   = useState<WorkOrder[]>([]);
   const [contractors,  setContractors]  = useState<Contractor[]>([]);
   const [projects,     setProjects]     = useState<Project[]>([]);
+  const [companies,    setCompanies]    = useState<any[]>([]);
   const [loadingData,  setLoadingData]  = useState(true);
   const [saving,       setSaving]       = useState(false);
+  const [pdfLoading,   setPdfLoading]   = useState(false);
 
-  const [createDrawerOpen, setCreateDrawerOpen] = useState(false);
-  const [search,          setSearch]          = useState("");
-  const [statusFilter,    setStatusFilter]    = useState<WorkOrderStatus | "all">("all");
-  const [categoryFilter,  setCategoryFilter]  = useState<string>("all");
+  const [createDrawerOpen,    setCreateDrawerOpen]    = useState(false);
+  const [search,              setSearch]              = useState("");
+  const [statusFilter,        setStatusFilter]        = useState<WorkOrderStatus | "all">("all");
+  const [categoryFilter,      setCategoryFilter]      = useState<string>("all");
+  const [subCategoryFilter,   setSubCategoryFilter]   = useState<string>("all");
+  const [progressFilter,      setProgressFilter]      = useState<string>("all");
   // bills keyed by workOrderId for billing tape in view drawer
   const [woBillsMap, setWoBillsMap] = useState<Record<string, { amount: number; status: string }[]>>({});
 
@@ -1220,11 +1266,13 @@ export default function WorkItems() {
       apiClient.get<{ contractors: any[] }>("/contractors"),
       apiClient.get<{ projects: any[] }>("/projects"),
       apiClient.get<{ bills: any[] }>("/bills"),
+      apiClient.get<{ companies: any[] }>("/companies"),
     ])
-      .then(([woRes, cRes, pRes, billRes]) => {
+      .then(([woRes, cRes, pRes, billRes, coRes]) => {
         setWorkOrders(woRes.data.workOrders.map(normalizeWO));
         setContractors(cRes.data.contractors.map(normalizeId));
         setProjects(pRes.data.projects.map(normalizeId));
+        setCompanies(coRes.data.companies ?? []);
         // Build map: workOrderId → [{amount, status}]
         const map: Record<string, { amount: number; status: string }[]> = {};
         for (const b of (billRes.data.bills || [])) {
@@ -1241,20 +1289,57 @@ export default function WorkItems() {
 
   // ── Derived ──────────────────────────────────────────────────
 
+  // Derive category tree for filter logic
+  const topLevelCats = useMemo(() => apiCategories.filter(c => !c.parentId), [apiCategories]);
+  const allSubCats   = useMemo(() => apiCategories.filter(c => !!c.parentId),  [apiCategories]);
+  const subCatsOfSelected = useMemo(() => {
+    if (categoryFilter === "all") return [];
+    const parent = topLevelCats.find(c => c.name === categoryFilter);
+    return parent ? allSubCats.filter(c => c.parentId === parent._id) : [];
+  }, [categoryFilter, topLevelCats, allSubCats]);
+
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
     return workOrders.filter(wo => {
+      // Search
       const matchSearch =
         !q ||
         wo.workOrderNo.toLowerCase().includes(q) ||
         wo.projectName.toLowerCase().includes(q) ||
         wo.vendorCode.toLowerCase().includes(q) ||
         wo.vendorName.toLowerCase().includes(q);
-      const matchStatus   = statusFilter   === "all" || wo.status   === statusFilter;
-      const matchCategory = categoryFilter === "all" || wo.category === categoryFilter;
-      return matchSearch && matchStatus && matchCategory;
+
+      // Status
+      const matchStatus = statusFilter === "all" || wo.status === statusFilter;
+
+      // Category + SubCategory
+      let matchCategory = true;
+      if (subCategoryFilter !== "all") {
+        matchCategory = wo.subCategory === subCategoryFilter;
+      } else if (categoryFilter !== "all") {
+        const childNames = subCatsOfSelected.map(c => c.name);
+        matchCategory = wo.category === categoryFilter || childNames.includes(wo.subCategory ?? "");
+      }
+
+      // Progress
+      let matchProgress = true;
+      if (progressFilter !== "all") {
+        const items = wo.scopeItems || [];
+        if (progressFilter === "not-started") {
+          matchProgress = items.length === 0 || items.every(i => i.status === "pending");
+        } else if (progressFilter === "running") {
+          matchProgress = items.some(i => i.status === "running");
+        } else if (progressFilter === "completed") {
+          matchProgress = wo.status === "completed" ||
+            (items.length > 0 && items.every(i => i.status === "completed"));
+        } else if (progressFilter === "overdue") {
+          matchProgress = countDelays(wo) > 0;
+        }
+      }
+
+      return matchSearch && matchStatus && matchCategory && matchProgress;
     });
-  }, [workOrders, search, statusFilter, categoryFilter]);
+  }, [workOrders, search, statusFilter, categoryFilter, subCategoryFilter, progressFilter, subCatsOfSelected]);
 
   const nextWONo = useMemo(() => {
     const max = workOrders.reduce((m, wo) => {
@@ -1272,7 +1357,7 @@ export default function WorkItems() {
       const totalAmt  = calcTotalAmt(createScopeItems);
       const scopeOfWork = createScopeItems.map(it => it.description).filter(Boolean).join(", ");
 
-      const body = {
+      const body: Record<string, unknown> = {
         issueDate:    values.issueDate ? dayjs(values.issueDate).format("YYYY-MM-DD") : dayjs().format("YYYY-MM-DD"),
         projectId:    values.projectId,
         projectName:  values.projectName || "",
@@ -1281,11 +1366,14 @@ export default function WorkItems() {
         ownerName:    values.ownerName   || "",
         mobile:       values.mobile      || "",
         category:     values.category    || "",
+        subCategory:  values.subCategory || "",
+        companyId:    values.companyId   || null,
         scopeOfWork,
         scopeItems:   createScopeItems.map(draftToNewItem),
         contractValue: totalAmt,
         status:       values.status || "draft",
       };
+      if (values.workOrderNo?.trim()) body.workOrderNo = values.workOrderNo.trim();
 
       setSaving(true);
       const res = await apiClient.post<{ workOrder: WorkOrder }>("/work-orders", body);
@@ -1303,7 +1391,7 @@ export default function WorkItems() {
 
   const openEdit = (wo: WorkOrder) => {
     setEditWOId(wo.id);
-    editForm.setFieldsValue({ ...wo, issueDate: dayjs(wo.issueDate), category: wo.category || "" });
+    editForm.setFieldsValue({ ...wo, issueDate: dayjs(wo.issueDate), category: wo.category || "", subCategory: wo.subCategory || "" });
     setEditScopeItems((wo.scopeItems || []).map(toDraft));
     setEditModalOpen(true);
   };
@@ -1328,6 +1416,7 @@ export default function WorkItems() {
         ownerName:    values.ownerName    || currentEditWO.ownerName,
         mobile:       values.mobile       || currentEditWO.mobile,
         category:     values.category     ?? currentEditWO.category ?? "",
+        subCategory:  values.subCategory  ?? currentEditWO.subCategory ?? "",
         issueDate:    values.issueDate ? dayjs(values.issueDate).format("YYYY-MM-DD") : currentEditWO.issueDate,
         scopeOfWork,
         scopeItems:   savedItems,
@@ -1373,6 +1462,30 @@ export default function WorkItems() {
       if (err && typeof err === "object" && "errorFields" in err) return;
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleDownloadPDF = async (wo: WorkOrder) => {
+    setPdfLoading(true);
+    try {
+      const company    = companies.find((c: any) => c._id === (wo as any).companyId) ?? null;
+      const contractor = contractors.find(c => c.vendorCode === wo.vendorCode) ?? null;
+      await downloadWorkOrderPDF(wo as any, company, contractor as any);
+    } catch {
+      message.error("Failed to generate PDF");
+    } finally {
+      setPdfLoading(false);
+    }
+  };
+
+  const handleDelete = async (wo: WorkOrder) => {
+    try {
+      await apiClient.delete(`/work-orders/${wo.id}`);
+      setWorkOrders(prev => prev.filter(w => w.id !== wo.id));
+      message.success(`Work order ${wo.workOrderNo} deleted`);
+    } catch (e: unknown) {
+      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message || "Delete failed";
+      message.error(msg);
     }
   };
 
@@ -1488,18 +1601,33 @@ export default function WorkItems() {
           {record.documentName && (
             <Button type="link" size="small" icon={<LinkOutlined />}>Doc</Button>
           )}
+          {isOwner && (
+            <Popconfirm
+              title={`Delete ${record.workOrderNo}?`}
+              description="This permanently removes the work order and cannot be undone."
+              okText="Yes, Delete"
+              okType="danger"
+              cancelText="Cancel"
+              onConfirm={() => handleDelete(record)}
+            >
+              <Button type="link" size="small" danger icon={<DeleteOutlined />}>
+                Delete
+              </Button>
+            </Popconfirm>
+          )}
         </Space>
       ),
     },
   ];
 
-  const filterButtons: Array<{ label: string; value: WorkOrderStatus | "all" }> = [
-    { label: "All",         value: "all" },
-    { label: "Draft",       value: "draft" },
-    { label: "Issued",      value: "issued" },
-    { label: "In Progress", value: "in-progress" },
-    { label: "Completed",   value: "completed" },
-  ];
+  const hasActiveFilters =
+    statusFilter !== "all" || categoryFilter !== "all" ||
+    subCategoryFilter !== "all" || progressFilter !== "all" || search !== "";
+
+  const clearAllFilters = () => {
+    setSearch(""); setStatusFilter("all");
+    setCategoryFilter("all"); setSubCategoryFilter("all"); setProgressFilter("all");
+  };
 
   // ── Render ────────────────────────────────────────────────────
 
@@ -1524,7 +1652,7 @@ export default function WorkItems() {
         </Button>
       }
     >
-      {/* Filters */}
+      {/* ── Filters ─────────────────────────────────────────── */}
       <div
         style={{
           background: "#fff",
@@ -1532,58 +1660,117 @@ export default function WorkItems() {
           borderRadius: 10,
           padding: "14px 16px",
           marginBottom: 16,
-          display: "flex",
-          gap: 10,
-          alignItems: "center",
-          flexWrap: "wrap",
         }}
       >
-        <Input.Search
-          placeholder="Search by WO No, project, vendor…"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          allowClear
-          style={{ width: 280 }}
-        />
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          {filterButtons.map(fb => (
-            <Button
-              key={fb.value}
-              size="small"
-              type={statusFilter === fb.value ? "primary" : "default"}
-              onClick={() => setStatusFilter(fb.value)}
-              style={statusFilter === fb.value ? { background: "#FF7A00", borderColor: "#FF7A00" } : {}}
-            >
-              {fb.label}
+        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          {/* Search */}
+          <Input.Search
+            placeholder="Search by WO No, project, vendor…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            allowClear
+            style={{ width: 260 }}
+          />
+
+          {/* Status */}
+          <Select
+            value={statusFilter}
+            onChange={val => setStatusFilter(val)}
+            style={{ width: 148 }}
+            suffixIcon={<span style={{ fontSize: 11, color: "#9CA3AF" }}>Status ▾</span>}
+            options={[
+              { label: "All Statuses",  value: "all" },
+              { label: "Draft",         value: "draft" },
+              { label: "Issued",        value: "issued" },
+              { label: "In Progress",   value: "in-progress" },
+              { label: "Completed",     value: "completed" },
+            ]}
+          />
+
+          {/* Category */}
+          <Select
+            value={categoryFilter}
+            onChange={val => { setCategoryFilter(val); setSubCategoryFilter("all"); }}
+            style={{ width: 170 }}
+            suffixIcon={<span style={{ fontSize: 11, color: "#9CA3AF" }}>Category ▾</span>}
+            options={[
+              { label: "All Categories", value: "all" },
+              ...topLevelCats.filter(c => c.isActive).map(c => ({
+                label: c.name,
+                value: c.name,
+              })),
+            ]}
+          />
+
+          {/* Sub-category — only enabled when a category with subcats is selected */}
+          <Select
+            value={subCategoryFilter}
+            onChange={setSubCategoryFilter}
+            disabled={subCatsOfSelected.length === 0}
+            style={{ width: 180 }}
+            suffixIcon={<span style={{ fontSize: 11, color: "#9CA3AF" }}>Sub-category ▾</span>}
+            options={[
+              { label: subCatsOfSelected.length === 0 ? "No sub-categories" : "All Sub-categories", value: "all" },
+              ...subCatsOfSelected.map(c => ({ label: c.name, value: c.name })),
+            ]}
+          />
+
+          {/* Progress */}
+          <Select
+            value={progressFilter}
+            onChange={setProgressFilter}
+            style={{ width: 152 }}
+            suffixIcon={<span style={{ fontSize: 11, color: "#9CA3AF" }}>Progress ▾</span>}
+            options={[
+              { label: "All Progress",  value: "all" },
+              { label: "Not Started",   value: "not-started" },
+              { label: "In Progress",   value: "running" },
+              { label: "Completed",     value: "completed" },
+              { label: "⚠ Overdue",     value: "overdue" },
+            ]}
+          />
+
+          {/* Clear */}
+          {hasActiveFilters && (
+            <Button size="small" onClick={clearAllFilters} style={{ color: "#6B7280" }}>
+              Clear all
             </Button>
-          ))}
+          )}
+
+          <span style={{ marginLeft: "auto", color: "#9CA3AF", fontSize: 12, whiteSpace: "nowrap" }}>
+            {filtered.length} work order{filtered.length !== 1 ? "s" : ""}
+          </span>
         </div>
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginLeft: 8 }}>
-          <Button
-            size="small"
-            type={categoryFilter === "all" ? "primary" : "default"}
-            onClick={() => setCategoryFilter("all")}
-            style={categoryFilter === "all" ? { background: "#6b7280", borderColor: "#6b7280" } : {}}
-          >
-            All Categories
-          </Button>
-          {apiCategories.filter(c => c.isActive).map(cat => (
-            <Button
-              key={cat._id}
-              size="small"
-              onClick={() => setCategoryFilter(categoryFilter === cat.name ? "all" : cat.name)}
-              style={categoryFilter === cat.name
-                ? { background: cat.color, borderColor: cat.color, color: "#fff" }
-                : { borderColor: cat.color, color: cat.color }
-              }
-            >
-              {cat.name}
-            </Button>
-          ))}
-        </div>
-        <span style={{ marginLeft: "auto", color: "#9CA3AF", fontSize: 12 }}>
-          {filtered.length} work order{filtered.length !== 1 ? "s" : ""}
-        </span>
+
+        {/* Active filter chips */}
+        {hasActiveFilters && (
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
+            {statusFilter !== "all" && (
+              <span style={{ background: "#FFF4E8", border: "1px solid #f37916", color: "#f37916", fontSize: 11, padding: "2px 8px", borderRadius: 5, display: "flex", alignItems: "center", gap: 4 }}>
+                Status: {statusFilter}
+                <button type="button" onClick={() => setStatusFilter("all")} style={{ background: "none", border: "none", cursor: "pointer", color: "#f37916", padding: 0, fontSize: 12, lineHeight: 1 }}>×</button>
+              </span>
+            )}
+            {categoryFilter !== "all" && (
+              <span style={{ background: "#EFF6FF", border: "1px solid #2563eb", color: "#2563eb", fontSize: 11, padding: "2px 8px", borderRadius: 5, display: "flex", alignItems: "center", gap: 4 }}>
+                Category: {categoryFilter}
+                <button type="button" onClick={() => { setCategoryFilter("all"); setSubCategoryFilter("all"); }} style={{ background: "none", border: "none", cursor: "pointer", color: "#2563eb", padding: 0, fontSize: 12, lineHeight: 1 }}>×</button>
+              </span>
+            )}
+            {subCategoryFilter !== "all" && (
+              <span style={{ background: "#F5F3FF", border: "1px solid #7c3aed", color: "#7c3aed", fontSize: 11, padding: "2px 8px", borderRadius: 5, display: "flex", alignItems: "center", gap: 4 }}>
+                Sub-cat: {subCategoryFilter}
+                <button type="button" onClick={() => setSubCategoryFilter("all")} style={{ background: "none", border: "none", cursor: "pointer", color: "#7c3aed", padding: 0, fontSize: 12, lineHeight: 1 }}>×</button>
+              </span>
+            )}
+            {progressFilter !== "all" && (
+              <span style={{ background: "#F0FDF4", border: "1px solid #16a85a", color: "#16a85a", fontSize: 11, padding: "2px 8px", borderRadius: 5, display: "flex", alignItems: "center", gap: 4 }}>
+                Progress: {progressFilter === "not-started" ? "Not Started" : progressFilter === "running" ? "In Progress" : progressFilter === "completed" ? "Completed" : "Overdue"}
+                <button type="button" onClick={() => setProgressFilter("all")} style={{ background: "none", border: "none", cursor: "pointer", color: "#16a85a", padding: 0, fontSize: 12, lineHeight: 1 }}>×</button>
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Table */}
@@ -1652,6 +1839,7 @@ export default function WorkItems() {
             contractorsList={contractors}
             projectsList={projects}
             categoriesList={apiCategories}
+            companiesList={companies}
           />
         </Form>
         <div style={{ borderTop: "1px solid #E5E7EB", marginTop: 16, paddingTop: 16 }}>
@@ -1682,16 +1870,26 @@ export default function WorkItems() {
         }
         width={780}
         footer={
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-            {currentSelectedWO && (
-              <Button
-                icon={<EditOutlined />}
-                onClick={() => { setDrawerOpen(false); openEdit(currentSelectedWO); }}
-              >
-                Edit Work Order
-              </Button>
-            )}
-            <Button size="large" onClick={() => setDrawerOpen(false)}>Close</Button>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+            <Button
+              icon={<FilePdfOutlined />}
+              loading={pdfLoading}
+              onClick={() => currentSelectedWO && handleDownloadPDF(currentSelectedWO)}
+              style={{ borderColor: "#e03b3b", color: "#e03b3b" }}
+            >
+              Download PDF
+            </Button>
+            <div style={{ display: "flex", gap: 8 }}>
+              {currentSelectedWO && (
+                <Button
+                  icon={<EditOutlined />}
+                  onClick={() => { setDrawerOpen(false); openEdit(currentSelectedWO); }}
+                >
+                  Edit Work Order
+                </Button>
+              )}
+              <Button size="large" onClick={() => setDrawerOpen(false)}>Close</Button>
+            </div>
           </div>
         }
       >
@@ -1837,6 +2035,7 @@ export default function WorkItems() {
             contractorsList={contractors}
             projectsList={projects}
             categoriesList={apiCategories}
+            companiesList={companies}
           />
         </Form>
         <div style={{ borderTop: "1px solid #E5E7EB", marginTop: 16, paddingTop: 16 }}>

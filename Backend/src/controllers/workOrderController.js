@@ -2,8 +2,9 @@ const { validationResult } = require('express-validator');
 const WorkOrder    = require('../models/WorkOrder');
 const Contractor   = require('../models/Contractor');
 const Project      = require('../models/Project');
+const Company      = require('../models/Company');
 const asyncHandler = require('../utils/asyncHandler');
-const { success, created, notFound, badRequest } = require('../utils/responseFormatter');
+const { success, created, notFound, badRequest, conflict } = require('../utils/responseFormatter');
 const { nextWorkOrderNo } = require('../utils/codeGen');
 
 exports.listWorkOrders = asyncHandler(async (req, res) => {
@@ -41,10 +42,24 @@ exports.createWorkOrder = asyncHandler(async (req, res) => {
   const contractor = await Contractor.findOne({ vendorCode: req.body.vendorCode });
   if (!contractor) return notFound(res, 'Contractor not found for this vendor code');
 
-  const workOrderNo = await nextWorkOrderNo();
+  let workOrderNo = (req.body.workOrderNo || '').trim();
+  if (workOrderNo) {
+    const duplicate = await WorkOrder.findOne({ workOrderNo });
+    if (duplicate) return conflict(res, `Work order number ${workOrderNo} already exists`);
+  } else {
+    workOrderNo = await nextWorkOrderNo();
+  }
+
+  let companyName = '';
+  if (req.body.companyId) {
+    const co = await Company.findById(req.body.companyId).select('name');
+    if (co) companyName = co.name;
+  }
+
   const workOrder   = await WorkOrder.create({
     ...req.body,
     workOrderNo,
+    companyName,
     projectName: project.name,
     vendorName:  contractor.companyName,
     ownerName:   contractor.ownerName,
@@ -56,13 +71,21 @@ exports.createWorkOrder = asyncHandler(async (req, res) => {
 });
 
 exports.updateWorkOrder = asyncHandler(async (req, res) => {
+  const { workOrderNo: _wo, ...updateData } = req.body;
   const workOrder = await WorkOrder.findByIdAndUpdate(
     req.params.id,
-    { $set: req.body },
+    { $set: updateData },
     { new: true, runValidators: true }
   );
   if (!workOrder) return notFound(res, 'Work order not found');
   success(res, { workOrder }, 'Work order updated successfully');
+});
+
+exports.deleteWorkOrder = asyncHandler(async (req, res) => {
+  const workOrder = await WorkOrder.findById(req.params.id);
+  if (!workOrder) return notFound(res, 'Work order not found');
+  await workOrder.deleteOne();
+  success(res, null, `Work order ${workOrder.workOrderNo} deleted`);
 });
 
 exports.addScopeProgress = asyncHandler(async (req, res) => {

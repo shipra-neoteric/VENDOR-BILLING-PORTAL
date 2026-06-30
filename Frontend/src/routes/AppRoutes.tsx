@@ -3,6 +3,7 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import Dashboard    from "../features/dashboard";
 import Projects     from "../features/projects";
 import Contractors  from "../features/contractors";
+import Companies    from "../features/companies";
 import Categories   from "../features/categories";
 import WorkItems    from "../features/work-items";
 import WorkProgress from "../features/work-progress";
@@ -26,6 +27,7 @@ const AppRoutes = () => (
         <Route path="/dashboard"       element={<Dashboard />} />
         <Route path="/projects"        element={<Projects />} />
         <Route path="/contractors"     element={<Contractors />} />
+        <Route path="/companies"       element={<Companies />} />
         <Route path="/categories"      element={<Categories />} />
         <Route path="/work-items"      element={<WorkItems />} />
         <Route path="/work-progress"   element={<WorkProgress />} />

@@ -123,6 +123,7 @@ export interface WorkOrder {
   ownerName: string;
   mobile: string;
   category?: WorkCategory;
+  subCategory?: string;
   scopeOfWork?: string;
   scopeItems: ScopeItem[];
   contractValue: number;

@@ -8,6 +8,7 @@ const NAV_GROUPS = [
   {
     label: "Project Setup",
     items: [
+      { name: "Companies",    path: "/companies",   icon: "🏢" },
       { name: "Projects",     path: "/projects",    icon: "🏗" },
       { name: "Contractors",  path: "/contractors", icon: "👷" },
       { name: "Categories",   path: "/categories",  icon: "🏷️" },

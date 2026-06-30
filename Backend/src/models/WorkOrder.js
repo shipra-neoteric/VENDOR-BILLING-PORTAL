@@ -41,6 +41,8 @@ const workOrderSchema = new mongoose.Schema(
   {
     workOrderNo:   { type: String, required: true, unique: true },
     issueDate:     { type: Date, required: true },
+    companyId:     { type: mongoose.Schema.Types.ObjectId, ref: 'Company', default: null },
+    companyName:   { type: String, default: '' },
     projectId:     { type: mongoose.Schema.Types.ObjectId, ref: 'Project', required: true },
     projectName:   { type: String },
     vendorCode:    { type: String, required: true },
@@ -48,6 +50,10 @@ const workOrderSchema = new mongoose.Schema(
     ownerName:     { type: String },
     mobile:        { type: String },
     category: {
+      type: String,
+      default: '',
+    },
+    subCategory: {
       type: String,
       default: '',
     },

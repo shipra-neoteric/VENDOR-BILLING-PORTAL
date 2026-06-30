@@ -7,6 +7,7 @@ export interface CategoryOption {
   color: string;
   description?: string;
   isActive: boolean;
+  parentId?: string | null;
 }
 
 function lighten(hex: string): string {
