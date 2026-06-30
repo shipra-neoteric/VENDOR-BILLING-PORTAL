@@ -5,15 +5,17 @@ const dotenv  = require('dotenv');
 
 dotenv.config();
 
-const connectDB = require('./config/db');
-const seedCategories = require('./utils/seedCategories');
+const connectDB       = require('./config/db');
+const seedCategories  = require('./utils/seedCategories');
+const errorHandler    = require('./middleware/errorMiddleware');
+
 connectDB().then(() => seedCategories());
 
 const app = express();
 
 const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:5173')
   .split(',')
-  .map(o => o.trim());
+  .map((o) => o.trim());
 
 app.use(cors({
   origin: (origin, cb) => {
@@ -25,11 +27,7 @@ app.use(cors({
 app.use(express.json());
 app.use(morgan('dev'));
 
-// app.get("/",(req,res)=>{
-//   res.send("working")
-// })
-
-// Routes
+// ── Routes ───────────────────────────────────────────────────────────────────
 app.use('/api/auth',        require('./routes/auth'));
 app.use('/api/projects',    require('./routes/projects'));
 app.use('/api/contractors', require('./routes/contractors'));
@@ -40,21 +38,18 @@ app.use('/api/ledger',      require('./routes/ledger'));
 
 // Health check
 app.get('/api/health', (_req, res) =>
-  res.json({ status: 'ok', timestamp: new Date().toISOString() })
+  res.json({ success: true, status: 'ok', timestamp: new Date().toISOString() })
 );
 
+app.get('/', (_req, res) => res.send('Nexora ERP API — working'));
+
 // 404
-app.use((_req, res) => res.status(404).json({ message: 'Route not found' }));
+app.use((_req, res) =>
+  res.status(404).json({ success: false, message: 'Route not found' })
+);
 
-// Global error handler
-app.use((err, _req, res, _next) => {
-  console.error(err.stack);
-  res.status(err.status || 500).json({ message: err.message || 'Internal server error' });
-});
-
-app.get("/",(req,res)=>{
-  res.send("working")
-})
+// Centralized error handler (must be last)
+app.use(errorHandler);
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`\n🚀  Server running on http://localhost:${PORT}\n`));
