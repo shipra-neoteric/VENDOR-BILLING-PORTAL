@@ -1982,13 +1982,6 @@ export default function WorkItems() {
               );
             })()}
 
-            {currentSelectedWO.scopeItems.length > 0 ? (
-              <ScopeItemsViewer scopeItems={currentSelectedWO.scopeItems} />
-            ) : (
-              <div style={{ border: "1px dashed #E5E7EB", borderRadius: 8, padding: 24, textAlign: "center", color: "#9CA3AF" }}>
-                No scope items defined. Click Edit to add work items.
-              </div>
-            )}
           </>
         )}
       </Drawer>
