@@ -4,7 +4,6 @@ const RunningBill = require('../models/RunningBill');
 const asyncHandler = require('../utils/asyncHandler');
 const { success, created, notFound, badRequest, forbidden } = require('../utils/responseFormatter');
 
-// Auto-generate request number BR-XXXX
 async function nextReqNo() {
   const last = await BillRequest.findOne().sort({ createdAt: -1 }).select('reqNo');
   if (!last?.reqNo) return 'BR-0001';
@@ -12,7 +11,6 @@ async function nextReqNo() {
   return 'BR-' + String(num + 1).padStart(4, '0');
 }
 
-// Auto-generate bill number for RunningBill
 async function nextBillNo() {
   const last = await RunningBill.findOne().sort({ createdAt: -1 }).select('billNo');
   if (!last?.billNo) return 'RA-0001';
@@ -23,34 +21,29 @@ async function nextBillNo() {
 
 // GET /api/bill-requests
 exports.listBillRequests = asyncHandler(async (req, res) => {
-  const { status } = req.query;
+  const { status, workOrderId } = req.query;
   const filter = {};
 
-  // DRI can only see their own requests
-  if (req.user.role === 'dri') {
-    filter.requestedBy = req.user._id;
-  }
+  if (req.user.role === 'dri') filter.requestedBy = req.user._id;
   if (status) filter.status = status;
+  if (workOrderId) filter.workOrderId = workOrderId;
 
   const requests = await BillRequest.find(filter)
     .populate('requestedBy', 'name email')
     .populate('processedBy', 'name')
-    .populate('billId', 'billNo status amount')
-    .sort({ createdAt: -1 });
+    .populate('billId', 'billNo status amount paymentDate')
+    .sort({ stageNo: 1, createdAt: 1 });
 
   success(res, { billRequests: requests });
 });
 
-// POST /api/bill-requests  (DRI only)
+// POST /api/bill-requests  — qty is auto-calculated, only remarks accepted from client
 exports.createBillRequest = asyncHandler(async (req, res) => {
-  const { workOrderId, items, remarks } = req.body;
-
-  if (!items?.length) return badRequest(res, 'At least one scope item is required');
+  const { workOrderId, remarks } = req.body;
 
   const wo = await WorkOrder.findById(workOrderId);
   if (!wo) return notFound(res, 'Work order not found');
 
-  // Verify DRI is assigned to this WO (owner/gm bypass)
   if (req.user.role === 'dri') {
     const isAssigned = (wo.assignedDRI || []).some(
       id => id.toString() === req.user._id.toString()
@@ -58,10 +51,39 @@ exports.createBillRequest = asyncHandler(async (req, res) => {
     if (!isAssigned) return forbidden(res, 'You are not assigned to this work order');
   }
 
+  // Check no pending request already exists
+  const existing = await BillRequest.findOne({ workOrderId: wo._id, status: 'pending' });
+  if (existing) {
+    return badRequest(res, `Stage ${existing.stageNo} (${existing.reqNo}) is already pending approval. Wait for admin review before submitting a new request.`);
+  }
+
+  // Auto-calculate pending qty per scope item
+  const pendingItems = wo.scopeItems
+    .map(si => ({
+      scopeItemId:  si._id,
+      description:  si.description,
+      unit:         si.unit,
+      completedQty: si.completedQty || 0,
+      lastBilledQty:si.lastBilledQty || 0,
+      billedQty:    Math.max(0, (si.completedQty || 0) - (si.lastBilledQty || 0)),
+    }))
+    .filter(it => it.billedQty > 0);
+
+  if (!pendingItems.length) {
+    return badRequest(res, 'No new progress to bill. Record daily progress first before generating a bill request.');
+  }
+
+  // Stage number and billing period
+  const stageNo = await BillRequest.countDocuments({ workOrderId: wo._id }) + 1;
+  const lastBR  = await BillRequest.findOne({ workOrderId: wo._id }).sort({ createdAt: -1 }).select('createdAt periodTo');
+  const periodFrom = lastBR?.periodTo ?? wo.issueDate ?? new Date();
+  const periodTo   = new Date();
+
   const reqNo = await nextReqNo();
 
   const billRequest = await BillRequest.create({
     reqNo,
+    stageNo,
     workOrderId: wo._id,
     workOrderNo: wo.workOrderNo,
     projectName: wo.projectName,
@@ -69,30 +91,38 @@ exports.createBillRequest = asyncHandler(async (req, res) => {
     vendorName:  wo.vendorName,
     category:    wo.category    || '',
     subCategory: wo.subCategory || '',
-    items:       items.map(it => ({
+    periodFrom,
+    periodTo,
+    items: pendingItems.map(it => ({
       scopeItemId: it.scopeItemId,
       description: it.description,
-      unit:        it.unit || '',
+      unit:        it.unit,
       billedQty:   it.billedQty,
     })),
     remarks:     remarks || '',
     requestedBy: req.user._id,
   });
 
-  created(res, { billRequest }, `Bill request ${reqNo} submitted`);
+  // Lock in lastBilledQty on each scope item so it can't be double-billed
+  for (const pi of pendingItems) {
+    const si = wo.scopeItems.id(pi.scopeItemId);
+    if (si) si.lastBilledQty = pi.completedQty;
+  }
+  await wo.save();
+
+  created(res, { billRequest }, `Stage ${stageNo} bill request ${reqNo} submitted successfully`);
 });
 
-// PUT /api/bill-requests/:id/approve  (owner / gm / accounts)
+// PUT /api/bill-requests/:id/approve
 exports.approveBillRequest = asyncHandler(async (req, res) => {
   const br = await BillRequest.findById(req.params.id);
   if (!br) return notFound(res, 'Bill request not found');
   if (br.status !== 'pending') return badRequest(res, `Request is already ${br.status}`);
 
-  // Fetch work order to get rates
   const wo = await WorkOrder.findById(br.workOrderId);
   if (!wo) return notFound(res, 'Associated work order not found');
 
-  // Build line items with rate × qty from WO scope items
+  // Build line items with rates from WO
   const lineItems = br.items.map(item => {
     const scopeItem = item.scopeItemId
       ? wo.scopeItems.id(item.scopeItemId)
@@ -115,7 +145,6 @@ exports.approveBillRequest = asyncHandler(async (req, res) => {
   const totalAmount = lineItems.reduce((s, l) => s + l.amount, 0);
   const billNo = await nextBillNo();
 
-  // Create RunningBill
   const runningBill = await RunningBill.create({
     billNo,
     workOrderId: wo._id,
@@ -132,7 +161,6 @@ exports.approveBillRequest = asyncHandler(async (req, res) => {
     createdBy:   req.user._id,
   });
 
-  // Update bill request items with rates + amounts
   br.items = br.items.map((item, i) => ({
     ...item.toObject(),
     rate:   lineItems[i].rate,
@@ -144,14 +172,26 @@ exports.approveBillRequest = asyncHandler(async (req, res) => {
   br.processedAt = new Date();
   await br.save();
 
-  success(res, { billRequest: br, bill: runningBill }, `Approved — bill ${billNo} generated`);
+  success(res, { billRequest: br, bill: runningBill }, `Approved — Bill ${billNo} generated for Stage ${br.stageNo}`);
 });
 
-// PUT /api/bill-requests/:id/reject  (owner / gm / accounts)
+// PUT /api/bill-requests/:id/reject
 exports.rejectBillRequest = asyncHandler(async (req, res) => {
   const br = await BillRequest.findById(req.params.id);
   if (!br) return notFound(res, 'Bill request not found');
   if (br.status !== 'pending') return badRequest(res, `Request is already ${br.status}`);
+
+  // Roll back lastBilledQty so DRI can re-bill after fixing their progress
+  const wo = await WorkOrder.findById(br.workOrderId);
+  if (wo) {
+    for (const item of br.items) {
+      if (item.scopeItemId) {
+        const si = wo.scopeItems.id(item.scopeItemId);
+        if (si) si.lastBilledQty = Math.max(0, (si.lastBilledQty || 0) - item.billedQty);
+      }
+    }
+    await wo.save();
+  }
 
   br.status       = 'rejected';
   br.rejectReason = req.body.rejectReason || '';
@@ -159,5 +199,28 @@ exports.rejectBillRequest = asyncHandler(async (req, res) => {
   br.processedAt  = new Date();
   await br.save();
 
-  success(res, { billRequest: br }, 'Bill request rejected');
+  success(res, { billRequest: br }, `Stage ${br.stageNo} rejected — DRI can re-submit after corrections`);
+});
+
+// PUT /api/bill-requests/:id/milestone  — Mark payment released / milestone achieved
+exports.markMilestone = asyncHandler(async (req, res) => {
+  const br = await BillRequest.findById(req.params.id).populate('billId', 'billNo status amount');
+  if (!br) return notFound(res, 'Bill request not found');
+  if (br.status !== 'approved') return badRequest(res, 'Only approved bill requests can be marked as milestones');
+  if (br.milestoneAchieved) return badRequest(res, 'Already marked as milestone');
+
+  br.milestoneAchieved = true;
+  br.milestoneDate     = new Date();
+  await br.save();
+
+  if (br.billId) {
+    await RunningBill.findByIdAndUpdate(br.billId, {
+      status:             'paid',
+      paymentDate:        new Date(),
+      paymentReleasedBy:  req.user.name,
+      ...(req.body.paymentUTR ? { paymentUTR: req.body.paymentUTR } : {}),
+    });
+  }
+
+  success(res, { billRequest: br }, `Stage ${br.stageNo} — Payment released! Milestone achieved.`);
 });

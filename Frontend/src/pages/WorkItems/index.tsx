@@ -21,6 +21,7 @@ import {
   Popconfirm,
 } from "antd";
 import type { FormInstance } from "antd";
+import { useNavigate } from "react-router-dom";
 import {
   PlusOutlined,
   UploadOutlined,
@@ -33,6 +34,7 @@ import {
   ExclamationCircleOutlined,
   HistoryOutlined,
   FilePdfOutlined,
+  BarChartOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 
@@ -1207,6 +1209,7 @@ function WOFormFields({
 
 export default function WorkItems() {
   const { user } = useAuth();
+  const navigate  = useNavigate();
   const isOwner = user?.role === "owner";
 
   const { categories: apiCategories, lighten } = useCategories();
@@ -1603,6 +1606,15 @@ export default function WorkItems() {
           >
             View
           </Button>
+          <Tooltip title="Progress Dashboard">
+            <Button
+              type="link"
+              size="small"
+              icon={<BarChartOutlined />}
+              style={{ color: "#FF7A00" }}
+              onClick={() => navigate(`/work-items/${record.id}`)}
+            />
+          </Tooltip>
           <Button
             type="link"
             size="small"

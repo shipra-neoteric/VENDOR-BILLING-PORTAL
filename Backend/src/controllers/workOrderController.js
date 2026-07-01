@@ -105,6 +105,14 @@ exports.addScopeProgress = asyncHandler(async (req, res) => {
     return badRequest(res, 'qtyAdded must be greater than 0');
   }
 
+  const remaining = item.plannedQty - (item.completedQty || 0);
+  if (qtyAdded > remaining) {
+    return badRequest(
+      res,
+      `Cannot exceed planned quantity. Only ${remaining.toLocaleString()} ${item.unit} remaining.`
+    );
+  }
+
   item.progressEntries.push({ date: date || new Date(), qtyAdded, remarks });
   item.completedQty = item.progressEntries.reduce((s, e) => s + e.qtyAdded, 0);
   item.status =

@@ -31,6 +31,7 @@ const scopeItemSchema = new mongoose.Schema(
     plannedEnd:      { type: String },
     status:          { type: String, enum: ['pending', 'running', 'completed'], default: 'pending' },
     completedQty:    { type: Number, default: 0 },
+    lastBilledQty:   { type: Number, default: 0 },
     progressEntries: [progressEntrySchema],
     subItems:        [subItemSchema],
   },
