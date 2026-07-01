@@ -109,6 +109,8 @@ interface ScopeSubItemDraft {
 interface ScopeItemDraft {
   id: string;
   description: string;
+  subCategoryId: string;
+  subSubCategoryId: string;
   unit: string;
   customUnit: string;
   plannedQty: number | null;
@@ -177,7 +179,8 @@ const newSubDraft = (): ScopeSubItemDraft => ({
 
 const newItemDraft = (): ScopeItemDraft => ({
   id: crypto.randomUUID(),
-  description: "", unit: "sq.ft", customUnit: "",
+  description: "", subCategoryId: "", subSubCategoryId: "",
+  unit: "sq.ft", customUnit: "",
   plannedQty: null, rate: null,
   plannedStart: "", plannedEnd: "",
   showSubItems: false, subItems: [],
@@ -186,6 +189,7 @@ const newItemDraft = (): ScopeItemDraft => ({
 const toDraft = (si: ScopeItem): ScopeItemDraft => ({
   id: si.id,
   description: si.description,
+  subCategoryId: "", subSubCategoryId: "",
   unit: isKnownUnit(si.unit) ? si.unit : "custom",
   customUnit: isKnownUnit(si.unit) ? "" : si.unit,
   plannedQty: si.plannedQty,
@@ -296,14 +300,27 @@ function UnitCell({
 
 // ── ScopeItemsBuilder ─────────────────────────────────────────
 
+interface CatOption {
+  _id: string; name: string; parentId?: string | null; isActive: boolean;
+}
+
 interface ScopeItemsBuilderProps {
   items: ScopeItemDraft[];
   onChange: (items: ScopeItemDraft[]) => void;
+  allCategories?: CatOption[];
+  topCatId?: string | null;
 }
 
-function ScopeItemsBuilder({ items, onChange }: ScopeItemsBuilderProps) {
+function ScopeItemsBuilder({ items, onChange, allCategories = [], topCatId = null }: ScopeItemsBuilderProps) {
   const upd = (id: string, patch: Partial<ScopeItemDraft>) =>
     onChange(items.map(it => it.id === id ? { ...it, ...patch } : it));
+
+  const subCatOptions = topCatId
+    ? allCategories.filter(c => c.isActive && c.parentId === topCatId)
+    : [];
+
+  const getSubSubCatOptions = (subCatId: string) =>
+    allCategories.filter(c => c.isActive && c.parentId === subCatId);
 
   const updSub = (itemId: string, subId: string, patch: Partial<ScopeSubItemDraft>) =>
     onChange(items.map(it =>
@@ -429,12 +446,58 @@ function ScopeItemsBuilder({ items, onChange }: ScopeItemsBuilderProps) {
           <div style={{ padding: "14px 14px 10px" }}>
             <Row gutter={[10, 0]}>
               <Col span={item.subItems.length > 0 ? 12 : 8}>
-                <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Description *</div>
-                <Input
-                  placeholder="e.g. Raft Area, Plaster Works, HT Panel..."
-                  value={item.description}
-                  onChange={e => upd(item.id, { description: e.target.value })}
-                />
+                {subCatOptions.length > 0 ? (
+                  <>
+                    <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Sub-Category *</div>
+                    <Select
+                      placeholder="Select sub-category"
+                      value={item.subCategoryId || undefined}
+                      options={subCatOptions.map(c => ({ label: c.name, value: c._id }))}
+                      onChange={v => {
+                        const cat = allCategories.find(c => c._id === v);
+                        upd(item.id, { subCategoryId: v, subSubCategoryId: "", description: cat?.name ?? "" });
+                      }}
+                      allowClear
+                      onClear={() => upd(item.id, { subCategoryId: "", subSubCategoryId: "", description: "" })}
+                      style={{ width: "100%" }}
+                      showSearch
+                      filterOption={(inp, opt) => String(opt?.label ?? "").toLowerCase().includes(inp.toLowerCase())}
+                      getPopupContainer={(trigger) => trigger.parentElement || document.body}
+                    />
+                    {item.subCategoryId && getSubSubCatOptions(item.subCategoryId).length > 0 && (
+                      <div style={{ marginTop: 6 }}>
+                        <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Sub-Sub-Category</div>
+                        <Select
+                          placeholder="Select (optional)"
+                          value={item.subSubCategoryId || undefined}
+                          options={getSubSubCatOptions(item.subCategoryId).map(c => ({ label: c.name, value: c._id }))}
+                          onChange={v => {
+                            const cat = allCategories.find(c => c._id === v);
+                            upd(item.id, { subSubCategoryId: v, description: cat?.name ?? item.description });
+                          }}
+                          allowClear
+                          onClear={() => {
+                            const subCat = allCategories.find(c => c._id === item.subCategoryId);
+                            upd(item.id, { subSubCategoryId: "", description: subCat?.name ?? "" });
+                          }}
+                          style={{ width: "100%" }}
+                          showSearch
+                          filterOption={(inp, opt) => String(opt?.label ?? "").toLowerCase().includes(inp.toLowerCase())}
+                          getPopupContainer={(trigger) => trigger.parentElement || document.body}
+                        />
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Description *</div>
+                    <Input
+                      placeholder="e.g. Raft Area, Plaster Works, HT Panel..."
+                      value={item.description}
+                      onChange={e => upd(item.id, { description: e.target.value })}
+                    />
+                  </>
+                )}
               </Col>
               <Col span={item.subItems.length > 0 ? 6 : 4}>
                 <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Unit</div>
@@ -980,11 +1043,6 @@ function WOFormFields({
   companiesList?: any[];
   driList?: { _id: string; name: string; email: string }[];
 }) {
-  const selectedCatName = Form.useWatch("category", form) as string | undefined;
-  const selectedCatObj  = categoriesList.find(c => !c.parentId && c.name === selectedCatName);
-  const formSubCats     = selectedCatObj
-    ? categoriesList.filter(c => c.isActive && c.parentId === selectedCatObj._id)
-    : [];
 
   const fillVendor = (vendorCode: string) => {
     const c = contractorsList.find(x => x.vendorCode === vendorCode);
@@ -1104,25 +1162,12 @@ function WOFormFields({
                 label: c.name,
                 value: c.name,
               }))}
-              onChange={() => form.setFieldValue("subCategory", undefined)}
               getPopupContainer={(trigger) => trigger.parentElement || document.body}
             />
           </Form.Item>
         </Col>
       </Row>
       <Row gutter={16}>
-        {formSubCats.length > 0 && (
-          <Col span={12}>
-            <Form.Item label="Sub-category" name="subCategory">
-              <Select
-                placeholder="Select sub-category (optional)"
-                allowClear
-                options={formSubCats.map(c => ({ label: c.name, value: c.name }))}
-                getPopupContainer={(trigger) => trigger.parentElement || document.body}
-              />
-            </Form.Item>
-          </Col>
-        )}
         <Col span={12}>
           <Form.Item label="Status" name="status" rules={[{ required: true }]}>
             <Select
@@ -1267,6 +1312,9 @@ export default function WorkItems() {
   const [createForm]   = Form.useForm();
   const [progressForm] = Form.useForm();
 
+  const createCatName = Form.useWatch("category", createForm) as string | undefined;
+  const editCatName   = Form.useWatch("category", editForm)   as string | undefined;
+
   // ── Load all data ─────────────────────────────────────────────
   useEffect(() => {
     Promise.all([
@@ -1298,6 +1346,15 @@ export default function WorkItems() {
   }, []);
 
   // ── Derived ──────────────────────────────────────────────────
+
+  const createTopCatId = useMemo(
+    () => apiCategories.find(c => !c.parentId && c.name === createCatName)?._id ?? null,
+    [createCatName, apiCategories]
+  );
+  const editTopCatId = useMemo(
+    () => apiCategories.find(c => !c.parentId && c.name === editCatName)?._id ?? null,
+    [editCatName, apiCategories]
+  );
 
   // Derive category tree for filter logic
   const topLevelCats = useMemo(() => apiCategories.filter(c => !c.parentId), [apiCategories]);
@@ -1865,7 +1922,12 @@ export default function WorkItems() {
           />
         </Form>
         <div style={{ borderTop: "1px solid #E5E7EB", marginTop: 16, paddingTop: 16 }}>
-          <ScopeItemsBuilder items={createScopeItems} onChange={setCreateScopeItems} />
+          <ScopeItemsBuilder
+            items={createScopeItems}
+            onChange={setCreateScopeItems}
+            allCategories={apiCategories}
+            topCatId={createTopCatId}
+          />
         </div>
       </Drawer>
 
@@ -2047,7 +2109,12 @@ export default function WorkItems() {
           />
         </Form>
         <div style={{ borderTop: "1px solid #E5E7EB", marginTop: 16, paddingTop: 16 }}>
-          <ScopeItemsBuilder items={editScopeItems} onChange={setEditScopeItems} />
+          <ScopeItemsBuilder
+            items={editScopeItems}
+            onChange={setEditScopeItems}
+            allCategories={apiCategories}
+            topCatId={editTopCatId}
+          />
         </div>
       </Drawer>
 

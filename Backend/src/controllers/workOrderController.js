@@ -123,3 +123,76 @@ exports.addScopeProgress = asyncHandler(async (req, res) => {
   await workOrder.save();
   success(res, { workOrder });
 });
+
+exports.editProgressEntry = asyncHandler(async (req, res) => {
+  const { id, itemId, progressId } = req.params;
+  const { qtyAdded, date, remarks } = req.body;
+
+  const workOrder = await WorkOrder.findById(id);
+  if (!workOrder) return notFound(res, 'Work order not found');
+
+  const item = workOrder.scopeItems.id(itemId);
+  if (!item) return notFound(res, 'Scope item not found');
+
+  const entry = item.progressEntries.id(progressId);
+  if (!entry) return notFound(res, 'Progress entry not found');
+
+  if (!qtyAdded || qtyAdded <= 0) return badRequest(res, 'qtyAdded must be greater than 0');
+
+  // Total of all OTHER entries (excluding the one being edited)
+  const otherTotal = item.progressEntries
+    .filter(e => String(e._id) !== String(progressId))
+    .reduce((s, e) => s + e.qtyAdded, 0);
+
+  if (otherTotal + qtyAdded > item.plannedQty) {
+    const maxAllowed = item.plannedQty - otherTotal;
+    return badRequest(res, `Cannot exceed planned quantity. Max allowed for this entry: ${maxAllowed.toLocaleString()} ${item.unit}`);
+  }
+
+  // Prevent reducing below already-billed quantity
+  if (otherTotal + qtyAdded < (item.lastBilledQty || 0)) {
+    const minAllowed = (item.lastBilledQty || 0) - otherTotal;
+    return badRequest(res, `Cannot reduce below billed quantity. Min allowed: ${minAllowed.toLocaleString()} ${item.unit}`);
+  }
+
+  entry.qtyAdded = qtyAdded;
+  if (date) entry.date = new Date(date);
+  if (remarks !== undefined) entry.remarks = remarks;
+
+  item.completedQty = item.progressEntries.reduce((s, e) => s + e.qtyAdded, 0);
+  item.status = item.completedQty >= item.plannedQty ? 'completed'
+    : item.completedQty > 0 ? 'running' : 'pending';
+
+  await workOrder.save();
+  success(res, { workOrder }, 'Progress entry updated');
+});
+
+exports.deleteProgressEntry = asyncHandler(async (req, res) => {
+  const { id, itemId, progressId } = req.params;
+
+  const workOrder = await WorkOrder.findById(id);
+  if (!workOrder) return notFound(res, 'Work order not found');
+
+  const item = workOrder.scopeItems.id(itemId);
+  if (!item) return notFound(res, 'Scope item not found');
+
+  const entry = item.progressEntries.id(progressId);
+  if (!entry) return notFound(res, 'Progress entry not found');
+
+  // Prevent deleting an entry if doing so would reduce completedQty below lastBilledQty
+  const newCompletedQty = item.progressEntries
+    .filter(e => String(e._id) !== String(progressId))
+    .reduce((s, e) => s + e.qtyAdded, 0);
+
+  if (newCompletedQty < (item.lastBilledQty || 0)) {
+    return badRequest(res, 'Cannot delete this entry — it covers work that has already been billed. Ask admin to reverse the bill first.');
+  }
+
+  item.progressEntries.pull(progressId);
+  item.completedQty = item.progressEntries.reduce((s, e) => s + e.qtyAdded, 0);
+  item.status = item.completedQty >= item.plannedQty ? 'completed'
+    : item.completedQty > 0 ? 'running' : 'pending';
+
+  await workOrder.save();
+  success(res, { workOrder }, 'Progress entry deleted');
+});

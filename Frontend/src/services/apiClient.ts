@@ -16,6 +16,21 @@ apiClient.interceptors.request.use((config) => {
   return config;
 });
 
+// Prevents duplicate "session expired" toasts + redirects when multiple requests fail simultaneously
+let sessionExpiredPending = false;
+
+function forceReLogin(msg: string) {
+  if (sessionExpiredPending) return;
+  sessionExpiredPending = true;
+  localStorage.removeItem("token");
+  localStorage.removeItem("user");
+  message.error(msg);
+  setTimeout(() => {
+    sessionExpiredPending = false;
+    window.location.replace("/login");
+  }, 1200);
+}
+
 apiClient.interceptors.response.use(
   (response) => {
     // Unwrap the { success, message, data } envelope added by the backend responseFormatter
@@ -36,8 +51,21 @@ apiClient.interceptors.response.use(
         "Cannot connect to backend server. Make sure it is running on port 5000."
       );
     } else {
-      const msg =
-        error.response.data?.message || error.message || "Request failed";
+      const status = error.response.status;
+      const msg = error.response.data?.message || error.message || "Request failed";
+
+      // Token expired or invalid — force re-login (deduplicated)
+      if (status === 401) {
+        forceReLogin("Session expired. Please sign in again.");
+        return Promise.reject(error);
+      }
+
+      // Role mismatch — stored token doesn't match displayed user; force re-login (deduplicated)
+      if (status === 403 && msg.toLowerCase().includes("does not have access")) {
+        forceReLogin("Session mismatch detected. Please sign in again.");
+        return Promise.reject(error);
+      }
+
       message.error(msg);
     }
     return Promise.reject(error);

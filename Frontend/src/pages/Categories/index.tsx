@@ -38,13 +38,14 @@ export default function Categories() {
   const [cats, setCats]         = useState<Category[]>([]);
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState("");
-  const [modalOpen, setModalOpen]     = useState(false);
-  const [editing, setEditing]         = useState<Category | null>(null);
+  const [modalOpen, setModalOpen]       = useState(false);
+  const [editing, setEditing]           = useState<Category | null>(null);
   const [defaultParentId, setDefaultParentId] = useState<string | null>(null);
   const [saving, setSaving]     = useState(false);
   const [form]                  = Form.useForm();
-  const [pickedColor, setPickedColor] = useState(PALETTE[0]);
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [pickedColor, setPickedColor]   = useState(PALETTE[0]);
+  const [expanded, setExpanded]         = useState<Set<string>>(new Set());
+  const [subExpanded, setSubExpanded]   = useState<Set<string>>(new Set());
 
   const load = useCallback(async () => {
     setLoading(true); setError("");
@@ -58,24 +59,40 @@ export default function Categories() {
 
   useEffect(() => { load(); }, [load]);
 
-  const topLevel   = cats.filter(c => !c.parentId);
-  const subCats    = cats.filter(c => !!c.parentId);
-  const getChildren = (parentId: string) => subCats.filter(c => c.parentId === parentId);
+  // ── Derived hierarchy ──────────────────────────────────────────
+  const level1 = cats.filter(c => !c.parentId);
+  const level2 = cats.filter(c => {
+    if (!c.parentId) return false;
+    return level1.some(l1 => l1._id === c.parentId);
+  });
+  const level3 = cats.filter(c => {
+    if (!c.parentId) return false;
+    return level2.some(l2 => l2._id === c.parentId);
+  });
+
+  const getLevel2 = (l1Id: string) => level2.filter(c => c.parentId === l1Id);
+  const getLevel3 = (l2Id: string) => level3.filter(c => c.parentId === l2Id);
 
   function toggleExpand(id: string) {
-    setExpanded(prev => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
+    setExpanded(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  }
+  function toggleSubExpand(id: string) {
+    setSubExpanded(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  }
+
+  function getParentColor(parentId: string | null | undefined): string {
+    if (!parentId) return PALETTE[0];
+    const p = cats.find(c => c._id === parentId);
+    if (!p) return PALETTE[0];
+    // If p itself has a parent, use that parent's color
+    if (p.parentId) return cats.find(c => c._id === p.parentId)?.color ?? p.color;
+    return p.color;
   }
 
   function openAdd(parentId: string | null = null) {
     setEditing(null);
     setDefaultParentId(parentId);
-    const color = parentId
-      ? (topLevel.find(c => c._id === parentId)?.color ?? PALETTE[0])
-      : PALETTE[0];
+    const color = getParentColor(parentId);
     setPickedColor(color);
     form.resetFields();
     form.setFieldsValue({ color, isActive: true, parentId: parentId ?? undefined });
@@ -95,6 +112,21 @@ export default function Categories() {
     setModalOpen(true);
   }
 
+  function getModalTitle() {
+    if (editing) {
+      const depth = !editing.parentId ? "Category"
+        : level2.some(l => l._id === editing._id) ? "Sub-Category"
+        : "Sub-Sub-Category";
+      return `Edit ${depth}`;
+    }
+    if (!defaultParentId) return "New Category";
+    const parent = cats.find(c => c._id === defaultParentId);
+    if (!parent) return "New Category";
+    if (!parent.parentId) return `New Sub-Category under "${parent.name}"`;
+    const grandparent = cats.find(c => c._id === parent.parentId);
+    return `New Sub-Sub-Category under "${grandparent?.name ?? ""} › ${parent.name}"`;
+  }
+
   async function handleSave() {
     const values = await form.validateFields();
     setSaving(true);
@@ -105,7 +137,10 @@ export default function Categories() {
         message.success("Category updated");
       } else {
         await apiClient.post("/categories", payload);
-        message.success(payload.parentId ? "Subcategory created" : "Category created");
+        const label = !payload.parentId ? "Category"
+          : level1.some(l => l._id === payload.parentId) ? "Sub-Category"
+          : "Sub-Sub-Category";
+        message.success(`${label} created`);
       }
       setModalOpen(false);
       await load();
@@ -134,10 +169,23 @@ export default function Categories() {
 
   if (error) return <Alert type="error" message={error} style={{ margin: 24 }} />;
 
+  // Parent options for modal: level1 + level2
+  const parentOptions = [
+    { label: "── Top-Level Categories ──", value: "__sep1", disabled: true },
+    ...level1.map(c => ({ label: c.name, value: c._id })),
+    ...(level2.length > 0 ? [
+      { label: "── Sub-Categories ──", value: "__sep2", disabled: true },
+      ...level2.map(c => {
+        const p = level1.find(l => l._id === c.parentId);
+        return { label: `${p?.name ?? ""} › ${c.name}`, value: c._id };
+      }),
+    ] : []),
+  ];
+
   return (
     <PageShell
       title="Categories"
-      description="Manage the work category hierarchy used across Work Orders and Progress tracking. Top-level categories (Civil, MEP…) contain subcategories (Foundation, Basement…)."
+      description="3-level category hierarchy: Category → Sub-Category → Sub-Sub-Category. Used across Work Orders for scope item classification."
       cta={
         <div style={{ display: "flex", gap: 8 }}>
           <Button icon={<ReloadOutlined />} onClick={load} />
@@ -154,12 +202,13 @@ export default function Categories() {
       {/* Stats strip */}
       <div style={{ display: "flex", gap: 12, marginBottom: 24, flexWrap: "wrap" }}>
         {[
-          { label: "Total",       value: cats.length,                       color: "#FF7A00" },
-          { label: "Top-Level",   value: topLevel.length,                   color: "#2563eb" },
-          { label: "Sub-Cats",    value: subCats.length,                    color: "#7c3aed" },
-          { label: "Active",      value: cats.filter(c => c.isActive).length, color: "#16a85a" },
+          { label: "Total",         value: cats.length,                          color: "#FF7A00" },
+          { label: "Category",      value: level1.length,                        color: "#2563eb" },
+          { label: "Sub-Category",  value: level2.length,                        color: "#7c3aed" },
+          { label: "Sub-Sub-Cat",   value: level3.length,                        color: "#0d9488" },
+          { label: "Active",        value: cats.filter(c => c.isActive).length,  color: "#16a85a" },
         ].map(s => (
-          <div key={s.label} style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 12, padding: "14px 20px", minWidth: 130, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+          <div key={s.label} style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 12, padding: "14px 20px", minWidth: 120, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
             <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", color: "#9CA3AF", marginBottom: 4 }}>{s.label}</div>
             <div style={{ fontFamily: "monospace", fontSize: 24, fontWeight: 700, color: s.color }}>{s.value}</div>
           </div>
@@ -167,7 +216,7 @@ export default function Categories() {
       </div>
 
       {/* ── Category tree ─────────────────────────────────────── */}
-      {topLevel.length === 0 ? (
+      {level1.length === 0 ? (
         <div style={{ textAlign: "center", padding: "60px 20px", color: "#9CA3AF" }}>
           <AppstoreOutlined style={{ fontSize: 40, marginBottom: 12, display: "block" }} />
           <div style={{ fontSize: 15, fontWeight: 600, color: "#374151" }}>No categories yet</div>
@@ -175,9 +224,9 @@ export default function Categories() {
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {topLevel.map(cat => {
-            const children = getChildren(cat._id);
-            const isOpen   = expanded.has(cat._id);
+          {level1.map(cat => {
+            const subs   = getLevel2(cat._id);
+            const isOpen = expanded.has(cat._id);
 
             return (
               <div
@@ -192,34 +241,22 @@ export default function Categories() {
                   opacity: cat.isActive ? 1 : 0.6,
                 }}
               >
-                {/* ── Category header row ── */}
+                {/* ── Level-1 header ── */}
                 <div
                   style={{ display: "flex", alignItems: "center", padding: "13px 16px", gap: 10, cursor: "pointer", userSelect: "none" }}
                   onClick={() => toggleExpand(cat._id)}
                 >
-                  <span
-                    style={{
-                      fontSize: 10, color: "#9CA3AF",
-                      display: "inline-block",
-                      transition: "transform 0.2s",
-                      transform: isOpen ? "rotate(90deg)" : "rotate(0deg)",
-                    }}
-                  >▶</span>
-
+                  <span style={{ fontSize: 10, color: "#9CA3AF", display: "inline-block", transition: "transform 0.2s", transform: isOpen ? "rotate(90deg)" : "rotate(0deg)" }}>▶</span>
                   <span style={{ width: 12, height: 12, borderRadius: "50%", background: cat.color, display: "inline-block", flexShrink: 0 }} />
-
                   <span style={{ fontWeight: 700, fontSize: 14, color: "#111827", flex: 1 }}>
                     {cat.name}
                     {!cat.isActive && <Tag style={{ marginLeft: 8, fontSize: 10 }}>Inactive</Tag>}
                   </span>
-
                   <span style={{ fontSize: 12, color: "#9CA3AF", marginRight: 6 }}>
-                    {children.length} sub-{children.length === 1 ? "category" : "categories"}
+                    {subs.length} sub-{subs.length === 1 ? "category" : "categories"}
                   </span>
-
-                  {/* Action buttons — stop propagation so click doesn't toggle expand */}
                   <div onClick={e => e.stopPropagation()} style={{ display: "flex", gap: 4 }}>
-                    <Tooltip title="Add subcategory">
+                    <Tooltip title="Add sub-category">
                       <Button
                         size="small" icon={<PlusOutlined />}
                         onClick={() => { openAdd(cat._id); setExpanded(p => new Set([...p, cat._id])); }}
@@ -229,95 +266,129 @@ export default function Categories() {
                     <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(cat)} style={{ color: "#6B7280" }} />
                     <Popconfirm
                       title={`Delete "${cat.name}"?`}
-                      description={
-                        children.length > 0
-                          ? "Delete all subcategories first before deleting this category."
-                          : "This cannot be undone."
-                      }
+                      description={subs.length > 0 ? "Delete all sub-categories first." : "This cannot be undone."}
                       okText="Delete" okType="danger" cancelText="Cancel"
                       onConfirm={() => handleDelete(cat)}
-                      disabled={children.length > 0}
+                      disabled={subs.length > 0}
                     >
-                      <Button
-                        size="small" icon={<DeleteOutlined />} danger
-                        disabled={children.length > 0}
-                        title={children.length > 0 ? "Delete subcategories first" : undefined}
-                      />
+                      <Button size="small" icon={<DeleteOutlined />} danger disabled={subs.length > 0} />
                     </Popconfirm>
                   </div>
                 </div>
 
-                {/* ── Subcategories panel ── */}
+                {/* ── Level-2 panel ── */}
                 {isOpen && (
                   <div style={{ borderTop: "1px solid #F3F4F6", padding: "12px 16px 14px 44px", background: "#FAFAFA" }}>
-                    {children.length === 0 ? (
+                    {subs.length === 0 ? (
                       <div style={{ color: "#9CA3AF", fontSize: 13, padding: "6px 0" }}>
-                        No subcategories yet —{" "}
-                        <button
-                          type="button"
-                          onClick={() => openAdd(cat._id)}
-                          style={{ background: "none", border: "none", color: "#FF7A00", cursor: "pointer", fontWeight: 600, padding: 0, fontSize: 13 }}
-                        >
+                        No sub-categories yet —{" "}
+                        <button type="button" onClick={() => openAdd(cat._id)}
+                          style={{ background: "none", border: "none", color: "#FF7A00", cursor: "pointer", fontWeight: 600, padding: 0, fontSize: 13 }}>
                           add one
                         </button>
                       </div>
                     ) : (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                        {children.map(sub => (
-                          <div
-                            key={sub._id}
-                            style={{
-                              display: "flex", alignItems: "center", gap: 8,
-                              padding: "8px 12px",
-                              background: "#fff",
-                              border: "1px solid #EAEAEA",
-                              borderLeft: `3px solid ${sub.color}`,
-                              borderRadius: 8,
-                              opacity: sub.isActive ? 1 : 0.55,
-                            }}
-                          >
-                            <span style={{ width: 8, height: 8, borderRadius: "50%", background: sub.color, display: "inline-block", flexShrink: 0 }} />
-                            <span style={{ fontWeight: 600, fontSize: 13, color: "#374151", minWidth: 140 }}>
-                              {sub.name}
-                              {!sub.isActive && <Tag style={{ marginLeft: 6, fontSize: 10 }}>Inactive</Tag>}
-                            </span>
-                            {sub.description && (
-                              <span style={{ fontSize: 12, color: "#9CA3AF", flex: 1 }}>{sub.description}</span>
-                            )}
-                            <div style={{ display: "flex", gap: 4, marginLeft: "auto" }}>
-                              <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(sub)} style={{ color: "#6B7280" }} />
-                              <Popconfirm
-                                title={`Delete "${sub.name}"?`}
-                                description="This cannot be undone."
-                                okText="Delete" okType="danger" cancelText="Cancel"
-                                onConfirm={() => handleDelete(sub)}
-                              >
-                                <Button size="small" icon={<DeleteOutlined />} danger />
-                              </Popconfirm>
-                            </div>
-                          </div>
-                        ))}
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        {subs.map(sub => {
+                          const subSubs   = getLevel3(sub._id);
+                          const subIsOpen = subExpanded.has(sub._id);
 
-                        {/* Add more subcategory inline button */}
-                        <button
-                          type="button"
-                          onClick={() => openAdd(cat._id)}
-                          style={{
-                            marginTop: 2,
-                            background: "none",
-                            border: "1px dashed #D1D5DB",
-                            color: "#9CA3AF",
-                            borderRadius: 8,
-                            padding: "6px 12px",
-                            cursor: "pointer",
-                            fontSize: 12,
-                            textAlign: "left",
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 6,
-                          }}
-                        >
-                          <PlusOutlined /> Add subcategory under {cat.name}
+                          return (
+                            <div key={sub._id} style={{
+                              background: "#fff", border: "1px solid #EAEAEA",
+                              borderLeft: `3px solid ${sub.color}`, borderRadius: 8,
+                              overflow: "hidden", opacity: sub.isActive ? 1 : 0.55,
+                            }}>
+                              {/* Sub-cat row */}
+                              <div
+                                style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", cursor: "pointer", userSelect: "none" }}
+                                onClick={() => toggleSubExpand(sub._id)}
+                              >
+                                <span style={{ fontSize: 9, color: "#9CA3AF", display: "inline-block", transition: "transform 0.2s", transform: subIsOpen ? "rotate(90deg)" : "rotate(0deg)" }}>▶</span>
+                                <span style={{ width: 8, height: 8, borderRadius: "50%", background: sub.color, display: "inline-block", flexShrink: 0 }} />
+                                <span style={{ fontWeight: 600, fontSize: 13, color: "#374151", flex: 1 }}>
+                                  {sub.name}
+                                  {!sub.isActive && <Tag style={{ marginLeft: 6, fontSize: 10 }}>Inactive</Tag>}
+                                </span>
+                                {sub.description && <span style={{ fontSize: 12, color: "#9CA3AF" }}>{sub.description}</span>}
+                                <span style={{ fontSize: 11, color: "#9CA3AF", marginRight: 4 }}>
+                                  {subSubs.length > 0 ? `${subSubs.length} sub-sub` : ""}
+                                </span>
+                                <div onClick={e => e.stopPropagation()} style={{ display: "flex", gap: 4 }}>
+                                  <Tooltip title="Add sub-sub-category">
+                                    <Button
+                                      size="small" icon={<PlusOutlined />}
+                                      onClick={() => { openAdd(sub._id); setSubExpanded(p => new Set([...p, sub._id])); }}
+                                      style={{ background: lighten(sub.color), borderColor: sub.color, color: sub.color }}
+                                    />
+                                  </Tooltip>
+                                  <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(sub)} style={{ color: "#6B7280" }} />
+                                  <Popconfirm
+                                    title={`Delete "${sub.name}"?`}
+                                    description={subSubs.length > 0 ? "Delete all sub-sub-categories first." : "This cannot be undone."}
+                                    okText="Delete" okType="danger" cancelText="Cancel"
+                                    onConfirm={() => handleDelete(sub)}
+                                    disabled={subSubs.length > 0}
+                                  >
+                                    <Button size="small" icon={<DeleteOutlined />} danger disabled={subSubs.length > 0} />
+                                  </Popconfirm>
+                                </div>
+                              </div>
+
+                              {/* Level-3 panel */}
+                              {subIsOpen && (
+                                <div style={{ borderTop: "1px solid #F3F4F6", padding: "8px 12px 10px 36px", background: "#F8F9FC" }}>
+                                  {subSubs.length === 0 ? (
+                                    <div style={{ color: "#9CA3AF", fontSize: 12, padding: "4px 0" }}>
+                                      No sub-sub-categories yet —{" "}
+                                      <button type="button" onClick={() => openAdd(sub._id)}
+                                        style={{ background: "none", border: "none", color: "#FF7A00", cursor: "pointer", fontWeight: 600, padding: 0, fontSize: 12 }}>
+                                        add one
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                                      {subSubs.map(ss => (
+                                        <div key={ss._id} style={{
+                                          display: "flex", alignItems: "center", gap: 8,
+                                          padding: "6px 10px", background: "#fff",
+                                          border: "1px solid #EAEAEA", borderLeft: `2px solid ${ss.color}`,
+                                          borderRadius: 6, opacity: ss.isActive ? 1 : 0.5,
+                                        }}>
+                                          <span style={{ width: 6, height: 6, borderRadius: "50%", background: ss.color, display: "inline-block", flexShrink: 0 }} />
+                                          <span style={{ fontWeight: 600, fontSize: 12, color: "#374151", flex: 1 }}>
+                                            {ss.name}
+                                            {!ss.isActive && <Tag style={{ marginLeft: 6, fontSize: 10 }}>Inactive</Tag>}
+                                          </span>
+                                          {ss.description && <span style={{ fontSize: 11, color: "#9CA3AF" }}>{ss.description}</span>}
+                                          <div style={{ display: "flex", gap: 4, marginLeft: "auto" }}>
+                                            <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(ss)} style={{ color: "#6B7280" }} />
+                                            <Popconfirm
+                                              title={`Delete "${ss.name}"?`}
+                                              description="This cannot be undone."
+                                              okText="Delete" okType="danger" cancelText="Cancel"
+                                              onConfirm={() => handleDelete(ss)}
+                                            >
+                                              <Button size="small" icon={<DeleteOutlined />} danger />
+                                            </Popconfirm>
+                                          </div>
+                                        </div>
+                                      ))}
+                                      <button type="button" onClick={() => openAdd(sub._id)}
+                                        style={{ marginTop: 2, background: "none", border: "1px dashed #D1D5DB", color: "#9CA3AF", borderRadius: 6, padding: "5px 10px", cursor: "pointer", fontSize: 11, textAlign: "left", display: "flex", alignItems: "center", gap: 5 }}>
+                                        <PlusOutlined /> Add sub-sub-category under {sub.name}
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+
+                        <button type="button" onClick={() => openAdd(cat._id)}
+                          style={{ marginTop: 2, background: "none", border: "1px dashed #D1D5DB", color: "#9CA3AF", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontSize: 12, textAlign: "left", display: "flex", alignItems: "center", gap: 6 }}>
+                          <PlusOutlined /> Add sub-category under {cat.name}
                         </button>
                       </div>
                     )}
@@ -332,13 +403,7 @@ export default function Categories() {
       {/* ── Add / Edit Modal ────────────────────────────────────── */}
       <Modal
         open={modalOpen}
-        title={
-          editing
-            ? `Edit ${editing.parentId ? "Subcategory" : "Category"}`
-            : defaultParentId
-            ? `New Subcategory under "${topLevel.find(c => c._id === defaultParentId)?.name ?? ""}"`
-            : "New Category"
-        }
+        title={getModalTitle()}
         onCancel={() => setModalOpen(false)}
         onOk={handleSave}
         okText={editing ? "Save Changes" : "Create"}
@@ -348,23 +413,22 @@ export default function Categories() {
         width={480}
       >
         <Form form={form} layout="vertical" style={{ marginTop: 12 }}>
-          {/* Parent selector — shown when creating, hidden when editing (parentId doesn't change) */}
           {!editing && (
             <Form.Item
               name="parentId"
-              label="Parent Category"
-              tooltip="Leave empty to create a top-level category. Select a parent to create a subcategory."
+              label="Parent"
+              tooltip="Leave empty for top-level. Select a Category to create a Sub-Category. Select a Sub-Category to create a Sub-Sub-Category."
             >
               <Select
                 placeholder="None — create as top-level category"
                 allowClear
                 showSearch
                 filterOption={(inp, opt) => String(opt?.label ?? "").toLowerCase().includes(inp.toLowerCase())}
-                options={topLevel.map(c => ({ label: c.name, value: c._id }))}
+                options={parentOptions.filter(o => !("disabled" in o && o.disabled && o.value?.toString().startsWith("__")) || true)}
                 getPopupContainer={trigger => trigger.parentElement || document.body}
                 onChange={val => {
                   if (val) {
-                    const parent = topLevel.find(c => c._id === val);
+                    const parent = cats.find(c => c._id === val);
                     if (parent) { setPickedColor(parent.color); form.setFieldValue("color", parent.color); }
                   }
                 }}
@@ -376,7 +440,7 @@ export default function Categories() {
             name="name" label="Name"
             rules={[{ required: true, message: "Name is required" }, { min: 2, message: "At least 2 characters" }]}
           >
-            <Input placeholder="e.g. Foundation, Basement, First Floor…" maxLength={60} showCount />
+            <Input placeholder="e.g. Foundation, Basement, Inner Plaster…" maxLength={60} showCount />
           </Form.Item>
 
           <Form.Item label="Colour" required>
@@ -407,10 +471,7 @@ export default function Categories() {
           </Form.Item>
 
           <Form.Item name="description" label="Description (optional)">
-            <Input.TextArea
-              placeholder="Brief description of this category…"
-              rows={2} maxLength={200} showCount
-            />
+            <Input.TextArea placeholder="Brief description…" rows={2} maxLength={200} showCount />
           </Form.Item>
 
           <Form.Item name="isActive" label="Status" initialValue={true}>

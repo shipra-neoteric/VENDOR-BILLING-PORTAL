@@ -18,7 +18,10 @@ exports.createCategory = asyncHandler(async (req, res) => {
   if (parentId) {
     const parent = await Category.findById(parentId);
     if (!parent) return notFound(res, 'Parent category not found');
-    if (parent.parentId) return badRequest(res, 'Subcategories cannot have further subcategories');
+    if (parent.parentId) {
+      const grandparent = await Category.findById(parent.parentId);
+      if (grandparent?.parentId) return badRequest(res, 'Maximum 3 levels of categories are supported');
+    }
   }
 
   const existing = await Category.findOne({
