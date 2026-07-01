@@ -109,6 +109,7 @@ interface ScopeSubItemDraft {
 interface ScopeItemDraft {
   id: string;
   description: string;
+  remarks: string;
   subCategoryId: string;
   subSubCategoryId: string;
   unit: string;
@@ -179,7 +180,7 @@ const newSubDraft = (): ScopeSubItemDraft => ({
 
 const newItemDraft = (): ScopeItemDraft => ({
   id: crypto.randomUUID(),
-  description: "", subCategoryId: "", subSubCategoryId: "",
+  description: "", remarks: "", subCategoryId: "", subSubCategoryId: "",
   unit: "sq.ft", customUnit: "",
   plannedQty: null, rate: null,
   plannedStart: "", plannedEnd: "",
@@ -189,6 +190,7 @@ const newItemDraft = (): ScopeItemDraft => ({
 const toDraft = (si: ScopeItem): ScopeItemDraft => ({
   id: si.id,
   description: si.description,
+  remarks: si.remarks ?? "",
   subCategoryId: "", subSubCategoryId: "",
   unit: isKnownUnit(si.unit) ? si.unit : "custom",
   customUnit: isKnownUnit(si.unit) ? "" : si.unit,
@@ -210,6 +212,7 @@ const toDraft = (si: ScopeItem): ScopeItemDraft => ({
 const draftToNewItem = (d: ScopeItemDraft): ScopeItem => ({
   id: d.id,
   description: d.description,
+  remarks: d.remarks,
   unit: resolveUnit(d.unit, d.customUnit),
   plannedQty: d.plannedQty || 0,
   rate: d.subItems.length > 0 ? 0 : (d.rate || 0),
@@ -235,6 +238,7 @@ const mergeWithExisting = (
 ): ScopeItem => ({
   id: d.id,
   description: d.description,
+  remarks: d.remarks,
   unit: resolveUnit(d.unit, d.customUnit),
   plannedQty: d.plannedQty || 0,
   rate: d.subItems.length > 0 ? 0 : (d.rate || 0),
@@ -444,137 +448,136 @@ function ScopeItemsBuilder({ items, onChange, allCategories = [], topCatId = nul
           </div>
 
           <div style={{ padding: "14px 14px 10px" }}>
-            <Row gutter={[10, 0]}>
-              <Col span={item.subItems.length > 0 ? 12 : 8}>
-                {subCatOptions.length > 0 ? (
+            {(() => {
+              const hasSubSub = subCatOptions.length > 0 && !!item.subCategoryId &&
+                getSubSubCatOptions(item.subCategoryId).length > 0;
+
+              const amtBox = (fontSize = 12) => (
+                <div style={{ background: "#fff8f3", border: "1px solid #f8c9a0", borderRadius: 6, padding: "5px 10px", fontFamily: "monospace", fontWeight: 700, color: "#d4620c", fontSize, minHeight: 32, display: "flex", alignItems: "center" }}>
+                  {calcDraftItemAmt(item) > 0 ? fmt(calcDraftItemAmt(item)) : "—"}
+                </div>
+              );
+
+              const unitQtyRateCols = (
+                <>
+                  <Col span={item.subItems.length > 0 ? 6 : 4}>
+                    <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Unit</div>
+                    <UnitCell unit={item.unit} customUnit={item.customUnit} onChange={patch => upd(item.id, patch)} />
+                  </Col>
+                  {item.subItems.length === 0 && (
+                    <>
+                      <Col span={4}>
+                        <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Planned Qty</div>
+                        <InputNumber placeholder="Qty" value={item.plannedQty} onChange={v => upd(item.id, { plannedQty: v })} style={{ width: "100%" }} min={0} />
+                      </Col>
+                      <Col span={4}>
+                        <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Rate (₹)</div>
+                        <InputNumber placeholder="Rate" value={item.rate} onChange={v => upd(item.id, { rate: v })} style={{ width: "100%" }} min={0} />
+                      </Col>
+                      <Col span={4}>
+                        <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Amount</div>
+                        {amtBox()}
+                      </Col>
+                    </>
+                  )}
+                  {item.subItems.length > 0 && (
+                    <Col span={6}>
+                      <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Total (from sub-items)</div>
+                      {amtBox(13)}
+                    </Col>
+                  )}
+                </>
+              );
+
+              if (hasSubSub) {
+                return (
                   <>
-                    <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Sub-Category *</div>
-                    <Select
-                      placeholder="Select sub-category"
-                      value={item.subCategoryId || undefined}
-                      options={subCatOptions.map(c => ({ label: c.name, value: c._id }))}
-                      onChange={v => {
-                        const cat = allCategories.find(c => c._id === v);
-                        upd(item.id, { subCategoryId: v, subSubCategoryId: "", description: cat?.name ?? "" });
-                      }}
-                      allowClear
-                      onClear={() => upd(item.id, { subCategoryId: "", subSubCategoryId: "", description: "" })}
-                      style={{ width: "100%" }}
-                      showSearch
-                      filterOption={(inp, opt) => String(opt?.label ?? "").toLowerCase().includes(inp.toLowerCase())}
-                      getPopupContainer={(trigger) => trigger.parentElement || document.body}
-                    />
-                    {item.subCategoryId && getSubSubCatOptions(item.subCategoryId).length > 0 && (
-                      <div style={{ marginTop: 6 }}>
-                        <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Sub-Sub-Category</div>
+                    {/* Row 1: Sub-Category full width */}
+                    <Row gutter={[10, 0]}>
+                      <Col span={24}>
+                        <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Sub-Category *</div>
                         <Select
-                          placeholder="Select (optional)"
-                          value={item.subSubCategoryId || undefined}
-                          options={getSubSubCatOptions(item.subCategoryId).map(c => ({ label: c.name, value: c._id }))}
-                          onChange={v => {
-                            const cat = allCategories.find(c => c._id === v);
-                            upd(item.id, { subSubCategoryId: v, description: cat?.name ?? item.description });
-                          }}
+                          placeholder="Select sub-category"
+                          value={item.subCategoryId || undefined}
+                          options={subCatOptions.map(c => ({ label: c.name, value: c._id }))}
+                          onChange={v => { const cat = allCategories.find(c => c._id === v); upd(item.id, { subCategoryId: v, subSubCategoryId: "", description: cat?.name ?? "" }); }}
                           allowClear
-                          onClear={() => {
-                            const subCat = allCategories.find(c => c._id === item.subCategoryId);
-                            upd(item.id, { subSubCategoryId: "", description: subCat?.name ?? "" });
-                          }}
+                          onClear={() => upd(item.id, { subCategoryId: "", subSubCategoryId: "", description: "" })}
                           style={{ width: "100%" }}
                           showSearch
                           filterOption={(inp, opt) => String(opt?.label ?? "").toLowerCase().includes(inp.toLowerCase())}
                           getPopupContainer={(trigger) => trigger.parentElement || document.body}
                         />
-                      </div>
+                      </Col>
+                    </Row>
+                    {/* Row 2: Sub-Sub-Category + Unit + Qty + Rate + Amount */}
+                    <Row gutter={[10, 0]} style={{ marginTop: 8 }}>
+                      <Col span={item.subItems.length > 0 ? 12 : 8}>
+                        <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Sub-Sub-Category</div>
+                        <Select
+                          placeholder="Select (optional)"
+                          value={item.subSubCategoryId || undefined}
+                          options={getSubSubCatOptions(item.subCategoryId).map(c => ({ label: c.name, value: c._id }))}
+                          onChange={v => { const cat = allCategories.find(c => c._id === v); upd(item.id, { subSubCategoryId: v, description: cat?.name ?? item.description }); }}
+                          allowClear
+                          onClear={() => { const subCat = allCategories.find(c => c._id === item.subCategoryId); upd(item.id, { subSubCategoryId: "", description: subCat?.name ?? "" }); }}
+                          style={{ width: "100%" }}
+                          showSearch
+                          filterOption={(inp, opt) => String(opt?.label ?? "").toLowerCase().includes(inp.toLowerCase())}
+                          getPopupContainer={(trigger) => trigger.parentElement || document.body}
+                        />
+                      </Col>
+                      {unitQtyRateCols}
+                    </Row>
+                  </>
+                );
+              }
+
+              // Standard layout: description/sub-cat + unit/qty/rate on same row
+              return (
+                <Row gutter={[10, 0]}>
+                  <Col span={item.subItems.length > 0 ? 12 : 8}>
+                    {subCatOptions.length > 0 ? (
+                      <>
+                        <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Sub-Category *</div>
+                        <Select
+                          placeholder="Select sub-category"
+                          value={item.subCategoryId || undefined}
+                          options={subCatOptions.map(c => ({ label: c.name, value: c._id }))}
+                          onChange={v => { const cat = allCategories.find(c => c._id === v); upd(item.id, { subCategoryId: v, subSubCategoryId: "", description: cat?.name ?? "" }); }}
+                          allowClear
+                          onClear={() => upd(item.id, { subCategoryId: "", subSubCategoryId: "", description: "" })}
+                          style={{ width: "100%" }}
+                          showSearch
+                          filterOption={(inp, opt) => String(opt?.label ?? "").toLowerCase().includes(inp.toLowerCase())}
+                          getPopupContainer={(trigger) => trigger.parentElement || document.body}
+                        />
+                      </>
+                    ) : (
+                      <>
+                        <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Description *</div>
+                        <Input
+                          placeholder="e.g. Raft Area, Plaster Works, HT Panel..."
+                          value={item.description}
+                          onChange={e => upd(item.id, { description: e.target.value })}
+                        />
+                      </>
                     )}
-                  </>
-                ) : (
-                  <>
-                    <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Description *</div>
-                    <Input
-                      placeholder="e.g. Raft Area, Plaster Works, HT Panel..."
-                      value={item.description}
-                      onChange={e => upd(item.id, { description: e.target.value })}
-                    />
-                  </>
-                )}
-              </Col>
-              <Col span={item.subItems.length > 0 ? 6 : 4}>
-                <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Unit</div>
-                <UnitCell
-                  unit={item.unit}
-                  customUnit={item.customUnit}
-                  onChange={patch => upd(item.id, patch)}
+                  </Col>
+                  {unitQtyRateCols}
+                </Row>
+              );
+            })()}
+
+            <Row gutter={[10, 0]} style={{ marginTop: 8 }}>
+              <Col span={24}>
+                <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Notes / Remarks (optional)</div>
+                <Input
+                  placeholder="e.g. RCC wall, 1st floor, upto 300MM…"
+                  value={item.remarks}
+                  onChange={e => upd(item.id, { remarks: e.target.value })}
                 />
               </Col>
-
-              {item.subItems.length === 0 && (
-                <>
-                  <Col span={4}>
-                    <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Planned Qty</div>
-                    <InputNumber
-                      placeholder="Qty"
-                      value={item.plannedQty}
-                      onChange={v => upd(item.id, { plannedQty: v })}
-                      style={{ width: "100%" }}
-                      min={0}
-                    />
-                  </Col>
-                  <Col span={4}>
-                    <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Rate (₹)</div>
-                    <InputNumber
-                      placeholder="Rate"
-                      value={item.rate}
-                      onChange={v => upd(item.id, { rate: v })}
-                      style={{ width: "100%" }}
-                      min={0}
-                    />
-                  </Col>
-                  <Col span={4}>
-                    <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Amount</div>
-                    <div
-                      style={{
-                        background: "#fff8f3",
-                        border: "1px solid #f8c9a0",
-                        borderRadius: 6,
-                        padding: "5px 10px",
-                        fontFamily: "monospace",
-                        fontWeight: 700,
-                        color: "#d4620c",
-                        fontSize: 12,
-                        minHeight: 32,
-                        display: "flex",
-                        alignItems: "center",
-                      }}
-                    >
-                      {calcDraftItemAmt(item) > 0 ? fmt(calcDraftItemAmt(item)) : "—"}
-                    </div>
-                  </Col>
-                </>
-              )}
-
-              {item.subItems.length > 0 && (
-                <Col span={6}>
-                  <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Total (from sub-items)</div>
-                  <div
-                    style={{
-                      background: "#fff8f3",
-                      border: "1px solid #f8c9a0",
-                      borderRadius: 6,
-                      padding: "5px 10px",
-                      fontFamily: "monospace",
-                      fontWeight: 700,
-                      color: "#d4620c",
-                      fontSize: 13,
-                      minHeight: 32,
-                      display: "flex",
-                      alignItems: "center",
-                    }}
-                  >
-                    {calcDraftItemAmt(item) > 0 ? fmt(calcDraftItemAmt(item)) : "—"}
-                  </div>
-                </Col>
-              )}
             </Row>
 
             <Row gutter={[10, 0]} style={{ marginTop: 10 }}>

@@ -23,6 +23,7 @@ const subItemSchema = new mongoose.Schema(
 const scopeItemSchema = new mongoose.Schema(
   {
     description:     { type: String, required: true },
+    remarks:         { type: String, default: '' },
     unit:            { type: String, default: 'sq.ft' },
     plannedQty:      { type: Number, default: 0 },
     rate:            { type: Number, default: 0 },

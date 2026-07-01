@@ -12,9 +12,7 @@ export default function Header() {
     navigate("/login", { replace: true });
   };
 
-  const initials = user?.name
-    ? user.name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()
-    : "U";
+  const initial = user?.name?.[0]?.toUpperCase() ?? "U";
 
   return (
     <div
@@ -83,16 +81,17 @@ export default function Header() {
               width: 36,
               height: 36,
               borderRadius: "50%",
-              background: "#7C3AED",
+              background: "linear-gradient(135deg, #FF7A00 0%, #FF9A3C 100%)",
+              boxShadow: "0 2px 6px rgba(255,122,0,0.35)",
               color: "#fff",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
               fontWeight: 700,
-              fontSize: 14,
+              fontSize: 15,
             }}
           >
-            {initials}
+            {initial}
           </div>
         </div>
       </Dropdown>

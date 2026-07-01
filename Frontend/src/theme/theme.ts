@@ -26,7 +26,7 @@ const theme: ThemeConfig = {
       borderColor:      "#E5E7EB",
       headerSplitColor: "transparent",
     },
-    Button:      { borderRadius: 8, primaryShadow: "none" },
+    Button:      { borderRadius: 8, primaryShadow: "none", contentFontSize: 13, contentFontSizeLG: 14, contentFontSizeSM: 12 },
     Card:        { borderRadius: 12, paddingLG: 20 },
     Input:       { borderRadius: 8 },
     Select:      { borderRadius: 8 },

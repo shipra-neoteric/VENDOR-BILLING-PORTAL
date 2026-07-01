@@ -44,7 +44,6 @@ export default function Sidebar() {
   const { user } = useAuth();
   const isDRI  = user?.role === "dri";
   const groups = isDRI ? DRI_GROUPS : ADMIN_GROUPS;
-  const initial = user?.name?.[0]?.toUpperCase() ?? "U";
 
   return (
     <div
@@ -149,55 +148,6 @@ export default function Sidebar() {
         ))}
       </div>
 
-      {/* ── User footer ── */}
-      <div
-        style={{
-          padding: "12px 16px",
-          borderTop: "1px solid #F3F4F6",
-          display: "flex",
-          alignItems: "center",
-          gap: 10,
-          background: "#FAFAFA",
-        }}
-      >
-        <div
-          style={{
-            width: 34, height: 34,
-            borderRadius: "50%",
-            background: isDRI
-              ? "linear-gradient(135deg,#7C3AED,#9F67F5)"
-              : "linear-gradient(135deg,#FF7A00,#FF9A3C)",
-            color: "#fff",
-            fontWeight: 700,
-            fontSize: 14,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            flexShrink: 0,
-            boxShadow: "0 1px 4px rgba(0,0,0,0.15)",
-          }}
-        >
-          {initial}
-        </div>
-        <div style={{ minWidth: 0 }}>
-          <div
-            style={{
-              fontSize: 13,
-              fontWeight: 600,
-              color: "#111827",
-              lineHeight: 1.3,
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-            }}
-          >
-            {user?.name}
-          </div>
-          <div style={{ fontSize: 11, color: "#9CA3AF", lineHeight: 1.2, textTransform: "capitalize" }}>
-            {isDRI ? "Site Engineer" : user?.role}
-          </div>
-        </div>
-      </div>
     </div>
   );
 }

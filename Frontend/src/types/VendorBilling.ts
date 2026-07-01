@@ -89,6 +89,7 @@ export type ScopeItemStatus = "pending" | "running" | "completed";
 export interface ScopeItem {
   id: string;
   description: string;
+  remarks?: string;
   unit: string;
   plannedQty: number;
   rate: number;
