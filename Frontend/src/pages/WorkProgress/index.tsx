@@ -4,10 +4,6 @@ import {
   Progress, Tag, Tabs, Card, Tooltip, message, Spin, Empty, DatePicker, Badge,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import {
-  PlusOutlined, CheckCircleFilled, ClockCircleOutlined, TrophyFilled,
-  CloseCircleFilled, FieldTimeOutlined,
-} from "@ant-design/icons";
 import dayjs from "dayjs";
 import isoWeek from "dayjs/plugin/isoWeek";
 import apiClient from "../../services/apiClient";

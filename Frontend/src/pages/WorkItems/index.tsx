@@ -702,13 +702,9 @@ function ScopeItemsBuilder({ items, onChange }: ScopeItemsBuilderProps) {
   );
 }
 
-// ── ScopeItemsViewer ──────────────────────────────────────────
-
-interface ScopeItemsViewerProps {
-  scopeItems: ScopeItem[];
-}
-
-function ScopeItemsViewer({ scopeItems }: ScopeItemsViewerProps) {
+// ── ScopeItemsViewer (removed — progress entered via Work Progress module) ──
+// @ts-ignore -- dead code, kept for reference
+function _ScopeItemsViewer_UNUSED({ scopeItems }: { scopeItems: ScopeItem[] }) {
   const totalPlanned  = scopeItems.reduce((s, it) => s + it.amount, 0);
   const totalBillable = scopeItems.reduce((s, it) => {
     if (it.subItems.length > 0) return s;

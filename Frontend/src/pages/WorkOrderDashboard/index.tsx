@@ -1,12 +1,9 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
-  Button, Spin, Empty, Progress, Tag, Tooltip, message, Popconfirm, Modal, Input,
+  Button, Spin, Empty, message, Modal, Input,
 } from "antd";
-import {
-  ArrowLeftOutlined, TrophyFilled, CheckCircleFilled, ClockCircleOutlined,
-  CloseCircleFilled, DollarOutlined,
-} from "@ant-design/icons";
+import { ArrowLeftOutlined, TrophyFilled } from "@ant-design/icons";
 import dayjs from "dayjs";
 import apiClient from "../../services/apiClient";
 import { useAuth } from "../../context/AuthContext";
@@ -119,8 +116,6 @@ export default function WorkOrderDashboard() {
     const pending = Math.max(0, si.completedQty - (si.lastBilledQty || 0));
     return sum + pending * (si.rate || 0);
   }, 0);
-  const remainingValue = totalContract - billedAmount - unbilledValue;
-
   // Flatten recent entries
   const allEntries = wo.scopeItems.flatMap(si =>
     si.progressEntries.map(pe => ({
