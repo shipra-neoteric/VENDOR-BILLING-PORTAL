@@ -10,7 +10,7 @@ const ADMIN_GROUPS = [
     label: "Project Setup",
     items: [
       { name: "Companies",   path: "/companies",   icon: "🏢" },
-      { name: "Projects",    path: "/projects",    icon: "🏗" },
+      { name: "Projects",    path: "/projects",    icon: "🏗️" },
       { name: "Contractors", path: "/contractors", icon: "👷" },
       { name: "Categories",  path: "/categories",  icon: "🏷️" },
     ],
@@ -18,17 +18,17 @@ const ADMIN_GROUPS = [
   {
     label: "Execution",
     items: [
-      { name: "Work Orders",    path: "/work-items",    icon: "📋" },
-      { name: "Work Progress",  path: "/work-progress", icon: "📊" },
+      { name: "Work Orders",   path: "/work-items",    icon: "📋" },
+      { name: "Work Progress", path: "/work-progress", icon: "📊" },
     ],
   },
   {
     label: "Billing",
     items: [
-      { name: "Bill Requests",     path: "/bill-requests", icon: "📨" },
-      { name: "Billing & Payments",path: "/bills",          icon: "💳" },
-      { name: "Approvals",         path: "/approvals",      icon: "✅" },
-      { name: "Ledger",            path: "/ledger",         icon: "📒" },
+      { name: "Bill Requests",      path: "/bill-requests", icon: "📨" },
+      { name: "Billing & Payments", path: "/bills",         icon: "💳" },
+      { name: "Approvals",          path: "/approvals",     icon: "✅" },
+      { name: "Ledger",             path: "/ledger",        icon: "📒" },
     ],
   },
 ];
@@ -42,13 +42,14 @@ const DRI_GROUPS = [
 
 export default function Sidebar() {
   const { user } = useAuth();
-  const isDRI    = user?.role === "dri";
-  const groups   = isDRI ? DRI_GROUPS : ADMIN_GROUPS;
+  const isDRI  = user?.role === "dri";
+  const groups = isDRI ? DRI_GROUPS : ADMIN_GROUPS;
+  const initial = user?.name?.[0]?.toUpperCase() ?? "U";
 
   return (
     <div
       style={{
-        width: 240,
+        width: 260,
         background: "#fff",
         borderRight: "1px solid #E5E7EB",
         height: "100vh",
@@ -58,52 +59,144 @@ export default function Sidebar() {
         flexDirection: "column",
         overflowY: "auto",
         flexShrink: 0,
+        boxShadow: "2px 0 8px rgba(0,0,0,0.04)",
       }}
     >
-      <div style={{ padding: "18px 20px 14px", borderBottom: "1px solid #F3F4F6" }}>
-        <div style={{ fontWeight: 800, fontSize: 15, color: "#111827" }}>Nexora ERP</div>
-        <div style={{ fontSize: 11, color: "#9CA3AF", marginTop: 2 }}>
-          {isDRI ? "Site Progress Portal" : "Vendor Billing Module"}
+      {/* ── Logo / Brand ── */}
+      <div style={{ padding: "20px 18px 16px", borderBottom: "1px solid #F3F4F6" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div
+            style={{
+              width: 40, height: 40,
+              background: "linear-gradient(135deg, #FF7A00 0%, #FF9A3C 100%)",
+              borderRadius: 11,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontWeight: 900, fontSize: 20, color: "#fff",
+              boxShadow: "0 2px 8px rgba(255,122,0,0.35)",
+              flexShrink: 0,
+              letterSpacing: "-1px",
+            }}
+          >
+            N
+          </div>
+          <div>
+            <div style={{ fontWeight: 800, fontSize: 16, color: "#111827", lineHeight: 1.2 }}>
+              Nexora ERP
+            </div>
+            <div style={{ fontSize: 12, color: "#9CA3AF", marginTop: 2, lineHeight: 1.2 }}>
+              {isDRI ? "Site Progress Portal" : "Vendor Billing Module"}
+            </div>
+          </div>
         </div>
       </div>
 
-      <div style={{ flex: 1, padding: "8px 0" }}>
-        {groups.map((group) => (
-          <div key={group.label}>
+      {/* ── Nav Groups ── */}
+      <div style={{ flex: 1, padding: "6px 0 10px" }}>
+        {groups.map((group, gi) => (
+          <div key={group.label} style={{ marginTop: gi === 0 ? 4 : 0 }}>
+            {/* Group label */}
             <div
               style={{
-                fontSize: 10, fontWeight: 700, color: "#9CA3AF",
-                textTransform: "uppercase", letterSpacing: "0.08em",
-                padding: "14px 20px 6px",
+                fontSize: 11,
+                fontWeight: 700,
+                color: "#B0B7C3",
+                textTransform: "uppercase",
+                letterSpacing: "0.09em",
+                padding: gi === 0 ? "10px 20px 5px" : "18px 20px 5px",
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
               }}
             >
+              <span
+                style={{
+                  flex: 1,
+                  height: 1,
+                  background: "#F0F0F5",
+                  display: "block",
+                  maxWidth: 16,
+                }}
+              />
               {group.label}
             </div>
+
+            {/* Nav items */}
             {group.items.map((item) => (
               <NavLink
                 key={item.path}
                 to={item.path}
-                style={({ isActive }) => ({
-                  display: "flex", alignItems: "center", gap: 10,
-                  padding: "9px 20px", margin: "1px 8px", borderRadius: 8,
-                  textDecoration: "none", fontSize: 13,
-                  fontWeight: isActive ? 600 : 500,
-                  color: isActive ? "#FF7A00" : "#374151",
-                  background: isActive ? "#FFF4E8" : "transparent",
-                  borderLeft: isActive ? "3px solid #FF7A00" : "3px solid transparent",
-                  transition: "all 0.15s",
-                })}
+                style={{ textDecoration: "none", display: "block" }}
               >
-                <span style={{ fontSize: 14, lineHeight: 1 }}>{item.icon}</span>
-                {item.name}
+                {({ isActive }) => (
+                  <div className={`nx-nav-item${isActive ? " nx-nav-item--active" : ""}`}>
+                    <span className="nx-nav-icon">{item.icon}</span>
+                    <span style={{ flex: 1 }}>{item.name}</span>
+                    {isActive && (
+                      <span
+                        style={{
+                          width: 6, height: 6,
+                          borderRadius: "50%",
+                          background: "#FF7A00",
+                          flexShrink: 0,
+                        }}
+                      />
+                    )}
+                  </div>
+                )}
               </NavLink>
             ))}
           </div>
         ))}
       </div>
 
-      <div style={{ padding: "14px 20px", borderTop: "1px solid #F3F4F6", fontSize: 11, color: "#9CA3AF" }}>
-        {user?.name} · {isDRI ? "Site Engineer" : user?.role}
+      {/* ── User footer ── */}
+      <div
+        style={{
+          padding: "12px 16px",
+          borderTop: "1px solid #F3F4F6",
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          background: "#FAFAFA",
+        }}
+      >
+        <div
+          style={{
+            width: 34, height: 34,
+            borderRadius: "50%",
+            background: isDRI
+              ? "linear-gradient(135deg,#7C3AED,#9F67F5)"
+              : "linear-gradient(135deg,#FF7A00,#FF9A3C)",
+            color: "#fff",
+            fontWeight: 700,
+            fontSize: 14,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
+            boxShadow: "0 1px 4px rgba(0,0,0,0.15)",
+          }}
+        >
+          {initial}
+        </div>
+        <div style={{ minWidth: 0 }}>
+          <div
+            style={{
+              fontSize: 13,
+              fontWeight: 600,
+              color: "#111827",
+              lineHeight: 1.3,
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
+            {user?.name}
+          </div>
+          <div style={{ fontSize: 11, color: "#9CA3AF", lineHeight: 1.2, textTransform: "capitalize" }}>
+            {isDRI ? "Site Engineer" : user?.role}
+          </div>
+        </div>
       </div>
     </div>
   );

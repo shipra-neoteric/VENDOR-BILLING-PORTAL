@@ -5,6 +5,7 @@ const theme: ThemeConfig = {
     colorPrimary:         "#FF7A00",
     colorLink:            "#FF7A00",
     fontFamily:           '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+    fontSize:             15,
     borderRadius:         8,
     borderRadiusLG:       10,
     borderRadiusSM:       6,
