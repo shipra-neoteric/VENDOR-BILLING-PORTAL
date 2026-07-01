@@ -7,7 +7,7 @@ interface Props { children?: ReactNode; }
 
 export default function MainLayout({ children }: Props) {
   return (
-    <div style={{ display: "flex", minHeight: "100vh", background: "#F8FAFC" }}>
+    <div style={{ display: "flex", minHeight: "100vh", background: "var(--nx-bg)" }}>
       <Sidebar />
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
         <Header />

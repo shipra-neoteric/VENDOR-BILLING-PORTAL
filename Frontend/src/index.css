@@ -1,14 +1,95 @@
 @import "tailwindcss";
 
 :root {
-  --nx-orange: #FF7A00;
-  --nx-orange-50: #FFF4E8;
-  --nx-orange-hover: #E56E00;
-  --nx-bg: #F8FAFC;
-  --nx-text: #111827;
+  /* Brand */
+  --nx-orange:        #FF7A00;
+  --nx-orange-50:     #FFF4E8;
+  --nx-orange-hover:  #E56E00;
+
+  /* Layout */
+  --nx-bg:     #F8FAFC;
+  --nx-text:   #111827;
   --nx-text-2: #6B7280;
   --nx-border: #E5E7EB;
-  --nx-white: #ffffff;
+  --nx-white:  #ffffff;
+
+  /* Header */
+  --nx-header-bg: #ffffff;
+
+  /* Sidebar */
+  --nx-sidebar-bg:           #ffffff;
+  --nx-sidebar-border:       #E5E7EB;
+  --nx-sidebar-logo-border:  #F3F4F6;
+  --nx-sidebar-brand-color:  #111827;
+  --nx-sidebar-sub-color:    #9CA3AF;
+  --nx-sidebar-group-color:  #B0B7C3;
+  --nx-sidebar-group-line:   #F0F0F5;
+
+  /* Nav items */
+  --nx-nav-item-color:       #374151;
+  --nx-nav-item-hover-bg:    #F3F4F6;
+  --nx-nav-item-hover-color: #111827;
+  --nx-nav-icon-bg:          #F3F4F6;
+  --nx-nav-icon-hover-bg:    #E9EAEC;
+
+  /* Table */
+  --nx-table-header-color:   #374151;
+  --nx-table-row-hover-bg:   #FFFAF5;
+
+  /* Drawer */
+  --nx-drawer-title-color:   #111827;
+  --nx-drawer-footer-bg:     #FAFAFA;
+  --nx-drawer-body-bg:       #ffffff;
+
+  /* Form / Card */
+  --nx-form-label-color:     #374151;
+  --nx-section-label-color:  #9CA3AF;
+  --nx-card-border:          #E5E7EB;
+}
+
+[data-theme="dark"] {
+  /* Layout */
+  --nx-bg:     #0F172A;
+  --nx-text:   #F1F5F9;
+  --nx-text-2: #94A3B8;
+  --nx-border: #334155;
+  --nx-white:  #1E293B;
+
+  /* Brand (orange stays orange; tint adapts) */
+  --nx-orange-50: rgba(255, 122, 0, 0.12);
+
+  /* Header */
+  --nx-header-bg: #1E293B;
+
+  /* Sidebar */
+  --nx-sidebar-bg:          #1E293B;
+  --nx-sidebar-border:      #334155;
+  --nx-sidebar-logo-border: #334155;
+  --nx-sidebar-brand-color: #F1F5F9;
+  --nx-sidebar-sub-color:   #64748B;
+  --nx-sidebar-group-color: #64748B;
+  --nx-sidebar-group-line:  #334155;
+
+  /* Nav items */
+  --nx-nav-item-color:       #CBD5E1;
+  --nx-nav-item-hover-bg:    #273549;
+  --nx-nav-item-hover-color: #F1F5F9;
+  --nx-nav-icon-bg:          #273549;
+  --nx-nav-icon-hover-bg:    #304460;
+
+  /* Table */
+  --nx-table-header-color:   #94A3B8;
+  --nx-table-row-hover-bg:   #1a2535;
+
+  /* Drawer */
+  --nx-drawer-title-color:   #F1F5F9;
+  --nx-drawer-footer-bg:     #162032;
+  --nx-drawer-body-bg:       #1E293B;
+
+  /* Form / Card */
+  --nx-form-label-color:     #CBD5E1;
+  --nx-section-label-color:  #64748B;
+  --nx-card-border:          #334155;
 }
 
 * { box-sizing: border-box; }
@@ -34,35 +115,35 @@ body {
   font-size: 12px !important;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: #374151 !important;
+  color: var(--nx-table-header-color) !important;
 }
 .ant-table-row:hover > td {
-  background: #FFFAF5 !important;
+  background: var(--nx-table-row-hover-bg) !important;
 }
 
 /* Drawer */
 .ant-drawer-header {
-  border-bottom: 1px solid #E5E7EB !important;
+  border-bottom: 1px solid var(--nx-border) !important;
   padding: 20px 24px !important;
 }
 .ant-drawer-title {
   font-size: 17px !important;
   font-weight: 700 !important;
-  color: #111827 !important;
+  color: var(--nx-drawer-title-color) !important;
 }
 .ant-drawer-footer {
-  border-top: 1px solid #E5E7EB !important;
-  background: #FAFAFA !important;
+  border-top: 1px solid var(--nx-border) !important;
+  background: var(--nx-drawer-footer-bg) !important;
   padding: 16px 24px !important;
 }
 .ant-drawer-body {
   padding: 24px !important;
-  background: #fff !important;
+  background: var(--nx-drawer-body-bg) !important;
 }
 
 /* Cards */
 .ant-card {
-  border: 1px solid #E5E7EB !important;
+  border: 1px solid var(--nx-card-border) !important;
   box-shadow: 0 1px 3px rgba(0,0,0,0.06) !important;
 }
 
@@ -70,7 +151,7 @@ body {
 .ant-form-item-label > label {
   font-weight: 600 !important;
   font-size: 14px !important;
-  color: #374151 !important;
+  color: var(--nx-form-label-color) !important;
 }
 
 /* Tabs card type */
@@ -88,7 +169,7 @@ body {
 .nx-section-label {
   font-size: 11px;
   font-weight: 700;
-  color: #9CA3AF;
+  color: var(--nx-section-label-color);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   padding: 16px 20px 6px;
@@ -105,37 +186,37 @@ body {
   border-radius: 10px;
   font-size: 14px;
   font-weight: 500;
-  color: #374151;
+  color: var(--nx-nav-item-color);
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease;
 }
 
 .nx-nav-item:hover {
-  background: #F3F4F6;
-  color: #111827;
+  background: var(--nx-nav-item-hover-bg);
+  color: var(--nx-nav-item-hover-color);
 }
 
 .nx-nav-item:hover .nx-nav-icon {
-  background: #E9EAEC;
+  background: var(--nx-nav-icon-hover-bg);
 }
 
 .nx-nav-item--active {
-  background: #FFF4E8;
-  color: #FF7A00;
+  background: var(--nx-orange-50);
+  color: var(--nx-orange);
   font-weight: 650;
   box-shadow: 0 1px 5px rgba(255, 122, 0, 0.14);
 }
 
 .nx-nav-item--active:hover {
-  background: #FFE8CC;
-  color: #E56E00;
+  background: var(--nx-orange-50);
+  color: var(--nx-orange-hover);
 }
 
 .nx-nav-icon {
   width: 32px;
   height: 32px;
   border-radius: 8px;
-  background: #F3F4F6;
+  background: var(--nx-nav-icon-bg);
   display: inline-flex;
   align-items: center;
   justify-content: center;

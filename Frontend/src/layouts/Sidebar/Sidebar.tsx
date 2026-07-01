@@ -49,8 +49,8 @@ export default function Sidebar() {
     <div
       style={{
         width: 260,
-        background: "#fff",
-        borderRight: "1px solid #E5E7EB",
+        background: "var(--nx-sidebar-bg)",
+        borderRight: "1px solid var(--nx-sidebar-border)",
         height: "100vh",
         position: "sticky",
         top: 0,
@@ -62,7 +62,7 @@ export default function Sidebar() {
       }}
     >
       {/* ── Logo / Brand ── */}
-      <div style={{ padding: "20px 18px 16px", borderBottom: "1px solid #F3F4F6" }}>
+      <div style={{ padding: "20px 18px 16px", borderBottom: "1px solid var(--nx-sidebar-logo-border)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <div
             style={{
@@ -79,10 +79,10 @@ export default function Sidebar() {
             N
           </div>
           <div>
-            <div style={{ fontWeight: 800, fontSize: 16, color: "#111827", lineHeight: 1.2 }}>
+            <div style={{ fontWeight: 800, fontSize: 16, color: "var(--nx-sidebar-brand-color)", lineHeight: 1.2 }}>
               Nexora ERP
             </div>
-            <div style={{ fontSize: 12, color: "#9CA3AF", marginTop: 2, lineHeight: 1.2 }}>
+            <div style={{ fontSize: 12, color: "var(--nx-sidebar-sub-color)", marginTop: 2, lineHeight: 1.2 }}>
               {isDRI ? "Site Progress Portal" : "Vendor Billing Module"}
             </div>
           </div>
@@ -98,7 +98,7 @@ export default function Sidebar() {
               style={{
                 fontSize: 11,
                 fontWeight: 700,
-                color: "#B0B7C3",
+                color: "var(--nx-sidebar-group-color)",
                 textTransform: "uppercase",
                 letterSpacing: "0.09em",
                 padding: gi === 0 ? "10px 20px 5px" : "18px 20px 5px",
@@ -111,7 +111,7 @@ export default function Sidebar() {
                 style={{
                   flex: 1,
                   height: 1,
-                  background: "#F0F0F5",
+                  background: "var(--nx-sidebar-group-line)",
                   display: "block",
                   maxWidth: 16,
                 }}

@@ -1,10 +1,12 @@
 import { useNavigate } from "react-router-dom";
-import { Dropdown } from "antd";
+import { Dropdown, Tooltip } from "antd";
 import { LogoutOutlined } from "@ant-design/icons";
 import { useAuth } from "../../context/AuthContext";
+import { useTheme } from "../../context/ThemeContext";
 
 export default function Header() {
   const { user, logout } = useAuth();
+  const { isDark, toggleTheme } = useTheme();
   const navigate = useNavigate();
 
   const handleLogout = () => {
@@ -18,8 +20,8 @@ export default function Header() {
     <div
       style={{
         height: 64,
-        background: "#fff",
-        borderBottom: "1px solid #E5E7EB",
+        background: "var(--nx-header-bg)",
+        borderBottom: "1px solid var(--nx-border)",
         padding: "0 24px",
         display: "flex",
         alignItems: "center",
@@ -49,52 +51,77 @@ export default function Header() {
           N
         </div>
         <div>
-          <div style={{ fontWeight: 700, fontSize: 14, color: "#111827", lineHeight: 1.2 }}>
+          <div style={{ fontWeight: 700, fontSize: 14, color: "var(--nx-text)", lineHeight: 1.2 }}>
             Neoteric Properties
           </div>
-          <div style={{ fontSize: 11, color: "#6B7280", lineHeight: 1.2 }}>
+          <div style={{ fontSize: 11, color: "var(--nx-text-2)", lineHeight: 1.2 }}>
             Vendor Billing Portal
           </div>
         </div>
       </div>
 
-      {/* Right: User */}
-      <Dropdown
-        menu={{
-          items: [{ key: "logout", icon: <LogoutOutlined />, label: "Sign out", danger: true }],
-          onClick: ({ key }) => key === "logout" && handleLogout(),
-        }}
-        trigger={["click"]}
-        placement="bottomRight"
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }}>
-          <div style={{ textAlign: "right" }}>
-            <div style={{ fontWeight: 600, fontSize: 13, color: "#111827", lineHeight: 1.2 }}>
-              {user?.name || "User"}
-            </div>
-            <div style={{ fontSize: 11, color: "#6B7280", lineHeight: 1.2, textTransform: "capitalize" }}>
-              {user?.role || ""}
-            </div>
-          </div>
-          <div
+      {/* Right: Theme toggle + User */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        {/* Dark / light toggle */}
+        <Tooltip title={isDark ? "Switch to light mode" : "Switch to dark mode"}>
+          <button
+            onClick={toggleTheme}
             style={{
-              width: 36,
-              height: 36,
-              borderRadius: "50%",
-              background: "linear-gradient(135deg, #FF7A00 0%, #FF9A3C 100%)",
-              boxShadow: "0 2px 6px rgba(255,122,0,0.35)",
-              color: "#fff",
+              width: 34,
+              height: 34,
+              borderRadius: 8,
+              border: "1px solid var(--nx-border)",
+              background: "transparent",
+              cursor: "pointer",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              fontWeight: 700,
-              fontSize: 15,
+              fontSize: 16,
+              transition: "background 0.15s ease, border-color 0.15s ease",
             }}
           >
-            {initial}
+            {isDark ? "☀️" : "🌙"}
+          </button>
+        </Tooltip>
+
+        {/* User dropdown */}
+        <Dropdown
+          menu={{
+            items: [{ key: "logout", icon: <LogoutOutlined />, label: "Sign out", danger: true }],
+            onClick: ({ key }) => key === "logout" && handleLogout(),
+          }}
+          trigger={["click"]}
+          placement="bottomRight"
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }}>
+            <div style={{ textAlign: "right" }}>
+              <div style={{ fontWeight: 600, fontSize: 13, color: "var(--nx-text)", lineHeight: 1.2 }}>
+                {user?.name || "User"}
+              </div>
+              <div style={{ fontSize: 11, color: "var(--nx-text-2)", lineHeight: 1.2, textTransform: "capitalize" }}>
+                {user?.role || ""}
+              </div>
+            </div>
+            <div
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: "50%",
+                background: "linear-gradient(135deg, #FF7A00 0%, #FF9A3C 100%)",
+                boxShadow: "0 2px 6px rgba(255,122,0,0.35)",
+                color: "#fff",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontWeight: 700,
+                fontSize: 15,
+              }}
+            >
+              {initial}
+            </div>
           </div>
-        </div>
-      </Dropdown>
+        </Dropdown>
+      </div>
     </div>
   );
 }
