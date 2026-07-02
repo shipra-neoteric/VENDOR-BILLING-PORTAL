@@ -4,6 +4,7 @@ const WorkOrder    = require('../models/WorkOrder');
 const asyncHandler = require('../utils/asyncHandler');
 const { success, created, notFound, badRequest } = require('../utils/responseFormatter');
 const { nextBillNo } = require('../utils/codeGen');
+const emitEvent    = require('../utils/emitEvent');
 
 exports.listBills = asyncHandler(async (req, res) => {
   const { workOrderId, vendorCode, projectId, status, search } = req.query;
@@ -123,6 +124,18 @@ exports.verifyBill = asyncHandler(async (req, res) => {
   if (req.body.remarks) bill.remarks = req.body.remarks;
   await bill.save();
   await bill.populate('verifiedBy', 'name role');
+
+  emitEvent('RUNNING_BILL_VERIFIED', {
+    projectId:    bill.projectId,
+    workOrderId:  bill.workOrderId,
+    workOrderNo:  bill.workOrderNo,
+    runningBillId: bill._id,
+    vendorCode:   bill.vendorCode,
+    vendorName:   bill.vendorName,
+    user:         req.user,
+    metadata:     { billNo: bill.billNo, amount: bill.amount },
+  });
+
   success(res, { bill }, 'Bill verified — forwarded for approval');
 });
 
@@ -138,6 +151,18 @@ exports.approveBill = asyncHandler(async (req, res) => {
   if (req.body.remarks) bill.remarks = req.body.remarks;
   await bill.save();
   await bill.populate('approvedBy', 'name role');
+
+  emitEvent('RUNNING_BILL_APPROVED', {
+    projectId:     bill.projectId,
+    workOrderId:   bill.workOrderId,
+    workOrderNo:   bill.workOrderNo,
+    runningBillId: bill._id,
+    vendorCode:    bill.vendorCode,
+    vendorName:    bill.vendorName,
+    user:          req.user,
+    metadata:      { billNo: bill.billNo, amount: bill.amount },
+  });
+
   success(res, { bill }, 'Bill approved and certified');
 });
 
@@ -169,5 +194,17 @@ exports.payBill = asyncHandler(async (req, res) => {
   if (req.body.paymentMode)       bill.paymentMode       = req.body.paymentMode;
   if (req.body.paymentReleasedBy) bill.paymentReleasedBy = req.body.paymentReleasedBy;
   await bill.save();
+
+  emitEvent('PAYMENT_RELEASED', {
+    projectId:     bill.projectId,
+    workOrderId:   bill.workOrderId,
+    workOrderNo:   bill.workOrderNo,
+    runningBillId: bill._id,
+    vendorCode:    bill.vendorCode,
+    vendorName:    bill.vendorName,
+    user:          req.user,
+    metadata:      { billNo: bill.billNo, amount: bill.amount, paymentMode: req.body.paymentMode, utr: req.body.paymentUTR },
+  });
+
   success(res, { bill }, 'Payment recorded');
 });

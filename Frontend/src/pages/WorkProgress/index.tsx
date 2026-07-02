@@ -41,7 +41,7 @@ interface BRSummary {
   stageNo?: number; status: string;
   periodFrom?: string; periodTo?: string;
   items: { description: string; unit: string; billedQty: number }[];
-  createdAt: string; projectName?: string;
+  createdAt: string; projectName?: string; vendorName?: string;
   billId?: { billNo: string } | null;
   milestoneAchieved?: boolean;
   batchId?: string | null;
@@ -354,16 +354,17 @@ function DRIDashboard() {
   const [allWOs,         setAllWOs]         = useState<WOSummary[]>([]);
   const [initialLoading, setInitialLoading] = useState(true);
 
-  // View: "select" = vendor picker, "dashboard" = vendor detail
-  const [view,          setView]          = useState<"select" | "dashboard">("select");
-  const [selVendorCode, setSelVendorCode] = useState<string | undefined>();
+  // View: "select-project" = project picker, "project-detail" = project dashboard
+  const [view,           setView]           = useState<"select-project" | "project-detail">("select-project");
+  const [selProjectId,   setSelProjectId]   = useState<string | undefined>();
+  const [selProjectName, setSelProjectName] = useState<string | undefined>();
 
-  // WO details map (woId → WODetail) for the selected vendor's WOs
+  // WO details map (woId → WODetail) for the selected project's WOs
   const [woDetails,        setWoDetails]        = useState<Map<string, WODetail>>(new Map());
   const [woDetailsLoading, setWoDetailsLoading] = useState(false);
 
-  // Bill requests for selected vendor
-  const [vendorBillReqs,       setVendorBillReqs]       = useState<BRSummary[]>([]);
+  // Bill requests for selected project
+  const [projectBillReqs, setProjectBillReqs] = useState<BRSummary[]>([]);
 
   // Progress modal
   const [progWOId,  setProgWOId]  = useState<string | undefined>();
@@ -391,64 +392,72 @@ function DRIDashboard() {
       .finally(() => setInitialLoading(false));
   }, []);
 
-  // ── Derived: vendors ───────────────────────────────────────────────────────
-  const vendors = useMemo(() => {
-    const seen = new Set<string>();
-    return allWOs.reduce<{ code: string; name: string }[]>((acc, wo) => {
-      if (wo.vendorCode && !seen.has(wo.vendorCode)) {
-        seen.add(wo.vendorCode);
-        acc.push({ code: wo.vendorCode, name: wo.vendorName || wo.vendorCode });
+  // ── Derived: unique projects ───────────────────────────────────────────────
+  const projects = useMemo<Array<{ projectId: string; projectName: string; woCount: number; vendorCodes: Set<string> }>>(() => {
+    const seen = new Map<string, { projectId: string; projectName: string; woCount: number; vendorCodes: Set<string> }>();
+    allWOs.forEach(wo => {
+      const pid = getProjId(wo);
+      if (!pid) return;
+      if (!seen.has(pid)) {
+        seen.set(pid, { projectId: pid, projectName: wo.projectName, woCount: 0, vendorCodes: new Set() });
       }
-      return acc;
-    }, []);
+      const g = seen.get(pid)!;
+      g.woCount++;
+      if (wo.vendorCode) g.vendorCodes.add(wo.vendorCode);
+    });
+    return Array.from(seen.values()).sort((a, b) => a.projectName.localeCompare(b.projectName));
   }, [allWOs]);
 
-  // WOs for selected vendor
-  const vendorWOs = useMemo(() =>
-    allWOs.filter(wo => wo.vendorCode === selVendorCode),
-    [allWOs, selVendorCode]
+  // WOs for selected project
+  const projectWOs = useMemo(() =>
+    allWOs.filter(wo => getProjId(wo) === selProjectId),
+    [allWOs, selProjectId]
   );
 
-  const selVendorName = vendors.find(v => v.code === selVendorCode)?.name || selVendorCode || "";
+  // Vendors in selected project (each vendor → their WOs in this project)
+  const vendorGroups = useMemo(() => {
+    const groups = new Map<string, { vendorCode: string; vendorName: string; wos: WOSummary[] }>();
+    projectWOs.forEach(wo => {
+      const code = wo.vendorCode || "unknown";
+      if (!groups.has(code)) {
+        groups.set(code, { vendorCode: code, vendorName: wo.vendorName || code, wos: [] });
+      }
+      groups.get(code)!.wos.push(wo);
+    });
+    return Array.from(groups.values()).sort((a, b) => a.vendorName.localeCompare(b.vendorName));
+  }, [projectWOs]);
 
-  // ── Load WO details when vendor changes ────────────────────────────────────
+  // Project type for location fields
+  const selProjectType = useMemo((): "apartment" | "plot" => {
+    const wo = allWOs.find(w => getProjId(w) === selProjectId);
+    if (!wo || !wo.projectId || typeof wo.projectId === "string") return "apartment";
+    return (wo.projectId as { projectType?: string }).projectType === "plot" ? "plot" : "apartment";
+  }, [allWOs, selProjectId]);
+
+  // ── Load WO details when project changes ──────────────────────────────────
   useEffect(() => {
-    if (!vendorWOs.length) { setWoDetails(new Map()); setVendorBillReqs([]); return; }
+    if (!projectWOs.length) { setWoDetails(new Map()); setProjectBillReqs([]); return; }
     setWoDetailsLoading(true);
-    Promise.all(vendorWOs.map(wo => apiClient.get(`/work-orders/${wo._id}`)))
+    Promise.all(projectWOs.map(wo => apiClient.get(`/work-orders/${wo._id}`)))
       .then(results => {
         const map = new Map<string, WODetail>();
         results.forEach(r => { const d = r.data.workOrder; if (d) map.set(d._id, d); });
         setWoDetails(map);
       })
       .finally(() => setWoDetailsLoading(false));
-    // Bill requests for this vendor
-    apiClient.get(`/bill-requests?vendorCode=${selVendorCode}`)
-      .then(r => setVendorBillReqs(r.data.billRequests ?? []));
-  }, [vendorWOs, selVendorCode]);
-
-  // ── Project groups ─────────────────────────────────────────────────────────
-  const projectGroups = useMemo(() => {
-    const groups = new Map<string, { projectId: string; projectName: string; projectType: string; wos: WOSummary[] }>();
-    vendorWOs.forEach(wo => {
-      const pid = getProjId(wo) || wo.projectName;
-      if (!groups.has(pid)) {
-        const detail = woDetails.get(wo._id);
-        const pt = (detail as any)?.projectId?.projectType || "apartment";
-        groups.set(pid, { projectId: pid, projectName: wo.projectName, projectType: pt, wos: [] });
-      }
-      groups.get(pid)!.wos.push(wo);
-    });
-    return Array.from(groups.values());
-  }, [vendorWOs, woDetails]);
+    if (selProjectId) {
+      apiClient.get(`/bill-requests?projectId=${selProjectId}`)
+        .then(r => setProjectBillReqs(r.data.billRequests ?? []));
+    }
+  }, [projectWOs, selProjectId]);
 
   // ── Pending WOs for billing ────────────────────────────────────────────────
   const pendingWODetails = useMemo(() =>
     Array.from(woDetails.values()).filter(d =>
       d.scopeItems.some(si => Math.max(0, (si.completedQty || 0) - (si.lastBilledQty || 0)) > 0) &&
-      !vendorBillReqs.some(br => br.workOrderId === d._id && br.status === "pending")
+      !projectBillReqs.some(br => br.workOrderId === d._id && br.status === "pending")
     ),
-    [woDetails, vendorBillReqs]
+    [woDetails, projectBillReqs]
   );
 
   // ── Reload helpers ─────────────────────────────────────────────────────────
@@ -458,9 +467,9 @@ function DRIDashboard() {
   };
 
   const reloadBillReqs = async () => {
-    if (!selVendorCode) return;
-    const r = await apiClient.get(`/bill-requests?vendorCode=${selVendorCode}`);
-    setVendorBillReqs(r.data.billRequests ?? []);
+    if (!selProjectId) return;
+    const r = await apiClient.get(`/bill-requests?projectId=${selProjectId}`);
+    setProjectBillReqs(r.data.billRequests ?? []);
   };
 
   // ── Progress handlers ──────────────────────────────────────────────────────
@@ -513,7 +522,7 @@ function DRIDashboard() {
     finally { setDeleting(null); }
   };
 
-  // ── Vendor bill generation ─────────────────────────────────────────────────
+  // ── Project bill generation ────────────────────────────────────────────────
   const openBillModal = () => {
     setSelectedWOIds(new Set(pendingWODetails.map(d => d._id)));
     setBillRemarks(""); setBillModal(true);
@@ -546,7 +555,7 @@ function DRIDashboard() {
   const billHistory = useMemo(() => {
     const batches = new Map<string, BRSummary[]>();
     const singles: BRSummary[] = [];
-    vendorBillReqs.forEach(br => {
+    projectBillReqs.forEach(br => {
       if (br.batchId) {
         if (!batches.has(br.batchId)) batches.set(br.batchId, []);
         batches.get(br.batchId)!.push(br);
@@ -558,7 +567,7 @@ function DRIDashboard() {
     batches.forEach((items, batchId) => result.push({ type: "batch", batchId, items }));
     singles.forEach(br => result.push({ type: "single", items: [br] }));
     return result.sort((a, b) => dayjs(b.items[0].createdAt).valueOf() - dayjs(a.items[0].createdAt).valueOf());
-  }, [vendorBillReqs]);
+  }, [projectBillReqs]);
 
   // ── Location form fields component ────────────────────────────────────────
   const LocationFields = ({ pt }: { pt: string }) => (
@@ -592,17 +601,17 @@ function DRIDashboard() {
   );
 
   // ══════════════════════════════════════════════════════════════════════════
-  // VIEW 1 — Vendor Picker
+  // VIEW 1 — Project Picker
   // ══════════════════════════════════════════════════════════════════════════
-  if (view === "select") {
+  if (view === "select-project") {
     return (
       <div style={{ padding: "24px", maxWidth: 900, margin: "0 auto" }}>
         <div style={{ marginBottom: 32 }}>
           <div style={{ fontSize: 24, fontWeight: 800, color: "var(--nx-text)" }}>Welcome, {user?.name}</div>
-          <div style={{ fontSize: 14, color: "var(--nx-text-2)", marginTop: 4 }}>Select a contractor below to track progress and manage billing</div>
+          <div style={{ fontSize: 14, color: "var(--nx-text-2)", marginTop: 4 }}>Select a project to track progress and manage billing</div>
         </div>
 
-        {vendors.length === 0 ? (
+        {projects.length === 0 ? (
           <div style={{ textAlign: "center", padding: 60, background: "var(--nx-white)", borderRadius: 12, border: "1px solid var(--nx-border)" }}>
             <div style={{ fontSize: 40, marginBottom: 12 }}>🏗️</div>
             <div style={{ fontWeight: 600, color: "var(--nx-text)" }}>No work orders assigned yet</div>
@@ -611,38 +620,31 @@ function DRIDashboard() {
         ) : (
           <>
             <div style={{ fontSize: 12, fontWeight: 700, color: "var(--nx-text-muted)", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 14 }}>
-              Your Contractors ({vendors.length})
+              Your Projects ({projects.length})
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 14 }}>
-              {vendors.map(v => {
-                const vWOs = allWOs.filter(wo => wo.vendorCode === v.code);
-                const projectIds = new Set(vWOs.map(wo => getProjId(wo) || wo.projectName));
-                return (
-                  <div
-                    key={v.code}
-                    onClick={() => { setSelVendorCode(v.code); setView("dashboard"); }}
-                    style={{
-                      background: "var(--nx-white)", border: "1px solid var(--nx-border)",
-                      borderLeft: "4px solid #FF7A00", borderRadius: 12,
-                      padding: "20px 20px 16px", cursor: "pointer",
-                      transition: "box-shadow 0.15s, transform 0.12s",
-                      boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
-                    }}
-                    onMouseEnter={e => { e.currentTarget.style.boxShadow = "0 6px 20px rgba(0,0,0,0.1)"; e.currentTarget.style.transform = "translateY(-2px)"; }}
-                    onMouseLeave={e => { e.currentTarget.style.boxShadow = "0 1px 3px rgba(0,0,0,0.05)"; e.currentTarget.style.transform = "translateY(0)"; }}
-                  >
-                    <span style={{ background: "#FFF4E8", color: "#FF7A00", fontFamily: "monospace", fontWeight: 700, fontSize: 11, padding: "2px 8px", borderRadius: 5 }}>
-                      {v.code}
-                    </span>
-                    <div style={{ fontSize: 17, fontWeight: 700, color: "var(--nx-text)", marginTop: 8, marginBottom: 8 }}>{v.name}</div>
-                    <div style={{ display: "flex", gap: 14, fontSize: 12, color: "var(--nx-text-2)" }}>
-                      <span>📂 {projectIds.size} project{projectIds.size !== 1 ? "s" : ""}</span>
-                      <span>📋 {vWOs.length} work order{vWOs.length !== 1 ? "s" : ""}</span>
-                    </div>
-                    <div style={{ marginTop: 12, fontSize: 12, color: "#FF7A00", fontWeight: 600 }}>Open Dashboard →</div>
+              {projects.map(p => (
+                <div
+                  key={p.projectId}
+                  onClick={() => { setSelProjectId(p.projectId); setSelProjectName(p.projectName); setView("project-detail"); }}
+                  style={{
+                    background: "var(--nx-white)", border: "1px solid var(--nx-border)",
+                    borderLeft: "4px solid #FF7A00", borderRadius: 12,
+                    padding: "20px 20px 16px", cursor: "pointer",
+                    transition: "box-shadow 0.15s, transform 0.12s",
+                    boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.boxShadow = "0 6px 20px rgba(0,0,0,0.1)"; e.currentTarget.style.transform = "translateY(-2px)"; }}
+                  onMouseLeave={e => { e.currentTarget.style.boxShadow = "0 1px 3px rgba(0,0,0,0.05)"; e.currentTarget.style.transform = "translateY(0)"; }}
+                >
+                  <div style={{ fontSize: 17, fontWeight: 700, color: "var(--nx-text)", marginBottom: 8 }}>{p.projectName}</div>
+                  <div style={{ display: "flex", gap: 14, fontSize: 12, color: "var(--nx-text-2)" }}>
+                    <span>👷 {p.vendorCodes.size} contractor{p.vendorCodes.size !== 1 ? "s" : ""}</span>
+                    <span>📋 {p.woCount} work order{p.woCount !== 1 ? "s" : ""}</span>
                   </div>
-                );
-              })}
+                  <div style={{ marginTop: 12, fontSize: 12, color: "#FF7A00", fontWeight: 600 }}>Open Project →</div>
+                </div>
+              ))}
             </div>
           </>
         )}
@@ -651,7 +653,7 @@ function DRIDashboard() {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // VIEW 2 — Vendor Dashboard (all projects for this vendor)
+  // VIEW 2 — Project Dashboard (all vendors and WOs for this project)
   // ══════════════════════════════════════════════════════════════════════════
   const hasPending = pendingWODetails.length > 0;
 
@@ -660,12 +662,14 @@ function DRIDashboard() {
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24, flexWrap: "wrap", gap: 12 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          <Button icon={<ArrowLeftOutlined />} onClick={() => { setView("select"); setSelVendorCode(undefined); setWoDetails(new Map()); setVendorBillReqs([]); }}>
-            All Contractors
+          <Button icon={<ArrowLeftOutlined />} onClick={() => { setView("select-project"); setSelProjectId(undefined); setSelProjectName(undefined); setWoDetails(new Map()); setProjectBillReqs([]); }}>
+            All Projects
           </Button>
           <div>
-            <div style={{ fontSize: 10, fontFamily: "monospace", fontWeight: 700, color: "#FF7A00" }}>{selVendorCode}</div>
-            <div style={{ fontSize: 20, fontWeight: 800, color: "var(--nx-text)" }}>{selVendorName}</div>
+            <div style={{ fontSize: 20, fontWeight: 800, color: "var(--nx-text)" }}>{selProjectName}</div>
+            <div style={{ fontSize: 12, color: "var(--nx-text-2)", marginTop: 2 }}>
+              {selProjectType === "apartment" ? "🏢 Apartment" : "🏠 Plot"} · {projectWOs.length} work order{projectWOs.length !== 1 ? "s" : ""} · {vendorGroups.length} contractor{vendorGroups.length !== 1 ? "s" : ""}
+            </div>
           </div>
         </div>
         <Tooltip title={!hasPending ? "No unbilled progress. Record daily progress first." : ""}>
@@ -675,7 +679,7 @@ function DRIDashboard() {
             onClick={openBillModal}
             style={hasPending ? { background: "#FF7A00", borderColor: "#FF7A00", fontWeight: 700 } : {}}
           >
-            🧾 Generate Bill Request for {selVendorName}
+            🧾 Generate Bill Request for {selProjectName}
           </Button>
         </Tooltip>
       </div>
@@ -684,11 +688,11 @@ function DRIDashboard() {
       {!woDetailsLoading && (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 12, marginBottom: 24 }}>
           {[
-            { label: "Projects",       value: String(projectGroups.length),                color: "#FF7A00" },
-            { label: "Work Orders",    value: String(vendorWOs.length),                    color: "#2563eb" },
+            { label: "Contractors",    value: String(vendorGroups.length),                 color: "#FF7A00" },
+            { label: "Work Orders",    value: String(projectWOs.length),                   color: "#2563eb" },
             { label: "Pending Items",  value: String(pendingWODetails.reduce((s, d) => s + d.scopeItems.filter(si => Math.max(0, (si.completedQty || 0) - (si.lastBilledQty || 0)) > 0).length, 0)), color: pendingWODetails.length > 0 ? "#FF7A00" : "#16a34a" },
-            { label: "Bill Requests",  value: String(vendorBillReqs.length),               color: "#7c3aed" },
-            { label: "Approved",       value: String(vendorBillReqs.filter(b => b.status === "approved").length), color: "#16a34a" },
+            { label: "Bill Requests",  value: String(projectBillReqs.length),              color: "#7c3aed" },
+            { label: "Approved",       value: String(projectBillReqs.filter(b => b.status === "approved").length), color: "#16a34a" },
           ].map(s => (
             <div key={s.label} style={{ background: "var(--nx-white)", border: "1px solid var(--nx-border)", borderRadius: 12, padding: "14px 18px" }}>
               <div style={{ fontSize: 10, color: "var(--nx-text-muted)", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 4 }}>{s.label}</div>
@@ -698,29 +702,29 @@ function DRIDashboard() {
         </div>
       )}
 
-      {/* Projects + WOs */}
+      {/* Vendors + WOs */}
       {woDetailsLoading ? (
         <div style={{ display: "flex", justifyContent: "center", padding: 60 }}><Spin size="large" /></div>
-      ) : projectGroups.length === 0 ? (
-        <Empty description="No work orders found for this vendor." />
+      ) : vendorGroups.length === 0 ? (
+        <Empty description="No work orders found for this project." />
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-          {projectGroups.map(pg => (
-            <div key={pg.projectId} style={{ background: "var(--nx-white)", border: "1px solid var(--nx-border)", borderRadius: 12, overflow: "hidden" }}>
-              {/* Project header */}
+          {vendorGroups.map(vg => (
+            <div key={vg.vendorCode} style={{ background: "var(--nx-white)", border: "1px solid var(--nx-border)", borderRadius: 12, overflow: "hidden" }}>
+              {/* Vendor header */}
               <div style={{ background: "#1F2937", padding: "14px 20px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div>
-                  <div style={{ color: "#fff", fontWeight: 700, fontSize: 16 }}>📂 {pg.projectName}</div>
+                  <div style={{ color: "#fff", fontWeight: 700, fontSize: 16 }}>👷 {vg.vendorName}</div>
                   <div style={{ color: "#9CA3AF", fontSize: 12, marginTop: 2 }}>
-                    {pg.projectType === "apartment" ? "🏢 Apartment Project" : "🏠 Plot Project"} · {pg.wos.length} work order{pg.wos.length !== 1 ? "s" : ""}
+                    <span style={{ fontFamily: "monospace", color: "#FF7A00" }}>{vg.vendorCode}</span> · {vg.wos.length} work order{vg.wos.length !== 1 ? "s" : ""}
                   </div>
                 </div>
               </div>
 
-              {/* Work orders in this project */}
-              {pg.wos.map(woSum => {
+              {/* Work orders for this vendor in this project */}
+              {vg.wos.map(woSum => {
                 const detail = woDetails.get(woSum._id);
-                const pendingBR = vendorBillReqs.find(br => br.workOrderId === woSum._id && br.status === "pending");
+                const pendingBR = projectBillReqs.find(br => br.workOrderId === woSum._id && br.status === "pending");
 
                 return (
                   <div key={woSum._id} style={{ borderBottom: "1px solid var(--nx-border)" }}>
@@ -828,7 +832,6 @@ function DRIDashboard() {
                       ).sort((a, b) => dayjs(b.date).valueOf() - dayjs(a.date).valueOf()).slice(0, 5);
 
                       if (!entries.length) return null;
-                      const pt = pg.projectType;
                       return (
                         <div style={{ padding: "10px 20px 14px", borderTop: "1px solid var(--nx-border)" }}>
                           <div style={{ fontSize: 11, fontWeight: 700, color: "var(--nx-text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>
@@ -844,7 +847,7 @@ function DRIDashboard() {
                                   )}
                                 </span>
                                 <span style={{ fontWeight: 600, color: "var(--nx-text)", flex: 1 }}>{e.description}</span>
-                                <span style={{ color: "var(--nx-text-2)", minWidth: 80 }}>{formatLocation(e, pt)}</span>
+                                <span style={{ color: "var(--nx-text-2)", minWidth: 80 }}>{formatLocation(e, selProjectType)}</span>
                                 <span style={{ color: "#16a34a", fontWeight: 700, fontFamily: "monospace", minWidth: 60 }}>+{fmtN(e.qtyAdded)} {e.unit}</span>
                                 <div style={{ display: "flex", gap: 2 }}>
                                   <Button size="small" type="link" style={{ fontSize: 11, padding: "0 4px" }}
@@ -880,11 +883,11 @@ function DRIDashboard() {
       )}
 
       {/* ── Bill History ────────────────────────────────────────────────────── */}
-      {vendorBillReqs.length > 0 && (
+      {projectBillReqs.length > 0 && (
         <div style={{ background: "var(--nx-white)", border: "1px solid var(--nx-border)", borderRadius: 12, overflow: "hidden", marginTop: 24 }}>
           <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--nx-border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <div style={{ fontWeight: 700, fontSize: 15, color: "var(--nx-text)" }}>Billing History</div>
-            <div style={{ fontSize: 12, color: "var(--nx-text-muted)" }}>{vendorBillReqs.length} request{vendorBillReqs.length !== 1 ? "s" : ""}</div>
+            <div style={{ fontWeight: 700, fontSize: 15, color: "var(--nx-text)" }}>Billing History — {selProjectName}</div>
+            <div style={{ fontSize: 12, color: "var(--nx-text-muted)" }}>{projectBillReqs.length} request{projectBillReqs.length !== 1 ? "s" : ""}</div>
           </div>
           {billHistory.map((group, gi) => {
             const isBatch = group.type === "batch";
@@ -931,7 +934,7 @@ function DRIDashboard() {
                             background: "var(--nx-fill)", padding: "2px 8px", borderRadius: 6,
                             fontSize: 11, color: "var(--nx-text-3)", border: "1px solid var(--nx-border)"
                           }}>
-                            {br.projectName} · {br.workOrderNo ?? br.reqNo}
+                            {br.vendorName ?? br.workOrderNo ?? br.reqNo}
                             {" "}
                             <span style={{ color: BR_STATUS_COLOR[br.status] ?? "#9CA3AF", fontWeight: 700 }}>
                               {br.status === "approved" ? "✅" : br.status === "rejected" ? "❌" : "⏳"}
@@ -942,6 +945,7 @@ function DRIDashboard() {
                     )}
 
                     <div style={{ fontSize: 11, color: "var(--nx-text-muted)" }}>
+                      {firstBR.vendorName && <span>{firstBR.vendorName} · </span>}
                       {dayjs(firstBR.createdAt).format("DD MMM YYYY")}
                       {firstBR.periodFrom && ` · Period: ${dayjs(firstBR.periodFrom).format("DD MMM")} → ${dayjs(firstBR.periodTo ?? firstBR.createdAt).format("DD MMM")}`}
                     </div>
@@ -1030,7 +1034,7 @@ function DRIDashboard() {
       {/* ── Vendor Bill Generator Modal ────────────────────────────────────── */}
       <Modal
         open={billModal} onCancel={() => setBillModal(false)}
-        title={`Generate Bill Request — ${selVendorName}`}
+        title={`Generate Bill Request — ${selProjectName}`}
         onOk={handleGenerateBill}
         okText={`Submit Bill Request${selectedWOIds.size > 1 ? ` (${selectedWOIds.size} Work Orders)` : ""}`}
         width={700}
@@ -1039,26 +1043,26 @@ function DRIDashboard() {
       >
         <div style={{ marginTop: 8 }}>
           <div style={{ padding: 12, background: "#FFF4E8", border: "1px solid #FED7AA", borderRadius: 8, marginBottom: 16, fontSize: 12, color: "#92400e" }}>
-            <strong>Multi-project bill request</strong> — select which work orders to include. Quantities are auto-calculated from recorded progress since last billing.
+            <strong>Project bill request</strong> — select work orders to include. Quantities are auto-calculated from recorded progress since last billing.
           </div>
 
           {pendingWODetails.length === 0 ? (
             <Empty description="No pending progress to bill. Record daily progress first." />
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              {projectGroups.map(pg => {
-                const pgPendingWOs = pg.wos
+              {vendorGroups.map(vg => {
+                const vgPendingWOs = vg.wos
                   .map(wo => woDetails.get(wo._id))
                   .filter((d): d is WODetail => !!d && d.scopeItems.some(si => Math.max(0, (si.completedQty || 0) - (si.lastBilledQty || 0)) > 0))
-                  .filter(d => !vendorBillReqs.some(br => br.workOrderId === d._id && br.status === "pending"));
+                  .filter(d => !projectBillReqs.some(br => br.workOrderId === d._id && br.status === "pending"));
 
-                if (!pgPendingWOs.length) return null;
+                if (!vgPendingWOs.length) return null;
                 return (
-                  <div key={pg.projectId} style={{ border: "1px solid var(--nx-border)", borderRadius: 10, overflow: "hidden" }}>
+                  <div key={vg.vendorCode} style={{ border: "1px solid var(--nx-border)", borderRadius: 10, overflow: "hidden" }}>
                     <div style={{ background: "var(--nx-fill-2)", padding: "10px 14px", fontWeight: 700, fontSize: 13, color: "var(--nx-text)", borderBottom: "1px solid var(--nx-border)" }}>
-                      📂 {pg.projectName}
+                      👷 {vg.vendorName} <span style={{ fontFamily: "monospace", color: "#FF7A00", fontSize: 11, fontWeight: 400 }}>({vg.vendorCode})</span>
                     </div>
-                    {pgPendingWOs.map(detail => {
+                    {vgPendingWOs.map(detail => {
                       const pendingItems = detail.scopeItems.filter(si => Math.max(0, (si.completedQty || 0) - (si.lastBilledQty || 0)) > 0);
                       const isChecked = selectedWOIds.has(detail._id);
                       return (
@@ -1111,7 +1115,7 @@ function DRIDashboard() {
 
           {selectedWOIds.size > 0 && (
             <div style={{ marginTop: 12, padding: "10px 14px", background: "#FFF4E8", border: "1px solid #FED7AA", borderRadius: 8, fontSize: 12, color: "#92400e" }}>
-              <strong>{selectedWOIds.size} work order{selectedWOIds.size !== 1 ? "s" : ""}</strong> from <strong>{new Set(pendingWODetails.filter(d => selectedWOIds.has(d._id)).map(d => d.projectName)).size} project{new Set(pendingWODetails.filter(d => selectedWOIds.has(d._id)).map(d => d.projectName)).size !== 1 ? "s" : ""}</strong> will be included in this bill request.
+              <strong>{selectedWOIds.size} work order{selectedWOIds.size !== 1 ? "s" : ""}</strong> will be included in this bill request.
             </div>
           )}
         </div>

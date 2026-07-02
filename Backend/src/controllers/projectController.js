@@ -1,5 +1,9 @@
 const { validationResult } = require('express-validator');
 const Project      = require('../models/Project');
+const WorkOrder    = require('../models/WorkOrder');
+const BillRequest  = require('../models/BillRequest');
+const RunningBill  = require('../models/RunningBill');
+const ProjectEvent = require('../models/ProjectEvent');
 const asyncHandler = require('../utils/asyncHandler');
 const { success, created, notFound, badRequest } = require('../utils/responseFormatter');
 const { nextProjectCode } = require('../utils/codeGen');
@@ -40,4 +44,113 @@ exports.deleteProject = asyncHandler(async (req, res) => {
   const project = await Project.findByIdAndDelete(req.params.id);
   if (!project) return notFound(res, 'Project not found');
   success(res, null, 'Project deleted');
+});
+
+// GET /api/projects/:id/stats
+exports.getProjectStats = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const [project, wos, runningBills] = await Promise.all([
+    Project.findById(id),
+    WorkOrder.find({ projectId: id }),
+    RunningBill.find({ projectId: id }),
+  ]);
+
+  if (!project) return notFound(res, 'Project not found');
+
+  const woIds    = wos.map(w => w._id);
+  const billReqs = woIds.length
+    ? await BillRequest.find({ workOrderId: { $in: woIds } })
+    : [];
+
+  const awardedContractValue = wos.reduce((s, w) => s + (w.contractValue || 0), 0);
+
+  let workExecutedValue = 0;
+  let totalPlannedQty   = 0;
+  let totalCompletedQty = 0;
+  const categoryMap = {};
+
+  wos.forEach(wo => {
+    const cat = wo.category || 'General';
+    if (!categoryMap[cat]) {
+      categoryMap[cat] = { contractValue: 0, workExecuted: 0, plannedQty: 0, completedQty: 0, woCount: 0, vendorCodes: new Set() };
+    }
+    categoryMap[cat].contractValue += (wo.contractValue || 0);
+    categoryMap[cat].woCount++;
+    if (wo.vendorCode) categoryMap[cat].vendorCodes.add(wo.vendorCode);
+
+    (wo.scopeItems || []).forEach(si => {
+      const planned   = si.plannedQty   || 0;
+      const completed = si.completedQty || 0;
+      const rate      = si.rate         || 0;
+      const executed  = completed * rate;
+      workExecutedValue += executed;
+      totalPlannedQty   += planned;
+      totalCompletedQty += completed;
+      categoryMap[cat].plannedQty   += planned;
+      categoryMap[cat].completedQty += completed;
+      categoryMap[cat].workExecuted  += executed;
+    });
+  });
+
+  const netOf = b => {
+    const base = b.amount || 0;
+    return base + base * ((b.gstPercent || 18) / 100) - base * ((b.tdsPercent || 1) / 100);
+  };
+
+  const billedGross    = runningBills.reduce((s, b) => s + (b.amount || 0), 0);
+  const certifiedBills = runningBills.filter(b => ['approved', 'paid'].includes(b.status));
+  const certifiedNet   = certifiedBills.reduce((s, b) => s + netOf(b), 0);
+  const paidBills      = runningBills.filter(b => b.status === 'paid');
+  const paidAmount     = paidBills.reduce((s, b) => s + netOf(b), 0);
+
+  const pendingBillReqs = billReqs.filter(b => b.status === 'pending').length;
+  const openBills       = runningBills.filter(b => !['approved', 'paid', 'rejected'].includes(b.status)).length;
+  const activeVendors   = new Set(wos.map(w => w.vendorCode).filter(Boolean)).size;
+  const progress        = totalPlannedQty > 0
+    ? Math.min(100, Math.round((totalCompletedQty / totalPlannedQty) * 100))
+    : 0;
+
+  const categoryBreakdown = Object.entries(categoryMap).map(([category, s]) => ({
+    category,
+    contractValue: s.contractValue,
+    woCount:       s.woCount,
+    vendorCount:   s.vendorCodes.size,
+    progress:      s.plannedQty > 0
+      ? Math.min(100, Math.round((s.completedQty / s.plannedQty) * 100))
+      : 0,
+    workExecuted: s.workExecuted,
+  })).sort((a, b) => b.contractValue - a.contractValue);
+
+  success(res, {
+    project,
+    stats: {
+      projectBudget:       project.budget || 0,
+      awardedContractValue,
+      workExecutedValue,
+      billedGross,
+      certifiedNet,
+      paidAmount,
+      remainingContract:   Math.max(0, awardedContractValue - paidAmount),
+      costVariance:        (project.budget || 0) > 0 ? (project.budget - awardedContractValue) : null,
+      pendingBillReqs,
+      openBills,
+      activeVendors,
+      woCount:  wos.length,
+      progress,
+      categoryBreakdown,
+    },
+  });
+});
+
+// GET /api/projects/:id/activity
+exports.getProjectActivity = asyncHandler(async (req, res) => {
+  const { id }                       = req.params;
+  const { workOrderId, limit = 100 } = req.query;
+  const filter = { projectId: id };
+  if (workOrderId) filter.workOrderId = workOrderId;
+  const events = await ProjectEvent.find(filter)
+    .sort({ createdAt: -1 })
+    .limit(parseInt(limit));
+  success(res, { events });
 });

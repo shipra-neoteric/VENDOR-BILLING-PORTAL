@@ -3,6 +3,7 @@ const WorkOrder   = require('../models/WorkOrder');
 const RunningBill = require('../models/RunningBill');
 const asyncHandler = require('../utils/asyncHandler');
 const { success, created, notFound, badRequest, forbidden } = require('../utils/responseFormatter');
+const emitEvent   = require('../utils/emitEvent');
 
 async function nextReqNo() {
   const last = await BillRequest.findOne().sort({ createdAt: -1 }).select('reqNo');
@@ -21,13 +22,14 @@ async function nextBillNo() {
 
 // GET /api/bill-requests
 exports.listBillRequests = asyncHandler(async (req, res) => {
-  const { status, workOrderId, vendorCode } = req.query;
+  const { status, workOrderId, vendorCode, projectId } = req.query;
   const filter = {};
 
   if (req.user.role === 'dri') filter.requestedBy = req.user._id;
   if (status)      filter.status      = status;
   if (workOrderId) filter.workOrderId = workOrderId;
   if (vendorCode)  filter.vendorCode  = vendorCode;
+  if (projectId)   filter.projectId   = projectId;
 
   const requests = await BillRequest.find(filter)
     .populate('requestedBy', 'name email')
@@ -87,6 +89,7 @@ exports.createBillRequest = asyncHandler(async (req, res) => {
     stageNo,
     workOrderId: wo._id,
     workOrderNo: wo.workOrderNo,
+    projectId:   wo.projectId || null,
     projectName: wo.projectName,
     vendorCode:  wo.vendorCode,
     vendorName:  wo.vendorName,
@@ -110,6 +113,18 @@ exports.createBillRequest = asyncHandler(async (req, res) => {
     if (si) si.lastBilledQty = pi.completedQty;
   }
   await wo.save();
+
+  emitEvent('BILL_REQUESTED', {
+    projectId:     wo.projectId,
+    workOrderId:   wo._id,
+    workOrderNo:   wo.workOrderNo,
+    billRequestId: billRequest._id,
+    vendorCode:    wo.vendorCode,
+    vendorName:    wo.vendorName,
+    stageNo,
+    user:          req.user,
+    metadata:      { reqNo },
+  });
 
   created(res, { billRequest }, `Stage ${stageNo} bill request ${reqNo} submitted successfully`);
 });
@@ -173,6 +188,19 @@ exports.approveBillRequest = asyncHandler(async (req, res) => {
   br.processedAt = new Date();
   await br.save();
 
+  emitEvent('BILL_REQUEST_APPROVED', {
+    projectId:     wo.projectId,
+    workOrderId:   wo._id,
+    workOrderNo:   wo.workOrderNo,
+    billRequestId: br._id,
+    runningBillId: runningBill._id,
+    vendorCode:    wo.vendorCode,
+    vendorName:    wo.vendorName,
+    stageNo:       br.stageNo,
+    user:          req.user,
+    metadata:      { reqNo: br.reqNo, billNo, totalAmount },
+  });
+
   success(res, { billRequest: br, bill: runningBill }, `Approved — Bill ${billNo} generated for Stage ${br.stageNo}`);
 });
 
@@ -199,6 +227,18 @@ exports.rejectBillRequest = asyncHandler(async (req, res) => {
   br.processedBy  = req.user._id;
   br.processedAt  = new Date();
   await br.save();
+
+  emitEvent('BILL_REQUEST_REJECTED', {
+    projectId:     br.projectId || (wo ? wo.projectId : undefined),
+    workOrderId:   br.workOrderId,
+    workOrderNo:   br.workOrderNo,
+    billRequestId: br._id,
+    vendorCode:    br.vendorCode,
+    vendorName:    br.vendorName,
+    stageNo:       br.stageNo,
+    user:          req.user,
+    metadata:      { reqNo: br.reqNo, reason: br.rejectReason },
+  });
 
   success(res, { billRequest: br }, `Stage ${br.stageNo} rejected — DRI can re-submit after corrections`);
 });
@@ -276,6 +316,7 @@ exports.createBatchBillRequest = asyncHandler(async (req, res) => {
       reqNo, stageNo,
       workOrderId: wo._id,
       workOrderNo: wo.workOrderNo,
+      projectId:   wo.projectId || null,
       projectName: wo.projectName,
       vendorCode:  wo.vendorCode,
       vendorName:  wo.vendorName,
@@ -298,6 +339,18 @@ exports.createBatchBillRequest = asyncHandler(async (req, res) => {
       if (si) si.lastBilledQty = pi.completedQty;
     }
     await wo.save();
+
+    emitEvent('BILL_REQUESTED', {
+      projectId:     wo.projectId,
+      workOrderId:   wo._id,
+      workOrderNo:   wo.workOrderNo,
+      billRequestId: br._id,
+      vendorCode:    wo.vendorCode,
+      vendorName:    wo.vendorName,
+      stageNo,
+      user:          req.user,
+      metadata:      { reqNo, batchId },
+    });
 
     created.push(br);
   }

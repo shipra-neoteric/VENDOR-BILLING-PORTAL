@@ -6,6 +6,7 @@ const Company      = require('../models/Company');
 const asyncHandler = require('../utils/asyncHandler');
 const { success, created, notFound, badRequest, conflict } = require('../utils/responseFormatter');
 const { nextWorkOrderNo } = require('../utils/codeGen');
+const emitEvent    = require('../utils/emitEvent');
 
 exports.listWorkOrders = asyncHandler(async (req, res) => {
   const { projectId, vendorCode, status, search, assignedToMe } = req.query;
@@ -72,6 +73,16 @@ exports.createWorkOrder = asyncHandler(async (req, res) => {
     createdBy:   req.user._id,
   });
 
+  emitEvent('WORK_ORDER_CREATED', {
+    projectId:  project._id,
+    workOrderId: workOrder._id,
+    workOrderNo: workOrder.workOrderNo,
+    vendorCode:  workOrder.vendorCode,
+    vendorName:  workOrder.vendorName,
+    user:        req.user,
+    metadata:    { contractValue: workOrder.contractValue },
+  });
+
   created(res, { workOrder }, 'Work order created successfully');
 });
 
@@ -121,6 +132,17 @@ exports.addScopeProgress = asyncHandler(async (req, res) => {
     :                                      'pending';
 
   await workOrder.save();
+
+  emitEvent('PROGRESS_ADDED', {
+    projectId:   workOrder.projectId,
+    workOrderId: workOrder._id,
+    workOrderNo: workOrder.workOrderNo,
+    vendorCode:  workOrder.vendorCode,
+    vendorName:  workOrder.vendorName,
+    user:        req.user,
+    metadata:    { scopeItem: item.description, qtyAdded, unit: item.unit },
+  });
+
   success(res, { workOrder });
 });
 

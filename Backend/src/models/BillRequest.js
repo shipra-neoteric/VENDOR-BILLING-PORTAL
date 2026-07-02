@@ -16,6 +16,7 @@ const billRequestSchema = new Schema(
     stageNo:     { type: Number, default: 1 },
     workOrderId: { type: Schema.Types.ObjectId, ref: 'WorkOrder', required: true },
     workOrderNo: { type: String },
+    projectId:   { type: Schema.Types.ObjectId, ref: 'Project', default: null },
     projectName: { type: String },
     vendorCode:  { type: String },
     vendorName:  { type: String },
