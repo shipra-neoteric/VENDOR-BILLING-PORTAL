@@ -299,7 +299,7 @@ function WorkProgressAdmin() {
                         </td>
                         <td style={{ padding: "9px 16px", fontSize: 13, fontWeight: 500, color: "var(--nx-text)" }}>{e.description}</td>
                         <td style={{ padding: "9px 16px", fontSize: 12, color: "var(--nx-text-2)" }}>
-                          {formatLocation(e as EntryRow, (e as any).projectType || "apartment")}
+                          {formatLocation(e as unknown as EntryRow, (e as any).projectType || "apartment")}
                         </td>
                         <td style={{ padding: "9px 16px", fontFamily: "monospace", fontSize: 13, color: "#16a34a", fontWeight: 700 }}>
                           +{fmtN(e.qtyAdded)} {e.unit}
