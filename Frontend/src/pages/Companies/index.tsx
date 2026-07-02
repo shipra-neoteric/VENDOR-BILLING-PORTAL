@@ -180,7 +180,7 @@ export default function Companies() {
           { label: "Private Limited",  value: companies.filter(c => c.type === "Private Limited").length, color: "#2563eb" },
           { label: "LLP / Other",      value: companies.filter(c => c.type !== "Private Limited").length, color: "#7c3aed" },
         ].map(s => (
-          <div key={s.label} style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 12, padding: "14px 20px", minWidth: 150, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+          <div key={s.label} style={{ background: "var(--nx-white)", border: "1px solid #E5E7EB", borderRadius: 12, padding: "14px 20px", minWidth: 150, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
             <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", color: "#9CA3AF", marginBottom: 4 }}>{s.label}</div>
             <div style={{ fontFamily: "monospace", fontSize: 24, fontWeight: 700, color: s.color }}>{s.value}</div>
           </div>
@@ -216,7 +216,7 @@ export default function Companies() {
             <div
               key={co._id}
               style={{
-                background: "#fff",
+                background: "var(--nx-white)",
                 border: "1px solid #E5E7EB",
                 borderLeft: `4px solid ${co.color}`,
                 borderRadius: 12,

@@ -72,7 +72,7 @@ function BillCard({
   return (
     <div
       style={{
-        background: "#fff", border: "1px solid #e4e7ee", borderRadius: 12,
+        background: "var(--nx-white)", border: "1px solid #e4e7ee", borderRadius: 12,
         padding: 16, marginBottom: 10, display: "flex", alignItems: "flex-start",
         gap: 16, boxShadow: "0 1px 3px rgba(0,0,0,0.04)", transition: "border-color 0.15s, box-shadow 0.15s",
       }}
@@ -91,7 +91,7 @@ function BillCard({
             {STATUS_CFG[bill.status].label.toUpperCase()}
           </Tag>
         </div>
-        <div style={{ fontWeight: 600, fontSize: 13, color: "#1a1f2e" }}>{bill.vendorName || "—"}</div>
+        <div style={{ fontWeight: 600, fontSize: 13, color: "var(--nx-text)" }}>{bill.vendorName || "—"}</div>
         <div style={{ fontSize: 11, color: "#5a6278", marginTop: 2 }}>
           {bill.projectName}
           {bill.billRefNo && ` · Ref: ${bill.billRefNo}`}
@@ -219,7 +219,7 @@ export default function Approvals() {
     <div>
       <div style={{ marginBottom: 24, display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
         <div>
-          <h1 style={{ fontSize: 26, fontWeight: 700, margin: 0, color: "#1a1f2e" }}>Approvals</h1>
+          <h1 style={{ fontSize: 26, fontWeight: 700, margin: 0, color: "var(--nx-text)" }}>Approvals</h1>
           <p style={{ color: "#5a6278", marginTop: 4, marginBottom: 0, fontSize: 13 }}>
             Review and action running bills through the verification → approval workflow.
           </p>
@@ -236,7 +236,7 @@ export default function Approvals() {
           { label: "Approved / Paid", value: approved.length, color: "#16a85a", sub: "certified & closed" },
         ].map(s => (
           <Col key={s.label} xs={12} sm={6}>
-            <div style={{ background: "#fff", border: "1px solid #e4e7ee", borderRadius: 12, padding: "16px 18px", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
+            <div style={{ background: "var(--nx-white)", border: "1px solid #e4e7ee", borderRadius: 12, padding: "16px 18px", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
               <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", color: "#9ba3b8", marginBottom: 6 }}>{s.label}</div>
               <div style={{ fontFamily: "monospace", fontSize: 26, fontWeight: 700, color: s.color }}>{s.value}</div>
               <div style={{ fontSize: 11, color: "#5a6278", marginTop: 3 }}>{s.sub}</div>
@@ -315,7 +315,7 @@ export default function Approvals() {
             children: rejected.length === 0
               ? <Empty description="No rejected bills" image={Empty.PRESENTED_IMAGE_SIMPLE} />
               : rejected.map(b => (
-                  <div key={b._id} style={{ background: "#fff", border: "1px solid #fecaca", borderRadius: 12, padding: "14px 16px", marginBottom: 10 }}>
+                  <div key={b._id} style={{ background: "var(--nx-white)", border: "1px solid #fecaca", borderRadius: 12, padding: "14px 16px", marginBottom: 10 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                       <div>
                         <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#f37916" }}>{b.billNo}</span>

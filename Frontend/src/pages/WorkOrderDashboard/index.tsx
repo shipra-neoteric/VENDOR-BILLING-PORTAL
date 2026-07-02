@@ -162,7 +162,7 @@ export default function WorkOrderDashboard() {
           { label: "Billed to Date",   value: fmtMoney(billedAmount),    icon: "✅", color: "#16a34a" },
           { label: "Unbilled Work",    value: fmtMoney(unbilledValue),   icon: "⏳", color: unbilledValue > 0 ? "#FF7A00" : "#16a34a" },
         ].map(({ label, value, icon, color }) => (
-          <div key={label} style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 12, padding: "16px 18px" }}>
+          <div key={label} style={{ background: "var(--nx-white)", border: "1px solid #E5E7EB", borderRadius: 12, padding: "16px 18px" }}>
             <div style={{ fontSize: 22, marginBottom: 8 }}>{icon}</div>
             <div style={{ fontSize: 10, color: "#9CA3AF", textTransform: "uppercase", letterSpacing: "0.07em" }}>{label}</div>
             <div style={{ fontSize: 20, fontWeight: 800, color, marginTop: 4 }}>{value}</div>
@@ -171,7 +171,7 @@ export default function WorkOrderDashboard() {
       </div>
 
       {/* Scope Items Progress */}
-      <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 12, overflow: "hidden", marginBottom: 24 }}>
+      <div style={{ background: "var(--nx-white)", border: "1px solid #E5E7EB", borderRadius: 12, overflow: "hidden", marginBottom: 24 }}>
         <div style={{ padding: "16px 20px", borderBottom: "1px solid #E5E7EB", fontWeight: 700, fontSize: 15, color: "#111827" }}>
           Scope Items Progress
         </div>
@@ -226,7 +226,7 @@ export default function WorkOrderDashboard() {
       </div>
 
       {/* Stage Timeline */}
-      <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 12, overflow: "hidden", marginBottom: 24 }}>
+      <div style={{ background: "var(--nx-white)", border: "1px solid #E5E7EB", borderRadius: 12, overflow: "hidden", marginBottom: 24 }}>
         <div style={{ padding: "16px 20px", borderBottom: "1px solid #E5E7EB", fontWeight: 700, fontSize: 15, color: "#111827" }}>
           Stage Timeline
           <span style={{ marginLeft: 10, fontSize: 12, color: "#9CA3AF", fontWeight: 400 }}>
@@ -332,7 +332,7 @@ export default function WorkOrderDashboard() {
 
       {/* Recent Daily Entries */}
       {allEntries.length > 0 && (
-        <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 12, overflow: "hidden" }}>
+        <div style={{ background: "var(--nx-white)", border: "1px solid #E5E7EB", borderRadius: 12, overflow: "hidden" }}>
           <div style={{ padding: "16px 20px", borderBottom: "1px solid #E5E7EB", fontWeight: 700, fontSize: 15, color: "#111827" }}>
             Recent Daily Progress
           </div>

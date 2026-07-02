@@ -705,7 +705,7 @@ export default function Bills() {
       </div>
 
       {/* Bills table */}
-      <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 10, overflow: "hidden" }}>
+      <div style={{ background: "var(--nx-white)", border: "1px solid #E5E7EB", borderRadius: 10, overflow: "hidden" }}>
         <Spin spinning={loading}>
           <Table
             rowKey="id"
@@ -1021,7 +1021,7 @@ export default function Bills() {
                   <Input
                     value={selectedContractor?.vendorCode || ""}
                     disabled
-                    style={{ background: "#fff", color: "#f37916", fontWeight: 700, fontFamily: "monospace" }}
+                    style={{ background: "var(--nx-white)", color: "#f37916", fontWeight: 700, fontFamily: "monospace" }}
                     placeholder="Auto-filled"
                   />
                 </Form.Item>
@@ -1030,7 +1030,7 @@ export default function Bills() {
 
             {/* Contractor auto-fill preview */}
             {selectedContractor && (
-              <div style={{ background: "#fff", borderRadius: 6, border: "1px solid #e4e7ee", padding: "10px 12px", marginBottom: 12, fontSize: 12 }}>
+              <div style={{ background: "var(--nx-white)", borderRadius: 6, border: "1px solid #e4e7ee", padding: "10px 12px", marginBottom: 12, fontSize: 12 }}>
                 <Row gutter={16}>
                   <Col span={6}>
                     <div style={{ color: "#9ba3b8", fontWeight: 600, marginBottom: 2 }}>Owner</div>

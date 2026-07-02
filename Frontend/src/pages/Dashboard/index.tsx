@@ -12,9 +12,9 @@ function ProgressBar({ certifiedAmt, pendingAmt, totalContractValue, remaining }
   certifiedAmt: number; pendingAmt: number; totalContractValue: number; remaining: number;
 }) {
   return (
-    <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 12, padding: "20px 24px", marginBottom: 24, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
-      <div style={{ fontWeight: 600, fontSize: 14, color: "#374151", marginBottom: 12 }}>Overall Billing Progress</div>
-      <div style={{ display: "flex", height: 14, borderRadius: 7, overflow: "hidden", background: "#F3F4F6", marginBottom: 12 }}>
+    <div style={{ background: "var(--nx-white)", border: "1px solid var(--nx-border)", borderRadius: 12, padding: "20px 24px", marginBottom: 24, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+      <div style={{ fontWeight: 600, fontSize: 14, color: "var(--nx-text-3)", marginBottom: 12 }}>Overall Billing Progress</div>
+      <div style={{ display: "flex", height: 14, borderRadius: 7, overflow: "hidden", background: "var(--nx-fill)", marginBottom: 12 }}>
         {totalContractValue > 0 && (
           <>
             <div style={{ width: `${(certifiedAmt / totalContractValue) * 100}%`, background: "#16a34a", transition: "width 0.6s ease" }} />
@@ -30,8 +30,8 @@ function ProgressBar({ certifiedAmt, pendingAmt, totalContractValue, remaining }
         ].map(s => (
           <div key={s.label} style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <span style={{ width: 10, height: 10, borderRadius: "50%", background: s.color, display: "inline-block" }} />
-            <span style={{ fontSize: 12, color: "#6B7280" }}>{s.label}:</span>
-            <span style={{ fontSize: 12, fontWeight: 600, color: "#374151", fontFamily: "monospace" }}>{s.value}</span>
+            <span style={{ fontSize: 12, color: "var(--nx-text-2)" }}>{s.label}:</span>
+            <span style={{ fontSize: 12, fontWeight: 600, color: "var(--nx-text-3)", fontFamily: "monospace" }}>{s.value}</span>
           </div>
         ))}
       </div>
@@ -45,20 +45,20 @@ function DashboardSkeleton() {
     <div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(178px, 1fr))", gap: 16, marginBottom: 24 }}>
         {Array.from({ length: 5 }).map((_, i) => (
-          <div key={i} style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 12, padding: "18px 20px" }}>
+          <div key={i} style={{ background: "var(--nx-white)", border: "1px solid var(--nx-border)", borderRadius: 12, padding: "18px 20px" }}>
             <Skeleton.Input active style={{ width: 32, height: 32, borderRadius: "50%", marginBottom: 12, display: "block" }} />
             <Skeleton.Input active size="small" style={{ width: "60%", height: 12, marginBottom: 8, display: "block" }} />
             <Skeleton.Input active style={{ width: "80%", height: 20, display: "block" }} />
           </div>
         ))}
       </div>
-      <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 12, padding: "20px 24px", marginBottom: 24 }}>
+      <div style={{ background: "var(--nx-white)", border: "1px solid var(--nx-border)", borderRadius: 12, padding: "20px 24px", marginBottom: 24 }}>
         <Skeleton.Input active style={{ width: 220, height: 16, marginBottom: 16, display: "block" }} />
         <Skeleton.Input active style={{ width: "100%", height: 14, borderRadius: 7, display: "block" }} />
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
         {[0, 1].map(i => (
-          <div key={i} style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 12, padding: "20px 24px" }}>
+          <div key={i} style={{ background: "var(--nx-white)", border: "1px solid var(--nx-border)", borderRadius: 12, padding: "20px 24px" }}>
             <Skeleton active paragraph={{ rows: 5 }} />
           </div>
         ))}
@@ -92,8 +92,8 @@ export default function Dashboard() {
     <div style={{ paddingBottom: 40 }}>
       {/* Header */}
       <div style={{ marginBottom: 24 }}>
-        <h1 style={{ fontSize: 26, fontWeight: 700, margin: 0, color: "#111827" }}>Vendor Billing Dashboard</h1>
-        <p style={{ color: "#6B7280", marginTop: 4, marginBottom: 0 }}>
+        <h1 style={{ fontSize: 26, fontWeight: 700, margin: 0, color: "var(--nx-text)" }}>Vendor Billing Dashboard</h1>
+        <p style={{ color: "var(--nx-text-2)", marginTop: 4, marginBottom: 0 }}>
           Overview of contract value, bills, approvals and payments.
         </p>
       </div>
@@ -109,13 +109,13 @@ export default function Dashboard() {
 
       {/* Category progress + Projects table */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 24 }}>
-        <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 12, padding: "20px 24px", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
-          <div style={{ fontWeight: 600, fontSize: 14, color: "#374151", marginBottom: 16 }}>Progress by Category</div>
+        <div style={{ background: "var(--nx-white)", border: "1px solid var(--nx-border)", borderRadius: 12, padding: "20px 24px", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+          <div style={{ fontWeight: 600, fontSize: 14, color: "var(--nx-text-3)", marginBottom: 16 }}>Progress by Category</div>
           <CategoryProgress categories={categories} workOrders={workOrders} bills={bills} />
         </div>
 
-        <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 12, padding: "20px 24px", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
-          <div style={{ fontWeight: 600, fontSize: 14, color: "#374151", marginBottom: 16 }}>Projects</div>
+        <div style={{ background: "var(--nx-white)", border: "1px solid var(--nx-border)", borderRadius: 12, padding: "20px 24px", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+          <div style={{ fontWeight: 600, fontSize: 14, color: "var(--nx-text-3)", marginBottom: 16 }}>Projects</div>
           <Table
             pagination={false}
             dataSource={projects}
@@ -139,8 +139,8 @@ export default function Dashboard() {
       </div>
 
       {/* Recent bills */}
-      <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 12, padding: "20px 24px", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
-        <div style={{ fontWeight: 600, fontSize: 14, color: "#374151", marginBottom: 16 }}>Recent Bills</div>
+      <div style={{ background: "var(--nx-white)", border: "1px solid var(--nx-border)", borderRadius: 12, padding: "20px 24px", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+        <div style={{ fontWeight: 600, fontSize: 14, color: "var(--nx-text-3)", marginBottom: 16 }}>Recent Bills</div>
         <RecentBillsTable bills={bills} />
       </div>
     </div>

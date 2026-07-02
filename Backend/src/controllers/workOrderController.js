@@ -25,14 +25,14 @@ exports.listWorkOrders = asyncHandler(async (req, res) => {
     ];
   }
   const workOrders = await WorkOrder.find(filter)
-    .populate('projectId', 'code name')
+    .populate('projectId', 'code name projectType')
     .populate('assignedDRI', 'name email')
     .sort({ createdAt: -1 });
   success(res, { workOrders });
 });
 
 exports.getWorkOrder = asyncHandler(async (req, res) => {
-  const workOrder = await WorkOrder.findById(req.params.id).populate('projectId', 'code name');
+  const workOrder = await WorkOrder.findById(req.params.id).populate('projectId', 'code name projectType');
   if (!workOrder) return notFound(res, 'Work order not found');
   success(res, { workOrder });
 });
@@ -100,7 +100,7 @@ exports.addScopeProgress = asyncHandler(async (req, res) => {
   const item = workOrder.scopeItems.id(req.params.itemId);
   if (!item) return notFound(res, 'Scope item not found');
 
-  const { date, qtyAdded, remarks } = req.body;
+  const { date, qtyAdded, remarks, tower, floor, flatNo, plotNo, locationNote } = req.body;
   if (!qtyAdded || qtyAdded <= 0) {
     return badRequest(res, 'qtyAdded must be greater than 0');
   }
@@ -113,7 +113,7 @@ exports.addScopeProgress = asyncHandler(async (req, res) => {
     );
   }
 
-  item.progressEntries.push({ date: date || new Date(), qtyAdded, remarks });
+  item.progressEntries.push({ date: date || new Date(), qtyAdded, remarks, tower, floor, flatNo, plotNo, locationNote });
   item.completedQty = item.progressEntries.reduce((s, e) => s + e.qtyAdded, 0);
   item.status =
     item.completedQty >= item.plannedQty ? 'completed'
@@ -126,7 +126,7 @@ exports.addScopeProgress = asyncHandler(async (req, res) => {
 
 exports.editProgressEntry = asyncHandler(async (req, res) => {
   const { id, itemId, progressId } = req.params;
-  const { qtyAdded, date, remarks } = req.body;
+  const { qtyAdded, date, remarks, tower, floor, flatNo, plotNo, locationNote } = req.body;
 
   const workOrder = await WorkOrder.findById(id);
   if (!workOrder) return notFound(res, 'Work order not found');
@@ -158,6 +158,11 @@ exports.editProgressEntry = asyncHandler(async (req, res) => {
   entry.qtyAdded = qtyAdded;
   if (date) entry.date = new Date(date);
   if (remarks !== undefined) entry.remarks = remarks;
+  if (tower        !== undefined) entry.tower        = tower;
+  if (floor        !== undefined) entry.floor        = floor;
+  if (flatNo       !== undefined) entry.flatNo       = flatNo;
+  if (plotNo       !== undefined) entry.plotNo       = plotNo;
+  if (locationNote !== undefined) entry.locationNote = locationNote;
 
   item.completedQty = item.progressEntries.reduce((s, e) => s + e.qtyAdded, 0);
   item.status = item.completedQty >= item.plannedQty ? 'completed'

@@ -388,7 +388,7 @@ export default function Contractors() {
       {/* Search */}
       <div
         style={{
-          background: "#fff",
+          background: "var(--nx-white)",
           border: "1px solid #E5E7EB",
           borderRadius: 10,
           padding: "14px 16px",
@@ -407,7 +407,7 @@ export default function Contractors() {
       {/* Table */}
       <div
         style={{
-          background: "#fff",
+          background: "var(--nx-white)",
           border: "1px solid #E5E7EB",
           borderRadius: 10,
           overflow: "hidden",

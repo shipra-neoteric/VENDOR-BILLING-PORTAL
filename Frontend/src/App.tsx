@@ -34,6 +34,18 @@ function ThemedApp() {
         colorFillAlter:       "#162032",
       } : {}),
     },
+    components: {
+      ...baseTheme.components,
+      ...(isDark ? {
+        Table: {
+          headerBg:         "#1a2535",
+          headerColor:      "#94A3B8",
+          rowHoverBg:       "#1a2535",
+          borderColor:      "#334155",
+          headerSplitColor: "transparent",
+        },
+      } : {}),
+    },
   };
 
   return (

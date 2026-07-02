@@ -208,7 +208,7 @@ export default function Categories() {
           { label: "Sub-Sub-Cat",   value: level3.length,                        color: "#0d9488" },
           { label: "Active",        value: cats.filter(c => c.isActive).length,  color: "#16a85a" },
         ].map(s => (
-          <div key={s.label} style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 12, padding: "14px 20px", minWidth: 120, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+          <div key={s.label} style={{ background: "var(--nx-white)", border: "1px solid #E5E7EB", borderRadius: 12, padding: "14px 20px", minWidth: 120, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
             <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", color: "#9CA3AF", marginBottom: 4 }}>{s.label}</div>
             <div style={{ fontFamily: "monospace", fontSize: 24, fontWeight: 700, color: s.color }}>{s.value}</div>
           </div>
@@ -232,7 +232,7 @@ export default function Categories() {
               <div
                 key={cat._id}
                 style={{
-                  background: "#fff",
+                  background: "var(--nx-white)",
                   border: "1px solid #E5E7EB",
                   borderLeft: `4px solid ${cat.color}`,
                   borderRadius: 12,
@@ -295,7 +295,7 @@ export default function Categories() {
 
                           return (
                             <div key={sub._id} style={{
-                              background: "#fff", border: "1px solid #EAEAEA",
+                              background: "var(--nx-white)", border: "1px solid #EAEAEA",
                               borderLeft: `3px solid ${sub.color}`, borderRadius: 8,
                               overflow: "hidden", opacity: sub.isActive ? 1 : 0.55,
                             }}>
@@ -351,7 +351,7 @@ export default function Categories() {
                                       {subSubs.map(ss => (
                                         <div key={ss._id} style={{
                                           display: "flex", alignItems: "center", gap: 8,
-                                          padding: "6px 10px", background: "#fff",
+                                          padding: "6px 10px", background: "var(--nx-white)",
                                           border: "1px solid #EAEAEA", borderLeft: `2px solid ${ss.color}`,
                                           borderRadius: 6, opacity: ss.isActive ? 1 : 0.5,
                                         }}>

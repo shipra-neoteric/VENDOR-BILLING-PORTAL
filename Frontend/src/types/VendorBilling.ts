@@ -25,6 +25,7 @@ export interface Project {
   location: string;
   contractValue: number;
   status: ProjectStatus;
+  projectType?: "apartment" | "plot";
 }
 
 export interface Contractor {
@@ -73,6 +74,11 @@ export interface WorkProgressEntry {
   date: string;
   qtyAdded: number;
   remarks?: string;
+  tower?: string;
+  floor?: string;
+  flatNo?: string;
+  plotNo?: string;
+  locationNote?: string;
 }
 
 export interface ScopeSubItem {

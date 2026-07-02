@@ -2,9 +2,14 @@ const mongoose = require('mongoose');
 
 const progressEntrySchema = new mongoose.Schema(
   {
-    date:     { type: Date, required: true },
-    qtyAdded: { type: Number, required: true, min: 0 },
-    remarks:  { type: String },
+    date:         { type: Date, required: true },
+    qtyAdded:     { type: Number, required: true, min: 0 },
+    remarks:      { type: String, default: '' },
+    tower:        { type: String, default: '' },
+    floor:        { type: String, default: '' },
+    flatNo:       { type: String, default: '' },
+    plotNo:       { type: String, default: '' },
+    locationNote: { type: String, default: '' },
   },
   { _id: true, timestamps: false }
 );

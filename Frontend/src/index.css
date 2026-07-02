@@ -45,6 +45,12 @@
   --nx-form-label-color:     #374151;
   --nx-section-label-color:  #9CA3AF;
   --nx-card-border:          #E5E7EB;
+
+  /* Extra text/fill scales */
+  --nx-text-3:    #374151;
+  --nx-text-muted:#9CA3AF;
+  --nx-fill:      #F3F4F6;
+  --nx-fill-2:    #F9FAFB;
 }
 
 [data-theme="dark"] {
@@ -90,6 +96,12 @@
   --nx-form-label-color:     #CBD5E1;
   --nx-section-label-color:  #64748B;
   --nx-card-border:          #334155;
+
+  /* Extra text/fill scales */
+  --nx-text-3:    #CBD5E1;
+  --nx-text-muted:#64748B;
+  --nx-fill:      #273549;
+  --nx-fill-2:    #1a2535;
 }
 
 * { box-sizing: border-box; }

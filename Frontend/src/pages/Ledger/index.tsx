@@ -51,7 +51,7 @@ const CATEGORY_COLOR: Record<string, string> = {
 // ── Stat card ─────────────────────────────────────────────────
 function StatCard({ label, value, sub, color = "#1a1f2e" }: { label: string; value: string; sub?: string; color?: string }) {
   return (
-    <div style={{ background: "#fff", border: "1px solid #e4e7ee", borderRadius: 12, padding: "16px 18px", boxShadow: "0 1px 3px rgba(0,0,0,0.04)", height: "100%" }}>
+    <div style={{ background: "var(--nx-white)", border: "1px solid #e4e7ee", borderRadius: 12, padding: "16px 18px", boxShadow: "0 1px 3px rgba(0,0,0,0.04)", height: "100%" }}>
       <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", color: "#9ba3b8", marginBottom: 6 }}>{label}</div>
       <div style={{ fontFamily: "monospace", fontSize: 20, fontWeight: 700, color }}>{value}</div>
       {sub && <div style={{ fontSize: 11, color: "#5a6278", marginTop: 3 }}>{sub}</div>}
@@ -65,7 +65,7 @@ function TapeBar({ contract, certified, pending }: { contract: number; certified
   const pendPct = contract ? Math.min((pending   / contract) * 100, 100 - certPct) : 0;
   const remaining = contract - certified - pending;
   return (
-    <div style={{ background: "#fff", border: "1px solid #e4e7ee", borderRadius: 12, padding: "16px 18px", boxShadow: "0 1px 3px rgba(0,0,0,0.04)", marginBottom: 20 }}>
+    <div style={{ background: "var(--nx-white)", border: "1px solid #e4e7ee", borderRadius: 12, padding: "16px 18px", boxShadow: "0 1px 3px rgba(0,0,0,0.04)", marginBottom: 20 }}>
       <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#9ba3b8", marginBottom: 6, fontFamily: "monospace" }}>
         <span>₹0</span>
         <span style={{ color: "#16a85a" }}>{fmt(certified)} certified</span>
@@ -231,7 +231,7 @@ export default function Ledger() {
         <TapeBar contract={detail.contract} certified={detail.certifiedNet} pending={detail.pendingGross} />
 
         {/* WO meta */}
-        <div style={{ background: "#fff", border: "1px solid #e4e7ee", borderRadius: 12, padding: "14px 18px", marginBottom: 20 }}>
+        <div style={{ background: "var(--nx-white)", border: "1px solid #e4e7ee", borderRadius: 12, padding: "14px 18px", marginBottom: 20 }}>
           <Descriptions size="small" column={3}>
             {detail.wo.issueDate && <Descriptions.Item label="Issue Date">{dayjs(detail.wo.issueDate).format("DD MMM YYYY")}</Descriptions.Item>}
             <Descriptions.Item label="Project">{detail.wo.projectName}</Descriptions.Item>
@@ -241,7 +241,7 @@ export default function Ledger() {
         </div>
 
         {/* Ledger table */}
-        <div style={{ background: "#fff", border: "1px solid #e4e7ee", borderRadius: 12, overflow: "hidden" }}>
+        <div style={{ background: "var(--nx-white)", border: "1px solid #e4e7ee", borderRadius: 12, overflow: "hidden" }}>
           <div style={{ padding: "12px 16px", borderBottom: "1px solid #e4e7ee", fontSize: 12, fontWeight: 600, color: "#5a6278", textTransform: "uppercase", letterSpacing: "0.06em" }}>
             Quantity Ledger — {detail.wo.workOrderNo}
           </div>
@@ -300,7 +300,7 @@ export default function Ledger() {
               {detail.rows.length > 0 && (
                 <tfoot>
                   <tr style={{ background: "#f5f6f8", borderTop: "2px solid #e4e7ee" }}>
-                    <td colSpan={3} style={{ padding: "10px 12px", fontWeight: 700, color: "#1a1f2e", fontSize: 12 }}>CLOSING BALANCE</td>
+                    <td colSpan={3} style={{ padding: "10px 12px", fontWeight: 700, color: "var(--nx-text)", fontSize: 12 }}>CLOSING BALANCE</td>
                     <td style={{ padding: "10px 12px", textAlign: "right", fontFamily: "monospace", fontWeight: 600 }}>{fmt(detail.rows.reduce((s, r) => s + r.b.amount, 0))}</td>
                     <td style={{ padding: "10px 12px", textAlign: "right", fontFamily: "monospace", color: "#16a34a" }}>{fmt(detail.rows.reduce((s, r) => s + r.gst, 0))}</td>
                     <td style={{ padding: "10px 12px", textAlign: "right", fontFamily: "monospace", color: "#f37916", fontWeight: 700 }}>{fmt(detail.totalGross)}</td>
@@ -330,7 +330,7 @@ export default function Ledger() {
     <>
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 24 }}>
         <div>
-          <h1 style={{ fontSize: 26, fontWeight: 700, margin: 0, color: "#1a1f2e" }}>Ledger</h1>
+          <h1 style={{ fontSize: 26, fontWeight: 700, margin: 0, color: "var(--nx-text)" }}>Ledger</h1>
           <p style={{ color: "#5a6278", marginTop: 4, marginBottom: 0, fontSize: 13 }}>
             Work Order billing summary — click "View Ledger" for a full statement.
           </p>
@@ -378,7 +378,7 @@ export default function Ledger() {
       {woSummaries.length === 0 ? (
         <Empty description="No work orders match the selected filters" />
       ) : (
-        <div style={{ background: "#fff", border: "1px solid #e4e7ee", borderRadius: 12, overflow: "hidden" }}>
+        <div style={{ background: "var(--nx-white)", border: "1px solid #e4e7ee", borderRadius: 12, overflow: "hidden" }}>
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 900 }}>
               <thead>

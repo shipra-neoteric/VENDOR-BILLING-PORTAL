@@ -657,7 +657,7 @@ function ScopeItemsBuilder({ items, onChange, allCategories = [], topCatId = nul
                       gap: 8,
                       alignItems: "center",
                       marginBottom: 8,
-                      background: "#fff",
+                      background: "var(--nx-white)",
                       border: "1px solid #e4e7ee",
                       borderRadius: 6,
                       padding: "8px 10px",
@@ -1736,7 +1736,7 @@ export default function WorkItems() {
       {/* ── Filters ─────────────────────────────────────────── */}
       <div
         style={{
-          background: "#fff",
+          background: "var(--nx-white)",
           border: "1px solid #E5E7EB",
           borderRadius: 10,
           padding: "14px 16px",
@@ -1855,7 +1855,7 @@ export default function WorkItems() {
       </div>
 
       {/* Table */}
-      <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 10, overflow: "hidden" }}>
+      <div style={{ background: "var(--nx-white)", border: "1px solid #E5E7EB", borderRadius: 10, overflow: "hidden" }}>
         <Spin spinning={loadingData}>
           <Table
             rowKey="id"
