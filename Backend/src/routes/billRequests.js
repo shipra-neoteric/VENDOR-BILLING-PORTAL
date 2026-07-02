@@ -3,6 +3,7 @@ const { authenticate, authorize } = require('../middleware/auth');
 const {
   listBillRequests,
   createBillRequest,
+  createBatchBillRequest,
   approveBillRequest,
   rejectBillRequest,
   markMilestone,
@@ -11,6 +12,7 @@ const {
 router.use(authenticate);
 
 router.get('/',                listBillRequests);
+router.post('/batch',          authorize('dri', 'owner', 'gm'), createBatchBillRequest);
 router.post('/',               authorize('dri', 'owner', 'gm'), createBillRequest);
 router.put('/:id/approve',     authorize('owner', 'gm', 'accounts'), approveBillRequest);
 router.put('/:id/reject',      authorize('owner', 'gm', 'accounts'), rejectBillRequest);

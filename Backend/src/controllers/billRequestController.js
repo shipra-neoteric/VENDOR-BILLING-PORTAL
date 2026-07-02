@@ -21,12 +21,13 @@ async function nextBillNo() {
 
 // GET /api/bill-requests
 exports.listBillRequests = asyncHandler(async (req, res) => {
-  const { status, workOrderId } = req.query;
+  const { status, workOrderId, vendorCode } = req.query;
   const filter = {};
 
   if (req.user.role === 'dri') filter.requestedBy = req.user._id;
-  if (status) filter.status = status;
+  if (status)      filter.status      = status;
   if (workOrderId) filter.workOrderId = workOrderId;
+  if (vendorCode)  filter.vendorCode  = vendorCode;
 
   const requests = await BillRequest.find(filter)
     .populate('requestedBy', 'name email')
@@ -223,4 +224,93 @@ exports.markMilestone = asyncHandler(async (req, res) => {
   }
 
   success(res, { billRequest: br }, `Stage ${br.stageNo} — Payment released! Milestone achieved.`);
+});
+
+// POST /api/bill-requests/batch
+// Creates one bill request per work order, all grouped under a shared batchId.
+exports.createBatchBillRequest = asyncHandler(async (req, res) => {
+  const { workOrderIds, remarks } = req.body;
+
+  if (!Array.isArray(workOrderIds) || workOrderIds.length === 0) {
+    return badRequest(res, 'Provide at least one work order ID');
+  }
+
+  const batchId = `BATCH-${Date.now()}`;
+  const created = [];
+  const skipped = [];
+
+  for (const workOrderId of workOrderIds) {
+    const wo = await WorkOrder.findById(workOrderId);
+    if (!wo) { skipped.push({ workOrderId, reason: 'Not found' }); continue; }
+
+    if (req.user.role === 'dri') {
+      const isAssigned = (wo.assignedDRI || []).some(
+        id => id.toString() === req.user._id.toString()
+      );
+      if (!isAssigned) { skipped.push({ workOrderId, reason: 'Not assigned' }); continue; }
+    }
+
+    const existing = await BillRequest.findOne({ workOrderId: wo._id, status: 'pending' });
+    if (existing) { skipped.push({ workOrderId, reason: `Stage ${existing.stageNo} already pending` }); continue; }
+
+    const pendingItems = wo.scopeItems
+      .map(si => ({
+        scopeItemId:   si._id,
+        description:   si.description,
+        unit:          si.unit,
+        completedQty:  si.completedQty  || 0,
+        lastBilledQty: si.lastBilledQty || 0,
+        billedQty:     Math.max(0, (si.completedQty || 0) - (si.lastBilledQty || 0)),
+      }))
+      .filter(it => it.billedQty > 0);
+
+    if (!pendingItems.length) { skipped.push({ workOrderId, reason: 'No pending progress' }); continue; }
+
+    const stageNo    = await BillRequest.countDocuments({ workOrderId: wo._id }) + 1;
+    const lastBR     = await BillRequest.findOne({ workOrderId: wo._id }).sort({ createdAt: -1 }).select('periodTo');
+    const periodFrom = lastBR?.periodTo ?? wo.issueDate ?? new Date();
+    const periodTo   = new Date();
+    const reqNo      = await nextReqNo();
+
+    const br = await BillRequest.create({
+      reqNo, stageNo,
+      workOrderId: wo._id,
+      workOrderNo: wo.workOrderNo,
+      projectName: wo.projectName,
+      vendorCode:  wo.vendorCode,
+      vendorName:  wo.vendorName,
+      category:    wo.category    || '',
+      subCategory: wo.subCategory || '',
+      periodFrom, periodTo,
+      items: pendingItems.map(it => ({
+        scopeItemId: it.scopeItemId,
+        description: it.description,
+        unit:        it.unit,
+        billedQty:   it.billedQty,
+      })),
+      remarks:     remarks || '',
+      requestedBy: req.user._id,
+      batchId,
+    });
+
+    for (const pi of pendingItems) {
+      const si = wo.scopeItems.id(pi.scopeItemId);
+      if (si) si.lastBilledQty = pi.completedQty;
+    }
+    await wo.save();
+
+    created.push(br);
+  }
+
+  if (!created.length) {
+    return badRequest(res, `No work orders could be billed. ${skipped.map(s => s.reason).join('; ')}`);
+  }
+
+  res.status(201).json({
+    success: true,
+    message: `Bill request submitted for ${created.length} work order${created.length !== 1 ? 's' : ''} across ${new Set(created.map(b => b.projectName)).size} project${new Set(created.map(b => b.projectName)).size !== 1 ? 's' : ''}`,
+    billRequests: created,
+    batchId,
+    skipped,
+  });
 });

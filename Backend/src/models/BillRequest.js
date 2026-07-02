@@ -37,6 +37,7 @@ const billRequestSchema = new Schema(
     rejectReason:     { type: String, default: '' },
     milestoneAchieved:{ type: Boolean, default: false },
     milestoneDate:    { type: Date },
+    batchId:          { type: String, default: null },
   },
   { timestamps: true }
 );
