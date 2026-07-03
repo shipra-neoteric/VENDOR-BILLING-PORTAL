@@ -22,7 +22,7 @@ const S = StyleSheet.create({
   docTitle:  { textAlign: "right" },
   docMain:   { fontSize: 14, fontFamily: "Helvetica-Bold", color: ORANGE, letterSpacing: 0.4 },
   docSub:    { fontSize: 7.5, color: GRAY, marginTop: 3, letterSpacing: 0.3 },
-  docBadge:  { marginTop: 4, backgroundColor: HDR_BG, color: "#fff", fontSize: 6.5, padding: "2px 6px", borderRadius: 3, letterSpacing: 0.5, alignSelf: "flex-end" },
+  docBadge:  { marginTop: 4, fontSize: 7.5, color: GRAY, letterSpacing: 0.5, alignSelf: "flex-end" },
 
   // ── Section table
   table:     { borderWidth: 1, borderColor: BORDER, borderRadius: 3, marginBottom: 10, overflow: "hidden" },
@@ -84,6 +84,8 @@ interface WOData {
   ownerName?: string;
   mobile?: string;
   contractValue?: number;
+  gstPercent?: number;
+  tdsPercent?: number;
   scopeItems?: Array<{
     description: string;
     unit?: string;
@@ -296,8 +298,16 @@ export function WorkOrderDocument({ wo, company, contractor }: Props) {
             <Text style={S.totalVal}>{fmtAmt(totalAmt)}</Text>
           </View>
           <View style={S.gstRow}>
-            <Text style={S.gstLabel}>GST %:</Text>
-            <Text style={S.gstVal}>As applicable</Text>
+            <Text style={S.gstLabel}>GST Slab:</Text>
+            <Text style={S.gstVal}>
+              {wo.gstPercent != null ? `${wo.gstPercent}%` : "As applicable"}
+            </Text>
+          </View>
+          <View style={S.gstRow}>
+            <Text style={S.gstLabel}>TDS Slab:</Text>
+            <Text style={S.gstVal}>
+              {wo.tdsPercent != null ? `${wo.tdsPercent}%` : "As applicable"}
+            </Text>
           </View>
         </View>
 
