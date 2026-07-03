@@ -22,7 +22,7 @@ const S = StyleSheet.create({
   docTitle:  { textAlign: "right" },
   docMain:   { fontSize: 14, fontFamily: "Helvetica-Bold", color: ORANGE, letterSpacing: 0.4 },
   docSub:    { fontSize: 7.5, color: GRAY, marginTop: 3, letterSpacing: 0.3 },
-  docBadge:  { marginTop: 4, fontSize: 7.5, color: GRAY, letterSpacing: 0.5, alignSelf: "flex-end" },
+  docBadge:  { fontSize: 7.5, color: GRAY, letterSpacing: 0.5 },
 
   // ── Section table
   table:     { borderWidth: 1, borderColor: BORDER, borderRadius: 3, marginBottom: 10, overflow: "hidden" },
