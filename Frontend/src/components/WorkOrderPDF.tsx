@@ -303,12 +303,14 @@ export function WorkOrderDocument({ wo, company, contractor }: Props) {
               {wo.gstPercent != null ? `${wo.gstPercent}%` : "As applicable"}
             </Text>
           </View>
-          <View style={S.gstRow}>
-            <Text style={S.gstLabel}>TDS Slab:</Text>
-            <Text style={S.gstVal}>
-              {wo.tdsPercent != null ? `${wo.tdsPercent}%` : "As applicable"}
-            </Text>
-          </View>
+          {wo.gstPercent != null && wo.gstPercent > 0 && (
+            <View style={[S.gstRow, { borderTopWidth: 1.5, borderTopColor: BORDER }]}>
+              <Text style={[S.gstLabel, { color: MID, fontFamily: "Helvetica-Bold" }]}>Total incl. GST:</Text>
+              <Text style={[S.gstVal, { color: MID, fontFamily: "Helvetica-Bold" }]}>
+                {fmtAmt(Math.round(totalAmt * (1 + (wo.gstPercent ?? 0) / 100)))}
+              </Text>
+            </View>
+          )}
         </View>
 
         {/* ── Terms ── */}

@@ -68,7 +68,6 @@ const workOrderSchema = new mongoose.Schema(
     scopeItems:    [scopeItemSchema],
     contractValue: { type: Number, default: 0 },
     gstPercent:    { type: Number, default: 18 },
-    tdsPercent:    { type: Number, default: 1 },
     documentUrl:   { type: String },
     documentName:  { type: String },
     status: {

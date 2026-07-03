@@ -21,6 +21,7 @@ interface ScopeItem {
 interface WODetail {
   _id: string; workOrderNo: string; projectName: string; vendorName: string;
   category: string; subCategory?: string; contractValue: number;
+  gstPercent?: number;
   issueDate: string; status: string;
   scopeItems: ScopeItem[];
 }
@@ -156,11 +157,25 @@ export default function WorkOrderDashboard() {
 
       {/* Stats Cards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 24 }}>
+        {/* Contract Value card — shows base + GST-inclusive */}
+        <div style={{ background: "var(--nx-white)", border: "1px solid #E5E7EB", borderRadius: 12, padding: "16px 18px" }}>
+          <div style={{ fontSize: 22, marginBottom: 8 }}>📋</div>
+          <div style={{ fontSize: 10, color: "#9CA3AF", textTransform: "uppercase", letterSpacing: "0.07em" }}>Contract Value</div>
+          <div style={{ fontSize: 20, fontWeight: 800, color: "#374151", marginTop: 4 }}>{fmtMoney(totalContract)}</div>
+          {(wo.gstPercent ?? 0) > 0 && (
+            <div style={{ marginTop: 6, paddingTop: 6, borderTop: "1px dashed #E5E7EB" }}>
+              <div style={{ fontSize: 10, color: "#9CA3AF" }}>+ GST @{wo.gstPercent}%</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#FF7A00", marginTop: 2 }}>
+                {fmtMoney(Math.round(totalContract * (1 + (wo.gstPercent ?? 0) / 100)))} incl. GST
+              </div>
+            </div>
+          )}
+        </div>
+
         {[
-          { label: "Contract Value",   value: fmtMoney(totalContract),   icon: "📋", color: "#374151" },
-          { label: "Overall Progress", value: `${avgPct}%`,              icon: "📊", color: avgPct >= 100 ? "#16a34a" : avgPct > 50 ? "#f59e0b" : "#3b82f6" },
-          { label: "Billed to Date",   value: fmtMoney(billedAmount),    icon: "✅", color: "#16a34a" },
-          { label: "Unbilled Work",    value: fmtMoney(unbilledValue),   icon: "⏳", color: unbilledValue > 0 ? "#FF7A00" : "#16a34a" },
+          { label: "Overall Progress", value: `${avgPct}%`,           icon: "📊", color: avgPct >= 100 ? "#16a34a" : avgPct > 50 ? "#f59e0b" : "#3b82f6" },
+          { label: "Billed to Date",   value: fmtMoney(billedAmount), icon: "✅", color: "#16a34a" },
+          { label: "Unbilled Work",    value: fmtMoney(unbilledValue),icon: "⏳", color: unbilledValue > 0 ? "#FF7A00" : "#16a34a" },
         ].map(({ label, value, icon, color }) => (
           <div key={label} style={{ background: "var(--nx-white)", border: "1px solid #E5E7EB", borderRadius: 12, padding: "16px 18px" }}>
             <div style={{ fontSize: 22, marginBottom: 8 }}>{icon}</div>
