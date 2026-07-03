@@ -172,6 +172,8 @@ exports.approveBillRequest = asyncHandler(async (req, res) => {
     billDate:    new Date(),
     lineItems,
     amount:      totalAmount,
+    gstPercent:  wo.gstPercent ?? 18,
+    tdsPercent:  wo.tdsPercent ?? 1,
     generatedBy: req.user.name,
     status:      'submitted',
     createdBy:   req.user._id,

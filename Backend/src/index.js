@@ -50,6 +50,7 @@ app.use('/api/stages',        require('./routes/stages'));
 app.use('/api/activities',    require('./routes/activities'));
 app.use('/api/milestones',    require('./routes/milestones'));
 app.use('/api/bill-requests', require('./routes/billRequests'));
+app.use('/api/users',        require('./routes/users'));
 
 app.get('/api/health', (_req, res) =>
   res.json({ success: true, status: 'ok', timestamp: new Date().toISOString() })

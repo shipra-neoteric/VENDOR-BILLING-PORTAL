@@ -293,6 +293,10 @@ export default function Bills() {
   const [woList, setWoList]             = useState<WorkOrderOpt[]>([]);
   const [lineItems, setLineItems]       = useState<LineItem[]>([blankRow()]);
 
+  // GST / TDS slabs for new bill
+  const [newGstPercent, setNewGstPercent] = useState<number>(18);
+  const [newTdsPercent, setNewTdsPercent] = useState<number>(1);
+
   // View drawer
   const [viewBill, setViewBill]   = useState<Bill | null>(null);
   const [viewOpen, setViewOpen]   = useState(false);
@@ -437,6 +441,8 @@ export default function Bills() {
     setNewContractorId("");
     setWoList([]);
     setLineItems([blankRow()]);
+    setNewGstPercent(18);
+    setNewTdsPercent(1);
     setNewOpen(true);
   }
 
@@ -465,6 +471,8 @@ export default function Bills() {
       generatedBy:       values.generatedBy ?? "",
       contractorRefNo:   values.contractorRefNo ?? "",
       remarks:           values.remarks ?? "",
+      gstPercent:        newGstPercent,
+      tdsPercent:        newTdsPercent,
       lineItems: validItems.map(({ key: _k, ...rest }) => ({
         ...rest,
         amount: rest.billedQty * rest.rate,
@@ -1070,6 +1078,33 @@ export default function Bills() {
               </Col>
             </Row>
 
+            <Row gutter={16}>
+              <Col span={8}>
+                <Form.Item label="GST Slab" name="gstPercent" initialValue={18} tooltip="GST % applicable on this bill">
+                  <Select
+                    onChange={(v) => setNewGstPercent(Number(v))}
+                    options={[
+                      { label: "0% — Exempt / Nil", value: 0 },
+                      { label: "5%", value: 5 },
+                      { label: "12%", value: 12 },
+                      { label: "18% (Standard)", value: 18 },
+                    ]}
+                  />
+                </Form.Item>
+              </Col>
+              <Col span={8}>
+                <Form.Item label="TDS Slab" name="tdsPercent" initialValue={1} tooltip="TDS % to be deducted at source">
+                  <Select
+                    onChange={(v) => setNewTdsPercent(Number(v))}
+                    options={[
+                      { label: "0% — Nil / Not Applicable", value: 0 },
+                      { label: "1%", value: 1 },
+                    ]}
+                  />
+                </Form.Item>
+              </Col>
+            </Row>
+
             {/* Work order import (optional) */}
             {woList.length > 0 && (
               <div style={{ background: "#fff7ed", border: "1px solid #ffd591", borderRadius: 6, padding: "10px 14px", marginBottom: 4 }}>
@@ -1201,23 +1236,35 @@ export default function Bills() {
             Add Work Item
           </Button>
 
-          {/* Total */}
-          <div
-            style={{
-              background: "#fff8f3", border: "1px solid #f8c9a0",
-              borderRadius: 8, padding: "12px 16px",
-              display: "flex", justifyContent: "space-between",
-              alignItems: "center", marginTop: 12,
-            }}
-          >
-            <div>
-              <span style={{ fontWeight: 700, color: "#d4620c" }}>Total Bill Amount</span>
-              <div style={{ fontSize: 11, color: "#9ba3b8", marginTop: 2 }}>GST &amp; TDS applicable as per norms</div>
-            </div>
-            <span style={{ fontFamily: "monospace", fontWeight: 800, fontSize: 22, color: "#d4620c" }}>
-              {fmt(totalLineAmount)}
-            </span>
-          </div>
+          {/* Dynamic financial summary */}
+          {(() => {
+            const gross  = totalLineAmount;
+            const gstAmt = Math.round(gross * newGstPercent / 100);
+            const tdsAmt = Math.round(gross * newTdsPercent / 100);
+            const net    = gross + gstAmt - tdsAmt;
+            return (
+              <div style={{ border: "1px solid #e4e7ee", borderRadius: 8, overflow: "hidden", marginTop: 12 }}>
+                <div style={{ background: "#fff8f3", borderBottom: "1px solid #f8c9a0", padding: "8px 14px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontWeight: 700, fontSize: 12, color: "#d4620c", textTransform: "uppercase", letterSpacing: "0.06em" }}>Financial Summary</span>
+                </div>
+                <div style={{ fontFamily: "monospace", fontSize: 13 }}>
+                  {[
+                    { label: "Gross Amount",                 value: fmt(gross),         color: "#1a1f2e" },
+                    { label: `+ GST @ ${newGstPercent}%`,   value: fmt(gstAmt),         color: "#16a85a" },
+                    { label: `− TDS @ ${newTdsPercent}%`,   value: `(${fmt(tdsAmt)})`, color: "#e03b3b" },
+                  ].map((r, i) => (
+                    <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "7px 14px", borderBottom: "1px solid #f5f6f8", color: r.color }}>
+                      <span>{r.label}</span><span>{r.value}</span>
+                    </div>
+                  ))}
+                  <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 14px", background: "#fff8f3", fontWeight: 800, fontSize: 15, color: "#d4620c" }}>
+                    <span>Net Payable</span>
+                    <span>{fmt(net)}</span>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
         </div>
 
         {/* Remarks */}

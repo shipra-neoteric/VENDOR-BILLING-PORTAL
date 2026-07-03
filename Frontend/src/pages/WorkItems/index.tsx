@@ -1181,6 +1181,33 @@ function WOFormFields({
         </Col>
       </Row>
 
+      <Row gutter={16}>
+        <Col span={12}>
+          <Form.Item label="GST Slab" name="gstPercent" initialValue={18} tooltip="GST % applicable on billing for this work order">
+            <Select
+              options={[
+                { label: "0% — Exempt / Nil", value: 0 },
+                { label: "5%", value: 5 },
+                { label: "12%", value: 12 },
+                { label: "18% (Standard)", value: 18 },
+              ]}
+              getPopupContainer={(trigger) => trigger.parentElement || document.body}
+            />
+          </Form.Item>
+        </Col>
+        <Col span={12}>
+          <Form.Item label="TDS Slab" name="tdsPercent" initialValue={1} tooltip="TDS % to be deducted on payment">
+            <Select
+              options={[
+                { label: "0% — Nil / Not Applicable", value: 0 },
+                { label: "1%", value: 1 },
+              ]}
+              getPopupContainer={(trigger) => trigger.parentElement || document.body}
+            />
+          </Form.Item>
+        </Col>
+      </Row>
+
       {driList.length > 0 && (
         <Row gutter={16}>
           <Col span={24}>
@@ -1442,6 +1469,8 @@ export default function WorkItems() {
         scopeOfWork,
         scopeItems:   createScopeItems.map(draftToNewItem),
         contractValue: totalAmt,
+        gstPercent:   values.gstPercent ?? 18,
+        tdsPercent:   values.tdsPercent ?? 1,
         status:       values.status || "draft",
       };
       if (values.workOrderNo?.trim()) body.workOrderNo = values.workOrderNo.trim();
@@ -1462,7 +1491,7 @@ export default function WorkItems() {
 
   const openEdit = (wo: WorkOrder) => {
     setEditWOId(wo.id);
-    editForm.setFieldsValue({ ...wo, issueDate: dayjs(wo.issueDate), category: wo.category || "", subCategory: wo.subCategory || "", assignedDRI: ((wo as any).assignedDRI || []).map((d: any) => d._id || d) });
+    editForm.setFieldsValue({ ...wo, issueDate: dayjs(wo.issueDate), category: wo.category || "", subCategory: wo.subCategory || "", assignedDRI: ((wo as any).assignedDRI || []).map((d: any) => d._id || d), gstPercent: wo.gstPercent ?? 18, tdsPercent: wo.tdsPercent ?? 1 });
     setEditScopeItems((wo.scopeItems || []).map(toDraft));
     setEditModalOpen(true);
   };
@@ -1493,6 +1522,8 @@ export default function WorkItems() {
         scopeOfWork,
         scopeItems:   savedItems,
         contractValue: totalAmt,
+        gstPercent:   values.gstPercent ?? currentEditWO.gstPercent ?? 18,
+        tdsPercent:   values.tdsPercent ?? currentEditWO.tdsPercent ?? 1,
         status:       values.status,
       };
 

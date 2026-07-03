@@ -12,6 +12,7 @@ import BillRequests        from "../pages/BillRequests";
 import WorkOrderDashboard  from "../pages/WorkOrderDashboard";
 import Approvals           from "../features/approvals";
 import Ledger              from "../features/ledger";
+import UserManagement      from "../pages/UserManagement";
 import Login               from "../features/auth";
 
 import MainLayout     from "../layouts/MainLayout/MainLayout";
@@ -52,6 +53,7 @@ function AdminRoutes() {
           <Route path="/bill-requests"    element={<BillRequests />} />
           <Route path="/approvals"        element={<Approvals />} />
           <Route path="/ledger"           element={<Ledger />} />
+          <Route path="/users"            element={<UserManagement />} />
           <Route path="*"                 element={<Navigate to="/dashboard" replace />} />
         </Route>
       </Route>

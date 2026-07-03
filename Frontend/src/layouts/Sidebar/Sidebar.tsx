@@ -31,6 +31,12 @@ const ADMIN_GROUPS = [
       { name: "Ledger",             path: "/ledger",        icon: "📒" },
     ],
   },
+  {
+    label: "Admin",
+    items: [
+      { name: "User Management", path: "/users", icon: "👥" },
+    ],
+  },
 ];
 
 const DRI_GROUPS = [
