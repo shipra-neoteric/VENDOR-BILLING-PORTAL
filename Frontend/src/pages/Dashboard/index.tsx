@@ -8,17 +8,17 @@ import { RecentBillsTable } from "../../features/dashboard/components/RecentBill
 import { calcKPIs, fmtCr }  from "../../features/dashboard/utils";
 
 // ── Overall progress bar ─────────────────────────────────────────
-function ProgressBar({ certifiedAmt, pendingAmt, totalContractValue, remaining }: {
-  certifiedAmt: number; pendingAmt: number; totalContractValue: number; remaining: number;
+function ProgressBar({ certifiedAmt, pendingAmt, totalContractValueWithGST, remaining }: {
+  certifiedAmt: number; pendingAmt: number; totalContractValueWithGST: number; remaining: number;
 }) {
   return (
     <div style={{ background: "var(--nx-white)", border: "1px solid var(--nx-border)", borderRadius: 12, padding: "20px 24px", marginBottom: 24, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
       <div style={{ fontWeight: 600, fontSize: 14, color: "var(--nx-text-3)", marginBottom: 12 }}>Overall Billing Progress</div>
       <div style={{ display: "flex", height: 14, borderRadius: 7, overflow: "hidden", background: "var(--nx-fill)", marginBottom: 12 }}>
-        {totalContractValue > 0 && (
+        {totalContractValueWithGST > 0 && (
           <>
-            <div style={{ width: `${(certifiedAmt / totalContractValue) * 100}%`, background: "#16a34a", transition: "width 0.6s ease" }} />
-            <div style={{ width: `${(pendingAmt  / totalContractValue) * 100}%`, background: "#f59e0b", transition: "width 0.6s ease" }} />
+            <div style={{ width: `${(certifiedAmt / totalContractValueWithGST) * 100}%`, background: "#16a34a", transition: "width 0.6s ease" }} />
+            <div style={{ width: `${(pendingAmt  / totalContractValueWithGST) * 100}%`, background: "#f59e0b", transition: "width 0.6s ease" }} />
           </>
         )}
       </div>

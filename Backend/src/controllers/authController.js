@@ -8,11 +8,12 @@ const signToken = (id) =>
   jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRE || '7d' });
 
 const userPayload = (user) => ({
-  id:         user._id,
-  name:       user.name,
-  email:      user.email,
-  role:       user.role,
-  vendorCode: user.vendorCode,
+  id:          user._id,
+  name:        user.name,
+  email:       user.email,
+  role:        user.role,
+  vendorCode:  user.vendorCode,
+  permissions: user.permissions || [],
 });
 
 exports.register = asyncHandler(async (req, res) => {

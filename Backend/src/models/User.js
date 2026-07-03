@@ -13,6 +13,11 @@ const userSchema = new mongoose.Schema(
     },
     vendorCode: { type: String, default: null },
     isActive: { type: Boolean, default: true },
+    permissions: [{
+      module:  { type: String, required: true },
+      actions: [{ type: String }],
+      _id: false,
+    }],
   },
   { timestamps: true }
 );

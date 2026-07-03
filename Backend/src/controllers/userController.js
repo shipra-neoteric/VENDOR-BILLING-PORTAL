@@ -12,7 +12,7 @@ exports.listUsers = asyncHandler(async (req, res) => {
 
 // POST /api/users
 exports.createUser = asyncHandler(async (req, res) => {
-  const { name, email, password, role } = req.body;
+  const { name, email, password, role, permissions } = req.body;
 
   if (!name || !email || !password || !role) {
     return badRequest(res, 'Name, email, password, and role are required');
@@ -24,7 +24,7 @@ exports.createUser = asyncHandler(async (req, res) => {
   const existing = await User.findOne({ email: email.toLowerCase().trim() });
   if (existing) return badRequest(res, 'A user with this email already exists');
 
-  const user = await User.create({ name, email, password, role });
+  const user = await User.create({ name, email, password, role, permissions: permissions || [] });
   const safe = user.toObject();
   delete safe.password;
   created(res, { user: safe }, `User ${user.name} created`);
@@ -32,7 +32,7 @@ exports.createUser = asyncHandler(async (req, res) => {
 
 // PUT /api/users/:id
 exports.updateUser = asyncHandler(async (req, res) => {
-  const { name, email, role, isActive } = req.body;
+  const { name, email, role, isActive, permissions } = req.body;
   const user = await User.findById(req.params.id);
   if (!user) return notFound(res, 'User not found');
 
@@ -49,9 +49,10 @@ exports.updateUser = asyncHandler(async (req, res) => {
     if (taken) return badRequest(res, 'Email already in use by another account');
     user.email = email.toLowerCase().trim();
   }
-  if (name)           user.name     = name;
-  if (role)           user.role     = role;
-  if (isActive !== undefined) user.isActive = isActive;
+  if (name)                    user.name        = name;
+  if (role)                    user.role        = role;
+  if (isActive !== undefined)  user.isActive    = isActive;
+  if (permissions !== undefined) user.permissions = permissions;
 
   await user.save();
   const safe = user.toObject();

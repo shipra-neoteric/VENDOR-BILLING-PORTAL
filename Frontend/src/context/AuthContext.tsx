@@ -2,12 +2,18 @@ import { createContext, useContext, useState, useCallback } from "react";
 import type { ReactNode } from "react";
 import apiClient from "../services/apiClient";
 
+export interface PermEntry {
+  module: string;
+  actions: string[];
+}
+
 interface AuthUser {
   id: string;
   name: string;
   email: string;
   role: string;
   vendorCode?: string;
+  permissions?: PermEntry[];
 }
 
 interface AuthContextType {

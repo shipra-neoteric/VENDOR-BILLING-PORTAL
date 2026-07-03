@@ -1,55 +1,120 @@
+import type { ReactNode } from "react";
 import { NavLink } from "react-router-dom";
+import {
+  LayoutOutlined, BankOutlined, ApartmentOutlined, TeamOutlined, TagsOutlined,
+  FileTextOutlined, LineChartOutlined, ProfileOutlined, WalletOutlined,
+  CheckSquareOutlined, AccountBookOutlined, UsergroupAddOutlined, MonitorOutlined,
+} from "@ant-design/icons";
 import { useAuth } from "../../context/AuthContext";
+import type { PermEntry } from "../../context/AuthContext";
 
-const ADMIN_GROUPS = [
+interface NavItem {
+  name: string;
+  path: string;
+  icon: ReactNode;
+  moduleId: string;
+}
+
+interface NavGroup {
+  label: string;
+  items: NavItem[];
+}
+
+// ── Nav definitions ────────────────────────────────────────────────────────────
+const ADMIN_GROUPS: NavGroup[] = [
   {
     label: "Overview",
-    items: [{ name: "Dashboard", path: "/dashboard", icon: "▦" }],
+    items: [{ name: "Dashboard", path: "/dashboard", icon: <LayoutOutlined />, moduleId: "dashboard" }],
   },
   {
     label: "Project Setup",
     items: [
-      { name: "Companies",   path: "/companies",   icon: "🏢" },
-      { name: "Projects",    path: "/projects",    icon: "🏗️" },
-      { name: "Contractors", path: "/contractors", icon: "👷" },
-      { name: "Categories",  path: "/categories",  icon: "🏷️" },
+      { name: "Companies",   path: "/companies",   icon: <BankOutlined />,       moduleId: "companies" },
+      { name: "Projects",    path: "/projects",    icon: <ApartmentOutlined />,  moduleId: "projects" },
+      { name: "Contractors", path: "/contractors", icon: <TeamOutlined />,       moduleId: "contractors" },
+      { name: "Categories",  path: "/categories",  icon: <TagsOutlined />,       moduleId: "categories" },
     ],
   },
   {
     label: "Execution",
     items: [
-      { name: "Work Orders",   path: "/work-items",    icon: "📋" },
-      { name: "Work Progress", path: "/work-progress", icon: "📊" },
+      { name: "Work Orders",   path: "/work-items",    icon: <FileTextOutlined />, moduleId: "work-orders" },
+      { name: "Work Progress", path: "/work-progress", icon: <LineChartOutlined />, moduleId: "work-progress" },
     ],
   },
   {
     label: "Billing",
     items: [
-      { name: "Bill Requests",      path: "/bill-requests", icon: "📨" },
-      { name: "Billing & Payments", path: "/bills",         icon: "💳" },
-      { name: "Approvals",          path: "/approvals",     icon: "✅" },
-      { name: "Ledger",             path: "/ledger",        icon: "📒" },
+      { name: "Bill Requests",      path: "/bill-requests", icon: <ProfileOutlined />,      moduleId: "bill-requests" },
+      { name: "Billing & Payments", path: "/bills",         icon: <WalletOutlined />,        moduleId: "billing-payments" },
+      { name: "Approvals",          path: "/approvals",     icon: <CheckSquareOutlined />,   moduleId: "approvals" },
+      { name: "Ledger",             path: "/ledger",        icon: <AccountBookOutlined />,   moduleId: "ledger" },
     ],
   },
   {
     label: "Admin",
     items: [
-      { name: "User Management", path: "/users", icon: "👥" },
+      { name: "User Management",    path: "/users",         icon: <UsergroupAddOutlined />, moduleId: "user-management" },
+      { name: "DRI Work Dashboard", path: "/dri-dashboard", icon: <MonitorOutlined />,      moduleId: "dri-dashboard" },
     ],
   },
 ];
 
-const DRI_GROUPS = [
-  {
-    label: "My Work",
-    items: [{ name: "Work Dashboard", path: "/work-progress", icon: "📊" }],
-  },
+const DRI_OWN_ITEMS: NavItem[] = [
+  { name: "Work Dashboard",     path: "/work-progress", icon: <LineChartOutlined />, moduleId: "work-progress" },
+  { name: "DRI Work Dashboard", path: "/dri-dashboard", icon: <MonitorOutlined />,   moduleId: "dri-dashboard" },
 ];
 
+// ── Permission helpers ─────────────────────────────────────────────────────────
+function canView(moduleId: string, perms: PermEntry[] | undefined): boolean {
+  if (!perms || perms.length === 0) return true;
+  const entry = perms.find(p => p.module === moduleId);
+  return entry ? entry.actions.includes("view") : false;
+}
+
+// DRI-specific: only show admin modules where permission is explicitly granted
+function canViewExplicit(moduleId: string, perms: PermEntry[]): boolean {
+  const entry = perms.find(p => p.module === moduleId);
+  return entry ? entry.actions.includes("view") : false;
+}
+
+// Build the sidebar groups for a DRI user
+function buildDRIGroups(perms: PermEntry[] | undefined): NavGroup[] {
+  const hasExplicit = perms && perms.length > 0;
+
+  // My Work items — always use standard canView logic
+  const myWorkItems = DRI_OWN_ITEMS.filter(item => canView(item.moduleId, perms));
+
+  const groups: NavGroup[] = [];
+  if (myWorkItems.length > 0) groups.push({ label: "My Work", items: myWorkItems });
+
+  // Admin modules where admin has explicitly granted DRI "view" access
+  if (hasExplicit) {
+    ADMIN_GROUPS.forEach(group => {
+      // Skip items already in My Work
+      const extras = group.items.filter(item =>
+        item.moduleId !== "work-progress" &&
+        item.moduleId !== "dri-dashboard" &&
+        canViewExplicit(item.moduleId, perms!)
+      );
+      if (extras.length > 0) groups.push({ label: group.label, items: extras });
+    });
+  }
+
+  return groups;
+}
+
+// ── Sidebar component ──────────────────────────────────────────────────────────
 export default function Sidebar() {
   const { user } = useAuth();
   const isDRI  = user?.role === "dri";
-  const groups = isDRI ? DRI_GROUPS : ADMIN_GROUPS;
+  const perms  = user?.permissions;
+
+  const rawGroups = isDRI
+    ? buildDRIGroups(perms)
+    : ADMIN_GROUPS
+        .map(g => ({ ...g, items: g.items.filter(item => canView(item.moduleId, perms)) }))
+        .filter(g => g.items.length > 0);
 
   return (
     <div
@@ -97,7 +162,7 @@ export default function Sidebar() {
 
       {/* ── Nav Groups ── */}
       <div style={{ flex: 1, padding: "6px 0 10px" }}>
-        {groups.map((group, gi) => (
+        {rawGroups.map((group, gi) => (
           <div key={group.label} style={{ marginTop: gi === 0 ? 4 : 0 }}>
             {/* Group label */}
             <div
@@ -153,7 +218,6 @@ export default function Sidebar() {
           </div>
         ))}
       </div>
-
     </div>
   );
 }

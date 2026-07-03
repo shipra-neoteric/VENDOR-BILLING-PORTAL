@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  Button, DatePicker, Drawer, Form, Input, InputNumber, Select, Space, Spin, Tag, message,
+  Button, DatePicker, Drawer, Form, Input, Select, Space, Spin, Tag, message,
 } from "antd";
+import { WorkflowTimeline, type TimelineStep } from "../../components/WorkflowTimeline";
 import { ArrowLeftOutlined, EditOutlined, PlusOutlined, SearchOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import PageShell from "../../components/PageShell";
@@ -105,6 +106,37 @@ const WO_STATUS_LABEL: Record<string, string> = {
 const normalizeId = (obj: any): Project => ({ ...obj, id: obj._id || obj.id });
 const fmt = (n: number) => "₹" + n.toLocaleString("en-IN", { maximumFractionDigits: 0 });
 
+// ── Workflow Timeline helpers ──────────────────────────────────────────────────
+const WF_STEPS: { key: string; name: string; icon: string; types: string[] }[] = [
+  { key: "wo_created",   name: "Work Order\nGenerated",   icon: "📋", types: ["WORK_ORDER_CREATED"] },
+  { key: "dri_viewed",   name: "Issued\nto DRI",          icon: "👷", types: ["WORK_ORDER_ISSUED"] },
+  { key: "bill_req",     name: "Stage 1\nBill Request",   icon: "🧾", types: ["BILL_REQUESTED"] },
+  { key: "agm_approved", name: "Approved &\nBill Raised", icon: "📄", types: ["BILL_REQUEST_APPROVED"] },
+  { key: "gm_approved",  name: "Running Bill\nApproved",  icon: "🔏", types: ["RUNNING_BILL_APPROVED", "RUNNING_BILL_VERIFIED"] },
+  { key: "pay_init",     name: "Payment\nInitiated",      icon: "💸", types: ["PAYMENT_INITIATED"] },
+  { key: "pay_out",      name: "Payment\nReleased",       icon: "💰", types: ["PAYMENT_RELEASED", "MILESTONE_ACHIEVED"] },
+  { key: "wo_done",      name: "Work Order\nCompleted",   icon: "🏆", types: ["WORK_ORDER_COMPLETED"] },
+];
+
+function buildTimelineSteps(events: ProjectEvent[], woNo: string): TimelineStep[] {
+  const evs    = events.filter(e => e.workOrderNo === woNo);
+  const findEv = (types: string[]) => evs.find(e => types.includes(e.type));
+  const billRejected = evs.some(e => e.type === "BILL_REQUEST_REJECTED");
+
+  const mapped  = WF_STEPS.map(s => ({ ...s, ev: findEv(s.types) }));
+  const lastIdx = mapped.reduce((acc, s, i) => s.ev ? i : acc, -1);
+  const currIdx = lastIdx + 1;
+
+  return mapped.map((s, i): TimelineStep => {
+    if (s.ev) return { key: s.key, name: s.name, icon: s.icon, status: "completed", date: s.ev.createdAt, completedBy: s.ev.performedByName };
+    if (i === currIdx) {
+      if (s.key === "bill_req" && billRejected) return { key: s.key, name: s.name, icon: s.icon, status: "rejected" };
+      return { key: s.key, name: s.name, icon: s.icon, status: "current" };
+    }
+    return { key: s.key, name: s.name, icon: s.icon, status: "pending" };
+  });
+}
+
 // ── Project Detail View ────────────────────────────────────────────────────────
 function ProjectDetail({
   project, onBack, onEdit,
@@ -114,10 +146,11 @@ function ProjectDetail({
   onEdit: (p: Project, e: React.MouseEvent) => void;
 }) {
   const id = project._id || project.id;
-  const [wos,      setWOs]      = useState<WORow[]>([]);
-  const [stats,    setStats]    = useState<ProjectStats | null>(null);
-  const [activity, setActivity] = useState<ProjectEvent[]>([]);
-  const [loading,  setLoading]  = useState(true);
+  const [wos,           setWOs]          = useState<WORow[]>([]);
+  const [stats,         setStats]        = useState<ProjectStats | null>(null);
+  const [activity,      setActivity]     = useState<ProjectEvent[]>([]);
+  const [loading,       setLoading]      = useState(true);
+  const [selectedWONo,  setSelectedWONo] = useState<string>("");
 
   useEffect(() => {
     setLoading(true);
@@ -127,9 +160,14 @@ function ProjectDetail({
       apiClient.get(`/projects/${id}/activity?limit=30`),
     ])
       .then(([wosR, statsR, actR]) => {
-        setWOs(wosR.data.workOrders ?? []);
+        const loadedWOs: WORow[] = wosR.data.workOrders ?? [];
+        setWOs(loadedWOs);
         setStats(statsR.data.stats ?? null);
         setActivity(actR.data.events ?? []);
+        if (loadedWOs.length > 0) {
+          const active = loadedWOs.find(w => w.status === "in-progress") ?? loadedWOs[loadedWOs.length - 1];
+          setSelectedWONo(active.workOrderNo);
+        }
       })
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -201,7 +239,6 @@ function ProjectDetail({
             <>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 12, marginBottom: 16 }}>
                 {[
-                  { label: "Budget",           value: fmt(stats.projectBudget),        color: "#374151" },
                   { label: "Awarded (WOs)",     value: fmt(stats.awardedContractValue), color: "#FF7A00" },
                   { label: "Work Executed",     value: fmt(stats.workExecutedValue),    color: "#2563eb" },
                   { label: "Billed Gross",      value: fmt(stats.billedGross),          color: "#6366f1" },
@@ -328,6 +365,41 @@ function ProjectDetail({
             )}
           </div>
 
+          {/* Work Order Lifecycle Timeline */}
+          {wos.length > 0 && (
+            <div style={{ background: "var(--nx-white)", border: "1px solid var(--nx-border)", borderRadius: 12, overflow: "hidden", marginBottom: 20 }}>
+              <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--nx-border)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 15, color: "var(--nx-text)" }}>Work Order Lifecycle</div>
+                  <div style={{ fontSize: 11, color: "var(--nx-text-muted)", marginTop: 2 }}>Billing workflow progress — click any completed step for details</div>
+                </div>
+                {/* WO selector */}
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {wos.map(wo => (
+                    <button
+                      key={wo._id}
+                      onClick={() => setSelectedWONo(wo.workOrderNo)}
+                      style={{
+                        background: selectedWONo === wo.workOrderNo ? "#FF7A00" : "var(--nx-fill)",
+                        color:      selectedWONo === wo.workOrderNo ? "#fff"    : "var(--nx-text-2)",
+                        border: "none", borderRadius: 8, padding: "4px 12px",
+                        fontSize: 11, fontWeight: 700, fontFamily: "monospace",
+                        cursor: "pointer", transition: "all 0.15s",
+                      }}
+                    >
+                      {wo.workOrderNo}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div style={{ padding: "20px 20px 16px" }}>
+                <WorkflowTimeline
+                  steps={selectedWONo ? buildTimelineSteps(activity, selectedWONo) : []}
+                />
+              </div>
+            </div>
+          )}
+
           {/* Activity Timeline */}
           {activity.length > 0 && (
             <div style={{ background: "var(--nx-white)", border: "1px solid var(--nx-border)", borderRadius: 12, overflow: "hidden" }}>
@@ -426,10 +498,8 @@ export default function Projects() {
     form.setFieldsValue({
       name: project.name,
       location: project.location,
-      contractValue: project.contractValue,
       status: project.status,
       projectType: project.projectType || "apartment",
-      budget: project.budget || undefined,
       client: project.client || undefined,
       startDate: project.startDate ? dayjs(project.startDate) : undefined,
       expectedCompletion: project.expectedCompletion ? dayjs(project.expectedCompletion) : undefined,
@@ -600,23 +670,18 @@ export default function Projects() {
                     📍 {proj.location || "—"}
                   </div>
 
-                  {/* Bottom row: value + type + arrow */}
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid var(--nx-border)", paddingTop: 10, gap: 8 }}>
-                    <span style={{ fontFamily: "monospace", fontWeight: 700, fontSize: 14, color: "var(--nx-text)" }}>
-                      {fmt(proj.contractValue || 0)}
-                    </span>
-                    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                      {proj.projectType && (
-                        <span style={{
-                          background: proj.projectType === "apartment" ? "#ede9fe" : "#ccfbf1",
-                          color: proj.projectType === "apartment" ? "#7c3aed" : "#0d9488",
-                          fontSize: 10, fontWeight: 600, padding: "2px 8px", borderRadius: 20,
-                        }}>
-                          {proj.projectType === "apartment" ? "Apartment" : "Plot"}
-                        </span>
-                      )}
-                      <span style={{ fontSize: 12, color: "var(--nx-text-muted)" }}>→</span>
-                    </div>
+                  {/* Bottom row: type + arrow */}
+                  <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", borderTop: "1px solid var(--nx-border)", paddingTop: 10, gap: 6 }}>
+                    {proj.projectType && (
+                      <span style={{
+                        background: proj.projectType === "apartment" ? "#ede9fe" : "#ccfbf1",
+                        color: proj.projectType === "apartment" ? "#7c3aed" : "#0d9488",
+                        fontSize: 10, fontWeight: 600, padding: "2px 8px", borderRadius: 20,
+                      }}>
+                        {proj.projectType === "apartment" ? "Apartment" : "Plot"}
+                      </span>
+                    )}
+                    <span style={{ fontSize: 12, color: "var(--nx-text-muted)" }}>→</span>
                   </div>
 
                   {/* Edit button */}
@@ -688,22 +753,6 @@ export default function Projects() {
               <Select.Option value="apartment">🏢 Apartment / Commercial</Select.Option>
               <Select.Option value="plot">🏠 Plot / Villa</Select.Option>
             </Select>
-          </Form.Item>
-
-          <Form.Item label="Contract Value (₹)" name="contractValue" rules={[{ required: true, message: "Required" }]}>
-            <InputNumber
-              style={{ width: "100%" }} min={0}
-              placeholder="e.g. 25000000"
-              formatter={v => String(v).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}
-            />
-          </Form.Item>
-
-          <Form.Item label="Budget (₹)" name="budget">
-            <InputNumber
-              style={{ width: "100%" }} min={0}
-              placeholder="e.g. 30000000"
-              formatter={v => String(v).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}
-            />
           </Form.Item>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
