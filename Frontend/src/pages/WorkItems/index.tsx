@@ -2222,12 +2222,13 @@ export default function WorkItems() {
                   <Form.Item
                     label={`Qty Completed (${progressItem.unit})`}
                     name="qtyAdded"
+                    extra={progressItem.unit === "per-hr" ? "e.g. 13.67 = 13 hr 40 min" : undefined}
                     rules={[
                       { required: true, message: "Enter quantity" },
                       { validator: (_, v) => v > 0 ? Promise.resolve() : Promise.reject("Must be > 0") },
                     ]}
                   >
-                    <InputNumber style={{ width: "100%" }} min={0.01} placeholder="e.g. 3000" />
+                    <InputNumber style={{ width: "100%" }} min={0.01} step={0.01} precision={2} placeholder={progressItem.unit === "per-hr" ? "e.g. 13.67" : "e.g. 3000"} />
                   </Form.Item>
                 </Col>
               </Row>

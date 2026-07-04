@@ -972,11 +972,14 @@ function DRIDashboard() {
           <LocationFields pt={progProjectType} />
           <Form.Item
             label={`Quantity Added (${progItem?.unit})`} name="qtyAdded"
+            extra={progItem?.unit === "per-hr" ? "Tip: enter decimals for minutes — e.g. 13.67 = 13 hr 40 min" : undefined}
             rules={[
-              { required: true, type: "number", min: 0.01, message: "Enter a valid quantity" },
+              { required: true, type: "number", min: 0.01, message: "Enter a valid quantity (e.g. 13.67)" },
               {
                 validator: (_: unknown, value: number) => {
                   if (!value || !progItem) return Promise.resolve();
+                  // Skip cap when planned qty is 0 (not set)
+                  if (!progItem.plannedQty) return Promise.resolve();
                   const max = Math.max(0, progItem.plannedQty - progItem.completedQty);
                   if (value > max) return Promise.reject(new Error(`Max remaining: ${fmtN(max)} ${progItem.unit}`));
                   return Promise.resolve();
@@ -985,9 +988,10 @@ function DRIDashboard() {
             ]}
           >
             <InputNumber
-              style={{ width: "100%" }} min={0.01}
-              max={progItem ? Math.max(0, progItem.plannedQty - progItem.completedQty) : undefined}
-              placeholder="e.g. 500"
+              style={{ width: "100%" }}
+              min={0.01} step={0.01} precision={2}
+              max={progItem?.plannedQty ? Math.max(0, progItem.plannedQty - progItem.completedQty) : undefined}
+              placeholder={progItem?.unit === "per-hr" ? "e.g. 13.67" : "e.g. 500"}
             />
           </Form.Item>
           <Form.Item label="Remarks (optional)" name="remarks">
@@ -1023,7 +1027,7 @@ function DRIDashboard() {
           </Form.Item>
           <LocationFields pt={progProjectType} />
           <Form.Item label="Quantity Added" name="qtyAdded" rules={[{ required: true, type: "number", min: 0.01, message: "Required" }]}>
-            <InputNumber style={{ width: "100%" }} min={0.01} placeholder="e.g. 500" />
+            <InputNumber style={{ width: "100%" }} min={0.01} step={0.01} precision={2} placeholder="e.g. 13.67" />
           </Form.Item>
           <Form.Item label="Remarks (optional)" name="remarks">
             <Input.TextArea rows={2} />
