@@ -1,5 +1,5 @@
 const router = require('express').Router();
-const { authenticate, authorize } = require('../middleware/auth');
+const { authenticate, authorizeOr } = require('../middleware/auth');
 const { createContractorRules } = require('../validators/contractor.validator');
 const {
   listContractors, getContractor, createContractor, bulkImport, updateContractor,
@@ -9,8 +9,8 @@ router.use(authenticate);
 
 router.get('/',      listContractors);
 router.get('/:id',   getContractor);
-router.post('/',     authorize('owner', 'gm', 'accounts'), createContractorRules, createContractor);
-router.post('/bulk', authorize('owner', 'gm', 'accounts'), bulkImport);
-router.put('/:id',   authorize('owner', 'gm', 'accounts'), updateContractor);
+router.post('/',     authorizeOr('contractors', 'create', 'owner', 'gm', 'accounts'), createContractorRules, createContractor);
+router.post('/bulk', authorizeOr('contractors', 'create', 'owner', 'gm', 'accounts'), bulkImport);
+router.put('/:id',   authorizeOr('contractors', 'edit',   'owner', 'gm', 'accounts'), updateContractor);
 
 module.exports = router;

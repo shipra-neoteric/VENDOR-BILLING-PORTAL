@@ -1,5 +1,5 @@
 const router = require('express').Router();
-const { authenticate, authorize } = require('../middleware/auth');
+const { authenticate, authorizeOr } = require('../middleware/auth');
 const { createProjectRules } = require('../validators/project.validator');
 const {
   listProjects, getProject, createProject, updateProject, deleteProject,
@@ -13,8 +13,8 @@ router.get('/',    listProjects);
 router.get('/:id/stats',    getProjectStats);
 router.get('/:id/activity', getProjectActivity);
 router.get('/:id', getProject);
-router.post('/',   authorize('owner', 'gm', 'accounts'), createProjectRules, createProject);
-router.put('/:id', authorize('owner', 'gm', 'accounts'), updateProject);
-router.delete('/:id', authorize('owner'), deleteProject);
+router.post('/',      authorizeOr('projects', 'create', 'owner', 'gm', 'accounts'), createProjectRules, createProject);
+router.put('/:id',    authorizeOr('projects', 'edit',   'owner', 'gm', 'accounts'), updateProject);
+router.delete('/:id', authorizeOr('projects', 'delete', 'owner'), deleteProject);
 
 module.exports = router;

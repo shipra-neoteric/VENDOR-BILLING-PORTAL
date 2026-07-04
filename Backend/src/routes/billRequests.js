@@ -1,5 +1,5 @@
 const router     = require('express').Router();
-const { authenticate, authorize } = require('../middleware/auth');
+const { authenticate, authorize, authorizeOr } = require('../middleware/auth');
 const {
   listBillRequests,
   createBillRequest,
@@ -14,8 +14,8 @@ router.use(authenticate);
 router.get('/',                listBillRequests);
 router.post('/batch',          authorize('dri', 'owner', 'gm'), createBatchBillRequest);
 router.post('/',               authorize('dri', 'owner', 'gm'), createBillRequest);
-router.put('/:id/approve',     authorize('owner', 'gm', 'accounts'), approveBillRequest);
-router.put('/:id/reject',      authorize('owner', 'gm', 'accounts'), rejectBillRequest);
-router.put('/:id/milestone',   authorize('owner', 'gm', 'accounts'), markMilestone);
+router.put('/:id/approve',   authorizeOr('bill-requests', 'approve', 'owner', 'gm', 'accounts'), approveBillRequest);
+router.put('/:id/reject',    authorizeOr('bill-requests', 'approve', 'owner', 'gm', 'accounts'), rejectBillRequest);
+router.put('/:id/milestone', authorizeOr('bill-requests', 'approve', 'owner', 'gm', 'accounts'), markMilestone);
 
 module.exports = router;

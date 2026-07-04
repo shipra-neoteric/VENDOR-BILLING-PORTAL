@@ -32,4 +32,15 @@ const authorize = (...roles) => (req, res, next) => {
   next();
 };
 
-module.exports = { authenticate, authorize };
+// Like authorize, but also passes if the user has an explicit module+action permission grant
+// (set via User Management). Allows admins to extend access to DRI/other roles per-user.
+const authorizeOr = (module, action, ...roles) => (req, res, next) => {
+  if (roles.includes(req.user.role)) return next();
+  const perm = (req.user.permissions || []).find(p => p.module === module);
+  if (perm && perm.actions.includes(action)) return next();
+  return res.status(403).json({
+    message: `Role '${req.user.role}' does not have access to this action`,
+  });
+};
+
+module.exports = { authenticate, authorize, authorizeOr };
