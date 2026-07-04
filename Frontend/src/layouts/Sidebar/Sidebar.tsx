@@ -93,6 +93,7 @@ function buildDRIGroups(perms: PermEntry[] | undefined): NavGroup[] {
     ADMIN_GROUPS.forEach(group => {
       // Skip items already in My Work
       const extras = group.items.filter(item =>
+        item.moduleId !== "dashboard" &&
         item.moduleId !== "work-progress" &&
         item.moduleId !== "dri-dashboard" &&
         canViewExplicit(item.moduleId, perms!)

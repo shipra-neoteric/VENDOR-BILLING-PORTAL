@@ -31,7 +31,6 @@ function DriRoutes() {
           <Route path="/work-progress"    element={<WorkProgress />} />
           <Route path="/dri-dashboard"    element={<DRIDashboard />} />
           {/* Admin module routes — visible when admin grants DRI explicit view permission */}
-          <Route path="/dashboard"        element={<Dashboard />} />
           <Route path="/projects"         element={<Projects />} />
           <Route path="/companies"        element={<Companies />} />
           <Route path="/contractors"      element={<Contractors />} />
