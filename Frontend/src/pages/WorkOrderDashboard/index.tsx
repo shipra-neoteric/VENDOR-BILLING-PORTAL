@@ -39,6 +39,97 @@ interface BillRequestStage {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const fmtMoney = (n: number) => "₹" + Math.round(n).toLocaleString("en-IN");
+
+// ── Stage Lifecycle Stepper ───────────────────────────────────────────────────
+type StepStatus = "completed" | "current" | "pending" | "rejected";
+
+const STEP_COLORS: Record<StepStatus, { ring: string; bg: string; text: string }> = {
+  completed: { ring: "#16a34a", bg: "#f0fdf4",  text: "#16a34a" },
+  current:   { ring: "#FF7A00", bg: "#FFF4E8",  text: "#FF7A00" },
+  rejected:  { ring: "#ef4444", bg: "#fef2f2",  text: "#ef4444" },
+  pending:   { ring: "#D1D5DB", bg: "#F9FAFB",  text: "#9CA3AF" },
+};
+
+function StageStepper({ stage }: { stage: BillRequestStage }) {
+  const billStatus = stage.billId?.status ?? "";
+  const billExists = !!stage.billId;
+  const billPaid   = ["verified", "approved", "paid"].includes(billStatus);
+
+  const steps: { label: string; sub: string; status: StepStatus }[] = [
+    {
+      label: "Bill",
+      sub:   "Requested",
+      status: "completed",
+    },
+    {
+      label: "Request",
+      sub:   "Reviewed",
+      status: stage.status === "approved" ? "completed"
+            : stage.status === "rejected" ? "rejected"
+            : "current",
+    },
+    {
+      label: "Running Bill",
+      sub:   "Raised",
+      status: billExists ? "completed"
+            : stage.status === "approved" ? "current"
+            : "pending",
+    },
+    {
+      label: "Bill",
+      sub:   "Verified",
+      status: billPaid ? "completed"
+            : billExists ? "current"
+            : "pending",
+    },
+    {
+      label: "Payment",
+      sub:   "Released",
+      status: stage.milestoneAchieved ? "completed"
+            : billPaid ? "current"
+            : "pending",
+    },
+  ];
+
+  const CIRCLE = 30;
+
+  return (
+    <div style={{ margin: "14px 0 12px", padding: "12px 14px", background: "var(--nx-fill-2)", borderRadius: 10, border: "1px solid var(--nx-border)" }}>
+      <div style={{ fontSize: 10, fontWeight: 700, color: "var(--nx-text-muted)", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 12 }}>
+        Stage Lifecycle
+      </div>
+
+      {/* Circles + connectors row */}
+      <div style={{ display: "flex", alignItems: "center" }}>
+        {steps.map((step, i) => {
+          const c = STEP_COLORS[step.status];
+          return (
+            <div key={i} style={{ display: "flex", alignItems: "center", flex: i < steps.length - 1 ? 1 : "none" }}>
+              <div style={{ width: CIRCLE, height: CIRCLE, borderRadius: "50%", background: c.bg, border: `2.5px solid ${c.ring}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 13, fontWeight: 800, color: c.ring, transition: "all 0.2s" }}>
+                {step.status === "completed" ? "✓"
+                 : step.status === "rejected" ? "✕"
+                 : <span style={{ fontSize: 11 }}>{i + 1}</span>}
+              </div>
+              {i < steps.length - 1 && (
+                <div style={{ flex: 1, height: 2.5, borderRadius: 2, background: steps[i + 1].status !== "pending" ? "#16a34a" : "var(--nx-border)", margin: "0 2px" }} />
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Labels row — one cell per step, same width allocation as above */}
+      <div style={{ display: "flex", marginTop: 6 }}>
+        {steps.map((step, i) => (
+          <div key={i} style={{ flex: i < steps.length - 1 ? 1 : "none", minWidth: CIRCLE, textAlign: "center" }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: STEP_COLORS[step.status].text, lineHeight: 1.2 }}>{step.label}</div>
+            <div style={{ fontSize: 9, color: STEP_COLORS[step.status].text, opacity: 0.8, lineHeight: 1.2 }}>{step.sub}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 const fmtQty   = (n: number) => n.toLocaleString("en-IN");
 const pctOf    = (c: number, p: number) => p > 0 ? Math.min(100, Math.round((c / p) * 100)) : 0;
 const fmtDate  = (d?: string | null) => d ? dayjs(d).format("DD MMM YYYY") : "—";
@@ -294,7 +385,7 @@ export default function WorkOrderDashboard() {
                   </div>
 
                   {/* Items */}
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 0 }}>
                     {stage.items.map((it, i) => (
                       <div key={i} style={{ background: "#F3F4F6", borderRadius: 6, padding: "4px 10px", fontSize: 12 }}>
                         <span style={{ fontWeight: 600 }}>{it.description}</span>: {fmtQty(it.billedQty)} {it.unit}
@@ -302,6 +393,9 @@ export default function WorkOrderDashboard() {
                       </div>
                     ))}
                   </div>
+
+                  {/* Stage lifecycle stepper */}
+                  <StageStepper stage={stage} />
 
                   {/* Bill info */}
                   {stage.status === "approved" && stage.billId && (
