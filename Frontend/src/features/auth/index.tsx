@@ -61,7 +61,7 @@ export default function Login() {
               Neoteric Properties
             </div>
             <div style={{ fontSize: 12, color: "#6B7280", lineHeight: 1.2 }}>
-              Vendor Billing Portal
+              Project Cost Center
             </div>
           </div>
         </div>

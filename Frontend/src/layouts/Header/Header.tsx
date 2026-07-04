@@ -55,7 +55,7 @@ export default function Header() {
             Neoteric Properties
           </div>
           <div style={{ fontSize: 11, color: "var(--nx-text-2)", lineHeight: 1.2 }}>
-            Vendor Billing Portal
+            Project Cost Center
           </div>
         </div>
       </div>

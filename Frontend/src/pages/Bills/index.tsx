@@ -155,7 +155,7 @@ function printBill(bill: Bill, contractor: ContractorOpt | null) {
 <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #f47b20;padding-bottom:16px;margin-bottom:20px">
   <div>
     <div style="font-size:24px;font-weight:bold;color:#f47b20">Neoteric Properties</div>
-    <div style="color:#666;font-size:12px;margin-top:4px">Vendor Billing Portal</div>
+    <div style="color:#666;font-size:12px;margin-top:4px">Project Cost Center</div>
   </div>
   <div style="text-align:right">
     <div style="font-size:22px;font-weight:bold;letter-spacing:2px;color:#333">RUNNING BILL</div>
@@ -234,7 +234,7 @@ ${bill.remarks ? `<div style="border:1px solid #e8e8e8;border-radius:6px;padding
 </div>
 
 <div style="text-align:center;margin-top:24px;font-size:11px;color:#bbb;border-top:1px solid #f0f0f0;padding-top:10px">
-  Computer-generated bill · Neoteric Properties — Vendor Billing Portal
+  Computer-generated bill · Neoteric Properties — Project Cost Center
 </div>
 <div style="text-align:center;margin-top:14px">
   <button onclick="window.print()" style="background:#f47b20;color:#fff;border:none;padding:8px 24px;border-radius:4px;cursor:pointer;font-size:13px">
