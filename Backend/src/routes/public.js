@@ -23,8 +23,9 @@ router.get('/contractors', asyncHandler(async (_req, res) => {
 }));
 
 router.get('/categories', asyncHandler(async (_req, res) => {
-  const categories = await Category.find({ isActive: true, parentId: null })
-    .select('_id name color').sort({ name: 1 }).lean();
+  // Return all active categories with parentId so the public form can build the sub-category tree
+  const categories = await Category.find({ isActive: true })
+    .select('_id name color parentId').sort({ name: 1 }).lean();
   success(res, { categories });
 }));
 
