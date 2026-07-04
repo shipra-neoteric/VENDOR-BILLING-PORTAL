@@ -1,8 +1,10 @@
 import { useEffect, useState, useMemo, useCallback } from "react";
+import type { Dayjs } from "dayjs";
 import { Button, Tag, Select, Row, Col, Empty, Spin, Alert, Descriptions } from "antd";
 import { ArrowLeftOutlined, BookOutlined, ReloadOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import apiClient from "../../services/apiClient";
+import DateRangeFilter, { inDateRange } from "../../components/DateRangeFilter";
 
 // ── Types ─────────────────────────────────────────────────────
 type BillStatus = "draft" | "submitted" | "verified" | "approved" | "rejected" | "paid";
@@ -106,6 +108,8 @@ export default function Ledger() {
   const [selectedWOId, setSelectedWOId]     = useState<string | null>(null);
   const [projectFilter, setProjectFilter]   = useState<string>("all");
   const [vendorFilter, setVendorFilter]     = useState<string>("all");
+  const [dateFrom, setDateFrom]             = useState<Dayjs | null>(null);
+  const [dateTo, setDateTo]                 = useState<Dayjs | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -134,8 +138,9 @@ export default function Ledger() {
   const filteredWOs = useMemo(() => workOrders.filter(wo => {
     const matchProject = projectFilter === "all" || wo.projectId === projectFilter || wo.projectName?.toLowerCase().includes(projectFilter.toLowerCase());
     const matchVendor  = vendorFilter  === "all" || wo.vendorCode === vendorFilter;
-    return matchProject && matchVendor;
-  }), [workOrders, projectFilter, vendorFilter]);
+    const matchDate    = inDateRange(wo.issueDate, dateFrom, dateTo);
+    return matchProject && matchVendor && matchDate;
+  }), [workOrders, projectFilter, vendorFilter, dateFrom, dateTo]);
 
   const woSummaries = useMemo(() => filteredWOs.map(wo => {
     const woBills = bills.filter(b => b.workOrderId?.toString() === wo._id?.toString());
@@ -351,7 +356,7 @@ export default function Ledger() {
       </Row>
 
       {/* Filters */}
-      <div style={{ display: "flex", gap: 10, marginBottom: 20, flexWrap: "wrap" }}>
+      <div style={{ display: "flex", gap: 10, marginBottom: 20, flexWrap: "wrap", alignItems: "center" }}>
         <Select
           value={projectFilter} onChange={setProjectFilter} style={{ width: 220 }}
           options={[
@@ -366,6 +371,7 @@ export default function Ledger() {
             ...contractors.map(c => ({ value: c.vendorCode, label: `${c.vendorCode} — ${c.companyName || ""}` })),
           ]}
         />
+        <DateRangeFilter onChange={(from, to) => { setDateFrom(from); setDateTo(to); }} />
         <Select
           showSearch allowClear placeholder="Jump to Work Order…" style={{ width: 280 }}
           value={null} onChange={(id: string) => { if (id) setSelectedWOId(id); }}

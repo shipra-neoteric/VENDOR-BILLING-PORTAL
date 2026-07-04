@@ -37,11 +37,13 @@ import {
   BarChartOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
+import type { Dayjs } from "dayjs";
 
 import PageShell from "../../components/PageShell";
 import apiClient from "../../services/apiClient";
 import { useAuth } from "../../context/AuthContext";
 import { useCategories } from "../../hooks/useCategories";
+import DateRangeFilter, { inDateRange } from "../../components/DateRangeFilter";
 import { downloadWorkOrderPDF } from "../../components/WorkOrderPDF";
 import type {
   Contractor,
@@ -1305,6 +1307,8 @@ export default function WorkItems() {
   const [categoryFilter,      setCategoryFilter]      = useState<string>("all");
   const [subCategoryFilter,   setSubCategoryFilter]   = useState<string>("all");
   const [progressFilter,      setProgressFilter]      = useState<string>("all");
+  const [dateFrom,            setDateFrom]            = useState<Dayjs | null>(null);
+  const [dateTo,              setDateTo]              = useState<Dayjs | null>(null);
   // bills keyed by workOrderId for billing tape in view drawer
   const [woBillsMap, setWoBillsMap] = useState<Record<string, { amount: number; status: string }[]>>({});
 
@@ -1423,9 +1427,10 @@ export default function WorkItems() {
         }
       }
 
-      return matchSearch && matchStatus && matchCategory && matchProgress;
+      const matchDate = inDateRange(wo.issueDate, dateFrom, dateTo);
+      return matchSearch && matchStatus && matchCategory && matchProgress && matchDate;
     });
-  }, [workOrders, search, statusFilter, categoryFilter, subCategoryFilter, progressFilter, subCatsOfSelected]);
+  }, [workOrders, search, statusFilter, categoryFilter, subCategoryFilter, progressFilter, subCatsOfSelected, dateFrom, dateTo]);
 
   const nextWONo = useMemo(() => {
     const max = workOrders.reduce((m, wo) => {
@@ -1828,6 +1833,9 @@ export default function WorkItems() {
               { label: "⚠ Overdue",     value: "overdue" },
             ]}
           />
+
+          {/* Date */}
+          <DateRangeFilter onChange={(from, to) => { setDateFrom(from); setDateTo(to); }} />
 
           {/* Clear */}
           {hasActiveFilters && (

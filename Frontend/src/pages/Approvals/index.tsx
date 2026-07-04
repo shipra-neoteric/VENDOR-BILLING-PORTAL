@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
+import type { Dayjs } from "dayjs";
 import {
   Tabs, Button, Tag, Modal, Form, Input,
   Descriptions, Row, Col, Empty, Spin, Alert, message,
@@ -8,6 +9,7 @@ import {
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 import apiClient from "../../services/apiClient";
+import DateRangeFilter, { inDateRange } from "../../components/DateRangeFilter";
 
 // ── Types ─────────────────────────────────────────────────────
 type BillStatus = "draft" | "submitted" | "verified" | "approved" | "rejected" | "paid";
@@ -146,6 +148,8 @@ export default function Approvals() {
   const [modalOpen, setModalOpen]   = useState(false);
   const [remarks, setRemarks]       = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [dateFrom, setDateFrom]     = useState<Dayjs | null>(null);
+  const [dateTo, setDateTo]         = useState<Dayjs | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -162,10 +166,11 @@ export default function Approvals() {
 
   useEffect(() => { load(); }, [load]);
 
-  const submitted = bills.filter(b => b.status === "submitted");
-  const verified  = bills.filter(b => b.status === "verified");
-  const approved  = bills.filter(b => b.status === "approved" || b.status === "paid");
-  const rejected  = bills.filter(b => b.status === "rejected");
+  const filteredByDate = bills.filter(b => inDateRange(b.billDate, dateFrom, dateTo));
+  const submitted = filteredByDate.filter(b => b.status === "submitted");
+  const verified  = filteredByDate.filter(b => b.status === "verified");
+  const approved  = filteredByDate.filter(b => b.status === "approved" || b.status === "paid");
+  const rejected  = filteredByDate.filter(b => b.status === "rejected");
   const totalPending = submitted.length + verified.length;
 
   function openAction(bill: Bill, type: ActionType) {
@@ -244,6 +249,14 @@ export default function Approvals() {
           </Col>
         ))}
       </Row>
+
+      {/* Date filter */}
+      <div style={{ marginBottom: 16, display: "flex", alignItems: "center", gap: 10 }}>
+        <DateRangeFilter onChange={(from, to) => { setDateFrom(from); setDateTo(to); }} />
+        <span style={{ color: "#9ba3b8", fontSize: 12 }}>
+          {filteredByDate.length} bill{filteredByDate.length !== 1 ? "s" : ""}
+        </span>
+      </div>
 
       <Tabs
         activeKey={activeTab}

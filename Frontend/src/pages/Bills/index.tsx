@@ -31,8 +31,10 @@ import {
   PlusOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
+import type { Dayjs } from "dayjs";
 import PageShell from "../../components/PageShell";
 import apiClient from "../../services/apiClient";
+import DateRangeFilter, { inDateRange } from "../../components/DateRangeFilter";
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -220,15 +222,15 @@ ${bankSection}
 
 ${bill.remarks ? `<div style="border:1px solid #e8e8e8;border-radius:6px;padding:12px;margin-bottom:24px"><strong>Remarks:</strong> ${bill.remarks}</div>` : ""}
 
-<div style="display:flex;justify-content:space-between;margin-top:50px;padding-top:16px;border-top:1px solid #eee">
+<div style="display:flex;justify-content:space-around;margin-top:50px;padding-top:16px;border-top:1px solid #eee">
   <div style="text-align:center">
     <div style="border-top:1px solid #333;width:180px;margin:0 auto 6px"></div>
-    <p style="font-size:12px;color:#666">Contractor Signature</p>
-    <p style="font-size:12px;color:#999">${bill.vendorName || contractor?.companyName || ""}</p>
+    <p style="font-size:12px;color:#666;font-weight:600">AGM</p>
+    <p style="font-size:12px;color:#999">Neoteric Properties</p>
   </div>
   <div style="text-align:center">
     <div style="border-top:1px solid #333;width:180px;margin:0 auto 6px"></div>
-    <p style="font-size:12px;color:#666">Authorized Signatory</p>
+    <p style="font-size:12px;color:#666;font-weight:600">GM</p>
     <p style="font-size:12px;color:#999">Neoteric Properties</p>
   </div>
 </div>
@@ -283,6 +285,8 @@ export default function Bills() {
   // Filters
   const [search, setSearch]             = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [dateFrom, setDateFrom]         = useState<Dayjs | null>(null);
+  const [dateTo, setDateTo]             = useState<Dayjs | null>(null);
 
   // New Bill drawer
   const [newOpen, setNewOpen]           = useState(false);
@@ -365,9 +369,10 @@ export default function Bills() {
         (b.projectName || "").toLowerCase().includes(q) ||
         (b.generatedBy || "").toLowerCase().includes(q);
       const matchStatus = statusFilter === "all" || b.status === statusFilter;
-      return matchSearch && matchStatus;
+      const matchDate   = inDateRange(b.billDate, dateFrom, dateTo);
+      return matchSearch && matchStatus && matchDate;
     });
-  }, [bills, search, statusFilter]);
+  }, [bills, search, statusFilter, dateFrom, dateTo]);
 
   const stats = useMemo(() => ({
     submitted: bills.filter((b) => b.status === "submitted" || b.status === "verified").length,
@@ -705,6 +710,7 @@ export default function Bills() {
             { label: "Paid",        value: "paid" },
           ]}
         />
+        <DateRangeFilter onChange={(from, to) => { setDateFrom(from); setDateTo(to); }} />
         <span style={{ marginLeft: "auto", color: "#9ba3b8", fontSize: 12 }}>
           {filteredBills.length} bill{filteredBills.length !== 1 ? "s" : ""}
         </span>
