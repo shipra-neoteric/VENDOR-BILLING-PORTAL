@@ -111,25 +111,33 @@ exports.addScopeProgress = asyncHandler(async (req, res) => {
   const item = workOrder.scopeItems.id(req.params.itemId);
   if (!item) return notFound(res, 'Scope item not found');
 
-  const { date, qtyAdded, remarks, tower, floor, flatNo, plotNo, locationNote } = req.body;
+  const { date, qtyAdded, remarks, tower, floor, flatNo, plotNo, locationNote, plannedQty } = req.body;
   if (!qtyAdded || qtyAdded <= 0) {
     return badRequest(res, 'qtyAdded must be greater than 0');
   }
 
-  const remaining = item.plannedQty - (item.completedQty || 0);
-  if (qtyAdded > remaining) {
-    return badRequest(
-      res,
-      `Cannot exceed planned quantity. Only ${remaining.toLocaleString()} ${item.unit} remaining.`
-    );
+  // Allow setting planned qty at progress-entry time when it wasn't set on creation
+  if (plannedQty !== undefined && Number(plannedQty) > 0) {
+    item.plannedQty = Number(plannedQty);
+  }
+
+  // Only enforce the cap when a planned qty is actually set
+  if (item.plannedQty > 0) {
+    const remaining = item.plannedQty - (item.completedQty || 0);
+    if (qtyAdded > remaining) {
+      return badRequest(
+        res,
+        `Cannot exceed planned quantity. Only ${remaining.toLocaleString()} ${item.unit} remaining.`
+      );
+    }
   }
 
   item.progressEntries.push({ date: date || new Date(), qtyAdded, remarks, tower, floor, flatNo, plotNo, locationNote });
   item.completedQty = item.progressEntries.reduce((s, e) => s + e.qtyAdded, 0);
   item.status =
-    item.completedQty >= item.plannedQty ? 'completed'
-    : item.completedQty > 0             ? 'running'
-    :                                      'pending';
+    item.plannedQty > 0 && item.completedQty >= item.plannedQty ? 'completed'
+    : item.completedQty > 0                                      ? 'running'
+    :                                                               'pending';
 
   await workOrder.save();
 

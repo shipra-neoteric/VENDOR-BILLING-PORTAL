@@ -487,6 +487,7 @@ function DRIDashboard() {
         flatNo:       vals.flatNo || "",
         plotNo:       vals.plotNo || "",
         locationNote: vals.locationNote || "",
+        ...(vals.plannedQty ? { plannedQty: vals.plannedQty } : {}),
       });
       message.success(`+${fmtN(vals.qtyAdded)} ${progItem.unit} recorded`);
       setProgModal(false);
@@ -970,6 +971,24 @@ function DRIDashboard() {
             <DatePicker style={{ width: "100%" }} format="DD/MM/YYYY" disabledDate={d => d.isAfter(dayjs(), "day")} />
           </Form.Item>
           <LocationFields pt={progProjectType} />
+          {/* Set planned qty inline when it was never set on work order creation */}
+          {progItem && !progItem.plannedQty && (
+            <div style={{ background: "#FFF8F0", border: "1px solid #FDDCB5", borderRadius: 8, padding: "10px 14px", marginBottom: 14 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: "#FF7A00", marginBottom: 6 }}>
+                Planned quantity not set for this item
+              </div>
+              <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 10 }}>
+                You can set the total planned quantity now, or leave blank to log progress without a cap.
+              </div>
+              <Form.Item label={`Total Planned Qty (${progItem.unit})`} name="plannedQty" style={{ marginBottom: 0 }}>
+                <InputNumber
+                  style={{ width: "100%" }} min={0.01} step={0.01} precision={2}
+                  placeholder={progItem.unit === "per-hr" ? "e.g. 200.00" : "e.g. 5000"}
+                />
+              </Form.Item>
+            </div>
+          )}
+
           <Form.Item
             label={`Quantity Added (${progItem?.unit})`} name="qtyAdded"
             extra={progItem?.unit === "per-hr" ? "Tip: enter decimals for minutes — e.g. 13.67 = 13 hr 40 min" : undefined}
@@ -978,7 +997,6 @@ function DRIDashboard() {
               {
                 validator: (_: unknown, value: number) => {
                   if (!value || !progItem) return Promise.resolve();
-                  // Skip cap when planned qty is 0 (not set)
                   if (!progItem.plannedQty) return Promise.resolve();
                   const max = Math.max(0, progItem.plannedQty - progItem.completedQty);
                   if (value > max) return Promise.reject(new Error(`Max remaining: ${fmtN(max)} ${progItem.unit}`));
@@ -1000,9 +1018,9 @@ function DRIDashboard() {
           {progItem && (
             <div style={{ background: "var(--nx-fill-2)", border: "1px solid var(--nx-border)", borderRadius: 8, padding: 12, fontSize: 12 }}>
               {[
-                { label: "Planned",   value: `${fmtN(progItem.plannedQty)} ${progItem.unit}`,                                                color: "var(--nx-text)" },
-                { label: "Done",      value: `${fmtN(progItem.completedQty)} ${progItem.unit}`,                                              color: "#16a34a" },
-                { label: "Remaining", value: `${fmtN(Math.max(0, progItem.plannedQty - progItem.completedQty))} ${progItem.unit}`,           color: "#FF7A00" },
+                { label: "Planned",   value: progItem.plannedQty > 0 ? `${fmtN(progItem.plannedQty)} ${progItem.unit}` : "Not set",           color: progItem.plannedQty > 0 ? "var(--nx-text)" : "#9ba3b8" },
+                { label: "Done",      value: `${fmtN(progItem.completedQty)} ${progItem.unit}`,                                               color: "#16a34a" },
+                { label: "Remaining", value: progItem.plannedQty > 0 ? `${fmtN(Math.max(0, progItem.plannedQty - progItem.completedQty))} ${progItem.unit}` : "Unlimited", color: "#FF7A00" },
               ].map(r => (
                 <div key={r.label} style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
                   <span style={{ color: "var(--nx-text-2)" }}>{r.label}</span>
