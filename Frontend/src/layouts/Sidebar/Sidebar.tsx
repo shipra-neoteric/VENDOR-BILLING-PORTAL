@@ -61,8 +61,7 @@ const ADMIN_GROUPS: NavGroup[] = [
 ];
 
 const DRI_OWN_ITEMS: NavItem[] = [
-  { name: "Work Dashboard",     path: "/work-progress", icon: <LineChartOutlined />, moduleId: "work-progress" },
-  { name: "DRI Work Dashboard", path: "/dri-dashboard", icon: <MonitorOutlined />,   moduleId: "dri-dashboard" },
+  { name: "Project Wise Progress", path: "/work-progress", icon: <LineChartOutlined />, moduleId: "work-progress" },
 ];
 
 // ── Permission helpers ─────────────────────────────────────────────────────────

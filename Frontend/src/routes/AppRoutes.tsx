@@ -29,7 +29,6 @@ function DriRoutes() {
           <Route index                    element={<Navigate to="/work-progress" replace />} />
           {/* Core DRI routes */}
           <Route path="/work-progress"    element={<WorkProgress />} />
-          <Route path="/dri-dashboard"    element={<DRIDashboard />} />
           {/* Admin module routes — visible when admin grants DRI explicit view permission */}
           <Route path="/projects"         element={<Projects />} />
           <Route path="/companies"        element={<Companies />} />
