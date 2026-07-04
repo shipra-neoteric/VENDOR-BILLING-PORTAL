@@ -92,7 +92,7 @@ export default function Dashboard() {
     <div style={{ paddingBottom: 40 }}>
       {/* Header */}
       <div style={{ marginBottom: 24 }}>
-        <h1 style={{ fontSize: 26, fontWeight: 700, margin: 0, color: "var(--nx-text)" }}>Vendor Billing Dashboard</h1>
+        <h1 style={{ fontSize: 26, fontWeight: 700, margin: 0, color: "var(--nx-text)" }}>Project Cost Center</h1>
         <p style={{ color: "var(--nx-text-2)", marginTop: 4, marginBottom: 0 }}>
           Overview of contract value, bills, approvals and payments.
         </p>

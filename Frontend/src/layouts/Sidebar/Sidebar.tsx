@@ -154,7 +154,7 @@ export default function Sidebar() {
               Nexora ERP
             </div>
             <div style={{ fontSize: 12, color: "var(--nx-sidebar-sub-color)", marginTop: 2, lineHeight: 1.2 }}>
-              {isDRI ? "Site Progress Portal" : "Vendor Billing Module"}
+              {isDRI ? "Site Progress Portal" : "Project Cost Center"}
             </div>
           </div>
         </div>
