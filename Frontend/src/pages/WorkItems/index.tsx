@@ -1340,20 +1340,22 @@ export default function WorkItems() {
 
   // ── Load all data ─────────────────────────────────────────────
   useEffect(() => {
+    const isDRI = user?.role === "dri";
     Promise.all([
       apiClient.get<{ workOrders: any[] }>("/work-orders"),
       apiClient.get<{ contractors: any[] }>("/contractors"),
       apiClient.get<{ projects: any[] }>("/projects"),
       apiClient.get<{ bills: any[] }>("/bills"),
       apiClient.get<{ companies: any[] }>("/companies"),
-      apiClient.get<{ users: any[] }>("/auth/users?role=dri"),
+      // DRI users can't access the users list endpoint — skip it
+      isDRI ? Promise.resolve({ data: { users: [] } }) : apiClient.get<{ users: any[] }>("/auth/users?role=dri"),
     ])
       .then(([woRes, cRes, pRes, billRes, coRes, driRes]) => {
         setWorkOrders(woRes.data.workOrders.map(normalizeWO));
         setContractors(cRes.data.contractors.map(normalizeId));
         setProjects(pRes.data.projects.map(normalizeId));
         setCompanies(coRes.data.companies ?? []);
-        setDriList(driRes.data.users ?? []);
+        setDriList((driRes as any).data.users ?? []);
         // Build map: workOrderId → [{amount, status}]
         const map: Record<string, { amount: number; status: string }[]> = {};
         for (const b of (billRes.data.bills || [])) {

@@ -60,12 +60,6 @@ apiClient.interceptors.response.use(
         return Promise.reject(error);
       }
 
-      // Role mismatch — stored token doesn't match displayed user; force re-login (deduplicated)
-      if (status === 403 && msg.toLowerCase().includes("does not have access")) {
-        forceReLogin("Session mismatch detected. Please sign in again.");
-        return Promise.reject(error);
-      }
-
       message.error(msg);
     }
     return Promise.reject(error);
