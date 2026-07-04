@@ -38,6 +38,7 @@ app.use(express.json());
 app.use(morgan('dev'));
 
 // ── Routes ───────────────────────────────────────────────────────────────────
+app.use('/api/public',        require('./routes/public'));   // no auth — public work-order form
 app.use('/api/auth',          require('./routes/auth'));
 app.use('/api/projects',      require('./routes/projects'));
 app.use('/api/contractors',   require('./routes/contractors'));

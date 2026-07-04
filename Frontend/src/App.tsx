@@ -1,7 +1,9 @@
 import { ConfigProvider, theme as antTheme } from "antd";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "react-hot-toast";
+import { useLocation } from "react-router-dom";
 import AppRoutes from "./routes/AppRoutes";
+import PublicWorkOrderForm from "./pages/PublicWorkOrderForm";
 import { AuthProvider } from "./context/AuthContext";
 import { ThemeProvider, useTheme } from "./context/ThemeContext";
 import baseTheme from "./theme/theme";
@@ -17,6 +19,17 @@ const queryClient = new QueryClient({
 
 function ThemedApp() {
   const { isDark } = useTheme();
+  const { pathname } = useLocation();
+
+  // Public routes — no auth, no sidebar
+  if (pathname === "/public/work-order") {
+    return (
+      <ConfigProvider theme={{ ...baseTheme, algorithm: antTheme.defaultAlgorithm }}>
+        <PublicWorkOrderForm />
+        <Toaster position="top-right" />
+      </ConfigProvider>
+    );
+  }
 
   const mergedTheme = {
     ...baseTheme,
