@@ -48,8 +48,11 @@ const UNIT_OPTIONS = [
   { label: "MT (Metric Ton)",     value: "mt"         },
   { label: "Nos (Numbers)",       value: "nos"        },
   { label: "Daily Wage",          value: "daily-wage" },
+  { label: "Per Day",             value: "per-day"    },
+  { label: "Per Person",          value: "per-person" },
   { label: "Per Hour",            value: "per-hr"     },
   { label: "Per Trip",            value: "per-trip"   },
+  { label: "RFT (Running Foot)",  value: "rft"        },
   { label: "Lump Sum",            value: "lump-sum"   },
 ];
 
