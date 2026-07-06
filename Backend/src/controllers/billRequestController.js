@@ -34,7 +34,7 @@ exports.listBillRequests = asyncHandler(async (req, res) => {
   const requests = await BillRequest.find(filter)
     .populate('requestedBy', 'name email')
     .populate('processedBy', 'name')
-    .populate('billId', 'billNo status amount paidAmount paymentDate')
+    .populate('billId', 'billNo status amount paidAmount retentionPercent retentionAmount paymentDate')
     .sort({ stageNo: 1, createdAt: 1 });
 
   success(res, { billRequests: requests });
@@ -158,7 +158,9 @@ exports.approveBillRequest = asyncHandler(async (req, res) => {
     };
   });
 
-  const totalAmount = lineItems.reduce((s, l) => s + l.amount, 0);
+  const totalAmount      = lineItems.reduce((s, l) => s + l.amount, 0);
+  const retentionPercent = wo.retentionPercent ?? 0;
+  const retentionAmount  = Math.round(totalAmount * retentionPercent / 100);
   const billNo = await nextBillNo();
 
   const runningBill = await RunningBill.create({
@@ -171,7 +173,9 @@ exports.approveBillRequest = asyncHandler(async (req, res) => {
     vendorName:  wo.vendorName,
     billDate:    new Date(),
     lineItems,
-    amount:      totalAmount,
+    amount:           totalAmount,
+    retentionPercent,
+    retentionAmount,
     gstPercent:  wo.gstPercent ?? 18,
     tdsPercent:  0,
     generatedBy: req.user.name,

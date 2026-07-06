@@ -135,6 +135,7 @@ export interface WorkOrder {
   scopeItems: ScopeItem[];
   contractValue: number;
   gstPercent?: number;
+  retentionPercent?: number;
   documentName?: string;
   status: WorkOrderStatus;
 }

@@ -68,6 +68,8 @@ interface Bill {
   lineItems: Omit<LineItem, "key">[];
   amount: number;
   gstPercent: number;
+  retentionPercent?: number;
+  retentionAmount?: number;
   tdsPercent: number;
   remarks?: string;
   status: BillStatus;
@@ -209,8 +211,12 @@ function printBill(bill: Bill, contractor: ContractorOpt | null) {
     <div style="display:flex;justify-content:space-between;padding:9px 14px;border-bottom:1px solid #eee;color:#16a34a">
       <span>GST @ ${bill.gstPercent ?? 18}%</span><span>+ ₹${Math.round((bill.amount || 0) * (bill.gstPercent ?? 18) / 100).toLocaleString("en-IN")}</span>
     </div>
+    ${(bill.retentionPercent ?? 0) > 0 ? `
+    <div style="display:flex;justify-content:space-between;padding:9px 14px;border-bottom:1px solid #eee;color:#e03b3b">
+      <span>Retention @ ${bill.retentionPercent}%</span><span>− ₹${(bill.retentionAmount ?? Math.round((bill.amount || 0) * (bill.retentionPercent ?? 0) / 100)).toLocaleString("en-IN")}</span>
+    </div>` : ""}
     <div style="display:flex;justify-content:space-between;padding:11px 14px;background:#fff7ed;font-weight:bold;font-size:15px;color:#f47b20">
-      <span>Net Payable</span><span>₹${Math.round((bill.amount || 0) * (1 + (bill.gstPercent ?? 18) / 100)).toLocaleString("en-IN")}</span>
+      <span>Net Payable</span><span>₹${Math.round((bill.amount || 0) * (1 + (bill.gstPercent ?? 18) / 100) - (bill.retentionAmount ?? Math.round((bill.amount || 0) * (bill.retentionPercent ?? 0) / 100))).toLocaleString("en-IN")}</span>
     </div>
   </div>
 </div>
@@ -884,20 +890,24 @@ export default function Bills() {
 
             {/* Financial summary */}
             {(() => {
-              const gross  = currentViewBill.amount;
-              const gstAmt = Math.round(gross * (currentViewBill.gstPercent || 0) / 100);
-              const net    = gross + gstAmt;
+              const gross         = currentViewBill.amount;
+              const gstAmt        = Math.round(gross * (currentViewBill.gstPercent || 0) / 100);
+              const retPct        = currentViewBill.retentionPercent ?? 0;
+              const retAmt        = currentViewBill.retentionAmount  ?? Math.round(gross * retPct / 100);
+              const net           = gross + gstAmt - retAmt;
+              const rows: { label: string; value: string; color: string; bold?: boolean }[] = [
+                { label: "Gross Amount",                           value: fmt(gross),  color: "#1a1f2e" },
+                { label: `GST @ ${currentViewBill.gstPercent}%`,  value: fmt(gstAmt), color: "#5a6278" },
+              ];
+              if (retPct > 0) rows.push({ label: `Retention @ ${retPct}%`, value: `− ${fmt(retAmt)}`, color: "#e03b3b" });
+              rows.push({ label: "NET PAYABLE", value: fmt(net), color: "#16a85a", bold: true });
               return (
                 <div style={{ border: "1px solid #e4e7ee", borderRadius: 8, overflow: "hidden", fontFamily: "monospace", fontSize: 13, marginBottom: 16 }}>
                   <div style={{ background: "#f5f6f8", padding: "8px 14px", fontWeight: 700, fontSize: 11, color: "#5a6278", textTransform: "uppercase", letterSpacing: "0.06em" }}>
                     Financial Summary
                   </div>
                   <div style={{ padding: "8px 14px" }}>
-                    {[
-                      { label: "Gross Amount",                          value: fmt(gross),  color: "#1a1f2e" },
-                      { label: `GST @ ${currentViewBill.gstPercent}%`, value: fmt(gstAmt), color: "#5a6278" },
-                      { label: "NET PAYABLE",                           value: fmt(net),    color: "#16a85a", bold: true },
-                    ].map((r, i, arr) => (
+                    {rows.map((r, i, arr) => (
                       <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", borderTop: i === arr.length - 1 ? "2px solid #e4e7ee" : "none", marginTop: i === arr.length - 1 ? 4 : 0, color: r.color, fontWeight: r.bold ? 700 : 400, fontSize: r.bold ? 14 : 13 }}>
                         <span>{r.label}</span><span>{r.value}</span>
                       </div>

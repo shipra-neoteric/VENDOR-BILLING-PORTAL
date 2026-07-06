@@ -45,7 +45,7 @@ interface BillRequest {
   status: "pending" | "approved" | "rejected";
   rejectReason?: string;
   requestedBy?: { name: string; email: string };
-  billId?: { billNo: string; status: string; amount: number; paidAmount?: number; paymentDate?: string };
+  billId?: { billNo: string; status: string; amount: number; paidAmount?: number; retentionPercent?: number; retentionAmount?: number; paymentDate?: string };
   milestoneAchieved?: boolean;
   milestoneDate?: string;
   createdAt: string;
@@ -365,9 +365,27 @@ export default function BillRequests() {
                 {viewTotal > 0 && (
                   <tfoot>
                     <tr style={{ borderTop: "2px solid #FF7A00", background: "#FFF8F3" }}>
-                      <td colSpan={4} style={{ padding: "8px 10px", fontWeight: 700, textAlign: "right", color: "#FF7A00" }}>Total</td>
+                      <td colSpan={4} style={{ padding: "8px 10px", fontWeight: 700, textAlign: "right", color: "#FF7A00" }}>Gross Total</td>
                       <td style={{ padding: "8px 10px", fontWeight: 700, color: "#111827", textAlign: "right" }}>{fmt(viewTotal)}</td>
                     </tr>
+                    {(viewReq?.billId?.retentionPercent ?? 0) > 0 && (
+                      <tr style={{ background: "#fff1f2" }}>
+                        <td colSpan={4} style={{ padding: "6px 10px", textAlign: "right", color: "#e03b3b", fontWeight: 600 }}>
+                          Retention @ {viewReq!.billId!.retentionPercent}%
+                        </td>
+                        <td style={{ padding: "6px 10px", textAlign: "right", color: "#e03b3b", fontWeight: 600, fontFamily: "monospace" }}>
+                          − {fmt(viewReq!.billId!.retentionAmount ?? Math.round(viewTotal * (viewReq!.billId!.retentionPercent ?? 0) / 100))}
+                        </td>
+                      </tr>
+                    )}
+                    {(viewReq?.billId?.retentionPercent ?? 0) > 0 && (
+                      <tr style={{ background: "#f0fdf4" }}>
+                        <td colSpan={4} style={{ padding: "8px 10px", fontWeight: 700, textAlign: "right", color: "#16a34a" }}>Net Release</td>
+                        <td style={{ padding: "8px 10px", fontWeight: 700, color: "#16a34a", textAlign: "right", fontFamily: "monospace" }}>
+                          {fmt(viewTotal - (viewReq!.billId!.retentionAmount ?? Math.round(viewTotal * (viewReq!.billId!.retentionPercent ?? 0) / 100)))}
+                        </td>
+                      </tr>
+                    )}
                   </tfoot>
                 )}
               </table>

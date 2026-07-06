@@ -1200,6 +1200,21 @@ function WOFormFields({
             />
           </Form.Item>
         </Col>
+        <Col span={12}>
+          <Form.Item label="Retention / Hold %" name="retentionPercent" initialValue={0} tooltip="% of each bill withheld until work completion (e.g. 5%)">
+            <Select
+              options={[
+                { label: "0% — No retention", value: 0 },
+                { label: "2.5%", value: 2.5 },
+                { label: "5%", value: 5 },
+                { label: "10%", value: 10 },
+                { label: "15%", value: 15 },
+                { label: "20%", value: 20 },
+              ]}
+              getPopupContainer={(trigger) => trigger.parentElement || document.body}
+            />
+          </Form.Item>
+        </Col>
       </Row>
 
       {driList.length > 0 && (
@@ -1468,8 +1483,9 @@ export default function WorkItems() {
         scopeOfWork,
         scopeItems:   createScopeItems.map(draftToNewItem),
         contractValue: totalAmt,
-        gstPercent:   values.gstPercent ?? 18,
-        status:       values.status || "draft",
+        gstPercent:        values.gstPercent ?? 18,
+        retentionPercent:  values.retentionPercent ?? 0,
+        status:            values.status || "draft",
       };
       if (values.workOrderNo?.trim()) body.workOrderNo = values.workOrderNo.trim();
 
@@ -1489,7 +1505,7 @@ export default function WorkItems() {
 
   const openEdit = (wo: WorkOrder) => {
     setEditWOId(wo.id);
-    editForm.setFieldsValue({ ...wo, issueDate: dayjs(wo.issueDate), category: wo.category || "", subCategory: wo.subCategory || "", assignedDRI: ((wo as any).assignedDRI || []).map((d: any) => d._id || d), gstPercent: wo.gstPercent ?? 18 });
+    editForm.setFieldsValue({ ...wo, issueDate: dayjs(wo.issueDate), category: wo.category || "", subCategory: wo.subCategory || "", assignedDRI: ((wo as any).assignedDRI || []).map((d: any) => d._id || d), gstPercent: wo.gstPercent ?? 18, retentionPercent: (wo as any).retentionPercent ?? 0 });
     setEditScopeItems((wo.scopeItems || []).map(toDraft));
     setEditModalOpen(true);
   };
@@ -1520,8 +1536,9 @@ export default function WorkItems() {
         scopeOfWork,
         scopeItems:   savedItems,
         contractValue: totalAmt,
-        gstPercent:   values.gstPercent ?? currentEditWO.gstPercent ?? 18,
-        status:       values.status,
+        gstPercent:        values.gstPercent ?? currentEditWO.gstPercent ?? 18,
+        retentionPercent:  values.retentionPercent ?? (currentEditWO as any).retentionPercent ?? 0,
+        status:            values.status,
       };
 
       setSaving(true);

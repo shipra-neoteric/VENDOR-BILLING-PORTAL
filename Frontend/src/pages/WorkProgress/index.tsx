@@ -34,6 +34,7 @@ interface WODetail  {
   projectId?: { _id: string; name: string; code: string; projectType?: string };
   category?: string; subCategory?: string; vendorName?: string;
   contractValue?: number; issueDate?: string;
+  retentionPercent?: number;
   scopeItems: ScopeItemR[];
 }
 interface BRSummary {
@@ -229,6 +230,17 @@ function WorkProgressAdmin() {
                 {woDetail.projectName}{woDetail.category ? ` · ${woDetail.category}` : ""}
               </div>
             </div>
+              {(woDetail.retentionPercent ?? 0) > 0 && (
+                <div style={{ background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 8, padding: "10px 14px", marginBottom: 12, display: "flex", alignItems: "center", gap: 10, fontSize: 13 }}>
+                  <span style={{ fontSize: 18 }}>🔒</span>
+                  <div>
+                    <div style={{ fontWeight: 700, color: "#92400e" }}>Retention Applicable: {woDetail.retentionPercent}%</div>
+                    <div style={{ fontSize: 12, color: "#b45309", marginTop: 2 }}>
+                      {woDetail.retentionPercent}% of each bill amount will be withheld and released on work completion.
+                    </div>
+                  </div>
+                </div>
+              )}
             <div style={{ overflowX: "auto" }}>
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead>
