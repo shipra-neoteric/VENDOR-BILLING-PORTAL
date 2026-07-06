@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import {
-  Button, Tag, Table, Modal, Input, message, Popconfirm, Spin, Empty, Tabs, Badge,
+  Button, Tag, Table, Modal, Input, InputNumber, message, Popconfirm, Spin, Empty, Tabs, Badge,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import {
@@ -45,7 +45,7 @@ interface BillRequest {
   status: "pending" | "approved" | "rejected";
   rejectReason?: string;
   requestedBy?: { name: string; email: string };
-  billId?: { billNo: string; status: string; amount: number; paymentDate?: string };
+  billId?: { billNo: string; status: string; amount: number; paidAmount?: number; paymentDate?: string };
   milestoneAchieved?: boolean;
   milestoneDate?: string;
   createdAt: string;
@@ -66,6 +66,9 @@ export default function BillRequests() {
   const [milestoneTarget, setMilestoneTarget] = useState<string | null>(null);
   const [paymentUTR,      setPaymentUTR]      = useState("");
   const [utrModal,        setUTRModal]        = useState(false);
+
+  const [paymentAmount,   setPaymentAmount]   = useState<number | null>(null);
+  const [milestoneReq,    setMilestoneReq]    = useState<BillRequest | null>(null);
 
   const load = async (status?: string) => {
     setLoading(true);
@@ -110,13 +113,17 @@ export default function BillRequests() {
     if (!milestoneTarget) return;
     setSaving(true);
     try {
-      const res = await apiClient.put(`/bill-requests/${milestoneTarget}/milestone`, {
-        ...(paymentUTR ? { paymentUTR } : {}),
-      });
+      const billAmt = milestoneReq?.billId?.amount ?? null;
+      const body: Record<string, unknown> = {};
+      if (paymentUTR) body.paymentUTR = paymentUTR;
+      if (paymentAmount != null && paymentAmount !== billAmt) body.paidAmount = paymentAmount;
+      const res = await apiClient.put(`/bill-requests/${milestoneTarget}/milestone`, body);
       message.success(res.data?.message || "Milestone marked!");
       setUTRModal(false);
       setMilestoneTarget(null);
       setPaymentUTR("");
+      setPaymentAmount(null);
+      setMilestoneReq(null);
       load(tab === "all" ? undefined : tab);
     } catch (e: any) {
       message.error(e?.response?.data?.message || "Failed to mark milestone");
@@ -215,7 +222,7 @@ export default function BillRequests() {
               size="small"
               icon={<TrophyOutlined />}
               style={{ color: "#FF7A00", borderColor: "#FF7A00" }}
-              onClick={() => { setMilestoneTarget(r._id); setPaymentUTR(""); setUTRModal(true); }}
+              onClick={() => { setMilestoneTarget(r._id); setMilestoneReq(r); setPaymentUTR(""); setPaymentAmount(r.billId?.amount ?? null); setUTRModal(true); }}
             >
               Release Payment
             </Button>
@@ -295,7 +302,7 @@ export default function BillRequests() {
                 type="primary"
                 icon={<TrophyOutlined />}
                 style={{ background: "#FF7A00", borderColor: "#FF7A00" }}
-                onClick={() => { setMilestoneTarget(viewReq._id); setPaymentUTR(""); setUTRModal(true); setViewReq(null); }}
+                onClick={() => { setMilestoneTarget(viewReq._id); setMilestoneReq(viewReq); setPaymentUTR(""); setPaymentAmount(viewReq.billId?.amount ?? null); setUTRModal(true); setViewReq(null); }}
               >
                 Release Payment — Mark Milestone
               </Button>
@@ -375,6 +382,17 @@ export default function BillRequests() {
             {viewReq.status === "approved" && viewReq.billId && (
               <div style={{ background: "#f0fdf4", border: "1px solid #86efac", borderRadius: 6, padding: 10, fontSize: 13 }}>
                 <strong>Running Bill Generated:</strong> {viewReq.billId.billNo} — {fmt(viewReq.billId.amount)}
+                {viewReq.billId.paidAmount != null && viewReq.billId.paidAmount !== viewReq.billId.amount && (
+                  <div style={{ marginTop: 4, color: "#374151" }}>
+                    <strong>Actual Paid:</strong>{" "}
+                    <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#16a34a" }}>
+                      {fmt(viewReq.billId.paidAmount)}
+                    </span>
+                    <span style={{ fontSize: 11, color: "#9CA3AF", marginLeft: 6 }}>
+                      (billed: {fmt(viewReq.billId.amount)})
+                    </span>
+                  </div>
+                )}
                 {viewReq.milestoneAchieved && viewReq.milestoneDate && (
                   <div style={{ marginTop: 4, color: "#FF7A00" }}>
                     🏆 Payment Released: {dayjs(viewReq.milestoneDate).format("DD MMM YYYY")}
@@ -412,19 +430,52 @@ export default function BillRequests() {
       {/* Release Payment / Milestone Modal */}
       <Modal
         open={utrModal}
-        onCancel={() => { setUTRModal(false); setMilestoneTarget(null); setPaymentUTR(""); }}
+        onCancel={() => { setUTRModal(false); setMilestoneTarget(null); setPaymentUTR(""); setPaymentAmount(null); setMilestoneReq(null); }}
         onOk={handleMilestone}
         title="Release Payment — Mark Milestone"
         okText="Confirm Payment Released"
         okButtonProps={{ loading: saving, style: { background: "#FF7A00", borderColor: "#FF7A00" } }}
         destroyOnClose
       >
-        <div style={{ marginTop: 12 }}>
-          <div style={{ padding: 12, background: "#FFF4E8", border: "1px solid #FED7AA", borderRadius: 8, marginBottom: 16, fontSize: 13, color: "#92400e" }}>
+        <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 14 }}>
+          <div style={{ padding: 12, background: "#FFF4E8", border: "1px solid #FED7AA", borderRadius: 8, fontSize: 13, color: "#92400e" }}>
             This will mark the stage as <strong>Milestone Achieved</strong> and update the bill status to <strong>Paid</strong>.
           </div>
-          <div style={{ fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 6 }}>Payment UTR / Reference (optional)</div>
-          <Input placeholder="e.g. UTR123456789" value={paymentUTR} onChange={e => setPaymentUTR(e.target.value)} />
+
+          {milestoneReq?.billId?.amount != null && (
+            <div style={{ background: "#f9fafb", border: "1px solid #E5E7EB", borderRadius: 8, padding: "10px 14px" }}>
+              <div style={{ fontSize: 11, color: "#6B7280", marginBottom: 2 }}>Billed Amount (calculated)</div>
+              <div style={{ fontFamily: "monospace", fontWeight: 700, fontSize: 16, color: "#374151" }}>
+                {fmt(milestoneReq.billId.amount)}
+              </div>
+            </div>
+          )}
+
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 6 }}>
+              Actual Amount Released
+            </div>
+            <InputNumber
+              style={{ width: "100%" }}
+              prefix="₹"
+              value={paymentAmount}
+              onChange={v => setPaymentAmount(v)}
+              min={0}
+              step={1}
+              precision={0}
+              placeholder="Enter actual payment amount"
+            />
+            {milestoneReq?.billId?.amount != null && paymentAmount != null && paymentAmount !== milestoneReq.billId.amount && (
+              <div style={{ fontSize: 12, color: "#d97706", marginTop: 6 }}>
+                Difference: {paymentAmount < milestoneReq.billId.amount ? "−" : "+"}{fmt(Math.abs(paymentAmount - milestoneReq.billId.amount))} from billed amount
+              </div>
+            )}
+          </div>
+
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 6 }}>Payment UTR / Reference (optional)</div>
+            <Input placeholder="e.g. UTR123456789" value={paymentUTR} onChange={e => setPaymentUTR(e.target.value)} />
+          </div>
         </div>
       </Modal>
     </PageShell>

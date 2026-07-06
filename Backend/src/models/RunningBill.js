@@ -26,6 +26,7 @@ const runningBillSchema = new mongoose.Schema(
     generatedBy:       { type: String },
     lineItems:   [lineItemSchema],
     amount:      { type: Number, default: 0 },
+    paidAmount:  { type: Number },
     gstPercent:  { type: Number, default: 18 },
     tdsPercent:  { type: Number, default: 1 },
     remarks:     { type: String },

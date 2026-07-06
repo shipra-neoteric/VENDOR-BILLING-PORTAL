@@ -34,7 +34,7 @@ exports.listBillRequests = asyncHandler(async (req, res) => {
   const requests = await BillRequest.find(filter)
     .populate('requestedBy', 'name email')
     .populate('processedBy', 'name')
-    .populate('billId', 'billNo status amount paymentDate')
+    .populate('billId', 'billNo status amount paidAmount paymentDate')
     .sort({ stageNo: 1, createdAt: 1 });
 
   success(res, { billRequests: requests });
@@ -257,12 +257,14 @@ exports.markMilestone = asyncHandler(async (req, res) => {
   await br.save();
 
   if (br.billId) {
-    await RunningBill.findByIdAndUpdate(br.billId, {
+    const billUpdate = {
       status:             'paid',
       paymentDate:        new Date(),
       paymentReleasedBy:  req.user.name,
-      ...(req.body.paymentUTR ? { paymentUTR: req.body.paymentUTR } : {}),
-    });
+      ...(req.body.paymentUTR  ? { paymentUTR:  req.body.paymentUTR  } : {}),
+      ...(req.body.paidAmount != null ? { paidAmount: req.body.paidAmount } : {}),
+    };
+    await RunningBill.findByIdAndUpdate(br.billId, billUpdate);
   }
 
   success(res, { billRequest: br }, `Stage ${br.stageNo} — Payment released! Milestone achieved.`);
