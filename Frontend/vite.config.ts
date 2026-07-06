@@ -6,6 +6,7 @@ import tailwindcss from "@tailwindcss/vite";
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
+    allowedHosts: "all",
     // Proxy /api calls to the backend — works for both localhost and ngrok
     proxy: {
       "/api": {
