@@ -1453,7 +1453,7 @@ export default function Bills() {
                   min={0}
                   precision={0}
                   formatter={(v) => `₹ ${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ",")}
-                  parser={(v) => Number((v || "").replace(/₹\s?|(,*)/g, "")) as unknown as string}
+                  parser={(v) => Number((v || "").replace(/[₹\s,]/g, ""))}
                 />
               </Form.Item>
             </Form>
