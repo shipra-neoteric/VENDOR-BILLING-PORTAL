@@ -1,6 +1,6 @@
 const AdvanceSlip   = require('../models/AdvanceSlip');
 const asyncHandler  = require('../utils/asyncHandler');
-const { success, notFound, badRequest } = require('../utils/response');
+const { success, notFound, badRequest } = require('../utils/responseFormatter');
 
 // Auto-increment slip number: ADV-0001, ADV-0002 ...
 async function nextSlipNo() {
