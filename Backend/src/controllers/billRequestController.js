@@ -266,7 +266,8 @@ exports.markMilestone = asyncHandler(async (req, res) => {
       paymentDate:        new Date(),
       paymentReleasedBy:  req.user.name,
       ...(req.body.paymentUTR  ? { paymentUTR:  req.body.paymentUTR  } : {}),
-      ...(req.body.paidAmount != null ? { paidAmount: req.body.paidAmount } : {}),
+      ...(req.body.paidAmount  != null ? { paidAmount:       req.body.paidAmount              } : {}),
+      ...(req.body.holdAmount  != null ? { retentionAmount:  Number(req.body.holdAmount)      } : {}),
     };
     await RunningBill.findByIdAndUpdate(br.billId, billUpdate);
   }
