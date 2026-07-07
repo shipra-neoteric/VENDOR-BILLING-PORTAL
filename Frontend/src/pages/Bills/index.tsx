@@ -964,7 +964,9 @@ export default function Bills() {
                       {currentViewBill.paymentDate ? dayjs(currentViewBill.paymentDate).format("DD MMM YYYY") : "—"}
                     </Descriptions.Item>
                     <Descriptions.Item label={<span style={{ color: "#9ba3b8" }}>Mode</span>}>
-                      <Tag color="purple">{currentViewBill.paymentMode?.toUpperCase() || "—"}</Tag>
+                      <Tag color="purple">
+                        {({ neft: "NEFT", rtgs: "RTGS", imps: "IMPS", internet_banking: "Internet Banking", upi: "UPI", cheque: "Cheque", dd: "DD", cash: "Cash" } as Record<string, string>)[currentViewBill.paymentMode || ""] || currentViewBill.paymentMode?.toUpperCase() || "—"}
+                      </Tag>
                     </Descriptions.Item>
                     <Descriptions.Item label={<span style={{ color: "#9ba3b8" }}>UTR / Ref</span>}>
                       <span style={{ fontFamily: "monospace", fontWeight: 700 }}>{currentViewBill.paymentUTR || "—"}</span>
@@ -1405,7 +1407,10 @@ export default function Bills() {
                       { label: "NEFT", value: "neft" },
                       { label: "RTGS", value: "rtgs" },
                       { label: "IMPS", value: "imps" },
+                      { label: "Internet Banking", value: "internet_banking" },
+                      { label: "UPI", value: "upi" },
                       { label: "Cheque", value: "cheque" },
+                      { label: "Demand Draft (DD)", value: "dd" },
                       { label: "Cash", value: "cash" },
                     ]} />
                   </Form.Item>

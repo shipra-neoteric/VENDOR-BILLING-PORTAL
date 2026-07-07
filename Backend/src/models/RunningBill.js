@@ -48,7 +48,7 @@ const runningBillSchema = new mongoose.Schema(
     paymentChequeNo:   { type: String },
     paymentDate:       { type: Date },
     paymentBank:       { type: String },
-    paymentMode:       { type: String, enum: ['neft', 'rtgs', 'imps', 'cheque', 'cash', ''] },
+    paymentMode:       { type: String, enum: ['neft', 'rtgs', 'imps', 'internet_banking', 'upi', 'cheque', 'dd', 'cash', ''] },
     paymentReleasedBy: { type: String },
     createdBy:   { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },
