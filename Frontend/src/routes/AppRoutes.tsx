@@ -9,6 +9,7 @@ import WorkItems            from "../features/work-items";
 import WorkProgress         from "../features/work-progress";
 import Bills                from "../features/bills";
 import BillRequests         from "../pages/BillRequests";
+import AdvancePayments      from "../pages/AdvancePayments";
 import WorkOrderDashboard   from "../pages/WorkOrderDashboard";
 import Approvals            from "../features/approvals";
 import Ledger               from "../features/ledger";
@@ -64,6 +65,7 @@ function AdminRoutes() {
           <Route path="/work-progress"    element={<WorkProgress />} />
           <Route path="/bills"            element={<Bills />} />
           <Route path="/bill-requests"    element={<BillRequests />} />
+          <Route path="/advance-payments" element={<AdvancePayments />} />
           <Route path="/approvals"        element={<Approvals />} />
           <Route path="/ledger"           element={<Ledger />} />
           <Route path="/users"            element={<UserManagement />} />

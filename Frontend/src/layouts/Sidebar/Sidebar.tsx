@@ -45,8 +45,9 @@ const ADMIN_GROUPS: NavGroup[] = [
   {
     label: "Billing",
     items: [
-      { name: "Bill Requests",      path: "/bill-requests", icon: <ProfileOutlined />,      moduleId: "bill-requests" },
-      { name: "Billing & Payments", path: "/bills",         icon: <WalletOutlined />,        moduleId: "billing-payments" },
+      { name: "Bill Requests",      path: "/bill-requests",    icon: <ProfileOutlined />,      moduleId: "bill-requests" },
+      { name: "Advance Payments",   path: "/advance-payments", icon: <BankOutlined />,         moduleId: "advance-payments" },
+      { name: "Billing & Payments", path: "/bills",            icon: <WalletOutlined />,        moduleId: "billing-payments" },
       { name: "Approvals",          path: "/approvals",     icon: <CheckSquareOutlined />,   moduleId: "approvals" },
       { name: "Ledger",             path: "/ledger",        icon: <AccountBookOutlined />,   moduleId: "ledger" },
     ],

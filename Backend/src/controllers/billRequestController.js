@@ -271,6 +271,25 @@ exports.markMilestone = asyncHandler(async (req, res) => {
     await RunningBill.findByIdAndUpdate(br.billId, billUpdate);
   }
 
+  // Process advance recoveries
+  const AdvanceSlip = require('../models/AdvanceSlip');
+  const recoveries  = req.body.advanceRecoveries || [];
+  for (const rec of recoveries) {
+    if (!rec.slipId || !rec.amount || rec.amount <= 0) continue;
+    const slip = await AdvanceSlip.findById(rec.slipId);
+    if (!slip) continue;
+    slip.amountRecovered += rec.amount;
+    slip.recoveries.push({
+      amount:     rec.amount,
+      date:       new Date(),
+      releasedBy: req.user.name,
+    });
+    slip.status = slip.amountRecovered >= slip.amount
+      ? 'recovered'
+      : slip.amountRecovered > 0 ? 'partial' : 'outstanding';
+    await slip.save();
+  }
+
   success(res, { billRequest: br }, `Stage ${br.stageNo} — Payment released! Milestone achieved.`);
 });
 

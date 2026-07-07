@@ -50,6 +50,7 @@ app.use('/api/companies',     require('./routes/companies'));
 app.use('/api/stages',        require('./routes/stages'));
 app.use('/api/activities',    require('./routes/activities'));
 app.use('/api/milestones',    require('./routes/milestones'));
+app.use('/api/advance-slips',  require('./routes/advanceSlips'));
 app.use('/api/bill-requests', require('./routes/billRequests'));
 app.use('/api/users',        require('./routes/users'));
 

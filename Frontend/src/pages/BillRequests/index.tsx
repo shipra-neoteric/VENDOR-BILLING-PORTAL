@@ -34,7 +34,9 @@ interface BillRequest {
   stageNo?: number;
   workOrderId?: string;
   workOrderNo: string;
+  projectId?: string;
   projectName: string;
+  vendorCode?: string;
   vendorName: string;
   category: string;
   subCategory: string;
@@ -69,6 +71,21 @@ export default function BillRequests() {
 
   const [paymentAmount,   setPaymentAmount]   = useState<number | null>(null);
   const [milestoneReq,    setMilestoneReq]    = useState<BillRequest | null>(null);
+
+  const [pendingAdvances,   setPendingAdvances]   = useState<{ _id: string; slipNo: string; amount: number; amountRecovered: number; balance: number; reference?: string }[]>([]);
+  const [advanceRecovery,   setAdvanceRecovery]   = useState<number | null>(null);
+  const [advancesLoading,   setAdvancesLoading]   = useState(false);
+
+  const fetchPendingAdvances = async (projectId: string, vendorCode: string) => {
+    setAdvancesLoading(true);
+    setPendingAdvances([]);
+    setAdvanceRecovery(null);
+    try {
+      const res = await apiClient.get(`/advance-slips/pending?projectId=${projectId}&vendorCode=${vendorCode}`);
+      setPendingAdvances(res.data.advanceSlips ?? []);
+    } catch { /* silent */ }
+    finally { setAdvancesLoading(false); }
+  };
 
   const load = async (status?: string) => {
     setLoading(true);
@@ -117,6 +134,18 @@ export default function BillRequests() {
       const body: Record<string, unknown> = {};
       if (paymentUTR) body.paymentUTR = paymentUTR;
       if (paymentAmount != null && paymentAmount !== billAmt) body.paidAmount = paymentAmount;
+      if (advanceRecovery && advanceRecovery > 0 && pendingAdvances.length > 0) {
+        // Distribute recovery across slips in order (oldest first)
+        let remaining = advanceRecovery;
+        const recoveries: { slipId: string; amount: number }[] = [];
+        for (const slip of pendingAdvances) {
+          if (remaining <= 0) break;
+          const recoverThis = Math.min(remaining, slip.balance);
+          recoveries.push({ slipId: slip._id, amount: recoverThis });
+          remaining -= recoverThis;
+        }
+        if (recoveries.length > 0) body.advanceRecoveries = recoveries;
+      }
       const res = await apiClient.put(`/bill-requests/${milestoneTarget}/milestone`, body);
       message.success(res.data?.message || "Milestone marked!");
       setUTRModal(false);
@@ -124,6 +153,8 @@ export default function BillRequests() {
       setPaymentUTR("");
       setPaymentAmount(null);
       setMilestoneReq(null);
+      setAdvanceRecovery(null);
+      setPendingAdvances([]);
       load(tab === "all" ? undefined : tab);
     } catch (e: any) {
       message.error(e?.response?.data?.message || "Failed to mark milestone");
@@ -222,7 +253,16 @@ export default function BillRequests() {
               size="small"
               icon={<TrophyOutlined />}
               style={{ color: "#FF7A00", borderColor: "#FF7A00" }}
-              onClick={() => { setMilestoneTarget(r._id); setMilestoneReq(r); setPaymentUTR(""); setPaymentAmount(r.billId?.amount ?? null); setUTRModal(true); }}
+              onClick={() => {
+                setMilestoneTarget(r._id);
+                setMilestoneReq(r);
+                setPaymentUTR("");
+                setPaymentAmount(r.billId?.amount ?? null);
+                setAdvanceRecovery(null);
+                setPendingAdvances([]);
+                setUTRModal(true);
+                if (r.projectId && r.vendorCode) fetchPendingAdvances(r.projectId, r.vendorCode);
+              }}
             >
               Release Payment
             </Button>
@@ -302,7 +342,17 @@ export default function BillRequests() {
                 type="primary"
                 icon={<TrophyOutlined />}
                 style={{ background: "#FF7A00", borderColor: "#FF7A00" }}
-                onClick={() => { setMilestoneTarget(viewReq._id); setMilestoneReq(viewReq); setPaymentUTR(""); setPaymentAmount(viewReq.billId?.amount ?? null); setUTRModal(true); setViewReq(null); }}
+                onClick={() => {
+                  setMilestoneTarget(viewReq._id);
+                  setMilestoneReq(viewReq);
+                  setPaymentUTR("");
+                  setPaymentAmount(viewReq.billId?.amount ?? null);
+                  setAdvanceRecovery(null);
+                  setPendingAdvances([]);
+                  setUTRModal(true);
+                  setViewReq(null);
+                  if (viewReq.projectId && viewReq.vendorCode) fetchPendingAdvances(viewReq.projectId, viewReq.vendorCode);
+                }}
               >
                 Release Payment — Mark Milestone
               </Button>
@@ -448,7 +498,7 @@ export default function BillRequests() {
       {/* Release Payment / Milestone Modal */}
       <Modal
         open={utrModal}
-        onCancel={() => { setUTRModal(false); setMilestoneTarget(null); setPaymentUTR(""); setPaymentAmount(null); setMilestoneReq(null); }}
+        onCancel={() => { setUTRModal(false); setMilestoneTarget(null); setPaymentUTR(""); setPaymentAmount(null); setMilestoneReq(null); setPendingAdvances([]); setAdvanceRecovery(null); }}
         onOk={handleMilestone}
         title="Release Payment — Mark Milestone"
         okText="Confirm Payment Released"
@@ -489,6 +539,39 @@ export default function BillRequests() {
               </div>
             )}
           </div>
+
+          {/* Advance Recovery */}
+          {advancesLoading && (
+            <div style={{ fontSize: 12, color: "#9CA3AF" }}>Checking pending advances…</div>
+          )}
+          {!advancesLoading && pendingAdvances.length > 0 && (
+            <div style={{ background: "#fefce8", border: "1px solid #fde68a", borderRadius: 8, padding: "12px 14px" }}>
+              <div style={{ fontWeight: 700, fontSize: 13, color: "#92400e", marginBottom: 8 }}>
+                ⚠ Pending Advances for this Contractor + Project
+              </div>
+              {pendingAdvances.map(slip => (
+                <div key={slip._id} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, padding: "3px 0", borderBottom: "1px solid #fde68a" }}>
+                  <span style={{ color: "#78350f" }}>{slip.slipNo}{slip.reference ? ` (${slip.reference})` : ""}</span>
+                  <span style={{ fontFamily: "monospace", fontWeight: 600, color: "#b45309" }}>Balance: ₹{Math.round(slip.balance).toLocaleString("en-IN")}</span>
+                </div>
+              ))}
+              <div style={{ marginTop: 10 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: "#374151", marginBottom: 4 }}>
+                  Recover from this bill (max ₹{Math.round(pendingAdvances.reduce((s, sl) => s + sl.balance, 0)).toLocaleString("en-IN")})
+                </div>
+                <InputNumber
+                  style={{ width: "100%" }}
+                  prefix="₹"
+                  value={advanceRecovery}
+                  onChange={v => setAdvanceRecovery(v)}
+                  min={0}
+                  max={pendingAdvances.reduce((s, sl) => s + sl.balance, 0)}
+                  precision={0}
+                  placeholder="0 — leave blank to skip recovery"
+                />
+              </div>
+            </div>
+          )}
 
           <div>
             <div style={{ fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 6 }}>Payment UTR / Reference (optional)</div>
