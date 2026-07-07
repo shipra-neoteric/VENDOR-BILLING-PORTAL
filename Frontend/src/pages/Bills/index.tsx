@@ -1448,7 +1448,7 @@ export default function Bills() {
                   </Form.Item>
                 }
               >
-                <InputNumber
+                <InputNumber<number>
                   style={{ width: "100%", fontFamily: "monospace", fontWeight: 700 }}
                   min={0}
                   precision={0}
