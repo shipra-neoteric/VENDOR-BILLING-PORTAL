@@ -11,7 +11,7 @@ const apiClient = axios.create({
 });
 
 apiClient.interceptors.request.use((config) => {
-  const token = localStorage.getItem("token");
+  const token = sessionStorage.getItem("token");
   if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
@@ -22,8 +22,8 @@ let sessionExpiredPending = false;
 function forceReLogin(msg: string) {
   if (sessionExpiredPending) return;
   sessionExpiredPending = true;
-  localStorage.removeItem("token");
-  localStorage.removeItem("user");
+  sessionStorage.removeItem("token");
+  sessionStorage.removeItem("user");
   message.error(msg);
   setTimeout(() => {
     sessionExpiredPending = false;
