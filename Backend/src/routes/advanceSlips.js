@@ -1,7 +1,9 @@
 const express    = require('express');
 const router     = express.Router();
-const { authorize } = require('../middleware/authMiddleware');
+const { authenticate, authorize } = require('../middleware/auth');
 const ctrl       = require('../controllers/advanceSlipController');
+
+router.use(authenticate);
 
 router.get('/pending', authorize('owner', 'admin'), ctrl.getPendingAdvances);
 router.get('/',        authorize('owner', 'admin'), ctrl.listAdvanceSlips);
