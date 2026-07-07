@@ -86,6 +86,7 @@ interface Bill {
   paymentMode?: string;
   paymentReleasedBy?: string;
   paymentBank?: string;
+  paidAmount?: number;
   createdAt?: string;
 }
 
@@ -544,7 +545,7 @@ export default function Bills() {
   function openPay(bill: Bill) {
     setPayBillId(bill.id);
     payForm.resetFields();
-    payForm.setFieldsValue({ paymentDate: dayjs(), paymentMode: "neft" });
+    payForm.setFieldsValue({ paymentDate: dayjs(), paymentMode: "neft", paidAmount: bill.amount });
     setPayOpen(true);
   }
 
@@ -559,6 +560,7 @@ export default function Bills() {
         paymentDate:       values.paymentDate ? dayjs(values.paymentDate as string).toISOString() : undefined,
         paymentBank:       values.paymentBank,
         paymentReleasedBy: values.paymentReleasedBy,
+        paidAmount:        values.paidAmount,
       };
       const res = await apiClient.patch<{ bill: Record<string, unknown> }>(`/bills/${payBillId}/pay`, body);
       const updated = normalizeId(res.data.bill) as unknown as Bill;
@@ -942,6 +944,21 @@ export default function Bills() {
                 <Divider />
                 <div style={{ background: "#f5f0ff", border: "1px solid #c4b5fd", borderRadius: 8, padding: "14px 16px" }}>
                   <div style={{ fontWeight: 700, fontSize: 13, color: "#7c3aed", marginBottom: 10 }}>Payment Released</div>
+                  {currentViewBill.paidAmount != null && currentViewBill.paidAmount !== currentViewBill.amount && (
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10, padding: "8px 10px", background: "#fff8f0", border: "1px solid #fbd38d", borderRadius: 6 }}>
+                      <div>
+                        <div style={{ fontSize: 11, color: "#9ba3b8", fontWeight: 700, textTransform: "uppercase" }}>Billed Amount</div>
+                        <div style={{ fontFamily: "monospace", fontWeight: 700, fontSize: 14, textDecoration: "line-through", color: "#9ba3b8" }}>{fmt(currentViewBill.amount)}</div>
+                      </div>
+                      <div style={{ textAlign: "right" }}>
+                        <div style={{ fontSize: 11, color: "#9ba3b8", fontWeight: 700, textTransform: "uppercase" }}>Actually Paid</div>
+                        <div style={{ fontFamily: "monospace", fontWeight: 800, fontSize: 16, color: "#e03b3b" }}>{fmt(currentViewBill.paidAmount)}</div>
+                        <div style={{ fontSize: 11, color: "#e03b3b" }}>
+                          −{fmt(currentViewBill.amount - currentViewBill.paidAmount)} deducted
+                        </div>
+                      </div>
+                    </div>
+                  )}
                   <Descriptions column={2} size="small" colon={false}>
                     <Descriptions.Item label={<span style={{ color: "#9ba3b8" }}>Payment Date</span>}>
                       {currentViewBill.paymentDate ? dayjs(currentViewBill.paymentDate).format("DD MMM YYYY") : "—"}
@@ -1409,6 +1426,36 @@ export default function Bills() {
                   </Form.Item>
                 </Col>
               </Row>
+              <Form.Item
+                label="Actual Amount Paid (₹)"
+                name="paidAmount"
+                rules={[{ required: true, message: "Enter the amount actually paid" }]}
+                extra={
+                  <Form.Item noStyle shouldUpdate={(prev, cur) => prev.paidAmount !== cur.paidAmount}>
+                    {({ getFieldValue }) => {
+                      const paid = getFieldValue("paidAmount") as number | undefined;
+                      if (!paid || !payTarget) return null;
+                      const diff = Math.round(payTarget.amount - paid);
+                      if (diff === 0) return null;
+                      return (
+                        <span style={{ color: diff > 0 ? "#e03b3b" : "#16a85a", fontSize: 12 }}>
+                          {diff > 0
+                            ? `₹${diff.toLocaleString("en-IN")} less than bill amount (TDS / deduction)`
+                            : `₹${Math.abs(diff).toLocaleString("en-IN")} more than bill amount`}
+                        </span>
+                      );
+                    }}
+                  </Form.Item>
+                }
+              >
+                <InputNumber
+                  style={{ width: "100%", fontFamily: "monospace", fontWeight: 700 }}
+                  min={0}
+                  precision={0}
+                  formatter={(v) => `₹ ${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ",")}
+                  parser={(v) => Number((v || "").replace(/₹\s?|(,*)/g, "")) as unknown as string}
+                />
+              </Form.Item>
             </Form>
           </>
         )}
