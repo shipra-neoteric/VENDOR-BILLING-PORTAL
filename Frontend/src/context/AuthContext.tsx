@@ -27,23 +27,23 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [token, setToken] = useState<string | null>(() => localStorage.getItem("token"));
+  const [token, setToken] = useState<string | null>(() => sessionStorage.getItem("token"));
   const [user, setUser] = useState<AuthUser | null>(() => {
-    const u = localStorage.getItem("user");
+    const u = sessionStorage.getItem("user");
     return u ? JSON.parse(u) : null;
   });
 
   const login = useCallback(async (email: string, password: string) => {
     const { data } = await apiClient.post("/auth/login", { email, password });
-    localStorage.setItem("token", data.token);
-    localStorage.setItem("user", JSON.stringify(data.user));
+    sessionStorage.setItem("token", data.token);
+    sessionStorage.setItem("user", JSON.stringify(data.user));
     setToken(data.token);
     setUser(data.user);
   }, []);
 
   const logout = useCallback(() => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
+    sessionStorage.removeItem("token");
+    sessionStorage.removeItem("user");
     setToken(null);
     setUser(null);
   }, []);
