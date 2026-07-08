@@ -352,6 +352,12 @@ export default function Bills() {
   const [payForm]                 = Form.useForm();
   const [paySaving, setPaySaving] = useState(false);
 
+  // Edit deductions (for paid bills)
+  const [dedOpen,   setDedOpen]   = useState(false);
+  const [dedBillId, setDedBillId] = useState<string | null>(null);
+  const [dedForm]                 = Form.useForm();
+  const [dedSaving, setDedSaving] = useState(false);
+
   // ── Load data ────────────────────────────────────────────────
 
   const loadBills = useCallback(() => {
@@ -605,6 +611,28 @@ export default function Bills() {
     } finally {
       setPaySaving(false);
     }
+  }
+
+  // ── Patch deductions ─────────────────────────────────────────
+  async function handlePatchDeductions() {
+    if (!dedBillId) return;
+    try {
+      const values = await dedForm.validateFields();
+      setDedSaving(true);
+      const res = await apiClient.patch<{ bill: Record<string, unknown> }>(`/bills/${dedBillId}/deductions`, {
+        advanceRecovery: values.advanceRecovery ?? 0,
+        retentionAmount: values.retentionAmount ?? 0,
+      });
+      const updated = normalizeId(res.data.bill) as unknown as Bill;
+      setBills((prev) => prev.map((b) => (b.id === dedBillId ? updated : b)));
+      message.success("Deductions updated");
+      setDedOpen(false);
+      setDedBillId(null);
+    } catch (err: unknown) {
+      const e = err as { errorFields?: unknown; response?: { data?: { message?: string } } };
+      if (e?.errorFields) return;
+      message.error(e?.response?.data?.message || "Failed to update deductions");
+    } finally { setDedSaving(false); }
   }
 
   // ── Table columns ────────────────────────────────────────────
@@ -984,7 +1012,23 @@ export default function Bills() {
               <>
                 <Divider />
                 <div style={{ background: "#f5f0ff", border: "1px solid #c4b5fd", borderRadius: 8, padding: "14px 16px" }}>
-                  <div style={{ fontWeight: 700, fontSize: 13, color: "#7c3aed", marginBottom: 10 }}>Payment Released</div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                    <div style={{ fontWeight: 700, fontSize: 13, color: "#7c3aed" }}>Payment Released</div>
+                    <Button
+                      size="small"
+                      onClick={() => {
+                        setDedBillId(currentViewBill.id);
+                        dedForm.setFieldsValue({
+                          advanceRecovery: currentViewBill.advanceRecovery ?? 0,
+                          retentionAmount: currentViewBill.retentionAmount ?? 0,
+                        });
+                        setDedOpen(true);
+                      }}
+                      style={{ fontSize: 11 }}
+                    >
+                      Edit Deductions
+                    </Button>
+                  </div>
                   <Descriptions column={2} size="small" colon={false}>
                     <Descriptions.Item label={<span style={{ color: "#9ba3b8" }}>Payment Date</span>}>
                       {currentViewBill.paymentDate ? dayjs(currentViewBill.paymentDate).format("DD MMM YYYY") : "—"}
@@ -1491,6 +1535,37 @@ export default function Bills() {
           </>
         )}
       </Drawer>
+
+      {/* ── Edit Deductions Modal ─────────────────────────────────── */}
+      <Modal
+        open={dedOpen}
+        onCancel={() => { setDedOpen(false); setDedBillId(null); }}
+        onOk={handlePatchDeductions}
+        title="Edit Deductions"
+        okText="Save"
+        okButtonProps={{ loading: dedSaving, style: { background: "#7c3aed", borderColor: "#7c3aed" } }}
+        destroyOnClose
+      >
+        <div style={{ marginTop: 8, fontSize: 13, color: "#6B7280", marginBottom: 16 }}>
+          Correct the advance recovery and hold/retention amounts for this paid bill. TDS will be computed automatically as the remaining difference.
+        </div>
+        <Form form={dedForm} layout="vertical">
+          <Form.Item label="Hold / Retention Amount (₹)" name="retentionAmount">
+            <InputNumber<number>
+              style={{ width: "100%", fontFamily: "monospace" }}
+              min={0} precision={0} prefix="₹"
+              placeholder="0"
+            />
+          </Form.Item>
+          <Form.Item label="Advance Recovery (₹)" name="advanceRecovery">
+            <InputNumber<number>
+              style={{ width: "100%", fontFamily: "monospace" }}
+              min={0} precision={0} prefix="₹"
+              placeholder="0"
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
     </PageShell>
   );
 }

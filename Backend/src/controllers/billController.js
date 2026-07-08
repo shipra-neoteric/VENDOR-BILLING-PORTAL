@@ -209,3 +209,14 @@ exports.payBill = asyncHandler(async (req, res) => {
 
   success(res, { bill }, 'Payment recorded');
 });
+
+// PATCH /api/bills/:id/deductions  — correct advance recovery / retention split on a paid bill
+exports.patchDeductions = asyncHandler(async (req, res) => {
+  const bill = await RunningBill.findById(req.params.id);
+  if (!bill) return notFound(res, 'Bill not found');
+  if (bill.status !== 'paid') return badRequest(res, 'Can only adjust deductions on paid bills');
+  if (req.body.advanceRecovery != null) bill.advanceRecovery  = Number(req.body.advanceRecovery);
+  if (req.body.retentionAmount  != null) bill.retentionAmount = Number(req.body.retentionAmount);
+  await bill.save();
+  success(res, { bill }, 'Deductions updated');
+});

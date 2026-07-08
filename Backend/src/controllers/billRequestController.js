@@ -268,7 +268,11 @@ exports.markMilestone = asyncHandler(async (req, res) => {
       ...(req.body.paymentUTR  ? { paymentUTR:  req.body.paymentUTR  } : {}),
       ...(req.body.paidAmount  != null ? { paidAmount:       Number(req.body.paidAmount)      } : {}),
       ...(req.body.holdAmount  != null ? { retentionAmount:  Number(req.body.holdAmount)      } : {}),
-      ...(req.body.advanceRecoveries?.length ? { advanceRecovery: req.body.advanceRecoveries.reduce((s, r) => s + (r.amount || 0), 0) } : {}),
+      ...(req.body.advanceRecoveries?.length
+          ? { advanceRecovery: req.body.advanceRecoveries.reduce((s, r) => s + (r.amount || 0), 0) }
+          : req.body.advanceRecoveryAmount != null
+            ? { advanceRecovery: Number(req.body.advanceRecoveryAmount) }
+            : {}),
     };
     await RunningBill.findByIdAndUpdate(br.billId, billUpdate);
   }

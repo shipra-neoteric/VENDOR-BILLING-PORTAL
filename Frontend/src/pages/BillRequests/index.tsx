@@ -136,17 +136,20 @@ export default function BillRequests() {
       if (paymentUTR) body.paymentUTR = paymentUTR;
       if (paymentAmount != null && paymentAmount !== billAmt) body.paidAmount = paymentAmount;
       if (holdAmount != null && holdAmount > 0) body.holdAmount = holdAmount;
-      if (advanceRecovery && advanceRecovery > 0 && pendingAdvances.length > 0) {
-        // Distribute recovery across slips in order (oldest first)
-        let remaining = advanceRecovery;
-        const recoveries: { slipId: string; amount: number }[] = [];
-        for (const slip of pendingAdvances) {
-          if (remaining <= 0) break;
-          const recoverThis = Math.min(remaining, slip.balance);
-          recoveries.push({ slipId: slip._id, amount: recoverThis });
-          remaining -= recoverThis;
+      if (advanceRecovery && advanceRecovery > 0) {
+        body.advanceRecoveryAmount = advanceRecovery; // always store the amount on the bill
+        if (pendingAdvances.length > 0) {
+          // Also distribute across advance slip records (oldest first)
+          let remaining = advanceRecovery;
+          const recoveries: { slipId: string; amount: number }[] = [];
+          for (const slip of pendingAdvances) {
+            if (remaining <= 0) break;
+            const recoverThis = Math.min(remaining, slip.balance);
+            recoveries.push({ slipId: slip._id, amount: recoverThis });
+            remaining -= recoverThis;
+          }
+          if (recoveries.length > 0) body.advanceRecoveries = recoveries;
         }
-        if (recoveries.length > 0) body.advanceRecoveries = recoveries;
       }
       const res = await apiClient.put(`/bill-requests/${milestoneTarget}/milestone`, body);
       message.success(res.data?.message || "Milestone marked!");
