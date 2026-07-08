@@ -930,7 +930,6 @@ export default function Bills() {
               const retPct   = currentViewBill.retentionPercent ?? 0;
               const advRec   = currentViewBill.advanceRecovery ?? 0;
               const netPay   = gross + gstAmt - retAmt;
-              const netAfAdv = netPay - advRec;
               const paid     = currentViewBill.paidAmount;
               // TDS = what's left after net payable minus advance minus actually paid
               const tdsAmt = paid != null ? Math.max(0, Math.round(netPay - advRec - paid)) : 0;
