@@ -126,7 +126,7 @@ const STATUS_CFG: Record<BillStatus, { label: string; antColor: string }> = {
 
 // ── Print / Download ─────────────────────────────────────────────
 
-function printBill(bill: Bill, contractor: ContractorOpt | null) {
+function printBill(bill: Bill, contractor: ContractorOpt | null, mode: 'pre' | 'post' = 'pre') {
   const rows = (bill.lineItems || [])
     .map(
       (li, i) => `
@@ -165,10 +165,10 @@ function printBill(bill: Bill, contractor: ContractorOpt | null) {
     <div style="color:#666;font-size:12px;margin-top:4px">Project Cost Center</div>
   </div>
   <div style="text-align:right">
-    <div style="font-size:22px;font-weight:bold;letter-spacing:2px;color:#333">RUNNING BILL</div>
+    <div style="font-size:22px;font-weight:bold;letter-spacing:2px;color:#333">${mode === 'pre' ? 'RUNNING BILL' : 'PAYMENT RECEIPT'}</div>
     <div style="margin-top:6px;font-size:13px"><strong>Bill No:</strong> ${bill.billNo}</div>
     <div style="font-size:13px"><strong>Date:</strong> ${bill.billDate ? dayjs(bill.billDate).format("DD/MM/YYYY") : "-"}</div>
-    <div style="font-size:13px"><strong>Status:</strong> <span style="background:#f47b20;color:#fff;padding:2px 8px;border-radius:10px;font-size:11px">${bill.status.toUpperCase()}</span></div>
+    <div style="font-size:13px"><strong>Status:</strong> <span style="background:${mode === 'pre' ? '#f47b20' : '#16a34a'};color:#fff;padding:2px 8px;border-radius:10px;font-size:11px">${mode === 'pre' ? 'FOR PAYMENT' : 'PAID'}</span></div>
   </div>
 </div>
 
@@ -220,36 +220,48 @@ function printBill(bill: Bill, contractor: ContractorOpt | null) {
       <span>Hold / Retention${(bill.retentionPercent ?? 0) > 0 ? ` @ ${bill.retentionPercent}%` : ""}</span>
       <span>− ₹${Math.round(bill.retentionAmount ?? 0).toLocaleString("en-IN")}</span>
     </div>` : ""}
-    <div style="display:flex;justify-content:space-between;padding:11px 14px;background:#fff7ed;font-weight:bold;font-size:14px;color:#f47b20;border-top:2px solid #fed7aa">
-      <span>Net Payable</span>
-      <span>₹${Math.round((bill.amount || 0) * (1 + (bill.gstPercent ?? 0) / 100) - (bill.retentionAmount ?? 0)).toLocaleString("en-IN")}</span>
-    </div>
-    ${bill.paidAmount != null ? (() => {
-      const netPay = Math.round((bill.amount || 0) * (1 + (bill.gstPercent ?? 0) / 100) - (bill.retentionAmount ?? 0));
+    ${(() => {
       const advRec = Math.round(bill.advanceRecovery ?? 0);
-      const tds = Math.max(0, netPay - advRec - Math.round(bill.paidAmount));
-      return `${advRec > 0 ? `
+      const netPay = Math.round((bill.amount || 0) * (1 + (bill.gstPercent ?? 0) / 100) - (bill.retentionAmount ?? 0));
+      if (mode === 'pre') {
+        // PRE-PAYMENT: show advance recovery, end at net payable (no TDS/payment)
+        return `${advRec > 0 ? `
+    <div style="display:flex;justify-content:space-between;padding:9px 14px;border-bottom:1px solid #eee;color:#d97706">
+      <span>Less: Advance Recovery</span><span>− ₹${advRec.toLocaleString("en-IN")}</span>
+    </div>` : ""}
+    <div style="display:flex;justify-content:space-between;padding:13px 14px;background:#fff7ed;font-weight:bold;font-size:15px;color:#f47b20;border-top:2px solid #fed7aa">
+      <span>NET PAYABLE</span>
+      <span>₹${(netPay - advRec).toLocaleString("en-IN")}</span>
+    </div>`;
+      } else {
+        // POST-PAYMENT: show net payable, then advance, TDS, actually paid
+        const tds = bill.paidAmount != null ? Math.max(0, netPay - advRec - Math.round(bill.paidAmount)) : 0;
+        return `
+    <div style="display:flex;justify-content:space-between;padding:11px 14px;background:#fff7ed;font-weight:bold;font-size:14px;color:#f47b20;border-top:2px solid #fed7aa">
+      <span>Net Payable</span><span>₹${netPay.toLocaleString("en-IN")}</span>
+    </div>${advRec > 0 ? `
     <div style="display:flex;justify-content:space-between;padding:9px 14px;border-bottom:1px solid #eee;color:#d97706">
       <span>Less: Advance Recovery</span><span>− ₹${advRec.toLocaleString("en-IN")}</span>
     </div>` : ""}${tds > 0 ? `
     <div style="display:flex;justify-content:space-between;padding:9px 14px;border-bottom:1px solid #eee;color:#dc2626">
       <span>Less: TDS Deducted${bill.tdsPercent ? ` (${bill.tdsPercent}%)` : ""}</span><span>− ₹${tds.toLocaleString("en-IN")}</span>
-    </div>` : ""}
-    <div style="display:flex;justify-content:space-between;padding:11px 14px;background:#f0fdf4;font-weight:bold;font-size:15px;color:#16a34a;border-top:2px solid #bbf7d0">
+    </div>` : ""}${bill.paidAmount != null ? `
+    <div style="display:flex;justify-content:space-between;padding:13px 14px;background:#f0fdf4;font-weight:bold;font-size:15px;color:#16a34a;border-top:2px solid #bbf7d0">
       <span>Actually Paid</span><span>₹${Math.round(bill.paidAmount).toLocaleString("en-IN")}</span>
-    </div>`;
-    })() : ""}
+    </div>` : ""}`;
+      }
+    })()}
   </div>
 </div>
 
 ${bankSection}
 
-${bill.status === "paid" && bill.paymentDate ? `
+${mode === 'post' && bill.paymentDate ? `
 <div style="border:1px solid #c4b5fd;border-radius:6px;padding:14px;margin-bottom:24px;background:#faf5ff">
   <h4 style="font-size:10px;text-transform:uppercase;color:#7c3aed;letter-spacing:1px;margin:0 0 10px">Payment Details</h4>
   <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;font-size:12px">
     <div><span style="font-size:10px;color:#999;display:block">Payment Date</span><strong>${dayjs(bill.paymentDate).format("DD/MM/YYYY")}</strong></div>
-    <div><span style="font-size:10px;color:#999;display:block">Mode</span><strong>${({ neft: "NEFT", rtgs: "RTGS", imps: "IMPS", internet_banking: "Internet Banking", upi: "UPI", cheque: "Cheque", dd: "Demand Draft", cash: "Cash" })[bill.paymentMode || ""] || bill.paymentMode?.toUpperCase() || "—"}</strong></div>
+    <div><span style="font-size:10px;color:#999;display:block">Mode</span><strong>${({ neft: "NEFT", rtgs: "RTGS", imps: "IMPS", internet_banking: "Internet Banking", upi: "UPI", cheque: "Cheque", dd: "Demand Draft", cash: "Cash" } as Record<string,string>)[bill.paymentMode || ""] || bill.paymentMode?.toUpperCase() || "—"}</strong></div>
     <div><span style="font-size:10px;color:#999;display:block">UTR / Reference</span><strong style="font-family:monospace">${bill.paymentUTR || "—"}</strong></div>
     ${bill.paymentBank ? `<div><span style="font-size:10px;color:#999;display:block">Bank</span><strong>${bill.paymentBank}</strong></div>` : ""}
     ${bill.paymentReleasedBy ? `<div><span style="font-size:10px;color:#999;display:block">Released By</span><strong>${bill.paymentReleasedBy}</strong></div>` : ""}
@@ -541,9 +553,9 @@ export default function Bills() {
   // ── Download ─────────────────────────────────────────────────
 
   const downloadBill = useCallback(
-    (bill: Bill) => {
+    (bill: Bill, mode: 'pre' | 'post' = 'pre') => {
       const contractor = contractors.find((c) => c.vendorCode === bill.vendorCode) ?? null;
-      printBill(bill, contractor);
+      printBill(bill, contractor, mode);
     },
     [contractors]
   );
@@ -696,9 +708,14 @@ export default function Bills() {
           <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => { setViewBill(r); setViewOpen(true); }}>
             View
           </Button>
-          <Button type="link" size="small" icon={<DownloadOutlined />} onClick={() => downloadBill(r)}>
-            Download
+          <Button type="link" size="small" icon={<DownloadOutlined />} onClick={() => downloadBill(r, 'pre')}>
+            Download Bill
           </Button>
+          {r.status === "paid" && (
+            <Button type="link" size="small" icon={<DownloadOutlined />} style={{ color: "#16a34a" }} onClick={() => downloadBill(r, 'post')}>
+              Receipt
+            </Button>
+          )}
           {(r.status === "submitted" || r.status === "verified") && (
             <>
               <Button type="link" size="small" style={{ color: "#16a85a" }} icon={<CheckCircleOutlined />} onClick={() => openAction(r, "approve")}>
@@ -831,9 +848,14 @@ export default function Bills() {
         extra={
           currentViewBill && (
             <Space>
-              <Button icon={<DownloadOutlined />} onClick={() => downloadBill(currentViewBill)}>
-                Download
+              <Button icon={<DownloadOutlined />} onClick={() => downloadBill(currentViewBill, 'pre')}>
+                Download Bill
               </Button>
+              {currentViewBill.status === "paid" && (
+                <Button icon={<DownloadOutlined />} style={{ color: "#16a34a", borderColor: "#16a34a" }} onClick={() => downloadBill(currentViewBill, 'post')}>
+                  Download Receipt
+                </Button>
+              )}
               {(currentViewBill.status === "submitted" || currentViewBill.status === "verified") && (
                 <>
                   <Button

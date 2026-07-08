@@ -1449,6 +1449,10 @@ export default function WorkItems() {
 
       const matchDate = inDateRange(wo.issueDate, dateFrom, dateTo);
       return matchSearch && matchStatus && matchCategory && matchProgress && matchDate;
+    }).sort((a, b) => {
+      const numA = parseInt(a.workOrderNo.replace(/\D/g, ""), 10) || 0;
+      const numB = parseInt(b.workOrderNo.replace(/\D/g, ""), 10) || 0;
+      return numB - numA;
     });
   }, [workOrders, search, statusFilter, categoryFilter, subCategoryFilter, progressFilter, subCatsOfSelected, dateFrom, dateTo]);
 
