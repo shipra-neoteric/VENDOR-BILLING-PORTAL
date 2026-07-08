@@ -219,22 +219,22 @@ function printBill(bill: Bill, contractor: ContractorOpt | null) {
       <span>Hold / Retention${(bill.retentionPercent ?? 0) > 0 ? ` @ ${bill.retentionPercent}%` : ""}</span>
       <span>− ₹${Math.round(bill.retentionAmount ?? 0).toLocaleString("en-IN")}</span>
     </div>` : ""}
-    ${(bill.advanceRecovery ?? 0) > 0 ? `
-    <div style="display:flex;justify-content:space-between;padding:9px 14px;border-bottom:1px solid #eee;color:#d97706">
-      <span>Advance Recovery</span><span>− ₹${Math.round(bill.advanceRecovery ?? 0).toLocaleString("en-IN")}</span>
-    </div>` : ""}
     <div style="display:flex;justify-content:space-between;padding:11px 14px;background:#fff7ed;font-weight:bold;font-size:14px;color:#f47b20;border-top:2px solid #fed7aa">
       <span>Net Payable</span>
-      <span>₹${Math.round((bill.amount || 0) * (1 + (bill.gstPercent ?? 0) / 100) - (bill.retentionAmount ?? 0) - (bill.advanceRecovery ?? 0)).toLocaleString("en-IN")}</span>
+      <span>₹${Math.round((bill.amount || 0) * (1 + (bill.gstPercent ?? 0) / 100) - (bill.retentionAmount ?? 0)).toLocaleString("en-IN")}</span>
     </div>
     ${bill.paidAmount != null ? (() => {
-      const netPay = Math.round((bill.amount || 0) * (1 + (bill.gstPercent ?? 0) / 100) - (bill.retentionAmount ?? 0) - (bill.advanceRecovery ?? 0));
-      const tds = Math.max(0, netPay - Math.round(bill.paidAmount));
-      return `${tds > 0 ? `
+      const netPay = Math.round((bill.amount || 0) * (1 + (bill.gstPercent ?? 0) / 100) - (bill.retentionAmount ?? 0));
+      const advRec = Math.round(bill.advanceRecovery ?? 0);
+      const tds = Math.max(0, netPay - advRec - Math.round(bill.paidAmount));
+      return `${advRec > 0 ? `
+    <div style="display:flex;justify-content:space-between;padding:9px 14px;border-bottom:1px solid #eee;color:#d97706">
+      <span>Less: Advance Recovery</span><span>− ₹${advRec.toLocaleString("en-IN")}</span>
+    </div>` : ""}${tds > 0 ? `
     <div style="display:flex;justify-content:space-between;padding:9px 14px;border-bottom:1px solid #eee;color:#dc2626">
-      <span>TDS / Other Deduction</span><span>− ₹${tds.toLocaleString("en-IN")}</span>
+      <span>Less: TDS Deducted${bill.tdsPercent ? ` (${bill.tdsPercent}%)` : ""}</span><span>− ₹${tds.toLocaleString("en-IN")}</span>
     </div>` : ""}
-    <div style="display:flex;justify-content:space-between;padding:11px 14px;background:#f0fdf4;font-weight:bold;font-size:15px;color:#16a34a">
+    <div style="display:flex;justify-content:space-between;padding:11px 14px;background:#f0fdf4;font-weight:bold;font-size:15px;color:#16a34a;border-top:2px solid #bbf7d0">
       <span>Actually Paid</span><span>₹${Math.round(bill.paidAmount).toLocaleString("en-IN")}</span>
     </div>`;
     })() : ""}
@@ -932,7 +932,8 @@ export default function Bills() {
               const netPay   = gross + gstAmt - retAmt;
               const netAfAdv = netPay - advRec;
               const paid     = currentViewBill.paidAmount;
-              const tdsAmt   = paid != null && paid < netAfAdv ? Math.round(netAfAdv - paid) : 0;
+              // TDS = what's left after net payable minus advance minus actually paid
+              const tdsAmt = paid != null ? Math.max(0, Math.round(netPay - advRec - paid)) : 0;
 
               type Row = { label: string; value: string; color: string; bold?: boolean; borderTop?: boolean; bg?: string };
               const rows: Row[] = [
@@ -940,10 +941,10 @@ export default function Bills() {
               ];
               if (gstAmt > 0) rows.push({ label: `GST @ ${gstPct}%`, value: `+ ${fmt(gstAmt)}`, color: "#16a85a" });
               if (retAmt > 0) rows.push({ label: `Hold / Retention${retPct > 0 ? ` @ ${retPct}%` : ""}`, value: `− ${fmt(retAmt)}`, color: "#e03b3b" });
-              if (advRec > 0) rows.push({ label: "Advance Recovery", value: `− ${fmt(advRec)}`, color: "#d97706" });
-              rows.push({ label: "NET PAYABLE", value: fmt(netAfAdv), color: "#7c3aed", bold: true, borderTop: true });
-              if (tdsAmt > 0) rows.push({ label: "TDS / Other Deduction", value: `− ${fmt(tdsAmt)}`, color: "#e03b3b" });
-              if (paid != null) rows.push({ label: "ACTUALLY PAID", value: fmt(paid), color: "#16a85a", bold: true, bg: "#f0fdf4" });
+              rows.push({ label: "NET PAYABLE", value: fmt(netPay), color: "#7c3aed", bold: true, borderTop: true });
+              if (advRec > 0) rows.push({ label: "Less: Advance Recovery", value: `− ${fmt(advRec)}`, color: "#d97706" });
+              if (tdsAmt > 0) rows.push({ label: `Less: TDS Deducted${currentViewBill.tdsPercent ? ` (${currentViewBill.tdsPercent}%)` : ""}`, value: `− ${fmt(tdsAmt)}`, color: "#dc2626" });
+              if (paid != null) rows.push({ label: "ACTUALLY PAID", value: fmt(paid), color: "#16a85a", bold: true, borderTop: true, bg: "#f0fdf4" });
               return (
                 <div style={{ border: "1px solid #e4e7ee", borderRadius: 8, overflow: "hidden", fontFamily: "monospace", fontSize: 13, marginBottom: 16 }}>
                   <div style={{ background: "#f5f6f8", padding: "8px 14px", fontWeight: 700, fontSize: 11, color: "#5a6278", textTransform: "uppercase", letterSpacing: "0.06em" }}>

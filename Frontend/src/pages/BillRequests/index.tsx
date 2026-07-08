@@ -458,9 +458,9 @@ export default function BillRequests() {
               const gstAmt  = Math.round(gross * (b.gstPercent ?? 0) / 100);
               const retAmt  = b.retentionAmount ?? 0;
               const advRec  = b.advanceRecovery ?? 0;
-              const netPay  = gross + gstAmt - retAmt - advRec;
+              const netPay  = gross + gstAmt - retAmt;
               const paid    = b.paidAmount;
-              const tdsAmt  = paid != null && paid < netPay ? Math.round(netPay - paid) : 0;
+              const tdsAmt  = paid != null ? Math.max(0, Math.round(netPay - advRec - paid)) : 0;
               return (
                 <div style={{ background: "#f0fdf4", border: "1px solid #86efac", borderRadius: 8, padding: 12, fontSize: 13 }}>
                   <div style={{ fontWeight: 700, marginBottom: 8, color: "#166534" }}>
@@ -479,19 +479,19 @@ export default function BillRequests() {
                       <span style={{ color: "#dc2626" }}>Hold / Retention{(b.retentionPercent ?? 0) > 0 ? ` @ ${b.retentionPercent}%` : ""}</span>
                       <span style={{ color: "#dc2626" }}>− {fmt(retAmt)}</span>
                     </div>}
-                    {advRec > 0 && <div style={{ display: "flex", justifyContent: "space-between" }}>
-                      <span style={{ color: "#d97706" }}>Advance Recovery</span>
-                      <span style={{ color: "#d97706" }}>− {fmt(advRec)}</span>
-                    </div>}
                     <div style={{ display: "flex", justifyContent: "space-between", borderTop: "1px solid #86efac", paddingTop: 4, marginTop: 2, fontWeight: 700 }}>
                       <span>Net Payable</span>
                       <span>{fmt(netPay)}</span>
                     </div>
+                    {advRec > 0 && <div style={{ display: "flex", justifyContent: "space-between", marginTop: 2 }}>
+                      <span style={{ color: "#d97706" }}>Less: Advance Recovery</span>
+                      <span style={{ color: "#d97706" }}>− {fmt(advRec)}</span>
+                    </div>}
                     {tdsAmt > 0 && <div style={{ display: "flex", justifyContent: "space-between" }}>
-                      <span style={{ color: "#dc2626" }}>TDS / Other Deduction</span>
+                      <span style={{ color: "#dc2626" }}>Less: TDS Deducted</span>
                       <span style={{ color: "#dc2626" }}>− {fmt(tdsAmt)}</span>
                     </div>}
-                    {paid != null && <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700, color: "#16a34a", fontSize: 13, marginTop: 2 }}>
+                    {paid != null && <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700, color: "#16a34a", fontSize: 13, marginTop: 4, borderTop: "1px solid #86efac", paddingTop: 4 }}>
                       <span>Actually Paid</span>
                       <span>{fmt(paid)}</span>
                     </div>}
