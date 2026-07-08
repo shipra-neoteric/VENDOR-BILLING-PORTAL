@@ -45,6 +45,7 @@ interface LineItem {
   key: number;
   scopeItemId?: string;
   description: string;
+  remarks?: string;
   unit: string;
   plannedQty: number;
   billedQty: number;
@@ -132,7 +133,7 @@ function printBill(bill: Bill, contractor: ContractorOpt | null, mode: 'pre' | '
       (li, i) => `
       <tr>
         <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:center">${i + 1}</td>
-        <td style="padding:8px 12px;border-bottom:1px solid #eee">${li.description}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #eee">${li.description}${li.remarks ? `<div style="font-size:10px;color:#d97706;margin-top:3px">📌 ${li.remarks}</div>` : ""}</td>
         <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:center">${li.unit || "-"}</td>
         <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:right">${(li.billedQty || 0).toLocaleString("en-IN")}</td>
         <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:right">${(li.rate || 0).toLocaleString("en-IN")}</td>
@@ -949,7 +950,10 @@ export default function Bills() {
                 <tbody>
                   {(currentViewBill.lineItems || []).map((li, i) => (
                     <tr key={i} style={{ borderBottom: "1px solid #f5f6f8" }}>
-                      <td style={{ padding: "8px 10px", fontWeight: 600, color: "#1a1f2e" }}>{li.description}</td>
+                      <td style={{ padding: "8px 10px", fontWeight: 600, color: "#1a1f2e" }}>
+                        {li.description}
+                        {li.remarks && <div style={{ fontSize: 11, fontWeight: 400, color: "#d97706", marginTop: 2 }}>📌 {li.remarks}</div>}
+                      </td>
                       <td style={{ padding: "8px 10px", textAlign: "right", color: "#9ba3b8" }}>{li.unit || "—"}</td>
                       <td style={{ padding: "8px 10px", textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: "#f37916" }}>
                         {(li.billedQty || 0).toLocaleString("en-IN")}

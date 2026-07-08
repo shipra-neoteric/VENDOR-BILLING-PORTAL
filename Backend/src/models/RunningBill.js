@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const lineItemSchema = new mongoose.Schema({
   scopeItemId: { type: mongoose.Schema.Types.ObjectId },
   description: { type: String, required: true },
+  remarks:     { type: String, default: '' },
   unit:        { type: String, default: '' },
   plannedQty:  { type: Number, default: 0 },
   billedQty:   { type: Number, required: true },

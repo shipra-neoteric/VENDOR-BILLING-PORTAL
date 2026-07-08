@@ -150,6 +150,7 @@ exports.approveBillRequest = asyncHandler(async (req, res) => {
     return {
       scopeItemId: item.scopeItemId,
       description: item.description,
+      remarks:     scopeItem?.remarks   || '',
       unit:        item.unit,
       plannedQty:  scopeItem?.plannedQty ?? 0,
       billedQty:   item.billedQty,

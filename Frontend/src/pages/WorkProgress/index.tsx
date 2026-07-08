@@ -20,7 +20,7 @@ interface ProgressEntry {
   tower?: string; floor?: string; flatNo?: string; plotNo?: string; locationNote?: string;
 }
 interface ScopeItemR {
-  _id: string; description: string; unit: string;
+  _id: string; description: string; remarks?: string; unit: string;
   plannedQty: number; completedQty: number; lastBilledQty: number;
   rate: number; progressEntries?: ProgressEntry[];
 }
@@ -258,7 +258,10 @@ function WorkProgressAdmin() {
                     return (
                       <tr key={si._id} style={{ borderBottom: "1px solid var(--nx-border)", background: idx % 2 === 0 ? "var(--nx-white)" : "var(--nx-fill-2)" }}>
                         <td style={{ padding: "10px 12px", color: "var(--nx-text-muted)", fontSize: 12 }}>{idx + 1}</td>
-                        <td style={{ padding: "10px 12px", fontWeight: 600, color: "var(--nx-text)", fontSize: 13 }}>{si.description}</td>
+                        <td style={{ padding: "10px 12px", fontWeight: 600, color: "var(--nx-text)", fontSize: 13 }}>
+                          {si.description}
+                          {si.remarks && <div style={{ fontSize: 11, fontWeight: 400, color: "#d97706", marginTop: 2 }}>📌 {si.remarks}</div>}
+                        </td>
                         <td style={{ padding: "10px 12px", color: "var(--nx-text-2)", fontSize: 12 }}>{si.unit}</td>
                         <td style={{ padding: "10px 12px", fontFamily: "monospace", fontSize: 13, color: "var(--nx-text)" }}>{fmtN(si.plannedQty)}</td>
                         <td style={{ padding: "10px 12px", fontFamily: "monospace", fontSize: 13, color: si.completedQty > 0 ? "#16a34a" : "var(--nx-text-muted)" }}>{fmtN(si.completedQty)}</td>
@@ -793,7 +796,10 @@ function DRIDashboard() {
                               return (
                                 <tr key={si._id} style={{ borderBottom: "1px solid var(--nx-border)", background: idx % 2 === 0 ? "var(--nx-white)" : "var(--nx-fill-2)" }}>
                                   <td style={{ padding: "9px 12px", color: "var(--nx-text-muted)", fontSize: 12 }}>{idx + 1}</td>
-                                  <td style={{ padding: "9px 12px", fontWeight: 600, color: "var(--nx-text)", fontSize: 13 }}>{si.description}</td>
+                                  <td style={{ padding: "9px 12px", fontWeight: 600, color: "var(--nx-text)", fontSize: 13 }}>
+                                    {si.description}
+                                    {si.remarks && <div style={{ fontSize: 11, fontWeight: 400, color: "#d97706", marginTop: 2 }}>📌 {si.remarks}</div>}
+                                  </td>
                                   <td style={{ padding: "9px 12px", color: "var(--nx-text-2)", fontSize: 12 }}>{si.unit}</td>
                                   <td style={{ padding: "9px 12px", fontFamily: "monospace", fontSize: 12, color: "var(--nx-text)" }}>{fmtN(si.plannedQty)}</td>
                                   <td style={{ padding: "9px 12px", fontFamily: "monospace", fontSize: 12, color: si.completedQty > 0 ? "#16a34a" : "var(--nx-text-muted)" }}>{fmtN(si.completedQty)}</td>
@@ -979,6 +985,11 @@ function DRIDashboard() {
         destroyOnClose
       >
         <Form form={progForm} layout="vertical" style={{ marginTop: 8 }}>
+          {progItem?.remarks && (
+            <div style={{ background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: 8, padding: "10px 14px", marginBottom: 14, fontSize: 12, color: "#92400e" }}>
+              <span style={{ fontWeight: 700 }}>📌 Instruction: </span>{progItem.remarks}
+            </div>
+          )}
           <Form.Item label="Date" name="date" rules={[{ required: true, message: "Select date" }]}>
             <DatePicker style={{ width: "100%" }} format="DD/MM/YYYY" disabledDate={d => d.isAfter(dayjs(), "day")} />
           </Form.Item>
