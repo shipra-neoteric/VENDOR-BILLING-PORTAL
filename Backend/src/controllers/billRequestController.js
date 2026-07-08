@@ -34,7 +34,7 @@ exports.listBillRequests = asyncHandler(async (req, res) => {
   const requests = await BillRequest.find(filter)
     .populate('requestedBy', 'name email')
     .populate('processedBy', 'name')
-    .populate('billId', 'billNo status amount paidAmount retentionPercent retentionAmount paymentDate')
+    .populate('billId', 'billNo status amount paidAmount retentionPercent retentionAmount advanceRecovery gstPercent tdsPercent paymentDate paymentMode paymentUTR paymentBank paymentReleasedBy')
     .sort({ stageNo: 1, createdAt: 1 });
 
   success(res, { billRequests: requests });
@@ -266,8 +266,9 @@ exports.markMilestone = asyncHandler(async (req, res) => {
       paymentDate:        new Date(),
       paymentReleasedBy:  req.user.name,
       ...(req.body.paymentUTR  ? { paymentUTR:  req.body.paymentUTR  } : {}),
-      ...(req.body.paidAmount  != null ? { paidAmount:       req.body.paidAmount              } : {}),
+      ...(req.body.paidAmount  != null ? { paidAmount:       Number(req.body.paidAmount)      } : {}),
       ...(req.body.holdAmount  != null ? { retentionAmount:  Number(req.body.holdAmount)      } : {}),
+      ...(req.body.advanceRecoveries?.length ? { advanceRecovery: req.body.advanceRecoveries.reduce((s, r) => s + (r.amount || 0), 0) } : {}),
     };
     await RunningBill.findByIdAndUpdate(br.billId, billUpdate);
   }

@@ -70,6 +70,7 @@ interface Bill {
   gstPercent: number;
   retentionPercent?: number;
   retentionAmount?: number;
+  advanceRecovery?: number;
   tdsPercent: number;
   remarks?: string;
   status: BillStatus;
@@ -205,24 +206,54 @@ function printBill(bill: Bill, contractor: ContractorOpt | null) {
 </table>
 
 <div style="display:flex;justify-content:flex-end;margin-bottom:24px">
-  <div style="min-width:280px;border:1px solid #e8e8e8;border-radius:6px;overflow:hidden">
+  <div style="min-width:320px;border:1px solid #e8e8e8;border-radius:6px;overflow:hidden;font-family:monospace">
     <div style="display:flex;justify-content:space-between;padding:9px 14px;border-bottom:1px solid #eee">
       <span>Gross Amount</span><span>₹${(bill.amount || 0).toLocaleString("en-IN")}</span>
     </div>
+    ${(bill.gstPercent ?? 0) > 0 ? `
     <div style="display:flex;justify-content:space-between;padding:9px 14px;border-bottom:1px solid #eee;color:#16a34a">
-      <span>GST @ ${bill.gstPercent ?? 18}%</span><span>+ ₹${Math.round((bill.amount || 0) * (bill.gstPercent ?? 18) / 100).toLocaleString("en-IN")}</span>
-    </div>
-    ${(bill.retentionPercent ?? 0) > 0 ? `
-    <div style="display:flex;justify-content:space-between;padding:9px 14px;border-bottom:1px solid #eee;color:#e03b3b">
-      <span>Retention @ ${bill.retentionPercent}%</span><span>− ₹${(bill.retentionAmount ?? Math.round((bill.amount || 0) * (bill.retentionPercent ?? 0) / 100)).toLocaleString("en-IN")}</span>
+      <span>GST @ ${bill.gstPercent}%</span><span>+ ₹${Math.round((bill.amount || 0) * (bill.gstPercent ?? 0) / 100).toLocaleString("en-IN")}</span>
     </div>` : ""}
-    <div style="display:flex;justify-content:space-between;padding:11px 14px;background:#fff7ed;font-weight:bold;font-size:15px;color:#f47b20">
-      <span>Net Payable</span><span>₹${Math.round((bill.amount || 0) * (1 + (bill.gstPercent ?? 18) / 100) - (bill.retentionAmount ?? Math.round((bill.amount || 0) * (bill.retentionPercent ?? 0) / 100))).toLocaleString("en-IN")}</span>
+    ${(bill.retentionAmount ?? 0) > 0 ? `
+    <div style="display:flex;justify-content:space-between;padding:9px 14px;border-bottom:1px solid #eee;color:#dc2626">
+      <span>Hold / Retention${(bill.retentionPercent ?? 0) > 0 ? ` @ ${bill.retentionPercent}%` : ""}</span>
+      <span>− ₹${Math.round(bill.retentionAmount ?? 0).toLocaleString("en-IN")}</span>
+    </div>` : ""}
+    ${(bill.advanceRecovery ?? 0) > 0 ? `
+    <div style="display:flex;justify-content:space-between;padding:9px 14px;border-bottom:1px solid #eee;color:#d97706">
+      <span>Advance Recovery</span><span>− ₹${Math.round(bill.advanceRecovery ?? 0).toLocaleString("en-IN")}</span>
+    </div>` : ""}
+    <div style="display:flex;justify-content:space-between;padding:11px 14px;background:#fff7ed;font-weight:bold;font-size:14px;color:#f47b20;border-top:2px solid #fed7aa">
+      <span>Net Payable</span>
+      <span>₹${Math.round((bill.amount || 0) * (1 + (bill.gstPercent ?? 0) / 100) - (bill.retentionAmount ?? 0) - (bill.advanceRecovery ?? 0)).toLocaleString("en-IN")}</span>
     </div>
+    ${bill.paidAmount != null ? (() => {
+      const netPay = Math.round((bill.amount || 0) * (1 + (bill.gstPercent ?? 0) / 100) - (bill.retentionAmount ?? 0) - (bill.advanceRecovery ?? 0));
+      const tds = Math.max(0, netPay - Math.round(bill.paidAmount));
+      return `${tds > 0 ? `
+    <div style="display:flex;justify-content:space-between;padding:9px 14px;border-bottom:1px solid #eee;color:#dc2626">
+      <span>TDS / Other Deduction</span><span>− ₹${tds.toLocaleString("en-IN")}</span>
+    </div>` : ""}
+    <div style="display:flex;justify-content:space-between;padding:11px 14px;background:#f0fdf4;font-weight:bold;font-size:15px;color:#16a34a">
+      <span>Actually Paid</span><span>₹${Math.round(bill.paidAmount).toLocaleString("en-IN")}</span>
+    </div>`;
+    })() : ""}
   </div>
 </div>
 
 ${bankSection}
+
+${bill.status === "paid" && bill.paymentDate ? `
+<div style="border:1px solid #c4b5fd;border-radius:6px;padding:14px;margin-bottom:24px;background:#faf5ff">
+  <h4 style="font-size:10px;text-transform:uppercase;color:#7c3aed;letter-spacing:1px;margin:0 0 10px">Payment Details</h4>
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;font-size:12px">
+    <div><span style="font-size:10px;color:#999;display:block">Payment Date</span><strong>${dayjs(bill.paymentDate).format("DD/MM/YYYY")}</strong></div>
+    <div><span style="font-size:10px;color:#999;display:block">Mode</span><strong>${({ neft: "NEFT", rtgs: "RTGS", imps: "IMPS", internet_banking: "Internet Banking", upi: "UPI", cheque: "Cheque", dd: "Demand Draft", cash: "Cash" })[bill.paymentMode || ""] || bill.paymentMode?.toUpperCase() || "—"}</strong></div>
+    <div><span style="font-size:10px;color:#999;display:block">UTR / Reference</span><strong style="font-family:monospace">${bill.paymentUTR || "—"}</strong></div>
+    ${bill.paymentBank ? `<div><span style="font-size:10px;color:#999;display:block">Bank</span><strong>${bill.paymentBank}</strong></div>` : ""}
+    ${bill.paymentReleasedBy ? `<div><span style="font-size:10px;color:#999;display:block">Released By</span><strong>${bill.paymentReleasedBy}</strong></div>` : ""}
+  </div>
+</div>` : ""}
 
 ${bill.remarks ? `<div style="border:1px solid #e8e8e8;border-radius:6px;padding:12px;margin-bottom:24px"><strong>Remarks:</strong> ${bill.remarks}</div>` : ""}
 
@@ -892,25 +923,35 @@ export default function Bills() {
 
             {/* Financial summary */}
             {(() => {
-              const gross         = currentViewBill.amount;
-              const gstAmt        = Math.round(gross * (currentViewBill.gstPercent || 0) / 100);
-              const retPct        = currentViewBill.retentionPercent ?? 0;
-              const retAmt        = currentViewBill.retentionAmount  ?? Math.round(gross * retPct / 100);
-              const net           = gross + gstAmt - retAmt;
-              const rows: { label: string; value: string; color: string; bold?: boolean }[] = [
-                { label: "Gross Amount",                           value: fmt(gross),  color: "#1a1f2e" },
-                { label: `GST @ ${currentViewBill.gstPercent}%`,  value: fmt(gstAmt), color: "#5a6278" },
+              const gross    = currentViewBill.amount || 0;
+              const gstPct   = currentViewBill.gstPercent ?? 0;
+              const gstAmt   = Math.round(gross * gstPct / 100);
+              const retAmt   = currentViewBill.retentionAmount ?? 0;
+              const retPct   = currentViewBill.retentionPercent ?? 0;
+              const advRec   = currentViewBill.advanceRecovery ?? 0;
+              const netPay   = gross + gstAmt - retAmt;
+              const netAfAdv = netPay - advRec;
+              const paid     = currentViewBill.paidAmount;
+              const tdsAmt   = paid != null && paid < netAfAdv ? Math.round(netAfAdv - paid) : 0;
+
+              type Row = { label: string; value: string; color: string; bold?: boolean; borderTop?: boolean; bg?: string };
+              const rows: Row[] = [
+                { label: "Gross Amount", value: fmt(gross), color: "#1a1f2e" },
               ];
-              if (retPct > 0) rows.push({ label: `Retention @ ${retPct}%`, value: `− ${fmt(retAmt)}`, color: "#e03b3b" });
-              rows.push({ label: "NET PAYABLE", value: fmt(net), color: "#16a85a", bold: true });
+              if (gstAmt > 0) rows.push({ label: `GST @ ${gstPct}%`, value: `+ ${fmt(gstAmt)}`, color: "#16a85a" });
+              if (retAmt > 0) rows.push({ label: `Hold / Retention${retPct > 0 ? ` @ ${retPct}%` : ""}`, value: `− ${fmt(retAmt)}`, color: "#e03b3b" });
+              if (advRec > 0) rows.push({ label: "Advance Recovery", value: `− ${fmt(advRec)}`, color: "#d97706" });
+              rows.push({ label: "NET PAYABLE", value: fmt(netAfAdv), color: "#7c3aed", bold: true, borderTop: true });
+              if (tdsAmt > 0) rows.push({ label: "TDS / Other Deduction", value: `− ${fmt(tdsAmt)}`, color: "#e03b3b" });
+              if (paid != null) rows.push({ label: "ACTUALLY PAID", value: fmt(paid), color: "#16a85a", bold: true, bg: "#f0fdf4" });
               return (
                 <div style={{ border: "1px solid #e4e7ee", borderRadius: 8, overflow: "hidden", fontFamily: "monospace", fontSize: 13, marginBottom: 16 }}>
                   <div style={{ background: "#f5f6f8", padding: "8px 14px", fontWeight: 700, fontSize: 11, color: "#5a6278", textTransform: "uppercase", letterSpacing: "0.06em" }}>
                     Financial Summary
                   </div>
                   <div style={{ padding: "8px 14px" }}>
-                    {rows.map((r, i, arr) => (
-                      <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", borderTop: i === arr.length - 1 ? "2px solid #e4e7ee" : "none", marginTop: i === arr.length - 1 ? 4 : 0, color: r.color, fontWeight: r.bold ? 700 : 400, fontSize: r.bold ? 14 : 13 }}>
+                    {rows.map((r, i) => (
+                      <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderTop: r.borderTop ? "2px solid #e4e7ee" : undefined, marginTop: r.borderTop ? 4 : 0, background: r.bg, color: r.color, fontWeight: r.bold ? 700 : 400, fontSize: r.bold ? 14 : 13 }}>
                         <span>{r.label}</span><span>{r.value}</span>
                       </div>
                     ))}
@@ -944,21 +985,6 @@ export default function Bills() {
                 <Divider />
                 <div style={{ background: "#f5f0ff", border: "1px solid #c4b5fd", borderRadius: 8, padding: "14px 16px" }}>
                   <div style={{ fontWeight: 700, fontSize: 13, color: "#7c3aed", marginBottom: 10 }}>Payment Released</div>
-                  {currentViewBill.paidAmount != null && currentViewBill.paidAmount !== currentViewBill.amount && (
-                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10, padding: "8px 10px", background: "#fff8f0", border: "1px solid #fbd38d", borderRadius: 6 }}>
-                      <div>
-                        <div style={{ fontSize: 11, color: "#9ba3b8", fontWeight: 700, textTransform: "uppercase" }}>Billed Amount</div>
-                        <div style={{ fontFamily: "monospace", fontWeight: 700, fontSize: 14, textDecoration: "line-through", color: "#9ba3b8" }}>{fmt(currentViewBill.amount)}</div>
-                      </div>
-                      <div style={{ textAlign: "right" }}>
-                        <div style={{ fontSize: 11, color: "#9ba3b8", fontWeight: 700, textTransform: "uppercase" }}>Actually Paid</div>
-                        <div style={{ fontFamily: "monospace", fontWeight: 800, fontSize: 16, color: "#e03b3b" }}>{fmt(currentViewBill.paidAmount)}</div>
-                        <div style={{ fontSize: 11, color: "#e03b3b" }}>
-                          −{fmt(currentViewBill.amount - currentViewBill.paidAmount)} deducted
-                        </div>
-                      </div>
-                    </div>
-                  )}
                   <Descriptions column={2} size="small" colon={false}>
                     <Descriptions.Item label={<span style={{ color: "#9ba3b8" }}>Payment Date</span>}>
                       {currentViewBill.paymentDate ? dayjs(currentViewBill.paymentDate).format("DD MMM YYYY") : "—"}

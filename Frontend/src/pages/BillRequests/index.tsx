@@ -47,7 +47,7 @@ interface BillRequest {
   status: "pending" | "approved" | "rejected";
   rejectReason?: string;
   requestedBy?: { name: string; email: string };
-  billId?: { billNo: string; status: string; amount: number; paidAmount?: number; retentionPercent?: number; retentionAmount?: number; paymentDate?: string };
+  billId?: { billNo: string; status: string; amount: number; paidAmount?: number; retentionPercent?: number; retentionAmount?: number; advanceRecovery?: number; gstPercent?: number; paymentDate?: string; paymentMode?: string; paymentUTR?: string; paymentBank?: string; paymentReleasedBy?: string };
   milestoneAchieved?: boolean;
   milestoneDate?: string;
   createdAt: string;
@@ -452,27 +452,59 @@ export default function BillRequests() {
               </div>
             )}
 
-            {viewReq.status === "approved" && viewReq.billId && (
-              <div style={{ background: "#f0fdf4", border: "1px solid #86efac", borderRadius: 6, padding: 10, fontSize: 13 }}>
-                <strong>Running Bill Generated:</strong> {viewReq.billId.billNo} — {fmt(viewReq.billId.amount)}
-                {viewReq.billId.paidAmount != null && viewReq.billId.paidAmount !== viewReq.billId.amount && (
-                  <div style={{ marginTop: 4, color: "#374151" }}>
-                    <strong>Actual Paid:</strong>{" "}
-                    <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#16a34a" }}>
-                      {fmt(viewReq.billId.paidAmount)}
-                    </span>
-                    <span style={{ fontSize: 11, color: "#9CA3AF", marginLeft: 6 }}>
-                      (billed: {fmt(viewReq.billId.amount)})
-                    </span>
+            {viewReq.status === "approved" && viewReq.billId && (() => {
+              const b = viewReq.billId;
+              const gross   = b.amount || 0;
+              const gstAmt  = Math.round(gross * (b.gstPercent ?? 0) / 100);
+              const retAmt  = b.retentionAmount ?? 0;
+              const advRec  = b.advanceRecovery ?? 0;
+              const netPay  = gross + gstAmt - retAmt - advRec;
+              const paid    = b.paidAmount;
+              const tdsAmt  = paid != null && paid < netPay ? Math.round(netPay - paid) : 0;
+              return (
+                <div style={{ background: "#f0fdf4", border: "1px solid #86efac", borderRadius: 8, padding: 12, fontSize: 13 }}>
+                  <div style={{ fontWeight: 700, marginBottom: 8, color: "#166534" }}>
+                    Running Bill: {b.billNo}
                   </div>
-                )}
-                {viewReq.milestoneAchieved && viewReq.milestoneDate && (
-                  <div style={{ marginTop: 4, color: "#FF7A00" }}>
-                    🏆 Payment Released: {dayjs(viewReq.milestoneDate).format("DD MMM YYYY")}
+                  <div style={{ fontFamily: "monospace", fontSize: 12, display: "flex", flexDirection: "column", gap: 3 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between" }}>
+                      <span style={{ color: "#6B7280" }}>Gross Billed</span>
+                      <span style={{ fontWeight: 600 }}>{fmt(gross)}</span>
+                    </div>
+                    {gstAmt > 0 && <div style={{ display: "flex", justifyContent: "space-between" }}>
+                      <span style={{ color: "#16a34a" }}>GST @ {b.gstPercent}%</span>
+                      <span style={{ color: "#16a34a" }}>+ {fmt(gstAmt)}</span>
+                    </div>}
+                    {retAmt > 0 && <div style={{ display: "flex", justifyContent: "space-between" }}>
+                      <span style={{ color: "#dc2626" }}>Hold / Retention{(b.retentionPercent ?? 0) > 0 ? ` @ ${b.retentionPercent}%` : ""}</span>
+                      <span style={{ color: "#dc2626" }}>− {fmt(retAmt)}</span>
+                    </div>}
+                    {advRec > 0 && <div style={{ display: "flex", justifyContent: "space-between" }}>
+                      <span style={{ color: "#d97706" }}>Advance Recovery</span>
+                      <span style={{ color: "#d97706" }}>− {fmt(advRec)}</span>
+                    </div>}
+                    <div style={{ display: "flex", justifyContent: "space-between", borderTop: "1px solid #86efac", paddingTop: 4, marginTop: 2, fontWeight: 700 }}>
+                      <span>Net Payable</span>
+                      <span>{fmt(netPay)}</span>
+                    </div>
+                    {tdsAmt > 0 && <div style={{ display: "flex", justifyContent: "space-between" }}>
+                      <span style={{ color: "#dc2626" }}>TDS / Other Deduction</span>
+                      <span style={{ color: "#dc2626" }}>− {fmt(tdsAmt)}</span>
+                    </div>}
+                    {paid != null && <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700, color: "#16a34a", fontSize: 13, marginTop: 2 }}>
+                      <span>Actually Paid</span>
+                      <span>{fmt(paid)}</span>
+                    </div>}
                   </div>
-                )}
-              </div>
-            )}
+                  {viewReq.milestoneAchieved && viewReq.milestoneDate && (
+                    <div style={{ marginTop: 8, color: "#FF7A00", fontWeight: 600 }}>
+                      🏆 Payment Released: {dayjs(viewReq.milestoneDate).format("DD MMM YYYY")}
+                      {b.paymentUTR && <span style={{ fontFamily: "monospace", marginLeft: 8, fontSize: 12, color: "#7c3aed" }}>UTR: {b.paymentUTR}</span>}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
             {viewReq.status === "rejected" && viewReq.rejectReason && (
               <div style={{ background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: 6, padding: 10, fontSize: 13 }}>
