@@ -62,6 +62,12 @@ exports.createWorkOrder = asyncHandler(async (req, res) => {
     if (co) companyName = co.name;
   }
 
+  // If the creator is a DRI, auto-assign them so they can see the WO in Work Progress
+  const assignedDRI = Array.isArray(req.body.assignedDRI) ? [...req.body.assignedDRI] : [];
+  if (req.user.role === 'dri' && !assignedDRI.map(String).includes(String(req.user._id))) {
+    assignedDRI.push(req.user._id);
+  }
+
   const workOrder   = await WorkOrder.create({
     ...req.body,
     workOrderNo,
@@ -70,6 +76,7 @@ exports.createWorkOrder = asyncHandler(async (req, res) => {
     vendorName:  contractor.companyName,
     ownerName:   contractor.ownerName,
     mobile:      contractor.mobile,
+    assignedDRI,
     createdBy:   req.user._id,
   });
 
