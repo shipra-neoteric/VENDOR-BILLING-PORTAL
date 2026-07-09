@@ -87,7 +87,8 @@ exports.createBill = asyncHandler(async (req, res) => {
           const si = woDoc.scopeItems.id(li.scopeItemId);
           if (si) {
             const cap = si.plannedQty || 999999;
-            si.completedQty = Math.min(cap, (si.completedQty || 0) + Number(li.billedQty));
+            // Update lastBilledQty so this qty isn't shown as unbilled again
+            si.lastBilledQty = Math.min(cap, (si.lastBilledQty || 0) + Number(li.billedQty));
             changed = true;
           }
         }
