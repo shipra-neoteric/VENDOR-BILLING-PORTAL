@@ -1464,6 +1464,12 @@ export default function WorkItems() {
     return `WO-${String(max + 1).padStart(4, "0")}`;
   }, [workOrders]);
 
+  // Default DRI for new work orders — always pre-select dri1@neotericgrp.in
+  const defaultDRIIds = useMemo(
+    () => driList.filter(d => d.email === 'dri1@neotericgrp.in').map(d => d._id),
+    [driList]
+  );
+
   // ── Handlers ─────────────────────────────────────────────────
 
   const handleCreate = async () => {
@@ -1772,7 +1778,7 @@ export default function WorkItems() {
           size="large"
           onClick={() => {
             createForm.resetFields();
-            createForm.setFieldsValue({ status: "draft" });
+            createForm.setFieldsValue({ status: "draft", assignedDRI: defaultDRIIds });
             setCreateScopeItems([]);
             setCreateDrawerOpen(true);
           }}
