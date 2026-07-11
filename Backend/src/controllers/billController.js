@@ -1,5 +1,6 @@
 const { validationResult } = require('express-validator');
 const RunningBill  = require('../models/RunningBill');
+const BillRequest  = require('../models/BillRequest');
 const WorkOrder    = require('../models/WorkOrder');
 const asyncHandler = require('../utils/asyncHandler');
 const { success, created, notFound, badRequest } = require('../utils/responseFormatter');
@@ -168,7 +169,7 @@ exports.approveBill = asyncHandler(async (req, res) => {
 exports.rejectBill = asyncHandler(async (req, res) => {
   const bill = await RunningBill.findById(req.params.id);
   if (!bill) return notFound(res, 'Bill not found');
-  if (['approved', 'paid', 'rejected'].includes(bill.status)) {
+  if (['paid', 'rejected'].includes(bill.status)) {
     return badRequest(res, `Cannot reject a bill with status '${bill.status}'`);
   }
   bill.status       = 'rejected';
@@ -176,6 +177,31 @@ exports.rejectBill = asyncHandler(async (req, res) => {
   bill.rejectReason = req.body.reason || 'No reason provided';
   await bill.save();
   await bill.populate('rejectedBy', 'name role');
+
+  // Sync bill request status → rejected, roll back lastBilledQty so DRI can re-bill
+  const br = await BillRequest.findOne({ billId: bill._id });
+  if (br) {
+    br.status = 'rejected';
+    br.rejectReason = req.body.reason || 'Bill rejected in Billing & Payments';
+    await br.save();
+
+    if (bill.workOrderId) {
+      const wo = await WorkOrder.findById(bill.workOrderId);
+      if (wo) {
+        let changed = false;
+        for (const li of bill.lineItems || []) {
+          if (!li.scopeItemId || !li.billedQty) continue;
+          const si = wo.scopeItems.id(li.scopeItemId);
+          if (si) {
+            si.lastBilledQty = Math.max(0, (si.lastBilledQty || 0) - Number(li.billedQty));
+            changed = true;
+          }
+        }
+        if (changed) await wo.save();
+      }
+    }
+  }
+
   success(res, { bill }, 'Bill rejected');
 });
 
