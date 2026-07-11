@@ -344,7 +344,7 @@ export function WorkOrderDocument({ wo, company, contractor }: Props) {
 
         {/* ── Signature block ── */}
         <View style={S.sigBlock} wrap={false}>
-          {(["AGM – Project", "GM – Project", "CEO – Desk", "Contractor"] as const).map((role, i, arr) => (
+          {(["Contractor", "AGM – Project", "GM – Project", "CEO – Desk"] as const).map((role, i, arr) => (
             <View key={role} style={i === arr.length - 1 ? S.sigCellL : S.sigCell}>
               <Text style={S.sigRole}>{role}</Text>
               <View style={S.sigLine} />
