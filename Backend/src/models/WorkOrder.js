@@ -64,6 +64,7 @@ const workOrderSchema = new mongoose.Schema(
       type: String,
       default: '',
     },
+    description:   { type: String, default: '' },
     scopeOfWork:   { type: String },
     scopeItems:    [scopeItemSchema],
     contractValue: { type: Number, default: 0 },

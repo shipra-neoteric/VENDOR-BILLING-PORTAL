@@ -1272,6 +1272,17 @@ function WOFormFields({
       </div>
 
       <Form.Item
+        label="Overall Description / Scope of Work"
+        name="description"
+        tooltip="Describe the full scope of this work order — shown in the downloaded PDF before the item list"
+      >
+        <Input.TextArea
+          rows={3}
+          placeholder="e.g. Supply and installation of false ceiling including framework, boarding and finishing as per approved drawings..."
+        />
+      </Form.Item>
+
+      <Form.Item
         label="Upload Work Order Document"
         name="document"
         valuePropName="fileList"
@@ -1476,7 +1487,8 @@ export default function WorkItems() {
     try {
       const values = await createForm.validateFields();
       const totalAmt  = calcTotalAmt(createScopeItems);
-      const scopeOfWork = createScopeItems.map(it => it.description).filter(Boolean).join(", ");
+      const scopeOfWork = values.description?.trim()
+        || createScopeItems.map(it => it.description).filter(Boolean).join(", ");
 
       const body: Record<string, unknown> = {
         issueDate:    values.issueDate ? dayjs(values.issueDate).format("YYYY-MM-DD") : dayjs().format("YYYY-MM-DD"),
@@ -1490,6 +1502,7 @@ export default function WorkItems() {
         subCategory:  values.subCategory  || "",
         companyId:    values.companyId   || null,
         assignedDRI:  values.assignedDRI || [],
+        description:  values.description?.trim() || "",
         scopeOfWork,
         scopeItems:   createScopeItems.map(draftToNewItem),
         contractValue: totalAmt,
@@ -1526,7 +1539,8 @@ export default function WorkItems() {
       if (!currentEditWO) return;
 
       const totalAmt    = calcTotalAmt(editScopeItems);
-      const scopeOfWork = editScopeItems.map(it => it.description).filter(Boolean).join(", ");
+      const scopeOfWork = values.description?.trim()
+        || editScopeItems.map(it => it.description).filter(Boolean).join(", ");
       const savedItems  = editScopeItems.map(d => {
         const existing = currentEditWO.scopeItems.find(si => si.id === d.id);
         return mergeWithExisting(d, existing);
@@ -1543,6 +1557,7 @@ export default function WorkItems() {
         subCategory:  values.subCategory  ?? currentEditWO.subCategory ?? "",
         assignedDRI:  values.assignedDRI  ?? (currentEditWO as any).assignedDRI ?? [],
         issueDate:    values.issueDate ? dayjs(values.issueDate).format("YYYY-MM-DD") : currentEditWO.issueDate,
+        description:  values.description?.trim() || "",
         scopeOfWork,
         scopeItems:   savedItems,
         contractValue: totalAmt,

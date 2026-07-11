@@ -80,7 +80,9 @@ interface WOData {
   category?: string;
   subCategory?: string;
   scopeOfWork?: string;
+  description?: string;
   vendorName?: string;
+  vendorCode?: string;
   ownerName?: string;
   mobile?: string;
   contractValue?: number;
@@ -111,6 +113,7 @@ interface CompanyData {
 
 interface ContractorData {
   companyName?: string;
+  vendorCode?: string;
   address?: string;
   panNumber?: string;
   gstNumber?: string;
@@ -226,6 +229,7 @@ export function WorkOrderDocument({ wo, company, contractor }: Props) {
         {/* ── Contractor Details ── */}
         <SectionBox title="Contractor Details">
           <InfoRow label="Contractor Name"  value={wo.vendorName} />
+          <InfoRow label="Vendor Code"      value={wo.vendorCode || contractor?.vendorCode} mono />
           <InfoRow label="Contact Person"   value={wo.ownerName} />
           <InfoRow label="Address"          value={contractorAddr} />
           <InfoRow label="PAN No."          value={contractor?.panNumber} mono />
@@ -240,6 +244,20 @@ export function WorkOrderDocument({ wo, company, contractor }: Props) {
           {wo.subCategory ? <InfoRow label="Sub-category" value={wo.subCategory} /> : null}
           <InfoRow label="Work Title / Scope" value={wo.scopeOfWork} last />
         </SectionBox>
+
+        {/* ── Overall Description ── */}
+        {(wo.description || wo.scopeOfWork) && (
+          <View style={[S.table, { marginBottom: 10 }]}>
+            <View style={S.secHeader}>
+              <Text style={S.secTitle}>Description / Scope of Work</Text>
+            </View>
+            <View style={{ padding: "8px 10px" }}>
+              <Text style={{ fontSize: 8, color: MID, lineHeight: 1.6 }}>
+                {wo.description || wo.scopeOfWork}
+              </Text>
+            </View>
+          </View>
+        )}
 
         {/* ── Scope of Work table ── */}
         {lineItems.length > 0 && (
@@ -326,7 +344,7 @@ export function WorkOrderDocument({ wo, company, contractor }: Props) {
 
         {/* ── Signature block ── */}
         <View style={S.sigBlock} wrap={false}>
-          {(["AGM – Project", "GM – Project", "CEO – Desk"] as const).map((role, i, arr) => (
+          {(["AGM – Project", "GM – Project", "CEO – Desk", "Contractor"] as const).map((role, i, arr) => (
             <View key={role} style={i === arr.length - 1 ? S.sigCellL : S.sigCell}>
               <Text style={S.sigRole}>{role}</Text>
               <View style={S.sigLine} />
