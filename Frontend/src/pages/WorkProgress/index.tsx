@@ -394,6 +394,9 @@ function DRIDashboard() {
   const [editForm]                = Form.useForm();
   const [deleting,  setDeleting]  = useState<string | null>(null);
 
+  // View all entries modal
+  const [allEntriesWOId, setAllEntriesWOId] = useState<string | null>(null);
+
   // Quick search in project detail view
   const [driSearch, setDriSearch] = useState("");
 
@@ -878,19 +881,27 @@ function DRIDashboard() {
 
                     {/* Recent entries for this WO */}
                     {detail && (() => {
-                      const entries: EntryRow[] = detail.scopeItems.flatMap(si =>
+                      const allEntriesWO: EntryRow[] = detail.scopeItems.flatMap(si =>
                         (si.progressEntries ?? []).map(pe => ({
                           ...pe, unit: si.unit, description: si.description,
                           scopeId: `${si._id}||${detail._id}`,
                           scopePlanned: si.plannedQty, scopeCompleted: si.completedQty, scopeLastBilled: si.lastBilledQty || 0,
                         }))
-                      ).sort((a, b) => dayjs(b.date).valueOf() - dayjs(a.date).valueOf()).slice(0, 5);
+                      ).sort((a, b) => dayjs(b.date).valueOf() - dayjs(a.date).valueOf());
+                      const entries = allEntriesWO.slice(0, 5);
 
                       if (!entries.length) return null;
                       return (
                         <div style={{ padding: "10px 20px 14px", borderTop: "1px solid var(--nx-border)" }}>
-                          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--nx-text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>
-                            Recent Entries (last 5)
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: "var(--nx-text-muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                              Recent Entries (last 5)
+                            </div>
+                            {allEntriesWO.length > 5 && (
+                              <Button type="link" size="small" style={{ fontSize: 11, padding: 0, height: "auto" }} onClick={() => setAllEntriesWOId(detail._id)}>
+                                View All ({allEntriesWO.length})
+                              </Button>
+                            )}
                           </div>
                           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                             {entries.map((e, i) => (
@@ -1110,6 +1121,64 @@ function DRIDashboard() {
             <Input.TextArea rows={2} />
           </Form.Item>
         </Form>
+      </Modal>
+
+      {/* ── View All Entries Modal ───────────────────────────────────────────── */}
+      <Modal
+        open={!!allEntriesWOId} onCancel={() => setAllEntriesWOId(null)}
+        title="All Progress Entries"
+        footer={null} width={700}
+      >
+        <div style={{ maxHeight: "60vh", overflowY: "auto", paddingRight: 8 }}>
+          {(() => {
+            const detail = allEntriesWOId ? woDetails.get(allEntriesWOId) : null;
+            if (!detail) return <Empty />;
+            const allEntriesWO: EntryRow[] = detail.scopeItems.flatMap(si =>
+              (si.progressEntries ?? []).map(pe => ({
+                ...pe, unit: si.unit, description: si.description,
+                scopeId: `${si._id}||${detail._id}`,
+                scopePlanned: si.plannedQty, scopeCompleted: si.completedQty, scopeLastBilled: si.lastBilledQty || 0,
+              }))
+            ).sort((a, b) => dayjs(b.date).valueOf() - dayjs(a.date).valueOf());
+
+            return (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {allEntriesWO.map((e, i) => (
+                  <div key={e._id + i} style={{ display: "flex", gap: 12, alignItems: "center", fontSize: 12, padding: "8px 0", borderBottom: "1px solid var(--nx-border)" }}>
+                    <span style={{ color: "var(--nx-text-muted)", minWidth: 90, whiteSpace: "nowrap" }}>
+                      {dayjs(e.date).format("DD MMM")}
+                      {dayjs(e.date).format("YYYY-MM-DD") === todayStr && (
+                        <Badge count="Today" style={{ background: "#3b82f6", marginLeft: 4, fontSize: 9, height: 16, lineHeight: "16px" }} />
+                      )}
+                    </span>
+                    <span style={{ fontWeight: 600, color: "var(--nx-text)", flex: 1 }}>{e.description}</span>
+                    <span style={{ color: "var(--nx-text-2)", minWidth: 80 }}>{formatLocation(e, selProjectType)}</span>
+                    <span style={{ color: "#16a34a", fontWeight: 700, fontFamily: "monospace", minWidth: 60 }}>+{fmtN(e.qtyAdded)} {e.unit}</span>
+                    <div style={{ display: "flex", gap: 2 }}>
+                      <Button size="small" type="link" style={{ fontSize: 11, padding: "0 4px" }}
+                        onClick={() => {
+                          setEditEntry(e);
+                          editForm.setFieldsValue({ qtyAdded: e.qtyAdded, date: dayjs(e.date), remarks: e.remarks, tower: e.tower, floor: e.floor, flatNo: e.flatNo, plotNo: e.plotNo, locationNote: e.locationNote });
+                          setProgWOId(detail._id);
+                          setEditModal(true);
+                        }}>Edit</Button>
+                      <Popconfirm
+                        title="Delete entry?"
+                        description={e.scopeCompleted - e.qtyAdded >= e.scopeLastBilled ? "This will be deleted permanently." : "Entry is billed and cannot be deleted."}
+                        okText={e.scopeCompleted - e.qtyAdded >= e.scopeLastBilled ? "Delete" : undefined}
+                        okType="danger" cancelText="Cancel"
+                        onConfirm={e.scopeCompleted - e.qtyAdded >= e.scopeLastBilled ? () => handleDeleteEntry(e, detail._id) : undefined}
+                        okButtonProps={e.scopeCompleted - e.qtyAdded < e.scopeLastBilled ? { style: { display: "none" } } : {}}
+                      >
+                        <Button size="small" type="link" danger loading={deleting === e._id} style={{ fontSize: 11, padding: "0 4px" }}>Del</Button>
+                      </Popconfirm>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+        </div>
       </Modal>
 
       {/* ── Vendor Bill Generator Modal ────────────────────────────────────── */}
