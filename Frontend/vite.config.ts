@@ -18,13 +18,14 @@ export default defineConfig({
     chunkSizeWarningLimit: 800,
     rollupOptions: {
       output: {
-        manualChunks: {
-          "vendor-react":  ["react", "react-dom", "react-router-dom"],
-          "vendor-antd":   ["antd", "@ant-design/icons"],
-          "vendor-pdf":    ["@react-pdf/renderer"],
-          "vendor-charts": ["recharts"],
-          "vendor-xlsx":   ["xlsx"],
-          "vendor-dayjs":  ["dayjs"],
+        manualChunks(id: string) {
+          if (!id.includes("node_modules")) return;
+          if (id.includes("@react-pdf") || id.includes("react-pdf")) return "vendor-pdf";
+          if (id.includes("recharts") || id.includes("d3-"))          return "vendor-charts";
+          if (id.includes("xlsx"))                                     return "vendor-xlsx";
+          if (id.includes("dayjs"))                                    return "vendor-dayjs";
+          if (id.includes("antd") || id.includes("@ant-design"))      return "vendor-antd";
+          if (id.includes("react-dom") || id.includes("react-router")) return "vendor-react";
         },
       },
     },
