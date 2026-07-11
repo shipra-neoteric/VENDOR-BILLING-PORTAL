@@ -28,12 +28,15 @@ exports.listWorkOrders = asyncHandler(async (req, res) => {
   const workOrders = await WorkOrder.find(filter)
     .populate('projectId', 'code name projectType')
     .populate('assignedDRI', 'name email')
-    .sort({ createdAt: -1 });
+    .sort({ createdAt: -1 })
+    .lean();
   success(res, { workOrders });
 });
 
 exports.getWorkOrder = asyncHandler(async (req, res) => {
-  const workOrder = await WorkOrder.findById(req.params.id).populate('projectId', 'code name projectType');
+  const workOrder = await WorkOrder.findById(req.params.id)
+    .populate('projectId', 'code name projectType')
+    .lean();
   if (!workOrder) return notFound(res, 'Work order not found');
   success(res, { workOrder });
 });

@@ -83,4 +83,10 @@ const workOrderSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+workOrderSchema.index({ projectId: 1, createdAt: -1 });
+workOrderSchema.index({ assignedDRI: 1, createdAt: -1 });
+workOrderSchema.index({ vendorCode: 1 });
+workOrderSchema.index({ status: 1 });
+workOrderSchema.index({ projectId: 1, assignedDRI: 1, status: 1 });
+
 module.exports = mongoose.model('WorkOrder', workOrderSchema);

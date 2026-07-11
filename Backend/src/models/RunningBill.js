@@ -57,4 +57,9 @@ const runningBillSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+runningBillSchema.index({ workOrderId: 1, createdAt: -1 });
+runningBillSchema.index({ projectId: 1, status: 1 });
+runningBillSchema.index({ vendorCode: 1, createdAt: -1 });
+runningBillSchema.index({ status: 1 });
+
 module.exports = mongoose.model('RunningBill', runningBillSchema);

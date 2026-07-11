@@ -26,7 +26,8 @@ exports.listBills = asyncHandler(async (req, res) => {
     .populate('verifiedBy', 'name role')
     .populate('approvedBy', 'name role')
     .populate('rejectedBy', 'name role')
-    .sort({ createdAt: -1 });
+    .sort({ createdAt: -1 })
+    .lean();
 
   success(res, { bills });
 });
@@ -35,7 +36,8 @@ exports.getBill = asyncHandler(async (req, res) => {
   const bill = await RunningBill.findById(req.params.id)
     .populate('verifiedBy', 'name role')
     .populate('approvedBy', 'name role')
-    .populate('rejectedBy', 'name role');
+    .populate('rejectedBy', 'name role')
+    .lean();
   if (!bill) return notFound(res, 'Bill not found');
   success(res, { bill });
 });
@@ -79,21 +81,17 @@ exports.createBill = asyncHandler(async (req, res) => {
   // Update work order scope item progress (non-fatal)
   if (workOrder && lineItems.length > 0) {
     try {
-      const woDoc = await WorkOrder.findById(workOrder._id);
-      if (woDoc) {
-        let changed = false;
-        for (const li of lineItems) {
-          if (!li.scopeItemId || !li.billedQty) continue;
-          const si = woDoc.scopeItems.id(li.scopeItemId);
-          if (si) {
-            const cap = si.plannedQty || 999999;
-            // Update lastBilledQty so this qty isn't shown as unbilled again
-            si.lastBilledQty = Math.min(cap, (si.lastBilledQty || 0) + Number(li.billedQty));
-            changed = true;
-          }
+      let changed = false;
+      for (const li of lineItems) {
+        if (!li.scopeItemId || !li.billedQty) continue;
+        const si = workOrder.scopeItems.id(li.scopeItemId);
+        if (si) {
+          const cap = si.plannedQty || 999999;
+          si.lastBilledQty = Math.min(cap, (si.lastBilledQty || 0) + Number(li.billedQty));
+          changed = true;
         }
-        if (changed) await woDoc.save();
       }
+      if (changed) await workOrder.save();
     } catch (woErr) {
       console.error('Warning: could not update work order progress from bill:', woErr.message);
     }

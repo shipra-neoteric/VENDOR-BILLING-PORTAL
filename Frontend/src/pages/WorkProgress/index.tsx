@@ -473,12 +473,12 @@ function DRIDashboard() {
 
   // ── Load WO details when project changes ──────────────────────────────────
   useEffect(() => {
-    if (!projectWOs.length) { setWoDetails(new Map()); setProjectBillReqs([]); return; }
+    if (!selProjectId) { setWoDetails(new Map()); setProjectBillReqs([]); return; }
     setWoDetailsLoading(true);
-    Promise.all(projectWOs.map(wo => apiClient.get(`/work-orders/${wo._id}`)))
-      .then(results => {
+    apiClient.get(`/work-orders?projectId=${selProjectId}`)
+      .then(r => {
         const map = new Map<string, WODetail>();
-        results.forEach(r => { const d = r.data.workOrder; if (d) map.set(d._id, d); });
+        (r.data.workOrders ?? []).forEach((d: WODetail) => map.set(d._id, d));
         setWoDetails(map);
       })
       .finally(() => setWoDetailsLoading(false));
@@ -486,7 +486,7 @@ function DRIDashboard() {
       apiClient.get(`/bill-requests?projectId=${selProjectId}`)
         .then(r => setProjectBillReqs(r.data.billRequests ?? []));
     }
-  }, [projectWOs, selProjectId]);
+  }, [selProjectId]);
 
   // ── Pending WOs for billing ────────────────────────────────────────────────
   const pendingWODetails = useMemo(() =>

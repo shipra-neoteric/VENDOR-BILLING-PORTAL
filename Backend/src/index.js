@@ -1,7 +1,8 @@
-const express = require('express');
-const cors    = require('cors');
-const morgan  = require('morgan');
-const dotenv  = require('dotenv');
+const express     = require('express');
+const cors        = require('cors');
+const morgan      = require('morgan');
+const compression = require('compression');
+const dotenv      = require('dotenv');
 
 dotenv.config();
 
@@ -34,6 +35,7 @@ app.use(cors({
   },
   credentials: true,
 }));
+app.use(compression());
 app.use(express.json());
 app.use(morgan('dev'));
 
