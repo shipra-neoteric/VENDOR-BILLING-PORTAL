@@ -1041,7 +1041,7 @@ function DRIDashboard() {
               </div>
               <Form.Item label={`Total Planned Qty (${progItem.unit})`} name="plannedQty" style={{ marginBottom: 0 }}>
                 <InputNumber
-                  style={{ width: "100%" }} min={0.0001} step={0.0001} precision={4}
+                  style={{ width: "100%" }} min={0.00001} step={0.00001} precision={5}
                   placeholder={progItem.unit === "per-hr" ? "e.g. 200.0000" : "e.g. 5000"}
                 />
               </Form.Item>
@@ -1066,7 +1066,7 @@ function DRIDashboard() {
           >
             <InputNumber
               style={{ width: "100%" }}
-              min={0.0001} step={0.0001} precision={4}
+              min={0.00001} step={0.00001} precision={5}
               max={progItem?.plannedQty ? Math.max(0, progItem.plannedQty - progItem.completedQty) : undefined}
               placeholder={progItem?.unit === "per-hr" ? "e.g. 13.6667" : "e.g. 500"}
             />
@@ -1104,7 +1104,7 @@ function DRIDashboard() {
           </Form.Item>
           <LocationFields pt={progProjectType} />
           <Form.Item label="Quantity Added" name="qtyAdded" rules={[{ required: true, type: "number", min: 0.01, message: "Required" }]}>
-            <InputNumber style={{ width: "100%" }} min={0.0001} step={0.0001} precision={4} placeholder="e.g. 13.6667" />
+            <InputNumber style={{ width: "100%" }} min={0.00001} step={0.00001} precision={5} placeholder="e.g. 13.6667" />
           </Form.Item>
           <Form.Item label="Remarks (optional)" name="remarks">
             <Input.TextArea rows={2} />
