@@ -271,7 +271,7 @@ ${mode === 'post' && bill.paymentDate ? `
 
 ${bill.remarks ? `<div style="border:1px solid #e8e8e8;border-radius:6px;padding:12px;margin-bottom:24px"><strong>Remarks:</strong> ${bill.remarks}</div>` : ""}
 
-<div style="display:flex;justify-content:space-around;margin-top:50px;padding-top:16px;border-top:1px solid #eee">
+${mode === 'pre' ? `<div style="display:flex;justify-content:space-around;margin-top:50px;padding-top:16px;border-top:1px solid #eee">
   <div style="text-align:center">
     <div style="border-top:1px solid #333;width:180px;margin:0 auto 6px"></div>
     <p style="font-size:12px;color:#666;font-weight:600">AGM</p>
@@ -282,7 +282,7 @@ ${bill.remarks ? `<div style="border:1px solid #e8e8e8;border-radius:6px;padding
     <p style="font-size:12px;color:#666;font-weight:600">GM</p>
     <p style="font-size:12px;color:#999">Neoteric Properties</p>
   </div>
-</div>
+</div>` : ""}
 
 <div style="text-align:center;margin-top:24px;font-size:11px;color:#bbb;border-top:1px solid #f0f0f0;padding-top:10px">
   Computer-generated bill · Neoteric Properties — Project Cost Center
