@@ -217,8 +217,10 @@ exports.payBill = asyncHandler(async (req, res) => {
   if (req.body.paymentDate)       bill.paymentDate       = new Date(req.body.paymentDate);
   if (req.body.paymentBank)       bill.paymentBank       = req.body.paymentBank;
   if (req.body.paymentMode)       bill.paymentMode       = req.body.paymentMode;
-  if (req.body.paymentReleasedBy) bill.paymentReleasedBy = req.body.paymentReleasedBy;
-  if (req.body.paidAmount != null) bill.paidAmount       = Number(req.body.paidAmount);
+  if (req.body.paymentReleasedBy)       bill.paymentReleasedBy      = req.body.paymentReleasedBy;
+  if (req.body.paidAmount != null)      bill.paidAmount              = Number(req.body.paidAmount);
+  if (req.body.retentionReleased != null) bill.retentionReleased     = Number(req.body.retentionReleased);
+  if (req.body.retentionReleaseRemark)  bill.retentionReleaseRemark  = req.body.retentionReleaseRemark;
   await bill.save();
 
   emitEvent('PAYMENT_RELEASED', {

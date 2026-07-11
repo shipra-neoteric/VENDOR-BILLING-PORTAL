@@ -90,6 +90,8 @@ interface Bill {
   paymentReleasedBy?: string;
   paymentBank?: string;
   paidAmount?: number;
+  retentionReleased?: number;
+  retentionReleaseRemark?: string;
   createdAt?: string;
 }
 
@@ -254,8 +256,10 @@ function printBill(bill: Bill, contractor: ContractorOpt | null, mode: 'pre' | '
       <span>₹${(netPay - advRec).toLocaleString("en-IN")}</span>
     </div>`;
       } else {
-        // POST-PAYMENT: show net payable, then advance, TDS, actually paid
-        const tds = bill.paidAmount != null ? Math.max(0, netPay - advRec - Math.round(bill.paidAmount)) : 0;
+        // POST-PAYMENT: show net payable, advance, TDS, hold release, actually paid
+        const retRel = Math.round(bill.retentionReleased ?? 0);
+        const billPortion = bill.paidAmount != null ? Math.max(0, Math.round(bill.paidAmount) - retRel) : null;
+        const tds = billPortion != null ? Math.max(0, netPay - advRec - billPortion) : 0;
         return `
     <div style="display:flex;justify-content:space-between;padding:11px 14px;background:#fff7ed;font-weight:bold;font-size:14px;color:#f47b20;border-top:2px solid #fed7aa">
       <span>Net Payable</span><span>₹${netPay.toLocaleString("en-IN")}</span>
@@ -265,6 +269,9 @@ function printBill(bill: Bill, contractor: ContractorOpt | null, mode: 'pre' | '
     </div>` : ""}${tds > 0 ? `
     <div style="display:flex;justify-content:space-between;padding:9px 14px;border-bottom:1px solid #eee;color:#dc2626">
       <span>Less: TDS Deducted${bill.tdsPercent ? ` (${bill.tdsPercent}%)` : ""}</span><span>− ₹${tds.toLocaleString("en-IN")}</span>
+    </div>` : ""}${retRel > 0 ? `
+    <div style="display:flex;justify-content:space-between;padding:9px 14px;border-bottom:1px solid #eee;color:#0369a1;font-weight:600">
+      <span>Hold / Retention Released${bill.retentionReleaseRemark ? ` (${bill.retentionReleaseRemark})` : ""}</span><span>+ ₹${retRel.toLocaleString("en-IN")}</span>
     </div>` : ""}${bill.paidAmount != null ? `
     <div style="display:flex;justify-content:space-between;padding:13px 14px;background:#f0fdf4;font-weight:bold;font-size:15px;color:#16a34a;border-top:2px solid #bbf7d0">
       <span>Actually Paid</span><span>₹${Math.round(bill.paidAmount).toLocaleString("en-IN")}</span>
@@ -625,12 +632,14 @@ export default function Bills() {
       const values = await payForm.validateFields();
       setPaySaving(true);
       const body = {
-        paymentUTR:        values.paymentUTR,
-        paymentMode:       values.paymentMode,
-        paymentDate:       values.paymentDate ? dayjs(values.paymentDate as string).toISOString() : undefined,
-        paymentBank:       values.paymentBank,
-        paymentReleasedBy: values.paymentReleasedBy,
-        paidAmount:        values.paidAmount,
+        paymentUTR:             values.paymentUTR,
+        paymentMode:            values.paymentMode,
+        paymentDate:            values.paymentDate ? dayjs(values.paymentDate as string).toISOString() : undefined,
+        paymentBank:            values.paymentBank,
+        paymentReleasedBy:      values.paymentReleasedBy,
+        paidAmount:             values.paidAmount,
+        retentionReleased:      values.retentionReleased || 0,
+        retentionReleaseRemark: values.retentionReleaseRemark || "",
       };
       const res = await apiClient.patch<{ bill: Record<string, unknown> }>(`/bills/${payBillId}/pay`, body);
       const updated = normalizeId(res.data.bill) as unknown as Bill;
@@ -1005,8 +1014,10 @@ export default function Bills() {
               const advRec   = currentViewBill.advanceRecovery ?? 0;
               const netPay   = gross + gstAmt - retAmt;
               const paid     = currentViewBill.paidAmount;
-              // TDS = what's left after net payable minus advance minus actually paid
-              const tdsAmt = paid != null ? Math.max(0, Math.round(netPay - advRec - paid)) : 0;
+              const retRel   = currentViewBill.retentionReleased ?? 0;
+              // TDS = only on the current bill portion (exclude hold release)
+              const billPortion = paid != null ? Math.max(0, paid - retRel) : null;
+              const tdsAmt = billPortion != null ? Math.max(0, Math.round(netPay - advRec - billPortion)) : 0;
 
               type Row = { label: string; value: string; color: string; bold?: boolean; borderTop?: boolean; bg?: string };
               const rows: Row[] = [
@@ -1017,6 +1028,7 @@ export default function Bills() {
               rows.push({ label: "NET PAYABLE", value: fmt(netPay), color: "#7c3aed", bold: true, borderTop: true });
               if (advRec > 0) rows.push({ label: "Less: Advance Recovery", value: `− ${fmt(advRec)}`, color: "#d97706" });
               if (tdsAmt > 0) rows.push({ label: `Less: TDS Deducted${currentViewBill.tdsPercent ? ` (${currentViewBill.tdsPercent}%)` : ""}`, value: `− ${fmt(tdsAmt)}`, color: "#dc2626" });
+              if (retRel > 0) rows.push({ label: `Hold Released${currentViewBill.retentionReleaseRemark ? ` (${currentViewBill.retentionReleaseRemark})` : ""}`, value: `+ ${fmt(retRel)}`, color: "#0369a1", bold: false });
               if (paid != null) rows.push({ label: "ACTUALLY PAID", value: fmt(paid), color: "#16a85a", bold: true, borderTop: true, bg: "#f0fdf4" });
               return (
                 <div style={{ border: "1px solid #e4e7ee", borderRadius: 8, overflow: "hidden", fontFamily: "monospace", fontSize: 13, marginBottom: 16 }}>
@@ -1547,22 +1559,51 @@ export default function Bills() {
                   </Form.Item>
                 </Col>
               </Row>
+              {/* Hold / Retention Release (optional) */}
+              <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, padding: "12px 14px", marginBottom: 16 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: "#1d4ed8", marginBottom: 10 }}>
+                  🔓 Hold / Retention Release (optional)
+                </div>
+                <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 10 }}>
+                  If this payment also includes releasing previously withheld retention, enter the hold amount below. It will appear as a separate line in the receipt with no TDS.
+                </div>
+                <Row gutter={12}>
+                  <Col span={12}>
+                    <Form.Item label="Hold Amount Released (₹)" name="retentionReleased" initialValue={0} style={{ marginBottom: 0 }}>
+                      <InputNumber<number>
+                        style={{ width: "100%", fontFamily: "monospace" }}
+                        min={0} precision={0}
+                        formatter={(v) => `₹ ${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ",")}
+                        parser={(v) => Number((v || "").replace(/[₹\s,]/g, ""))}
+                      />
+                    </Form.Item>
+                  </Col>
+                  <Col span={12}>
+                    <Form.Item label="Remark (e.g. RA-0010 DLP)" name="retentionReleaseRemark" style={{ marginBottom: 0 }}>
+                      <Input placeholder="Which bill / period" />
+                    </Form.Item>
+                  </Col>
+                </Row>
+              </div>
+
               <Form.Item
-                label="Actual Amount Paid (₹)"
+                label="Total Amount Paid (₹)"
                 name="paidAmount"
-                rules={[{ required: true, message: "Enter the amount actually paid" }]}
+                rules={[{ required: true, message: "Enter the total amount actually paid" }]}
                 extra={
-                  <Form.Item noStyle shouldUpdate={(prev, cur) => prev.paidAmount !== cur.paidAmount}>
+                  <Form.Item noStyle shouldUpdate={(prev, cur) => prev.paidAmount !== cur.paidAmount || prev.retentionReleased !== cur.retentionReleased}>
                     {({ getFieldValue }) => {
-                      const paid = getFieldValue("paidAmount") as number | undefined;
+                      const paid    = getFieldValue("paidAmount") as number | undefined;
+                      const retRel  = (getFieldValue("retentionReleased") as number) || 0;
                       if (!paid || !payTarget) return null;
-                      const diff = Math.round(payTarget.amount - paid);
-                      if (diff === 0) return null;
+                      const billPart = paid - retRel;
+                      const diff     = Math.round(payTarget.amount - billPart);
+                      if (diff === 0 && retRel === 0) return null;
                       return (
-                        <span style={{ color: diff > 0 ? "#e03b3b" : "#16a85a", fontSize: 12 }}>
-                          {diff > 0
-                            ? `₹${diff.toLocaleString("en-IN")} less than bill amount (TDS / deduction)`
-                            : `₹${Math.abs(diff).toLocaleString("en-IN")} more than bill amount`}
+                        <span style={{ color: "#6b7280", fontSize: 12 }}>
+                          Bill portion ₹{billPart.toLocaleString("en-IN")}
+                          {retRel > 0 ? ` + Hold release ₹${retRel.toLocaleString("en-IN")}` : ""}
+                          {diff !== 0 ? ` · ₹${Math.abs(diff).toLocaleString("en-IN")} ${diff > 0 ? "TDS/deduction" : "extra"} on bill` : ""}
                         </span>
                       );
                     }}
