@@ -394,6 +394,9 @@ function DRIDashboard() {
   const [editForm]                = Form.useForm();
   const [deleting,  setDeleting]  = useState<string | null>(null);
 
+  // Quick search in project detail view
+  const [driSearch, setDriSearch] = useState("");
+
   // Vendor bill modal
   const [billModal,      setBillModal]      = useState(false);
   const [selectedWOIds,  setSelectedWOIds]  = useState<Set<string>>(new Set());
@@ -441,6 +444,25 @@ function DRIDashboard() {
     });
     return Array.from(groups.values()).sort((a, b) => a.vendorName.localeCompare(b.vendorName));
   }, [projectWOs]);
+
+  // Filtered vendor groups by search
+  const filteredVendorGroups = useMemo(() => {
+    const q = driSearch.trim().toLowerCase();
+    if (!q) return vendorGroups;
+    return vendorGroups
+      .map(vg => {
+        const vendorMatch =
+          vg.vendorName.toLowerCase().includes(q) ||
+          vg.vendorCode.toLowerCase().includes(q);
+        if (vendorMatch) return vg;
+        const filteredWOs = vg.wos.filter(wo =>
+          wo.workOrderNo.toLowerCase().includes(q)
+        );
+        if (filteredWOs.length) return { ...vg, wos: filteredWOs };
+        return null;
+      })
+      .filter((g): g is NonNullable<typeof g> => g !== null);
+  }, [vendorGroups, driSearch]);
 
   // Project type for location fields
   const selProjectType = useMemo((): "apartment" | "plot" => {
@@ -678,7 +700,7 @@ function DRIDashboard() {
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24, flexWrap: "wrap", gap: 12 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          <Button icon={<ArrowLeftOutlined />} onClick={() => { setView("select-project"); setSelProjectId(undefined); setSelProjectName(undefined); setWoDetails(new Map()); setProjectBillReqs([]); }}>
+          <Button icon={<ArrowLeftOutlined />} onClick={() => { setView("select-project"); setSelProjectId(undefined); setSelProjectName(undefined); setWoDetails(new Map()); setProjectBillReqs([]); setDriSearch(""); }}>
             All Projects
           </Button>
           <div>
@@ -698,6 +720,18 @@ function DRIDashboard() {
             🧾 Generate Bill Request for {selProjectName}
           </Button>
         </Tooltip>
+      </div>
+
+      {/* Search bar */}
+      <div style={{ marginBottom: 16 }}>
+        <Input
+          allowClear
+          placeholder="Search by vendor name, vendor code or work order no…"
+          value={driSearch}
+          onChange={e => setDriSearch(e.target.value)}
+          style={{ maxWidth: 420, borderRadius: 8 }}
+          prefix={<span style={{ color: "var(--nx-text-muted)", marginRight: 4 }}>🔍</span>}
+        />
       </div>
 
       {/* Summary stats */}
@@ -723,9 +757,11 @@ function DRIDashboard() {
         <div style={{ display: "flex", justifyContent: "center", padding: 60 }}><Spin size="large" /></div>
       ) : vendorGroups.length === 0 ? (
         <Empty description="No work orders found for this project." />
+      ) : filteredVendorGroups.length === 0 ? (
+        <Empty description={`No results for "${driSearch}"`} />
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-          {vendorGroups.map(vg => (
+          {filteredVendorGroups.map(vg => (
             <div key={vg.vendorCode} style={{ background: "var(--nx-white)", border: "1px solid var(--nx-border)", borderRadius: 12, overflow: "hidden" }}>
               {/* Vendor header */}
               <div style={{ background: "#1F2937", padding: "14px 20px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
