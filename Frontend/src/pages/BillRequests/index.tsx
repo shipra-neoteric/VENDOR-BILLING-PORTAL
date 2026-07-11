@@ -72,6 +72,8 @@ export default function BillRequests() {
   const [paymentAmount,   setPaymentAmount]   = useState<number | null>(null);
   const [milestoneReq,    setMilestoneReq]    = useState<BillRequest | null>(null);
 
+  const [search,            setSearch]            = useState("");
+
   const [pendingAdvances,   setPendingAdvances]   = useState<{ _id: string; slipNo: string; amount: number; amountRecovered: number; balance: number; reference?: string }[]>([]);
   const [advanceRecovery,   setAdvanceRecovery]   = useState<number | null>(null);
   const [advancesLoading,   setAdvancesLoading]   = useState(false);
@@ -279,7 +281,19 @@ export default function BillRequests() {
     },
   ];
 
-  const filtered = tab === "all" ? requests : requests.filter(r => r.status === tab);
+  const filtered = (() => {
+    const byTab = tab === "all" ? requests : requests.filter(r => r.status === tab);
+    const q = search.trim().toLowerCase();
+    if (!q) return byTab;
+    return byTab.filter(r =>
+      r.reqNo.toLowerCase().includes(q) ||
+      r.workOrderNo.toLowerCase().includes(q) ||
+      r.vendorName.toLowerCase().includes(q) ||
+      (r.vendorCode || "").toLowerCase().includes(q) ||
+      r.projectName.toLowerCase().includes(q) ||
+      (r.category || "").toLowerCase().includes(q)
+    );
+  })();
   const viewTotal = viewReq ? viewReq.items.reduce((s, it) => s + (it.rate ?? 0) * it.billedQty, 0) : 0;
 
   return (
@@ -299,10 +313,21 @@ export default function BillRequests() {
         style={{ marginBottom: 16 }}
       />
 
+      <div style={{ marginBottom: 16 }}>
+        <Input
+          allowClear
+          placeholder="Search by request no, work order, contractor, vendor code or project…"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          style={{ maxWidth: 440, borderRadius: 8 }}
+          prefix={<span style={{ color: "#9ca3af", marginRight: 4 }}>🔍</span>}
+        />
+      </div>
+
       {loading ? (
         <div style={{ textAlign: "center", padding: 60 }}><Spin size="large" /></div>
       ) : filtered.length === 0 ? (
-        <Empty description={`No ${tab === "all" ? "" : tab} bill requests`} />
+        <Empty description={search ? `No results for "${search}"` : `No ${tab === "all" ? "" : tab} bill requests`} />
       ) : (
         <Table
           dataSource={filtered}
