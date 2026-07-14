@@ -26,12 +26,14 @@ export interface Project {
   contractValue: number;
   status: ProjectStatus;
   projectType?: "apartment" | "plot";
+  parentId?: string | null;
 }
 
 export interface Contractor {
   id: string;
   vendorCode: string;
   companyName: string;
+  shortCode?: string;
   ownerName: string;
   address: string;
 
@@ -47,7 +49,7 @@ export interface Contractor {
   branchName: string;
 
   gstNumber?: string;
-  panNumber: string;
+  panNumber?: string;
 
   workTypes: string[];
 

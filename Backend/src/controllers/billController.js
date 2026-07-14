@@ -62,11 +62,21 @@ exports.createBill = asyncHandler(async (req, res) => {
   const amount = lineItems.reduce((sum, li) => sum + (Number(li.amount) || 0), 0);
   const billNo = await nextBillNo();
 
+  // Compute billingCycle for this WO
+  const cycleCount = req.body.workOrderId
+    ? await RunningBill.countDocuments({ workOrderId: req.body.workOrderId })
+    : 0;
+
+  // Build linkedBills with billNo enrichment
+  const linkedBills = Array.isArray(req.body.linkedBills) ? req.body.linkedBills : [];
+
   const bill = await RunningBill.create({
     ...req.body,
     billNo,
     amount,
     lineItems,
+    linkedBills,
+    billingCycle: cycleCount + 1,
     ...(workOrder ? {
       workOrderNo: workOrder.workOrderNo,
       projectId:   workOrder.projectId,
@@ -78,6 +88,17 @@ exports.createBill = asyncHandler(async (req, res) => {
     submittedAt: new Date(),
     createdBy:   req.user._id,
   });
+
+  // Auto-link: mark superseded/revised/corrected bills as inactive
+  const deactivatingRelationships = ['SUPERSEDES', 'REVISION_OF', 'CORRECTION_OF'];
+  for (const link of linkedBills) {
+    if (deactivatingRelationships.includes(link.relationshipType) && link.billId) {
+      await RunningBill.findByIdAndUpdate(link.billId, {
+        isActive:     false,
+        supersededBy: bill._id,
+      });
+    }
+  }
 
   // Update work order scope item progress (non-fatal)
   if (workOrder && lineItems.length > 0) {
@@ -235,6 +256,18 @@ exports.payBill = asyncHandler(async (req, res) => {
   });
 
   success(res, { bill }, 'Payment recorded');
+});
+
+// GET /api/bills/chain/:workOrderId — billing chain for a WO (all bills, sorted by cycle)
+exports.getBillingChain = asyncHandler(async (req, res) => {
+  const { workOrderId } = req.params;
+  const bills = await RunningBill.find({ workOrderId })
+    .populate('supersededBy', 'billNo billType')
+    .populate('verifiedBy',   'name role')
+    .populate('approvedBy',   'name role')
+    .sort({ billingCycle: 1, createdAt: 1 })
+    .lean();
+  success(res, { bills });
 });
 
 // PATCH /api/bills/:id/deductions  — correct advance recovery / retention split on a paid bill

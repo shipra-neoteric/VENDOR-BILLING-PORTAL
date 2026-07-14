@@ -33,6 +33,7 @@ import * as XLSX from "xlsx";
 import PageShell from "../../components/PageShell";
 import apiClient from "../../services/apiClient";
 import type { Contractor } from "../../types/VendorBilling";
+import { vendorLabel } from "../../utils/vendorLabel";
 
 const normalizeId = (obj: any) => ({ ...obj, id: obj._id || obj.id });
 
@@ -180,6 +181,7 @@ export default function Contractors() {
   const [saving, setSaving]           = useState(false);
   const [search, setSearch]           = useState("");
   const [registerOpen, setRegisterOpen] = useState(false);
+  const [editingContractor, setEditingContractor] = useState<Contractor | null>(null);
   const [viewOpen, setViewOpen]       = useState(false);
   const [selected, setSelected]       = useState<Contractor | null>(null);
   const [form] = Form.useForm();
@@ -282,21 +284,35 @@ export default function Contractors() {
       c.mobile.includes(search)
   );
 
-  // ── Register ──────────────────────────────────────────────────
+  // ── Register / Edit ──────────────────────────────────────────────
   const handleRegister = async () => {
     try {
       const values = await form.validateFields();
       setSaving(true);
-      const res = await apiClient.post<{ contractor: Contractor }>("/contractors", values);
-      setContractors((prev) => [normalizeId(res.data.contractor), ...prev]);
-      message.success(`${res.data.contractor.companyName} registered as ${res.data.contractor.vendorCode}`);
+      if (editingContractor) {
+        const res = await apiClient.put<{ contractor: Contractor }>(`/contractors/${editingContractor.id}`, values);
+        const updated = normalizeId(res.data.contractor);
+        setContractors((prev) => prev.map((c) => (c.id === editingContractor.id ? updated : c)));
+        message.success(`${res.data.contractor.companyName} updated`);
+      } else {
+        const res = await apiClient.post<{ contractor: Contractor }>("/contractors", values);
+        setContractors((prev) => [normalizeId(res.data.contractor), ...prev]);
+        message.success(`${res.data.contractor.companyName} registered as ${res.data.contractor.vendorCode}`);
+      }
       form.resetFields();
+      setEditingContractor(null);
       setRegisterOpen(false);
     } catch (err: unknown) {
       if (err && typeof err === 'object' && 'errorFields' in err) return; // validation error
     } finally {
       setSaving(false);
     }
+  };
+
+  const openEdit = (record: Contractor) => {
+    form.setFieldsValue(record);
+    setEditingContractor(record);
+    setRegisterOpen(true);
   };
 
   // ── Columns ───────────────────────────────────────────────────
@@ -309,7 +325,12 @@ export default function Contractors() {
         <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#FF7A00" }}>{v}</span>
       ),
     },
-    { title: "Company", dataIndex: "companyName", width: 200 },
+    {
+      title: "Company",
+      dataIndex: "companyName",
+      width: 200,
+      render: (v: string, r: Contractor) => vendorLabel(v, r.shortCode),
+    },
     { title: "Owner", dataIndex: "ownerName", width: 150 },
     { title: "Mobile", dataIndex: "mobile", width: 130 },
     {
@@ -333,15 +354,20 @@ export default function Contractors() {
     },
     {
       title: "Actions",
-      width: 110,
+      width: 170,
       render: (_: unknown, record: Contractor) => (
-        <Button
-          type="link"
-          size="small"
-          onClick={() => { setSelected(record); setViewOpen(true); }}
-        >
-          View Profile
-        </Button>
+        <Space size={0}>
+          <Button
+            type="link"
+            size="small"
+            onClick={() => { setSelected(record); setViewOpen(true); }}
+          >
+            View Profile
+          </Button>
+          <Button type="link" size="small" onClick={() => openEdit(record)}>
+            Edit
+          </Button>
+        </Space>
       ),
     },
   ];
@@ -377,7 +403,7 @@ export default function Contractors() {
             type="primary"
             icon={<PlusOutlined />}
             size="large"
-            onClick={() => { form.resetFields(); setRegisterOpen(true); }}
+            onClick={() => { form.resetFields(); setEditingContractor(null); setRegisterOpen(true); }}
             style={{ background: "#FF7A00", borderColor: "#FF7A00" }}
           >
             Register Contractor
@@ -439,23 +465,23 @@ export default function Contractors() {
       {/* ── Register Contractor Drawer ─────────────────────────── */}
       <Drawer
         open={registerOpen}
-        onClose={() => setRegisterOpen(false)}
+        onClose={() => { setRegisterOpen(false); setEditingContractor(null); }}
         placement="right"
         width={640}
         title={
           <Space>
             <span style={{ fontSize: 20 }}>👷</span>
             <div>
-              <div style={{ fontWeight: 700, fontSize: 16 }}>Register Contractor</div>
+              <div style={{ fontWeight: 700, fontSize: 16 }}>{editingContractor ? "Edit Contractor" : "Register Contractor"}</div>
               <div style={{ fontSize: 12, color: "#6B7280", fontWeight: 400 }}>
-                Fill in firm, bank, and tax details
+                {editingContractor ? `Editing ${editingContractor.vendorCode}` : "Fill in firm, bank, and tax details"}
               </div>
             </div>
           </Space>
         }
         footer={
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-            <Button size="large" onClick={() => setRegisterOpen(false)}>
+            <Button size="large" onClick={() => { setRegisterOpen(false); setEditingContractor(null); }}>
               Cancel
             </Button>
             <Button
@@ -465,7 +491,7 @@ export default function Contractors() {
               onClick={handleRegister}
               style={{ background: "#FF7A00", borderColor: "#FF7A00" }}
             >
-              Register Contractor
+              {editingContractor ? "Save Changes" : "Register Contractor"}
             </Button>
           </div>
         }
@@ -479,6 +505,17 @@ export default function Contractors() {
                 <Input placeholder="e.g. ABC Infra Pvt Ltd" />
               </Form.Item>
             </Col>
+            <Col span={12}>
+              <Form.Item
+                label="Short Form (optional)"
+                name="shortCode"
+                tooltip="If this vendor code is really part of a bigger firm billed under several separate vendor codes for tax reasons, tag them all with the same short form (e.g. 'D') — it'll show in brackets next to the company name."
+              >
+                <Input placeholder="e.g. D" maxLength={10} />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={16}>
             <Col span={12}>
               <Form.Item label="Owner Name" name="ownerName" rules={[{ required: true }]}>
                 <Input placeholder="e.g. Rajesh Sharma" />
@@ -543,7 +580,7 @@ export default function Contractors() {
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item label="PAN Number" name="panNumber" rules={[{ required: true }]}>
+              <Form.Item label="PAN Number" name="panNumber">
                 <Input placeholder="10-char PAN" />
               </Form.Item>
             </Col>
@@ -600,7 +637,7 @@ export default function Contractors() {
             <Space>
               <span style={{ fontSize: 20 }}>👷</span>
               <div>
-                <div style={{ fontWeight: 700, fontSize: 16 }}>{selected.companyName}</div>
+                <div style={{ fontWeight: 700, fontSize: 16 }}>{vendorLabel(selected.companyName, selected.shortCode)}</div>
                 <div style={{ fontSize: 12, color: "#6B7280", fontWeight: 400 }}>
                   {selected.vendorCode}
                 </div>
@@ -625,7 +662,7 @@ export default function Contractors() {
                   {selected.vendorCode}
                 </span>
               </Descriptions.Item>
-              <Descriptions.Item label="Company">{selected.companyName}</Descriptions.Item>
+              <Descriptions.Item label="Company">{vendorLabel(selected.companyName, selected.shortCode)}</Descriptions.Item>
               <Descriptions.Item label="Owner">{selected.ownerName}</Descriptions.Item>
               <Descriptions.Item label="Mobile">{selected.mobile}</Descriptions.Item>
               <Descriptions.Item label="Alt. Mobile">{selected.alternateMobile || "—"}</Descriptions.Item>

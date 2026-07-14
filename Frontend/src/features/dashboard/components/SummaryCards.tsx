@@ -8,6 +8,7 @@ interface Props {
   pendingAmt:                number;
   pendingCount:              number;
   paidAmt:                   number;
+  actuallyPaid:              number;
   approvedNotPaid:           number;
   approvedNotPaidCount:      number;
   remaining:                 number;
@@ -20,6 +21,7 @@ export function SummaryCards({
   pendingAmt,
   pendingCount,
   paidAmt,
+  actuallyPaid,
   approvedNotPaid,
   approvedNotPaidCount,
   remaining,
@@ -62,11 +64,20 @@ export function SummaryCards({
         sub={fmtCr(pendingAmt)}
       />
       <StatCard
-        label="Amount Paid"
+        label="Total Bill Amount"
         value={fmtCr(paidAmt)}
-        icon="💳"
+        icon="🧾"
         color="#0d9488"
         accent="#0d9488"
+        sub="gross billed (paid bills)"
+      />
+      <StatCard
+        label="Cash Released (Net TDS)"
+        value={fmtCr(actuallyPaid)}
+        icon="🏦"
+        color="#1d4ed8"
+        accent="#1d4ed8"
+        sub="actual bank transfer"
       />
       <StatCard
         label="Remaining Balance"

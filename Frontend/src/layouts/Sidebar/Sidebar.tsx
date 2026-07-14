@@ -4,6 +4,7 @@ import {
   LayoutOutlined, BankOutlined, ApartmentOutlined, TeamOutlined, TagsOutlined,
   FileTextOutlined, LineChartOutlined, ProfileOutlined, WalletOutlined,
   CheckSquareOutlined, AccountBookOutlined, UsergroupAddOutlined, MonitorOutlined,
+  ShareAltOutlined,
 } from "@ant-design/icons";
 import { useAuth } from "../../context/AuthContext";
 import type { PermEntry } from "../../context/AuthContext";
@@ -57,6 +58,7 @@ const ADMIN_GROUPS: NavGroup[] = [
     items: [
       { name: "User Management",    path: "/users",         icon: <UsergroupAddOutlined />, moduleId: "user-management" },
       { name: "DRI Work Dashboard", path: "/dri-dashboard", icon: <MonitorOutlined />,      moduleId: "dri-dashboard" },
+      { name: "Public Forms",       path: "/public-forms",  icon: <ShareAltOutlined />,      moduleId: "public-forms" },
     ],
   },
 ];

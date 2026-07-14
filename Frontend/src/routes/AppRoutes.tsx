@@ -15,6 +15,7 @@ import Approvals            from "../features/approvals";
 import Ledger               from "../features/ledger";
 import UserManagement       from "../pages/UserManagement";
 import DRIDashboard         from "../pages/DRIDashboard";
+import PublicForms          from "../pages/PublicForms";
 import Login                from "../features/auth";
 
 import MainLayout     from "../layouts/MainLayout/MainLayout";
@@ -70,6 +71,7 @@ function AdminRoutes() {
           <Route path="/ledger"           element={<Ledger />} />
           <Route path="/users"            element={<UserManagement />} />
           <Route path="/dri-dashboard"   element={<DRIDashboard />} />
+          <Route path="/public-forms"    element={<PublicForms />} />
           <Route path="*"                element={<Navigate to="/dashboard" replace />} />
         </Route>
       </Route>

@@ -7,6 +7,7 @@ import { ArrowLeftOutlined, TrophyFilled } from "@ant-design/icons";
 import dayjs from "dayjs";
 import apiClient from "../../services/apiClient";
 import { useAuth } from "../../context/AuthContext";
+import BillDetailModal, { type BillDetailRequest } from "../../components/BillDetailModal";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface ProgressEntry { _id: string; date: string; qtyAdded: number; remarks?: string; }
@@ -32,9 +33,13 @@ interface BillRequestStage {
   status: "pending" | "approved" | "rejected";
   periodFrom?: string; periodTo?: string; createdAt: string;
   items: BillItem[]; remarks?: string; rejectReason?: string;
-  billId?: { billNo: string; status: string; amount: number; paymentDate?: string } | null;
+  billId?: {
+    billNo: string; status: string; amount: number; paymentDate?: string;
+    paidAmount?: number; retentionPercent?: number; retentionAmount?: number;
+    advanceRecovery?: number; gstPercent?: number; paymentUTR?: string;
+  } | null;
   milestoneAchieved: boolean; milestoneDate?: string;
-  requestedBy?: { name: string };
+  requestedBy?: { name: string; email: string };
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -155,6 +160,8 @@ export default function WorkOrderDashboard() {
   const [milestoneTarget, setMilestoneTarget] = useState<string | null>(null);
   const [paymentUTR,      setPaymentUTR]      = useState("");
   const [utrModal,        setUTRModal]        = useState(false);
+  const [activeTab,       setActiveTab]       = useState<"items" | "milestones" | "bills" | "progress">("items");
+  const [viewBill,        setViewBill]        = useState<BillDetailRequest | null>(null);
 
   const load = async () => {
     if (!id) return;
@@ -276,7 +283,121 @@ export default function WorkOrderDashboard() {
         ))}
       </div>
 
-      {/* Scope Items Progress */}
+      {/* Tab switcher */}
+      <div style={{ display: "flex", gap: 4, background: "#F3F4F6", padding: 4, borderRadius: 12, marginBottom: 20, flexWrap: "wrap" }}>
+        {([
+          ["items",      "Items"],
+          ["milestones", "Milestones"],
+          ["bills",      "Bills"],
+          ["progress",   "Progress"],
+        ] as const).map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setActiveTab(key)}
+            style={{
+              flex: "1 1 auto", border: "none", borderRadius: 9, padding: "8px 16px",
+              fontSize: 13, fontWeight: 700, cursor: "pointer", transition: "all 0.15s",
+              background: activeTab === key ? "#FF7A00" : "transparent",
+              color:      activeTab === key ? "#fff"    : "#6B7280",
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Items tab — scope of work definition */}
+      {activeTab === "items" && (
+        <div style={{ background: "var(--nx-white)", border: "1px solid #E5E7EB", borderRadius: 12, overflow: "hidden", marginBottom: 24 }}>
+          <div style={{ padding: "16px 20px", borderBottom: "1px solid #E5E7EB", fontWeight: 700, fontSize: 15, color: "#111827" }}>
+            Scope of Work
+          </div>
+          {wo.scopeItems.length === 0 ? (
+            <div style={{ padding: 40 }}><Empty description="No scope items defined" /></div>
+          ) : (
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead>
+                  <tr style={{ background: "#F9FAFB" }}>
+                    {["Description", "Unit", "Planned Qty", "Rate", "Amount", "Status"].map(h => (
+                      <th key={h} style={{ padding: "9px 16px", fontSize: 11, fontWeight: 700, color: "#6B7280", textAlign: "left", textTransform: "uppercase", letterSpacing: "0.05em", borderBottom: "1px solid #E5E7EB", whiteSpace: "nowrap" }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {wo.scopeItems.map((si, i) => (
+                    <tr key={si._id} style={{ borderBottom: "1px solid #F3F4F6", background: i % 2 === 0 ? "#fff" : "#FAFAFA" }}>
+                      <td style={{ padding: "10px 16px", fontSize: 13, fontWeight: 600, color: "#111827" }}>{si.description}</td>
+                      <td style={{ padding: "10px 16px", fontSize: 12, color: "#6B7280" }}>{si.unit}</td>
+                      <td style={{ padding: "10px 16px", fontFamily: "monospace", fontSize: 13, color: "#374151" }}>{fmtQty(si.plannedQty)}</td>
+                      <td style={{ padding: "10px 16px", fontFamily: "monospace", fontSize: 13, color: "#374151" }}>{fmtMoney(si.rate || 0)}</td>
+                      <td style={{ padding: "10px 16px", fontFamily: "monospace", fontSize: 13, fontWeight: 700, color: "#FF7A00" }}>{fmtMoney(si.amount || 0)}</td>
+                      <td style={{ padding: "10px 16px", fontSize: 12, color: "#6B7280", textTransform: "capitalize" }}>{si.status}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Bills tab — every bill generated for this work order */}
+      {activeTab === "bills" && (() => {
+        const bills = stages.filter(s => s.billId).map(s => ({ stage: s, bill: s.billId! }));
+        const openBill = (stage: BillRequestStage) => setViewBill({
+          _id: stage._id, reqNo: stage.reqNo, stageNo: stage.stageNo,
+          workOrderNo: wo.workOrderNo, projectName: wo.projectName, vendorName: wo.vendorName,
+          category: wo.category, subCategory: wo.subCategory ?? "",
+          items: stage.items, remarks: stage.remarks ?? "",
+          periodFrom: stage.periodFrom, periodTo: stage.periodTo,
+          status: stage.status, rejectReason: stage.rejectReason,
+          requestedBy: stage.requestedBy, billId: stage.billId ?? undefined,
+          milestoneAchieved: stage.milestoneAchieved, milestoneDate: stage.milestoneDate,
+          createdAt: stage.createdAt,
+        });
+        return (
+          <div style={{ background: "var(--nx-white)", border: "1px solid #E5E7EB", borderRadius: 12, overflow: "hidden", marginBottom: 24 }}>
+            <div style={{ padding: "16px 20px", borderBottom: "1px solid #E5E7EB", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div style={{ fontWeight: 700, fontSize: 15, color: "#111827" }}>Bills</div>
+              <div style={{ fontSize: 12, color: "#9CA3AF" }}>{bills.length} total</div>
+            </div>
+            {bills.length === 0 ? (
+              <div style={{ padding: 40 }}><Empty description="No bills generated yet." /></div>
+            ) : (
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead>
+                    <tr style={{ background: "#F9FAFB" }}>
+                      {["Bill No", "Stage", "Amount", "Status", "Payment Date", ""].map(h => (
+                        <th key={h} style={{ padding: "9px 16px", fontSize: 11, fontWeight: 700, color: "#6B7280", textAlign: "left", textTransform: "uppercase", letterSpacing: "0.05em", borderBottom: "1px solid #E5E7EB", whiteSpace: "nowrap" }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {bills.map(({ stage, bill }, i) => (
+                      <tr key={bill.billNo} style={{ borderBottom: "1px solid #F3F4F6", background: i % 2 === 0 ? "#fff" : "#FAFAFA" }}>
+                        <td style={{ padding: "10px 16px", fontFamily: "monospace", fontWeight: 700, color: "#FF7A00", fontSize: 13 }}>{bill.billNo}</td>
+                        <td style={{ padding: "10px 16px", fontSize: 12, color: "#6B7280" }}>Stage {stage.stageNo}</td>
+                        <td style={{ padding: "10px 16px", fontFamily: "monospace", fontSize: 13, fontWeight: 600, color: "#111827" }}>{fmtMoney(bill.amount)}</td>
+                        <td style={{ padding: "10px 16px", fontSize: 12, color: "#6B7280", textTransform: "uppercase" }}>{bill.status}</td>
+                        <td style={{ padding: "10px 16px", fontSize: 12, color: "#6B7280" }}>{fmtDate(bill.paymentDate)}</td>
+                        <td style={{ padding: "10px 16px" }}>
+                          <Button type="link" size="small" onClick={() => openBill(stage)}>View</Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* Progress tab — per scope item progress breakdown */}
+      {activeTab === "progress" && (
       <div style={{ background: "var(--nx-white)", border: "1px solid #E5E7EB", borderRadius: 12, overflow: "hidden", marginBottom: 24 }}>
         <div style={{ padding: "16px 20px", borderBottom: "1px solid #E5E7EB", fontWeight: 700, fontSize: 15, color: "#111827" }}>
           Scope Items Progress
@@ -330,7 +451,11 @@ export default function WorkOrderDashboard() {
           })
         )}
       </div>
+      )}
 
+      {/* Milestones tab */}
+      {activeTab === "milestones" && (
+      <>
       {/* Stage Timeline */}
       <div style={{ background: "var(--nx-white)", border: "1px solid #E5E7EB", borderRadius: 12, overflow: "hidden", marginBottom: 24 }}>
         <div style={{ padding: "16px 20px", borderBottom: "1px solid #E5E7EB", fontWeight: 700, fontSize: 15, color: "#111827" }}>
@@ -475,6 +600,8 @@ export default function WorkOrderDashboard() {
           )}
         </div>
       )}
+      </>
+      )}
 
       {/* Release Payment Modal */}
       <Modal
@@ -500,6 +627,8 @@ export default function WorkOrderDashboard() {
           />
         </div>
       </Modal>
+
+      <BillDetailModal billRequest={viewBill} open={!!viewBill} onClose={() => setViewBill(null)} />
     </div>
   );
 }

@@ -5,7 +5,7 @@ const BillRequest  = require('../models/BillRequest');
 const RunningBill  = require('../models/RunningBill');
 const ProjectEvent = require('../models/ProjectEvent');
 const asyncHandler = require('../utils/asyncHandler');
-const { success, created, notFound, badRequest } = require('../utils/responseFormatter');
+const { success, created, notFound, badRequest, conflict } = require('../utils/responseFormatter');
 const { nextProjectCode } = require('../utils/codeGen');
 
 exports.listProjects = asyncHandler(async (req, res) => {
@@ -41,8 +41,30 @@ exports.updateProject = asyncHandler(async (req, res) => {
 });
 
 exports.deleteProject = asyncHandler(async (req, res) => {
-  const project = await Project.findByIdAndDelete(req.params.id);
+  const project = await Project.findById(req.params.id);
   if (!project) return notFound(res, 'Project not found');
+
+  const hasSubProjects = await Project.exists({ parentId: project._id });
+  if (hasSubProjects) {
+    return conflict(res, `Cannot delete "${project.name}" — delete its sub-projects first.`);
+  }
+
+  const hasWorkOrders = await WorkOrder.exists({ projectId: project._id });
+  if (hasWorkOrders) {
+    return conflict(res, `Cannot delete "${project.name}" — it has work orders assigned to it.`);
+  }
+
+  const hasBills = await RunningBill.exists({ projectId: project._id });
+  if (hasBills) {
+    return conflict(res, `Cannot delete "${project.name}" — it has running bills recorded against it.`);
+  }
+
+  const hasBillRequests = await BillRequest.exists({ projectId: project._id });
+  if (hasBillRequests) {
+    return conflict(res, `Cannot delete "${project.name}" — it has bill requests recorded against it.`);
+  }
+
+  await project.deleteOne();
   success(res, null, 'Project deleted');
 });
 

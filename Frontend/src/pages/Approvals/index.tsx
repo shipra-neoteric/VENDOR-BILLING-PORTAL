@@ -13,7 +13,7 @@ import DateRangeFilter, { inDateRange } from "../../components/DateRangeFilter";
 
 // ── Types ─────────────────────────────────────────────────────
 type BillStatus = "draft" | "submitted" | "verified" | "approved" | "rejected" | "paid";
-type ActionType = "verify" | "approve" | "reject";
+type ActionType = "verify" | "approve" | "reject" | "view";
 
 interface BillUser { name?: string; role?: string; }
 interface Bill {
@@ -181,7 +181,7 @@ export default function Approvals() {
   }
 
   async function executeAction() {
-    if (!actionBill) return;
+    if (!actionBill || actionType === "view") return;
     setSubmitting(true);
     try {
       const endpoint = actionType === "verify" ? "verify"
@@ -356,7 +356,7 @@ export default function Approvals() {
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                   <thead>
                     <tr style={{ background: "#f5f6f8" }}>
-                      {["Bill No.", "Date", "Work Order", "Vendor", "Gross (incl. GST)", "Net Payable", "Status", "Verified By", "Approved/Rejected"].map(h => (
+                      {["Bill No.", "Date", "Work Order", "Vendor", "Gross (incl. GST)", "Net Payable", "Status", "Verified By", "Approved/Rejected", ""].map(h => (
                         <th key={h} style={{ padding: "10px 12px", textAlign: "left", fontSize: 11, fontWeight: 600, color: "#9ba3b8", textTransform: "uppercase", letterSpacing: "0.05em", borderBottom: "1px solid #e4e7ee", whiteSpace: "nowrap" }}>{h}</th>
                       ))}
                     </tr>
@@ -394,6 +394,9 @@ export default function Approvals() {
                               <span style={{ color: "#e03b3b" }}>{typeof b.rejectedBy === "object" ? b.rejectedBy.name : b.rejectedBy}{b.rejectReason ? ` — ${b.rejectReason}` : ""}</span>
                             ) : <span style={{ color: "#9ba3b8" }}>—</span>}
                           </td>
+                          <td style={{ padding: "10px 12px" }}>
+                            <Button size="small" onClick={() => openAction(b, "view")}>View</Button>
+                          </td>
                         </tr>
                       );
                     })}
@@ -414,21 +417,26 @@ export default function Approvals() {
         title={
           actionType === "verify" ? "Verify Bill — Site Engineer"
           : actionType === "approve" ? "Approve Bill — GM / Owner"
+          : actionType === "view" ? "Bill Details"
           : "Reject Bill"
         }
         onCancel={() => setModalOpen(false)}
-        onOk={executeAction}
+        onOk={actionType === "view" ? () => setModalOpen(false) : executeAction}
         okText={
           actionType === "verify" ? "✓  Verify"
           : actionType === "approve" ? "✓  Approve & Certify"
+          : actionType === "view" ? "Close"
           : "✗  Reject Bill"
         }
+        cancelButtonProps={actionType === "view" ? { style: { display: "none" } } : undefined}
         confirmLoading={submitting}
         okButtonProps={{
           style: actionType === "reject"
             ? { background: "#e03b3b", borderColor: "#e03b3b" }
             : actionType === "approve"
             ? { background: "#f37916", borderColor: "#f37916" }
+            : actionType === "view"
+            ? {}
             : { background: "#16a85a", borderColor: "#16a85a" },
         }}
         destroyOnHidden
@@ -499,14 +507,16 @@ export default function Approvals() {
                 </div>
               )}
 
-              <Form.Item label="Remarks" style={{ marginBottom: 0 }} required={actionType === "reject"}>
-                <Input.TextArea
-                  rows={2}
-                  placeholder={actionType === "reject" ? "Reason for rejection…" : "Add remarks or conditions (optional)…"}
-                  value={remarks}
-                  onChange={e => setRemarks(e.target.value)}
-                />
-              </Form.Item>
+              {actionType !== "view" && (
+                <Form.Item label="Remarks" style={{ marginBottom: 0 }} required={actionType === "reject"}>
+                  <Input.TextArea
+                    rows={2}
+                    placeholder={actionType === "reject" ? "Reason for rejection…" : "Add remarks or conditions (optional)…"}
+                    value={remarks}
+                    onChange={e => setRemarks(e.target.value)}
+                  />
+                </Form.Item>
+              )}
             </>
           );
         })()}

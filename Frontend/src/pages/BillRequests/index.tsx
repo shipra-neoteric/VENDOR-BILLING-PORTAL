@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import {
-  Button, Tag, Table, Modal, Input, InputNumber, message, Popconfirm, Spin, Empty, Tabs, Badge,
+  Button, Tag, Table, Modal, Input, InputNumber, message, Popconfirm, Spin, Empty, Tabs, Badge, Select,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import {
@@ -10,6 +10,7 @@ import { useNavigate } from "react-router-dom";
 import dayjs from "dayjs";
 import PageShell from "../../components/PageShell";
 import apiClient from "../../services/apiClient";
+import { selectableProjects } from "../../utils/projectOptions";
 
 const fmt = (n: number) => "₹" + Math.round(n).toLocaleString("en-IN");
 
@@ -73,6 +74,8 @@ export default function BillRequests() {
   const [milestoneReq,    setMilestoneReq]    = useState<BillRequest | null>(null);
 
   const [search,            setSearch]            = useState("");
+  const [projectFilter,     setProjectFilter]     = useState<string | undefined>(undefined);
+  const [projectOptions,    setProjectOptions]    = useState<{ label: string; value: string }[]>([]);
 
   const [pendingAdvances,   setPendingAdvances]   = useState<{ _id: string; slipNo: string; amount: number; amountRecovered: number; balance: number; reference?: string }[]>([]);
   const [advanceRecovery,   setAdvanceRecovery]   = useState<number | null>(null);
@@ -101,6 +104,15 @@ export default function BillRequests() {
   };
 
   useEffect(() => { load(tab === "all" ? undefined : tab); }, [tab]);
+
+  useEffect(() => {
+    apiClient.get("/projects")
+      .then(res => setProjectOptions(
+        selectableProjects((res.data.projects ?? []) as { _id: string; name: string; code: string; parentId?: string | null }[])
+          .map(p => ({ label: `${p.name} (${p.code})`, value: p._id }))
+      ))
+      .catch(() => {});
+  }, []);
 
   const handleApprove = async (id: string) => {
     setSaving(true);
@@ -282,7 +294,8 @@ export default function BillRequests() {
   ];
 
   const filtered = (() => {
-    const byTab = tab === "all" ? requests : requests.filter(r => r.status === tab);
+    let byTab = tab === "all" ? requests : requests.filter(r => r.status === tab);
+    if (projectFilter) byTab = byTab.filter(r => r.projectId === projectFilter);
     const q = search.trim().toLowerCase();
     if (!q) return byTab;
     return byTab.filter(r =>
@@ -313,7 +326,7 @@ export default function BillRequests() {
         style={{ marginBottom: 16 }}
       />
 
-      <div style={{ marginBottom: 16 }}>
+      <div style={{ marginBottom: 16, display: "flex", gap: 10, flexWrap: "wrap" }}>
         <Input
           allowClear
           placeholder="Search by request no, work order, contractor, vendor code or project…"
@@ -321,6 +334,16 @@ export default function BillRequests() {
           onChange={e => setSearch(e.target.value)}
           style={{ maxWidth: 440, borderRadius: 8 }}
           prefix={<span style={{ color: "#9ca3af", marginRight: 4 }}>🔍</span>}
+        />
+        <Select
+          allowClear
+          showSearch
+          placeholder="Filter by project…"
+          value={projectFilter}
+          onChange={setProjectFilter}
+          options={projectOptions}
+          filterOption={(input, option) => (option?.label ?? "").toLowerCase().includes(input.toLowerCase())}
+          style={{ minWidth: 240 }}
         />
       </div>
 

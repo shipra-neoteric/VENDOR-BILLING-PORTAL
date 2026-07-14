@@ -4,12 +4,14 @@ const { createBillRules } = require('../validators/bill.validator');
 const {
   listBills, getBill, createBill, updateBill,
   verifyBill, approveBill, rejectBill, payBill, patchDeductions,
+  getBillingChain,
 } = require('../controllers/billController');
 
 router.use(authenticate);
 
-router.get('/',    listBills);
-router.get('/:id', getBill);
+router.get('/',                    listBills);
+router.get('/chain/:workOrderId',  getBillingChain);
+router.get('/:id',                 getBill);
 router.post('/',             authorizeOr('billing-payments', 'create',  'owner', 'gm', 'accounts', 'engineer', 'contractor'), createBillRules, createBill);
 router.put('/:id',           authorizeOr('billing-payments', 'edit',    'owner', 'gm', 'accounts', 'contractor'), updateBill);
 router.patch('/:id/verify',  authorizeOr('approvals',        'approve', 'owner', 'gm', 'engineer'),  verifyBill);

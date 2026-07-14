@@ -1,5 +1,5 @@
 export interface WORow   { _id: string; contractValue?: number; category?: string; status?: string; gstPercent?: number; }
-export interface BillRow { _id: string; amount?: number; status?: string; billDate?: string; workOrderId?: string; billNo?: string; vendorName?: string; }
+export interface BillRow { _id: string; amount?: number; paidAmount?: number; status?: string; billDate?: string; workOrderId?: string; billNo?: string; vendorName?: string; }
 
 export function calcKPIs(workOrders: WORow[], bills: BillRow[]) {
   const totalContractValue = workOrders.reduce((s, wo) => s + (wo.contractValue ?? 0), 0);
@@ -11,11 +11,12 @@ export function calcKPIs(workOrders: WORow[], bills: BillRow[]) {
   const certifiedAmt         = bills.filter(b => b.status === "approved" || b.status === "paid").reduce((s, b) => s + (b.amount ?? 0), 0);
   const pendingAmt           = bills.filter(b => b.status === "submitted" || b.status === "verified").reduce((s, b) => s + (b.amount ?? 0), 0);
   const paidAmt              = bills.filter(b => b.status === "paid").reduce((s, b) => s + (b.amount ?? 0), 0);
+  const actuallyPaid         = bills.filter(b => b.status === "paid").reduce((s, b) => s + (b.paidAmount ?? 0), 0);
   const approvedNotPaid      = bills.filter(b => b.status === "approved").reduce((s, b) => s + (b.amount ?? 0), 0);
   const approvedNotPaidCount = bills.filter(b => b.status === "approved").length;
   const pendingCount         = bills.filter(b => b.status === "submitted" || b.status === "verified").length;
   const remaining            = Math.max(0, totalContractValueWithGST - certifiedAmt - pendingAmt);
-  return { totalContractValue, totalContractValueWithGST, certifiedAmt, pendingAmt, paidAmt, approvedNotPaid, approvedNotPaidCount, pendingCount, remaining };
+  return { totalContractValue, totalContractValueWithGST, certifiedAmt, pendingAmt, paidAmt, actuallyPaid, approvedNotPaid, approvedNotPaidCount, pendingCount, remaining };
 }
 
 export function billsByWOMap(bills: BillRow[]): Record<string, number> {

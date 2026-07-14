@@ -13,6 +13,7 @@ import {
 } from "@ant-design/icons";
 import axios from "axios";
 import dayjs from "dayjs";
+import { selectableProjects } from "../../utils/projectOptions";
 
 const { Title, Text } = Typography;
 
@@ -60,7 +61,7 @@ const UNIT_OPTIONS = [
 
 interface CatOption { _id: string; name: string; parentId: string | null; }
 interface Contractor { vendorCode: string; companyName: string; ownerName: string; }
-interface Lookup     { _id: string; name: string; }
+interface Lookup     { _id: string; name: string; parentId?: string | null; }
 
 interface SubItemDraft {
   id: string;
@@ -508,7 +509,7 @@ export default function PublicWorkOrderForm() {
               <Form.Item name="projectId" label="Project"
                 rules={[{ required: true, message: "Select a project" }]}>
                 <Select placeholder="Select project" showSearch optionFilterProp="label"
-                  options={projects.map(p => ({ label: p.name, value: p._id }))} />
+                  options={selectableProjects(projects).map(p => ({ label: p.name, value: p._id }))} />
               </Form.Item>
 
               <Form.Item name="issueDate" label="Issue Date"

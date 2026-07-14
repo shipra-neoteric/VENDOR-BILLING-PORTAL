@@ -4,6 +4,7 @@ const contractorSchema = new mongoose.Schema(
   {
     vendorCode:          { type: String, required: true, unique: true },
     companyName:         { type: String, required: true, trim: true },
+    shortCode:           { type: String, trim: true, default: '' },
     ownerName:           { type: String, required: true, trim: true },
     address:             { type: String },
     mobile:              { type: String, required: true },

@@ -34,7 +34,6 @@ import {
   ExclamationCircleOutlined,
   HistoryOutlined,
   FilePdfOutlined,
-  BarChartOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 import type { Dayjs } from "dayjs";
@@ -45,6 +44,8 @@ import { useAuth } from "../../context/AuthContext";
 import { useCategories } from "../../hooks/useCategories";
 import DateRangeFilter, { inDateRange } from "../../components/DateRangeFilter";
 import { downloadWorkOrderPDF } from "../../components/WorkOrderPDF";
+import { selectableProjects } from "../../utils/projectOptions";
+import { vendorLabel } from "../../utils/vendorLabel";
 import type {
   Contractor,
   Project,
@@ -1122,7 +1123,7 @@ function WOFormFields({
               filterOption={(inp, opt) =>
                 String(opt?.label ?? "").toLowerCase().includes(inp.toLowerCase())
               }
-              options={projectsList.map(p => ({ label: p.name, value: (p as any)._id || p.id }))}
+              options={selectableProjects(projectsList).map(p => ({ label: p.name, value: (p as any)._id || p.id }))}
               getPopupContainer={(trigger) => trigger.parentElement || document.body}
             />
           </Form.Item>
@@ -1154,7 +1155,7 @@ function WOFormFields({
               }
               onChange={fillVendor}
               options={contractorsList.map(c => ({
-                label: `${c.vendorCode} — ${c.companyName}`,
+                label: `${c.vendorCode} — ${vendorLabel(c.companyName, c.shortCode)}`,
                 value: c.vendorCode,
               }))}
               getPopupContainer={(trigger) => trigger.parentElement || document.body}
@@ -1336,6 +1337,7 @@ export default function WorkItems() {
   const [categoryFilter,      setCategoryFilter]      = useState<string>("all");
   const [subCategoryFilter,   setSubCategoryFilter]   = useState<string>("all");
   const [progressFilter,      setProgressFilter]      = useState<string>("all");
+  const [projectFilter,       setProjectFilter]       = useState<string>("all");
   const [dateFrom,            setDateFrom]            = useState<Dayjs | null>(null);
   const [dateTo,              setDateTo]              = useState<Dayjs | null>(null);
   // bills keyed by workOrderId for billing tape in view drawer
@@ -1458,14 +1460,15 @@ export default function WorkItems() {
         }
       }
 
-      const matchDate = inDateRange(wo.issueDate, dateFrom, dateTo);
-      return matchSearch && matchStatus && matchCategory && matchProgress && matchDate;
+      const matchDate    = inDateRange(wo.issueDate, dateFrom, dateTo);
+      const matchProject = projectFilter === "all" || wo.projectId === projectFilter;
+      return matchSearch && matchStatus && matchCategory && matchProgress && matchDate && matchProject;
     }).sort((a, b) => {
       const numA = parseInt(a.workOrderNo.replace(/\D/g, ""), 10) || 0;
       const numB = parseInt(b.workOrderNo.replace(/\D/g, ""), 10) || 0;
       return numB - numA;
     });
-  }, [workOrders, search, statusFilter, categoryFilter, subCategoryFilter, progressFilter, subCatsOfSelected, dateFrom, dateTo]);
+  }, [workOrders, search, statusFilter, categoryFilter, subCategoryFilter, progressFilter, projectFilter, subCatsOfSelected, dateFrom, dateTo]);
 
   const nextWONo = useMemo(() => {
     const max = workOrders.reduce((m, wo) => {
@@ -1638,8 +1641,13 @@ export default function WorkItems() {
       title: "WO No",
       dataIndex: "workOrderNo",
       width: 120,
-      render: (t: string) => (
-        <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#f37916" }}>{t}</span>
+      render: (t: string, record: WorkOrder) => (
+        <span
+          onClick={() => navigate(`/work-items/${record.id}`)}
+          style={{ fontFamily: "monospace", fontWeight: 700, color: "#f37916", cursor: "pointer" }}
+        >
+          {t}
+        </span>
       ),
     },
     {
@@ -1732,13 +1740,14 @@ export default function WorkItems() {
           >
             View
           </Button>
-          <Tooltip title="Progress Dashboard">
+          <Tooltip title="Download PDF">
             <Button
               type="link"
               size="small"
-              icon={<BarChartOutlined />}
-              style={{ color: "#FF7A00" }}
-              onClick={() => navigate(`/work-items/${record.id}`)}
+              icon={<FilePdfOutlined />}
+              loading={pdfLoading}
+              style={{ color: "#e03b3b" }}
+              onClick={() => handleDownloadPDF(record)}
             />
           </Tooltip>
           <Button
@@ -1773,11 +1782,11 @@ export default function WorkItems() {
 
   const hasActiveFilters =
     statusFilter !== "all" || categoryFilter !== "all" ||
-    subCategoryFilter !== "all" || progressFilter !== "all" || search !== "";
+    subCategoryFilter !== "all" || progressFilter !== "all" || projectFilter !== "all" || search !== "";
 
   const clearAllFilters = () => {
     setSearch(""); setStatusFilter("all");
-    setCategoryFilter("all"); setSubCategoryFilter("all"); setProgressFilter("all");
+    setCategoryFilter("all"); setSubCategoryFilter("all"); setProgressFilter("all"); setProjectFilter("all");
   };
 
   // ── Render ────────────────────────────────────────────────────
@@ -1881,6 +1890,20 @@ export default function WorkItems() {
             ]}
           />
 
+          {/* Project */}
+          <Select
+            value={projectFilter}
+            onChange={setProjectFilter}
+            showSearch
+            style={{ width: 180 }}
+            suffixIcon={<span style={{ fontSize: 11, color: "#9CA3AF" }}>Project ▾</span>}
+            filterOption={(input, opt) => String(opt?.label ?? "").toLowerCase().includes(input.toLowerCase())}
+            options={[
+              { label: "All Projects", value: "all" },
+              ...selectableProjects(projects).map(p => ({ label: p.name, value: p.id })),
+            ]}
+          />
+
           {/* Date */}
           <DateRangeFilter onChange={(from, to) => { setDateFrom(from); setDateTo(to); }} />
 
@@ -1921,6 +1944,12 @@ export default function WorkItems() {
               <span style={{ background: "#F0FDF4", border: "1px solid #16a85a", color: "#16a85a", fontSize: 11, padding: "2px 8px", borderRadius: 5, display: "flex", alignItems: "center", gap: 4 }}>
                 Progress: {progressFilter === "not-started" ? "Not Started" : progressFilter === "running" ? "In Progress" : progressFilter === "completed" ? "Completed" : "Overdue"}
                 <button type="button" onClick={() => setProgressFilter("all")} style={{ background: "none", border: "none", cursor: "pointer", color: "#16a85a", padding: 0, fontSize: 12, lineHeight: 1 }}>×</button>
+              </span>
+            )}
+            {projectFilter !== "all" && (
+              <span style={{ background: "#FFF7ED", border: "1px solid #FF7A00", color: "#FF7A00", fontSize: 11, padding: "2px 8px", borderRadius: 5, display: "flex", alignItems: "center", gap: 4 }}>
+                Project: {selectableProjects(projects).find(p => p.id === projectFilter)?.name ?? projectFilter}
+                <button type="button" onClick={() => setProjectFilter("all")} style={{ background: "none", border: "none", cursor: "pointer", color: "#FF7A00", padding: 0, fontSize: 12, lineHeight: 1 }}>×</button>
               </span>
             )}
           </div>
@@ -2127,6 +2156,39 @@ export default function WorkItems() {
                 </div>
               );
             })()}
+
+            {/* ── Scope of Work ────────────────────────────── */}
+            <div style={{ background: "var(--nx-white)", border: "1px solid #E5E7EB", borderRadius: 10, overflow: "hidden" }}>
+              <div style={{ padding: "12px 16px", borderBottom: "1px solid #E5E7EB", fontWeight: 600, fontSize: 13, color: "#374151" }}>
+                Scope of Work
+              </div>
+              {currentSelectedWO.scopeItems.length === 0 ? (
+                <div style={{ padding: 24, textAlign: "center", color: "#9CA3AF", fontSize: 13 }}>No scope items defined</div>
+              ) : (
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                    <thead>
+                      <tr style={{ background: "#F9FAFB" }}>
+                        {["Description", "Unit", "Planned Qty", "Rate", "Amount"].map(h => (
+                          <th key={h} style={{ padding: "8px 16px", fontSize: 11, fontWeight: 700, color: "#6B7280", textAlign: "left", textTransform: "uppercase", letterSpacing: "0.05em", borderBottom: "1px solid #E5E7EB", whiteSpace: "nowrap" }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {currentSelectedWO.scopeItems.map((si, i) => (
+                        <tr key={si.id} style={{ borderBottom: "1px solid #F3F4F6", background: i % 2 === 0 ? "#fff" : "#FAFAFA" }}>
+                          <td style={{ padding: "9px 16px", fontSize: 13, fontWeight: 600, color: "#111827" }}>{si.description}</td>
+                          <td style={{ padding: "9px 16px", fontSize: 12, color: "#6B7280" }}>{si.unit}</td>
+                          <td style={{ padding: "9px 16px", fontFamily: "monospace", fontSize: 13, color: "#374151" }}>{si.plannedQty.toLocaleString("en-IN")}</td>
+                          <td style={{ padding: "9px 16px", fontFamily: "monospace", fontSize: 13, color: "#374151" }}>{fmt(si.rate || 0)}</td>
+                          <td style={{ padding: "9px 16px", fontFamily: "monospace", fontSize: 13, fontWeight: 700, color: "#FF7A00" }}>{fmt(si.amount || 0)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
 
           </>
         )}

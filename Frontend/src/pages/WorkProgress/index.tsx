@@ -8,11 +8,12 @@ import dayjs from "dayjs";
 import isoWeek from "dayjs/plugin/isoWeek";
 import apiClient from "../../services/apiClient";
 import { useAuth } from "../../context/AuthContext";
+import { selectableProjects } from "../../utils/projectOptions";
 
 dayjs.extend(isoWeek);
 
 // ── Shared types ──────────────────────────────────────────────────────────────
-interface Project   { _id: string; name: string; code: string; }
+interface Project   { _id: string; name: string; code: string; parentId?: string | null; }
 interface Category  { _id: string; name: string; color: string; }
 interface WorkOrder { _id: string; workOrderNo: string; vendorName: string; contractValue: number; category: string; projectName?: string; }
 interface ProgressEntry {
@@ -154,7 +155,7 @@ function WorkProgressAdmin() {
           <Select showSearch placeholder="Select project" style={{ width: "100%" }} value={selProject}
             onChange={v => { setSelProject(v); setSelWorkOrder(undefined); setMode("idle"); setWODetail(null); setBillReqs([]); setWOList([]); }}
             filterOption={(i, o) => String(o?.children ?? "").toLowerCase().includes(i.toLowerCase())}>
-            {projects.map(p => <Select.Option key={p._id} value={p._id}>{p.name}</Select.Option>)}
+            {selectableProjects(projects).map(p => <Select.Option key={p._id} value={p._id}>{p.name}</Select.Option>)}
           </Select>
         </div>
         <div style={{ flex: 1, minWidth: 180 }}>

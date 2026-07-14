@@ -5,6 +5,8 @@ import { ArrowLeftOutlined, BookOutlined, ReloadOutlined } from "@ant-design/ico
 import dayjs from "dayjs";
 import apiClient from "../../services/apiClient";
 import DateRangeFilter, { inDateRange } from "../../components/DateRangeFilter";
+import { selectableProjects } from "../../utils/projectOptions";
+import { vendorLabel } from "../../utils/vendorLabel";
 
 // ── Types ─────────────────────────────────────────────────────
 type BillStatus = "draft" | "submitted" | "verified" | "approved" | "rejected" | "paid";
@@ -18,11 +20,15 @@ interface Bill {
   _id: string; billNo: string; workOrderId?: string; workOrderNo?: string;
   projectName?: string; vendorCode?: string; vendorName?: string;
   billDate: string; billRefNo?: string; amount: number;
-  gstPercent: number; tdsPercent: number;
+  gstPercent: number; tdsPercent: number; paidAmount?: number;
   remarks?: string; status: BillStatus;
+  billType?: string; relationshipType?: string; isActive?: boolean;
+  supersededBy?: { _id: string; billNo: string; billType?: string } | null;
+  linkedBills?: { billId: string; billNo: string; relationshipType: string }[];
+  billingCycle?: number;
 }
-interface Project { _id: string; code?: string; name?: string; }
-interface Contractor { _id: string; vendorCode: string; companyName?: string; }
+interface Project { _id: string; code?: string; name?: string; parentId?: string | null; }
+interface Contractor { _id: string; vendorCode: string; companyName?: string; shortCode?: string; }
 
 // ── Helpers ───────────────────────────────────────────────────
 const fmt = (n: number) => "₹" + Math.round(n || 0).toLocaleString("en-IN");
@@ -43,6 +49,20 @@ const STATUS_CFG: Record<BillStatus, { color: string; label: string }> = {
   approved:  { color: "green",   label: "Approved" },
   rejected:  { color: "red",     label: "Rejected" },
   paid:      { color: "purple",  label: "Paid" },
+};
+
+const BILL_TYPE_LABEL: Record<string, string> = {
+  running:              "Running Bill",
+  final:                "Final Bill",
+  advance_mobilization: "Mob. Advance",
+  advance_secured:      "Secured Advance",
+  advance_material:     "Material Advance",
+  recovery:             "Recovery",
+  credit_note:          "Credit Note",
+  debit_note:           "Debit Note",
+  revision:             "Revision",
+  correction:           "Correction",
+  retention_release:    "Retention Release",
 };
 
 const CATEGORY_COLOR: Record<string, string> = {
@@ -143,19 +163,22 @@ export default function Ledger() {
   }), [workOrders, projectFilter, vendorFilter, dateFrom, dateTo]);
 
   const woSummaries = useMemo(() => filteredWOs.map(wo => {
-    const woBills = bills.filter(b => b.workOrderId?.toString() === wo._id?.toString());
-    const contract = wo.contractValue ?? 0;
+    const woBills       = bills.filter(b => b.workOrderId?.toString() === wo._id?.toString());
+    // Active bills: not superseded by another bill — these count toward certified totals
+    const activeBills   = woBills.filter(b => b.isActive !== false);
+    const contract      = wo.contractValue ?? 0;
     let totalGross = 0, certifiedNet = 0, pendingGross = 0;
-    for (const b of woBills) {
+    for (const b of activeBills) {
       const { gross, net } = calcBill(b);
       totalGross += gross;
       if (b.status === "approved" || b.status === "paid") certifiedNet += net;
       if (b.status === "submitted" || b.status === "verified") pendingGross += gross;
     }
+    const supersededCount = woBills.length - activeBills.length;
     const balance      = contract - certifiedNet;
     const billedPct    = contract ? (totalGross / contract) * 100 : 0;
     const certifiedPct = contract ? (certifiedNet / contract) * 100 : 0;
-    return { wo, woBills, contract, totalGross, certifiedNet, pendingGross, balance, billedPct, certifiedPct };
+    return { wo, woBills, activeBills, supersededCount, contract, totalGross, certifiedNet, pendingGross, balance, billedPct, certifiedPct };
   }), [filteredWOs, bills]);
 
   // ── Detail for selected WO ────────────────────────────────
@@ -165,20 +188,24 @@ export default function Ledger() {
     if (!wo) return null;
     const woBills = bills
       .filter(b => b.workOrderId?.toString() === selectedWOId)
-      .sort((a, b) => a.billDate.localeCompare(b.billDate));
+      .sort((a, b) => (a.billingCycle ?? 0) - (b.billingCycle ?? 0) || a.billDate.localeCompare(b.billDate));
     const contract = wo.contractValue ?? 0;
     let runningBalance = contract, cumCertifiedNet = 0;
     const rows = woBills.map((b, i) => {
       const { gst, gross, tds, net } = calcBill(b);
-      const isCert = b.status === "approved" || b.status === "paid";
+      // Only active bills contribute to the certified running balance
+      const isSuperseded = b.isActive === false;
+      const isCert = !isSuperseded && (b.status === "approved" || b.status === "paid");
       if (isCert) { runningBalance -= net; cumCertifiedNet += net; }
-      return { b, gst, gross, tds, net, isCert, balanceAfter: isCert ? runningBalance : null, seq: i + 1 };
+      return { b, gst, gross, tds, net, isCert, isSuperseded, balanceAfter: isCert ? runningBalance : null, seq: i + 1 };
     });
-    const totalGross   = rows.reduce((s, r) => s + r.gross, 0);
-    const totalNet     = rows.reduce((s, r) => s + r.net, 0);
-    const pendingGross = rows.filter(r => r.b.status === "submitted" || r.b.status === "verified").reduce((s, r) => s + r.gross, 0);
+    const activeRows   = rows.filter(r => !r.isSuperseded);
+    const totalGross   = activeRows.reduce((s, r) => s + r.gross, 0);
+    const totalNet     = activeRows.reduce((s, r) => s + r.net, 0);
+    const pendingGross = activeRows.filter(r => r.b.status === "submitted" || r.b.status === "verified").reduce((s, r) => s + r.gross, 0);
     const balance      = contract - cumCertifiedNet;
-    return { wo, rows, contract, totalGross, totalNet, certifiedNet: cumCertifiedNet, pendingGross, balance };
+    const supersededCount = rows.filter(r => r.isSuperseded).length;
+    return { wo, rows, contract, totalGross, totalNet, certifiedNet: cumCertifiedNet, pendingGross, balance, supersededCount };
   }, [selectedWOId, workOrders, bills]);
 
   if (loading) return (
@@ -190,10 +217,13 @@ export default function Ledger() {
   if (error) return <Alert type="error" message={error} style={{ margin: 24 }} />;
 
   // ── Portfolio totals ──────────────────────────────────────
-  const portfolioContract  = woSummaries.reduce((s, r) => s + r.contract, 0);
-  const portfolioGross     = woSummaries.reduce((s, r) => s + r.totalGross, 0);
-  const portfolioCertified = woSummaries.reduce((s, r) => s + r.certifiedNet, 0);
-  const portfolioBalance   = woSummaries.reduce((s, r) => s + Math.max(r.balance, 0), 0);
+  const portfolioContract      = woSummaries.reduce((s, r) => s + r.contract, 0);
+  const portfolioGross         = woSummaries.reduce((s, r) => s + r.totalGross, 0);
+  const portfolioCertified     = woSummaries.reduce((s, r) => s + r.certifiedNet, 0);
+  const portfolioBalance       = woSummaries.reduce((s, r) => s + Math.max(r.balance, 0), 0);
+  const portfolioActuallyPaid  = bills
+    .filter(b => b.status === "paid" && woSummaries.some(r => r.wo._id === b.workOrderId))
+    .reduce((s, b) => s + (b.paidAmount ?? 0), 0);
 
   // ═══════════════════════════════════════════════════════════
   //  DETAIL VIEW
@@ -227,6 +257,8 @@ export default function Ledger() {
             { label: "Contract Value", value: fmt(detail.contract), sub: "opening balance", color: "#2563eb" },
             { label: "Total Billed", value: detail.totalGross > 0 ? fmt(detail.totalGross) : "—", sub: `${detail.rows.length} bill${detail.rows.length !== 1 ? "s" : ""} · incl. GST`, color: "#f37916" },
             { label: "Certified (Net)", value: detail.certifiedNet > 0 ? fmt(detail.certifiedNet) : "—", sub: detail.contract ? `${pctStr(detail.certifiedNet, detail.contract)} of contract` : "approved bills only", color: "#16a85a" },
+            { label: "Total Bill Amount", value: fmt(detail.rows.filter(r => r.b.status === "paid").reduce((s, r) => s + r.gross, 0)), sub: "gross billed (paid bills)", color: "#0d9488" },
+            { label: "Cash Released (Net TDS)", value: fmt(detail.rows.filter(r => r.b.status === "paid").reduce((s, r) => s + (r.b.paidAmount ?? 0), 0)), sub: "actual bank transfer", color: "#1d4ed8" },
             { label: "Balance Remaining", value: fmt(Math.max(detail.balance, 0)), sub: detail.balance < 0 ? "⚠️ over-billed" : "uncertified contract value", color: detail.balance < 0 ? "#e03b3b" : "#5a6278" },
           ].map(s => (
             <Col key={s.label} xs={12} sm={6}><StatCard {...s} /></Col>
@@ -275,26 +307,46 @@ export default function Ledger() {
               </thead>
               <tbody>
                 {detail.rows.map(r => (
-                  <tr key={r.b._id} style={{ borderBottom: "1px solid #f0f0f0" }}
-                    onMouseEnter={e => (e.currentTarget.style.background = "#fffaf6")}
-                    onMouseLeave={e => (e.currentTarget.style.background = "")}
+                  <tr key={r.b._id}
+                    style={{
+                      borderBottom: "1px solid #f0f0f0",
+                      background: r.isSuperseded ? "#f9fafb" : undefined,
+                      opacity:    r.isSuperseded ? 0.65 : 1,
+                    }}
+                    onMouseEnter={e => { if (!r.isSuperseded) e.currentTarget.style.background = "#fffaf6"; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = r.isSuperseded ? "#f9fafb" : ""; }}
                   >
                     <td style={{ padding: "10px 12px", fontFamily: "monospace", color: "#9ba3b8", fontSize: 11 }}>{r.seq}</td>
                     <td style={{ padding: "10px 12px" }}>
-                      <div style={{ fontFamily: "monospace", fontWeight: 600, color: "#f37916" }}>{r.b.billNo}</div>
+                      <div style={{ fontFamily: "monospace", fontWeight: 600, color: r.isSuperseded ? "#9ba3b8" : "#f37916", textDecoration: r.isSuperseded ? "line-through" : undefined }}>
+                        {r.b.billNo}
+                      </div>
                       <div style={{ fontSize: 11, color: "#9ba3b8" }}>{dayjs(r.b.billDate).format("DD MMM YYYY")}</div>
+                      {r.b.supersededBy && (
+                        <div style={{ fontSize: 10, color: "#7c3aed", marginTop: 2, fontWeight: 600 }}>
+                          ↩ Superseded by {r.b.supersededBy.billNo}
+                        </div>
+                      )}
                     </td>
                     <td style={{ padding: "10px 12px", fontSize: 12, color: "#5a6278" }}>
                       {r.b.billRefNo && <div style={{ fontFamily: "monospace" }}>{r.b.billRefNo}</div>}
+                      {r.b.billType && r.b.billType !== "running" && (
+                        <div style={{ fontSize: 10, color: "#2563eb", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                          {BILL_TYPE_LABEL[r.b.billType] ?? r.b.billType}
+                        </div>
+                      )}
                       {r.b.remarks && <div style={{ fontSize: 11, color: "#9ba3b8", fontStyle: "italic" }}>{r.b.remarks}</div>}
                     </td>
                     <td style={{ padding: "10px 12px", textAlign: "right", fontFamily: "monospace" }}>{fmt(r.b.amount)}</td>
                     <td style={{ padding: "10px 12px", textAlign: "right", fontFamily: "monospace", color: "#16a34a" }}>{fmt(r.gst)}</td>
-                    <td style={{ padding: "10px 12px", textAlign: "right", fontFamily: "monospace", color: "#f37916", fontWeight: 600 }}>{fmt(r.gross)}</td>
+                    <td style={{ padding: "10px 12px", textAlign: "right", fontFamily: "monospace", color: r.isSuperseded ? "#9ba3b8" : "#f37916", fontWeight: 600 }}>{fmt(r.gross)}</td>
                     <td style={{ padding: "10px 12px", textAlign: "right", fontFamily: "monospace", color: "#dc2626" }}>({fmt(r.tds)})</td>
-                    <td style={{ padding: "10px 12px", textAlign: "right", fontFamily: "monospace", color: "#16a85a", fontWeight: 600 }}>{fmt(r.net)}</td>
+                    <td style={{ padding: "10px 12px", textAlign: "right", fontFamily: "monospace", color: r.isSuperseded ? "#9ba3b8" : "#16a85a", fontWeight: 600 }}>{fmt(r.net)}</td>
                     <td style={{ padding: "10px 12px", textAlign: "center" }}>
-                      <Tag color={STATUS_CFG[r.b.status].color}>{STATUS_CFG[r.b.status].label.toUpperCase()}</Tag>
+                      {r.isSuperseded
+                        ? <Tag color="default" style={{ fontSize: 10 }}>SUPERSEDED</Tag>
+                        : <Tag color={STATUS_CFG[r.b.status].color}>{STATUS_CFG[r.b.status].label.toUpperCase()}</Tag>
+                      }
                     </td>
                     <td style={{ padding: "10px 12px", textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: r.balanceAfter !== null ? (r.balanceAfter < 0 ? "#e03b3b" : "#16a85a") : "#9ba3b8" }}>
                       {r.balanceAfter !== null ? fmt(r.balanceAfter) : "—"}
@@ -349,6 +401,8 @@ export default function Ledger() {
           { label: "Total Contract Value", value: fmt(portfolioContract), sub: `${woSummaries.length} work orders`, color: "#2563eb" },
           { label: "Total Billed (Gross)", value: fmt(portfolioGross), sub: "all running bills incl. GST", color: "#f37916" },
           { label: "Total Certified (Net)", value: fmt(portfolioCertified), sub: "approved bills net payable", color: "#16a85a" },
+          { label: "Total Bill Amount", value: fmt(bills.filter(b => b.status === "paid" && woSummaries.some(r => r.wo._id === b.workOrderId)).reduce((s, b) => s + (b.amount ?? 0), 0)), sub: "gross billed (paid bills)", color: "#0d9488" },
+          { label: "Cash Released (Net TDS)", value: fmt(portfolioActuallyPaid), sub: "actual bank transfer", color: "#1d4ed8" },
           { label: "Balance Remaining", value: fmt(portfolioBalance), sub: "uncertified contract value", color: "#5a6278" },
         ].map(s => (
           <Col key={s.label} xs={12} sm={6}><StatCard {...s} /></Col>
@@ -361,14 +415,14 @@ export default function Ledger() {
           value={projectFilter} onChange={setProjectFilter} style={{ width: 220 }}
           options={[
             { value: "all", label: "All Projects" },
-            ...projects.map(p => ({ value: p._id, label: p.name || p._id })),
+            ...selectableProjects(projects).map(p => ({ value: p._id, label: p.name || p._id })),
           ]}
         />
         <Select
           value={vendorFilter} onChange={setVendorFilter} style={{ width: 240 }}
           options={[
             { value: "all", label: "All Vendors" },
-            ...contractors.map(c => ({ value: c.vendorCode, label: `${c.vendorCode} — ${c.companyName || ""}` })),
+            ...contractors.map(c => ({ value: c.vendorCode, label: `${c.vendorCode} — ${vendorLabel(c.companyName || "", c.shortCode)}` })),
           ]}
         />
         <DateRangeFilter onChange={(from, to) => { setDateFrom(from); setDateTo(to); }} />

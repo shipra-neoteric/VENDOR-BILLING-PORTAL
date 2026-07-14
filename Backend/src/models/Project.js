@@ -12,6 +12,7 @@ const projectSchema = new mongoose.Schema(
     expectedCompletion: { type: Date },
     projectType:        { type: String, enum: ['apartment', 'plot'], default: 'apartment' },
     status:             { type: String, enum: ['active', 'completed', 'on-hold'], default: 'active' },
+    parentId:           { type: mongoose.Schema.Types.ObjectId, ref: 'Project', default: null },
     createdBy:          { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },
   { timestamps: true }

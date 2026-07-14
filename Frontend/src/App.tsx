@@ -4,6 +4,7 @@ import { Toaster } from "react-hot-toast";
 import { useLocation } from "react-router-dom";
 import AppRoutes from "./routes/AppRoutes";
 import PublicWorkOrderForm from "./pages/PublicWorkOrderForm";
+import PublicContractorForm from "./pages/PublicContractorForm";
 import { AuthProvider } from "./context/AuthContext";
 import { ThemeProvider, useTheme } from "./context/ThemeContext";
 import baseTheme from "./theme/theme";
@@ -26,6 +27,15 @@ function ThemedApp() {
     return (
       <ConfigProvider theme={{ ...baseTheme, algorithm: antTheme.defaultAlgorithm }}>
         <PublicWorkOrderForm />
+        <Toaster position="top-right" />
+      </ConfigProvider>
+    );
+  }
+
+  if (pathname === "/public/contractor") {
+    return (
+      <ConfigProvider theme={{ ...baseTheme, algorithm: antTheme.defaultAlgorithm }}>
+        <PublicContractorForm />
         <Toaster position="top-right" />
       </ConfigProvider>
     );

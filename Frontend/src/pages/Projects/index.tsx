@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  Button, DatePicker, Drawer, Form, Input, Select, Space, Spin, Tag, message,
+  Button, DatePicker, Drawer, Form, Input, Select, Space, Spin, Tag, message, Popconfirm, Tooltip,
 } from "antd";
 import { WorkflowTimeline, type TimelineStep } from "../../components/WorkflowTimeline";
-import { ArrowLeftOutlined, EditOutlined, PlusOutlined, SearchOutlined } from "@ant-design/icons";
+import { ArrowLeftOutlined, DeleteOutlined, EditOutlined, PlusOutlined, SearchOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import PageShell from "../../components/PageShell";
 import apiClient from "../../services/apiClient";
+import BillDetailModal, { type BillDetailRequest } from "../../components/BillDetailModal";
+import { vendorLabel } from "../../utils/vendorLabel";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 interface Project {
@@ -22,15 +24,25 @@ interface Project {
   client?: string;
   startDate?: string;
   expectedCompletion?: string;
+  parentId?: string | null;
 }
 
 interface WORow {
   _id: string;
   workOrderNo: string;
+  vendorCode?: string;
   vendorName?: string;
   category?: string;
   status: string;
   contractValue?: number;
+}
+
+interface ContractorRow {
+  _id: string;
+  vendorCode: string;
+  companyName: string;
+  shortCode?: string;
+  ownerName?: string;
 }
 
 interface ProjectStats {
@@ -139,31 +151,47 @@ function buildTimelineSteps(events: ProjectEvent[], woNo: string): TimelineStep[
 
 // ── Project Detail View ────────────────────────────────────────────────────────
 function ProjectDetail({
-  project, onBack, onEdit,
+  project, onBack, onEdit, onDelete, allProjects, onSelectProject, onAddSubProject,
 }: {
   project: Project;
   onBack: () => void;
   onEdit: (p: Project, e: React.MouseEvent) => void;
+  onDelete: (p: Project) => void;
+  allProjects: Project[];
+  onSelectProject: (p: Project) => void;
+  onAddSubProject: (parent: Project) => void;
 }) {
   const id = project._id || project.id;
+  const parentProject = project.parentId ? allProjects.find(p => p.id === project.parentId) : null;
+  const subProjects = project.parentId ? [] : allProjects.filter(p => p.parentId === project.id);
   const [wos,           setWOs]          = useState<WORow[]>([]);
   const [stats,         setStats]        = useState<ProjectStats | null>(null);
   const [activity,      setActivity]     = useState<ProjectEvent[]>([]);
+  const [billRequests,  setBillRequests] = useState<BillDetailRequest[]>([]);
+  const [contractors,   setContractors]  = useState<ContractorRow[]>([]);
   const [loading,       setLoading]      = useState(true);
   const [selectedWONo,  setSelectedWONo] = useState<string>("");
+  const [activeTab,     setActiveTab]    = useState<"vendors" | "workorders" | "category" | "bills" | "activity">("workorders");
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [viewBill,      setViewBill]     = useState<BillDetailRequest | null>(null);
 
   useEffect(() => {
     setLoading(true);
+    setSelectedCategory(null);
     Promise.all([
       apiClient.get(`/work-orders?projectId=${id}`),
       apiClient.get(`/projects/${id}/stats`),
       apiClient.get(`/projects/${id}/activity?limit=30`),
+      apiClient.get(`/bill-requests?projectId=${id}`),
+      apiClient.get(`/contractors`),
     ])
-      .then(([wosR, statsR, actR]) => {
+      .then(([wosR, statsR, actR, brR, contR]) => {
         const loadedWOs: WORow[] = wosR.data.workOrders ?? [];
         setWOs(loadedWOs);
         setStats(statsR.data.stats ?? null);
         setActivity(actR.data.events ?? []);
+        setBillRequests(brR.data.billRequests ?? []);
+        setContractors(contR.data.contractors ?? []);
         if (loadedWOs.length > 0) {
           const active = loadedWOs.find(w => w.status === "in-progress") ?? loadedWOs[loadedWOs.length - 1];
           setSelectedWONo(active.workOrderNo);
@@ -175,11 +203,30 @@ function ProjectDetail({
 
   const completedCount = wos.filter(w => w.status === "completed").length;
 
+  const projectVendors = useMemo(() => {
+    const vendorCodes = new Set(wos.map(w => w.vendorCode).filter(Boolean));
+    return contractors.filter(c => vendorCodes.has(c.vendorCode)).map(c => {
+      const vendorWOs = wos.filter(w => w.vendorCode === c.vendorCode);
+      return {
+        contractor: c,
+        woCount: vendorWOs.length,
+        contractValue: vendorWOs.reduce((s, w) => s + (w.contractValue || 0), 0),
+      };
+    });
+  }, [wos, contractors]);
+
   return (
     <div>
-      <Button icon={<ArrowLeftOutlined />} onClick={onBack} style={{ marginBottom: 20, fontWeight: 500 }}>
-        Back to Projects
-      </Button>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20 }}>
+        <Button icon={<ArrowLeftOutlined />} onClick={onBack} style={{ fontWeight: 500 }}>
+          Back to Projects
+        </Button>
+        {parentProject && (
+          <Button type="link" onClick={() => onSelectProject(parentProject)} style={{ fontWeight: 500, color: "#FF7A00", paddingLeft: 4 }}>
+            ← {parentProject.name}
+          </Button>
+        )}
+      </div>
 
       {/* Project header card */}
       <div style={{
@@ -224,11 +271,77 @@ function ProjectDetail({
             )}
           </div>
         </div>
-        <Button type="primary" icon={<EditOutlined />} onClick={e => onEdit(project, e)}
-          style={{ background: "#FF7A00", borderColor: "#FF7A00", flexShrink: 0 }}>
-          Edit Project
-        </Button>
+        <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+          <Button type="primary" icon={<EditOutlined />} onClick={e => onEdit(project, e)}
+            style={{ background: "#FF7A00", borderColor: "#FF7A00" }}>
+            Edit Project
+          </Button>
+          <Tooltip title={subProjects.length > 0 ? "Delete its sub-projects first" : undefined}>
+            <Popconfirm
+              title={`Delete "${project.name}"?`}
+              description="This cannot be undone."
+              okText="Delete" okType="danger" cancelText="Cancel"
+              onConfirm={() => onDelete(project)}
+              disabled={subProjects.length > 0}
+            >
+              <Button danger icon={<DeleteOutlined />} disabled={subProjects.length > 0}>
+                Delete
+              </Button>
+            </Popconfirm>
+          </Tooltip>
+        </div>
       </div>
+
+      {/* Sub-Projects */}
+      {!project.parentId && (
+        <div style={{ background: "var(--nx-white)", border: "1px solid var(--nx-border)", borderRadius: 12, overflow: "hidden", marginBottom: 20 }}>
+          <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--nx-border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div style={{ fontWeight: 700, fontSize: 15, color: "var(--nx-text)" }}>Sub-Projects</div>
+            <Button size="small" icon={<PlusOutlined />} onClick={() => onAddSubProject(project)} style={{ color: "#FF7A00", borderColor: "#FF7A00" }}>
+              Add Sub-Project
+            </Button>
+          </div>
+          {subProjects.length === 0 ? (
+            <div style={{ padding: 32, textAlign: "center", color: "var(--nx-text-muted)" }}>
+              <div style={{ fontSize: 13 }}>No sub-projects yet.</div>
+            </div>
+          ) : (
+            <div>
+              {subProjects.map((sp, i) => (
+                <div
+                  key={sp.id}
+                  onClick={() => onSelectProject(sp)}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 12, padding: "12px 20px", cursor: "pointer",
+                    borderBottom: i < subProjects.length - 1 ? "1px solid var(--nx-border)" : "none",
+                  }}
+                >
+                  <span style={{
+                    background: "#FFF4E8", color: "#FF7A00", fontFamily: "monospace",
+                    fontWeight: 700, fontSize: 11, padding: "2px 8px", borderRadius: 5,
+                  }}>{sp.code}</span>
+                  <span style={{ flex: 1, fontWeight: 600, fontSize: 13, color: "var(--nx-text)" }}>{sp.name}</span>
+                  <span style={{
+                    background: STATUS_BG[sp.status], color: STATUS_COLOR[sp.status],
+                    fontSize: 11, fontWeight: 600, padding: "2px 10px", borderRadius: 20,
+                  }}>{STATUS_LABEL[sp.status]}</span>
+                  <div onClick={e => e.stopPropagation()}>
+                    <Popconfirm
+                      title={`Delete "${sp.name}"?`}
+                      description="This cannot be undone."
+                      okText="Delete" okType="danger" cancelText="Cancel"
+                      onConfirm={() => onDelete(sp)}
+                    >
+                      <Button size="small" icon={<DeleteOutlined />} danger />
+                    </Popconfirm>
+                  </div>
+                  <span style={{ fontSize: 12, color: "var(--nx-text-muted)" }}>→</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {loading ? (
         <div style={{ display: "flex", justifyContent: "center", padding: 60 }}><Spin size="large" /></div>
@@ -270,13 +383,184 @@ function ProjectDetail({
                   }}>{i.label}</span>
                 ))}
               </div>
+            </>
+          )}
 
-              {/* Category breakdown */}
-              {stats.categoryBreakdown.length > 0 && (
-                <div style={{ background: "var(--nx-white)", border: "1px solid var(--nx-border)", borderRadius: 12, overflow: "hidden", marginBottom: 20 }}>
-                  <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--nx-border)", fontWeight: 700, fontSize: 14, color: "var(--nx-text)" }}>
-                    Category Breakdown
+          {/* Tab switcher */}
+          <div style={{ display: "flex", gap: 4, background: "var(--nx-fill-2)", padding: 4, borderRadius: 12, marginBottom: 20, flexWrap: "wrap" }}>
+            {([
+              ["vendors",    "Vendors"],
+              ["workorders", "Work Orders"],
+              ["category",   "Category"],
+              ["bills",      "Bills"],
+              ["activity",   "Live Activity"],
+            ] as const).map(([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setActiveTab(key)}
+                style={{
+                  flex: "1 1 auto", border: "none", borderRadius: 9, padding: "8px 16px",
+                  fontSize: 13, fontWeight: 700, cursor: "pointer", transition: "all 0.15s",
+                  background: activeTab === key ? "#FF7A00" : "transparent",
+                  color:      activeTab === key ? "#fff"    : "var(--nx-text-2)",
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {/* Vendors tab */}
+          {activeTab === "vendors" && (
+            <div style={{ background: "var(--nx-white)", border: "1px solid var(--nx-border)", borderRadius: 12, overflow: "hidden", marginBottom: 20 }}>
+              <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--nx-border)", fontWeight: 700, fontSize: 15, color: "var(--nx-text)" }}>
+                Vendors
+              </div>
+              {projectVendors.length === 0 ? (
+                <div style={{ padding: 48, textAlign: "center", color: "var(--nx-text-muted)" }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: "var(--nx-text-2)" }}>No vendors yet</div>
+                  <div style={{ fontSize: 12, marginTop: 4 }}>Vendors appear here once work orders are assigned to them.</div>
+                </div>
+              ) : (
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                    <thead>
+                      <tr style={{ background: "var(--nx-fill-2)" }}>
+                        {["Vendor", "Vendor Code", "Owner", "Work Orders", "Contract Value"].map(h => (
+                          <th key={h} style={{ padding: "10px 16px", fontSize: 11, fontWeight: 700, color: "var(--nx-table-header-color)", textAlign: "left", textTransform: "uppercase", letterSpacing: "0.05em", borderBottom: "1px solid var(--nx-border)", whiteSpace: "nowrap" }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {projectVendors.map((v, i) => (
+                        <tr key={v.contractor._id} style={{ borderBottom: "1px solid var(--nx-border)", background: i % 2 === 0 ? "var(--nx-white)" : "var(--nx-fill-2)" }}>
+                          <td style={{ padding: "10px 16px", fontSize: 13, color: "var(--nx-text)", fontWeight: 600 }}>{vendorLabel(v.contractor.companyName, v.contractor.shortCode)}</td>
+                          <td style={{ padding: "10px 16px", fontFamily: "monospace", fontSize: 12, color: "#FF7A00", fontWeight: 700 }}>{v.contractor.vendorCode}</td>
+                          <td style={{ padding: "10px 16px", fontSize: 12, color: "var(--nx-text-2)" }}>{v.contractor.ownerName || "—"}</td>
+                          <td style={{ padding: "10px 16px", fontFamily: "monospace", fontSize: 12, color: "var(--nx-text)" }}>{v.woCount}</td>
+                          <td style={{ padding: "10px 16px", fontFamily: "monospace", fontSize: 13, color: "var(--nx-text)", fontWeight: 600 }}>{fmt(v.contractValue)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Work Orders tab */}
+          {activeTab === "workorders" && (
+            <>
+              <div style={{ background: "var(--nx-white)", border: "1px solid var(--nx-border)", borderRadius: 12, overflow: "hidden", marginBottom: 20 }}>
+                <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--nx-border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div style={{ fontWeight: 700, fontSize: 15, color: "var(--nx-text)" }}>Work Orders</div>
+                  <div style={{ fontSize: 12, color: "var(--nx-text-muted)" }}>{wos.length} total</div>
+                </div>
+                {wos.length === 0 ? (
+                  <div style={{ padding: 48, textAlign: "center", color: "var(--nx-text-muted)" }}>
+                    <div style={{ fontSize: 32, marginBottom: 8 }}>📋</div>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: "var(--nx-text-2)" }}>No work orders yet</div>
+                    <div style={{ fontSize: 12, marginTop: 4 }}>Work orders assigned to this project will appear here.</div>
                   </div>
+                ) : (
+                  <div style={{ overflowX: "auto" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                      <thead>
+                        <tr style={{ background: "var(--nx-fill-2)" }}>
+                          {["WO Number", "Vendor", "Category", "Status", "Contract Value"].map(h => (
+                            <th key={h} style={{
+                              padding: "10px 16px", fontSize: 11, fontWeight: 700,
+                              color: "var(--nx-table-header-color)", textAlign: "left",
+                              textTransform: "uppercase", letterSpacing: "0.05em",
+                              borderBottom: "1px solid var(--nx-border)", whiteSpace: "nowrap",
+                            }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {wos.map((wo, i) => (
+                          <tr key={wo._id} style={{ borderBottom: "1px solid var(--nx-border)", background: i % 2 === 0 ? "var(--nx-white)" : "var(--nx-fill-2)" }}>
+                            <td style={{ padding: "10px 16px", fontFamily: "monospace", fontWeight: 700, color: "#FF7A00", fontSize: 13 }}>{wo.workOrderNo}</td>
+                            <td style={{ padding: "10px 16px", fontSize: 13, color: "var(--nx-text)", fontWeight: 500 }}>{wo.vendorName || "—"}</td>
+                            <td style={{ padding: "10px 16px", fontSize: 12, color: "var(--nx-text-2)" }}>{wo.category || "—"}</td>
+                            <td style={{ padding: "10px 16px" }}>
+                              <span style={{
+                                background: (WO_STATUS_COLOR[wo.status] || "#9CA3AF") + "22",
+                                color: WO_STATUS_COLOR[wo.status] || "#9CA3AF",
+                                fontSize: 11, fontWeight: 600, padding: "2px 10px", borderRadius: 20,
+                              }}>
+                                {WO_STATUS_LABEL[wo.status] || wo.status}
+                              </span>
+                            </td>
+                            <td style={{ padding: "10px 16px", fontFamily: "monospace", fontSize: 13, color: "var(--nx-text)", fontWeight: 600 }}>
+                              {fmt(wo.contractValue || 0)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              {/* Work Order Lifecycle Timeline */}
+              {wos.length > 0 && (
+                <div style={{ background: "var(--nx-white)", border: "1px solid var(--nx-border)", borderRadius: 12, overflow: "hidden", marginBottom: 20 }}>
+                  <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--nx-border)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: 15, color: "var(--nx-text)" }}>Work Order Lifecycle</div>
+                      <div style={{ fontSize: 11, color: "var(--nx-text-muted)", marginTop: 2 }}>Billing workflow progress — click any completed step for details</div>
+                    </div>
+                    {/* WO selector */}
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      {wos.map(wo => (
+                        <button
+                          key={wo._id}
+                          onClick={() => setSelectedWONo(wo.workOrderNo)}
+                          style={{
+                            background: selectedWONo === wo.workOrderNo ? "#FF7A00" : "var(--nx-fill)",
+                            color:      selectedWONo === wo.workOrderNo ? "#fff"    : "var(--nx-text-2)",
+                            border: "none", borderRadius: 8, padding: "4px 12px",
+                            fontSize: 11, fontWeight: 700, fontFamily: "monospace",
+                            cursor: "pointer", transition: "all 0.15s",
+                          }}
+                        >
+                          {wo.workOrderNo}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div style={{ padding: "20px 20px 16px" }}>
+                    <WorkflowTimeline
+                      steps={selectedWONo ? buildTimelineSteps(activity, selectedWONo) : []}
+                    />
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Category tab */}
+          {activeTab === "category" && stats && (
+            <div style={{ background: "var(--nx-white)", border: "1px solid var(--nx-border)", borderRadius: 12, overflow: "hidden", marginBottom: 20 }}>
+              <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--nx-border)", display: "flex", alignItems: "center", gap: 10 }}>
+                {selectedCategory && (
+                  <button type="button" onClick={() => setSelectedCategory(null)} style={{ background: "none", border: "none", cursor: "pointer", color: "#FF7A00", fontWeight: 700, fontSize: 13, padding: 0 }}>
+                    ← Categories
+                  </button>
+                )}
+                <div style={{ fontWeight: 700, fontSize: 14, color: "var(--nx-text)" }}>
+                  {selectedCategory ? `Bills — ${selectedCategory}` : "Category Breakdown"}
+                </div>
+              </div>
+
+              {!selectedCategory ? (
+                stats.categoryBreakdown.length === 0 ? (
+                  <div style={{ padding: 48, textAlign: "center", color: "var(--nx-text-muted)" }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: "var(--nx-text-2)" }}>No categories yet</div>
+                  </div>
+                ) : (
                   <div style={{ overflowX: "auto" }}>
                     <table style={{ width: "100%", borderCollapse: "collapse" }}>
                       <thead>
@@ -288,7 +572,11 @@ function ProjectDetail({
                       </thead>
                       <tbody>
                         {stats.categoryBreakdown.map((cat, i) => (
-                          <tr key={cat.category} style={{ borderBottom: "1px solid var(--nx-border)", background: i % 2 === 0 ? "var(--nx-white)" : "var(--nx-fill-2)" }}>
+                          <tr
+                            key={cat.category}
+                            onClick={() => setSelectedCategory(cat.category)}
+                            style={{ borderBottom: "1px solid var(--nx-border)", background: i % 2 === 0 ? "var(--nx-white)" : "var(--nx-fill-2)", cursor: "pointer" }}
+                          >
                             <td style={{ padding: "10px 14px", fontWeight: 600, color: "var(--nx-text)", fontSize: 13 }}>{cat.category}</td>
                             <td style={{ padding: "10px 14px", fontFamily: "monospace", fontSize: 12, color: "var(--nx-text)" }}>{cat.woCount}</td>
                             <td style={{ padding: "10px 14px", fontFamily: "monospace", fontSize: 12, color: "var(--nx-text)" }}>{cat.vendorCount}</td>
@@ -307,143 +595,131 @@ function ProjectDetail({
                       </tbody>
                     </table>
                   </div>
+                )
+              ) : (
+                (() => {
+                  const catBills = billRequests.filter(br => br.category === selectedCategory);
+                  return catBills.length === 0 ? (
+                    <div style={{ padding: 48, textAlign: "center", color: "var(--nx-text-muted)" }}>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: "var(--nx-text-2)" }}>No bills under this category yet</div>
+                    </div>
+                  ) : (
+                    <div>
+                      {catBills.map((br, i) => (
+                        <div
+                          key={br._id}
+                          onClick={() => setViewBill(br)}
+                          style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 20px", cursor: "pointer", borderBottom: i < catBills.length - 1 ? "1px solid var(--nx-border)" : "none" }}
+                        >
+                          <span style={{ background: "#FFF4E8", color: "#FF7A00", fontFamily: "monospace", fontWeight: 700, fontSize: 12, padding: "2px 8px", borderRadius: 5 }}>{br.reqNo}</span>
+                          <span style={{ flex: 1, fontSize: 13, color: "var(--nx-text)", fontWeight: 500 }}>{br.vendorName}</span>
+                          <span style={{ fontSize: 12, color: "var(--nx-text-muted)" }}>{dayjs(br.createdAt).format("DD MMM YYYY")}</span>
+                          <Tag color={br.status === "approved" ? "green" : br.status === "rejected" ? "red" : "orange"}>{br.status}</Tag>
+                          <span style={{ fontSize: 12, color: "var(--nx-text-muted)" }}>→</span>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()
+              )}
+            </div>
+          )}
+
+          {/* Bills tab */}
+          {activeTab === "bills" && (
+            <div style={{ background: "var(--nx-white)", border: "1px solid var(--nx-border)", borderRadius: 12, overflow: "hidden", marginBottom: 20 }}>
+              <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--nx-border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div style={{ fontWeight: 700, fontSize: 15, color: "var(--nx-text)" }}>Bills</div>
+                <div style={{ fontSize: 12, color: "var(--nx-text-muted)" }}>{billRequests.length} total</div>
+              </div>
+              {billRequests.length === 0 ? (
+                <div style={{ padding: 48, textAlign: "center", color: "var(--nx-text-muted)" }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: "var(--nx-text-2)" }}>No bills yet</div>
+                </div>
+              ) : (
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                    <thead>
+                      <tr style={{ background: "var(--nx-fill-2)" }}>
+                        {["Req No", "Work Order", "Vendor", "Category", "Date", "Status"].map(h => (
+                          <th key={h} style={{ padding: "10px 16px", fontSize: 11, fontWeight: 700, color: "var(--nx-table-header-color)", textAlign: "left", textTransform: "uppercase", letterSpacing: "0.05em", borderBottom: "1px solid var(--nx-border)", whiteSpace: "nowrap" }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {billRequests.map((br, i) => (
+                        <tr
+                          key={br._id}
+                          onClick={() => setViewBill(br)}
+                          style={{ borderBottom: "1px solid var(--nx-border)", background: i % 2 === 0 ? "var(--nx-white)" : "var(--nx-fill-2)", cursor: "pointer" }}
+                        >
+                          <td style={{ padding: "10px 16px", fontFamily: "monospace", fontWeight: 700, color: "#FF7A00", fontSize: 13 }}>{br.reqNo}</td>
+                          <td style={{ padding: "10px 16px", fontFamily: "monospace", fontSize: 12, color: "var(--nx-text)" }}>{br.workOrderNo}</td>
+                          <td style={{ padding: "10px 16px", fontSize: 13, color: "var(--nx-text)", fontWeight: 500 }}>{br.vendorName}</td>
+                          <td style={{ padding: "10px 16px", fontSize: 12, color: "var(--nx-text-2)" }}>{br.category || "—"}</td>
+                          <td style={{ padding: "10px 16px", fontSize: 12, color: "var(--nx-text-muted)" }}>{dayjs(br.createdAt).format("DD MMM YYYY")}</td>
+                          <td style={{ padding: "10px 16px" }}><Tag color={br.status === "approved" ? "green" : br.status === "rejected" ? "red" : "orange"}>{br.status}</Tag></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               )}
-            </>
-          )}
-
-          {/* Work Orders */}
-          <div style={{ background: "var(--nx-white)", border: "1px solid var(--nx-border)", borderRadius: 12, overflow: "hidden", marginBottom: 20 }}>
-            <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--nx-border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div style={{ fontWeight: 700, fontSize: 15, color: "var(--nx-text)" }}>Work Orders</div>
-              <div style={{ fontSize: 12, color: "var(--nx-text-muted)" }}>{wos.length} total</div>
-            </div>
-            {wos.length === 0 ? (
-              <div style={{ padding: 48, textAlign: "center", color: "var(--nx-text-muted)" }}>
-                <div style={{ fontSize: 32, marginBottom: 8 }}>📋</div>
-                <div style={{ fontSize: 14, fontWeight: 600, color: "var(--nx-text-2)" }}>No work orders yet</div>
-                <div style={{ fontSize: 12, marginTop: 4 }}>Work orders assigned to this project will appear here.</div>
-              </div>
-            ) : (
-              <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                  <thead>
-                    <tr style={{ background: "var(--nx-fill-2)" }}>
-                      {["WO Number", "Vendor", "Category", "Status", "Contract Value"].map(h => (
-                        <th key={h} style={{
-                          padding: "10px 16px", fontSize: 11, fontWeight: 700,
-                          color: "var(--nx-table-header-color)", textAlign: "left",
-                          textTransform: "uppercase", letterSpacing: "0.05em",
-                          borderBottom: "1px solid var(--nx-border)", whiteSpace: "nowrap",
-                        }}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {wos.map((wo, i) => (
-                      <tr key={wo._id} style={{ borderBottom: "1px solid var(--nx-border)", background: i % 2 === 0 ? "var(--nx-white)" : "var(--nx-fill-2)" }}>
-                        <td style={{ padding: "10px 16px", fontFamily: "monospace", fontWeight: 700, color: "#FF7A00", fontSize: 13 }}>{wo.workOrderNo}</td>
-                        <td style={{ padding: "10px 16px", fontSize: 13, color: "var(--nx-text)", fontWeight: 500 }}>{wo.vendorName || "—"}</td>
-                        <td style={{ padding: "10px 16px", fontSize: 12, color: "var(--nx-text-2)" }}>{wo.category || "—"}</td>
-                        <td style={{ padding: "10px 16px" }}>
-                          <span style={{
-                            background: (WO_STATUS_COLOR[wo.status] || "#9CA3AF") + "22",
-                            color: WO_STATUS_COLOR[wo.status] || "#9CA3AF",
-                            fontSize: 11, fontWeight: 600, padding: "2px 10px", borderRadius: 20,
-                          }}>
-                            {WO_STATUS_LABEL[wo.status] || wo.status}
-                          </span>
-                        </td>
-                        <td style={{ padding: "10px 16px", fontFamily: "monospace", fontSize: 13, color: "var(--nx-text)", fontWeight: 600 }}>
-                          {fmt(wo.contractValue || 0)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-
-          {/* Work Order Lifecycle Timeline */}
-          {wos.length > 0 && (
-            <div style={{ background: "var(--nx-white)", border: "1px solid var(--nx-border)", borderRadius: 12, overflow: "hidden", marginBottom: 20 }}>
-              <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--nx-border)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: 15, color: "var(--nx-text)" }}>Work Order Lifecycle</div>
-                  <div style={{ fontSize: 11, color: "var(--nx-text-muted)", marginTop: 2 }}>Billing workflow progress — click any completed step for details</div>
-                </div>
-                {/* WO selector */}
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  {wos.map(wo => (
-                    <button
-                      key={wo._id}
-                      onClick={() => setSelectedWONo(wo.workOrderNo)}
-                      style={{
-                        background: selectedWONo === wo.workOrderNo ? "#FF7A00" : "var(--nx-fill)",
-                        color:      selectedWONo === wo.workOrderNo ? "#fff"    : "var(--nx-text-2)",
-                        border: "none", borderRadius: 8, padding: "4px 12px",
-                        fontSize: 11, fontWeight: 700, fontFamily: "monospace",
-                        cursor: "pointer", transition: "all 0.15s",
-                      }}
-                    >
-                      {wo.workOrderNo}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div style={{ padding: "20px 20px 16px" }}>
-                <WorkflowTimeline
-                  steps={selectedWONo ? buildTimelineSteps(activity, selectedWONo) : []}
-                />
-              </div>
             </div>
           )}
 
-          {/* Activity Timeline */}
-          {activity.length > 0 && (
+          {/* Live Activity tab */}
+          {activeTab === "activity" && (
             <div style={{ background: "var(--nx-white)", border: "1px solid var(--nx-border)", borderRadius: 12, overflow: "hidden" }}>
               <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--nx-border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div style={{ fontWeight: 700, fontSize: 15, color: "var(--nx-text)" }}>Live Activity</div>
                 <div style={{ fontSize: 12, color: "var(--nx-text-muted)" }}>Last {activity.length} events</div>
               </div>
-              <div style={{ padding: "8px 20px 20px" }}>
-                {activity.map((ev, i) => {
-                  const cfg = EVENT_CONFIG[ev.type] ?? { icon: "📌", color: "#9CA3AF", label: ev.type };
-                  return (
-                    <div key={ev._id} style={{ display: "flex", gap: 12, paddingTop: 14, paddingBottom: i < activity.length - 1 ? 14 : 0, borderBottom: i < activity.length - 1 ? "1px solid var(--nx-border)" : "none" }}>
-                      <div style={{
-                        width: 32, height: 32, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
-                        background: cfg.color + "18", border: `1.5px solid ${cfg.color}44`, fontSize: 15, flexShrink: 0,
-                      }}>
-                        {cfg.icon}
-                      </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
-                          <div style={{ fontSize: 13, fontWeight: 600, color: "var(--nx-text)" }}>
-                            {cfg.label}
-                            {ev.stageNo && <span style={{ color: "#FF7A00", fontSize: 11, marginLeft: 6 }}>Stage {ev.stageNo}</span>}
-                          </div>
-                          <div style={{ fontSize: 11, color: "var(--nx-text-muted)", whiteSpace: "nowrap", flexShrink: 0 }}>
-                            {dayjs(ev.createdAt).format("DD MMM, HH:mm")}
-                          </div>
+              {activity.length === 0 ? (
+                <div style={{ padding: 48, textAlign: "center", color: "var(--nx-text-muted)" }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: "var(--nx-text-2)" }}>No activity yet</div>
+                </div>
+              ) : (
+                <div style={{ padding: "8px 20px 20px" }}>
+                  {activity.map((ev, i) => {
+                    const cfg = EVENT_CONFIG[ev.type] ?? { icon: "📌", color: "#9CA3AF", label: ev.type };
+                    return (
+                      <div key={ev._id} style={{ display: "flex", gap: 12, paddingTop: 14, paddingBottom: i < activity.length - 1 ? 14 : 0, borderBottom: i < activity.length - 1 ? "1px solid var(--nx-border)" : "none" }}>
+                        <div style={{
+                          width: 32, height: 32, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
+                          background: cfg.color + "18", border: `1.5px solid ${cfg.color}44`, fontSize: 15, flexShrink: 0,
+                        }}>
+                          {cfg.icon}
                         </div>
-                        <div style={{ fontSize: 12, color: "var(--nx-text-2)", marginTop: 2 }}>
-                          {ev.vendorName && <span>{ev.vendorName}</span>}
-                          {ev.workOrderNo && <span style={{ fontFamily: "monospace", color: "#FF7A00", marginLeft: ev.vendorName ? 6 : 0 }}>{ev.workOrderNo}</span>}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--nx-text)" }}>
+                              {cfg.label}
+                              {ev.stageNo && <span style={{ color: "#FF7A00", fontSize: 11, marginLeft: 6 }}>Stage {ev.stageNo}</span>}
+                            </div>
+                            <div style={{ fontSize: 11, color: "var(--nx-text-muted)", whiteSpace: "nowrap", flexShrink: 0 }}>
+                              {dayjs(ev.createdAt).format("DD MMM, HH:mm")}
+                            </div>
+                          </div>
+                          <div style={{ fontSize: 12, color: "var(--nx-text-2)", marginTop: 2 }}>
+                            {ev.vendorName && <span>{ev.vendorName}</span>}
+                            {ev.workOrderNo && <span style={{ fontFamily: "monospace", color: "#FF7A00", marginLeft: ev.vendorName ? 6 : 0 }}>{ev.workOrderNo}</span>}
+                          </div>
+                          {ev.performedByName && (
+                            <div style={{ fontSize: 11, color: "var(--nx-text-muted)", marginTop: 2 }}>by {ev.performedByName}</div>
+                          )}
                         </div>
-                        {ev.performedByName && (
-                          <div style={{ fontSize: 11, color: "var(--nx-text-muted)", marginTop: 2 }}>by {ev.performedByName}</div>
-                        )}
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
         </>
       )}
+
+      <BillDetailModal billRequest={viewBill} open={!!viewBill} onClose={() => setViewBill(null)} />
     </div>
   );
 }
@@ -457,6 +733,7 @@ export default function Projects() {
   const [drawerOpen, setDrawerOpen]       = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [detailProject, setDetailProject] = useState<Project | null>(null);
+  const [creatingUnderParent, setCreatingUnderParent] = useState<Project | null>(null);
   const [form] = Form.useForm();
 
   // ── Load ──────────────────────────────────────────────────────────────────
@@ -468,13 +745,32 @@ export default function Projects() {
   }, []);
 
   const filtered = useMemo(() =>
-    projects.filter(p =>
-      p.name.toLowerCase().includes(search.toLowerCase()) ||
-      p.code.toLowerCase().includes(search.toLowerCase()) ||
-      (p.location || "").toLowerCase().includes(search.toLowerCase())
-    ),
+    projects
+      .filter(p =>
+        !p.parentId && (
+          p.name.toLowerCase().includes(search.toLowerCase()) ||
+          p.code.toLowerCase().includes(search.toLowerCase()) ||
+          (p.location || "").toLowerCase().includes(search.toLowerCase())
+        )
+      )
+      .sort((a, b) => a.name.localeCompare(b.name)),
     [projects, search]
   );
+
+  const getSubProjects = (parentId: string) =>
+    projects.filter(p => p.parentId === parentId).sort((a, b) => a.name.localeCompare(b.name));
+
+  const handleDeleteProject = async (project: Project) => {
+    try {
+      await apiClient.delete(`/projects/${project.id}`);
+      setProjects(prev => prev.filter(p => p.id !== project.id));
+      if (detailProject?.id === project.id) setDetailProject(null);
+      message.success(`"${project.name}" deleted`);
+    } catch (e: unknown) {
+      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message || "Delete failed";
+      message.error(msg);
+    }
+  };
 
   // ── Stats ─────────────────────────────────────────────────────────────────
   const stats = [
@@ -487,6 +783,15 @@ export default function Projects() {
   // ── Handlers ──────────────────────────────────────────────────────────────
   const openCreate = () => {
     setEditingProject(null);
+    setCreatingUnderParent(null);
+    form.resetFields();
+    form.setFieldsValue({ status: "active", projectType: "apartment" });
+    setDrawerOpen(true);
+  };
+
+  const openAddSubProject = (parent: Project) => {
+    setEditingProject(null);
+    setCreatingUnderParent(parent);
     form.resetFields();
     form.setFieldsValue({ status: "active", projectType: "apartment" });
     setDrawerOpen(true);
@@ -495,6 +800,7 @@ export default function Projects() {
   const openEdit = (project: Project, e?: React.MouseEvent) => {
     e?.stopPropagation();
     setEditingProject(project);
+    setCreatingUnderParent(null);
     form.setFieldsValue({
       name: project.name,
       location: project.location,
@@ -521,7 +827,8 @@ export default function Projects() {
         if (detailProject?.id === editingProject.id) setDetailProject(updated);
         message.success("Project updated");
       } else {
-        const res = await apiClient.post<{ project: Project }>("/projects", values);
+        const payload = { ...values, parentId: creatingUnderParent?.id ?? undefined };
+        const res = await apiClient.post<{ project: Project }>("/projects", payload);
         setProjects(prev => [normalizeId(res.data.project), ...prev]);
         message.success(`Project ${res.data.project.code} created`);
       }
@@ -571,6 +878,10 @@ export default function Projects() {
           project={detailProject}
           onBack={() => setDetailProject(null)}
           onEdit={openEdit}
+          onDelete={handleDeleteProject}
+          allProjects={projects}
+          onSelectProject={setDetailProject}
+          onAddSubProject={openAddSubProject}
         />
       ) : loading ? (
         <div style={{ display: "flex", justifyContent: "center", padding: 80 }}>
@@ -666,9 +977,16 @@ export default function Projects() {
                   </div>
 
                   {/* Location */}
-                  <div style={{ fontSize: 12, color: "var(--nx-text-2)", marginBottom: 12 }}>
+                  <div style={{ fontSize: 12, color: "var(--nx-text-2)", marginBottom: 6 }}>
                     📍 {proj.location || "—"}
                   </div>
+
+                  {/* Sub-projects badge */}
+                  {getSubProjects(proj.id).length > 0 && (
+                    <div style={{ fontSize: 11, color: "#7c3aed", fontWeight: 600, marginBottom: 6 }}>
+                      📁 {getSubProjects(proj.id).length} sub-project{getSubProjects(proj.id).length !== 1 ? "s" : ""}
+                    </div>
+                  )}
 
                   {/* Bottom row: type + arrow */}
                   <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", borderTop: "1px solid var(--nx-border)", paddingTop: 10, gap: 6 }}>
@@ -684,8 +1002,8 @@ export default function Projects() {
                     <span style={{ fontSize: 12, color: "var(--nx-text-muted)" }}>→</span>
                   </div>
 
-                  {/* Edit button */}
-                  <div style={{ marginTop: 8, display: "flex", justifyContent: "flex-end" }}>
+                  {/* Edit / Delete buttons */}
+                  <div style={{ marginTop: 8, display: "flex", justifyContent: "flex-end", gap: 4 }} onClick={e => e.stopPropagation()}>
                     <Button
                       size="small" type="link" icon={<EditOutlined />}
                       onClick={e => openEdit(proj, e)}
@@ -693,6 +1011,23 @@ export default function Projects() {
                     >
                       Edit
                     </Button>
+                    <Tooltip title={getSubProjects(proj.id).length > 0 ? "Delete its sub-projects first" : undefined}>
+                      <Popconfirm
+                        title={`Delete "${proj.name}"?`}
+                        description="This cannot be undone."
+                        okText="Delete" okType="danger" cancelText="Cancel"
+                        onConfirm={() => handleDeleteProject(proj)}
+                        disabled={getSubProjects(proj.id).length > 0}
+                      >
+                        <Button
+                          size="small" type="link" icon={<DeleteOutlined />} danger
+                          disabled={getSubProjects(proj.id).length > 0}
+                          style={{ padding: "0 4px", fontSize: 12 }}
+                        >
+                          Delete
+                        </Button>
+                      </Popconfirm>
+                    </Tooltip>
                   </div>
                 </div>
               ))}
@@ -712,12 +1047,14 @@ export default function Projects() {
             <span style={{ fontSize: 20 }}>🏗️</span>
             <div>
               <div style={{ fontWeight: 700, fontSize: 16 }}>
-                {editingProject ? "Edit Project" : "Add Project"}
+                {editingProject ? "Edit Project" : creatingUnderParent ? "Add Sub-Project" : "Add Project"}
               </div>
               <div style={{ fontSize: 12, color: "#6B7280", fontWeight: 400 }}>
                 {editingProject
                   ? `Editing ${editingProject.code}`
-                  : "Project code will be auto-assigned (PRJ-001)"}
+                  : creatingUnderParent
+                    ? `Under "${creatingUnderParent.name}"`
+                    : "Project code will be auto-assigned (PRJ-001)"}
               </div>
             </div>
           </Space>

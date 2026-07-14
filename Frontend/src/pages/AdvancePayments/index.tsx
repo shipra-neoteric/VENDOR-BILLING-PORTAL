@@ -8,6 +8,8 @@ import { PlusOutlined, DeleteOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import PageShell from "../../components/PageShell";
 import apiClient from "../../services/apiClient";
+import { selectableProjects } from "../../utils/projectOptions";
+import { vendorLabel } from "../../utils/vendorLabel";
 
 const fmt = (n: number) => "₹" + Math.round(n).toLocaleString("en-IN");
 
@@ -39,8 +41,8 @@ export default function AdvancePayments() {
   const [loading,  setLoading]  = useState(false);
   const [modal,    setModal]    = useState(false);
   const [saving,   setSaving]   = useState(false);
-  const [projects,     setProjects]     = useState<{ _id: string; name: string }[]>([]);
-  const [contractors,  setContractors]  = useState<{ vendorCode: string; companyName: string }[]>([]);
+  const [projects,     setProjects]     = useState<{ _id: string; name: string; parentId?: string | null }[]>([]);
+  const [contractors,  setContractors]  = useState<{ vendorCode: string; companyName: string; shortCode?: string }[]>([]);
   const [form] = Form.useForm();
 
   const load = async () => {
@@ -98,7 +100,19 @@ export default function AdvancePayments() {
     },
     { title: "Date",       dataIndex: "date",        render: d => dayjs(d).format("DD MMM YYYY") },
     { title: "Project",    dataIndex: "projectName"  },
-    { title: "Contractor", dataIndex: "contractorName", render: (v, r) => <div><div>{v}</div><div style={{ fontSize: 11, color: "#9CA3AF", fontFamily: "monospace" }}>{r.contractorCode}</div></div> },
+    {
+      title: "Contractor",
+      dataIndex: "contractorName",
+      render: (v, r) => {
+        const live = contractors.find(c => c.vendorCode === r.contractorCode);
+        return (
+          <div>
+            <div>{live ? vendorLabel(live.companyName, live.shortCode) : v}</div>
+            <div style={{ fontSize: 11, color: "#9CA3AF", fontFamily: "monospace" }}>{r.contractorCode}</div>
+          </div>
+        );
+      },
+    },
     {
       title: "Advance Given",
       dataIndex: "amount",
@@ -172,11 +186,11 @@ export default function AdvancePayments() {
         <Form form={form} layout="vertical" style={{ marginTop: 12 }}>
           <Form.Item name="projectId" label="Project" rules={[{ required: true, message: "Select a project" }]}>
             <Select placeholder="Select project" showSearch optionFilterProp="label"
-              options={projects.map(p => ({ label: p.name, value: p._id }))} />
+              options={selectableProjects(projects).map(p => ({ label: p.name, value: p._id }))} />
           </Form.Item>
           <Form.Item name="contractorCode" label="Contractor" rules={[{ required: true, message: "Select a contractor" }]}>
             <Select placeholder="Select contractor" showSearch optionFilterProp="label"
-              options={contractors.map(c => ({ label: `${c.vendorCode} — ${c.companyName}`, value: c.vendorCode }))} />
+              options={contractors.map(c => ({ label: `${c.vendorCode} — ${vendorLabel(c.companyName, c.shortCode)}`, value: c.vendorCode }))} />
           </Form.Item>
           <Form.Item name="amount" label="Advance Amount (₹)" rules={[{ required: true, message: "Enter amount" }]}>
             <InputNumber style={{ width: "100%" }} min={1} precision={0} prefix="₹" placeholder="e.g. 50000" />

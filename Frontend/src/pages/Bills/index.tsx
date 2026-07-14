@@ -36,6 +36,8 @@ import type { Dayjs } from "dayjs";
 import PageShell from "../../components/PageShell";
 import apiClient from "../../services/apiClient";
 import DateRangeFilter, { inDateRange } from "../../components/DateRangeFilter";
+import { selectableProjects } from "../../utils/projectOptions";
+import { vendorLabel } from "../../utils/vendorLabel";
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -93,11 +95,18 @@ interface Bill {
   retentionReleased?: number;
   retentionReleaseRemark?: string;
   createdAt?: string;
+  // Bill Relationship Engine
+  billType?: string;
+  relationshipType?: string;
+  linkedBills?: { billId: string; billNo: string; relationshipType: string }[];
+  billingCycle?: number;
+  isActive?: boolean;
+  supersededBy?: { _id: string; billNo: string; billType?: string } | null;
 }
 
-interface ProjectOpt { id: string; name: string; code: string; }
+interface ProjectOpt { id: string; name: string; code: string; parentId?: string | null; }
 interface ContractorOpt {
-  id: string; vendorCode: string; companyName: string; ownerName?: string;
+  id: string; vendorCode: string; companyName: string; shortCode?: string; ownerName?: string;
   mobile?: string; address?: string; bankName?: string; accountNumber?: string;
   ifscCode?: string; branchName?: string; gstNumber?: string; panNumber?: string;
 }
@@ -107,6 +116,11 @@ interface WorkOrderOpt { id: string; workOrderNo: string; projectId: string; pro
 // ── Helpers ──────────────────────────────────────────────────────
 
 const fmt = (n: number) => "₹" + Math.round(n || 0).toLocaleString("en-IN");
+// Net payable after GST + hold/retention, minus advance recovery — before TDS.
+const netAfterAdvance = (b: Bill) => {
+  const netPay = (b.amount || 0) * (1 + (b.gstPercent ?? 0) / 100) - (b.retentionAmount ?? 0);
+  return Math.round(netPay - (b.advanceRecovery ?? 0));
+};
 const normalizeId = (obj: Record<string, unknown>) => ({ ...obj, id: (obj._id || obj.id)?.toString() || "" });
 const normalizeWO = (wo: Record<string, unknown>): WorkOrderOpt => ({
   ...normalizeId(wo),
@@ -126,6 +140,33 @@ const STATUS_CFG: Record<BillStatus, { label: string; antColor: string }> = {
   rejected:  { label: "Rejected",   antColor: "error" },
   paid:      { label: "Paid",       antColor: "purple" },
 };
+
+const BILL_TYPE_CFG: Record<string, { label: string; color: string }> = {
+  running:              { label: "Running Bill",     color: "#2563eb" },
+  final:                { label: "Final Bill",       color: "#16a85a" },
+  advance_mobilization: { label: "Mob. Advance",     color: "#7c3aed" },
+  advance_secured:      { label: "Secured Advance",  color: "#7c3aed" },
+  advance_material:     { label: "Material Advance", color: "#7c3aed" },
+  recovery:             { label: "Recovery",         color: "#d97706" },
+  credit_note:          { label: "Credit Note",      color: "#dc2626" },
+  debit_note:           { label: "Debit Note",       color: "#d97706" },
+  revision:             { label: "Revision",         color: "#0d9488" },
+  correction:           { label: "Correction",       color: "#0d9488" },
+  retention_release:    { label: "Retention Release",color: "#0369a1" },
+};
+
+const RELATIONSHIP_OPTIONS = [
+  { value: "NONE",                label: "None — standalone bill" },
+  { value: "CONTINUES",           label: "CONTINUES — next running bill in sequence" },
+  { value: "SUPERSEDES",          label: "SUPERSEDES — final bill replacing running bills" },
+  { value: "ADJUSTMENT",          label: "ADJUSTMENT — credit/debit note on a bill" },
+  { value: "REVISION_OF",         label: "REVISION_OF — replaces an earlier bill" },
+  { value: "ADVANCE_FOR",         label: "ADVANCE_FOR — advance for future billing" },
+  { value: "RECOVERY_OF",         label: "RECOVERY_OF — recovering a prior advance" },
+  { value: "SETTLEMENT_OF",       label: "SETTLEMENT_OF — settling outstanding balance" },
+  { value: "CORRECTION_OF",       label: "CORRECTION_OF — correcting a previous bill" },
+  { value: "RETENTION_RELEASE_OF",label: "RETENTION_RELEASE_OF — releasing held retention" },
+];
 
 // ── Print / Download ─────────────────────────────────────────────
 
@@ -360,6 +401,7 @@ export default function Bills() {
   // Filters
   const [search, setSearch]             = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [projectFilter, setProjectFilter] = useState<string | undefined>(undefined);
   const [dateFrom, setDateFrom]         = useState<Dayjs | null>(null);
   const [dateTo, setDateTo]             = useState<Dayjs | null>(null);
 
@@ -374,6 +416,13 @@ export default function Bills() {
 
   // GST slab for new bill (TDS is decided at payment time)
   const [newGstPercent, setNewGstPercent] = useState<number>(18);
+
+  // Bill Relationship Engine state
+  const [newBillType, setNewBillType]         = useState<string>("running");
+  const [newRelType, setNewRelType]           = useState<string>("NONE");
+  const [newLinkedBillIds, setNewLinkedBillIds] = useState<string[]>([]);
+  const [newSelectedWOId, setNewSelectedWOId] = useState<string>("");
+  const [woExistingBills, setWoExistingBills] = useState<Bill[]>([]);
 
   // View drawer
   const [viewBill, setViewBill]   = useState<Bill | null>(null);
@@ -449,11 +498,12 @@ export default function Bills() {
         (b.workOrderNo || "").toLowerCase().includes(q) ||
         (b.projectName || "").toLowerCase().includes(q) ||
         (b.generatedBy || "").toLowerCase().includes(q);
-      const matchStatus = statusFilter === "all" || b.status === statusFilter;
-      const matchDate   = inDateRange(b.billDate, dateFrom, dateTo);
-      return matchSearch && matchStatus && matchDate;
+      const matchStatus  = statusFilter === "all" || b.status === statusFilter;
+      const matchProject = !projectFilter || b.projectId === projectFilter;
+      const matchDate    = inDateRange(b.billDate, dateFrom, dateTo);
+      return matchSearch && matchStatus && matchProject && matchDate;
     });
-  }, [bills, search, statusFilter, dateFrom, dateTo]);
+  }, [bills, search, statusFilter, projectFilter, dateFrom, dateTo]);
 
   const stats = useMemo(() => ({
     submitted: bills.filter((b) => b.status === "submitted" || b.status === "verified").length,
@@ -527,7 +577,22 @@ export default function Bills() {
     setWoList([]);
     setLineItems([blankRow()]);
     setNewGstPercent(18);
+    setNewBillType("running");
+    setNewRelType("NONE");
+    setNewLinkedBillIds([]);
+    setNewSelectedWOId("");
+    setWoExistingBills([]);
     setNewOpen(true);
+  }
+
+  async function handleWOSelectForLinking(woId: string) {
+    setNewSelectedWOId(woId);
+    if (!woId) { setWoExistingBills([]); return; }
+    try {
+      const res = await apiClient.get<{ bills: Record<string, unknown>[] }>(`/bills/chain/${woId}`);
+      const existing = (res.data.bills || []).map(b => normalizeId(b) as unknown as Bill);
+      setWoExistingBills(existing.filter(b => b.status !== "rejected"));
+    } catch { setWoExistingBills([]); }
   }
 
   async function handleSubmitBill() {
@@ -546,6 +611,12 @@ export default function Bills() {
     const project = projects.find((p) => p.id === newProjectId);
     const contractor = selectedContractor;
 
+    // Build linkedBills from selected IDs
+    const linkedBills = newLinkedBillIds.map(id => {
+      const found = woExistingBills.find(b => b.id === id);
+      return { billId: id, billNo: found?.billNo ?? id, relationshipType: newRelType };
+    });
+
     const payload = {
       billDate:          dayjs(values.billDate as string).toISOString(),
       projectId:         newProjectId || undefined,
@@ -557,6 +628,10 @@ export default function Bills() {
       remarks:           values.remarks ?? "",
       gstPercent:        newGstPercent,
       tdsPercent:        0,
+      billType:          newBillType,
+      relationshipType:  linkedBills.length > 0 ? newRelType : "NONE",
+      linkedBills:       linkedBills.length > 0 ? linkedBills : [],
+      workOrderId:       newSelectedWOId || undefined,
       lineItems: validItems.map(({ key: _k, ...rest }) => ({
         ...rest,
         amount: rest.billedQty * rest.rate,
@@ -715,14 +790,31 @@ export default function Bills() {
       title: "Amount",
       dataIndex: "amount",
       width: 130,
-      render: (v: number) => (
-        <span style={{ fontFamily: "monospace", fontWeight: 700 }}>{fmt(v)}</span>
+      render: (_: number, r: Bill) => (
+        <span style={{ fontFamily: "monospace", fontWeight: 700 }}>{fmt(netAfterAdvance(r))}</span>
       ),
+    },
+    {
+      title: "Type",
+      dataIndex: "billType",
+      width: 120,
+      render: (v: string, r: Bill) => {
+        if (r.isActive === false) {
+          return (
+            <div>
+              <Tag color="default" style={{ fontSize: 10, fontWeight: 600 }}>SUPERSEDED</Tag>
+              {r.supersededBy && <div style={{ fontSize: 10, color: "#7c3aed", marginTop: 2 }}>↩ {r.supersededBy.billNo}</div>}
+            </div>
+          );
+        }
+        const cfg = BILL_TYPE_CFG[v || "running"];
+        return <Tag style={{ fontSize: 10, color: cfg?.color || "#2563eb", borderColor: cfg?.color || "#2563eb", background: `${cfg?.color || "#2563eb"}10` }}>{cfg?.label || "Running Bill"}</Tag>;
+      },
     },
     {
       title: "Status",
       dataIndex: "status",
-      width: 120,
+      width: 110,
       render: (v: BillStatus) => (
         <Tag color={STATUS_CFG[v]?.antColor || "default"} style={{ fontWeight: 600, fontSize: 11 }}>
           {STATUS_CFG[v]?.label || v}
@@ -820,6 +912,16 @@ export default function Bills() {
             { label: "Rejected",    value: "rejected" },
             { label: "Paid",        value: "paid" },
           ]}
+        />
+        <Select
+          allowClear
+          showSearch
+          placeholder="Filter by project…"
+          value={projectFilter}
+          onChange={setProjectFilter}
+          options={selectableProjects(projects).map((p) => ({ label: p.name, value: p.id }))}
+          filterOption={(input, opt) => String(opt?.label ?? "").toLowerCase().includes(input.toLowerCase())}
+          style={{ width: 220 }}
         />
         <DateRangeFilter onChange={(from, to) => { setDateFrom(from); setDateTo(to); }} />
         <span style={{ marginLeft: "auto", color: "#9ba3b8", fontSize: 12 }}>
@@ -953,6 +1055,42 @@ export default function Bills() {
                 </Col>
               </Row>
             </div>
+
+            {/* Bill Relationship Chain */}
+            {(currentViewBill.billType || currentViewBill.linkedBills?.length || currentViewBill.supersededBy) && (
+              <div style={{ border: "1px solid #e4e7ee", borderRadius: 8, padding: "10px 14px", marginBottom: 16, background: "#fafbff" }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#5a6278", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Billing Chain</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
+                  {currentViewBill.billType && (
+                    <div>
+                      <span style={{ fontSize: 11, color: "#9ba3b8" }}>Type: </span>
+                      <Tag style={{ fontSize: 11, color: BILL_TYPE_CFG[currentViewBill.billType]?.color || "#2563eb", borderColor: BILL_TYPE_CFG[currentViewBill.billType]?.color || "#2563eb", background: `${BILL_TYPE_CFG[currentViewBill.billType]?.color || "#2563eb"}10` }}>
+                        {BILL_TYPE_CFG[currentViewBill.billType]?.label || currentViewBill.billType}
+                      </Tag>
+                    </div>
+                  )}
+                  {currentViewBill.billingCycle && (
+                    <div><span style={{ fontSize: 11, color: "#9ba3b8" }}>Cycle: </span><Tag>#{currentViewBill.billingCycle}</Tag></div>
+                  )}
+                  {currentViewBill.isActive === false && currentViewBill.supersededBy && (
+                    <div style={{ color: "#7c3aed", fontSize: 12, fontWeight: 600 }}>
+                      ↩ Superseded by <span style={{ fontFamily: "monospace" }}>{currentViewBill.supersededBy.billNo}</span>
+                    </div>
+                  )}
+                  {currentViewBill.linkedBills && currentViewBill.linkedBills.length > 0 && (
+                    <div>
+                      <span style={{ fontSize: 11, color: "#9ba3b8" }}>Links: </span>
+                      {currentViewBill.linkedBills.map((l, i) => (
+                        <span key={i} style={{ marginLeft: 4 }}>
+                          <Tag color="blue" style={{ fontFamily: "monospace", fontSize: 11 }}>{l.billNo}</Tag>
+                          <span style={{ fontSize: 10, color: "#7c3aed" }}>{l.relationshipType}</span>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             {currentViewBill.status === "rejected" && currentViewBill.rejectReason && (
               <Alert
@@ -1161,7 +1299,7 @@ export default function Bills() {
                     style={{ width: "100%" }}
                     onChange={(v) => { setNewProjectId(v || ""); setWoList([]); }}
                     filterOption={(input, opt) => String(opt?.label ?? "").toLowerCase().includes(input.toLowerCase())}
-                    options={projects.map((p) => ({ value: p.id, label: `${p.code ? p.code + " — " : ""}${p.name}` }))}
+                    options={selectableProjects(projects).map((p) => ({ value: p.id, label: `${p.code ? p.code + " — " : ""}${p.name}` }))}
                   />
                 </Form.Item>
               </Col>
@@ -1175,7 +1313,7 @@ export default function Bills() {
                     filterOption={(input, opt) => String(opt?.label ?? "").toLowerCase().includes(input.toLowerCase())}
                     options={contractors.map((c) => ({
                       value: c.id,
-                      label: `${c.companyName}  (${c.vendorCode})`,
+                      label: `${vendorLabel(c.companyName, c.shortCode)}  (${c.vendorCode})`,
                     }))}
                   />
                 </Form.Item>
@@ -1248,7 +1386,93 @@ export default function Bills() {
                   />
                 </Form.Item>
               </Col>
+              <Col span={8}>
+                <Form.Item label="Bill Type" tooltip="Categorise what kind of bill this is for the billing chain">
+                  <Select
+                    value={newBillType}
+                    onChange={v => setNewBillType(v)}
+                    options={Object.entries(BILL_TYPE_CFG).map(([k, v]) => ({ value: k, label: v.label }))}
+                  />
+                </Form.Item>
+              </Col>
             </Row>
+
+            {/* Bill Relationship — link to existing bills on this WO */}
+            <div style={{ background: "#f0f6ff", border: "1px solid #bfdbfe", borderRadius: 8, padding: "12px 14px", marginBottom: 12 }}>
+              <div style={{ fontWeight: 700, fontSize: 12, color: "#1d4ed8", marginBottom: 10 }}>
+                Bill Relationship (optional)
+                <span style={{ fontWeight: 400, color: "#6b7280", marginLeft: 8 }}>Link this bill to existing bills in a Work Order</span>
+              </div>
+              <Row gutter={12}>
+                <Col span={10}>
+                  <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 4 }}>Select Work Order</div>
+                  <Select
+                    showSearch allowClear placeholder="Search work order…"
+                    style={{ width: "100%" }}
+                    value={newSelectedWOId || undefined}
+                    onChange={(v) => { handleWOSelectForLinking(v || ""); setNewLinkedBillIds([]); }}
+                    filterOption={(input, opt) => String(opt?.label ?? "").toLowerCase().includes(input.toLowerCase())}
+                    options={woList.map(wo => ({ value: wo.id, label: `${wo.workOrderNo}` }))}
+                  />
+                </Col>
+                <Col span={14}>
+                  <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 4 }}>Relationship Type</div>
+                  <Select
+                    value={newRelType}
+                    onChange={v => setNewRelType(v)}
+                    style={{ width: "100%" }}
+                    options={RELATIONSHIP_OPTIONS}
+                  />
+                </Col>
+              </Row>
+              {woExistingBills.length > 0 && (
+                <div style={{ marginTop: 10 }}>
+                  <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 6 }}>
+                    Select bills this new bill relates to:
+                    {["SUPERSEDES", "REVISION_OF", "CORRECTION_OF"].includes(newRelType) && (
+                      <span style={{ color: "#dc2626", marginLeft: 6, fontWeight: 600 }}>
+                        ⚠ Selected bills will be marked inactive (superseded)
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {woExistingBills.map(b => {
+                      const isSelected = newLinkedBillIds.includes(b.id);
+                      const isSuperseded = b.isActive === false;
+                      return (
+                        <div
+                          key={b.id}
+                          onClick={() => {
+                            if (isSuperseded) return;
+                            setNewLinkedBillIds(prev =>
+                              prev.includes(b.id) ? prev.filter(x => x !== b.id) : [...prev, b.id]
+                            );
+                          }}
+                          style={{
+                            border: `1.5px solid ${isSelected ? "#2563eb" : "#e4e7ee"}`,
+                            borderRadius: 6, padding: "6px 10px", cursor: isSuperseded ? "not-allowed" : "pointer",
+                            background: isSelected ? "#eff6ff" : isSuperseded ? "#f9fafb" : "#fff",
+                            opacity: isSuperseded ? 0.5 : 1, fontSize: 12, userSelect: "none",
+                          }}
+                        >
+                          <span style={{ fontFamily: "monospace", fontWeight: 700, color: isSelected ? "#2563eb" : "#f37916" }}>
+                            {b.billNo}
+                          </span>
+                          <span style={{ color: "#9ba3b8", marginLeft: 6 }}>
+                            ₹{Math.round(b.amount).toLocaleString("en-IN")}
+                          </span>
+                          <Tag color={STATUS_CFG[b.status]?.antColor} style={{ marginLeft: 6, fontSize: 10, lineHeight: "18px" }}>
+                            {STATUS_CFG[b.status]?.label}
+                          </Tag>
+                          {isSuperseded && <Tag color="default" style={{ fontSize: 10 }}>Superseded</Tag>}
+                          {isSelected && <span style={{ color: "#2563eb", marginLeft: 4 }}>✓</span>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* Work order import (optional) */}
             {woList.length > 0 && (

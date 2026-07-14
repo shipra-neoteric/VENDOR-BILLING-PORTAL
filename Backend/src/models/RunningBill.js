@@ -34,6 +34,52 @@ const runningBillSchema = new mongoose.Schema(
     gstPercent:  { type: Number, default: 18 },
     tdsPercent:  { type: Number, default: 1 },
     remarks:     { type: String },
+
+    // ── Bill Relationship Engine ──────────────────────────────
+    billType: {
+      type: String,
+      enum: [
+        'running',              // Standard Running / RA Bill
+        'final',                // Final Cumulative Bill
+        'advance_mobilization', // Mobilization Advance
+        'advance_secured',      // Secured Advance
+        'advance_material',     // Material Advance
+        'recovery',             // Recovery Bill
+        'credit_note',          // Credit Note (negative adjustment)
+        'debit_note',           // Debit Note (positive adjustment)
+        'revision',             // Revised Bill
+        'correction',           // Correction Bill
+        'retention_release',    // Retention Release
+      ],
+      default: 'running',
+    },
+    relationshipType: {
+      type: String,
+      enum: [
+        'NONE',
+        'CONTINUES',            // Next running bill in sequence
+        'SUPERSEDES',           // Final bill superseding running bills
+        'ADJUSTMENT',           // Credit/debit note adjustment on a bill
+        'REVISION_OF',          // Revised version, replacing original
+        'ADVANCE_FOR',          // Advance issued for future billing
+        'RECOVERY_OF',          // Recovery of a previously issued advance
+        'SETTLEMENT_OF',        // Full settlement of outstanding balance
+        'CORRECTION_OF',        // Correction to a previous bill
+        'RETENTION_RELEASE_OF', // Retention release linked to original bill
+      ],
+      default: 'NONE',
+    },
+    linkedBills: [{
+      billId:           { type: mongoose.Schema.Types.ObjectId, ref: 'RunningBill' },
+      billNo:           { type: String },
+      relationshipType: { type: String },
+      _id: false,
+    }],
+    billingCycle:  { type: Number, default: 1 },
+    isActive:      { type: Boolean, default: true },
+    supersededBy:  { type: mongoose.Schema.Types.ObjectId, ref: 'RunningBill', default: null },
+    // ─────────────────────────────────────────────────────────
+
     status: {
       type: String,
       enum: ['draft', 'submitted', 'verified', 'approved', 'rejected', 'paid'],

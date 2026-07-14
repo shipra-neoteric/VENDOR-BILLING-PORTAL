@@ -7,7 +7,7 @@ const Category   = require('../models/Category');
 const Company    = require('../models/Company');
 const User       = require('../models/User');
 const WorkOrder  = require('../models/WorkOrder');
-const { nextWorkOrderNo } = require('../utils/codeGen');
+const { nextWorkOrderNo, nextVendorCode } = require('../utils/codeGen');
 
 // ── Lookup lists (read-only, no auth) ──────────────────────────
 router.get('/projects', asyncHandler(async (_req, res) => {
@@ -80,6 +80,29 @@ router.post('/work-orders', asyncHandler(async (req, res) => {
   });
 
   created(res, { workOrder }, 'Work order submitted successfully');
+}));
+
+// ── Submit new contractor (no auth) ─────────────────────────────
+router.post('/contractors', asyncHandler(async (req, res) => {
+  const {
+    companyName, shortCode, ownerName, address, mobile, alternateMobile, email,
+    accountHolderName, bankName, accountNumber, ifscCode, branchName,
+    gstNumber, panNumber, workTypes, reference1, reference2, averageTurnover,
+  } = req.body;
+
+  if (!companyName) return badRequest(res, 'Company / firm name is required');
+  if (!ownerName)   return badRequest(res, 'Owner name is required');
+  if (!mobile)      return badRequest(res, 'Mobile is required');
+
+  const vendorCode = await nextVendorCode();
+
+  const contractor = await Contractor.create({
+    vendorCode, companyName, shortCode, ownerName, address, mobile, alternateMobile, email,
+    accountHolderName, bankName, accountNumber, ifscCode, branchName,
+    gstNumber, panNumber, workTypes, reference1, reference2, averageTurnover,
+  });
+
+  created(res, { contractor }, `Contractor registered as ${vendorCode}`);
 }));
 
 module.exports = router;
