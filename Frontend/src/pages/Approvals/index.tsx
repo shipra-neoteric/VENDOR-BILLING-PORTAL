@@ -191,7 +191,7 @@ export default function Approvals() {
         ? { reason: remarks || "No reason given" }
         : { remarks };
       await apiClient.patch(`/bills/${actionBill._id}/${endpoint}`, body);
-      const msgs: Record<ActionType, string> = {
+      const msgs: Partial<Record<ActionType, string>> = {
         verify:  "Bill verified — forwarded for GM approval",
         approve: "Bill approved & certified",
         reject:  "Bill rejected",
