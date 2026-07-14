@@ -60,6 +60,14 @@ const WORK_OPTIONS = [
   "Landscaping",
 ];
 
+const DOCUMENT_FIELD_LABELS: { key: string; label: string }[] = [
+  { key: "gstCertificate",  label: "GST Certificate" },
+  { key: "panCard",         label: "PAN Card" },
+  { key: "cancelledCheque", label: "Cancelled Cheque" },
+  { key: "businessCard",    label: "Business Card" },
+  { key: "aadhaarCard",     label: "Aadhaar Card" },
+];
+
 function SectionHeading({ children }: { children: React.ReactNode }) {
   return (
     <div
@@ -708,6 +716,28 @@ export default function Contractors() {
                     </Descriptions.Item>
                   )}
                 </Descriptions>
+              </>
+            )}
+
+            {selected.documents && Object.values(selected.documents).some(d => d?.dataUrl) && (
+              <>
+                <SectionHeading>Documents</SectionHeading>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {DOCUMENT_FIELD_LABELS.filter(({ key }) => selected.documents?.[key]?.dataUrl).map(({ key, label }) => (
+                    <a
+                      key={key}
+                      href={selected.documents![key]!.dataUrl}
+                      download={selected.documents![key]!.fileName || label}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 8, fontSize: 13,
+                        color: "#FF7A00", textDecoration: "none",
+                      }}
+                    >
+                      📎 {label}
+                      <span style={{ color: "#9CA3AF", fontSize: 12 }}>({selected.documents![key]!.fileName || "download"})</span>
+                    </a>
+                  ))}
+                </div>
               </>
             )}
           </>

@@ -88,6 +88,7 @@ router.post('/contractors', asyncHandler(async (req, res) => {
     companyName, shortCode, ownerName, address, mobile, alternateMobile, email,
     accountHolderName, bankName, accountNumber, ifscCode, branchName,
     gstNumber, panNumber, workTypes, reference1, reference2, averageTurnover,
+    documents,
   } = req.body;
 
   if (!companyName) return badRequest(res, 'Company / firm name is required');
@@ -100,6 +101,7 @@ router.post('/contractors', asyncHandler(async (req, res) => {
     vendorCode, companyName, shortCode, ownerName, address, mobile, alternateMobile, email,
     accountHolderName, bankName, accountNumber, ifscCode, branchName,
     gstNumber, panNumber, workTypes, reference1, reference2, averageTurnover,
+    documents,
   });
 
   created(res, { contractor }, `Contractor registered as ${vendorCode}`);

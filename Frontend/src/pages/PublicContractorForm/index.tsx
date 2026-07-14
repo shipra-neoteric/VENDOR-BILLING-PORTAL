@@ -1,8 +1,9 @@
 import { useState } from "react";
 import {
-  Form, Input, InputNumber, Select, Button, Card, Typography, Space, Result, Tag,
+  Form, Input, InputNumber, Checkbox, Button, Card, Typography, Space, Result, Tag, Upload, message,
 } from "antd";
-import { CheckCircleOutlined, TeamOutlined } from "@ant-design/icons";
+import type { UploadProps } from "antd";
+import { CheckCircleOutlined, TeamOutlined, UploadOutlined } from "@ant-design/icons";
 import axios from "axios";
 
 const { Title, Text } = Typography;
@@ -22,15 +23,49 @@ const WORK_OPTIONS = [
   "Finish Carpentry", "Painting", "Masonry", "Landscaping",
 ];
 
+const DOCUMENT_FIELDS: { key: string; label: string }[] = [
+  { key: "gstCertificate",  label: "GST Certificate" },
+  { key: "panCard",         label: "PAN Card" },
+  { key: "cancelledCheque", label: "Cancelled Cheque" },
+  { key: "businessCard",    label: "Business Card" },
+  { key: "aadhaarCard",     label: "Aadhaar Card" },
+];
+
+const MAX_FILE_MB = 5;
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload  = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
 export default function PublicContractorForm() {
   const [form] = Form.useForm();
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted]   = useState<{ vendorCode: string; companyName: string } | null>(null);
+  const [documents, setDocuments]   = useState<Record<string, { fileName: string; dataUrl: string } | undefined>>({});
+
+  const handleDocSelect: (key: string) => UploadProps["beforeUpload"] = (key) => async (file) => {
+    if (file.size > MAX_FILE_MB * 1024 * 1024) {
+      message.error(`${file.name} is larger than ${MAX_FILE_MB}MB`);
+      return false;
+    }
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      setDocuments(prev => ({ ...prev, [key]: { fileName: file.name, dataUrl } }));
+    } catch {
+      message.error(`Couldn't read ${file.name}`);
+    }
+    return false;
+  };
 
   async function onFinish(values: Record<string, unknown>) {
     setSubmitting(true);
     try {
-      const res = await pub.post("/contractors", values);
+      const res = await pub.post("/contractors", { ...values, documents });
       setSubmitted({
         vendorCode:  res.data?.contractor?.vendorCode ?? "—",
         companyName: res.data?.contractor?.companyName ?? "",
@@ -44,6 +79,7 @@ export default function PublicContractorForm() {
 
   function reset() {
     form.resetFields();
+    setDocuments({});
     setSubmitted(null);
   }
 
@@ -183,18 +219,45 @@ export default function PublicContractorForm() {
                 <InputNumber style={{ width: "100%" }} min={0} placeholder="e.g. 50" />
               </Form.Item>
             </div>
-            <Form.Item name="workTypes" label="Work Types">
-              <Select
-                mode="multiple"
-                placeholder="Select all that apply"
-                options={WORK_OPTIONS.map(w => ({ label: w, value: w }))}
-                style={{ width: "100%" }}
-              />
+            <Form.Item name="workTypes" label="Type of Work">
+              <Checkbox.Group style={{ width: "100%" }}>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "10px 28px" }}>
+                  {WORK_OPTIONS.map(w => (
+                    <Checkbox key={w} value={w}>{w}</Checkbox>
+                  ))}
+                </div>
+              </Checkbox.Group>
             </Form.Item>
           </Card>
 
+          <Card
+            title={<span style={{ fontWeight: 700 }}>Documents</span>}
+            style={{ borderRadius: 12, marginBottom: 20, boxShadow: "0 2px 12px rgba(0,0,0,0.05)" }}
+          >
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px 24px" }}>
+              {DOCUMENT_FIELDS.map(({ key, label }) => (
+                <div key={key}>
+                  <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 6, color: "#1a1f2e" }}>{label}</div>
+                  <Upload
+                    beforeUpload={handleDocSelect(key)}
+                    maxCount={1}
+                    showUploadList={false}
+                    accept=".pdf,.jpg,.jpeg,.png"
+                  >
+                    <Button icon={<UploadOutlined />} style={{ width: "100%", textAlign: "left" }}>
+                      {documents[key]?.fileName || label}
+                    </Button>
+                  </Upload>
+                  {documents[key] && (
+                    <div style={{ fontSize: 11, color: "#16a85a", marginTop: 4 }}>✓ Attached</div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </Card>
+
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 12 }}>
-            <Button onClick={() => form.resetFields()}>Reset</Button>
+            <Button onClick={() => { form.resetFields(); setDocuments({}); }}>Reset</Button>
             <Button type="primary" htmlType="submit" loading={submitting}
               style={{ background: "#f37916", borderColor: "#f37916", minWidth: 160, height: 42, fontWeight: 600 }}>
               Register Contractor

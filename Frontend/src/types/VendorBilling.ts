@@ -59,6 +59,8 @@ export interface Contractor {
   averageTurnover?: number;
 
   status: "active" | "inactive";
+
+  documents?: Record<string, { fileName?: string; dataUrl?: string } | undefined>;
 }
 
 export interface WorkItem {

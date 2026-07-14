@@ -1,5 +1,10 @@
 const mongoose = require('mongoose');
 
+const docFieldSchema = new mongoose.Schema(
+  { fileName: { type: String }, dataUrl: { type: String } },
+  { _id: false }
+);
+
 const contractorSchema = new mongoose.Schema(
   {
     vendorCode:          { type: String, required: true, unique: true },
@@ -22,6 +27,13 @@ const contractorSchema = new mongoose.Schema(
     reference2:          { type: String },
     averageTurnover:     { type: Number },
     status:              { type: String, enum: ['active', 'inactive'], default: 'active' },
+    documents: {
+      gstCertificate:  docFieldSchema,
+      panCard:         docFieldSchema,
+      cancelledCheque: docFieldSchema,
+      businessCard:    docFieldSchema,
+      aadhaarCard:     docFieldSchema,
+    },
     createdBy:           { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },
   { timestamps: true }
