@@ -12,39 +12,39 @@ const HDR_BG = "#1F2937";
 
 // ── Styles ─────────────────────────────────────────────────────
 const S = StyleSheet.create({
-  page: { padding: 36, fontSize: 8.5, fontFamily: "Helvetica", color: DARK, backgroundColor: "#fff" },
+  page: { padding: 36, fontSize: 9.5, fontFamily: "Helvetica", color: DARK, backgroundColor: "#fff" },
 
   // ── Header
   headerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14, paddingBottom: 10, borderBottomWidth: 2, borderBottomColor: ORANGE },
   logoBox:   { flexDirection: "column" },
-  logoName:  { fontSize: 16, fontFamily: "Helvetica-Bold", color: DARK, letterSpacing: 0.5 },
-  logoSub:   { fontSize: 8, color: GRAY, marginTop: 2, letterSpacing: 0.3 },
+  logoName:  { fontSize: 17, fontFamily: "Helvetica-Bold", color: DARK, letterSpacing: 0.5 },
+  logoSub:   { fontSize: 9, color: GRAY, marginTop: 2, letterSpacing: 0.3 },
   docTitle:  { textAlign: "right" },
-  docMain:   { fontSize: 14, fontFamily: "Helvetica-Bold", color: ORANGE, letterSpacing: 0.4 },
-  docSub:    { fontSize: 9, fontFamily: "Helvetica-Bold", color: MID, marginTop: 3, letterSpacing: 0.3 },
-  docBadge:  { fontSize: 7.5, color: GRAY, letterSpacing: 0.5, marginTop: 2 },
+  docMain:   { fontSize: 15, fontFamily: "Helvetica-Bold", color: ORANGE, letterSpacing: 0.4 },
+  docSub:    { fontSize: 10, fontFamily: "Helvetica-Bold", color: MID, marginTop: 3, letterSpacing: 0.3 },
+  docBadge:  { fontSize: 8.5, color: GRAY, letterSpacing: 0.5, marginTop: 2 },
 
   // ── Section table
   table:     { borderWidth: 1, borderColor: BORDER, borderRadius: 3, marginBottom: 10, overflow: "hidden" },
   secHeader: { backgroundColor: ORANGE, paddingVertical: 5, paddingHorizontal: 10, flexDirection: "row", alignItems: "center" },
-  secTitle:  { fontFamily: "Helvetica-Bold", color: "#fff", fontSize: 8, letterSpacing: 0.4, textTransform: "uppercase" },
+  secTitle:  { fontFamily: "Helvetica-Bold", color: "#fff", fontSize: 9, letterSpacing: 0.4, textTransform: "uppercase" },
   row:       { flexDirection: "row", borderTopWidth: 1, borderTopColor: BORDER },
   rowLast:   { flexDirection: "row" },
-  cellLabel: { width: "38%", backgroundColor: LIGHT, padding: "5px 10px", fontFamily: "Helvetica-Bold", fontSize: 8, color: MID },
-  cellVal:   { flex: 1, padding: "5px 10px", fontSize: 8, color: DARK },
-  cellValMono: { flex: 1, padding: "5px 10px", fontSize: 8, color: DARK, fontFamily: "Helvetica-Oblique" },
+  cellLabel: { width: "38%", backgroundColor: LIGHT, padding: "5px 10px", fontFamily: "Helvetica-Bold", fontSize: 9, color: MID },
+  cellVal:   { flex: 1, padding: "5px 10px", fontSize: 9, color: DARK },
+  cellValMono: { flex: 1, padding: "5px 10px", fontSize: 9, color: DARK, fontFamily: "Helvetica-Oblique" },
 
   // ── Scope table
   scopeHdr:  { flexDirection: "row", backgroundColor: HDR_BG, padding: "5px 8px" },
   scopeRow:  { flexDirection: "row", borderTopWidth: 1, borderTopColor: BORDER, padding: "4px 8px" },
   scopeAlt:  { flexDirection: "row", borderTopWidth: 1, borderTopColor: BORDER, padding: "4px 8px", backgroundColor: LIGHT },
-  colDesc:   { flex: 2.2, fontSize: 7.5, paddingRight: 6 },
-  colUnit:   { width: 42, fontSize: 7.5, textAlign: "center", paddingRight: 6 },
-  colQty:    { width: 42, fontSize: 7.5, textAlign: "right", paddingRight: 8 },
-  colDate:   { width: 56, fontSize: 7.5, textAlign: "center", paddingRight: 6 },
-  colRate:   { width: 52, fontSize: 7.5, textAlign: "right", paddingRight: 8 },
-  colAmt:    { width: 62, fontSize: 7.5, textAlign: "right" },
-  hdrText:   { color: "#fff", fontFamily: "Helvetica-Bold", fontSize: 7.5 },
+  colDesc:   { flex: 2.2, fontSize: 8.5, paddingRight: 6 },
+  colUnit:   { width: 46, fontSize: 8.5, textAlign: "center", paddingRight: 6 },
+  colQty:    { width: 46, fontSize: 8.5, textAlign: "right", paddingRight: 8 },
+  colDate:   { width: 60, fontSize: 8.5, textAlign: "center", paddingRight: 6 },
+  colRate:   { width: 56, fontSize: 8.5, textAlign: "right", paddingRight: 8 },
+  colAmt:    { width: 68, fontSize: 8.5, textAlign: "right" },
+  hdrText:   { color: "#fff", fontFamily: "Helvetica-Bold", fontSize: 8.5 },
 
   // ── Side-by-side details
   sideRow:   { flexDirection: "row", gap: 10, marginBottom: 10 },
@@ -54,40 +54,40 @@ const S = StyleSheet.create({
   msHdr:     { flexDirection: "row", backgroundColor: HDR_BG, padding: "5px 6px" },
   msRow:     { flexDirection: "row", borderTopWidth: 1, borderTopColor: BORDER, padding: "4px 6px" },
   msAlt:     { flexDirection: "row", borderTopWidth: 1, borderTopColor: BORDER, padding: "4px 6px", backgroundColor: LIGHT },
-  msStage:   { flex: 1.6, fontSize: 7.5 },
-  msDate:    { width: 52, fontSize: 7.5, textAlign: "center" },
-  msMode:    { width: 62, fontSize: 7.5, textAlign: "center" },
-  msAmt:     { width: 58, fontSize: 7.5, textAlign: "right" },
-  msGst:     { width: 58, fontSize: 7, textAlign: "center" },
-  msPay:     { width: 62, fontSize: 7.5, textAlign: "right", fontFamily: "Helvetica-Bold" },
+  msStage:   { flex: 1.6, fontSize: 8.5 },
+  msDate:    { width: 56, fontSize: 8.5, textAlign: "center" },
+  msMode:    { width: 66, fontSize: 8.5, textAlign: "center" },
+  msAmt:     { width: 62, fontSize: 8.5, textAlign: "right" },
+  msGst:     { width: 62, fontSize: 8, textAlign: "center" },
+  msPay:     { width: 66, fontSize: 8.5, textAlign: "right", fontFamily: "Helvetica-Bold" },
 
   // ── Warranty
   warrRow:   { flexDirection: "row", marginBottom: 3.5, gap: 4 },
-  warrNum:   { fontSize: 7, color: ORANGE, fontFamily: "Helvetica-Bold", width: 12 },
-  warrText:  { flex: 1, fontSize: 7.5, color: MID, lineHeight: 1.5 },
+  warrNum:   { fontSize: 8, color: ORANGE, fontFamily: "Helvetica-Bold", width: 13 },
+  warrText:  { flex: 1, fontSize: 8.5, color: MID, lineHeight: 1.5 },
 
   // ── Totals
   totalRow:  { flexDirection: "row", justifyContent: "flex-end", borderTopWidth: 1.5, borderTopColor: ORANGE, padding: "5px 8px", backgroundColor: "#FFF8F3" },
-  totalLabel:{ fontFamily: "Helvetica-Bold", fontSize: 8.5, color: ORANGE, marginRight: 10, width: 80, textAlign: "right" },
-  totalVal:  { fontFamily: "Helvetica-Bold", fontSize: 8.5, color: DARK, width: 68, textAlign: "right" },
+  totalLabel:{ fontFamily: "Helvetica-Bold", fontSize: 9.5, color: ORANGE, marginRight: 10, width: 84, textAlign: "right" },
+  totalVal:  { fontFamily: "Helvetica-Bold", fontSize: 9.5, color: DARK, width: 72, textAlign: "right" },
   gstRow:    { flexDirection: "row", justifyContent: "flex-end", borderTopWidth: 1, borderTopColor: BORDER, padding: "4px 8px" },
-  gstLabel:  { fontSize: 7.5, color: GRAY, marginRight: 10, width: 80, textAlign: "right" },
-  gstVal:    { fontSize: 7.5, color: GRAY, width: 68, textAlign: "right" },
+  gstLabel:  { fontSize: 8.5, color: GRAY, marginRight: 10, width: 84, textAlign: "right" },
+  gstVal:    { fontSize: 8.5, color: GRAY, width: 72, textAlign: "right" },
 
   // ── Terms
-  termsHdr:  { fontFamily: "Helvetica-Bold", fontSize: 8, color: DARK, marginBottom: 5, borderLeftWidth: 3, borderLeftColor: ORANGE, paddingLeft: 6, letterSpacing: 0.3 },
+  termsHdr:  { fontFamily: "Helvetica-Bold", fontSize: 9, color: DARK, marginBottom: 5, borderLeftWidth: 3, borderLeftColor: ORANGE, paddingLeft: 6, letterSpacing: 0.3 },
   termRow:   { flexDirection: "row", marginBottom: 3.5, gap: 4 },
-  termNum:   { fontSize: 7, color: ORANGE, fontFamily: "Helvetica-Bold", width: 12, paddingTop: 0.5 },
-  termText:  { flex: 1, fontSize: 7, color: MID, lineHeight: 1.5 },
+  termNum:   { fontSize: 8, color: ORANGE, fontFamily: "Helvetica-Bold", width: 13, paddingTop: 0.5 },
+  termText:  { flex: 1, fontSize: 8, color: MID, lineHeight: 1.5 },
 
   // ── Signature
   sigBlock:  { flexDirection: "row", marginTop: 14, borderWidth: 1, borderColor: BORDER, borderRadius: 3 },
   sigCell:   { flex: 1, padding: "10px 10px", borderRightWidth: 1, borderRightColor: BORDER },
   sigCellL:  { flex: 1, padding: "10px 10px" },
-  sigRole:   { fontSize: 7.5, fontFamily: "Helvetica-Bold", color: MID, marginBottom: 22, letterSpacing: 0.3 },
+  sigRole:   { fontSize: 8.5, fontFamily: "Helvetica-Bold", color: MID, marginBottom: 22, letterSpacing: 0.3 },
   sigLine:   { borderTopWidth: 1, borderTopColor: BORDER, width: "100%" },
-  sigName:   { fontSize: 6.5, color: GRAY, marginTop: 3 },
-  sigDate:   { fontSize: 6.5, color: GRAY, marginTop: 2 },
+  sigName:   { fontSize: 7.5, color: GRAY, marginTop: 3 },
+  sigDate:   { fontSize: 7.5, color: GRAY, marginTop: 2 },
 
   sectionGap: { marginBottom: 10 },
 });
