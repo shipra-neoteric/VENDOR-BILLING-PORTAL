@@ -21,8 +21,8 @@ const S = StyleSheet.create({
   logoSub:   { fontSize: 8, color: GRAY, marginTop: 2, letterSpacing: 0.3 },
   docTitle:  { textAlign: "right" },
   docMain:   { fontSize: 14, fontFamily: "Helvetica-Bold", color: ORANGE, letterSpacing: 0.4 },
-  docSub:    { fontSize: 7.5, color: GRAY, marginTop: 3, letterSpacing: 0.3 },
-  docBadge:  { fontSize: 7.5, color: GRAY, letterSpacing: 0.5 },
+  docSub:    { fontSize: 9, fontFamily: "Helvetica-Bold", color: MID, marginTop: 3, letterSpacing: 0.3 },
+  docBadge:  { fontSize: 7.5, color: GRAY, letterSpacing: 0.5, marginTop: 2 },
 
   // ── Section table
   table:     { borderWidth: 1, borderColor: BORDER, borderRadius: 3, marginBottom: 10, overflow: "hidden" },
@@ -242,21 +242,16 @@ export function WorkOrderDocument({ wo, company, contractor }: Props) {
           <View style={S.logoBox}>
             <Text style={S.logoName}>Neoteric Group</Text>
             <Text style={S.logoSub}>{company?.name || "—"}</Text>
-            {wo.preparedByName ? <Text style={S.logoSub}>Prepared By: {wo.preparedByName}</Text> : null}
-            {wo.preparedByContact ? <Text style={S.logoSub}>Contact: {wo.preparedByContact}</Text> : null}
+            <Text style={S.logoSub}>Prepared By: {wo.preparedByName || "—"}</Text>
+            <Text style={S.logoSub}>Contact: {wo.preparedByContact || "—"}</Text>
           </View>
           <View style={S.docTitle}>
             <Text style={S.docMain}>WORK ORDER</Text>
             <Text style={S.docSub}>{wo.workOrderNo}</Text>
+            <Text style={S.docBadge}>Issue Date: {fmtDate(wo.issueDate)}</Text>
             <Text style={S.docBadge}>Generated: {new Date().toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</Text>
           </View>
         </View>
-
-        {/* ── Work Order Details ── */}
-        <SectionBox title="Work Order Details">
-          <InfoRow label="Work Order No." value={wo.workOrderNo} mono />
-          <InfoRow label="Issue Date"     value={fmtDate(wo.issueDate)} last />
-        </SectionBox>
 
         {/* ── Contractor + Company Details (side by side) ── */}
         <View style={S.sideRow}>
@@ -287,22 +282,8 @@ export function WorkOrderDocument({ wo, company, contractor }: Props) {
           <InfoRow label="Project Name"      value={wo.projectName} />
           <InfoRow label="Category"          value={wo.category} />
           {wo.subCategory ? <InfoRow label="Sub-category" value={wo.subCategory} /> : null}
-          <InfoRow label="Work Title / Scope" value={wo.scopeOfWork} last />
+          <InfoRow label="Work Title / Scope" value={wo.description || wo.scopeOfWork} last />
         </SectionBox>
-
-        {/* ── Overall Description ── */}
-        {(wo.description || wo.scopeOfWork) && (
-          <View style={[S.table, { marginBottom: 10 }]}>
-            <View style={S.secHeader}>
-              <Text style={S.secTitle}>Description / Scope of Work</Text>
-            </View>
-            <View style={{ padding: "8px 10px" }}>
-              <Text style={{ fontSize: 8, color: MID, lineHeight: 1.6 }}>
-                {wo.description || wo.scopeOfWork}
-              </Text>
-            </View>
-          </View>
-        )}
 
         {/* ── Scope of Work (with pricing) ── */}
         {lineItems.length > 0 && (
@@ -413,7 +394,7 @@ export function WorkOrderDocument({ wo, company, contractor }: Props) {
 
         {/* ── Signature block ── */}
         <View style={S.sigBlock} wrap={false}>
-          {(["Contractor", "AGM – Project", "GM – Project", "Final Approval"] as const).map((role, i, arr) => (
+          {(["Contractor", "AGM – Project", "GM – Project"] as const).map((role, i, arr) => (
             <View key={role} style={i === arr.length - 1 ? S.sigCellL : S.sigCell}>
               <Text style={S.sigRole}>{role}</Text>
               <View style={S.sigLine} />
@@ -421,6 +402,16 @@ export function WorkOrderDocument({ wo, company, contractor }: Props) {
               <Text style={S.sigDate}>Date:</Text>
             </View>
           ))}
+        </View>
+
+        {/* ── Final Approval — last signature, on its own line below ── */}
+        <View style={[S.sigBlock, { marginTop: 8 }]} wrap={false}>
+          <View style={S.sigCellL}>
+            <Text style={S.sigRole}>Final Approval</Text>
+            <View style={S.sigLine} />
+            <Text style={S.sigName}>Name:</Text>
+            <Text style={S.sigDate}>Date:</Text>
+          </View>
         </View>
 
       </Page>
