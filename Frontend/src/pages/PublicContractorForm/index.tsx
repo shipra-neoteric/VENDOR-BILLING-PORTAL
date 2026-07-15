@@ -146,13 +146,13 @@ export default function PublicContractorForm() {
             title={<span style={{ fontWeight: 700 }}>Firm Details</span>}
             style={{ borderRadius: 12, marginBottom: 20, boxShadow: "0 2px 12px rgba(0,0,0,0.05)" }}
           >
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 24px" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "0 24px" }}>
               <Form.Item name="companyName" label="Company / Firm Name" rules={[{ required: true, message: "Required" }]}>
                 <Input placeholder="e.g. ABC Infra Pvt Ltd" />
               </Form.Item>
               <Form.Item
                 name="shortCode"
-                label="Short Form (optional)"
+                label="Short Form"
                 tooltip="If this firm is billed under multiple vendor codes for tax reasons, use the same short form on each so they're recognizable as one group."
               >
                 <Input placeholder="e.g. D" maxLength={10} />
@@ -179,7 +179,7 @@ export default function PublicContractorForm() {
             title={<span style={{ fontWeight: 700 }}>Bank Details</span>}
             style={{ borderRadius: 12, marginBottom: 20, boxShadow: "0 2px 12px rgba(0,0,0,0.05)" }}
           >
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 24px" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "0 24px" }}>
               <Form.Item name="accountHolderName" label="Account Holder Name">
                 <Input placeholder="As per bank records" />
               </Form.Item>
@@ -202,7 +202,7 @@ export default function PublicContractorForm() {
             title={<span style={{ fontWeight: 700 }}>Tax & Work Details</span>}
             style={{ borderRadius: 12, marginBottom: 20, boxShadow: "0 2px 12px rgba(0,0,0,0.05)" }}
           >
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 24px" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "0 24px" }}>
               <Form.Item name="gstNumber" label="GST Number">
                 <Input placeholder="15-char GST" />
               </Form.Item>
@@ -234,7 +234,7 @@ export default function PublicContractorForm() {
             title={<span style={{ fontWeight: 700 }}>Documents</span>}
             style={{ borderRadius: 12, marginBottom: 20, boxShadow: "0 2px 12px rgba(0,0,0,0.05)" }}
           >
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px 24px" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "16px 24px" }}>
               {DOCUMENT_FIELDS.map(({ key, label }) => (
                 <div key={key}>
                   <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 6, color: "#1a1f2e" }}>{label}</div>
@@ -256,10 +256,10 @@ export default function PublicContractorForm() {
             </div>
           </Card>
 
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 12 }}>
-            <Button onClick={() => { form.resetFields(); setDocuments({}); }}>Reset</Button>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 12, flexWrap: "wrap" }}>
+            <Button onClick={() => { form.resetFields(); setDocuments({}); }} style={{ flex: "1 1 auto" }}>Reset</Button>
             <Button type="primary" htmlType="submit" loading={submitting}
-              style={{ background: "#f37916", borderColor: "#f37916", minWidth: 160, height: 42, fontWeight: 600 }}>
+              style={{ background: "#f37916", borderColor: "#f37916", minWidth: 160, height: 42, fontWeight: 600, flex: "2 1 auto" }}>
               Register Contractor
             </Button>
           </div>

@@ -16,3 +16,10 @@ export function selectableProjects<T extends ProjectLike>(projects: T[]): T[] {
     .slice()
     .sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""));
 }
+
+// The work-orders API returns `projectId` populated ({_id, code, name, projectType}),
+// not a plain id string — unwrap it so it can be compared against a filter's selected id.
+export function getWorkOrderProjectId(projectId: string | { _id: string } | null | undefined): string | undefined {
+  if (!projectId) return undefined;
+  return typeof projectId === "string" ? projectId : projectId._id;
+}

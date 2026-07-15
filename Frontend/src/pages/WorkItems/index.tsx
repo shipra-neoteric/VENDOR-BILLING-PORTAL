@@ -44,7 +44,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useCategories } from "../../hooks/useCategories";
 import DateRangeFilter, { inDateRange } from "../../components/DateRangeFilter";
 import { downloadWorkOrderPDF } from "../../components/WorkOrderPDF";
-import { selectableProjects } from "../../utils/projectOptions";
+import { selectableProjects, getWorkOrderProjectId } from "../../utils/projectOptions";
 import { vendorLabel } from "../../utils/vendorLabel";
 import type {
   Contractor,
@@ -1461,7 +1461,7 @@ export default function WorkItems() {
       }
 
       const matchDate    = inDateRange(wo.issueDate, dateFrom, dateTo);
-      const matchProject = projectFilter === "all" || wo.projectId === projectFilter;
+      const matchProject = projectFilter === "all" || getWorkOrderProjectId(wo.projectId) === projectFilter;
       return matchSearch && matchStatus && matchCategory && matchProgress && matchDate && matchProject;
     }).sort((a, b) => {
       const numA = parseInt(a.workOrderNo.replace(/\D/g, ""), 10) || 0;

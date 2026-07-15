@@ -5,17 +5,21 @@ import { ArrowLeftOutlined, BookOutlined, ReloadOutlined } from "@ant-design/ico
 import dayjs from "dayjs";
 import apiClient from "../../services/apiClient";
 import DateRangeFilter, { inDateRange } from "../../components/DateRangeFilter";
-import { selectableProjects } from "../../utils/projectOptions";
+import { selectableProjects, getWorkOrderProjectId } from "../../utils/projectOptions";
 import { vendorLabel } from "../../utils/vendorLabel";
 
 // ── Types ─────────────────────────────────────────────────────
 type BillStatus = "draft" | "submitted" | "verified" | "approved" | "rejected" | "paid";
 
 interface WO {
-  _id: string; workOrderNo: string; projectId?: string; projectName?: string;
+  _id: string; workOrderNo: string;
+  // Populated by the backend as an object; kept loose since some call sites may pass a raw id.
+  projectId?: string | { _id: string; code?: string; name?: string; projectType?: string } | null;
+  projectName?: string;
   vendorCode?: string; vendorName?: string; contractValue?: number;
   issueDate?: string; status?: string; scopeOfWork?: string; category?: string;
 }
+
 interface Bill {
   _id: string; billNo: string; workOrderId?: string; workOrderNo?: string;
   projectName?: string; vendorCode?: string; vendorName?: string;
@@ -156,7 +160,7 @@ export default function Ledger() {
 
   // ── Summary data ──────────────────────────────────────────
   const filteredWOs = useMemo(() => workOrders.filter(wo => {
-    const matchProject = projectFilter === "all" || wo.projectId === projectFilter || wo.projectName?.toLowerCase().includes(projectFilter.toLowerCase());
+    const matchProject = projectFilter === "all" || getWorkOrderProjectId(wo.projectId) === projectFilter;
     const matchVendor  = vendorFilter  === "all" || wo.vendorCode === vendorFilter;
     const matchDate    = inDateRange(wo.issueDate, dateFrom, dateTo);
     return matchProject && matchVendor && matchDate;
