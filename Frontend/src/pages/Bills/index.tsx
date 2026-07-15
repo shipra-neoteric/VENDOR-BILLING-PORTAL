@@ -15,6 +15,7 @@ import {
   Select,
   Space,
   Spin,
+  Switch,
   Table,
   Tag,
   message,
@@ -29,6 +30,7 @@ import {
   DownloadOutlined,
   EyeOutlined,
   FileTextOutlined,
+  InboxOutlined,
   PlusOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
@@ -102,6 +104,8 @@ interface Bill {
   billingCycle?: number;
   isActive?: boolean;
   supersededBy?: { _id: string; billNo: string; billType?: string } | null;
+  isArchived?: boolean;
+  archivedAt?: string;
 }
 
 interface ProjectOpt { id: string; name: string; code: string; parentId?: string | null; }
@@ -404,6 +408,9 @@ export default function Bills() {
   const [projectFilter, setProjectFilter] = useState<string | undefined>(undefined);
   const [dateFrom, setDateFrom]         = useState<Dayjs | null>(null);
   const [dateTo, setDateTo]             = useState<Dayjs | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
+  const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([]);
+  const [archiving, setArchiving]       = useState(false);
 
   // New Bill drawer
   const [newOpen, setNewOpen]           = useState(false);
@@ -449,17 +456,21 @@ export default function Bills() {
 
   // ── Load data ────────────────────────────────────────────────
 
-  const loadBills = useCallback(() => {
+  const loadBills = useCallback((archived: boolean) => {
     setLoading(true);
+    setSelectedRowKeys([]);
     apiClient
-      .get<{ bills: Record<string, unknown>[] }>("/bills")
+      .get<{ bills: Record<string, unknown>[] }>(`/bills${archived ? "?archived=true" : ""}`)
       .then((r) => setBills((r.data.bills || []).map((b) => normalizeId(b) as unknown as Bill)))
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
 
   useEffect(() => {
-    loadBills();
+    loadBills(showArchived);
+  }, [loadBills, showArchived]);
+
+  useEffect(() => {
     apiClient.get<{ projects: Record<string, unknown>[] }>("/projects")
       .then((r) => setProjects((r.data.projects || []).map((p) => normalizeId(p) as unknown as ProjectOpt)))
       .catch(() => {});
@@ -752,6 +763,32 @@ export default function Bills() {
     } finally { setDedSaving(false); }
   }
 
+  // ── Archive / Unarchive ──────────────────────────────────────
+
+  async function archiveOne(bill: Bill) {
+    try {
+      await apiClient.patch(`/bills/${bill.id}/${showArchived ? "unarchive" : "archive"}`);
+      message.success(showArchived ? `${bill.billNo} unarchived` : `${bill.billNo} archived`);
+      loadBills(showArchived);
+    } catch (e: unknown) {
+      message.error((e as { response?: { data?: { message?: string } } })?.response?.data?.message || "Action failed");
+    }
+  }
+
+  async function archiveSelected() {
+    if (selectedRowKeys.length === 0) return;
+    setArchiving(true);
+    try {
+      await apiClient.patch(`/bills/${showArchived ? "unarchive-bulk" : "archive-bulk"}`, { ids: selectedRowKeys });
+      message.success(`${selectedRowKeys.length} bill(s) ${showArchived ? "unarchived" : "archived"}`);
+      loadBills(showArchived);
+    } catch (e: unknown) {
+      message.error((e as { response?: { data?: { message?: string } } })?.response?.data?.message || "Action failed");
+    } finally {
+      setArchiving(false);
+    }
+  }
+
   // ── Table columns ────────────────────────────────────────────
 
   const columns = [
@@ -852,6 +889,15 @@ export default function Bills() {
               Pay
             </Button>
           )}
+          <Popconfirm
+            title={showArchived ? `Unarchive ${r.billNo}?` : `Archive ${r.billNo}?`}
+            description={showArchived ? "It will reappear in the normal bill list." : "It will be hidden from the normal bill list, but not deleted."}
+            onConfirm={() => archiveOne(r)}
+          >
+            <Button type="link" size="small" icon={<InboxOutlined />} style={{ color: "#6B7280" }}>
+              {showArchived ? "Unarchive" : "Archive"}
+            </Button>
+          </Popconfirm>
         </Space>
       ),
     },
@@ -924,6 +970,20 @@ export default function Bills() {
           style={{ width: 220 }}
         />
         <DateRangeFilter onChange={(from, to) => { setDateFrom(from); setDateTo(to); }} />
+        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#5a6278" }}>
+          <Switch size="small" checked={showArchived} onChange={setShowArchived} />
+          Show Archived
+        </label>
+        {selectedRowKeys.length > 0 && (
+          <Popconfirm
+            title={showArchived ? `Unarchive ${selectedRowKeys.length} bill(s)?` : `Archive ${selectedRowKeys.length} bill(s)?`}
+            onConfirm={archiveSelected}
+          >
+            <Button icon={<InboxOutlined />} loading={archiving}>
+              {showArchived ? "Unarchive" : "Archive"} Selected ({selectedRowKeys.length})
+            </Button>
+          </Popconfirm>
+        )}
         <span style={{ marginLeft: "auto", color: "#9ba3b8", fontSize: 12 }}>
           {filteredBills.length} bill{filteredBills.length !== 1 ? "s" : ""}
         </span>
@@ -936,6 +996,10 @@ export default function Bills() {
             rowKey="id"
             dataSource={filteredBills}
             columns={columns}
+            rowSelection={{
+              selectedRowKeys,
+              onChange: (keys) => setSelectedRowKeys(keys as string[]),
+            }}
             scroll={{ x: 1200 }}
             pagination={{ pageSize: 10, showSizeChanger: false }}
             locale={{

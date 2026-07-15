@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import {
   Button, Table, Modal, Form, Select, DatePicker, Input, InputNumber,
-  Tag, message, Spin, Empty, Popconfirm,
+  Tag, message, Spin, Empty, Popconfirm, Switch,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import { PlusOutlined, DeleteOutlined } from "@ant-design/icons";
+import { PlusOutlined, DeleteOutlined, InboxOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import PageShell from "../../components/PageShell";
 import apiClient from "../../services/apiClient";
@@ -34,6 +34,8 @@ interface AdvanceSlip {
   status: "outstanding" | "partial" | "recovered";
   recoveries: { amount: number; date: string; releasedBy: string }[];
   createdAt: string;
+  isArchived?: boolean;
+  archivedAt?: string;
 }
 
 export default function AdvancePayments() {
@@ -43,19 +45,26 @@ export default function AdvancePayments() {
   const [saving,   setSaving]   = useState(false);
   const [projects,     setProjects]     = useState<{ _id: string; name: string; parentId?: string | null }[]>([]);
   const [contractors,  setContractors]  = useState<{ vendorCode: string; companyName: string; shortCode?: string }[]>([]);
+  const [showArchived, setShowArchived] = useState(false);
+  const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([]);
+  const [archiving,   setArchiving]     = useState(false);
   const [form] = Form.useForm();
 
-  const load = async () => {
+  const load = async (archived: boolean) => {
     setLoading(true);
+    setSelectedRowKeys([]);
     try {
-      const res = await apiClient.get("/advance-slips");
+      const res = await apiClient.get(`/advance-slips${archived ? "?archived=true" : ""}`);
       setSlips(res.data.advanceSlips ?? []);
     } catch { message.error("Failed to load advance slips"); }
     finally { setLoading(false); }
   };
 
   useEffect(() => {
-    load();
+    load(showArchived);
+  }, [showArchived]);
+
+  useEffect(() => {
     apiClient.get("/projects").then(r  => setProjects(r.data.projects ?? []));
     apiClient.get("/contractors").then(r => setContractors(r.data.contractors ?? []));
   }, []);
@@ -75,7 +84,7 @@ export default function AdvancePayments() {
       message.success("Advance slip created");
       form.resetFields();
       setModal(false);
-      load();
+      load(showArchived);
     } catch (e: any) {
       if (e?.errorFields) return;
       message.error(e?.response?.data?.message || "Failed to create");
@@ -86,9 +95,33 @@ export default function AdvancePayments() {
     try {
       await apiClient.delete(`/advance-slips/${id}`);
       message.success("Deleted");
-      load();
+      load(showArchived);
     } catch (e: any) {
       message.error(e?.response?.data?.message || "Cannot delete");
+    }
+  };
+
+  const archiveOne = async (slip: AdvanceSlip) => {
+    try {
+      await apiClient.patch(`/advance-slips/${slip._id}/${showArchived ? "unarchive" : "archive"}`);
+      message.success(showArchived ? `${slip.slipNo} unarchived` : `${slip.slipNo} archived`);
+      load(showArchived);
+    } catch (e: any) {
+      message.error(e?.response?.data?.message || "Action failed");
+    }
+  };
+
+  const archiveSelected = async () => {
+    if (selectedRowKeys.length === 0) return;
+    setArchiving(true);
+    try {
+      await apiClient.patch(`/advance-slips/${showArchived ? "unarchive-bulk" : "archive-bulk"}`, { ids: selectedRowKeys });
+      message.success(`${selectedRowKeys.length} slip(s) ${showArchived ? "unarchived" : "archived"}`);
+      load(showArchived);
+    } catch (e: any) {
+      message.error(e?.response?.data?.message || "Action failed");
+    } finally {
+      setArchiving(false);
     }
   };
 
@@ -144,11 +177,24 @@ export default function AdvancePayments() {
     {
       title: "Actions",
       render: (_, r) => (
-        r.amountRecovered === 0 ? (
-          <Popconfirm title="Delete this advance slip?" onConfirm={() => handleDelete(r._id)} okText="Delete" okType="danger">
-            <Button size="small" danger icon={<DeleteOutlined />} />
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          {r.amountRecovered === 0 ? (
+            <Popconfirm title="Delete this advance slip?" onConfirm={() => handleDelete(r._id)} okText="Delete" okType="danger">
+              <Button size="small" danger icon={<DeleteOutlined />} />
+            </Popconfirm>
+          ) : (
+            <span style={{ fontSize: 12, color: "#9CA3AF" }}>Has recoveries</span>
+          )}
+          <Popconfirm
+            title={showArchived ? `Unarchive ${r.slipNo}?` : `Archive ${r.slipNo}?`}
+            description={showArchived ? "It will reappear in the normal list." : "It will be hidden from the normal list, but not deleted."}
+            onConfirm={() => archiveOne(r)}
+          >
+            <Button size="small" icon={<InboxOutlined />} style={{ color: "#6B7280" }}>
+              {showArchived ? "Unarchive" : "Archive"}
+            </Button>
           </Popconfirm>
-        ) : <span style={{ fontSize: 12, color: "#9CA3AF" }}>Has recoveries</span>
+        </div>
       ),
     },
   ];
@@ -165,12 +211,39 @@ export default function AdvancePayments() {
         </Button>
       }
     >
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 14 }}>
+        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#6B7280" }}>
+          <Switch size="small" checked={showArchived} onChange={setShowArchived} />
+          Show Archived
+        </label>
+        {selectedRowKeys.length > 0 && (
+          <Popconfirm
+            title={showArchived ? `Unarchive ${selectedRowKeys.length} slip(s)?` : `Archive ${selectedRowKeys.length} slip(s)?`}
+            onConfirm={archiveSelected}
+          >
+            <Button icon={<InboxOutlined />} loading={archiving}>
+              {showArchived ? "Unarchive" : "Archive"} Selected ({selectedRowKeys.length})
+            </Button>
+          </Popconfirm>
+        )}
+      </div>
+
       {loading ? (
         <div style={{ textAlign: "center", padding: 60 }}><Spin size="large" /></div>
       ) : slips.length === 0 ? (
-        <Empty description="No advance slips yet" />
+        <Empty description={showArchived ? "No archived advance slips" : "No advance slips yet"} />
       ) : (
-        <Table dataSource={slips} columns={columns} rowKey="_id" size="middle" pagination={{ pageSize: 20 }} />
+        <Table
+          dataSource={slips}
+          columns={columns}
+          rowKey="_id"
+          size="middle"
+          pagination={{ pageSize: 20 }}
+          rowSelection={{
+            selectedRowKeys,
+            onChange: (keys) => setSelectedRowKeys(keys as string[]),
+          }}
+        />
       )}
 
       <Modal

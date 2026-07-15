@@ -8,12 +8,14 @@ const { nextBillNo } = require('../utils/codeGen');
 const emitEvent    = require('../utils/emitEvent');
 
 exports.listBills = asyncHandler(async (req, res) => {
-  const { workOrderId, vendorCode, projectId, status, search } = req.query;
+  const { workOrderId, vendorCode, projectId, status, search, archived } = req.query;
   const filter = {};
   if (workOrderId) filter.workOrderId = workOrderId;
   if (vendorCode)  filter.vendorCode  = vendorCode;
   if (projectId)   filter.projectId   = projectId;
   if (status)      filter.status      = status;
+  if (archived === 'true') filter.isArchived = true;
+  else             filter.isArchived = { $ne: true };
   if (search) {
     filter.$or = [
       { billNo:      { $regex: search, $options: 'i' } },
@@ -279,4 +281,44 @@ exports.patchDeductions = asyncHandler(async (req, res) => {
   if (req.body.retentionAmount  != null) bill.retentionAmount = Number(req.body.retentionAmount);
   await bill.save();
   success(res, { bill }, 'Deductions updated');
+});
+
+// ── Archive / Unarchive ────────────────────────────────────────
+// Archiving a bill also archives its originating Bill Request (linked via BillRequest.billId).
+exports.archiveBill = asyncHandler(async (req, res) => {
+  const bill = await RunningBill.findById(req.params.id);
+  if (!bill) return notFound(res, 'Bill not found');
+  bill.isArchived = true;
+  bill.archivedAt = new Date();
+  await bill.save();
+  await BillRequest.updateMany({ billId: bill._id }, { isArchived: true, archivedAt: new Date() });
+  success(res, { bill }, 'Bill archived');
+});
+
+exports.unarchiveBill = asyncHandler(async (req, res) => {
+  const bill = await RunningBill.findById(req.params.id);
+  if (!bill) return notFound(res, 'Bill not found');
+  bill.isArchived = false;
+  bill.archivedAt = null;
+  await bill.save();
+  await BillRequest.updateMany({ billId: bill._id }, { isArchived: false, archivedAt: null });
+  success(res, { bill }, 'Bill unarchived');
+});
+
+// PATCH /api/bills/archive-bulk  — body: { ids: string[] }
+exports.archiveBillsBulk = asyncHandler(async (req, res) => {
+  const { ids } = req.body;
+  if (!Array.isArray(ids) || ids.length === 0) return badRequest(res, 'Provide at least one bill id');
+  await RunningBill.updateMany({ _id: { $in: ids } }, { isArchived: true, archivedAt: new Date() });
+  await BillRequest.updateMany({ billId: { $in: ids } }, { isArchived: true, archivedAt: new Date() });
+  success(res, {}, `${ids.length} bill(s) archived`);
+});
+
+// PATCH /api/bills/unarchive-bulk  — body: { ids: string[] }
+exports.unarchiveBillsBulk = asyncHandler(async (req, res) => {
+  const { ids } = req.body;
+  if (!Array.isArray(ids) || ids.length === 0) return badRequest(res, 'Provide at least one bill id');
+  await RunningBill.updateMany({ _id: { $in: ids } }, { isArchived: false, archivedAt: null });
+  await BillRequest.updateMany({ billId: { $in: ids } }, { isArchived: false, archivedAt: null });
+  success(res, {}, `${ids.length} bill(s) unarchived`);
 });

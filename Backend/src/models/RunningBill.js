@@ -100,6 +100,8 @@ const runningBillSchema = new mongoose.Schema(
     paymentReleasedBy:       { type: String },
     retentionReleased:       { type: Number, default: 0 },
     retentionReleaseRemark:  { type: String, default: '' },
+    isArchived:  { type: Boolean, default: false },
+    archivedAt:  { type: Date, default: null },
     createdBy:   { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },
   { timestamps: true }

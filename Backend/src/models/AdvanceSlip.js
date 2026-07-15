@@ -26,6 +26,8 @@ const advanceSlipSchema = new Schema(
       default: 'outstanding',
     },
     recoveries: [recoverySchema],
+    isArchived: { type: Boolean, default: false },
+    archivedAt: { type: Date, default: null },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User' },
   },
   { timestamps: true }

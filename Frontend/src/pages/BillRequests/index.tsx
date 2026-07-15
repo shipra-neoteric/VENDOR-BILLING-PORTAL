@@ -1,10 +1,10 @@
 import { useState, useEffect } from "react";
 import {
-  Button, Tag, Table, Modal, Input, InputNumber, message, Popconfirm, Spin, Empty, Tabs, Badge, Select,
+  Button, Tag, Table, Modal, Input, InputNumber, message, Popconfirm, Spin, Empty, Tabs, Badge, Select, Switch,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import {
-  CheckCircleOutlined, CloseCircleOutlined, EyeOutlined, TrophyOutlined,
+  CheckCircleOutlined, CloseCircleOutlined, EyeOutlined, TrophyOutlined, InboxOutlined,
 } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
 import dayjs from "dayjs";
@@ -52,6 +52,8 @@ interface BillRequest {
   milestoneAchieved?: boolean;
   milestoneDate?: string;
   createdAt: string;
+  isArchived?: boolean;
+  archivedAt?: string;
 }
 
 export default function BillRequests() {
@@ -76,6 +78,9 @@ export default function BillRequests() {
   const [search,            setSearch]            = useState("");
   const [projectFilter,     setProjectFilter]     = useState<string | undefined>(undefined);
   const [projectOptions,    setProjectOptions]    = useState<{ label: string; value: string }[]>([]);
+  const [showArchived,      setShowArchived]      = useState(false);
+  const [selectedRowKeys,   setSelectedRowKeys]   = useState<string[]>([]);
+  const [archiving,         setArchiving]         = useState(false);
 
   const [pendingAdvances,   setPendingAdvances]   = useState<{ _id: string; slipNo: string; amount: number; amountRecovered: number; balance: number; reference?: string }[]>([]);
   const [advanceRecovery,   setAdvanceRecovery]   = useState<number | null>(null);
@@ -93,17 +98,21 @@ export default function BillRequests() {
     finally { setAdvancesLoading(false); }
   };
 
-  const load = async (status?: string) => {
+  const load = async (status?: string, archived?: boolean) => {
     setLoading(true);
+    setSelectedRowKeys([]);
     try {
-      const params = status && status !== "all" ? `?status=${status}` : "";
-      const res = await apiClient.get(`/bill-requests${params}`);
+      const params = new URLSearchParams();
+      if (status && status !== "all") params.set("status", status);
+      if (archived) params.set("archived", "true");
+      const qs = params.toString();
+      const res = await apiClient.get(`/bill-requests${qs ? `?${qs}` : ""}`);
       setRequests(res.data.billRequests ?? []);
     } catch { message.error("Failed to load bill requests"); }
     finally { setLoading(false); }
   };
 
-  useEffect(() => { load(tab === "all" ? undefined : tab); }, [tab]);
+  useEffect(() => { load(tab === "all" ? undefined : tab, showArchived); }, [tab, showArchived]);
 
   useEffect(() => {
     apiClient.get("/projects")
@@ -119,7 +128,7 @@ export default function BillRequests() {
     try {
       const res = await apiClient.put(`/bill-requests/${id}/approve`, {});
       message.success(res.data.message || "Approved & bill generated");
-      load(tab === "all" ? undefined : tab);
+      load(tab === "all" ? undefined : tab, showArchived);
       if (viewReq?._id === id) setViewReq(null);
     } catch (e: any) {
       message.error(e?.response?.data?.message || "Failed to approve");
@@ -135,7 +144,7 @@ export default function BillRequests() {
       setRejectModal(false);
       setRejectReason("");
       setRejectTarget(null);
-      load(tab === "all" ? undefined : tab);
+      load(tab === "all" ? undefined : tab, showArchived);
       if (viewReq?._id === rejectTarget) setViewReq(null);
     } catch { message.error("Failed to reject"); }
     finally { setSaving(false); }
@@ -175,11 +184,35 @@ export default function BillRequests() {
       setAdvanceRecovery(null);
       setHoldAmount(null);
       setPendingAdvances([]);
-      load(tab === "all" ? undefined : tab);
+      load(tab === "all" ? undefined : tab, showArchived);
     } catch (e: any) {
       message.error(e?.response?.data?.message || "Failed to mark milestone");
     } finally { setSaving(false); }
   };
+
+  async function archiveOne(r: BillRequest) {
+    try {
+      await apiClient.patch(`/bill-requests/${r._id}/${showArchived ? "unarchive" : "archive"}`);
+      message.success(showArchived ? `${r.reqNo} unarchived` : `${r.reqNo} archived`);
+      load(tab === "all" ? undefined : tab, showArchived);
+    } catch (e: any) {
+      message.error(e?.response?.data?.message || "Action failed");
+    }
+  }
+
+  async function archiveSelected() {
+    if (selectedRowKeys.length === 0) return;
+    setArchiving(true);
+    try {
+      await apiClient.patch(`/bill-requests/${showArchived ? "unarchive-bulk" : "archive-bulk"}`, { ids: selectedRowKeys });
+      message.success(`${selectedRowKeys.length} request(s) ${showArchived ? "unarchived" : "archived"}`);
+      load(tab === "all" ? undefined : tab, showArchived);
+    } catch (e: any) {
+      message.error(e?.response?.data?.message || "Action failed");
+    } finally {
+      setArchiving(false);
+    }
+  }
 
   const columns: ColumnsType<BillRequest> = [
     {
@@ -288,6 +321,15 @@ export default function BillRequests() {
               Release Payment
             </Button>
           )}
+          <Popconfirm
+            title={showArchived ? `Unarchive ${r.reqNo}?` : `Archive ${r.reqNo}?`}
+            description={showArchived ? "It will reappear in the normal list." : "It will be hidden from the normal list (and its linked bill, if any), but not deleted."}
+            onConfirm={() => archiveOne(r)}
+          >
+            <Button size="small" icon={<InboxOutlined />} style={{ color: "#6B7280" }}>
+              {showArchived ? "Unarchive" : "Archive"}
+            </Button>
+          </Popconfirm>
         </div>
       ),
     },
@@ -345,6 +387,20 @@ export default function BillRequests() {
           filterOption={(input, option) => (option?.label ?? "").toLowerCase().includes(input.toLowerCase())}
           style={{ minWidth: 240 }}
         />
+        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#6B7280" }}>
+          <Switch size="small" checked={showArchived} onChange={setShowArchived} />
+          Show Archived
+        </label>
+        {selectedRowKeys.length > 0 && (
+          <Popconfirm
+            title={showArchived ? `Unarchive ${selectedRowKeys.length} request(s)?` : `Archive ${selectedRowKeys.length} request(s)?`}
+            onConfirm={archiveSelected}
+          >
+            <Button icon={<InboxOutlined />} loading={archiving}>
+              {showArchived ? "Unarchive" : "Archive"} Selected ({selectedRowKeys.length})
+            </Button>
+          </Popconfirm>
+        )}
       </div>
 
       {loading ? (
@@ -358,6 +414,10 @@ export default function BillRequests() {
           rowKey="_id"
           size="middle"
           pagination={{ pageSize: 20 }}
+          rowSelection={{
+            selectedRowKeys,
+            onChange: (keys) => setSelectedRowKeys(keys as string[]),
+          }}
         />
       )}
 

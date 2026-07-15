@@ -39,6 +39,8 @@ const billRequestSchema = new Schema(
     milestoneAchieved:{ type: Boolean, default: false },
     milestoneDate:    { type: Date },
     batchId:          { type: String, default: null },
+    isArchived:       { type: Boolean, default: false },
+    archivedAt:       { type: Date, default: null },
   },
   { timestamps: true }
 );
