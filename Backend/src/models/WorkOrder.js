@@ -44,10 +44,26 @@ const scopeItemSchema = new mongoose.Schema(
   { _id: true }
 );
 
+const paymentMilestoneSchema = new mongoose.Schema(
+  {
+    stage:      { type: String, default: '' },
+    date:       { type: Date },
+    type:       { type: String, default: '' },
+    mode:       { type: String, default: 'Bank Transfer' },
+    amount:     { type: Number, default: 0 },
+    gstPercent: { type: Number, default: 18 },
+    gstType:    { type: String, enum: ['inclusive', 'exclusive'], default: 'exclusive' },
+    payable:    { type: Number, default: 0 },
+  },
+  { _id: true }
+);
+
 const workOrderSchema = new mongoose.Schema(
   {
     workOrderNo:   { type: String, required: true, unique: true },
     issueDate:     { type: Date, required: true },
+    preparedByName:    { type: String, default: '' },
+    preparedByContact: { type: String, default: '' },
     companyId:     { type: mongoose.Schema.Types.ObjectId, ref: 'Company', default: null },
     companyName:   { type: String, default: '' },
     projectId:     { type: mongoose.Schema.Types.ObjectId, ref: 'Project', required: true },
@@ -72,6 +88,8 @@ const workOrderSchema = new mongoose.Schema(
     retentionPercent: { type: Number, default: 0 },
     documentUrl:   { type: String },
     documentName:  { type: String },
+    paymentMilestones: [paymentMilestoneSchema],
+    warrantyTerms:     [{ type: String }],
     status: {
       type: String,
       enum: ['draft', 'issued', 'in-progress', 'completed'],

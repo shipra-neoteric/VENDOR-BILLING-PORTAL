@@ -123,10 +123,24 @@ export type WorkCategory =
   | "Hospitality"
   | "";
 
+export interface PaymentMilestone {
+  id: string;
+  stage: string;
+  date: string;
+  type: string;
+  mode: string;
+  amount: number;
+  gstPercent: number;
+  gstType: "inclusive" | "exclusive";
+  payable: number;
+}
+
 export interface WorkOrder {
   id: string;
   workOrderNo: string;
   issueDate: string;
+  preparedByName?: string;
+  preparedByContact?: string;
   projectId: string;
   projectName: string;
   vendorCode: string;
@@ -141,7 +155,11 @@ export interface WorkOrder {
   gstPercent?: number;
   retentionPercent?: number;
   documentName?: string;
+  paymentMilestones?: PaymentMilestone[];
+  warrantyTerms?: string[];
   status: WorkOrderStatus;
+  createdAt?: string;
+  createdBy?: { _id: string; name: string; email?: string } | string;
 }
 
 export interface Bill {

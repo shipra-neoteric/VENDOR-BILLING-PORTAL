@@ -16,6 +16,9 @@ import {
 import axios from "axios";
 import dayjs from "dayjs";
 import { selectableProjects } from "../../utils/projectOptions";
+import PaymentMilestonesBuilder, { calcPayable } from "../../components/PaymentMilestonesBuilder";
+import type { MilestoneDraft } from "../../components/PaymentMilestonesBuilder";
+import WarrantyTermsBuilder from "../../components/WarrantyTermsBuilder";
 
 const { Title, Text } = Typography;
 
@@ -363,6 +366,8 @@ export default function PublicWorkOrderForm() {
   const [scopeItems,  setScopeItems]  = useState<ScopeDraft[]>([newScope()]);
   const [topCatId,    setTopCatId]    = useState<string>("");
   const [documentFile, setDocumentFile] = useState<{ fileName: string; dataUrl: string } | null>(null);
+  const [milestones,  setMilestones]  = useState<MilestoneDraft[]>([]);
+  const [warrantyTerms, setWarrantyTerms] = useState<string[]>([]);
 
   const handleDocSelect: NonNullable<UploadProps["beforeUpload"]> = async (file) => {
     if (file.size > MAX_FILE_MB * 1024 * 1024) {
@@ -415,6 +420,14 @@ export default function PublicWorkOrderForm() {
         gstPercent:  vals.gstPercent ?? 18,
         documentUrl:  documentFile?.dataUrl  || "",
         documentName: documentFile?.fileName || "",
+        preparedByName:    vals.preparedByName    || "",
+        preparedByContact: vals.preparedByContact || "",
+        paymentMilestones: milestones.map(m => ({
+          stage: m.stage, date: m.date, type: m.type, mode: m.mode,
+          amount: m.amount || 0, gstPercent: m.gstPercent, gstType: m.gstType,
+          payable: calcPayable(m),
+        })),
+        warrantyTerms: warrantyTerms.filter(t => t.trim()),
         scopeItems: validScope.map(i => ({
           description: i.description,
           unit:        i.unit,
@@ -448,6 +461,8 @@ export default function PublicWorkOrderForm() {
     setScopeItems([newScope()]);
     setTopCatId("");
     setDocumentFile(null);
+    setMilestones([]);
+    setWarrantyTerms([]);
     setSubmitted(null);
   }
 
@@ -529,6 +544,16 @@ export default function PublicWorkOrderForm() {
               <Form.Item label="Work Order Number">
                 <Input disabled placeholder="Auto-assign on submit"
                   style={{ background: "#f5f6f8", color: "#9ba3b8" }} />
+              </Form.Item>
+
+              <Form.Item name="preparedByName" label="Your Name"
+                rules={[{ required: true, message: "Your name is required" }]}>
+                <Input placeholder="e.g. Yash Gupta" />
+              </Form.Item>
+
+              <Form.Item name="preparedByContact" label="Your Contact"
+                rules={[{ required: true, message: "Your contact is required" }]}>
+                <Input placeholder="Phone or email" />
               </Form.Item>
 
               <Form.Item name="companyId" label="Issuing Company">
@@ -653,6 +678,16 @@ export default function PublicWorkOrderForm() {
                 </>
               )}
             </div>
+          </Card>
+
+          {/* ── Payment Milestones ── */}
+          <Card style={{ borderRadius: 12, marginBottom: 20, boxShadow: "0 2px 12px rgba(0,0,0,0.05)" }}>
+            <PaymentMilestonesBuilder items={milestones} onChange={setMilestones} />
+          </Card>
+
+          {/* ── Warranty / Guarantee Terms ── */}
+          <Card style={{ borderRadius: 12, marginBottom: 20, boxShadow: "0 2px 12px rgba(0,0,0,0.05)" }}>
+            <WarrantyTermsBuilder items={warrantyTerms} onChange={setWarrantyTerms} />
           </Card>
 
           {/* ── Submit ── */}

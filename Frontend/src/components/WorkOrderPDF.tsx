@@ -38,13 +38,33 @@ const S = StyleSheet.create({
   scopeHdr:  { flexDirection: "row", backgroundColor: HDR_BG, padding: "5px 8px" },
   scopeRow:  { flexDirection: "row", borderTopWidth: 1, borderTopColor: BORDER, padding: "4px 8px" },
   scopeAlt:  { flexDirection: "row", borderTopWidth: 1, borderTopColor: BORDER, padding: "4px 8px", backgroundColor: LIGHT },
-  colDesc:   { flex: 2.5, fontSize: 7.5 },
-  colUnit:   { width: 52, fontSize: 7.5, textAlign: "center" },
-  colQty:    { width: 52, fontSize: 7.5, textAlign: "right" },
-  colDate:   { width: 62, fontSize: 7.5, textAlign: "center" },
-  colRate:   { width: 60, fontSize: 7.5, textAlign: "right" },
-  colAmt:    { width: 68, fontSize: 7.5, textAlign: "right" },
+  colDesc:   { flex: 2.2, fontSize: 7.5 },
+  colUnit:   { width: 42, fontSize: 7.5, textAlign: "center" },
+  colQty:    { width: 42, fontSize: 7.5, textAlign: "right" },
+  colDate:   { width: 52, fontSize: 7.5, textAlign: "center" },
+  colRate:   { width: 52, fontSize: 7.5, textAlign: "right" },
+  colAmt:    { width: 62, fontSize: 7.5, textAlign: "right" },
   hdrText:   { color: "#fff", fontFamily: "Helvetica-Bold", fontSize: 7.5 },
+
+  // ── Side-by-side details
+  sideRow:   { flexDirection: "row", gap: 10, marginBottom: 10 },
+  sideCol:   { flex: 1 },
+
+  // ── Payment milestones table
+  msHdr:     { flexDirection: "row", backgroundColor: HDR_BG, padding: "5px 6px" },
+  msRow:     { flexDirection: "row", borderTopWidth: 1, borderTopColor: BORDER, padding: "4px 6px" },
+  msAlt:     { flexDirection: "row", borderTopWidth: 1, borderTopColor: BORDER, padding: "4px 6px", backgroundColor: LIGHT },
+  msStage:   { flex: 1.6, fontSize: 7.5 },
+  msDate:    { width: 52, fontSize: 7.5, textAlign: "center" },
+  msMode:    { width: 62, fontSize: 7.5, textAlign: "center" },
+  msAmt:     { width: 58, fontSize: 7.5, textAlign: "right" },
+  msGst:     { width: 58, fontSize: 7, textAlign: "center" },
+  msPay:     { width: 62, fontSize: 7.5, textAlign: "right", fontFamily: "Helvetica-Bold" },
+
+  // ── Warranty
+  warrRow:   { flexDirection: "row", marginBottom: 3.5, gap: 4, padding: "0 10px" },
+  warrNum:   { fontSize: 7, color: ORANGE, fontFamily: "Helvetica-Bold", width: 12 },
+  warrText:  { flex: 1, fontSize: 7.5, color: MID, lineHeight: 1.5 },
 
   // ── Totals
   totalRow:  { flexDirection: "row", justifyContent: "flex-end", borderTopWidth: 1.5, borderTopColor: ORANGE, padding: "5px 8px", backgroundColor: "#FFF8F3" },
@@ -73,9 +93,22 @@ const S = StyleSheet.create({
 });
 
 // ── Types passed in ────────────────────────────────────────────
+interface PaymentMilestoneData {
+  stage?: string;
+  date?: string;
+  type?: string;
+  mode?: string;
+  amount?: number;
+  gstPercent?: number;
+  gstType?: "inclusive" | "exclusive";
+  payable?: number;
+}
+
 interface WOData {
   workOrderNo: string;
   issueDate: string;
+  preparedByName?: string;
+  preparedByContact?: string;
   projectName: string;
   category?: string;
   subCategory?: string;
@@ -98,6 +131,8 @@ interface WOData {
     plannedEnd?: string;
     subItems?: Array<{ description: string; unit?: string; plannedQty?: number; rate?: number; amount?: number }>;
   }>;
+  paymentMilestones?: PaymentMilestoneData[];
+  warrantyTerms?: string[];
 }
 
 interface CompanyData {
@@ -194,6 +229,10 @@ export function WorkOrderDocument({ wo, company, contractor }: Props) {
     return s + (l.amount ?? 0);
   }, 0) || wo.contractValue || 0;
 
+  const milestones = wo.paymentMilestones ?? [];
+  const grandPayable = milestones.reduce((s, m) => s + (m.payable ?? 0), 0);
+  const warrantyTerms = (wo.warrantyTerms ?? []).filter(Boolean);
+
   return (
     <Document title={`Work Order ${wo.workOrderNo}`} author="Neoteric Group">
       <Page size="A4" style={S.page}>
@@ -203,11 +242,13 @@ export function WorkOrderDocument({ wo, company, contractor }: Props) {
           <View style={S.logoBox}>
             <Text style={S.logoName}>Neoteric Group</Text>
             <Text style={S.logoSub}>{company?.name || "—"}</Text>
+            {wo.preparedByName ? <Text style={S.logoSub}>Prepared By: {wo.preparedByName}</Text> : null}
+            {wo.preparedByContact ? <Text style={S.logoSub}>Contact: {wo.preparedByContact}</Text> : null}
           </View>
           <View style={S.docTitle}>
             <Text style={S.docMain}>WORK ORDER</Text>
-            <Text style={S.docSub}>INTERNAL DOCUMENT</Text>
-            <Text style={S.docBadge}>CONFIDENTIAL</Text>
+            <Text style={S.docSub}>{wo.workOrderNo}</Text>
+            <Text style={S.docBadge}>Generated: {new Date().toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</Text>
           </View>
         </View>
 
@@ -217,25 +258,29 @@ export function WorkOrderDocument({ wo, company, contractor }: Props) {
           <InfoRow label="Issue Date"     value={fmtDate(wo.issueDate)} last />
         </SectionBox>
 
-        {/* ── Company Details ── */}
-        <SectionBox title="Company Details (Issuing Party)">
-          <InfoRow label="Company Name"   value={company?.name} />
-          <InfoRow label="Address"        value={companyAddr || company?.address} />
-          <InfoRow label="Contact Person" value={company?.contactPerson} />
-          <InfoRow label="Email"          value={company?.email} />
-          <InfoRow label="Phone"          value={company?.phone} last />
-        </SectionBox>
-
-        {/* ── Contractor Details ── */}
-        <SectionBox title="Contractor Details">
-          <InfoRow label="Contractor Name"  value={wo.vendorName} />
-          <InfoRow label="Vendor Code"      value={wo.vendorCode || contractor?.vendorCode} mono />
-          <InfoRow label="Contact Person"   value={wo.ownerName} />
-          <InfoRow label="Address"          value={contractorAddr} />
-          <InfoRow label="PAN No."          value={contractor?.panNumber} mono />
-          <InfoRow label="GST No."          value={contractor?.gstNumber} mono />
-          <InfoRow label="Contact / Mobile" value={wo.mobile || contractor?.mobile} last />
-        </SectionBox>
+        {/* ── Contractor + Company Details (side by side) ── */}
+        <View style={S.sideRow}>
+          <View style={S.sideCol}>
+            <SectionBox title="Contractor Details">
+              <InfoRow label="Contractor Name"  value={wo.vendorName} />
+              <InfoRow label="Vendor Code"      value={wo.vendorCode || contractor?.vendorCode} mono />
+              <InfoRow label="Contact Person"   value={wo.ownerName} />
+              <InfoRow label="Address"          value={contractorAddr} />
+              <InfoRow label="PAN No."          value={contractor?.panNumber} mono />
+              <InfoRow label="GST No."          value={contractor?.gstNumber} mono />
+              <InfoRow label="Contact / Mobile" value={wo.mobile || contractor?.mobile} last />
+            </SectionBox>
+          </View>
+          <View style={S.sideCol}>
+            <SectionBox title="Company Details (Issuing Party)">
+              <InfoRow label="Company Name"   value={company?.name} />
+              <InfoRow label="Address"        value={companyAddr || company?.address} />
+              <InfoRow label="Contact Person" value={company?.contactPerson} />
+              <InfoRow label="Email"          value={company?.email} />
+              <InfoRow label="Phone"          value={company?.phone} last />
+            </SectionBox>
+          </View>
+        </View>
 
         {/* ── Project Details ── */}
         <SectionBox title="Project Details">
@@ -259,19 +304,20 @@ export function WorkOrderDocument({ wo, company, contractor }: Props) {
           </View>
         )}
 
-        {/* ── Scope of Work table ── */}
+        {/* ── Scope of Work (with pricing) ── */}
         {lineItems.length > 0 && (
-          <View style={[S.table, S.sectionGap]}>
+          <View style={[S.table, S.sectionGap]} wrap={false}>
             <View style={S.secHeader}>
               <Text style={S.secTitle}>Scope of Work</Text>
             </View>
-            {/* Column headers */}
             <View style={S.scopeHdr}>
               <Text style={[S.colDesc, S.hdrText]}>Description</Text>
               <Text style={[S.colUnit, S.hdrText]}>Unit</Text>
               <Text style={[S.colQty, S.hdrText]}>Qty</Text>
+              <Text style={[S.colRate, S.hdrText]}>Rate</Text>
               <Text style={[S.colDate, S.hdrText]}>Start</Text>
               <Text style={[S.colDate, S.hdrText]}>End</Text>
+              <Text style={[S.colAmt, S.hdrText]}>Amount</Text>
             </View>
             {lineItems.map((item, i) => (
               <View key={i} style={i % 2 === 0 ? S.scopeRow : S.scopeAlt} wrap={false}>
@@ -280,60 +326,83 @@ export function WorkOrderDocument({ wo, company, contractor }: Props) {
                 </Text>
                 <Text style={S.colUnit}>{item.unit || "—"}</Text>
                 <Text style={S.colQty}>{item.qty != null ? item.qty.toLocaleString("en-IN") : "—"}</Text>
+                <Text style={S.colRate}>{item.rate != null && item.rate > 0 ? item.rate.toLocaleString("en-IN") : "—"}</Text>
                 <Text style={S.colDate}>{item.start ? fmtDate(item.start) : "—"}</Text>
                 <Text style={S.colDate}>{item.end ? fmtDate(item.end) : "—"}</Text>
+                <Text style={[S.colAmt, { fontFamily: item.amount ? "Helvetica-Bold" : "Helvetica" }]}>
+                  {item.amount ? fmtAmt(item.amount) : "—"}
+                </Text>
+              </View>
+            ))}
+            {/* Total */}
+            <View style={S.totalRow}>
+              <Text style={S.totalLabel}>Total:</Text>
+              <Text style={S.totalVal}>{fmtAmt(totalAmt)}</Text>
+            </View>
+            <View style={S.gstRow}>
+              <Text style={S.gstLabel}>GST Slab:</Text>
+              <Text style={S.gstVal}>
+                {wo.gstPercent != null ? `${wo.gstPercent}%` : "As applicable"}
+              </Text>
+            </View>
+            {wo.gstPercent != null && wo.gstPercent > 0 && (
+              <View style={[S.gstRow, { borderTopWidth: 1.5, borderTopColor: BORDER }]}>
+                <Text style={[S.gstLabel, { color: MID, fontFamily: "Helvetica-Bold" }]}>Total incl. GST:</Text>
+                <Text style={[S.gstVal, { color: MID, fontFamily: "Helvetica-Bold" }]}>
+                  {fmtAmt(Math.round(totalAmt * (1 + (wo.gstPercent ?? 0) / 100)))}
+                </Text>
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* ── Payment Milestones ── */}
+        {milestones.length > 0 && (
+          <View style={[S.table, S.sectionGap]} wrap={false}>
+            <View style={S.secHeader}>
+              <Text style={S.secTitle}>Payment Milestones</Text>
+            </View>
+            <View style={S.msHdr}>
+              <Text style={[S.msStage, S.hdrText]}>Type</Text>
+              <Text style={[S.msDate, S.hdrText]}>Date</Text>
+              <Text style={[S.msMode, S.hdrText]}>Mode</Text>
+              <Text style={[S.msAmt, S.hdrText]}>Amount</Text>
+              <Text style={[S.msGst, S.hdrText]}>GST</Text>
+              <Text style={[S.msPay, S.hdrText]}>Payable</Text>
+            </View>
+            {milestones.map((m, i) => (
+              <View key={i} style={i % 2 === 0 ? S.msRow : S.msAlt} wrap={false}>
+                <Text style={S.msStage}>{m.type || m.stage || "—"}</Text>
+                <Text style={S.msDate}>{m.date ? fmtDate(m.date) : "—"}</Text>
+                <Text style={S.msMode}>{m.mode || "—"}</Text>
+                <Text style={S.msAmt}>{m.amount ? fmtAmt(m.amount) : "—"}</Text>
+                <Text style={S.msGst}>{m.gstPercent ?? 0}% {m.gstType === "inclusive" ? "Incl." : "Excl."}</Text>
+                <Text style={S.msPay}>{m.payable ? fmtAmt(m.payable) : "—"}</Text>
+              </View>
+            ))}
+            <View style={S.totalRow}>
+              <Text style={S.totalLabel}>Grand Total:</Text>
+              <Text style={S.totalVal}>{fmtAmt(grandPayable)}</Text>
+            </View>
+          </View>
+        )}
+
+        {/* ── Warranty / Guarantee Terms ── */}
+        {warrantyTerms.length > 0 && (
+          <View style={{ marginBottom: 10 }} wrap={false}>
+            <Text style={S.termsHdr}>Warranty / Guarantee Terms</Text>
+            {warrantyTerms.map((t, i) => (
+              <View key={i} style={S.warrRow}>
+                <Text style={S.warrNum}>{i + 1}.</Text>
+                <Text style={S.warrText}>{t}</Text>
               </View>
             ))}
           </View>
         )}
 
-        {/* ── Financials table ── */}
-        <View style={S.table} wrap={false}>
-          <View style={S.secHeader}>
-            <Text style={S.secTitle}>Financials</Text>
-          </View>
-          <View style={S.scopeHdr}>
-            <Text style={[S.colDesc, S.hdrText]}>Description</Text>
-            <Text style={[S.colUnit, S.hdrText]}>Unit</Text>
-            <Text style={[S.colQty, S.hdrText]}>Qty</Text>
-            <Text style={[S.colRate, S.hdrText]}>Rate (₹)</Text>
-            <Text style={[S.colAmt, S.hdrText]}>Amount (₹)</Text>
-          </View>
-          {lineItems.filter(l => l.qty != null || l.amount).map((item, i) => (
-            <View key={i} style={i % 2 === 0 ? S.scopeRow : S.scopeAlt} wrap={false}>
-              <Text style={[S.colDesc, { color: item.isChild ? GRAY : MID }]}>{item.desc}</Text>
-              <Text style={S.colUnit}>{item.unit || "—"}</Text>
-              <Text style={S.colQty}>{item.qty != null ? item.qty.toLocaleString("en-IN") : "—"}</Text>
-              <Text style={S.colRate}>{item.rate != null && item.rate > 0 ? item.rate.toLocaleString("en-IN") : "—"}</Text>
-              <Text style={[S.colAmt, { fontFamily: item.amount ? "Helvetica-Bold" : "Helvetica" }]}>
-                {item.amount ? fmtAmt(item.amount) : "—"}
-              </Text>
-            </View>
-          ))}
-          {/* Total */}
-          <View style={S.totalRow}>
-            <Text style={S.totalLabel}>Total:</Text>
-            <Text style={S.totalVal}>{fmtAmt(totalAmt)}</Text>
-          </View>
-          <View style={S.gstRow}>
-            <Text style={S.gstLabel}>GST Slab:</Text>
-            <Text style={S.gstVal}>
-              {wo.gstPercent != null ? `${wo.gstPercent}%` : "As applicable"}
-            </Text>
-          </View>
-          {wo.gstPercent != null && wo.gstPercent > 0 && (
-            <View style={[S.gstRow, { borderTopWidth: 1.5, borderTopColor: BORDER }]}>
-              <Text style={[S.gstLabel, { color: MID, fontFamily: "Helvetica-Bold" }]}>Total incl. GST:</Text>
-              <Text style={[S.gstVal, { color: MID, fontFamily: "Helvetica-Bold" }]}>
-                {fmtAmt(Math.round(totalAmt * (1 + (wo.gstPercent ?? 0) / 100)))}
-              </Text>
-            </View>
-          )}
-        </View>
-
-        {/* ── Terms ── */}
+        {/* ── General Terms & Conditions ── */}
         <View style={{ marginBottom: 10 }} wrap={false}>
-          <Text style={S.termsHdr}>Terms & Conditions</Text>
+          <Text style={S.termsHdr}>General Terms & Conditions</Text>
           {TERMS.map((t, i) => (
             <View key={i} style={S.termRow}>
               <Text style={S.termNum}>{i + 1}.</Text>
@@ -344,7 +413,7 @@ export function WorkOrderDocument({ wo, company, contractor }: Props) {
 
         {/* ── Signature block ── */}
         <View style={S.sigBlock} wrap={false}>
-          {(["Contractor", "AGM – Project", "GM – Project", "CEO – Desk"] as const).map((role, i, arr) => (
+          {(["Contractor", "AGM – Project", "GM – Project", "Final Approval"] as const).map((role, i, arr) => (
             <View key={role} style={i === arr.length - 1 ? S.sigCellL : S.sigCell}>
               <Text style={S.sigRole}>{role}</Text>
               <View style={S.sigLine} />

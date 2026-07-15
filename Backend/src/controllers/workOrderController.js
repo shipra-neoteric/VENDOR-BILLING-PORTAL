@@ -28,6 +28,7 @@ exports.listWorkOrders = asyncHandler(async (req, res) => {
   const workOrders = await WorkOrder.find(filter)
     .populate('projectId', 'code name projectType')
     .populate('assignedDRI', 'name email')
+    .populate('createdBy', 'name email')
     .sort({ createdAt: -1 })
     .lean();
   success(res, { workOrders });
@@ -36,6 +37,7 @@ exports.listWorkOrders = asyncHandler(async (req, res) => {
 exports.getWorkOrder = asyncHandler(async (req, res) => {
   const workOrder = await WorkOrder.findById(req.params.id)
     .populate('projectId', 'code name projectType')
+    .populate('createdBy', 'name email')
     .lean();
   if (!workOrder) return notFound(res, 'Work order not found');
   success(res, { workOrder });
@@ -80,6 +82,8 @@ exports.createWorkOrder = asyncHandler(async (req, res) => {
     ownerName:   contractor.ownerName,
     mobile:      contractor.mobile,
     assignedDRI,
+    preparedByName:    req.user.name,
+    preparedByContact: req.user.email,
     createdBy:   req.user._id,
   });
 

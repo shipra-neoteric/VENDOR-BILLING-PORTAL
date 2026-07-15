@@ -18,15 +18,15 @@ import {
   Progress,
   Tooltip,
   Spin,
-  Popconfirm,
+  Dropdown,
+  Modal,
 } from "antd";
-import type { FormInstance } from "antd";
+import type { FormInstance, MenuProps } from "antd";
 import { useNavigate } from "react-router-dom";
 import {
   PlusOutlined,
   UploadOutlined,
   EditOutlined,
-  EyeOutlined,
   LinkOutlined,
   DeleteOutlined,
   DownOutlined,
@@ -34,6 +34,7 @@ import {
   ExclamationCircleOutlined,
   HistoryOutlined,
   FilePdfOutlined,
+  MoreOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 import type { Dayjs } from "dayjs";
@@ -46,6 +47,9 @@ import DateRangeFilter, { inDateRange } from "../../components/DateRangeFilter";
 import { downloadWorkOrderPDF } from "../../components/WorkOrderPDF";
 import { selectableProjects, getWorkOrderProjectId } from "../../utils/projectOptions";
 import { vendorLabel } from "../../utils/vendorLabel";
+import PaymentMilestonesBuilder, { calcPayable } from "../../components/PaymentMilestonesBuilder";
+import type { MilestoneDraft } from "../../components/PaymentMilestonesBuilder";
+import WarrantyTermsBuilder from "../../components/WarrantyTermsBuilder";
 import type {
   Contractor,
   Project,
@@ -53,6 +57,7 @@ import type {
   WorkOrderStatus,
   ScopeItem,
   ScopeItemStatus,
+  PaymentMilestone,
 } from "../../types/VendorBilling";
 
 // ── Constants ─────────────────────────────────────────────────
@@ -176,6 +181,18 @@ const normalizeWO = (wo: any): WorkOrder => ({
     progressEntries: (si.progressEntries || []).map(normalizeId),
     subItems: (si.subItems || []).map(normalizeId),
   })),
+  paymentMilestones: (wo.paymentMilestones || []).map(normalizeId),
+});
+
+const toMilestoneDraft = (pm: PaymentMilestone): MilestoneDraft => ({
+  id: pm.id, stage: pm.stage, date: pm.date, type: pm.type,
+  mode: pm.mode, amount: pm.amount, gstPercent: pm.gstPercent, gstType: pm.gstType,
+});
+
+const milestoneDraftToPayload = (m: MilestoneDraft) => ({
+  stage: m.stage, date: m.date, type: m.type, mode: m.mode,
+  amount: m.amount || 0, gstPercent: m.gstPercent, gstType: m.gstType,
+  payable: calcPayable(m),
 });
 
 const newSubDraft = (): ScopeSubItemDraft => ({
@@ -1042,6 +1059,8 @@ function WOFormFields({
   categoriesList,
   companiesList = [],
   driList = [],
+  preparedByName,
+  preparedByContact,
 }: {
   form: FormInstance;
   isEdit?: boolean;
@@ -1051,6 +1070,8 @@ function WOFormFields({
   categoriesList: { _id: string; name: string; isActive: boolean; parentId?: string | null }[];
   companiesList?: any[];
   driList?: { _id: string; name: string; email: string }[];
+  preparedByName?: string;
+  preparedByContact?: string;
 }) {
 
   const fillVendor = (vendorCode: string) => {
@@ -1071,6 +1092,12 @@ function WOFormFields({
 
   return (
     <>
+      {preparedByName && (
+        <div style={{ display: "flex", gap: 20, flexWrap: "wrap", marginBottom: 16, fontSize: 12, color: "#5a6278", background: "#f5f6f8", border: "1px solid #e4e7ee", borderRadius: 8, padding: "8px 14px" }}>
+          <span>Prepared By: <strong style={{ color: "#1a1f2e" }}>{preparedByName}</strong></span>
+          {preparedByContact && <span>Contact: <strong style={{ color: "#1a1f2e" }}>{preparedByContact}</strong></span>}
+        </div>
+      )}
       <Row gutter={16} style={{ marginBottom: 4 }}>
         <Col span={12}>
           <Form.Item
@@ -1362,6 +1389,11 @@ export default function WorkItems() {
   const [progressItem,     setProgressItem]     = useState<ScopeItem | null>(null);
   const [progressModalOpen, setProgressModalOpen] = useState(false);
 
+  const [createMilestones, setCreateMilestones] = useState<MilestoneDraft[]>([]);
+  const [editMilestones,   setEditMilestones]   = useState<MilestoneDraft[]>([]);
+  const [createWarranty,   setCreateWarranty]   = useState<string[]>([]);
+  const [editWarranty,     setEditWarranty]     = useState<string[]>([]);
+
   const [editForm]     = Form.useForm();
   const [createForm]   = Form.useForm();
   const [progressForm] = Form.useForm();
@@ -1512,6 +1544,10 @@ export default function WorkItems() {
         gstPercent:        values.gstPercent ?? 18,
         retentionPercent:  values.retentionPercent ?? 0,
         status:            values.status || "draft",
+        preparedByName:    user?.name  || "",
+        preparedByContact: user?.email || "",
+        paymentMilestones: createMilestones.map(milestoneDraftToPayload),
+        warrantyTerms:     createWarranty.filter(t => t.trim()),
       };
       if (values.workOrderNo?.trim()) body.workOrderNo = values.workOrderNo.trim();
 
@@ -1521,6 +1557,8 @@ export default function WorkItems() {
       message.success(`Work order ${res.data.workOrder.workOrderNo} created`);
       createForm.resetFields();
       setCreateScopeItems([]);
+      setCreateMilestones([]);
+      setCreateWarranty([]);
       setCreateDrawerOpen(false);
     } catch (err: unknown) {
       if (err && typeof err === "object" && "errorFields" in err) return;
@@ -1533,6 +1571,8 @@ export default function WorkItems() {
     setEditWOId(wo.id);
     editForm.setFieldsValue({ ...wo, issueDate: dayjs(wo.issueDate), category: wo.category || "", subCategory: wo.subCategory || "", assignedDRI: ((wo as any).assignedDRI || []).map((d: any) => d._id || d), gstPercent: wo.gstPercent ?? 18, retentionPercent: (wo as any).retentionPercent ?? 0 });
     setEditScopeItems((wo.scopeItems || []).map(toDraft));
+    setEditMilestones((wo.paymentMilestones || []).map(toMilestoneDraft));
+    setEditWarranty(wo.warrantyTerms || []);
     setEditModalOpen(true);
   };
 
@@ -1567,6 +1607,8 @@ export default function WorkItems() {
         gstPercent:        values.gstPercent ?? currentEditWO.gstPercent ?? 18,
         retentionPercent:  values.retentionPercent ?? (currentEditWO as any).retentionPercent ?? 0,
         status:            values.status,
+        paymentMilestones: editMilestones.map(milestoneDraftToPayload),
+        warrantyTerms:     editWarranty.filter(t => t.trim()),
       };
 
       setSaving(true);
@@ -1728,55 +1770,75 @@ export default function WorkItems() {
       },
     },
     {
+      title: "Created At",
+      dataIndex: "createdAt",
+      width: 110,
+      render: (d: string) => d ? dayjs(d).format("DD MMM YYYY") : <span style={{ color: "#9ba3b8" }}>—</span>,
+    },
+    {
+      title: "Created By",
+      width: 130,
+      render: (_: unknown, record: WorkOrder) => {
+        const cb = record.createdBy;
+        const name = cb && typeof cb === "object" ? cb.name : undefined;
+        return name || <span style={{ color: "#9ba3b8" }}>—</span>;
+      },
+    },
+    {
       title: "Actions",
-      width: 180,
-      render: (_: unknown, record: WorkOrder) => (
-        <Space>
-          <Button
-            type="link"
-            size="small"
-            icon={<EyeOutlined />}
-            onClick={() => { setSelectedWOId(record.id); setDrawerOpen(true); }}
-          >
-            View
-          </Button>
-          <Tooltip title="Download PDF">
-            <Button
-              type="link"
-              size="small"
-              icon={<FilePdfOutlined />}
-              loading={pdfLoading}
-              style={{ color: "#e03b3b" }}
-              onClick={() => handleDownloadPDF(record)}
-            />
-          </Tooltip>
-          <Button
-            type="link"
-            size="small"
-            icon={<EditOutlined />}
-            onClick={() => openEdit(record)}
-          >
-            Edit
-          </Button>
-          {record.documentName && (
-            <Button type="link" size="small" icon={<LinkOutlined />}>Doc</Button>
-          )}
-          {isOwner && (
-            <Popconfirm
-              title={`Delete ${record.workOrderNo}?`}
-              description="This permanently removes the work order and cannot be undone."
-              okText="Yes, Delete"
-              okType="danger"
-              cancelText="Cancel"
-              onConfirm={() => handleDelete(record)}
-            >
-              <Button type="link" size="small" danger icon={<DeleteOutlined />}>
-                Delete
+      width: 110,
+      render: (_: unknown, record: WorkOrder) => {
+        const menuItems: MenuProps["items"] = [
+          { key: "edit", label: "Edit", icon: <EditOutlined /> },
+          ...(record.documentName ? [{ key: "doc", label: "View Document", icon: <LinkOutlined /> }] : []),
+          ...(isOwner ? [{ key: "delete", label: "Delete", icon: <DeleteOutlined />, danger: true }] : []),
+        ];
+        const onMenuClick: MenuProps["onClick"] = ({ key }) => {
+          if (key === "edit") {
+            openEdit(record);
+          } else if (key === "delete") {
+            Modal.confirm({
+              title: `Delete ${record.workOrderNo}?`,
+              icon: <ExclamationCircleOutlined />,
+              content: "This permanently removes the work order and cannot be undone.",
+              okText: "Yes, Delete",
+              okType: "danger",
+              cancelText: "Cancel",
+              onOk: () => handleDelete(record),
+            });
+          }
+        };
+        return (
+          <Space size={4}>
+            <Tooltip title="View">
+              <Button
+                type="text"
+                size="small"
+                onClick={() => { setSelectedWOId(record.id); setDrawerOpen(true); }}
+                style={{ fontSize: 16 }}
+              >
+                👁️
               </Button>
-            </Popconfirm>
-          )}
-        </Space>
-      ),
+            </Tooltip>
+            <Tooltip title="Download PDF">
+              <Button
+                type="text"
+                size="small"
+                loading={pdfLoading}
+                onClick={() => handleDownloadPDF(record)}
+                style={{ fontSize: 16 }}
+              >
+                📄
+              </Button>
+            </Tooltip>
+            {menuItems.length > 0 && (
+              <Dropdown menu={{ items: menuItems, onClick: onMenuClick }} trigger={["click"]}>
+                <Button type="text" size="small" icon={<MoreOutlined />} />
+              </Dropdown>
+            )}
+          </Space>
+        );
+      },
     },
   ];
 
@@ -1804,6 +1866,8 @@ export default function WorkItems() {
             createForm.resetFields();
             createForm.setFieldsValue({ status: "draft", assignedDRI: defaultDRIIds });
             setCreateScopeItems([]);
+            setCreateMilestones([]);
+            setCreateWarranty([]);
             setCreateDrawerOpen(true);
           }}
           style={{ background: "#FF7A00", borderColor: "#FF7A00" }}
@@ -1964,7 +2028,7 @@ export default function WorkItems() {
             dataSource={filtered}
             columns={columns}
             pagination={{ pageSize: 10, showSizeChanger: false }}
-            scroll={{ x: 1100 }}
+            scroll={{ x: 1300 }}
             locale={{
               emptyText: loadingData ? " " : (
                 <div style={{ padding: "40px 20px", color: "#9CA3AF", textAlign: "center" }}>
@@ -1999,7 +2063,7 @@ export default function WorkItems() {
         }
         footer={
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-            <Button size="large" onClick={() => { createForm.resetFields(); setCreateScopeItems([]); setCreateDrawerOpen(false); }}>
+            <Button size="large" onClick={() => { createForm.resetFields(); setCreateScopeItems([]); setCreateMilestones([]); setCreateWarranty([]); setCreateDrawerOpen(false); }}>
               Cancel
             </Button>
             <Button
@@ -2024,6 +2088,8 @@ export default function WorkItems() {
             categoriesList={apiCategories}
             companiesList={companies}
             driList={driList}
+            preparedByName={user?.name}
+            preparedByContact={user?.email}
           />
         </Form>
         <div style={{ borderTop: "1px solid #E5E7EB", marginTop: 16, paddingTop: 16 }}>
@@ -2033,6 +2099,12 @@ export default function WorkItems() {
             allCategories={apiCategories}
             topCatId={createTopCatId}
           />
+        </div>
+        <div style={{ borderTop: "1px solid #E5E7EB", marginTop: 16, paddingTop: 16 }}>
+          <PaymentMilestonesBuilder items={createMilestones} onChange={setCreateMilestones} />
+        </div>
+        <div style={{ borderTop: "1px solid #E5E7EB", marginTop: 16, paddingTop: 16 }}>
+          <WarrantyTermsBuilder items={createWarranty} onChange={setCreateWarranty} />
         </div>
       </Drawer>
 
@@ -2190,6 +2262,50 @@ export default function WorkItems() {
               )}
             </div>
 
+            {/* ── Payment Milestones ──────────────────────── */}
+            {(currentSelectedWO.paymentMilestones?.length ?? 0) > 0 && (
+              <div style={{ background: "var(--nx-white)", border: "1px solid #E5E7EB", borderRadius: 10, overflow: "hidden", marginTop: 16 }}>
+                <div style={{ padding: "12px 16px", borderBottom: "1px solid #E5E7EB", fontWeight: 600, fontSize: 13, color: "#374151" }}>
+                  Payment Milestones
+                </div>
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                    <thead>
+                      <tr style={{ background: "#F9FAFB" }}>
+                        {["Type", "Date", "Mode", "Amount", "GST", "Payable"].map(h => (
+                          <th key={h} style={{ padding: "8px 16px", fontSize: 11, fontWeight: 700, color: "#6B7280", textAlign: "left", textTransform: "uppercase", letterSpacing: "0.05em", borderBottom: "1px solid #E5E7EB", whiteSpace: "nowrap" }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {currentSelectedWO.paymentMilestones!.map((m, i) => (
+                        <tr key={m.id} style={{ borderBottom: "1px solid #F3F4F6", background: i % 2 === 0 ? "#fff" : "#FAFAFA" }}>
+                          <td style={{ padding: "9px 16px", fontSize: 13, color: "#111827" }}>{m.type}</td>
+                          <td style={{ padding: "9px 16px", fontSize: 12, color: "#6B7280" }}>{m.date ? dayjs(m.date).format("DD MMM YYYY") : "—"}</td>
+                          <td style={{ padding: "9px 16px", fontSize: 12, color: "#6B7280" }}>{m.mode}</td>
+                          <td style={{ padding: "9px 16px", fontFamily: "monospace", fontSize: 13, color: "#374151" }}>{fmt(m.amount || 0)}</td>
+                          <td style={{ padding: "9px 16px", fontSize: 12, color: "#6B7280" }}>{m.gstPercent}% {m.gstType === "inclusive" ? "Incl." : "Excl."}</td>
+                          <td style={{ padding: "9px 16px", fontFamily: "monospace", fontSize: 13, fontWeight: 700, color: "#FF7A00" }}>{fmt(m.payable || 0)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* ── Warranty Terms ──────────────────────────── */}
+            {(currentSelectedWO.warrantyTerms?.length ?? 0) > 0 && (
+              <div style={{ background: "var(--nx-white)", border: "1px solid #E5E7EB", borderRadius: 10, padding: "12px 16px", marginTop: 16 }}>
+                <div style={{ fontWeight: 600, fontSize: 13, color: "#374151", marginBottom: 8 }}>Warranty / Guarantee Terms</div>
+                {currentSelectedWO.warrantyTerms!.map((t, i) => (
+                  <div key={i} style={{ fontSize: 13, color: "#374151", marginBottom: 4, display: "flex", gap: 6 }}>
+                    <span style={{ color: "#9CA3AF" }}>{i + 1}.</span> {t}
+                  </div>
+                ))}
+              </div>
+            )}
+
           </>
         )}
       </Drawer>
@@ -2244,6 +2360,8 @@ export default function WorkItems() {
             categoriesList={apiCategories}
             companiesList={companies}
             driList={driList}
+            preparedByName={currentEditWO?.preparedByName}
+            preparedByContact={currentEditWO?.preparedByContact}
           />
         </Form>
         <div style={{ borderTop: "1px solid #E5E7EB", marginTop: 16, paddingTop: 16 }}>
@@ -2253,6 +2371,12 @@ export default function WorkItems() {
             allCategories={apiCategories}
             topCatId={editTopCatId}
           />
+        </div>
+        <div style={{ borderTop: "1px solid #E5E7EB", marginTop: 16, paddingTop: 16 }}>
+          <PaymentMilestonesBuilder items={editMilestones} onChange={setEditMilestones} />
+        </div>
+        <div style={{ borderTop: "1px solid #E5E7EB", marginTop: 16, paddingTop: 16 }}>
+          <WarrantyTermsBuilder items={editWarranty} onChange={setEditWarranty} />
         </div>
       </Drawer>
 

@@ -41,11 +41,13 @@ router.get('/dri-users', asyncHandler(async (_req, res) => {
 
 // ── Submit new work order (no auth) ────────────────────────────
 router.post('/work-orders', asyncHandler(async (req, res) => {
-  const { projectId, vendorCode, issueDate, companyId } = req.body;
+  const { projectId, vendorCode, issueDate, companyId, preparedByName, preparedByContact } = req.body;
 
   if (!projectId)  return badRequest(res, 'Project is required');
   if (!vendorCode) return badRequest(res, 'Vendor code is required');
   if (!issueDate)  return badRequest(res, 'Issue date is required');
+  if (!preparedByName)    return badRequest(res, 'Your name is required');
+  if (!preparedByContact) return badRequest(res, 'Your contact is required');
 
   const project = await Project.findById(projectId);
   if (!project) return notFound(res, 'Project not found');
