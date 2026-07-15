@@ -1,4 +1,5 @@
-import { Skeleton, Alert, Table, Tag } from "antd";
+import { useState } from "react";
+import { Skeleton, Alert, Table, Tag, Switch } from "antd";
 import { useCategories } from "../../hooks/useCategories";
 import { useDashboardData } from "../../features/dashboard/hooks/useDashboardData";
 import { SummaryCards }     from "../../features/dashboard/components/SummaryCards";
@@ -70,7 +71,8 @@ function DashboardSkeleton() {
 // ── Main Dashboard ────────────────────────────────────────────────
 export default function Dashboard() {
   const { categories } = useCategories();
-  const { data, isLoading, error } = useDashboardData();
+  const [includeArchived, setIncludeArchived] = useState(false);
+  const { data, isLoading, error } = useDashboardData(includeArchived);
 
   if (isLoading) return <DashboardSkeleton />;
 
@@ -91,11 +93,17 @@ export default function Dashboard() {
   return (
     <div style={{ paddingBottom: 40 }}>
       {/* Header */}
-      <div style={{ marginBottom: 24 }}>
-        <h1 style={{ fontSize: 26, fontWeight: 700, margin: 0, color: "var(--nx-text)" }}>Project Cost Center</h1>
-        <p style={{ color: "var(--nx-text-2)", marginTop: 4, marginBottom: 0 }}>
-          Overview of contract value, bills, approvals and payments.
-        </p>
+      <div style={{ marginBottom: 24, display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
+        <div>
+          <h1 style={{ fontSize: 26, fontWeight: 700, margin: 0, color: "var(--nx-text)" }}>Project Cost Center</h1>
+          <p style={{ color: "var(--nx-text-2)", marginTop: 4, marginBottom: 0 }}>
+            Overview of contract value, bills, approvals and payments.
+          </p>
+        </div>
+        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--nx-text-2)" }}>
+          <Switch size="small" checked={includeArchived} onChange={setIncludeArchived} />
+          Include archived bills
+        </label>
       </div>
 
       {/* KPI cards */}

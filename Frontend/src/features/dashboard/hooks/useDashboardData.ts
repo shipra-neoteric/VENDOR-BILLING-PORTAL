@@ -10,13 +10,13 @@ interface DashboardData {
   projects:   ProjectRow[];
 }
 
-export function useDashboardData() {
+export function useDashboardData(includeArchived = false) {
   return useQuery<DashboardData>({
-    queryKey: ["dashboard"],
+    queryKey: ["dashboard", includeArchived],
     queryFn: async () => {
       const [woRes, billRes, projRes] = await Promise.all([
         apiClient.get("/work-orders"),
-        apiClient.get("/bills"),
+        apiClient.get(`/bills${includeArchived ? "?archived=all" : ""}`),
         apiClient.get("/projects"),
       ]);
       return {

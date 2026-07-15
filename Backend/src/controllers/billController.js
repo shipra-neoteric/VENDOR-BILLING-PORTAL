@@ -15,7 +15,8 @@ exports.listBills = asyncHandler(async (req, res) => {
   if (projectId)   filter.projectId   = projectId;
   if (status)      filter.status      = status;
   if (archived === 'true') filter.isArchived = true;
-  else             filter.isArchived = { $ne: true };
+  else if (archived !== 'all') filter.isArchived = { $ne: true };
+  // archived === 'all' → no isArchived filter, returns both
   if (search) {
     filter.$or = [
       { billNo:      { $regex: search, $options: 'i' } },

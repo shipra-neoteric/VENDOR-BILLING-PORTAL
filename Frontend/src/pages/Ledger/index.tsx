@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo, useCallback } from "react";
 import type { Dayjs } from "dayjs";
-import { Button, Tag, Select, Row, Col, Empty, Spin, Alert, Descriptions } from "antd";
+import { Button, Tag, Select, Row, Col, Empty, Spin, Alert, Descriptions, Switch } from "antd";
 import { ArrowLeftOutlined, BookOutlined, ReloadOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import apiClient from "../../services/apiClient";
@@ -134,14 +134,15 @@ export default function Ledger() {
   const [vendorFilter, setVendorFilter]     = useState<string>("all");
   const [dateFrom, setDateFrom]             = useState<Dayjs | null>(null);
   const [dateTo, setDateTo]                 = useState<Dayjs | null>(null);
+  const [includeArchived, setIncludeArchived] = useState(false);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (withArchived: boolean) => {
     setLoading(true);
     setError("");
     try {
       const [woRes, billRes, projRes, ctrRes] = await Promise.all([
         apiClient.get("/work-orders"),
-        apiClient.get("/bills"),
+        apiClient.get(`/bills${withArchived ? "?archived=all" : ""}`),
         apiClient.get("/projects"),
         apiClient.get("/contractors"),
       ]);
@@ -156,7 +157,7 @@ export default function Ledger() {
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(includeArchived); }, [load, includeArchived]);
 
   // ── Summary data ──────────────────────────────────────────
   const filteredWOs = useMemo(() => workOrders.filter(wo => {
@@ -396,7 +397,13 @@ export default function Ledger() {
             Work Order billing summary — click "View Ledger" for a full statement.
           </p>
         </div>
-        <Button icon={<ReloadOutlined />} onClick={load}>Refresh</Button>
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#5a6278" }}>
+            <Switch size="small" checked={includeArchived} onChange={setIncludeArchived} />
+            Include archived bills
+          </label>
+          <Button icon={<ReloadOutlined />} onClick={() => load(includeArchived)}>Refresh</Button>
+        </div>
       </div>
 
       {/* Portfolio stat cards */}

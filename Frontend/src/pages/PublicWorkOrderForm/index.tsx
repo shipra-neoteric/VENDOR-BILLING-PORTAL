@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import {
   Form, Select, DatePicker, Input, InputNumber, Button,
-  Divider, Card, Typography, Space, Spin, Result, Tag, Row, Col,
+  Divider, Card, Typography, Space, Spin, Result, Tag, Row, Col, Upload, message,
 } from "antd";
+import type { UploadProps } from "antd";
 import {
   CheckCircleOutlined,
   FileTextOutlined,
@@ -10,6 +11,7 @@ import {
   DeleteOutlined,
   DownOutlined,
   UpOutlined,
+  UploadOutlined,
 } from "@ant-design/icons";
 import axios from "axios";
 import dayjs from "dayjs";
@@ -88,6 +90,17 @@ interface ScopeDraft {
 // ── Helpers ──────────────────────────────────────────────────────
 
 const fmt = (n: number) => "₹" + Math.round(n).toLocaleString("en-IN");
+
+const MAX_FILE_MB = 5;
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload  = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
 
 function calcItemAmt(item: ScopeDraft) {
   if (item.subItems.length > 0)
@@ -172,8 +185,8 @@ function ScopeItemCard({
       {/* Body */}
       <div style={{ padding: "14px 14px 10px" }}>
         {/* Row 1: Sub-Category / Description | Unit | Qty | Rate | Amount */}
-        <Row gutter={[10, 0]}>
-          <Col span={item.subItems.length > 0 ? 12 : 8}>
+        <Row gutter={[10, 10]}>
+          <Col xs={24} sm={item.subItems.length > 0 ? 12 : 8}>
             {subCatOptions.length > 0 ? (
               <>
                 <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Sub-Category *</div>
@@ -206,7 +219,7 @@ function ScopeItemCard({
             )}
           </Col>
 
-          <Col span={item.subItems.length > 0 ? 6 : 4}>
+          <Col xs={12} sm={item.subItems.length > 0 ? 6 : 4}>
             <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Unit</div>
             <Select value={item.unit} options={UNIT_OPTIONS} style={{ width: "100%" }}
               onChange={v => onChange({ unit: v })} showSearch
@@ -218,25 +231,25 @@ function ScopeItemCard({
 
           {item.subItems.length === 0 && (
             <>
-              <Col span={4}>
+              <Col xs={12} sm={4}>
                 <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Planned Qty</div>
                 <InputNumber placeholder="Qty" value={item.plannedQty} style={{ width: "100%" }}
                   min={0} step={0.01} precision={2}
                   onChange={v => onChange({ plannedQty: v })} />
               </Col>
-              <Col span={4}>
+              <Col xs={12} sm={4}>
                 <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Rate (₹)</div>
                 <InputNumber placeholder="Rate" value={item.rate} style={{ width: "100%" }}
                   min={0} onChange={v => onChange({ rate: v })} />
               </Col>
-              <Col span={4}>
+              <Col xs={24} sm={4}>
                 <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Amount</div>
                 <AmtBox value={amt} />
               </Col>
             </>
           )}
           {item.subItems.length > 0 && (
-            <Col span={6}>
+            <Col xs={24} sm={6}>
               <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Total (from sub-items)</div>
               <AmtBox value={amt} />
             </Col>
@@ -256,20 +269,20 @@ function ScopeItemCard({
         </Row>
 
         {/* Row 3: Dates + Sub-Items toggle */}
-        <Row gutter={[10, 0]} style={{ marginTop: 10 }}>
-          <Col span={6}>
+        <Row gutter={[10, 10]} style={{ marginTop: 10 }}>
+          <Col xs={12} sm={6}>
             <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Start Date</div>
             <DatePicker format="DD/MM/YYYY" style={{ width: "100%" }}
               value={item.plannedStart ? dayjs(item.plannedStart) : null}
               onChange={d => onChange({ plannedStart: d ? d.format("YYYY-MM-DD") : "" })} />
           </Col>
-          <Col span={6}>
+          <Col xs={12} sm={6}>
             <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>End Date</div>
             <DatePicker format="DD/MM/YYYY" style={{ width: "100%" }}
               value={item.plannedEnd ? dayjs(item.plannedEnd) : null}
               onChange={d => onChange({ plannedEnd: d ? d.format("YYYY-MM-DD") : "" })} />
           </Col>
-          <Col span={12} style={{ display: "flex", alignItems: "flex-end", gap: 8 }}>
+          <Col xs={24} sm={12} style={{ display: "flex", alignItems: "flex-end", gap: 8 }}>
             <Button type="link" size="small"
               icon={item.showSubItems ? <UpOutlined /> : <DownOutlined />}
               onClick={() => onChange({ showSubItems: !item.showSubItems })}
@@ -349,6 +362,21 @@ export default function PublicWorkOrderForm() {
   const [submitted,   setSubmitted]   = useState<{ workOrderNo: string } | null>(null);
   const [scopeItems,  setScopeItems]  = useState<ScopeDraft[]>([newScope()]);
   const [topCatId,    setTopCatId]    = useState<string>("");
+  const [documentFile, setDocumentFile] = useState<{ fileName: string; dataUrl: string } | null>(null);
+
+  const handleDocSelect: NonNullable<UploadProps["beforeUpload"]> = async (file) => {
+    if (file.size > MAX_FILE_MB * 1024 * 1024) {
+      message.error(`${file.name} is larger than ${MAX_FILE_MB}MB`);
+      return false;
+    }
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      setDocumentFile({ fileName: file.name, dataUrl });
+    } catch {
+      message.error(`Couldn't read ${file.name}`);
+    }
+    return false;
+  };
 
   useEffect(() => {
     Promise.all([
@@ -385,6 +413,8 @@ export default function PublicWorkOrderForm() {
         scopeOfWork: vals.scopeOfWork || "",
         status:      vals.status     || "draft",
         gstPercent:  vals.gstPercent ?? 18,
+        documentUrl:  documentFile?.dataUrl  || "",
+        documentName: documentFile?.fileName || "",
         scopeItems: validScope.map(i => ({
           description: i.description,
           unit:        i.unit,
@@ -417,6 +447,7 @@ export default function PublicWorkOrderForm() {
     form.resetFields();
     setScopeItems([newScope()]);
     setTopCatId("");
+    setDocumentFile(null);
     setSubmitted(null);
   }
 
@@ -493,7 +524,7 @@ export default function PublicWorkOrderForm() {
             title={<span style={{ fontWeight: 700 }}>Order Details</span>}
             style={{ borderRadius: 12, marginBottom: 20, boxShadow: "0 2px 12px rgba(0,0,0,0.05)" }}
           >
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 24px" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "0 24px" }}>
 
               <Form.Item label="Work Order Number">
                 <Input disabled placeholder="Auto-assign on submit"
@@ -544,6 +575,26 @@ export default function PublicWorkOrderForm() {
               </Form.Item>
 
             </div>
+
+            <Form.Item
+              name="scopeOfWork"
+              label="Overall Description / Scope of Work"
+              tooltip="Describe the full scope of this work order"
+            >
+              <Input.TextArea
+                rows={3}
+                placeholder="e.g. Supply and installation of false ceiling including framework, boarding and finishing as per approved drawings..."
+              />
+            </Form.Item>
+
+            <Form.Item label="Upload Work Order Document">
+              <Upload beforeUpload={handleDocSelect} maxCount={1} showUploadList={false} accept=".pdf,.doc,.docx,.jpg,.jpeg,.png">
+                <Button icon={<UploadOutlined />}>{documentFile?.fileName || "Upload PDF / Doc / Image"}</Button>
+              </Upload>
+              {documentFile && (
+                <div style={{ fontSize: 11, color: "#16a85a", marginTop: 4 }}>✓ Attached</div>
+              )}
+            </Form.Item>
           </Card>
 
           {/* ── Scope of Work ── */}
@@ -605,10 +656,10 @@ export default function PublicWorkOrderForm() {
           </Card>
 
           {/* ── Submit ── */}
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 12 }}>
-            <Button onClick={reset}>Reset</Button>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 12, flexWrap: "wrap" }}>
+            <Button onClick={reset} style={{ flex: "1 1 auto" }}>Reset</Button>
             <Button type="primary" htmlType="submit" loading={submitting}
-              style={{ background: "#f37916", borderColor: "#f37916", minWidth: 160, height: 42, fontWeight: 600 }}>
+              style={{ background: "#f37916", borderColor: "#f37916", minWidth: 160, height: 42, fontWeight: 600, flex: "2 1 auto" }}>
               Save Work Order
             </Button>
           </div>

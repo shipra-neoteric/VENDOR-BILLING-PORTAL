@@ -41,7 +41,7 @@ router.get('/dri-users', asyncHandler(async (_req, res) => {
 
 // ── Submit new work order (no auth) ────────────────────────────
 router.post('/work-orders', asyncHandler(async (req, res) => {
-  const { projectId, vendorCode, issueDate, companyId, category, scopeOfWork, status, gstPercent, assignedDRI } = req.body;
+  const { projectId, vendorCode, issueDate, companyId } = req.body;
 
   if (!projectId)  return badRequest(res, 'Project is required');
   if (!vendorCode) return badRequest(res, 'Vendor code is required');
@@ -61,22 +61,20 @@ router.post('/work-orders', asyncHandler(async (req, res) => {
     if (co) companyName = co.name;
   }
 
+  // Spread the full payload (scopeItems, contractValue, scopeOfWork, documentUrl/Name, etc.)
+  // so nothing the public form collects is silently dropped, then override computed/trusted fields.
   const workOrder = await WorkOrder.create({
+    ...req.body,
     workOrderNo,
-    projectId,
     projectName: project.name,
-    vendorCode,
     vendorName:  contractor.companyName,
     ownerName:   contractor.ownerName,
     mobile:      contractor.mobile,
-    issueDate,
     companyId:   companyId || null,
     companyName,
-    category:    category || '',
-    scopeOfWork: scopeOfWork || '',
-    status:      status || 'draft',
-    gstPercent:  gstPercent ?? 18,
-    assignedDRI: assignedDRI || [],
+    status:      req.body.status || 'draft',
+    gstPercent:  req.body.gstPercent ?? 18,
+    assignedDRI: req.body.assignedDRI || [],
   });
 
   created(res, { workOrder }, 'Work order submitted successfully');
