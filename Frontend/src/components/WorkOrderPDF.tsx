@@ -38,11 +38,11 @@ const S = StyleSheet.create({
   scopeHdr:  { flexDirection: "row", backgroundColor: HDR_BG, padding: "5px 8px" },
   scopeRow:  { flexDirection: "row", borderTopWidth: 1, borderTopColor: BORDER, padding: "4px 8px" },
   scopeAlt:  { flexDirection: "row", borderTopWidth: 1, borderTopColor: BORDER, padding: "4px 8px", backgroundColor: LIGHT },
-  colDesc:   { flex: 2.2, fontSize: 7.5 },
-  colUnit:   { width: 42, fontSize: 7.5, textAlign: "center" },
-  colQty:    { width: 42, fontSize: 7.5, textAlign: "right" },
-  colDate:   { width: 52, fontSize: 7.5, textAlign: "center" },
-  colRate:   { width: 52, fontSize: 7.5, textAlign: "right" },
+  colDesc:   { flex: 2.2, fontSize: 7.5, paddingRight: 6 },
+  colUnit:   { width: 42, fontSize: 7.5, textAlign: "center", paddingRight: 6 },
+  colQty:    { width: 42, fontSize: 7.5, textAlign: "right", paddingRight: 8 },
+  colDate:   { width: 56, fontSize: 7.5, textAlign: "center", paddingRight: 6 },
+  colRate:   { width: 52, fontSize: 7.5, textAlign: "right", paddingRight: 8 },
   colAmt:    { width: 62, fontSize: 7.5, textAlign: "right" },
   hdrText:   { color: "#fff", fontFamily: "Helvetica-Bold", fontSize: 7.5 },
 
@@ -62,7 +62,7 @@ const S = StyleSheet.create({
   msPay:     { width: 62, fontSize: 7.5, textAlign: "right", fontFamily: "Helvetica-Bold" },
 
   // ── Warranty
-  warrRow:   { flexDirection: "row", marginBottom: 3.5, gap: 4, padding: "0 10px" },
+  warrRow:   { flexDirection: "row", marginBottom: 3.5, gap: 4 },
   warrNum:   { fontSize: 7, color: ORANGE, fontFamily: "Helvetica-Bold", width: 12 },
   warrText:  { flex: 1, fontSize: 7.5, color: MID, lineHeight: 1.5 },
 
@@ -248,7 +248,6 @@ export function WorkOrderDocument({ wo, company, contractor }: Props) {
           <View style={S.docTitle}>
             <Text style={S.docMain}>WORK ORDER</Text>
             <Text style={S.docSub}>{wo.workOrderNo}</Text>
-            <Text style={S.docBadge}>Issue Date: {fmtDate(wo.issueDate)}</Text>
             <Text style={S.docBadge}>Generated: {new Date().toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</Text>
           </View>
         </View>
@@ -370,14 +369,18 @@ export function WorkOrderDocument({ wo, company, contractor }: Props) {
 
         {/* ── Warranty / Guarantee Terms ── */}
         {warrantyTerms.length > 0 && (
-          <View style={{ marginBottom: 10 }} wrap={false}>
-            <Text style={S.termsHdr}>Warranty / Guarantee Terms</Text>
-            {warrantyTerms.map((t, i) => (
-              <View key={i} style={S.warrRow}>
-                <Text style={S.warrNum}>{i + 1}.</Text>
-                <Text style={S.warrText}>{t}</Text>
-              </View>
-            ))}
+          <View style={[S.table, S.sectionGap]} wrap={false}>
+            <View style={S.secHeader}>
+              <Text style={S.secTitle}>Warranty / Guarantee Terms</Text>
+            </View>
+            <View style={{ padding: "8px 10px" }}>
+              {warrantyTerms.map((t, i) => (
+                <View key={i} style={S.warrRow}>
+                  <Text style={S.warrNum}>{i + 1}.</Text>
+                  <Text style={S.warrText}>{t}</Text>
+                </View>
+              ))}
+            </View>
           </View>
         )}
 
@@ -404,8 +407,8 @@ export function WorkOrderDocument({ wo, company, contractor }: Props) {
           ))}
         </View>
 
-        {/* ── Final Approval — last signature, on its own line below ── */}
-        <View style={[S.sigBlock, { marginTop: 8 }]} wrap={false}>
+        {/* ── Final Approval — last signature, on its own line below, same width as one column ── */}
+        <View style={[S.sigBlock, { marginTop: 8, width: "33%" }]} wrap={false}>
           <View style={S.sigCellL}>
             <Text style={S.sigRole}>Final Approval</Text>
             <View style={S.sigLine} />
