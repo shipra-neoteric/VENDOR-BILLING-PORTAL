@@ -10,7 +10,7 @@ export default function WarrantyTermsBuilder({
   return (
     <div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-        <div style={{ fontWeight: 700, fontSize: 14, color: "#1a1f2e" }}>Warranty / Guarantee Terms</div>
+        <div style={{ fontWeight: 700, fontSize: 14, color: "#1a1f2e" }}>Special Terms and Conditions</div>
         <Button
           type="dashed" icon={<PlusOutlined />} size="small"
           onClick={() => onChange([...items, ""])}
@@ -22,7 +22,7 @@ export default function WarrantyTermsBuilder({
 
       {items.length === 0 && (
         <div style={{ border: "2px dashed #e4e7ee", borderRadius: 8, padding: "20px 20px", textAlign: "center", color: "#9ba3b8", marginBottom: 12, fontSize: 12 }}>
-          No warranty / guarantee terms yet — e.g. "5-year structural warranty on RCC work".
+          No special terms yet — e.g. "5-year structural warranty on RCC work".
         </div>
       )}
 

@@ -45,6 +45,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useCategories } from "../../hooks/useCategories";
 import DateRangeFilter, { inDateRange } from "../../components/DateRangeFilter";
 import { downloadWorkOrderPDF } from "../../components/WorkOrderPDF";
+import { downloadWorkOrderPDFHindi } from "../../components/WorkOrderPDFHindi";
 import { selectableProjects, getWorkOrderProjectId } from "../../utils/projectOptions";
 import { vendorLabel } from "../../utils/vendorLabel";
 import PaymentMilestonesBuilder, { calcPayable } from "../../components/PaymentMilestonesBuilder";
@@ -1665,6 +1666,19 @@ export default function WorkItems() {
     }
   };
 
+  const handleDownloadPDFHindi = async (wo: WorkOrder) => {
+    setPdfLoading(true);
+    try {
+      const company    = companies.find((c: any) => c._id === (wo as any).companyId) ?? null;
+      const contractor = contractors.find(c => c.vendorCode === wo.vendorCode) ?? null;
+      await downloadWorkOrderPDFHindi(wo as any, company, contractor as any);
+    } catch {
+      message.error("Failed to generate Hindi PDF");
+    } finally {
+      setPdfLoading(false);
+    }
+  };
+
   const handleDelete = async (wo: WorkOrder) => {
     try {
       await apiClient.delete(`/work-orders/${wo.id}`);
@@ -1790,12 +1804,15 @@ export default function WorkItems() {
       render: (_: unknown, record: WorkOrder) => {
         const menuItems: MenuProps["items"] = [
           { key: "edit", label: "Edit", icon: <EditOutlined /> },
+          { key: "pdf-hindi", label: "Download PDF (Hindi)", icon: <FilePdfOutlined /> },
           ...(record.documentName ? [{ key: "doc", label: "View Document", icon: <LinkOutlined /> }] : []),
           ...(isOwner ? [{ key: "delete", label: "Delete", icon: <DeleteOutlined />, danger: true }] : []),
         ];
         const onMenuClick: MenuProps["onClick"] = ({ key }) => {
           if (key === "edit") {
             openEdit(record);
+          } else if (key === "pdf-hindi") {
+            handleDownloadPDFHindi(record);
           } else if (key === "delete") {
             Modal.confirm({
               title: `Delete ${record.workOrderNo}?`,
@@ -2132,14 +2149,24 @@ export default function WorkItems() {
         width={780}
         footer={
           <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-            <Button
-              icon={<FilePdfOutlined />}
-              loading={pdfLoading}
-              onClick={() => currentSelectedWO && handleDownloadPDF(currentSelectedWO)}
-              style={{ borderColor: "#e03b3b", color: "#e03b3b" }}
-            >
-              Download PDF
-            </Button>
+            <div style={{ display: "flex", gap: 8 }}>
+              <Button
+                icon={<FilePdfOutlined />}
+                loading={pdfLoading}
+                onClick={() => currentSelectedWO && handleDownloadPDF(currentSelectedWO)}
+                style={{ borderColor: "#e03b3b", color: "#e03b3b" }}
+              >
+                Download PDF
+              </Button>
+              <Button
+                icon={<FilePdfOutlined />}
+                loading={pdfLoading}
+                onClick={() => currentSelectedWO && handleDownloadPDFHindi(currentSelectedWO)}
+                style={{ borderColor: "#FF7A00", color: "#FF7A00" }}
+              >
+                Download PDF (Hindi)
+              </Button>
+            </div>
             <div style={{ display: "flex", gap: 8 }}>
               {currentSelectedWO && (
                 <Button
@@ -2297,7 +2324,7 @@ export default function WorkItems() {
             {/* ── Warranty Terms ──────────────────────────── */}
             {(currentSelectedWO.warrantyTerms?.length ?? 0) > 0 && (
               <div style={{ background: "var(--nx-white)", border: "1px solid #E5E7EB", borderRadius: 10, padding: "12px 16px", marginTop: 16 }}>
-                <div style={{ fontWeight: 600, fontSize: 13, color: "#374151", marginBottom: 8 }}>Warranty / Guarantee Terms</div>
+                <div style={{ fontWeight: 600, fontSize: 13, color: "#374151", marginBottom: 8 }}>Special Terms and Conditions</div>
                 {currentSelectedWO.warrantyTerms!.map((t, i) => (
                   <div key={i} style={{ fontSize: 13, color: "#374151", marginBottom: 4, display: "flex", gap: 6 }}>
                     <span style={{ color: "#9CA3AF" }}>{i + 1}.</span> {t}
