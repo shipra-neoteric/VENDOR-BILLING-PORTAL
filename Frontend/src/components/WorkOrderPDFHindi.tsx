@@ -1,5 +1,6 @@
 import { Document, Page, View, Text, StyleSheet, Font } from "@react-pdf/renderer";
 import { pdf } from "@react-pdf/renderer";
+import { translateToHindi, translateManyToHindi } from "../utils/translateToHindi";
 
 // Devanagari-capable static (non-variable) font — required because react-pdf/fontkit
 // doesn't reliably render OpenType variable fonts, and Hindi text needs a font with
@@ -423,14 +424,65 @@ export function WorkOrderDocumentHindi({ wo, company, contractor }: Props) {
   );
 }
 
+// ── Auto-translate free-text fields (never names/addresses/codes/numbers) ──
+async function buildHindiWO(wo: WOData): Promise<WOData> {
+  const scopeItems  = wo.scopeItems ?? [];
+  const milestones  = wo.paymentMilestones ?? [];
+  const terms       = wo.warrantyTerms ?? [];
+  const overallDesc = wo.description || wo.scopeOfWork || "";
+
+  const descTexts      = scopeItems.map(i => i.description);
+  const subDescTexts   = scopeItems.flatMap(i => (i.subItems ?? []).map(s => s.description));
+  const milestoneTexts = milestones.map(m => m.type || m.stage || "");
+
+  const [
+    translatedDescs, translatedSubDescs, translatedMilestoneTexts, translatedTerms,
+    translatedOverall, translatedCategory, translatedSubCategory,
+  ] = await Promise.all([
+    translateManyToHindi(descTexts),
+    translateManyToHindi(subDescTexts),
+    translateManyToHindi(milestoneTexts),
+    translateManyToHindi(terms),
+    translateToHindi(overallDesc),
+    translateToHindi(wo.category),
+    translateToHindi(wo.subCategory),
+  ]);
+
+  let subIdx = 0;
+  const newScopeItems = scopeItems.map((item, i) => ({
+    ...item,
+    description: translatedDescs[i] || item.description,
+    subItems: (item.subItems ?? []).map(sub => ({
+      ...sub,
+      description: translatedSubDescs[subIdx++] || sub.description,
+    })),
+  }));
+
+  const newMilestones = milestones.map((m, i) => ({
+    ...m,
+    type: translatedMilestoneTexts[i] || m.type,
+  }));
+
+  return {
+    ...wo,
+    description: translatedOverall || overallDesc,
+    category: translatedCategory || wo.category,
+    subCategory: translatedSubCategory || wo.subCategory,
+    scopeItems: newScopeItems,
+    paymentMilestones: newMilestones,
+    warrantyTerms: translatedTerms,
+  };
+}
+
 // ── Download helper ────────────────────────────────────────────
 export async function downloadWorkOrderPDFHindi(
   wo: WOData,
   company?: CompanyData | null,
   contractor?: ContractorData | null,
 ) {
+  const translatedWo = await buildHindiWO(wo);
   const blob = await pdf(
-    <WorkOrderDocumentHindi wo={wo} company={company} contractor={contractor} />
+    <WorkOrderDocumentHindi wo={translatedWo} company={company} contractor={contractor} />
   ).toBlob();
   const url = URL.createObjectURL(blob);
   const a   = document.createElement("a");

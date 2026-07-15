@@ -1668,6 +1668,7 @@ export default function WorkItems() {
 
   const handleDownloadPDFHindi = async (wo: WorkOrder) => {
     setPdfLoading(true);
+    const hide = message.loading("Translating to Hindi…", 0);
     try {
       const company    = companies.find((c: any) => c._id === (wo as any).companyId) ?? null;
       const contractor = contractors.find(c => c.vendorCode === wo.vendorCode) ?? null;
@@ -1675,6 +1676,7 @@ export default function WorkItems() {
     } catch {
       message.error("Failed to generate Hindi PDF");
     } finally {
+      hide();
       setPdfLoading(false);
     }
   };
