@@ -344,7 +344,7 @@ function CategoryCreatableSelect({
   options: { label: string; value: string }[];
   parentId: string;
   parentColor?: string;
-  onSelect: (id: string) => void;
+  onSelect: (id: string, name: string) => void;
   onClear: () => void;
   onCreated: (cat: CatOption) => void;
 }) {
@@ -362,7 +362,7 @@ function CategoryCreatableSelect({
 
   async function handleChange(v: string) {
     if (v !== CREATE_VALUE) {
-      onSelect(v);
+      onSelect(v, options.find(o => o.value === v)?.label ?? "");
       setSearch("");
       return;
     }
@@ -371,7 +371,10 @@ function CategoryCreatableSelect({
       const res = await createCategory({ name: trimmed, color: parentColor || "#6B7280", parentId });
       const newCat = res.data.category as CatOption;
       onCreated(newCat);
-      onSelect(newCat._id);
+      // Pass the name straight from the API response — appending to allCategories
+      // via onCreated() above is a state update, so any lookup by id in the
+      // caller's onSelect would still see the pre-update array on this render.
+      onSelect(newCat._id, newCat.name);
       message.success(`Added "${newCat.name}"`);
     } catch (err: any) {
       message.error(err?.response?.data?.message || "Failed to add new option");
@@ -596,7 +599,7 @@ function ScopeItemsBuilder({ items, onChange, allCategories = [], topCatId = nul
                           options={subCatOptions.map(c => ({ label: c.name, value: c._id }))}
                           parentId={topCatId || ""}
                           parentColor={allCategories.find(c => c._id === topCatId)?.color}
-                          onSelect={v => { const cat = allCategories.find(c => c._id === v); upd(item.id, { subCategoryId: v, subSubCategoryId: "", description: cat?.name ?? "" }); }}
+                          onSelect={(v, name) => upd(item.id, { subCategoryId: v, subSubCategoryId: "", description: name })}
                           onClear={() => upd(item.id, { subCategoryId: "", subSubCategoryId: "", description: "" })}
                           onCreated={onCategoryCreated}
                         />
@@ -612,7 +615,7 @@ function ScopeItemsBuilder({ items, onChange, allCategories = [], topCatId = nul
                           options={getSubSubCatOptions(item.subCategoryId).map(c => ({ label: c.name, value: c._id }))}
                           parentId={item.subCategoryId}
                           parentColor={allCategories.find(c => c._id === item.subCategoryId)?.color}
-                          onSelect={v => { const cat = allCategories.find(c => c._id === v); upd(item.id, { subSubCategoryId: v, description: cat?.name ?? item.description }); }}
+                          onSelect={(v, name) => upd(item.id, { subSubCategoryId: v, description: name || item.description })}
                           onClear={() => { const subCat = allCategories.find(c => c._id === item.subCategoryId); upd(item.id, { subSubCategoryId: "", description: subCat?.name ?? "" }); }}
                           onCreated={onCategoryCreated}
                         />
@@ -636,7 +639,7 @@ function ScopeItemsBuilder({ items, onChange, allCategories = [], topCatId = nul
                           options={subCatOptions.map(c => ({ label: c.name, value: c._id }))}
                           parentId={topCatId || ""}
                           parentColor={allCategories.find(c => c._id === topCatId)?.color}
-                          onSelect={v => { const cat = allCategories.find(c => c._id === v); upd(item.id, { subCategoryId: v, subSubCategoryId: "", description: cat?.name ?? "" }); }}
+                          onSelect={(v, name) => upd(item.id, { subCategoryId: v, subSubCategoryId: "", description: name })}
                           onClear={() => upd(item.id, { subCategoryId: "", subSubCategoryId: "", description: "" })}
                           onCreated={onCategoryCreated}
                         />
