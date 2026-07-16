@@ -7,6 +7,7 @@ const asyncHandler = require('../utils/asyncHandler');
 const { success, created, notFound, badRequest, conflict } = require('../utils/responseFormatter');
 const { nextWorkOrderNo } = require('../utils/codeGen');
 const emitEvent    = require('../utils/emitEvent');
+const { startInstance } = require('../utils/slaEngine');
 
 exports.listWorkOrders = asyncHandler(async (req, res) => {
   const { projectId, vendorCode, status, search, assignedToMe } = req.query;
@@ -95,6 +96,11 @@ exports.createWorkOrder = asyncHandler(async (req, res) => {
     vendorName:  workOrder.vendorName,
     user:        req.user,
     metadata:    { contractValue: workOrder.contractValue },
+  });
+
+  await startInstance('WorkOrder', workOrder._id, workOrder.workOrderNo, req.user._id, {
+    projectId: workOrder.projectId, projectName: workOrder.projectName,
+    vendorName: workOrder.vendorName, amount: workOrder.contractValue,
   });
 
   created(res, { workOrder }, 'Work order created successfully');

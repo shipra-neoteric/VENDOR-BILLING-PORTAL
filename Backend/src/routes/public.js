@@ -8,6 +8,7 @@ const Company    = require('../models/Company');
 const User       = require('../models/User');
 const WorkOrder  = require('../models/WorkOrder');
 const { nextWorkOrderNo, nextVendorCode } = require('../utils/codeGen');
+const { startInstance } = require('../utils/slaEngine');
 
 // ── Lookup lists (read-only, no auth) ──────────────────────────
 router.get('/projects', asyncHandler(async (_req, res) => {
@@ -77,6 +78,11 @@ router.post('/work-orders', asyncHandler(async (req, res) => {
     status:      req.body.status || 'draft',
     gstPercent:  req.body.gstPercent ?? 18,
     assignedDRI: req.body.assignedDRI || [],
+  });
+
+  await startInstance('WorkOrder', workOrder._id, workOrder.workOrderNo, null, {
+    projectId: workOrder.projectId, projectName: workOrder.projectName,
+    vendorName: workOrder.vendorName, amount: workOrder.contractValue,
   });
 
   created(res, { workOrder }, 'Work order submitted successfully');

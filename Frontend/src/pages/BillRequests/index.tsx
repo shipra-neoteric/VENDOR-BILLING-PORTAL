@@ -11,6 +11,9 @@ import dayjs from "dayjs";
 import PageShell from "../../components/PageShell";
 import apiClient from "../../services/apiClient";
 import { selectableProjects } from "../../utils/projectOptions";
+import { useAuth } from "../../context/AuthContext";
+import WorkflowInstanceStepper from "../../components/WorkflowInstanceStepper";
+import type { WorkflowInstance } from "../../types/Workflow";
 
 const fmt = (n: number) => "₹" + Math.round(n).toLocaleString("en-IN");
 
@@ -58,11 +61,13 @@ interface BillRequest {
 
 export default function BillRequests() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [requests,      setRequests]      = useState<BillRequest[]>([]);
   const [loading,       setLoading]       = useState(false);
   const [tab,           setTab]           = useState("pending");
 
   const [viewReq,       setViewReq]       = useState<BillRequest | null>(null);
+  const [slaInstance,   setSlaInstance]   = useState<WorkflowInstance | null>(null);
   const [rejectModal,   setRejectModal]   = useState(false);
   const [rejectTarget,  setRejectTarget]  = useState<string | null>(null);
   const [rejectReason,  setRejectReason]  = useState("");
@@ -122,6 +127,13 @@ export default function BillRequests() {
       ))
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!viewReq) { setSlaInstance(null); return; }
+    apiClient.get("/workflows/instances", { params: { entityType: "BillRequest", entityId: viewReq._id } })
+      .then(res => setSlaInstance(res.data.instances?.[0] ?? null))
+      .catch(() => setSlaInstance(null));
+  }, [viewReq]);
 
   const handleApprove = async (id: string) => {
     setSaving(true);
@@ -498,6 +510,20 @@ export default function BillRequests() {
                 </div>
               ))}
             </div>
+
+            {slaInstance && (
+              <WorkflowInstanceStepper
+                instance={slaInstance}
+                userRole={user?.role}
+                userId={user?.id}
+                onChanged={() => {
+                  apiClient.get("/workflows/instances", { params: { entityType: "BillRequest", entityId: viewReq._id } })
+                    .then(res => setSlaInstance(res.data.instances?.[0] ?? null))
+                    .catch(() => {});
+                }}
+                compact
+              />
+            )}
 
             {/* Items table */}
             <div>

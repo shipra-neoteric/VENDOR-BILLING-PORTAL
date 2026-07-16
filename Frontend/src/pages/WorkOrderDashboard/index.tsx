@@ -8,6 +8,8 @@ import dayjs from "dayjs";
 import apiClient from "../../services/apiClient";
 import { useAuth } from "../../context/AuthContext";
 import BillDetailModal, { type BillDetailRequest } from "../../components/BillDetailModal";
+import WorkflowInstanceStepper from "../../components/WorkflowInstanceStepper";
+import type { WorkflowInstance } from "../../types/Workflow";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface ProgressEntry { _id: string; date: string; qtyAdded: number; remarks?: string; }
@@ -156,6 +158,7 @@ export default function WorkOrderDashboard() {
   const [stages,  setStages]  = useState<BillRequestStage[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving,  setSaving]  = useState(false);
+  const [slaInstance, setSlaInstance] = useState<WorkflowInstance | null>(null);
 
   const [milestoneTarget, setMilestoneTarget] = useState<string | null>(null);
   const [paymentUTR,      setPaymentUTR]      = useState("");
@@ -177,6 +180,9 @@ export default function WorkOrderDashboard() {
     } finally {
       setLoading(false);
     }
+    apiClient.get("/workflows/instances", { params: { entityType: "WorkOrder", entityId: id } })
+      .then(res => setSlaInstance(res.data.instances?.[0] ?? null))
+      .catch(() => {});
   };
 
   useEffect(() => { load(); }, [id]);
@@ -282,6 +288,16 @@ export default function WorkOrderDashboard() {
           </div>
         ))}
       </div>
+
+      {/* SLA Workflow */}
+      {slaInstance && (
+        <WorkflowInstanceStepper
+          instance={slaInstance}
+          userRole={user?.role}
+          userId={user?.id}
+          onChanged={load}
+        />
+      )}
 
       {/* Tab switcher */}
       <div style={{ display: "flex", gap: 4, background: "#F3F4F6", padding: 4, borderRadius: 12, marginBottom: 20, flexWrap: "wrap" }}>

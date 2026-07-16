@@ -4,6 +4,7 @@ const RunningBill = require('../models/RunningBill');
 const asyncHandler = require('../utils/asyncHandler');
 const { success, created, notFound, badRequest, forbidden } = require('../utils/responseFormatter');
 const emitEvent   = require('../utils/emitEvent');
+const { startInstance, advanceInstance, cancelInstance } = require('../utils/slaEngine');
 
 async function nextReqNo() {
   const last = await BillRequest.findOne().sort({ createdAt: -1 }).select('reqNo');
@@ -128,6 +129,11 @@ exports.createBillRequest = asyncHandler(async (req, res) => {
     metadata:      { reqNo },
   });
 
+  const estimatedAmount = pendingItems.reduce((s, it) => s + it.billedQty * (wo.scopeItems.id(it.scopeItemId)?.rate || 0), 0);
+  await startInstance('BillRequest', billRequest._id, billRequest.reqNo, req.user._id, {
+    projectId: wo.projectId, projectName: wo.projectName, vendorName: wo.vendorName, amount: estimatedAmount,
+  });
+
   created(res, { billRequest }, `Stage ${stageNo} bill request ${reqNo} submitted successfully`);
 });
 
@@ -210,6 +216,8 @@ exports.approveBillRequest = asyncHandler(async (req, res) => {
     metadata:      { reqNo: br.reqNo, billNo, totalAmount },
   });
 
+  await advanceInstance('BillRequest', br._id, req.user._id, 'Approved');
+
   success(res, { billRequest: br, bill: runningBill }, `Approved — Bill ${billNo} generated for Stage ${br.stageNo}`);
 });
 
@@ -249,6 +257,8 @@ exports.rejectBillRequest = asyncHandler(async (req, res) => {
     metadata:      { reqNo: br.reqNo, reason: br.rejectReason },
   });
 
+  await cancelInstance('BillRequest', br._id, `Rejected: ${br.rejectReason}`);
+
   success(res, { billRequest: br }, `Stage ${br.stageNo} rejected — DRI can re-submit after corrections`);
 });
 
@@ -262,6 +272,8 @@ exports.markMilestone = asyncHandler(async (req, res) => {
   br.milestoneAchieved = true;
   br.milestoneDate     = new Date();
   await br.save();
+
+  await advanceInstance('BillRequest', br._id, req.user._id, 'Payment released');
 
   if (br.billId) {
     const billUpdate = {
@@ -386,6 +398,11 @@ exports.createBatchBillRequest = asyncHandler(async (req, res) => {
       stageNo,
       user:          req.user,
       metadata:      { reqNo, batchId },
+    });
+
+    const batchEstimatedAmount = pendingItems.reduce((s, it) => s + it.billedQty * (wo.scopeItems.id(it.scopeItemId)?.rate || 0), 0);
+    await startInstance('BillRequest', br._id, br.reqNo, req.user._id, {
+      projectId: wo.projectId, projectName: wo.projectName, vendorName: wo.vendorName, amount: batchEstimatedAmount,
     });
 
     created.push(br);

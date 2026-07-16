@@ -55,6 +55,7 @@ app.use('/api/milestones',    require('./routes/milestones'));
 app.use('/api/advance-slips',  require('./routes/advanceSlips'));
 app.use('/api/bill-requests', require('./routes/billRequests'));
 app.use('/api/users',        require('./routes/users'));
+app.use('/api/workflows',    require('./routes/workflows'));
 
 app.get('/api/health', (_req, res) =>
   res.json({ success: true, status: 'ok', timestamp: new Date().toISOString() })

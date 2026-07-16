@@ -59,6 +59,8 @@ const MODULE_DEFS: ModuleDef[] = [
   { id: "user-management",  name: "User Management",    icon: "👥", group: "Admin",         actions: ["view","create","edit","delete"] },
   { id: "dri-dashboard",    name: "DRI Work Dashboard", icon: "🏗️", group: "Admin",         actions: ["view"] },
   { id: "public-forms",     name: "Public Forms",       icon: "🔗", group: "Admin",         actions: ["view"] },
+  { id: "sla-settings",     name: "SLA Settings",       icon: "⚙️", group: "SLA",           actions: ["view","create","edit","delete"] },
+  { id: "sla-dashboard",    name: "SLA Dashboard",      icon: "⏱️", group: "SLA",           actions: ["view"] },
 ];
 
 const ROLE_DEFAULTS: Record<string, Record<string, PermAction[]>> = {
@@ -70,7 +72,7 @@ const ROLE_DEFAULTS: Record<string, Record<string, PermAction[]>> = {
     "bill-requests": ["view","create","request","approve"], "billing-payments": ["view","create","edit","approve"],
     approvals: ["view","approve"], ledger: ["view"],
     "user-management": ["view","create","edit","delete"], "dri-dashboard": ["view"],
-    "public-forms": ["view"],
+    "public-forms": ["view"], "sla-settings": ["view","create","edit","delete"], "sla-dashboard": ["view"],
   },
   gm: {
     dashboard: ["view"],
@@ -79,6 +81,18 @@ const ROLE_DEFAULTS: Record<string, Record<string, PermAction[]>> = {
     "work-orders": ["view","create","edit"], "work-progress": ["view","create","edit"],
     "bill-requests": ["view","approve"], "billing-payments": ["view","create","edit","approve"],
     approvals: ["view","approve"], ledger: ["view"], "dri-dashboard": ["view"],
+    "sla-settings": ["view","create","edit"], "sla-dashboard": ["view"],
+  },
+  agm: {
+    dashboard: ["view"],
+    "work-orders": ["view","edit"], "work-progress": ["view"],
+    "bill-requests": ["view","approve"], approvals: ["view","approve"], ledger: ["view"],
+    "sla-dashboard": ["view"],
+  },
+  ceo: {
+    dashboard: ["view"],
+    "work-orders": ["view"], "bill-requests": ["view","approve"],
+    approvals: ["view","approve"], ledger: ["view"], "sla-dashboard": ["view"],
   },
   engineer: {
     dashboard: ["view"],
@@ -111,13 +125,15 @@ function permsToArray(map: Record<string, PermAction[]>): { module: string; acti
   return Object.entries(map).filter(([, a]) => a.length > 0).map(([module, actions]) => ({ module, actions }));
 }
 
-type UserRole = "owner" | "gm" | "engineer" | "accounts" | "dri" | "contractor";
+type UserRole = "owner" | "gm" | "agm" | "ceo" | "engineer" | "accounts" | "dri" | "contractor";
 
 // ── Role config ───────────────────────────────────────────────────
 
 const ROLE_CFG: Record<UserRole, { label: string; color: string; description: string }> = {
   owner:      { label: "Owner / Admin",    color: "red",     description: "Full system access — all modules, user management" },
   gm:         { label: "General Manager",  color: "purple",  description: "All modules except user management" },
+  agm:        { label: "AGM",              color: "gold",    description: "Approval-chain reviewer — work order & bill request sign-off" },
+  ceo:        { label: "CEO",              color: "volcano", description: "Final approval authority in the SLA workflow chain" },
   engineer:   { label: "Site Engineer",    color: "blue",    description: "Work orders, progress, bill requests" },
   accounts:   { label: "Accounts",         color: "cyan",    description: "Bills, payments, ledger" },
   dri:        { label: "DRI (Field Eng.)", color: "orange",  description: "Work progress entry only — restricted portal" },
@@ -133,6 +149,8 @@ const ROLE_OPTIONS = Object.entries(ROLE_CFG).map(([value, { label, description 
 const AVATAR_COLORS: Record<UserRole, string> = {
   owner:      "#f37916",
   gm:         "#7c3aed",
+  agm:        "#c9a227",
+  ceo:        "#c2410c",
   engineer:   "#1677ff",
   accounts:   "#0891b2",
   dri:        "#d4620c",

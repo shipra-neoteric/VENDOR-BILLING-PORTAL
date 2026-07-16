@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 
 interface PageShellProps {
-  title: string;
+  title: ReactNode;
   description?: string;
   cta?: ReactNode;
   children: ReactNode;

@@ -4,7 +4,7 @@ import {
   LayoutOutlined, BankOutlined, ApartmentOutlined, TeamOutlined, TagsOutlined,
   FileTextOutlined, LineChartOutlined, ProfileOutlined, WalletOutlined,
   CheckSquareOutlined, AccountBookOutlined, UsergroupAddOutlined, MonitorOutlined,
-  ShareAltOutlined,
+  ShareAltOutlined, SettingOutlined, ClockCircleOutlined,
 } from "@ant-design/icons";
 import { useAuth } from "../../context/AuthContext";
 import type { PermEntry } from "../../context/AuthContext";
@@ -51,6 +51,13 @@ const ADMIN_GROUPS: NavGroup[] = [
       { name: "Billing & Payments", path: "/bills",            icon: <WalletOutlined />,        moduleId: "billing-payments" },
       { name: "Approvals",          path: "/approvals",     icon: <CheckSquareOutlined />,   moduleId: "approvals" },
       { name: "Ledger",             path: "/ledger",        icon: <AccountBookOutlined />,   moduleId: "ledger" },
+    ],
+  },
+  {
+    label: "SLA",
+    items: [
+      { name: "SLA Settings",  path: "/sla-settings",  icon: <SettingOutlined />,      moduleId: "sla-settings" },
+      { name: "SLA Dashboard", path: "/sla-dashboard", icon: <ClockCircleOutlined />,  moduleId: "sla-dashboard" },
     ],
   },
   {
