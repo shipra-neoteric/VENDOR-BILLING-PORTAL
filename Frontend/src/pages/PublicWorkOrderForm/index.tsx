@@ -138,6 +138,48 @@ function AmtBox({ value }: { value: number }) {
   );
 }
 
+// ── Sub-category select that lets vendors type a name that isn't in the
+// preset list. Unlike the internal Work Orders page, this public form has no
+// login, so it can't call the (auth-protected) category-creation endpoint —
+// a typed name is simply carried through as free-text `description` on the
+// scope item instead of being added to the shared category list.
+function SubCategorySelect({
+  value, options, onSelect, onClear,
+}: {
+  value?: string;
+  options: { label: string; value: string }[];
+  onSelect: (id: string, name: string) => void;
+  onClear: () => void;
+}) {
+  const [search, setSearch] = useState("");
+  const CUSTOM_VALUE = "__custom__";
+  const trimmed = search.trim();
+  const exists = trimmed.length > 0 && options.some(o => o.label.toLowerCase() === trimmed.toLowerCase());
+  const finalOptions = trimmed.length > 0 && !exists
+    ? [...options, { label: `+ Use "${trimmed}" as sub-category`, value: CUSTOM_VALUE }]
+    : options;
+
+  return (
+    <Select
+      placeholder="Select or type to add sub-category"
+      value={value || undefined}
+      options={finalOptions}
+      onChange={v => {
+        if (v === CUSTOM_VALUE) onSelect("", trimmed);
+        else onSelect(v, options.find(o => o.value === v)?.label ?? "");
+        setSearch("");
+      }}
+      allowClear
+      onClear={() => { onClear(); setSearch(""); }}
+      style={{ width: "100%" }}
+      showSearch
+      searchValue={search}
+      onSearch={setSearch}
+      filterOption={(inp, opt) => String(opt?.label ?? "").toLowerCase().includes(inp.toLowerCase())}
+    />
+  );
+}
+
 // ── ScopeItemCard ────────────────────────────────────────────────
 
 function ScopeItemCard({
@@ -193,21 +235,11 @@ function ScopeItemCard({
             {subCatOptions.length > 0 ? (
               <>
                 <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Sub-Category *</div>
-                <Select
-                  placeholder="Select sub-category"
-                  value={item.subCategoryId || undefined}
+                <SubCategorySelect
+                  value={item.subCategoryId}
                   options={subCatOptions.map(c => ({ label: c.name, value: c._id }))}
-                  onChange={v => {
-                    const cat = allCategories.find(c => c._id === v);
-                    onChange({ subCategoryId: v, description: cat?.name ?? "" });
-                  }}
-                  allowClear
+                  onSelect={(id, name) => onChange({ subCategoryId: id, description: name })}
                   onClear={() => onChange({ subCategoryId: "", description: "" })}
-                  style={{ width: "100%" }}
-                  showSearch
-                  filterOption={(inp, opt) =>
-                    String(opt?.label ?? "").toLowerCase().includes(inp.toLowerCase())
-                  }
                 />
               </>
             ) : (

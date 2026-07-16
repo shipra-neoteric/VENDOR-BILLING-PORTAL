@@ -43,6 +43,7 @@ import PageShell from "../../components/PageShell";
 import apiClient from "../../services/apiClient";
 import { useAuth } from "../../context/AuthContext";
 import { useCategories } from "../../hooks/useCategories";
+import { createCategory } from "../../features/categories/api";
 import DateRangeFilter, { inDateRange } from "../../components/DateRangeFilter";
 import { downloadWorkOrderPDF } from "../../components/WorkOrderPDF";
 import { downloadWorkOrderPDFHindi } from "../../components/WorkOrderPDFHindi";
@@ -329,7 +330,75 @@ function UnitCell({
 // ── ScopeItemsBuilder ─────────────────────────────────────────
 
 interface CatOption {
-  _id: string; name: string; parentId?: string | null; isActive: boolean;
+  _id: string; name: string; parentId?: string | null; isActive: boolean; color?: string;
+}
+
+// Sub-category / sub-sub-category Select that lets the user type a name that
+// isn't in the default list and add it on the fly (POST /categories) instead
+// of being limited to whatever an admin pre-configured on the Categories page.
+function CategoryCreatableSelect({
+  value, placeholder, options, parentId, parentColor, onSelect, onClear, onCreated,
+}: {
+  value?: string;
+  placeholder: string;
+  options: { label: string; value: string }[];
+  parentId: string;
+  parentColor?: string;
+  onSelect: (id: string) => void;
+  onClear: () => void;
+  onCreated: (cat: CatOption) => void;
+}) {
+  const [search, setSearch] = useState("");
+  const [creating, setCreating] = useState(false);
+
+  const trimmed = search.trim();
+  const exists = trimmed.length > 0 && options.some(o => o.label.toLowerCase() === trimmed.toLowerCase());
+  const showCreateOption = trimmed.length > 0 && !exists;
+  const CREATE_VALUE = "__create_new__";
+
+  const finalOptions = showCreateOption
+    ? [...options, { label: `+ Add "${trimmed}" as new option`, value: CREATE_VALUE }]
+    : options;
+
+  async function handleChange(v: string) {
+    if (v !== CREATE_VALUE) {
+      onSelect(v);
+      setSearch("");
+      return;
+    }
+    setCreating(true);
+    try {
+      const res = await createCategory({ name: trimmed, color: parentColor || "#6B7280", parentId });
+      const newCat = res.data.category as CatOption;
+      onCreated(newCat);
+      onSelect(newCat._id);
+      message.success(`Added "${newCat.name}"`);
+    } catch (err: any) {
+      message.error(err?.response?.data?.message || "Failed to add new option");
+    } finally {
+      setCreating(false);
+      setSearch("");
+    }
+  }
+
+  return (
+    <Select
+      placeholder={placeholder}
+      value={value || undefined}
+      options={finalOptions}
+      onChange={handleChange}
+      allowClear
+      onClear={() => { onClear(); setSearch(""); }}
+      style={{ width: "100%" }}
+      showSearch
+      searchValue={search}
+      onSearch={setSearch}
+      filterOption={(inp, opt) => String(opt?.label ?? "").toLowerCase().includes(inp.toLowerCase())}
+      getPopupContainer={(trigger) => trigger.parentElement || document.body}
+      loading={creating}
+      notFoundContent={creating ? "Adding..." : "Type a name to add it"}
+    />
+  );
 }
 
 interface ScopeItemsBuilderProps {
@@ -337,9 +406,10 @@ interface ScopeItemsBuilderProps {
   onChange: (items: ScopeItemDraft[]) => void;
   allCategories?: CatOption[];
   topCatId?: string | null;
+  onCategoryCreated?: (cat: CatOption) => void;
 }
 
-function ScopeItemsBuilder({ items, onChange, allCategories = [], topCatId = null }: ScopeItemsBuilderProps) {
+function ScopeItemsBuilder({ items, onChange, allCategories = [], topCatId = null, onCategoryCreated = () => {} }: ScopeItemsBuilderProps) {
   const upd = (id: string, patch: Partial<ScopeItemDraft>) =>
     onChange(items.map(it => it.id === id ? { ...it, ...patch } : it));
 
@@ -520,17 +590,15 @@ function ScopeItemsBuilder({ items, onChange, allCategories = [], topCatId = nul
                     <Row gutter={[10, 0]}>
                       <Col span={24}>
                         <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Sub-Category *</div>
-                        <Select
-                          placeholder="Select sub-category"
+                        <CategoryCreatableSelect
+                          placeholder="Select or type to add sub-category"
                           value={item.subCategoryId || undefined}
                           options={subCatOptions.map(c => ({ label: c.name, value: c._id }))}
-                          onChange={v => { const cat = allCategories.find(c => c._id === v); upd(item.id, { subCategoryId: v, subSubCategoryId: "", description: cat?.name ?? "" }); }}
-                          allowClear
+                          parentId={topCatId || ""}
+                          parentColor={allCategories.find(c => c._id === topCatId)?.color}
+                          onSelect={v => { const cat = allCategories.find(c => c._id === v); upd(item.id, { subCategoryId: v, subSubCategoryId: "", description: cat?.name ?? "" }); }}
                           onClear={() => upd(item.id, { subCategoryId: "", subSubCategoryId: "", description: "" })}
-                          style={{ width: "100%" }}
-                          showSearch
-                          filterOption={(inp, opt) => String(opt?.label ?? "").toLowerCase().includes(inp.toLowerCase())}
-                          getPopupContainer={(trigger) => trigger.parentElement || document.body}
+                          onCreated={onCategoryCreated}
                         />
                       </Col>
                     </Row>
@@ -538,17 +606,15 @@ function ScopeItemsBuilder({ items, onChange, allCategories = [], topCatId = nul
                     <Row gutter={[10, 0]} style={{ marginTop: 8 }}>
                       <Col span={item.subItems.length > 0 ? 12 : 8}>
                         <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Sub-Sub-Category</div>
-                        <Select
-                          placeholder="Select (optional)"
+                        <CategoryCreatableSelect
+                          placeholder="Select or type to add (optional)"
                           value={item.subSubCategoryId || undefined}
                           options={getSubSubCatOptions(item.subCategoryId).map(c => ({ label: c.name, value: c._id }))}
-                          onChange={v => { const cat = allCategories.find(c => c._id === v); upd(item.id, { subSubCategoryId: v, description: cat?.name ?? item.description }); }}
-                          allowClear
+                          parentId={item.subCategoryId}
+                          parentColor={allCategories.find(c => c._id === item.subCategoryId)?.color}
+                          onSelect={v => { const cat = allCategories.find(c => c._id === v); upd(item.id, { subSubCategoryId: v, description: cat?.name ?? item.description }); }}
                           onClear={() => { const subCat = allCategories.find(c => c._id === item.subCategoryId); upd(item.id, { subSubCategoryId: "", description: subCat?.name ?? "" }); }}
-                          style={{ width: "100%" }}
-                          showSearch
-                          filterOption={(inp, opt) => String(opt?.label ?? "").toLowerCase().includes(inp.toLowerCase())}
-                          getPopupContainer={(trigger) => trigger.parentElement || document.body}
+                          onCreated={onCategoryCreated}
                         />
                       </Col>
                       {unitQtyRateCols}
@@ -564,17 +630,15 @@ function ScopeItemsBuilder({ items, onChange, allCategories = [], topCatId = nul
                     {subCatOptions.length > 0 ? (
                       <>
                         <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Sub-Category *</div>
-                        <Select
-                          placeholder="Select sub-category"
+                        <CategoryCreatableSelect
+                          placeholder="Select or type to add sub-category"
                           value={item.subCategoryId || undefined}
                           options={subCatOptions.map(c => ({ label: c.name, value: c._id }))}
-                          onChange={v => { const cat = allCategories.find(c => c._id === v); upd(item.id, { subCategoryId: v, subSubCategoryId: "", description: cat?.name ?? "" }); }}
-                          allowClear
+                          parentId={topCatId || ""}
+                          parentColor={allCategories.find(c => c._id === topCatId)?.color}
+                          onSelect={v => { const cat = allCategories.find(c => c._id === v); upd(item.id, { subCategoryId: v, subSubCategoryId: "", description: cat?.name ?? "" }); }}
                           onClear={() => upd(item.id, { subCategoryId: "", subSubCategoryId: "", description: "" })}
-                          style={{ width: "100%" }}
-                          showSearch
-                          filterOption={(inp, opt) => String(opt?.label ?? "").toLowerCase().includes(inp.toLowerCase())}
-                          getPopupContainer={(trigger) => trigger.parentElement || document.body}
+                          onCreated={onCategoryCreated}
                         />
                       </>
                     ) : (
@@ -1332,7 +1396,8 @@ export default function WorkItems() {
   const navigate  = useNavigate();
   const isOwner = user?.role === "owner";
 
-  const { categories: apiCategories, lighten } = useCategories();
+  const { categories: apiCategories, lighten, setCategories: setApiCategories } = useCategories();
+  const handleCategoryCreated = (cat: CatOption) => setApiCategories(prev => [...prev, cat as any]);
 
   // Resolve color/bg for a category name from API data
   function getCatColor(name?: string) {
@@ -2117,6 +2182,7 @@ export default function WorkItems() {
             onChange={setCreateScopeItems}
             allCategories={apiCategories}
             topCatId={createTopCatId}
+            onCategoryCreated={handleCategoryCreated}
           />
         </div>
         <div style={{ borderTop: "1px solid #E5E7EB", marginTop: 16, paddingTop: 16 }}>
@@ -2399,6 +2465,7 @@ export default function WorkItems() {
             onChange={setEditScopeItems}
             allCategories={apiCategories}
             topCatId={editTopCatId}
+            onCategoryCreated={handleCategoryCreated}
           />
         </div>
         <div style={{ borderTop: "1px solid #E5E7EB", marginTop: 16, paddingTop: 16 }}>

@@ -35,5 +35,5 @@ export function useCategories() {
       .finally(() => setLoading(false));
   }, []);
 
-  return { categories, loading, lighten };
+  return { categories, loading, lighten, setCategories };
 }
