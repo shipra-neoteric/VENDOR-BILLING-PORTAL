@@ -3,7 +3,7 @@ import apiClient from '../../services/apiClient';
 export const fetchCategories = () =>
   apiClient.get<{ categories: any[] }>('/categories');
 
-export const createCategory = (data: { name: string; color: string; description?: string; isActive?: boolean }) =>
+export const createCategory = (data: { name: string; color: string; description?: string; isActive?: boolean; parentId?: string | null }) =>
   apiClient.post<{ category: any }>('/categories', data);
 
 export const updateCategory = (id: string, data: any) =>
