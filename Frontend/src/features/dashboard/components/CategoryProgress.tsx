@@ -6,12 +6,13 @@ interface Props {
   categories: CategoryOption[];
   workOrders: WORow[];
   bills:      BillRow[];
+  limit?: number;
 }
 
-export function CategoryProgress({ categories, workOrders, bills }: Props) {
+export function CategoryProgress({ categories, workOrders, bills, limit }: Props) {
   const billMap = billsByWOMap(bills);
 
-  const stats = categories
+  const allStats = categories
     .map(cat => {
       const catWOs    = workOrders.filter(wo => wo.category === cat.name);
       const contract  = catWOs.reduce((s, wo) => s + (wo.contractValue ?? 0), 0);
@@ -20,6 +21,7 @@ export function CategoryProgress({ categories, workOrders, bills }: Props) {
       return { name: cat.name, color: cat.color, contract, billed, pct, count: catWOs.length };
     })
     .filter(c => c.count > 0);
+  const stats = limit ? allStats.slice(0, limit) : allStats;
 
   if (stats.length === 0) {
     return (

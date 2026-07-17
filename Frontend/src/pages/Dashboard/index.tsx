@@ -1,156 +1,105 @@
-import { useState } from "react";
-import { Skeleton, Alert, Table, Tag, Switch } from "antd";
-import { useCategories } from "../../hooks/useCategories";
-import { useDashboardData } from "../../features/dashboard/hooks/useDashboardData";
-import { SummaryCards }     from "../../features/dashboard/components/SummaryCards";
-import { BillingChart }     from "../../features/dashboard/components/BillingChart";
-import { CategoryProgress } from "../../features/dashboard/components/CategoryProgress";
-import { RecentBillsTable } from "../../features/dashboard/components/RecentBillsTable";
-import { calcKPIs, fmtCr }  from "../../features/dashboard/utils";
+import { useEffect, useState } from "react";
+import { Segmented, DatePicker, Select, Skeleton, Alert, notification } from "antd";
+import dayjs from "dayjs";
+import type { Dayjs } from "dayjs";
+import apiClient from "../../services/apiClient";
+import { useDPRData } from "../../features/dashboard/hooks/useDPRData";
+import { selectableProjects } from "../../utils/projectOptions";
+import OperationalView from "../../features/dashboard/components/OperationalView";
+import FinancialView from "./FinancialView";
+import { ReportSummaryHeader, ReportToolbar } from "../../features/dashboard/components/ReportToolbar";
+import type { ComparisonMode } from "../../features/dashboard/components/MiniCharts";
+import { useDueReportSchedules } from "../../features/dashboard/hooks/useReportSchedules";
 
-// ── Overall progress bar ─────────────────────────────────────────
-function ProgressBar({ certifiedAmt, pendingAmt, totalContractValueWithGST, remaining }: {
-  certifiedAmt: number; pendingAmt: number; totalContractValueWithGST: number; remaining: number;
-}) {
-  return (
-    <div style={{ background: "var(--nx-white)", border: "1px solid var(--nx-border)", borderRadius: 12, padding: "20px 24px", marginBottom: 24, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
-      <div style={{ fontWeight: 600, fontSize: 14, color: "var(--nx-text-3)", marginBottom: 12 }}>Overall Billing Progress</div>
-      <div style={{ display: "flex", height: 14, borderRadius: 7, overflow: "hidden", background: "var(--nx-fill)", marginBottom: 12 }}>
-        {totalContractValueWithGST > 0 && (
-          <>
-            <div style={{ width: `${(certifiedAmt / totalContractValueWithGST) * 100}%`, background: "#16a34a", transition: "width 0.6s ease" }} />
-            <div style={{ width: `${(pendingAmt  / totalContractValueWithGST) * 100}%`, background: "#f59e0b", transition: "width 0.6s ease" }} />
-          </>
-        )}
-      </div>
-      <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
-        {[
-          { label: "Certified",        color: "#16a34a", value: fmtCr(certifiedAmt) },
-          { label: "Pending Approval", color: "#f59e0b", value: fmtCr(pendingAmt) },
-          { label: "Remaining",        color: "#D1D5DB", value: fmtCr(remaining) },
-        ].map(s => (
-          <div key={s.label} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <span style={{ width: 10, height: 10, borderRadius: "50%", background: s.color, display: "inline-block" }} />
-            <span style={{ fontSize: 12, color: "var(--nx-text-2)" }}>{s.label}:</span>
-            <span style={{ fontSize: 12, fontWeight: 600, color: "var(--nx-text-3)", fontFamily: "monospace" }}>{s.value}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
+interface ProjectOption { _id: string; name: string; parentId?: string | null; }
+type ViewType = "operational" | "financial";
 
-// ── Skeleton while loading ────────────────────────────────────────
-function DashboardSkeleton() {
-  return (
-    <div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(178px, 1fr))", gap: 16, marginBottom: 24 }}>
-        {Array.from({ length: 5 }).map((_, i) => (
-          <div key={i} style={{ background: "var(--nx-white)", border: "1px solid var(--nx-border)", borderRadius: 12, padding: "18px 20px" }}>
-            <Skeleton.Input active style={{ width: 32, height: 32, borderRadius: "50%", marginBottom: 12, display: "block" }} />
-            <Skeleton.Input active size="small" style={{ width: "60%", height: 12, marginBottom: 8, display: "block" }} />
-            <Skeleton.Input active style={{ width: "80%", height: 20, display: "block" }} />
-          </div>
-        ))}
-      </div>
-      <div style={{ background: "var(--nx-white)", border: "1px solid var(--nx-border)", borderRadius: 12, padding: "20px 24px", marginBottom: 24 }}>
-        <Skeleton.Input active style={{ width: 220, height: 16, marginBottom: 16, display: "block" }} />
-        <Skeleton.Input active style={{ width: "100%", height: 14, borderRadius: 7, display: "block" }} />
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
-        {[0, 1].map(i => (
-          <div key={i} style={{ background: "var(--nx-white)", border: "1px solid var(--nx-border)", borderRadius: 12, padding: "20px 24px" }}>
-            <Skeleton active paragraph={{ rows: 5 }} />
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ── Main Dashboard ────────────────────────────────────────────────
 export default function Dashboard() {
-  const { categories } = useCategories();
-  const [includeArchived, setIncludeArchived] = useState(false);
-  const { data, isLoading, error } = useDashboardData(includeArchived);
+  const [view, setView] = useState<ViewType>("operational");
+  const [date, setDate] = useState<Dayjs>(dayjs());
+  const [projectId, setProjectId] = useState<string>("all");
+  const [projects, setProjects] = useState<ProjectOption[]>([]);
+  const [comparisonMode, setComparisonMode] = useState<ComparisonMode>("yesterday");
 
-  if (isLoading) return <DashboardSkeleton />;
+  useEffect(() => {
+    apiClient.get("/projects").then(res => setProjects(res.data.projects ?? [])).catch(() => {});
+  }, []);
 
-  if (error || !data) {
-    return (
-      <Alert
-        type="error"
-        showIcon
-        message={(error as Error)?.message ?? "Failed to load dashboard data"}
-        style={{ margin: 24, borderRadius: 10 }}
-      />
-    );
-  }
+  const { data: dueSchedules } = useDueReportSchedules();
+  useEffect(() => {
+    if (!dueSchedules?.length) return;
+    dueSchedules.forEach(s => {
+      notification.info({
+        message: "Scheduled report ready",
+        description: `Your ${s.timeOfDay} ${s.viewType} report for ${s.projectName} is ready to view — switch views above and download it.`,
+        placement: "topRight",
+      });
+    });
+  }, [dueSchedules]);
 
-  const { workOrders, bills, projects } = data;
-  const kpis = calcKPIs(workOrders, bills);
+  const { data, isLoading, error } = useDPRData(date.format("YYYY-MM-DD"), projectId as string);
+
+  const projectLabel = projectId === "all" ? "All Projects" : selectableProjects(projects).find(p => p._id === projectId)?.name ?? "All Projects";
 
   return (
     <div style={{ paddingBottom: 40 }}>
       {/* Header */}
-      <div style={{ marginBottom: 24, display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
+      <div style={{ marginBottom: 20, display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
         <div>
           <h1 style={{ fontSize: 26, fontWeight: 700, margin: 0, color: "var(--nx-text)" }}>Project Cost Center</h1>
           <p style={{ color: "var(--nx-text-2)", marginTop: 4, marginBottom: 0 }}>
-            Overview of contract value, bills, approvals and payments.
+            Daily progress, billing, and payment MIS — operational and financial views.
           </p>
         </div>
-        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--nx-text-2)" }}>
-          <Switch size="small" checked={includeArchived} onChange={setIncludeArchived} />
-          Include archived bills
-        </label>
+        <Segmented
+          value={view}
+          onChange={v => setView(v as ViewType)}
+          options={[
+            { label: "🏗️ Operational", value: "operational" },
+            { label: "💰 Financial", value: "financial" },
+          ]}
+          size="large"
+        />
       </div>
 
-      {/* KPI cards */}
-      <SummaryCards {...kpis} />
-
-      {/* Overall progress bar */}
-      <ProgressBar {...kpis} />
-
-      {/* Monthly trend chart */}
-      <BillingChart bills={bills} />
-
-      {/* Category progress + Projects table */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 24 }}>
-        <div style={{ background: "var(--nx-white)", border: "1px solid var(--nx-border)", borderRadius: 12, padding: "20px 24px", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
-          <div style={{ fontWeight: 600, fontSize: 14, color: "var(--nx-text-3)", marginBottom: 16 }}>Progress by Category</div>
-          <CategoryProgress categories={categories} workOrders={workOrders} bills={bills} />
-        </div>
-
-        <div style={{ background: "var(--nx-white)", border: "1px solid var(--nx-border)", borderRadius: 12, padding: "20px 24px", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
-          <div style={{ fontWeight: 600, fontSize: 14, color: "var(--nx-text-3)", marginBottom: 16 }}>Projects</div>
-          <Table
-            pagination={false}
-            dataSource={projects}
-            rowKey="_id"
-            size="small"
-            locale={{ emptyText: "No projects found" }}
-            columns={[
-              { title: "Project",  dataIndex: "name",     ellipsis: true },
-              { title: "Location", dataIndex: "location", ellipsis: true },
-              {
-                title: "Status", dataIndex: "status",
-                render: (s: string) => (
-                  <Tag color={s === "active" ? "green" : s === "completed" ? "blue" : "orange"}>
-                    {(s ?? "").toUpperCase()}
-                  </Tag>
-                ),
-              },
-            ]}
-          />
-        </div>
+      {/* Filters */}
+      <div style={{ display: "flex", gap: 12, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}>
+        <DatePicker value={date} onChange={d => setDate(d || dayjs())} format="DD MMM YYYY" allowClear={false} />
+        <Select
+          value={projectId} onChange={setProjectId} style={{ width: 220 }} showSearch
+          filterOption={(input, opt) => String(opt?.label ?? "").toLowerCase().includes(input.toLowerCase())}
+          options={[{ label: "All Projects", value: "all" }, ...selectableProjects(projects).map(p => ({ label: p.name, value: p._id }))]}
+        />
+        <Select
+          value={comparisonMode} onChange={setComparisonMode} style={{ width: 170 }}
+          options={[
+            { label: "No Comparison", value: "none" },
+            { label: "vs Yesterday", value: "yesterday" },
+            { label: "vs 7-Day Avg", value: "avg7d" },
+            { label: "vs 30-Day Avg", value: "avg30d" },
+          ]}
+        />
       </div>
 
-      {/* Recent bills */}
-      <div style={{ background: "var(--nx-white)", border: "1px solid var(--nx-border)", borderRadius: 12, padding: "20px 24px", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
-        <div style={{ fontWeight: 600, fontSize: 14, color: "var(--nx-text-3)", marginBottom: 16 }}>Recent Bills</div>
-        <RecentBillsTable bills={bills} />
-      </div>
+      {isLoading ? (
+        <Skeleton active paragraph={{ rows: 8 }} />
+      ) : error || !data ? (
+        <Alert type="error" showIcon message={(error as Error)?.message ?? "Failed to load MIS report"} style={{ margin: 24, borderRadius: 10 }} />
+      ) : (
+        <>
+          {/* Report summary + export toolbar */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, background: "var(--nx-white)", border: "1px solid #E5E7EB", borderRadius: 10, padding: "12px 16px", marginBottom: 20 }}>
+            <ReportSummaryHeader report={data} viewType={view} projectLabel={projectLabel} />
+            <ReportToolbar report={data} viewType={view} projectLabel={projectLabel} projectId={projectId} />
+          </div>
+
+          {view === "operational" ? (
+            <OperationalView data={data.operational} comparisonMode={comparisonMode} />
+          ) : (
+            <FinancialView financial={data.financial} comparisonMode={comparisonMode} projectPerformance={data.operational.projectPerformance} />
+          )}
+        </>
+      )}
     </div>
   );
 }
