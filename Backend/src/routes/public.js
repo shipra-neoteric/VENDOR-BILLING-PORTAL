@@ -9,10 +9,12 @@ const User       = require('../models/User');
 const WorkOrder  = require('../models/WorkOrder');
 const { nextWorkOrderNo, nextVendorCode } = require('../utils/codeGen');
 const { startInstance } = require('../utils/slaEngine');
+const { milestonesExceedContract } = require('../utils/validateMilestones');
+const { documentsExceedLimit } = require('../utils/validateDocuments');
 
 // ── Lookup lists (read-only, no auth) ──────────────────────────
 router.get('/projects', asyncHandler(async (_req, res) => {
-  const projects = await Project.find().select('_id name code projectType').sort({ name: 1 }).lean();
+  const projects = await Project.find().select('_id name code projectType location').sort({ name: 1 }).lean();
   success(res, { projects });
 }));
 
@@ -50,6 +52,13 @@ router.post('/work-orders', asyncHandler(async (req, res) => {
   if (!preparedByName)    return badRequest(res, 'Your name is required');
   if (!preparedByContact) return badRequest(res, 'Your contact is required');
 
+  if (milestonesExceedContract(req.body)) {
+    return badRequest(res, "Payment milestones total exceeds the work order's contract value (incl. GST)");
+  }
+
+  const docCheck = documentsExceedLimit(req.body.documents);
+  if (docCheck.exceeds) return badRequest(res, docCheck.reason);
+
   const project = await Project.findById(projectId);
   if (!project) return notFound(res, 'Project not found');
 
@@ -70,6 +79,7 @@ router.post('/work-orders', asyncHandler(async (req, res) => {
     ...req.body,
     workOrderNo,
     projectName: project.name,
+    projectLocation: req.body.projectLocation || '',
     vendorName:  contractor.companyName,
     ownerName:   contractor.ownerName,
     mobile:      contractor.mobile,

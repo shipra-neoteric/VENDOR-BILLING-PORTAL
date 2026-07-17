@@ -33,6 +33,7 @@ const scopeItemSchema = new mongoose.Schema(
     plannedQty:      { type: Number, default: 0 },
     rate:            { type: Number, default: 0 },
     amount:          { type: Number, default: 0 },
+    gstPercent:      { type: Number, default: 18 },
     plannedStart:    { type: String },
     plannedEnd:      { type: String },
     status:          { type: String, enum: ['pending', 'running', 'completed'], default: 'pending' },
@@ -51,6 +52,8 @@ const paymentMilestoneSchema = new mongoose.Schema(
     type:       { type: String, default: '' },
     mode:       { type: String, default: 'Bank Transfer' },
     amount:     { type: Number, default: 0 },
+    amountMode:    { type: String, enum: ['fixed', 'percent'], default: 'fixed' },
+    amountPercent: { type: Number, default: null },
     gstPercent: { type: Number, default: 18 },
     gstType:    { type: String, enum: ['inclusive', 'exclusive'], default: 'exclusive' },
     payable:    { type: Number, default: 0 },
@@ -68,6 +71,7 @@ const workOrderSchema = new mongoose.Schema(
     companyName:   { type: String, default: '' },
     projectId:     { type: mongoose.Schema.Types.ObjectId, ref: 'Project', required: true },
     projectName:   { type: String },
+    projectLocation: { type: String, default: '' },
     vendorCode:    { type: String, required: true },
     vendorName:    { type: String },
     ownerName:     { type: String },
@@ -86,8 +90,11 @@ const workOrderSchema = new mongoose.Schema(
     contractValue: { type: Number, default: 0 },
     gstPercent:    { type: Number, default: 18 },
     retentionPercent: { type: Number, default: 0 },
+    // Deprecated single-document pair — kept read-only for work orders saved
+    // before multi-document support; new saves only write `documents`.
     documentUrl:   { type: String },
     documentName:  { type: String },
+    documents: [{ name: { type: String, required: true }, url: { type: String, required: true }, _id: false }],
     paymentMilestones: [paymentMilestoneSchema],
     warrantyTerms:     [{ type: String }],
     status: {

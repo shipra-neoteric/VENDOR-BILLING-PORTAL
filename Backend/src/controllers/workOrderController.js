@@ -8,6 +8,8 @@ const { success, created, notFound, badRequest, conflict } = require('../utils/r
 const { nextWorkOrderNo } = require('../utils/codeGen');
 const emitEvent    = require('../utils/emitEvent');
 const { startInstance } = require('../utils/slaEngine');
+const { milestonesExceedContract } = require('../utils/validateMilestones');
+const { documentsExceedLimit } = require('../utils/validateDocuments');
 
 exports.listWorkOrders = asyncHandler(async (req, res) => {
   const { projectId, vendorCode, status, search, assignedToMe } = req.query;
@@ -48,6 +50,13 @@ exports.createWorkOrder = asyncHandler(async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
+  if (milestonesExceedContract(req.body)) {
+    return badRequest(res, "Payment milestones total exceeds the work order's contract value (incl. GST)");
+  }
+
+  const docCheck = documentsExceedLimit(req.body.documents);
+  if (docCheck.exceeds) return badRequest(res, docCheck.reason);
+
   const project = await Project.findById(req.body.projectId);
   if (!project) return notFound(res, 'Project not found');
 
@@ -79,6 +88,7 @@ exports.createWorkOrder = asyncHandler(async (req, res) => {
     workOrderNo,
     companyName,
     projectName: project.name,
+    projectLocation: req.body.projectLocation || '',
     vendorName:  contractor.companyName,
     ownerName:   contractor.ownerName,
     mobile:      contractor.mobile,
@@ -108,6 +118,14 @@ exports.createWorkOrder = asyncHandler(async (req, res) => {
 
 exports.updateWorkOrder = asyncHandler(async (req, res) => {
   const { workOrderNo: _wo, ...updateData } = req.body;
+
+  if (updateData.paymentMilestones && milestonesExceedContract(updateData)) {
+    return badRequest(res, "Payment milestones total exceeds the work order's contract value (incl. GST)");
+  }
+
+  const docCheck = documentsExceedLimit(updateData.documents);
+  if (docCheck.exceeds) return badRequest(res, docCheck.reason);
+
   const workOrder = await WorkOrder.findByIdAndUpdate(
     req.params.id,
     { $set: updateData },
