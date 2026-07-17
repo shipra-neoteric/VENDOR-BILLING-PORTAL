@@ -1,5 +1,7 @@
 import { Document, Page, View, Text, StyleSheet } from "@react-pdf/renderer";
 import { pdf } from "@react-pdf/renderer";
+import { getWorkOrderDocuments } from "./DocumentsUpload";
+import { mergeAttachmentsIntoPdf } from "../utils/pdfMerge";
 
 // ── Palette ────────────────────────────────────────────────────
 const ORANGE = "#FF7A00";
@@ -39,11 +41,12 @@ const S = StyleSheet.create({
   scopeRow:  { flexDirection: "row", borderTopWidth: 1, borderTopColor: BORDER, padding: "4px 8px" },
   scopeAlt:  { flexDirection: "row", borderTopWidth: 1, borderTopColor: BORDER, padding: "4px 8px", backgroundColor: LIGHT },
   colDesc:   { flex: 2.2, fontSize: 8.5, paddingRight: 6 },
-  colUnit:   { width: 46, fontSize: 8.5, textAlign: "center", paddingRight: 6 },
-  colQty:    { width: 46, fontSize: 8.5, textAlign: "right", paddingRight: 8 },
-  colDate:   { width: 60, fontSize: 8.5, textAlign: "center", paddingRight: 6 },
-  colRate:   { width: 56, fontSize: 8.5, textAlign: "right", paddingRight: 8 },
-  colAmt:    { width: 68, fontSize: 8.5, textAlign: "right" },
+  colUnit:   { width: 40, fontSize: 8.5, textAlign: "center", paddingRight: 6 },
+  colQty:    { width: 42, fontSize: 8.5, textAlign: "right", paddingRight: 8 },
+  colDate:   { width: 52, fontSize: 8.5, textAlign: "center", paddingRight: 6 },
+  colRate:   { width: 50, fontSize: 8.5, textAlign: "right", paddingRight: 8 },
+  colGst:    { width: 32, fontSize: 8, textAlign: "center", paddingRight: 4 },
+  colAmt:    { width: 62, fontSize: 8.5, textAlign: "right" },
   hdrText:   { color: "#fff", fontFamily: "Helvetica-Bold", fontSize: 8.5 },
 
   // ── Side-by-side details
@@ -110,6 +113,7 @@ interface WOData {
   preparedByName?: string;
   preparedByContact?: string;
   projectName: string;
+  projectLocation?: string;
   category?: string;
   subCategory?: string;
   scopeOfWork?: string;
@@ -127,12 +131,16 @@ interface WOData {
     plannedQty?: number;
     rate?: number;
     amount?: number;
+    gstPercent?: number;
     plannedStart?: string;
     plannedEnd?: string;
     subItems?: Array<{ description: string; unit?: string; plannedQty?: number; rate?: number; amount?: number }>;
   }>;
   paymentMilestones?: PaymentMilestoneData[];
   warrantyTerms?: string[];
+  documents?: { name: string; url: string }[];
+  documentName?: string;
+  documentUrl?: string;
 }
 
 interface CompanyData {
@@ -212,15 +220,15 @@ export function WorkOrderDocument({ wo, company, contractor }: Props) {
   const contractorAddr = contractor?.address || "—";
 
   // Flatten scope items (include sub-items as child rows)
-  const lineItems: Array<{ desc: string; unit?: string; qty?: number; rate?: number; amount?: number; start?: string; end?: string; isChild?: boolean }> = [];
+  const lineItems: Array<{ desc: string; unit?: string; qty?: number; rate?: number; amount?: number; gstPercent?: number; start?: string; end?: string; isChild?: boolean }> = [];
   for (const item of wo.scopeItems || []) {
     if ((item.subItems?.length ?? 0) > 0) {
-      lineItems.push({ desc: item.description, unit: "", qty: undefined, rate: undefined, amount: undefined, start: item.plannedStart, end: item.plannedEnd });
+      lineItems.push({ desc: item.description, unit: "", qty: undefined, rate: undefined, amount: undefined, gstPercent: item.gstPercent, start: item.plannedStart, end: item.plannedEnd });
       for (const sub of item.subItems ?? []) {
         lineItems.push({ desc: "  " + sub.description, unit: sub.unit, qty: sub.plannedQty, rate: sub.rate, amount: sub.amount ?? (sub.plannedQty ?? 0) * (sub.rate ?? 0), isChild: true });
       }
     } else {
-      lineItems.push({ desc: item.description, unit: item.unit, qty: item.plannedQty, rate: item.rate, amount: item.amount ?? (item.plannedQty ?? 0) * (item.rate ?? 0), start: item.plannedStart, end: item.plannedEnd });
+      lineItems.push({ desc: item.description, unit: item.unit, qty: item.plannedQty, rate: item.rate, amount: item.amount ?? (item.plannedQty ?? 0) * (item.rate ?? 0), gstPercent: item.gstPercent, start: item.plannedStart, end: item.plannedEnd });
     }
   }
 
@@ -228,6 +236,15 @@ export function WorkOrderDocument({ wo, company, contractor }: Props) {
     if (!l.isChild && (wo.scopeItems?.find(i => i.description === l.desc)?.subItems?.length ?? 0) > 0) return s;
     return s + (l.amount ?? 0);
   }, 0) || wo.contractValue || 0;
+
+  // Per-item GST — each work item can carry its own rate, so the incl.-GST
+  // total is a sum of item-level amounts, not one blended work-order rate.
+  const totalInclGst = (wo.scopeItems || []).reduce((s, item) => {
+    const base = item.amount ?? ((item.subItems?.length ?? 0) > 0
+      ? (item.subItems ?? []).reduce((ss, si) => ss + (si.amount ?? (si.plannedQty ?? 0) * (si.rate ?? 0)), 0)
+      : (item.plannedQty ?? 0) * (item.rate ?? 0));
+    return s + base * (1 + (item.gstPercent ?? 0) / 100);
+  }, 0);
 
   const milestones = wo.paymentMilestones ?? [];
   const grandPayable = milestones.reduce((s, m) => s + (m.payable ?? 0), 0);
@@ -279,6 +296,7 @@ export function WorkOrderDocument({ wo, company, contractor }: Props) {
         {/* ── Project Details ── */}
         <SectionBox title="Project Details">
           <InfoRow label="Project Name"      value={wo.projectName} />
+          {wo.projectLocation ? <InfoRow label="Location" value={wo.projectLocation} /> : null}
           <InfoRow label="Category"          value={wo.category} />
           {wo.subCategory ? <InfoRow label="Sub-category" value={wo.subCategory} /> : null}
           <InfoRow label="Work Title / Scope" value={wo.description || wo.scopeOfWork} last />
@@ -295,6 +313,7 @@ export function WorkOrderDocument({ wo, company, contractor }: Props) {
               <Text style={[S.colUnit, S.hdrText]}>Unit</Text>
               <Text style={[S.colQty, S.hdrText]}>Qty</Text>
               <Text style={[S.colRate, S.hdrText]}>Rate</Text>
+              <Text style={[S.colGst, S.hdrText]}>GST</Text>
               <Text style={[S.colDate, S.hdrText]}>Start</Text>
               <Text style={[S.colDate, S.hdrText]}>End</Text>
               <Text style={[S.colAmt, S.hdrText]}>Amount</Text>
@@ -307,6 +326,7 @@ export function WorkOrderDocument({ wo, company, contractor }: Props) {
                 <Text style={S.colUnit}>{item.unit || "—"}</Text>
                 <Text style={S.colQty}>{item.qty != null ? item.qty.toLocaleString("en-IN") : "—"}</Text>
                 <Text style={S.colRate}>{item.rate != null && item.rate > 0 ? item.rate.toLocaleString("en-IN") : "—"}</Text>
+                <Text style={S.colGst}>{item.gstPercent != null ? `${item.gstPercent}%` : "—"}</Text>
                 <Text style={S.colDate}>{item.start ? fmtDate(item.start) : "—"}</Text>
                 <Text style={S.colDate}>{item.end ? fmtDate(item.end) : "—"}</Text>
                 <Text style={[S.colAmt, { fontFamily: item.amount ? "Helvetica-Bold" : "Helvetica" }]}>
@@ -320,19 +340,15 @@ export function WorkOrderDocument({ wo, company, contractor }: Props) {
               <Text style={S.totalVal}>{fmtAmt(totalAmt)}</Text>
             </View>
             <View style={S.gstRow}>
-              <Text style={S.gstLabel}>GST Slab:</Text>
-              <Text style={S.gstVal}>
-                {wo.gstPercent != null ? `${wo.gstPercent}%` : "As applicable"}
+              <Text style={S.gstLabel}>GST (per item):</Text>
+              <Text style={S.gstVal}>{fmtAmt(Math.round(totalInclGst - totalAmt))}</Text>
+            </View>
+            <View style={[S.gstRow, { borderTopWidth: 1.5, borderTopColor: BORDER }]}>
+              <Text style={[S.gstLabel, { color: MID, fontFamily: "Helvetica-Bold" }]}>Total incl. GST:</Text>
+              <Text style={[S.gstVal, { color: MID, fontFamily: "Helvetica-Bold" }]}>
+                {fmtAmt(Math.round(totalInclGst))}
               </Text>
             </View>
-            {wo.gstPercent != null && wo.gstPercent > 0 && (
-              <View style={[S.gstRow, { borderTopWidth: 1.5, borderTopColor: BORDER }]}>
-                <Text style={[S.gstLabel, { color: MID, fontFamily: "Helvetica-Bold" }]}>Total incl. GST:</Text>
-                <Text style={[S.gstVal, { color: MID, fontFamily: "Helvetica-Bold" }]}>
-                  {fmtAmt(Math.round(totalAmt * (1 + (wo.gstPercent ?? 0) / 100)))}
-                </Text>
-              </View>
-            )}
           </View>
         )}
 
@@ -431,7 +447,13 @@ export async function downloadWorkOrderPDF(
   const blob = await pdf(
     <WorkOrderDocument wo={wo} company={company} contractor={contractor} />
   ).toBlob();
-  const url = URL.createObjectURL(blob);
+  const mainBytes = new Uint8Array(await blob.arrayBuffer());
+  const documents = getWorkOrderDocuments(wo);
+  const finalBytes = documents.length > 0
+    ? await mergeAttachmentsIntoPdf(mainBytes, documents)
+    : mainBytes;
+  const finalBlob = new Blob([finalBytes as BlobPart], { type: "application/pdf" });
+  const url = URL.createObjectURL(finalBlob);
   const a   = document.createElement("a");
   a.href     = url;
   a.download = `${wo.workOrderNo}.pdf`;

@@ -50,6 +50,7 @@ export interface Contractor {
 
   gstNumber?: string;
   panNumber?: string;
+  aadhaarNumber?: string;
 
   workTypes: string[];
 
@@ -104,6 +105,7 @@ export interface ScopeItem {
   plannedQty: number;
   rate: number;
   amount: number;
+  gstPercent?: number;
   plannedStart: string;
   plannedEnd: string;
   status: ScopeItemStatus;
@@ -130,6 +132,8 @@ export interface PaymentMilestone {
   type: string;
   mode: string;
   amount: number;
+  amountMode?: "fixed" | "percent";
+  amountPercent?: number | null;
   gstPercent: number;
   gstType: "inclusive" | "exclusive";
   payable: number;
@@ -143,6 +147,7 @@ export interface WorkOrder {
   preparedByContact?: string;
   projectId: string;
   projectName: string;
+  projectLocation?: string;
   vendorCode: string;
   vendorName: string;
   ownerName: string;
@@ -155,6 +160,8 @@ export interface WorkOrder {
   gstPercent?: number;
   retentionPercent?: number;
   documentName?: string;
+  documentUrl?: string;
+  documents?: { name: string; url: string }[];
   paymentMilestones?: PaymentMilestone[];
   warrantyTerms?: string[];
   status: WorkOrderStatus;

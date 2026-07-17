@@ -7,7 +7,6 @@ import {
   Form,
   Select,
   DatePicker,
-  Upload,
   Drawer,
   Descriptions,
   Space,
@@ -25,7 +24,6 @@ import type { FormInstance, MenuProps } from "antd";
 import { useNavigate } from "react-router-dom";
 import {
   PlusOutlined,
-  UploadOutlined,
   EditOutlined,
   LinkOutlined,
   DeleteOutlined,
@@ -49,8 +47,10 @@ import { downloadWorkOrderPDF } from "../../components/WorkOrderPDF";
 import { downloadWorkOrderPDFHindi } from "../../components/WorkOrderPDFHindi";
 import { selectableProjects, getWorkOrderProjectId } from "../../utils/projectOptions";
 import { vendorLabel } from "../../utils/vendorLabel";
-import PaymentMilestonesBuilder, { calcPayable } from "../../components/PaymentMilestonesBuilder";
+import PaymentMilestonesBuilder, { calcPayable, calcGrandTotal } from "../../components/PaymentMilestonesBuilder";
 import type { MilestoneDraft } from "../../components/PaymentMilestonesBuilder";
+import GstSelect from "../../components/GstSelect";
+import DocumentsUpload, { getWorkOrderDocuments } from "../../components/DocumentsUpload";
 import WarrantyTermsBuilder from "../../components/WarrantyTermsBuilder";
 import type {
   Contractor,
@@ -129,6 +129,7 @@ interface ScopeItemDraft {
   customUnit: string;
   plannedQty: number | null;
   rate: number | null;
+  gstPercent: number;
   plannedStart: string;
   plannedEnd: string;
   showSubItems: boolean;
@@ -155,6 +156,12 @@ const calcDraftItemAmt = (item: ScopeItemDraft): number =>
 
 const calcTotalAmt = (items: ScopeItemDraft[]) =>
   items.reduce((s, it) => s + calcDraftItemAmt(it), 0);
+
+const calcDraftItemInclGst = (item: ScopeItemDraft): number =>
+  calcDraftItemAmt(item) * (1 + (item.gstPercent || 0) / 100);
+
+const calcTotalInclGst = (items: ScopeItemDraft[]) =>
+  items.reduce((s, it) => s + calcDraftItemInclGst(it), 0);
 
 const getCompletionPct = (item: ScopeItem): number => {
   const total = item.plannedQty ||
@@ -188,12 +195,15 @@ const normalizeWO = (wo: any): WorkOrder => ({
 
 const toMilestoneDraft = (pm: PaymentMilestone): MilestoneDraft => ({
   id: pm.id, stage: pm.stage, date: pm.date, type: pm.type,
-  mode: pm.mode, amount: pm.amount, gstPercent: pm.gstPercent, gstType: pm.gstType,
+  mode: pm.mode, amount: pm.amount,
+  amountMode: pm.amountMode ?? "fixed", amountPercent: pm.amountPercent ?? null,
+  gstPercent: pm.gstPercent, gstType: pm.gstType,
 });
 
 const milestoneDraftToPayload = (m: MilestoneDraft) => ({
   stage: m.stage, date: m.date, type: m.type, mode: m.mode,
-  amount: m.amount || 0, gstPercent: m.gstPercent, gstType: m.gstType,
+  amount: m.amount || 0, amountMode: m.amountMode, amountPercent: m.amountPercent,
+  gstPercent: m.gstPercent, gstType: m.gstType,
   payable: calcPayable(m),
 });
 
@@ -203,11 +213,11 @@ const newSubDraft = (): ScopeSubItemDraft => ({
   plannedQty: null, rate: null,
 });
 
-const newItemDraft = (): ScopeItemDraft => ({
+const newItemDraft = (gstPercent = 18): ScopeItemDraft => ({
   id: crypto.randomUUID(),
   description: "", remarks: "", subCategoryId: "", subSubCategoryId: "",
   unit: "sq.ft", customUnit: "",
-  plannedQty: null, rate: null,
+  plannedQty: null, rate: null, gstPercent,
   plannedStart: "", plannedEnd: "",
   showSubItems: false, subItems: [],
 });
@@ -221,6 +231,7 @@ const toDraft = (si: ScopeItem): ScopeItemDraft => ({
   customUnit: isKnownUnit(si.unit) ? "" : si.unit,
   plannedQty: si.plannedQty,
   rate: si.rate,
+  gstPercent: si.gstPercent ?? 18,
   plannedStart: si.plannedStart,
   plannedEnd: si.plannedEnd,
   showSubItems: si.subItems.length > 0,
@@ -242,6 +253,7 @@ const draftToNewItem = (d: ScopeItemDraft): ScopeItem => ({
   plannedQty: d.plannedQty || 0,
   rate: d.subItems.length > 0 ? 0 : (d.rate || 0),
   amount: calcDraftItemAmt(d),
+  gstPercent: d.gstPercent,
   plannedStart: d.plannedStart,
   plannedEnd: d.plannedEnd,
   status: "pending",
@@ -268,6 +280,7 @@ const mergeWithExisting = (
   plannedQty: d.plannedQty || 0,
   rate: d.subItems.length > 0 ? 0 : (d.rate || 0),
   amount: calcDraftItemAmt(d),
+  gstPercent: d.gstPercent,
   plannedStart: d.plannedStart,
   plannedEnd: d.plannedEnd,
   status: existing?.status || "pending",
@@ -322,7 +335,7 @@ function UnitCell({
       filterOption={(inp, opt) =>
         String(opt?.label ?? "").toLowerCase().includes(inp.toLowerCase())
       }
-      getPopupContainer={(trigger) => trigger.parentElement || document.body}
+      placement="bottomLeft" getPopupContainer={(trigger) => trigger.parentElement || document.body}
     />
   );
 }
@@ -397,7 +410,7 @@ function CategoryCreatableSelect({
       searchValue={search}
       onSearch={setSearch}
       filterOption={(inp, opt) => String(opt?.label ?? "").toLowerCase().includes(inp.toLowerCase())}
-      getPopupContainer={(trigger) => trigger.parentElement || document.body}
+      placement="bottomLeft" getPopupContainer={(trigger) => trigger.parentElement || document.body}
       loading={creating}
       notFoundContent={creating ? "Adding..." : "Type a name to add it"}
     />
@@ -410,9 +423,10 @@ interface ScopeItemsBuilderProps {
   allCategories?: CatOption[];
   topCatId?: string | null;
   onCategoryCreated?: (cat: CatOption) => void;
+  gstPercent?: number;
 }
 
-function ScopeItemsBuilder({ items, onChange, allCategories = [], topCatId = null, onCategoryCreated = () => {} }: ScopeItemsBuilderProps) {
+function ScopeItemsBuilder({ items, onChange, allCategories = [], topCatId = null, onCategoryCreated = () => {}, gstPercent = 18 }: ScopeItemsBuilderProps) {
   const upd = (id: string, patch: Partial<ScopeItemDraft>) =>
     onChange(items.map(it => it.id === id ? { ...it, ...patch } : it));
 
@@ -445,6 +459,7 @@ function ScopeItemsBuilder({ items, onChange, allCategories = [], topCatId = nul
     ));
 
   const total = calcTotalAmt(items);
+  const totalInclGst = calcTotalInclGst(items);
 
   return (
     <div>
@@ -463,7 +478,7 @@ function ScopeItemsBuilder({ items, onChange, allCategories = [], topCatId = nul
           type="dashed"
           icon={<PlusOutlined />}
           size="small"
-          onClick={() => onChange([...items, newItemDraft()])}
+          onClick={() => onChange([...items, newItemDraft(gstPercent)])}
           style={{ borderColor: "#f37916", color: "#f37916" }}
         >
           Add Work Item
@@ -661,6 +676,20 @@ function ScopeItemsBuilder({ items, onChange, allCategories = [], topCatId = nul
             })()}
 
             <Row gutter={[10, 0]} style={{ marginTop: 8 }}>
+              <Col span={6}>
+                <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>GST %</div>
+                <GstSelect value={item.gstPercent} onChange={v => upd(item.id, { gstPercent: v })} style={{ width: "100%" }} />
+              </Col>
+              <Col span={18} style={{ display: "flex", alignItems: "flex-end", paddingBottom: 6 }}>
+                <div style={{ fontSize: 12, color: "#5a6278" }}>
+                  Amount incl. GST: <strong style={{ color: "#d4620c", fontFamily: "monospace" }}>
+                    {calcDraftItemAmt(item) > 0 ? fmt(calcDraftItemInclGst(item)) : "—"}
+                  </strong>
+                </div>
+              </Col>
+            </Row>
+
+            <Row gutter={[10, 0]} style={{ marginTop: 8 }}>
               <Col span={24}>
                 <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Notes / Remarks (optional)</div>
                 <Input
@@ -842,17 +871,28 @@ function ScopeItemsBuilder({ items, onChange, allCategories = [], topCatId = nul
             border: "1px solid #f8c9a0",
             borderRadius: 8,
             padding: "12px 16px",
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
           }}
         >
-          <span style={{ fontWeight: 600, color: "#5a6278" }}>
-            Total Contract Value ({items.length} item{items.length !== 1 ? "s" : ""})
-          </span>
-          <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#d4620c", fontSize: 16 }}>
-            {total > 0 ? fmt(total) : "—"}
-          </span>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ fontWeight: 600, color: "#5a6278" }}>
+              Contract Value ({items.length} item{items.length !== 1 ? "s" : ""}) — Excl. GST
+            </span>
+            <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#5a6278", fontSize: 14 }}>
+              {total > 0 ? fmt(total) : "—"}
+            </span>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10 }}>
+            <span style={{ fontWeight: 600, color: "#5a6278" }}>GST (per work item, see above)</span>
+            <span style={{ fontFamily: "monospace", color: "#5a6278", fontSize: 13 }}>
+              {total > 0 ? fmt(totalInclGst - total) : "—"}
+            </span>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10, paddingTop: 10, borderTop: "1px solid #f8c9a0" }}>
+            <span style={{ fontWeight: 700, color: "#1a1f2e" }}>Total Contract Value — Incl. GST</span>
+            <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#d4620c", fontSize: 16 }}>
+              {total > 0 ? fmt(totalInclGst) : "—"}
+            </span>
+          </div>
         </div>
       )}
     </div>
@@ -1198,7 +1238,7 @@ function WOFormFields({
                 label: `${c.shortCode} – ${c.name}`,
                 value: c._id,
               }))}
-              getPopupContainer={(trigger) => trigger.parentElement || document.body}
+              placement="bottomLeft" getPopupContainer={(trigger) => trigger.parentElement || document.body}
             />
           </Form.Item>
         </Col>
@@ -1218,11 +1258,21 @@ function WOFormFields({
               filterOption={(inp, opt) =>
                 String(opt?.label ?? "").toLowerCase().includes(inp.toLowerCase())
               }
-              options={selectableProjects(projectsList).map(p => ({ label: p.name, value: (p as any)._id || p.id }))}
-              getPopupContainer={(trigger) => trigger.parentElement || document.body}
+              options={selectableProjects(projectsList).map(p => ({
+                label: p.name,
+                value: (p as any)._id || p.id,
+              }))}
+              placement="bottomLeft" getPopupContainer={(trigger) => trigger.parentElement || document.body}
             />
           </Form.Item>
           <Form.Item name="projectName" hidden><Input /></Form.Item>
+          <Form.Item
+            label="Location"
+            name="projectLocation"
+            tooltip="Exact site location for this work order (e.g. tower, plot no., landmark)"
+          >
+            <Input placeholder="e.g. Tower A, Ground Floor" />
+          </Form.Item>
         </Col>
         <Col span={12}>
           <Form.Item
@@ -1253,7 +1303,7 @@ function WOFormFields({
                 label: `${c.vendorCode} — ${vendorLabel(c.companyName, c.shortCode)}`,
                 value: c.vendorCode,
               }))}
-              getPopupContainer={(trigger) => trigger.parentElement || document.body}
+              placement="bottomLeft" getPopupContainer={(trigger) => trigger.parentElement || document.body}
             />
           </Form.Item>
         </Col>
@@ -1266,7 +1316,7 @@ function WOFormFields({
                 label: c.name,
                 value: c.name,
               }))}
-              getPopupContainer={(trigger) => trigger.parentElement || document.body}
+              placement="bottomLeft" getPopupContainer={(trigger) => trigger.parentElement || document.body}
             />
           </Form.Item>
         </Col>
@@ -1276,7 +1326,7 @@ function WOFormFields({
           <Form.Item label="Status" name="status" rules={[{ required: true }]}>
             <Select
               options={STATUS_OPTIONS}
-              getPopupContainer={(trigger) => trigger.parentElement || document.body}
+              placement="bottomLeft" getPopupContainer={(trigger) => trigger.parentElement || document.body}
             />
           </Form.Item>
         </Col>
@@ -1285,15 +1335,7 @@ function WOFormFields({
       <Row gutter={16}>
         <Col span={12}>
           <Form.Item label="GST Slab" name="gstPercent" initialValue={18} tooltip="GST % applicable on billing for this work order">
-            <Select
-              options={[
-                { label: "0% — Exempt / Nil", value: 0 },
-                { label: "5%", value: 5 },
-                { label: "12%", value: 12 },
-                { label: "18% (Standard)", value: 18 },
-              ]}
-              getPopupContainer={(trigger) => trigger.parentElement || document.body}
-            />
+            <GstSelect />
           </Form.Item>
         </Col>
         <Col span={12}>
@@ -1307,7 +1349,7 @@ function WOFormFields({
                 { label: "15%", value: 15 },
                 { label: "20%", value: 20 },
               ]}
-              getPopupContainer={(trigger) => trigger.parentElement || document.body}
+              placement="bottomLeft" getPopupContainer={(trigger) => trigger.parentElement || document.body}
             />
           </Form.Item>
         </Col>
@@ -1322,7 +1364,7 @@ function WOFormFields({
                 placeholder="Select DRI(s) to assign (optional)"
                 allowClear
                 options={driList.map(d => ({ label: `${d.name} (${d.email})`, value: d._id }))}
-                getPopupContainer={(trigger) => trigger.parentElement || document.body}
+                placement="bottomLeft" getPopupContainer={(trigger) => trigger.parentElement || document.body}
               />
             </Form.Item>
           </Col>
@@ -1378,15 +1420,8 @@ function WOFormFields({
         />
       </Form.Item>
 
-      <Form.Item
-        label="Upload Work Order Document"
-        name="document"
-        valuePropName="fileList"
-        getValueFromEvent={e => (Array.isArray(e) ? e : e?.fileList)}
-      >
-        <Upload beforeUpload={() => false} maxCount={1} accept=".pdf,.doc,.docx,.jpg,.jpeg,.png">
-          <Button icon={<UploadOutlined />}>Upload PDF / Doc / Image</Button>
-        </Upload>
+      <Form.Item label="Upload Work Order Documents" name="documents">
+        <DocumentsUpload />
       </Form.Item>
     </>
   );
@@ -1441,6 +1476,7 @@ export default function WorkItems() {
 
   const [selectedWOId, setSelectedWOId] = useState<string | null>(null);
   const [drawerOpen,   setDrawerOpen]   = useState(false);
+  const [docsRecord,   setDocsRecord]   = useState<WorkOrder | null>(null);
   const currentSelectedWO = useMemo(
     () => workOrders.find(wo => wo.id === selectedWOId) || null,
     [workOrders, selectedWOId]
@@ -1469,6 +1505,8 @@ export default function WorkItems() {
 
   const createCatName = Form.useWatch("category", createForm) as string | undefined;
   const editCatName   = Form.useWatch("category", editForm)   as string | undefined;
+  const createGstPercent = (Form.useWatch("gstPercent", createForm) as number | undefined) ?? 18;
+  const editGstPercent   = (Form.useWatch("gstPercent", editForm)   as number | undefined) ?? 18;
 
   // ── Load all data ─────────────────────────────────────────────
   useEffect(() => {
@@ -1591,6 +1629,12 @@ export default function WorkItems() {
     try {
       const values = await createForm.validateFields();
       const totalAmt  = calcTotalAmt(createScopeItems);
+      const contractValueInclGst = calcTotalInclGst(createScopeItems);
+      const milestonesTotal = calcGrandTotal(createMilestones);
+      if (milestonesTotal > contractValueInclGst + 1) {
+        message.error(`Payment milestones total (${fmt(milestonesTotal)}) exceeds the scope of work's contract value incl. GST (${fmt(contractValueInclGst)})`);
+        return;
+      }
       const scopeOfWork = values.description?.trim()
         || createScopeItems.map(it => it.description).filter(Boolean).join(", ");
 
@@ -1598,6 +1642,7 @@ export default function WorkItems() {
         issueDate:    values.issueDate ? dayjs(values.issueDate).format("YYYY-MM-DD") : dayjs().format("YYYY-MM-DD"),
         projectId:    values.projectId,
         projectName:  values.projectName || "",
+        projectLocation: values.projectLocation || "",
         vendorCode:   values.vendorCode,
         vendorName:   values.vendorName  || "",
         ownerName:    values.ownerName   || "",
@@ -1615,6 +1660,7 @@ export default function WorkItems() {
         status:            values.status || "draft",
         preparedByName:    user?.name  || "",
         preparedByContact: user?.email || "",
+        documents:         values.documents || [],
         paymentMilestones: createMilestones.map(milestoneDraftToPayload),
         warrantyTerms:     createWarranty.filter(t => t.trim()),
       };
@@ -1651,6 +1697,12 @@ export default function WorkItems() {
       if (!currentEditWO) return;
 
       const totalAmt    = calcTotalAmt(editScopeItems);
+      const contractValueInclGst = calcTotalInclGst(editScopeItems);
+      const milestonesTotal = calcGrandTotal(editMilestones);
+      if (milestonesTotal > contractValueInclGst + 1) {
+        message.error(`Payment milestones total (${fmt(milestonesTotal)}) exceeds the scope of work's contract value incl. GST (${fmt(contractValueInclGst)})`);
+        return;
+      }
       const scopeOfWork = values.description?.trim()
         || editScopeItems.map(it => it.description).filter(Boolean).join(", ");
       const savedItems  = editScopeItems.map(d => {
@@ -1661,6 +1713,7 @@ export default function WorkItems() {
       const body = {
         projectId:    values.projectId,
         projectName:  values.projectName  || currentEditWO.projectName,
+        projectLocation: values.projectLocation ?? currentEditWO.projectLocation ?? "",
         vendorCode:   values.vendorCode,
         vendorName:   values.vendorName   || currentEditWO.vendorName,
         ownerName:    values.ownerName    || currentEditWO.ownerName,
@@ -1676,6 +1729,7 @@ export default function WorkItems() {
         gstPercent:        values.gstPercent ?? currentEditWO.gstPercent ?? 18,
         retentionPercent:  values.retentionPercent ?? (currentEditWO as any).retentionPercent ?? 0,
         status:            values.status,
+        documents:         values.documents ?? currentEditWO.documents ?? [],
         paymentMilestones: editMilestones.map(milestoneDraftToPayload),
         warrantyTerms:     editWarranty.filter(t => t.trim()),
       };
@@ -1782,7 +1836,18 @@ export default function WorkItems() {
       width: 110,
       render: (d: string) => dayjs(d).format("DD MMM YYYY"),
     },
-    { title: "Project", dataIndex: "projectName" },
+    {
+      title: "Project",
+      dataIndex: "projectName",
+      render: (name: string, wo: WorkOrder) => (
+        <div>
+          <div>{name}</div>
+          {wo.projectLocation && (
+            <div style={{ fontSize: 11, color: "#9ba3b8" }}>{wo.projectLocation}</div>
+          )}
+        </div>
+      ),
+    },
     {
       title: "Category",
       dataIndex: "category",
@@ -1872,10 +1937,11 @@ export default function WorkItems() {
       title: "Actions",
       width: 110,
       render: (_: unknown, record: WorkOrder) => {
+        const docCount = getWorkOrderDocuments(record).length;
         const menuItems: MenuProps["items"] = [
           { key: "edit", label: "Edit", icon: <EditOutlined /> },
           { key: "pdf-hindi", label: "Download PDF (Hindi)", icon: <FilePdfOutlined /> },
-          ...(record.documentName ? [{ key: "doc", label: "View Document", icon: <LinkOutlined /> }] : []),
+          ...(docCount > 0 ? [{ key: "doc", label: `Documents (${docCount})`, icon: <LinkOutlined /> }] : []),
           ...(isOwner ? [{ key: "delete", label: "Delete", icon: <DeleteOutlined />, danger: true }] : []),
         ];
         const onMenuClick: MenuProps["onClick"] = ({ key }) => {
@@ -1883,6 +1949,8 @@ export default function WorkItems() {
             openEdit(record);
           } else if (key === "pdf-hindi") {
             handleDownloadPDFHindi(record);
+          } else if (key === "doc") {
+            setDocsRecord(record);
           } else if (key === "delete") {
             Modal.confirm({
               title: `Delete ${record.workOrderNo}?`,
@@ -2186,10 +2254,15 @@ export default function WorkItems() {
             allCategories={apiCategories}
             topCatId={createTopCatId}
             onCategoryCreated={handleCategoryCreated}
+            gstPercent={createGstPercent}
           />
         </div>
         <div style={{ borderTop: "1px solid #E5E7EB", marginTop: 16, paddingTop: 16 }}>
-          <PaymentMilestonesBuilder items={createMilestones} onChange={setCreateMilestones} />
+          <PaymentMilestonesBuilder
+            items={createMilestones}
+            onChange={setCreateMilestones}
+            contractValueInclGst={calcTotalInclGst(createScopeItems)}
+          />
         </div>
         <div style={{ borderTop: "1px solid #E5E7EB", marginTop: 16, paddingTop: 16 }}>
           <WarrantyTermsBuilder items={createWarranty} onChange={setCreateWarranty} />
@@ -2213,6 +2286,7 @@ export default function WorkItems() {
               </div>
               <div style={{ fontSize: 12, color: "#6B7280", fontWeight: 400 }}>
                 {currentSelectedWO?.projectName}
+                {currentSelectedWO?.projectLocation && ` — ${currentSelectedWO.projectLocation}`}
               </div>
             </div>
           </Space>
@@ -2264,6 +2338,9 @@ export default function WorkItems() {
                 {dayjs(currentSelectedWO.issueDate).format("DD MMM YYYY")}
               </Descriptions.Item>
               <Descriptions.Item label="Project">{currentSelectedWO.projectName}</Descriptions.Item>
+              {currentSelectedWO.projectLocation && (
+                <Descriptions.Item label="Location">{currentSelectedWO.projectLocation}</Descriptions.Item>
+              )}
               <Descriptions.Item label="Status">
                 <Tag color={STATUS_CFG[currentSelectedWO.status]?.color}>
                   {STATUS_CFG[currentSelectedWO.status]?.label}
@@ -2282,11 +2359,15 @@ export default function WorkItems() {
                   {fmt(currentSelectedWO.contractValue)}
                 </span>
               </Descriptions.Item>
-              {currentSelectedWO.documentName && (
-                <Descriptions.Item label="Document" span={2}>
-                  <Button type="link" icon={<LinkOutlined />} style={{ padding: 0 }}>
-                    {currentSelectedWO.documentName}
-                  </Button>
+              {getWorkOrderDocuments(currentSelectedWO).length > 0 && (
+                <Descriptions.Item label="Documents" span={2}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    {getWorkOrderDocuments(currentSelectedWO).map((d, i) => (
+                      <a key={i} href={d.url} target="_blank" rel="noreferrer" download={d.name} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <LinkOutlined /> {d.name}
+                      </a>
+                    ))}
+                  </div>
                 </Descriptions.Item>
               )}
             </Descriptions>
@@ -2469,10 +2550,15 @@ export default function WorkItems() {
             allCategories={apiCategories}
             topCatId={editTopCatId}
             onCategoryCreated={handleCategoryCreated}
+            gstPercent={editGstPercent}
           />
         </div>
         <div style={{ borderTop: "1px solid #E5E7EB", marginTop: 16, paddingTop: 16 }}>
-          <PaymentMilestonesBuilder items={editMilestones} onChange={setEditMilestones} />
+          <PaymentMilestonesBuilder
+            items={editMilestones}
+            onChange={setEditMilestones}
+            contractValueInclGst={calcTotalInclGst(editScopeItems)}
+          />
         </div>
         <div style={{ borderTop: "1px solid #E5E7EB", marginTop: 16, paddingTop: 16 }}>
           <WarrantyTermsBuilder items={editWarranty} onChange={setEditWarranty} />
@@ -2569,6 +2655,24 @@ export default function WorkItems() {
           </>
         )}
       </Drawer>
+
+      <Modal
+        open={!!docsRecord}
+        onCancel={() => setDocsRecord(null)}
+        footer={null}
+        title={`Documents — ${docsRecord?.workOrderNo ?? ""}`}
+      >
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {docsRecord && getWorkOrderDocuments(docsRecord).map((d, i) => (
+            <a
+              key={i} href={d.url} target="_blank" rel="noreferrer" download={d.name}
+              style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", background: "#f5f6f8", border: "1px solid #e4e7ee", borderRadius: 6 }}
+            >
+              <LinkOutlined /> {d.name}
+            </a>
+          ))}
+        </div>
+      </Modal>
     </PageShell>
   );
 }

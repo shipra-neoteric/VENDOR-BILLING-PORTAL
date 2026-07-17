@@ -1,9 +1,8 @@
 import { useEffect, useState } from "react";
 import {
   Form, Select, DatePicker, Input, InputNumber, Button,
-  Divider, Card, Typography, Space, Spin, Result, Tag, Row, Col, Upload, message,
+  Divider, Card, Typography, Space, Spin, Result, Tag, Row, Col, message,
 } from "antd";
-import type { UploadProps } from "antd";
 import {
   CheckCircleOutlined,
   FileTextOutlined,
@@ -11,14 +10,16 @@ import {
   DeleteOutlined,
   DownOutlined,
   UpOutlined,
-  UploadOutlined,
 } from "@ant-design/icons";
 import axios from "axios";
 import dayjs from "dayjs";
 import { selectableProjects } from "../../utils/projectOptions";
-import PaymentMilestonesBuilder, { calcPayable } from "../../components/PaymentMilestonesBuilder";
+import PaymentMilestonesBuilder, { calcPayable, calcGrandTotal } from "../../components/PaymentMilestonesBuilder";
 import type { MilestoneDraft } from "../../components/PaymentMilestonesBuilder";
 import WarrantyTermsBuilder from "../../components/WarrantyTermsBuilder";
+import GstSelect from "../../components/GstSelect";
+import DocumentsUpload from "../../components/DocumentsUpload";
+import type { WODocument } from "../../components/DocumentsUpload";
 
 const { Title, Text } = Typography;
 
@@ -29,14 +30,6 @@ pub.interceptors.response.use(r => {
   if (r.data && "success" in r.data && "data" in r.data) r.data = r.data.data;
   return r;
 });
-
-const GST_OPTIONS = [
-  { label: "0%",             value: 0  },
-  { label: "5%",             value: 5  },
-  { label: "12%",            value: 12 },
-  { label: "18% (Standard)", value: 18 },
-  { label: "28%",            value: 28 },
-];
 
 const STATUS_OPTIONS = [
   { label: "Draft",       value: "draft"       },
@@ -66,7 +59,7 @@ const UNIT_OPTIONS = [
 
 interface CatOption { _id: string; name: string; parentId: string | null; }
 interface Contractor { vendorCode: string; companyName: string; ownerName: string; }
-interface Lookup     { _id: string; name: string; parentId?: string | null; }
+interface Lookup     { _id: string; name: string; parentId?: string | null; location?: string; }
 
 interface SubItemDraft {
   id: string;
@@ -83,6 +76,7 @@ interface ScopeDraft {
   unit: string;
   plannedQty: number | null;
   rate: number | null;
+  gstPercent: number;
   remarks: string;
   plannedStart: string;
   plannedEnd: string;
@@ -94,27 +88,20 @@ interface ScopeDraft {
 
 const fmt = (n: number) => "₹" + Math.round(n).toLocaleString("en-IN");
 
-const MAX_FILE_MB = 5;
-
-function readFileAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload  = () => resolve(reader.result as string);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
 function calcItemAmt(item: ScopeDraft) {
   if (item.subItems.length > 0)
     return item.subItems.reduce((s, si) => s + (si.plannedQty || 0) * (si.rate || 0), 0);
   return (item.plannedQty || 0) * (item.rate || 0);
 }
 
-function newScope(): ScopeDraft {
+function calcItemInclGst(item: ScopeDraft) {
+  return calcItemAmt(item) * (1 + (item.gstPercent || 0) / 100);
+}
+
+function newScope(gstPercent = 18): ScopeDraft {
   return {
     id: crypto.randomUUID(), subCategoryId: "", description: "",
-    unit: "sq.ft", plannedQty: null, rate: null,
+    unit: "sq.ft", plannedQty: null, rate: null, gstPercent,
     remarks: "", plannedStart: "", plannedEnd: "",
     showSubItems: false, subItems: [],
   };
@@ -162,6 +149,7 @@ function SubCategorySelect({
   return (
     <Select
       placeholder="Select or type to add sub-category"
+      placement="bottomLeft"
       value={value || undefined}
       options={finalOptions}
       onChange={v => {
@@ -256,7 +244,7 @@ function ScopeItemCard({
 
           <Col xs={12} sm={item.subItems.length > 0 ? 6 : 4}>
             <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Unit</div>
-            <Select value={item.unit} options={UNIT_OPTIONS} style={{ width: "100%" }}
+            <Select value={item.unit} options={UNIT_OPTIONS} style={{ width: "100%" }} placement="bottomLeft"
               onChange={v => onChange({ unit: v })} showSearch
               filterOption={(inp, opt) =>
                 String(opt?.label ?? "").toLowerCase().includes(inp.toLowerCase())
@@ -289,6 +277,19 @@ function ScopeItemCard({
               <AmtBox value={amt} />
             </Col>
           )}
+        </Row>
+
+        {/* Row 1b: GST + Incl. GST amount */}
+        <Row gutter={[10, 0]} style={{ marginTop: 8 }}>
+          <Col xs={12} sm={6}>
+            <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>GST %</div>
+            <GstSelect value={item.gstPercent} onChange={v => onChange({ gstPercent: v })} style={{ width: "100%" }} />
+          </Col>
+          <Col xs={12} sm={18} style={{ display: "flex", alignItems: "flex-end", paddingBottom: 6 }}>
+            <div style={{ fontSize: 12, color: "#5a6278" }}>
+              Amount incl. GST: <strong style={{ color: "#d4620c", fontFamily: "monospace" }}>{amt > 0 ? fmt(calcItemInclGst(item)) : "—"}</strong>
+            </div>
+          </Col>
         </Row>
 
         {/* Row 2: Notes/Remarks */}
@@ -352,7 +353,7 @@ function ScopeItemCard({
                 <Input placeholder="Sub-item description" value={si.description}
                   onChange={e => updSub(si.id, { description: e.target.value })}
                   style={{ flex: 2, minWidth: 180 }} />
-                <Select value={si.unit} options={UNIT_OPTIONS} style={{ width: 130 }}
+                <Select value={si.unit} options={UNIT_OPTIONS} style={{ width: 130 }} placement="bottomLeft"
                   onChange={v => updSub(si.id, { unit: v })} showSearch
                   filterOption={(inp, opt) =>
                     String(opt?.label ?? "").toLowerCase().includes(inp.toLowerCase())
@@ -387,6 +388,7 @@ function ScopeItemCard({
 
 export default function PublicWorkOrderForm() {
   const [form] = Form.useForm();
+  const gstPercent = (Form.useWatch("gstPercent", form) as number | undefined) ?? 18;
 
   const [projects,    setProjects]    = useState<Lookup[]>([]);
   const [contractors, setContractors] = useState<Contractor[]>([]);
@@ -397,23 +399,9 @@ export default function PublicWorkOrderForm() {
   const [submitted,   setSubmitted]   = useState<{ workOrderNo: string } | null>(null);
   const [scopeItems,  setScopeItems]  = useState<ScopeDraft[]>([newScope()]);
   const [topCatId,    setTopCatId]    = useState<string>("");
-  const [documentFile, setDocumentFile] = useState<{ fileName: string; dataUrl: string } | null>(null);
+  const [documents,   setDocuments]   = useState<WODocument[]>([]);
   const [milestones,  setMilestones]  = useState<MilestoneDraft[]>([]);
   const [warrantyTerms, setWarrantyTerms] = useState<string[]>([]);
-
-  const handleDocSelect: NonNullable<UploadProps["beforeUpload"]> = async (file) => {
-    if (file.size > MAX_FILE_MB * 1024 * 1024) {
-      message.error(`${file.name} is larger than ${MAX_FILE_MB}MB`);
-      return false;
-    }
-    try {
-      const dataUrl = await readFileAsDataUrl(file);
-      setDocumentFile({ fileName: file.name, dataUrl });
-    } catch {
-      message.error(`Couldn't read ${file.name}`);
-    }
-    return false;
-  };
 
   useEffect(() => {
     Promise.all([
@@ -432,17 +420,24 @@ export default function PublicWorkOrderForm() {
   const topCatOptions = allCats.filter(c => !c.parentId);
 
   const contractValue = scopeItems.reduce((s, i) => s + calcItemAmt(i), 0);
+  const contractValueInclGst = scopeItems.reduce((s, i) => s + calcItemInclGst(i), 0);
 
   function patchItem(id: string, patch: Partial<ScopeDraft>) {
     setScopeItems(items => items.map(it => it.id === id ? { ...it, ...patch } : it));
   }
 
   async function onFinish(vals: any) {
+    const milestonesTotal = calcGrandTotal(milestones);
+    if (milestonesTotal > contractValueInclGst + 1) {
+      message.error(`Payment milestones total (${fmt(milestonesTotal)}) exceeds the scope of work's contract value incl. GST (${fmt(contractValueInclGst)})`);
+      return;
+    }
     setSubmitting(true);
     try {
       const validScope = scopeItems.filter(i => i.description.trim() || i.subCategoryId);
       const payload = {
         projectId:   vals.projectId,
+        projectLocation: vals.projectLocation || "",
         vendorCode:  vals.vendorCode,
         issueDate:   (vals.issueDate as dayjs.Dayjs).toISOString(),
         companyId:   vals.companyId  || null,
@@ -450,13 +445,13 @@ export default function PublicWorkOrderForm() {
         scopeOfWork: vals.scopeOfWork || "",
         status:      vals.status     || "draft",
         gstPercent:  vals.gstPercent ?? 18,
-        documentUrl:  documentFile?.dataUrl  || "",
-        documentName: documentFile?.fileName || "",
+        documents:   documents,
         preparedByName:    vals.preparedByName    || "",
         preparedByContact: vals.preparedByContact || "",
         paymentMilestones: milestones.map(m => ({
           stage: m.stage, date: m.date, type: m.type, mode: m.mode,
-          amount: m.amount || 0, gstPercent: m.gstPercent, gstType: m.gstType,
+          amount: m.amount || 0, amountMode: m.amountMode, amountPercent: m.amountPercent,
+          gstPercent: m.gstPercent, gstType: m.gstType,
           payable: calcPayable(m),
         })),
         warrantyTerms: warrantyTerms.filter(t => t.trim()),
@@ -466,6 +461,7 @@ export default function PublicWorkOrderForm() {
           plannedQty:  i.subItems.length > 0 ? 0 : (i.plannedQty || 0),
           rate:        i.subItems.length > 0 ? 0 : (i.rate || 0),
           amount:      calcItemAmt(i),
+          gstPercent:  i.gstPercent,
           remarks:     i.remarks,
           plannedStart: i.plannedStart,
           plannedEnd:   i.plannedEnd,
@@ -492,7 +488,7 @@ export default function PublicWorkOrderForm() {
     form.resetFields();
     setScopeItems([newScope()]);
     setTopCatId("");
-    setDocumentFile(null);
+    setDocuments([]);
     setMilestones([]);
     setWarrantyTerms([]);
     setSubmitted(null);
@@ -589,15 +585,23 @@ export default function PublicWorkOrderForm() {
               </Form.Item>
 
               <Form.Item name="companyId" label="Issuing Company">
-                <Select placeholder="Select company (optional)" allowClear showSearch
+                <Select placeholder="Select company (optional)" allowClear showSearch placement="bottomLeft"
                   optionFilterProp="label"
                   options={companies.map(c => ({ label: c.name, value: c._id }))} />
               </Form.Item>
 
               <Form.Item name="projectId" label="Project"
                 rules={[{ required: true, message: "Select a project" }]}>
-                <Select placeholder="Select project" showSearch optionFilterProp="label"
+                <Select placeholder="Select project" showSearch optionFilterProp="label" placement="bottomLeft"
                   options={selectableProjects(projects).map(p => ({ label: p.name, value: p._id }))} />
+              </Form.Item>
+
+              <Form.Item
+                name="projectLocation"
+                label="Location"
+                tooltip="Exact site location for this work order (e.g. tower, plot no., landmark)"
+              >
+                <Input placeholder="e.g. Tower A, Ground Floor" />
               </Form.Item>
 
               <Form.Item name="issueDate" label="Issue Date"
@@ -607,7 +611,7 @@ export default function PublicWorkOrderForm() {
 
               <Form.Item name="vendorCode" label="Vendor Code"
                 rules={[{ required: true, message: "Select a vendor" }]}>
-                <Select placeholder="Select vendor" showSearch
+                <Select placeholder="Select vendor" showSearch placement="bottomLeft"
                   optionFilterProp="label"
                   options={contractors.map(c => ({
                     label: `${c.vendorCode} — ${c.companyName}`,
@@ -616,7 +620,7 @@ export default function PublicWorkOrderForm() {
               </Form.Item>
 
               <Form.Item name="category" label="Category">
-                <Select placeholder="Select category (optional)" allowClear showSearch
+                <Select placeholder="Select category (optional)" allowClear showSearch placement="bottomLeft"
                   optionFilterProp="label"
                   options={topCatOptions.map(c => ({ label: c.name, value: c._id }))}
                   onChange={v => setTopCatId(v || "")}
@@ -624,11 +628,11 @@ export default function PublicWorkOrderForm() {
               </Form.Item>
 
               <Form.Item name="status" label="Status" initialValue="draft">
-                <Select options={STATUS_OPTIONS} />
+                <Select options={STATUS_OPTIONS} placement="bottomLeft" />
               </Form.Item>
 
               <Form.Item name="gstPercent" label="GST Slab" initialValue={18}>
-                <Select options={GST_OPTIONS} />
+                <GstSelect />
               </Form.Item>
 
             </div>
@@ -644,13 +648,8 @@ export default function PublicWorkOrderForm() {
               />
             </Form.Item>
 
-            <Form.Item label="Upload Work Order Document">
-              <Upload beforeUpload={handleDocSelect} maxCount={1} showUploadList={false} accept=".pdf,.doc,.docx,.jpg,.jpeg,.png">
-                <Button icon={<UploadOutlined />}>{documentFile?.fileName || "Upload PDF / Doc / Image"}</Button>
-              </Upload>
-              {documentFile && (
-                <div style={{ fontSize: 11, color: "#16a85a", marginTop: 4 }}>✓ Attached</div>
-              )}
+            <Form.Item label="Upload Work Order Documents">
+              <DocumentsUpload value={documents} onChange={setDocuments} />
             </Form.Item>
           </Card>
 
@@ -667,7 +666,7 @@ export default function PublicWorkOrderForm() {
             }}>
               <div style={{ fontWeight: 700, fontSize: 14, color: "#1a1f2e" }}>Scope of Work</div>
               <Button type="dashed" icon={<PlusOutlined />} size="small"
-                onClick={() => setScopeItems(s => [...s, newScope()])}
+                onClick={() => setScopeItems(s => [...s, newScope(gstPercent)])}
                 style={{ borderColor: "#f37916", color: "#f37916" }}
               >
                 Add Work Item
@@ -702,9 +701,17 @@ export default function PublicWorkOrderForm() {
                 <>
                   <Divider style={{ margin: "8px 0 12px" }} />
                   <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 12 }}>
-                    <Text type="secondary">Total Contract Value ({scopeItems.length} item{scopeItems.length !== 1 ? "s" : ""}):</Text>
+                    <Text type="secondary">Contract Value ({scopeItems.length} item{scopeItems.length !== 1 ? "s" : ""}) — Excl. GST:</Text>
+                    <Text style={{ fontWeight: 600, fontSize: 14 }}>{fmt(contractValue)}</Text>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 12, marginTop: 6 }}>
+                    <Text type="secondary">GST (per work item, see above):</Text>
+                    <Text style={{ fontSize: 13 }}>{fmt(contractValueInclGst - contractValue)}</Text>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 12, marginTop: 6 }}>
+                    <Text strong>Total Contract Value — Incl. GST:</Text>
                     <Text style={{ fontWeight: 700, fontSize: 18, color: "#f37916" }}>
-                      {fmt(contractValue)}
+                      {fmt(contractValueInclGst)}
                     </Text>
                   </div>
                 </>
@@ -714,7 +721,7 @@ export default function PublicWorkOrderForm() {
 
           {/* ── Payment Milestones ── */}
           <Card style={{ borderRadius: 12, marginBottom: 20, boxShadow: "0 2px 12px rgba(0,0,0,0.05)" }}>
-            <PaymentMilestonesBuilder items={milestones} onChange={setMilestones} />
+            <PaymentMilestonesBuilder items={milestones} onChange={setMilestones} contractValueInclGst={contractValueInclGst} />
           </Card>
 
           {/* ── Warranty / Guarantee Terms ── */}
