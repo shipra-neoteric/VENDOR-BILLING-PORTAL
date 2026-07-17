@@ -81,6 +81,19 @@ function canView(moduleId: string, perms: PermEntry[] | undefined): boolean {
   return entry ? entry.actions.includes("view") : false;
 }
 
+// First module (in sidebar order) this user is actually permitted to view — used as
+// the post-login landing route instead of hardcoding /dashboard for everyone, since a
+// user without explicit dashboard access would otherwise land on a page not in their
+// own sidebar.
+export function getDefaultPath(perms: PermEntry[] | undefined): string {
+  for (const group of ADMIN_GROUPS) {
+    for (const item of group.items) {
+      if (canView(item.moduleId, perms)) return item.path;
+    }
+  }
+  return "/dashboard";
+}
+
 // DRI-specific: only show admin modules where permission is explicitly granted
 function canViewExplicit(moduleId: string, perms: PermEntry[]): boolean {
   const entry = perms.find(p => p.module === moduleId);

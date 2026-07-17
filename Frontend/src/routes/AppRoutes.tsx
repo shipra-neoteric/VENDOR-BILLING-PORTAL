@@ -24,6 +24,7 @@ import Login                from "../features/auth";
 import MainLayout     from "../layouts/MainLayout/MainLayout";
 import ProtectedRoute from "../components/ProtectedRoute";
 import { useAuth }    from "../context/AuthContext";
+import { getDefaultPath } from "../layouts/Sidebar/Sidebar";
 
 function DriRoutes() {
   return (
@@ -53,12 +54,15 @@ function DriRoutes() {
 }
 
 function AdminRoutes() {
+  const { user } = useAuth();
+  const defaultPath = getDefaultPath(user?.permissions);
+
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route element={<ProtectedRoute />}>
         <Route element={<MainLayout />}>
-          <Route index                    element={<Navigate to="/dashboard" replace />} />
+          <Route index                    element={<Navigate to={defaultPath} replace />} />
           <Route path="/dashboard"        element={<Dashboard />} />
           <Route path="/projects"         element={<Projects />} />
           <Route path="/contractors"      element={<Contractors />} />
@@ -78,7 +82,7 @@ function AdminRoutes() {
           <Route path="/sla-settings"    element={<SlaSettings />} />
           <Route path="/sla-settings/:id" element={<SlaSettingsDetail />} />
           <Route path="/sla-dashboard"   element={<SlaDashboard />} />
-          <Route path="*"                element={<Navigate to="/dashboard" replace />} />
+          <Route path="*"                element={<Navigate to={defaultPath} replace />} />
         </Route>
       </Route>
     </Routes>
