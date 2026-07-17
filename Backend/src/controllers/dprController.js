@@ -15,6 +15,15 @@ function dayBounds(dateStr) {
   const start = new Date(d.getFullYear(), d.getMonth(), d.getDate());
   return { start, end: new Date(start.getTime() + DAY_MS) };
 }
+// Generalizes dayBounds to a [dateFromStr, dateToStr] span — end-exclusive,
+// covering the whole of dateToStr. A missing dateFromStr means "no lower
+// bound" (all-time), matching the "All Time" range preset on the dashboard.
+function rangeBounds(dateFromStr, dateToStr) {
+  const to = dateToStr ? new Date(dateToStr) : new Date();
+  const end = new Date(to.getFullYear(), to.getMonth(), to.getDate() + 1);
+  const start = dateFromStr ? new Date(dateFromStr) : new Date(0);
+  return { start: dateFromStr ? new Date(start.getFullYear(), start.getMonth(), start.getDate()) : start, end };
+}
 function inRange(date, start, end) {
   if (!date) return false;
   const t = new Date(date).getTime();
@@ -30,6 +39,16 @@ function daysBetween(a, b) {
 const sum = (arr, fn) => arr.reduce((s, x) => s + (fn(x) || 0), 0);
 const avg = arr => arr.length ? Math.round((arr.reduce((s, v) => s + v, 0) / arr.length) * 10) / 10 : 0;
 
+// The stored `paidAmount` isn't reliable — the payment form pre-fills it with
+// the gross bill amount and doesn't force whoever records payment to correct
+// it down, so bills with retention held often end up with `paidAmount`
+// silently equal to the gross figure. Compute the real net release
+// deterministically from the bill's own fields instead of trusting it.
+const netReleased = b => {
+  const gross = (b.amount || 0) * (1 + (b.gstPercent || 0) / 100);
+  return Math.max(0, gross - (b.retentionAmount || 0) - (b.advanceRecovery || 0));
+};
+
 const AGING_BUCKETS = [
   { label: '0-3 Days',  max: 3 },
   { label: '4-7 Days',  max: 7 },
@@ -42,11 +61,17 @@ function agingBucketIndex(days) {
 }
 
 // GET /api/dpr?date=YYYY-MM-DD&projectId=...
+// GET /api/dpr?dateFrom=YYYY-MM-DD&dateTo=YYYY-MM-DD&projectId=...  (range presets: All Time / Current Week / Last Week / Custom Range)
 exports.getDPR = asyncHandler(async (req, res) => {
-  const { date, projectId } = req.query;
-  const { start: dayStart, end: dayEnd } = dayBounds(date);
-  const trend30Start = new Date(dayStart.getTime() - 29 * DAY_MS);
-  const trend7Start = new Date(dayStart.getTime() - 6 * DAY_MS);
+  const { date, dateFrom, dateTo, projectId } = req.query;
+  // `date` is the legacy single-day param — still supported so nothing else
+  // calling this endpoint breaks. `dateFrom`/`dateTo` take precedence.
+  const rangeFrom = dateFrom || date || undefined;
+  const rangeTo = dateTo || date;
+  const isSingleDay = !dateFrom || dateFrom === (dateTo || date);
+  const { start: dayStart, end: dayEnd } = rangeBounds(rangeFrom, rangeTo);
+  const trend30Start = new Date(dayEnd.getTime() - 30 * DAY_MS);
+  const trend7Start = new Date(dayEnd.getTime() - 7 * DAY_MS);
 
   const projectFilter = projectId ? { projectId } : {};
 
@@ -55,11 +80,12 @@ exports.getDPR = asyncHandler(async (req, res) => {
     BillRequest.find({ ...projectFilter, isArchived: { $ne: true } }).lean(),
     RunningBill.find({ ...projectFilter, isArchived: { $ne: true } }).lean(),
     AdvanceSlip.find({ ...projectFilter, isArchived: { $ne: true } }).lean(),
-    Project.find().select('_id name').lean(),
+    Project.find().select('_id name location').lean(),
     Category.find({ isActive: true, parentId: null }).select('name color').lean(),
   ]);
 
   const projectName = new Map(projects.map(p => [String(p._id), p.name]));
+  const projectLocation = new Map(projects.map(p => [String(p._id), p.location || '']));
 
   // ── Unified 30-day daily series (one pass, powers trend charts AND comparisons) ──
   // Only genuine "flow" metrics belong here — backlog/snapshot numbers (pending
@@ -94,7 +120,7 @@ exports.getDPR = asyncHandler(async (req, res) => {
     bump(b.approvedAt, 'approvedValue', b.amount || 0);
     if (b.status === 'paid') {
       bump(b.paymentDate, 'paymentsReleased');
-      bump(b.paymentDate, 'amountReleased', b.paidAmount ?? b.amount ?? 0);
+      bump(b.paymentDate, 'amountReleased', netReleased(b));
     }
   }
   for (const a of advanceSlips) {
@@ -148,7 +174,7 @@ exports.getDPR = asyncHandler(async (req, res) => {
     woCreatedToday: woToday.map(w => ({ id: w._id, label: w.workOrderNo, project: w.projectName, vendor: w.vendorName, value: w.contractValue || 0 })),
     billRequestsToday: brToday.map(b => ({ id: b._id, label: b.reqNo, project: b.projectName, vendor: b.vendorName, value: sum(b.items || [], it => (it.rate || 0) * it.billedQty) })),
     billsApprovedToday: brApprovedToday.map(b => ({ id: b._id, label: b.reqNo, project: b.projectName, vendor: b.vendorName, value: sum(b.items || [], it => (it.rate || 0) * it.billedQty) })),
-    paymentsReleasedToday: rbPaidToday.map(b => ({ id: b._id, label: b.billNo, project: b.projectName, vendor: b.vendorName, value: b.paidAmount ?? b.amount ?? 0 })),
+    paymentsReleasedToday: rbPaidToday.map(b => ({ id: b._id, label: b.billNo, project: b.projectName, vendor: b.vendorName, value: netReleased(b) })),
     advancePaymentsToday: advanceToday.map(a => ({ id: a._id, label: a.slipNo, project: a.projectName, vendor: a.contractorName, value: a.amount || 0 })),
     pendingApprovals: pendingApprovalsList.map(b => ({ id: b._id, label: b.reqNo, project: b.projectName, vendor: b.vendorName, value: sum(b.items || [], it => (it.rate || 0) * it.billedQty) })),
   };
@@ -164,6 +190,7 @@ exports.getDPR = asyncHandler(async (req, res) => {
       const todayQty = sum(todayEntries, e => e.qtyAdded);
       siteProgressToday.push({
         projectId: String(wo.projectId), projectName: wo.projectName,
+        projectLocation: projectLocation.get(String(wo.projectId)) || '',
         workOrderNo: wo.workOrderNo, description: item.description, unit: item.unit,
         todayQty, completedQty: item.completedQty || 0, plannedQty: item.plannedQty || 0,
         completionPct: item.plannedQty ? Math.min(100, Math.round(((item.completedQty || 0) / item.plannedQty) * 100)) : 0,
@@ -208,6 +235,7 @@ exports.getDPR = asyncHandler(async (req, res) => {
     const key = String(pid);
     if (!projPerf.has(key)) projPerf.set(key, {
       projectId: key, projectName: pname || projectName.get(key) || 'Unknown',
+      projectLocation: projectLocation.get(key) || '',
       woCount: 0, billRequestCount: 0, approvedCount: 0, paidCount: 0,
       releasedAmount: 0, pendingAmount: 0, completedQty: 0, plannedQty: 0,
     });
@@ -231,7 +259,7 @@ exports.getDPR = asyncHandler(async (req, res) => {
   for (const b of runningBills) {
     if (!b.projectId) continue;
     const p = ensureProj(b.projectId, b.projectName);
-    if (b.status === 'paid') { p.paidCount++; p.releasedAmount += b.paidAmount ?? b.amount ?? 0; }
+    if (b.status === 'paid') { p.paidCount++; p.releasedAmount += netReleased(b); }
     else if (['submitted', 'verified', 'approved'].includes(b.status)) { p.pendingAmount += b.amount || 0; }
   }
   const projectPerformance = [...projPerf.values()].map(p => ({
@@ -260,7 +288,7 @@ exports.getDPR = asyncHandler(async (req, res) => {
 
   // ══════════════════════════ FINANCIAL ══════════════════════════
 
-  const amountReleasedToday = sum(rbPaidToday, b => b.paidAmount ?? b.amount);
+  const amountReleasedToday = sum(rbPaidToday, netReleased);
   const billsRaisedToday = runningBills.filter(b => inRange(b.billDate, dayStart, dayEnd));
   const billsRaisedValueToday = sum(billsRaisedToday, b => b.amount);
   const approvedValueToday = sum(rbApprovedToday, b => b.amount);
@@ -270,7 +298,7 @@ exports.getDPR = asyncHandler(async (req, res) => {
   const advanceAmountToday = sum(advanceToday, a => a.amount);
 
   const financialDetails = {
-    amountReleasedToday: rbPaidToday.map(b => ({ id: b._id, label: b.billNo, project: b.projectName, vendor: b.vendorName, value: b.paidAmount ?? b.amount ?? 0 })),
+    amountReleasedToday: rbPaidToday.map(b => ({ id: b._id, label: b.billNo, project: b.projectName, vendor: b.vendorName, value: netReleased(b) })),
     billsRaisedValueToday: billsRaisedToday.map(b => ({ id: b._id, label: b.billNo, project: b.projectName, vendor: b.vendorName, value: b.amount || 0 })),
     approvedValueToday: rbApprovedToday.map(b => ({ id: b._id, label: b.billNo, project: b.projectName, vendor: b.vendorName, value: b.amount || 0 })),
     advanceAmountToday: advanceToday.map(a => ({ id: a._id, label: a.slipNo, project: a.projectName, vendor: a.contractorName, value: a.amount || 0 })),
@@ -280,7 +308,7 @@ exports.getDPR = asyncHandler(async (req, res) => {
 
   const paidBills = runningBills.filter(b => b.status === 'paid');
   const paymentBreakdown = {
-    released: sum(paidBills, b => b.paidAmount ?? b.amount),
+    released: sum(paidBills, netReleased),
     retentionHeld: sum(runningBills, b => (b.retentionAmount || 0) - (b.retentionReleased || 0)),
     advanceRecovered: sum(runningBills, b => b.advanceRecovery || 0),
     tds: sum(paidBills, b => (b.amount || 0) * (b.tdsPercent || 0) / 100),
@@ -293,7 +321,7 @@ exports.getDPR = asyncHandler(async (req, res) => {
   for (const b of paidBills) {
     if (!b.paymentDate || new Date(b.paymentDate) < trend7Start || new Date(b.paymentDate) >= dayEnd) continue;
     const k = dayKey(b.paymentDate);
-    if (releaseTrendMap.has(k)) releaseTrendMap.set(k, releaseTrendMap.get(k) + (b.paidAmount ?? b.amount ?? 0));
+    if (releaseTrendMap.has(k)) releaseTrendMap.set(k, releaseTrendMap.get(k) + netReleased(b));
   }
   const dailyReleaseTrend = [...releaseTrendMap.entries()].map(([date, amount]) => ({ date, amount }));
 
@@ -326,7 +354,9 @@ exports.getDPR = asyncHandler(async (req, res) => {
     agingCounts[bIdx].count++;
     agingCounts[bIdx].amount += b.amount || 0;
     agingTable.push({
-      contractor: b.vendorName, project: b.projectName, billNo: b.billNo,
+      contractor: b.vendorName, project: b.projectName,
+      projectLocation: projectLocation.get(String(b.projectId)) || '',
+      billNo: b.billNo,
       amount: b.amount || 0, daysPending: days,
       status: b.status === 'approved' ? 'Payment Pending' : b.status === 'verified' ? 'Approval Pending' : 'Verification Pending',
     });
@@ -341,7 +371,7 @@ exports.getDPR = asyncHandler(async (req, res) => {
   agingTable.sort((a, b) => b.daysPending - a.daysPending);
   const agingHeatmap = [...heatmapMap.entries()].map(([key, count]) => {
     const [pid, bucket] = key.split('|');
-    return { projectId: pid, projectName: projectName.get(pid) || 'Unknown', bucket, count };
+    return { projectId: pid, projectName: projectName.get(pid) || 'Unknown', projectLocation: projectLocation.get(pid) || '', bucket, count };
   });
 
   // Approval-cycle timings (days), across bills that have the relevant timestamps
@@ -377,7 +407,7 @@ exports.getDPR = asyncHandler(async (req, res) => {
     .map(([vendorName, v]) => ({ vendorName, pendingAmount: v.pendingAmount, daysWaiting: v.maxDays, billCount: v.count }))
     .sort((a, b) => b.daysWaiting - a.daysWaiting).slice(0, 5);
   const topDelayedProjects = [...byProjectDelay.entries()]
-    .map(([projectId, v]) => ({ projectId, projectName: v.projectName, pendingAmount: v.pendingAmount, avgDelayDays: avg(v.days) }))
+    .map(([projectId, v]) => ({ projectId, projectName: v.projectName, projectLocation: projectLocation.get(projectId) || '', pendingAmount: v.pendingAmount, avgDelayDays: avg(v.days) }))
     .sort((a, b) => b.pendingAmount - a.pendingAmount).slice(0, 5);
 
   // Advance payments list (most recent 15)
@@ -385,7 +415,9 @@ exports.getDPR = asyncHandler(async (req, res) => {
     .sort((a, b) => new Date(b.date) - new Date(a.date))
     .slice(0, 15)
     .map(a => ({
-      vendorName: a.contractorName, projectName: a.projectName, amount: a.amount,
+      vendorName: a.contractorName, projectName: a.projectName,
+      projectLocation: projectLocation.get(String(a.projectId)) || '',
+      amount: a.amount,
       reason: a.reference || a.notes || '—', adjusted: a.amountRecovered || 0,
       balance: (a.amount || 0) - (a.amountRecovered || 0), date: a.date,
     }));
@@ -398,7 +430,7 @@ exports.getDPR = asyncHandler(async (req, res) => {
   if (oldestPending) alerts.push(`${oldestPending.contractor || 'A contractor'} has been waiting ${oldestPending.daysPending} days for ₹${Math.round(oldestPending.amount).toLocaleString('en-IN')}`);
   const topProjToday = [...projPerf.values()].sort((a, b) => b.releasedAmount - a.releasedAmount)[0];
   if (topProjToday && topProjToday.releasedAmount > 0) alerts.push(`${topProjToday.projectName} released the most this period: ₹${Math.round(topProjToday.releasedAmount).toLocaleString('en-IN')}`);
-  if (amountReleasedToday === 0 && woToday.length === 0 && brToday.length === 0) alerts.push('No activity recorded for the selected date');
+  if (amountReleasedToday === 0 && woToday.length === 0 && brToday.length === 0) alerts.push('No activity recorded for the selected period');
 
   // Simple payment-health score: % of paid bills settled within 15 days of raising
   const paidWithDays = paidBills.filter(b => b.billDate && b.paymentDate).map(b => daysBetween(b.billDate, b.paymentDate));
@@ -434,32 +466,33 @@ exports.getDPR = asyncHandler(async (req, res) => {
   // combined feed anymore) ──
   const operationalBriefs = [];
   const financialBriefs = [];
+  const periodWord = isSingleDay ? 'today' : 'in this period';
 
   const woYestPct = operationalComparisons.woCreated.yesterday;
-  if (woYestPct !== null && woYestPct !== 0) {
+  if (isSingleDay && woYestPct !== null && woYestPct !== 0) {
     operationalBriefs.push(`Work Orders ${woYestPct > 0 ? 'increased' : 'decreased'} by ${Math.abs(woYestPct)}% compared to yesterday.`);
   }
   if (progressEntriesToday > 0) {
     const woWithProgress = new Set(siteProgressToday.map(s => s.workOrderNo)).size;
-    operationalBriefs.push(`${progressEntriesToday} site progress ${progressEntriesToday !== 1 ? 'entries' : 'entry'} logged across ${woWithProgress} work order${woWithProgress !== 1 ? 's' : ''} today.`);
+    operationalBriefs.push(`${progressEntriesToday} site progress ${progressEntriesToday !== 1 ? 'entries' : 'entry'} logged across ${woWithProgress} work order${woWithProgress !== 1 ? 's' : ''} ${periodWord}.`);
   }
   if (pendingApprovalsList.length > 0) {
     operationalBriefs.push(`${pendingApprovalsList.length} bill request${pendingApprovalsList.length !== 1 ? 's' : ''} waiting on approval.`);
   }
   if (activeContractors.size > 0) {
-    operationalBriefs.push(`${activeContractors.size} contractor${activeContractors.size !== 1 ? 's' : ''} active today.`);
+    operationalBriefs.push(`${activeContractors.size} contractor${activeContractors.size !== 1 ? 's' : ''} active ${periodWord}.`);
   }
-  if (operationalBriefs.length === 0) operationalBriefs.push('No notable operational activity for the selected date.');
+  if (operationalBriefs.length === 0) operationalBriefs.push('No notable operational activity for the selected period.');
 
   const releasedProjectCount = new Set(rbPaidToday.map(b => String(b.projectId)).filter(Boolean)).size;
   if (amountReleasedToday > 0) {
-    financialBriefs.push(`₹${Math.round(amountReleasedToday).toLocaleString('en-IN')} released${releasedProjectCount ? ` across ${releasedProjectCount} project${releasedProjectCount !== 1 ? 's' : ''}` : ''} today.`);
+    financialBriefs.push(`₹${Math.round(amountReleasedToday).toLocaleString('en-IN')} released${releasedProjectCount ? ` across ${releasedProjectCount} project${releasedProjectCount !== 1 ? 's' : ''}` : ''} ${periodWord}.`);
   }
   if (billsRaisedValueToday > 0) {
     const byProjToday = new Map();
     for (const b of billsRaisedToday) byProjToday.set(b.projectName, (byProjToday.get(b.projectName) || 0) + (b.amount || 0));
     const [topName, topAmt] = [...byProjToday.entries()].sort((a, b) => b[1] - a[1])[0] || [];
-    if (topName) financialBriefs.push(`${topName} contributed ${Math.round((topAmt / billsRaisedValueToday) * 100)}% of today's billing.`);
+    if (topName) financialBriefs.push(`${topName} contributed ${Math.round((topAmt / billsRaisedValueToday) * 100)}% of ${isSingleDay ? "today's" : "this period's"} billing.`);
   }
   if (critical16Plus.count > 0) {
     financialBriefs.push(`${critical16Plus.count} bill${critical16Plus.count !== 1 ? 's' : ''} crossed the payment SLA (16+ days overdue).`);
@@ -470,13 +503,20 @@ exports.getDPR = asyncHandler(async (req, res) => {
   if (bottleneckStatus && bottleneckCount >= 2) {
     financialBriefs.push(`${bottleneckStatus} is currently the biggest bottleneck (${bottleneckCount} bill${bottleneckCount !== 1 ? 's' : ''}).`);
   }
-  if (financialBriefs.length === 0) financialBriefs.push('No notable financial activity for the selected date.');
+  if (financialBriefs.length === 0) financialBriefs.push('No notable financial activity for the selected period.');
 
   operational.briefs = operationalBriefs;
   financial.briefs = financialBriefs;
 
   success(res, {
-    meta: { date: dayKey(dayStart), projectId: projectId || null, generatedAt: new Date() },
+    meta: {
+      date: dayKey(new Date(dayEnd.getTime() - DAY_MS)),
+      dateFrom: rangeFrom ? dayKey(dayStart) : null,
+      dateTo: dayKey(new Date(dayEnd.getTime() - DAY_MS)),
+      isSingleDay,
+      projectId: projectId || null,
+      generatedAt: new Date(),
+    },
     operational, financial,
   });
 });

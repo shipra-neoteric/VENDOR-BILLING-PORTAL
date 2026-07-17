@@ -1,6 +1,7 @@
 import { Document, Page, View, Text, StyleSheet } from "@react-pdf/renderer";
 import { pdf } from "@react-pdf/renderer";
 import type { DPRReport } from "../types/DPR";
+import { formatDprDateRange } from "../features/dashboard/utils/dprDateRange";
 
 const ORANGE = "#FF7A00";
 const DARK = "#111827";
@@ -79,7 +80,7 @@ export function DPRDocument({ viewType, report, projectLabel }: { viewType: "ope
           <View style={S.docTitle}>
             <Text style={S.docMain}>{title.toUpperCase()}</Text>
             <Text style={S.docSub}>Project: {projectLabel}</Text>
-            <Text style={S.docSub}>Date: {meta.date}</Text>
+            <Text style={S.docSub}>{meta.isSingleDay ? "Date" : "Period"}: {formatDprDateRange(meta)}</Text>
             <Text style={S.docSub}>Generated: {new Date(meta.generatedAt).toLocaleString("en-IN")}</Text>
           </View>
         </View>

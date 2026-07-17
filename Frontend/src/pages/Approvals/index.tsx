@@ -31,6 +31,8 @@ interface Bill {
   amount: number;
   gstPercent: number;
   tdsPercent: number;
+  retentionAmount?: number;
+  advanceRecovery?: number;
   remarks?: string;
   status: BillStatus;
   submittedAt?: string;
@@ -50,8 +52,10 @@ function calcAmounts(b: Bill) {
   const gstAmt = (b.amount * (b.gstPercent ?? 18)) / 100;
   const gross  = b.amount + gstAmt;
   const tdsAmt = (gross * (b.tdsPercent ?? 1)) / 100;
-  const net    = gross - tdsAmt;
-  return { gstAmt, gross, tdsAmt, net };
+  const retention = b.retentionAmount ?? 0;
+  const advance   = b.advanceRecovery ?? 0;
+  const net    = gross - tdsAmt - retention - advance;
+  return { gstAmt, gross, tdsAmt, retention, advance, net };
 }
 
 const STATUS_CFG: Record<BillStatus, { color: string; label: string }> = {
@@ -443,7 +447,7 @@ export default function Approvals() {
         width={480}
       >
         {actionBill && (() => {
-          const { gstAmt, gross, tdsAmt, net } = calcAmounts(actionBill);
+          const { gstAmt, gross, tdsAmt, retention, advance, net } = calcAmounts(actionBill);
           return (
             <>
               <Descriptions size="small" column={1} style={{ marginBottom: 16, marginTop: 8 }}>
@@ -470,6 +474,8 @@ export default function Approvals() {
                   { label: `GST @ ${actionBill.gstPercent ?? 18}%`, value: `+ ${fmt(gstAmt)}`, color: "#16a34a" },
                   { label: "Gross Amount",             value: fmt(gross),   color: "#d4620c", bold: true },
                   { label: `TDS @ ${actionBill.tdsPercent ?? 1}%`,  value: `(${fmt(tdsAmt)})`, color: "#dc2626" },
+                  ...(retention > 0 ? [{ label: "Retention Held",  value: `(${fmt(retention)})`, color: "#dc2626" }] : []),
+                  ...(advance > 0 ? [{ label: "Advance Recovered", value: `(${fmt(advance)})`, color: "#dc2626" }] : []),
                 ].map(r => (
                   <div key={r.label} style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", color: r.color, fontWeight: r.bold ? 700 : 400, borderTop: r.bold ? "1px solid #f8c9a0" : undefined, marginTop: r.bold ? 4 : 0, paddingTop: r.bold ? 8 : 4 }}>
                     <span>{r.label}</span><span>{r.value}</span>

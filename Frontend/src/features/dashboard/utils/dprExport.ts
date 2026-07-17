@@ -1,4 +1,5 @@
 import type { DPRReport } from "../../../types/DPR";
+import { formatDprDateRange } from "./dprDateRange";
 
 // "Export Excel" as CSV — opens natively in Excel with zero extra dependency,
 // consistent with this app's preference for hand-rolled/dependency-light tooling.
@@ -23,7 +24,7 @@ export function downloadDPRCsv(viewType: "operational" | "financial", report: DP
   const lines: string[] = [
     toCsvRow([`${viewType.toUpperCase()} MIS REPORT`]),
     toCsvRow(["Project", projectLabel]),
-    toCsvRow(["Date", meta.date]),
+    toCsvRow([meta.isSingleDay ? "Date" : "Period", formatDprDateRange(meta)]),
     toCsvRow(["Generated", new Date(meta.generatedAt).toLocaleString("en-IN")]),
     "",
   ];

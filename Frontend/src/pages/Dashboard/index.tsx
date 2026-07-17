@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Segmented, DatePicker, Select, Skeleton, Alert, notification } from "antd";
 import dayjs from "dayjs";
 import type { Dayjs } from "dayjs";
@@ -13,13 +13,47 @@ import { useDueReportSchedules } from "../../features/dashboard/hooks/useReportS
 
 interface ProjectOption { _id: string; name: string; parentId?: string | null; }
 type ViewType = "operational" | "financial";
+type RangePreset = "all" | "today" | "week" | "lastWeek" | "custom";
+
+// Monday-start week, independent of dayjs locale config.
+function startOfWeek(d: Dayjs): Dayjs {
+  return d.subtract((d.day() + 6) % 7, "day").startOf("day");
+}
 
 export default function Dashboard() {
   const [view, setView] = useState<ViewType>("operational");
   const [date, setDate] = useState<Dayjs>(dayjs());
+  const [rangePreset, setRangePreset] = useState<RangePreset>("today");
+  const [customRange, setCustomRange] = useState<[Dayjs, Dayjs]>([dayjs().subtract(6, "day"), dayjs()]);
   const [projectId, setProjectId] = useState<string>("all");
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [comparisonMode, setComparisonMode] = useState<ComparisonMode>("yesterday");
+
+  // Comparisons (vs Yesterday / 7d avg / 30d avg) only make sense when
+  // looking at a single day — force it off for any multi-day range.
+  useEffect(() => {
+    if (rangePreset !== "today" && comparisonMode !== "none") setComparisonMode("none");
+  }, [rangePreset]);
+
+  const { dprDateFrom, dprDateTo } = useMemo(() => {
+    const now = dayjs();
+    if (rangePreset === "today") {
+      const d = date.format("YYYY-MM-DD");
+      return { dprDateFrom: d, dprDateTo: d };
+    }
+    if (rangePreset === "week") {
+      return { dprDateFrom: startOfWeek(now).format("YYYY-MM-DD"), dprDateTo: now.format("YYYY-MM-DD") };
+    }
+    if (rangePreset === "lastWeek") {
+      const s = startOfWeek(now).subtract(7, "day");
+      return { dprDateFrom: s.format("YYYY-MM-DD"), dprDateTo: s.add(6, "day").format("YYYY-MM-DD") };
+    }
+    if (rangePreset === "all") {
+      return { dprDateFrom: null as string | null, dprDateTo: now.format("YYYY-MM-DD") };
+    }
+    // custom
+    return { dprDateFrom: customRange[0].format("YYYY-MM-DD"), dprDateTo: customRange[1].format("YYYY-MM-DD") };
+  }, [rangePreset, date, customRange]);
 
   useEffect(() => {
     apiClient.get("/projects").then(res => setProjects(res.data.projects ?? [])).catch(() => {});
@@ -37,7 +71,7 @@ export default function Dashboard() {
     });
   }, [dueSchedules]);
 
-  const { data, isLoading, error } = useDPRData(date.format("YYYY-MM-DD"), projectId as string);
+  const { data, isLoading, error } = useDPRData(dprDateFrom, dprDateTo, projectId as string);
 
   const projectLabel = projectId === "all" ? "All Projects" : selectableProjects(projects).find(p => p._id === projectId)?.name ?? "All Projects";
 
@@ -64,7 +98,33 @@ export default function Dashboard() {
 
       {/* Filters */}
       <div style={{ display: "flex", gap: 12, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}>
-        <DatePicker value={date} onChange={d => setDate(d || dayjs())} format="DD MMM YYYY" allowClear={false} />
+        <DatePicker
+          value={date}
+          onChange={d => setDate(d || dayjs())}
+          format="DD MMM YYYY"
+          allowClear={false}
+          disabled={rangePreset !== "today"}
+        />
+        <Select
+          value={rangePreset}
+          onChange={setRangePreset}
+          style={{ width: 150 }}
+          options={[
+            { label: "All Time", value: "all" },
+            { label: "Today", value: "today" },
+            { label: "Current Week", value: "week" },
+            { label: "Last Week", value: "lastWeek" },
+            { label: "Custom Range", value: "custom" },
+          ]}
+        />
+        {rangePreset === "custom" && (
+          <DatePicker.RangePicker
+            value={customRange}
+            onChange={v => { if (v && v[0] && v[1]) setCustomRange([v[0], v[1]]); }}
+            format="DD MMM YYYY"
+            allowClear={false}
+          />
+        )}
         <Select
           value={projectId} onChange={setProjectId} style={{ width: 220 }} showSearch
           filterOption={(input, opt) => String(opt?.label ?? "").toLowerCase().includes(input.toLowerCase())}
@@ -72,6 +132,7 @@ export default function Dashboard() {
         />
         <Select
           value={comparisonMode} onChange={setComparisonMode} style={{ width: 170 }}
+          disabled={rangePreset !== "today"}
           options={[
             { label: "No Comparison", value: "none" },
             { label: "vs Yesterday", value: "yesterday" },

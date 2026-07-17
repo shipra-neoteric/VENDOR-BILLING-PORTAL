@@ -25,6 +25,7 @@ interface Bill {
   projectName?: string; vendorCode?: string; vendorName?: string;
   billDate: string; billRefNo?: string; amount: number;
   gstPercent: number; tdsPercent: number; paidAmount?: number;
+  retentionAmount?: number; advanceRecovery?: number;
   remarks?: string; status: BillStatus;
   billType?: string; relationshipType?: string; isActive?: boolean;
   supersededBy?: { _id: string; billNo: string; billType?: string } | null;
@@ -42,8 +43,10 @@ function calcBill(b: Bill) {
   const gst   = (b.amount * (b.gstPercent ?? 18)) / 100;
   const gross = b.amount + gst;
   const tds   = (gross * (b.tdsPercent ?? 1)) / 100;
-  const net   = gross - tds;
-  return { gst, gross, tds, net };
+  const retention = b.retentionAmount ?? 0;
+  const advance   = b.advanceRecovery ?? 0;
+  const net   = gross - tds - retention - advance;
+  return { gst, gross, tds, retention, advance, net };
 }
 
 const STATUS_CFG: Record<BillStatus, { color: string; label: string }> = {
@@ -197,12 +200,12 @@ export default function Ledger() {
     const contract = wo.contractValue ?? 0;
     let runningBalance = contract, cumCertifiedNet = 0;
     const rows = woBills.map((b, i) => {
-      const { gst, gross, tds, net } = calcBill(b);
+      const { gst, gross, tds, retention, advance, net } = calcBill(b);
       // Only active bills contribute to the certified running balance
       const isSuperseded = b.isActive === false;
       const isCert = !isSuperseded && (b.status === "approved" || b.status === "paid");
       if (isCert) { runningBalance -= net; cumCertifiedNet += net; }
-      return { b, gst, gross, tds, net, isCert, isSuperseded, balanceAfter: isCert ? runningBalance : null, seq: i + 1 };
+      return { b, gst, gross, tds, retention, advance, net, isCert, isSuperseded, balanceAfter: isCert ? runningBalance : null, seq: i + 1 };
     });
     const activeRows   = rows.filter(r => !r.isSuperseded);
     const totalGross   = activeRows.reduce((s, r) => s + r.gross, 0);
@@ -228,7 +231,7 @@ export default function Ledger() {
   const portfolioBalance       = woSummaries.reduce((s, r) => s + Math.max(r.balance, 0), 0);
   const portfolioActuallyPaid  = bills
     .filter(b => b.status === "paid" && woSummaries.some(r => r.wo._id === b.workOrderId))
-    .reduce((s, b) => s + (b.paidAmount ?? 0), 0);
+    .reduce((s, b) => s + calcBill(b).net, 0);
 
   // ═══════════════════════════════════════════════════════════
   //  DETAIL VIEW
@@ -263,7 +266,7 @@ export default function Ledger() {
             { label: "Total Billed", value: detail.totalGross > 0 ? fmt(detail.totalGross) : "—", sub: `${detail.rows.length} bill${detail.rows.length !== 1 ? "s" : ""} · incl. GST`, color: "#f37916" },
             { label: "Certified (Net)", value: detail.certifiedNet > 0 ? fmt(detail.certifiedNet) : "—", sub: detail.contract ? `${pctStr(detail.certifiedNet, detail.contract)} of contract` : "approved bills only", color: "#16a85a" },
             { label: "Total Bill Amount", value: fmt(detail.rows.filter(r => r.b.status === "paid").reduce((s, r) => s + r.gross, 0)), sub: "gross billed (paid bills)", color: "#0d9488" },
-            { label: "Cash Released (Net TDS)", value: fmt(detail.rows.filter(r => r.b.status === "paid").reduce((s, r) => s + (r.b.paidAmount ?? 0), 0)), sub: "actual bank transfer", color: "#1d4ed8" },
+            { label: "Cash Released (Net TDS)", value: fmt(detail.rows.filter(r => r.b.status === "paid").reduce((s, r) => s + r.net, 0)), sub: "actual bank transfer", color: "#1d4ed8" },
             { label: "Balance Remaining", value: fmt(Math.max(detail.balance, 0)), sub: detail.balance < 0 ? "⚠️ over-billed" : "uncertified contract value", color: detail.balance < 0 ? "#e03b3b" : "#5a6278" },
           ].map(s => (
             <Col key={s.label} xs={12} sm={6}><StatCard {...s} /></Col>
@@ -298,6 +301,7 @@ export default function Ledger() {
                   <th style={{ padding: "8px 12px", textAlign: "right", fontSize: 11, fontWeight: 600, color: "#16a34a" }}>GST</th>
                   <th style={{ padding: "8px 12px", textAlign: "right", fontSize: 11, fontWeight: 600, color: "#f37916" }}>Gross</th>
                   <th style={{ padding: "8px 12px", textAlign: "right", fontSize: 11, fontWeight: 600, color: "#dc2626" }}>TDS</th>
+                  <th style={{ padding: "8px 12px", textAlign: "right", fontSize: 11, fontWeight: 600, color: "#7c3aed" }}>Retention</th>
                   <th style={{ padding: "8px 12px", textAlign: "right", fontSize: 11, fontWeight: 600, color: "#16a85a" }}>Net Payable</th>
                   <th style={{ padding: "8px 12px", textAlign: "center", fontSize: 11, fontWeight: 600, color: "#9ba3b8" }}>Status</th>
                   <th style={{ padding: "8px 12px", textAlign: "right", fontSize: 11, fontWeight: 600, color: "#5a6278" }}>Running Balance</th>
@@ -306,7 +310,7 @@ export default function Ledger() {
                 <tr style={{ background: "#eff4ff", borderBottom: "2px solid #e4e7ee" }}>
                   <td style={{ padding: "8px 12px", fontFamily: "monospace", color: "#9ba3b8", fontSize: 11 }}>OB</td>
                   <td style={{ padding: "8px 12px", fontWeight: 600, color: "#2563eb", fontSize: 12 }} colSpan={2}>Opening Balance — Contract Value</td>
-                  <td style={{ padding: "8px 12px", textAlign: "right", fontFamily: "monospace", color: "#2563eb", fontWeight: 700 }} colSpan={6}>{fmt(detail.contract)}</td>
+                  <td style={{ padding: "8px 12px", textAlign: "right", fontFamily: "monospace", color: "#2563eb", fontWeight: 700 }} colSpan={7}>{fmt(detail.contract)}</td>
                   <td style={{ padding: "8px 12px", textAlign: "right", fontFamily: "monospace", color: "#2563eb", fontWeight: 700 }}>{fmt(detail.contract)}</td>
                 </tr>
               </thead>
@@ -346,6 +350,7 @@ export default function Ledger() {
                     <td style={{ padding: "10px 12px", textAlign: "right", fontFamily: "monospace", color: "#16a34a" }}>{fmt(r.gst)}</td>
                     <td style={{ padding: "10px 12px", textAlign: "right", fontFamily: "monospace", color: r.isSuperseded ? "#9ba3b8" : "#f37916", fontWeight: 600 }}>{fmt(r.gross)}</td>
                     <td style={{ padding: "10px 12px", textAlign: "right", fontFamily: "monospace", color: "#dc2626" }}>({fmt(r.tds)})</td>
+                    <td style={{ padding: "10px 12px", textAlign: "right", fontFamily: "monospace", color: "#7c3aed" }}>{r.retention > 0 ? `(${fmt(r.retention)})` : "—"}</td>
                     <td style={{ padding: "10px 12px", textAlign: "right", fontFamily: "monospace", color: r.isSuperseded ? "#9ba3b8" : "#16a85a", fontWeight: 600 }}>{fmt(r.net)}</td>
                     <td style={{ padding: "10px 12px", textAlign: "center" }}>
                       {r.isSuperseded
@@ -367,6 +372,7 @@ export default function Ledger() {
                     <td style={{ padding: "10px 12px", textAlign: "right", fontFamily: "monospace", color: "#16a34a" }}>{fmt(detail.rows.reduce((s, r) => s + r.gst, 0))}</td>
                     <td style={{ padding: "10px 12px", textAlign: "right", fontFamily: "monospace", color: "#f37916", fontWeight: 700 }}>{fmt(detail.totalGross)}</td>
                     <td style={{ padding: "10px 12px", textAlign: "right", fontFamily: "monospace", color: "#dc2626" }}>({fmt(detail.rows.reduce((s, r) => s + r.tds, 0))})</td>
+                    <td style={{ padding: "10px 12px", textAlign: "right", fontFamily: "monospace", color: "#7c3aed" }}>({fmt(detail.rows.reduce((s, r) => s + r.retention, 0))})</td>
                     <td style={{ padding: "10px 12px", textAlign: "right", fontFamily: "monospace", color: "#16a85a", fontWeight: 700 }}>{fmt(detail.totalNet)}</td>
                     <td />
                     <td style={{ padding: "10px 12px", textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: detail.balance < 0 ? "#e03b3b" : "#f37916" }}>

@@ -20,7 +20,7 @@ export default function FinancialView({ financial, comparisonMode, projectPerfor
 
   const maxAgingCount = Math.max(1, ...aging.buckets.map(b => b.count));
   const maxDelayDays = Math.max(1, ...topDelayedContractors.map(c => c.daysWaiting));
-  const heatProjects = [...new Map(aging.heatmap.map(h => [h.projectId, h.projectName])).entries()];
+  const heatProjects = [...new Map(aging.heatmap.map(h => [h.projectId, { name: h.projectName, location: h.projectLocation }])).entries()];
   const heatBuckets = aging.buckets.map(b => b.label);
   const topProjectsByRelease = [...projectPerformance].sort((a, b) => b.releasedAmount - a.releasedAmount).slice(0, 5);
 
@@ -131,7 +131,9 @@ export default function FinancialView({ financial, comparisonMode, projectPerfor
               <div key={p.projectId} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: "1px solid #F3F4F6" }}>
                 <div>
                   <div style={{ fontSize: 12.5, fontWeight: 600, color: "#374151" }}>{p.projectName}</div>
-                  <div style={{ fontSize: 11, color: "#9CA3AF" }}>{fmtMoney(p.releasedAmount)} released</div>
+                  <div style={{ fontSize: 11, color: "#9CA3AF" }}>
+                    {p.projectLocation && `${p.projectLocation} · `}{fmtMoney(p.releasedAmount)} released
+                  </div>
                 </div>
                 <Tag color={p.progressPct >= 90 ? "green" : p.progressPct >= 60 ? "gold" : "red"} style={{ color: statusColor(p.progressPct) }}>{p.progressPct}%</Tag>
               </div>
@@ -178,9 +180,12 @@ export default function FinancialView({ financial, comparisonMode, projectPerfor
                 </tr>
               </thead>
               <tbody>
-                {heatProjects.map(([pid, pname]) => (
+                {heatProjects.map(([pid, proj]) => (
                   <tr key={pid} style={{ borderTop: "1px solid #F3F4F6" }}>
-                    <td style={{ padding: "8px 12px", fontWeight: 600, color: "#374151" }}>{pname}</td>
+                    <td style={{ padding: "8px 12px" }}>
+                      <div style={{ fontWeight: 600, color: "#374151" }}>{proj.name}</div>
+                      {proj.location && <div style={{ fontSize: 10.5, color: "#9CA3AF" }}>{proj.location}</div>}
+                    </td>
                     {heatBuckets.map(b => {
                       const cell = aging.heatmap.find(h => h.projectId === pid && h.bucket === b);
                       return (
@@ -210,7 +215,10 @@ export default function FinancialView({ financial, comparisonMode, projectPerfor
                 {aging.table.slice(0, 15).map((r, i) => (
                   <tr key={i} style={{ borderBottom: "1px solid #F3F4F6" }}>
                     <td style={{ padding: "8px 12px" }}>{r.contractor}</td>
-                    <td style={{ padding: "8px 12px" }}>{r.project}</td>
+                    <td style={{ padding: "8px 12px" }}>
+                      <div>{r.project}</div>
+                      {r.projectLocation && <div style={{ fontSize: 10.5, color: "#9CA3AF" }}>{r.projectLocation}</div>}
+                    </td>
                     <td style={{ padding: "8px 12px", fontFamily: "monospace" }}>{r.billNo}</td>
                     <td style={{ padding: "8px 12px", fontFamily: "monospace" }}>{fmtMoney(r.amount)}</td>
                     <td style={{ padding: "8px 12px" }}>
@@ -259,7 +267,7 @@ export default function FinancialView({ financial, comparisonMode, projectPerfor
             <div style={{ color: "#9CA3AF", fontSize: 12.5 }}>None currently delayed.</div>
           ) : topDelayedProjects.map(p => (
             <div key={p.projectId} style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, padding: "4px 0" }}>
-              <span style={{ color: "#374151" }}>{p.projectName}</span>
+              <span style={{ color: "#374151" }}>{p.projectName}{p.projectLocation && ` (${p.projectLocation})`}</span>
               <span style={{ color: "#e03b3b", fontWeight: 600 }}>{fmtMoney(p.pendingAmount)} · avg {p.avgDelayDays}d</span>
             </div>
           ))}
@@ -284,7 +292,10 @@ export default function FinancialView({ financial, comparisonMode, projectPerfor
                 {advancePaymentsList.map((a, i) => (
                   <tr key={i} style={{ borderBottom: "1px solid #F3F4F6" }}>
                     <td style={{ padding: "8px 10px", fontWeight: 600 }}>{a.vendorName}</td>
-                    <td style={{ padding: "8px 10px" }}>{a.projectName}</td>
+                    <td style={{ padding: "8px 10px" }}>
+                      <div>{a.projectName}</div>
+                      {a.projectLocation && <div style={{ fontSize: 10.5, color: "#9CA3AF" }}>{a.projectLocation}</div>}
+                    </td>
                     <td style={{ padding: "8px 10px", fontFamily: "monospace" }}>{fmtMoney(a.amount)}</td>
                     <td style={{ padding: "8px 10px" }}>{a.reason}</td>
                     <td style={{ padding: "8px 10px", fontFamily: "monospace" }}>{fmtMoney(a.adjusted)}</td>

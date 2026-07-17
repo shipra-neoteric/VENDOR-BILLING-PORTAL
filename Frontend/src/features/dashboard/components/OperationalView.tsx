@@ -23,7 +23,10 @@ function ProjectPerfTable({ rows }: { rows: DPRProjectPerformance[] }) {
         <tbody>
           {rows.map(p => (
             <tr key={p.projectId} style={{ borderBottom: "1px solid #F3F4F6" }}>
-              <td style={{ padding: "8px 10px", fontWeight: 600, color: "#374151", whiteSpace: "nowrap" }}>{p.projectName}</td>
+              <td style={{ padding: "8px 10px", whiteSpace: "nowrap" }}>
+                <div style={{ fontWeight: 600, color: "#374151" }}>{p.projectName}</div>
+                {p.projectLocation && <div style={{ fontSize: 10.5, color: "#9CA3AF" }}>{p.projectLocation}</div>}
+              </td>
               <td style={{ padding: "8px 10px", textAlign: "right" }}>{p.woCount}</td>
               <td style={{ padding: "8px 10px", textAlign: "right" }}>{p.billRequestCount}</td>
               <td style={{ padding: "8px 10px", textAlign: "right", color: "#16a34a" }}>{p.approvedCount}</td>
@@ -100,7 +103,9 @@ export default function OperationalView({ data, comparisonMode }: { data: DPROpe
                     <span style={{ fontWeight: 600, fontSize: 12.5, color: "#374151" }}>{s.description}</span>
                     <span style={{ fontSize: 12, fontWeight: 700, color: "#16a34a" }}>+{s.todayQty.toLocaleString("en-IN")} {s.unit}</span>
                   </div>
-                  <div style={{ fontSize: 11, color: "#9CA3AF", marginTop: 2 }}>{s.projectName} · {s.workOrderNo}</div>
+                  <div style={{ fontSize: 11, color: "#9CA3AF", marginTop: 2 }}>
+                    {s.projectName}{s.projectLocation && ` (${s.projectLocation})`} · {s.workOrderNo}
+                  </div>
                   <Progress percent={s.completionPct} size="small" strokeColor={statusColor(s.completionPct)} style={{ marginTop: 4 }} />
                 </div>
               ))}

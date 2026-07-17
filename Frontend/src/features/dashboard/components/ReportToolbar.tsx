@@ -5,6 +5,7 @@ import type { Dayjs } from "dayjs";
 import type { DPRReport } from "../../../types/DPR";
 import { downloadDPRPDF } from "../../../components/DPRPDFReport";
 import { downloadDPRCsv } from "../utils/dprExport";
+import { formatDprDateRange } from "../utils/dprDateRange";
 import { useReportSchedules } from "../hooks/useReportSchedules";
 
 type ViewType = "operational" | "financial";
@@ -15,7 +16,7 @@ function reportSummaryFields(report: DPRReport, viewType: ViewType, projectLabel
   return [
     { label: "Report", value: label },
     { label: "Project", value: projectLabel },
-    { label: "Date", value: dayjs(report.meta.date).format("DD MMM YYYY") },
+    { label: report.meta.isSingleDay ? "Date" : "Period", value: formatDprDateRange(report.meta) },
     { label: "Generated", value: dayjs(report.meta.generatedAt).format("h:mm A") },
     { label: "Records", value: String(recordCount) },
   ];

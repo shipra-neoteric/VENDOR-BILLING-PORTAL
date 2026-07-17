@@ -115,16 +115,22 @@ exports.getProjectStats = asyncHandler(async (req, res) => {
     });
   });
 
-  const netOf = b => {
+  // Certified value = what's been billed and approved, incl. any retention
+  // held — retention is still owed, just released later. Paid value must
+  // exclude it (and any advance being recovered), since that money hasn't
+  // actually left the building yet — otherwise remaining contract value looks
+  // smaller than what's genuinely still owed/available.
+  const netCertified = b => {
     const base = b.amount || 0;
     return base + base * ((b.gstPercent || 18) / 100) - base * ((b.tdsPercent || 1) / 100);
   };
+  const netPaidOut = b => netCertified(b) - (b.retentionAmount || 0) - (b.advanceRecovery || 0);
 
   const billedGross    = runningBills.reduce((s, b) => s + (b.amount || 0), 0);
   const certifiedBills = runningBills.filter(b => ['approved', 'paid'].includes(b.status));
-  const certifiedNet   = certifiedBills.reduce((s, b) => s + netOf(b), 0);
+  const certifiedNet   = certifiedBills.reduce((s, b) => s + netCertified(b), 0);
   const paidBills      = runningBills.filter(b => b.status === 'paid');
-  const paidAmount     = paidBills.reduce((s, b) => s + netOf(b), 0);
+  const paidAmount     = paidBills.reduce((s, b) => s + netPaidOut(b), 0);
 
   const pendingBillReqs = billReqs.filter(b => b.status === 'pending').length;
   const openBills       = runningBills.filter(b => !['approved', 'paid', 'rejected'].includes(b.status)).length;
