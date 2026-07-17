@@ -18,6 +18,7 @@ const runningBillSchema = new mongoose.Schema(
     workOrderNo: { type: String },
     projectId:   { type: mongoose.Schema.Types.ObjectId, ref: 'Project' },
     projectName: { type: String },
+    projectLocation: { type: String, default: '' },
     vendorCode:  { type: String },
     vendorName:  { type: String },
     billDate:    { type: Date, required: true },

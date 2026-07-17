@@ -18,6 +18,7 @@ const billRequestSchema = new Schema(
     workOrderNo: { type: String },
     projectId:   { type: Schema.Types.ObjectId, ref: 'Project', default: null },
     projectName: { type: String },
+    projectLocation: { type: String, default: '' },
     vendorCode:  { type: String },
     vendorName:  { type: String },
     category:    { type: String, default: '' },

@@ -22,6 +22,7 @@ const contractorSchema = new mongoose.Schema(
     branchName:          { type: String },
     gstNumber:           { type: String },
     panNumber:           { type: String },
+    aadhaarNumber:       { type: String },
     workTypes:           [{ type: String }],
     reference1:          { type: String },
     reference2:          { type: String },

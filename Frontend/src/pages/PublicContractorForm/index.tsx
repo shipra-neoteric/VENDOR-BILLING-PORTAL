@@ -209,6 +209,9 @@ export default function PublicContractorForm() {
               <Form.Item name="panNumber" label="PAN Number">
                 <Input placeholder="10-char PAN" />
               </Form.Item>
+              <Form.Item name="aadhaarNumber" label="Aadhaar Number">
+                <Input placeholder="12-digit Aadhaar" />
+              </Form.Item>
               <Form.Item name="reference1" label="Reference Company 1">
                 <Input placeholder="Optional" />
               </Form.Item>

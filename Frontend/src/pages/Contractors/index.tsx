@@ -582,14 +582,19 @@ export default function Contractors() {
 
           <SectionHeading>Tax Details</SectionHeading>
           <Row gutter={16}>
-            <Col span={12}>
+            <Col span={8}>
               <Form.Item label="GST Number" name="gstNumber">
                 <Input placeholder="15-char GST" />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col span={8}>
               <Form.Item label="PAN Number" name="panNumber">
                 <Input placeholder="10-char PAN" />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item label="Aadhaar Number" name="aadhaarNumber">
+                <Input placeholder="12-digit Aadhaar" />
               </Form.Item>
             </Col>
           </Row>
@@ -690,7 +695,8 @@ export default function Contractors() {
             <SectionHeading>Tax Details</SectionHeading>
             <Descriptions column={2} size="small">
               <Descriptions.Item label="GST">{selected.gstNumber || "—"}</Descriptions.Item>
-              <Descriptions.Item label="PAN">{selected.panNumber}</Descriptions.Item>
+              <Descriptions.Item label="PAN">{selected.panNumber || "—"}</Descriptions.Item>
+              <Descriptions.Item label="Aadhaar">{selected.aadhaarNumber || "—"}</Descriptions.Item>
             </Descriptions>
 
             <SectionHeading>Work Types</SectionHeading>

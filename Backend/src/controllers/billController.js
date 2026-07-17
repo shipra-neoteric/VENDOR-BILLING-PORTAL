@@ -84,6 +84,7 @@ exports.createBill = asyncHandler(async (req, res) => {
       workOrderNo: workOrder.workOrderNo,
       projectId:   workOrder.projectId,
       projectName: workOrder.projectName,
+      projectLocation: workOrder.projectLocation,
       vendorCode:  workOrder.vendorCode,
       vendorName:  workOrder.vendorName,
     } : {}),

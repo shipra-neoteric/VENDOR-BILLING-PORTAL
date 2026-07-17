@@ -40,6 +40,7 @@ interface BillRequest {
   workOrderNo: string;
   projectId?: string;
   projectName: string;
+  projectLocation?: string;
   vendorCode?: string;
   vendorName: string;
   category: string;
@@ -257,7 +258,18 @@ export default function BillRequests() {
         <code style={{ cursor: "pointer", color: "#3b82f6" }} onClick={() => r.workOrderId && navigate(`/work-items/${r.workOrderId}`)}>{v}</code>
       </div>
     )},
-    { title: "Project",    dataIndex: "projectName" },
+    {
+      title: "Project",
+      dataIndex: "projectName",
+      render: (name: string, r: BillRequest) => (
+        <div>
+          <div>{name}</div>
+          {r.projectLocation && (
+            <div style={{ fontSize: 11, color: "#9ba3b8" }}>{r.projectLocation}</div>
+          )}
+        </div>
+      ),
+    },
     { title: "Contractor", dataIndex: "vendorName"  },
     {
       title: "Period",
@@ -496,7 +508,7 @@ export default function BillRequests() {
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, background: "#f9fafb", padding: 14, borderRadius: 8 }}>
               {[
                 ["Work Order",    viewReq.workOrderNo],
-                ["Project",       viewReq.projectName],
+                ["Project",       viewReq.projectLocation ? `${viewReq.projectName} — ${viewReq.projectLocation}` : viewReq.projectName],
                 ["Contractor",    viewReq.vendorName],
                 ["Category",      [viewReq.category, viewReq.subCategory].filter(Boolean).join(" › ")],
                 ["Requested By",  viewReq.requestedBy?.name || "—"],
