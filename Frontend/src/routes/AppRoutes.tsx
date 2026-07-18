@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from "react-router-dom";
 
 import Dashboard           from "../features/dashboard";
+import MyTasksDashboard     from "../pages/MyTasksDashboard";
 import Projects             from "../features/projects";
 import Contractors          from "../features/contractors";
 import Companies            from "../features/companies";
@@ -53,9 +54,14 @@ function DriRoutes() {
   );
 }
 
+// GM/AGM/Accounts land on a personalized "what's pending for you" queue instead of
+// the shared Operational/Financial KPI dashboard — Owner keeps the full dashboard.
+const TASK_QUEUE_ROLES = new Set(["gm", "agm", "accounts"]);
+
 function AdminRoutes() {
   const { user } = useAuth();
   const defaultPath = getDefaultPath(user?.permissions);
+  const showTaskQueue = TASK_QUEUE_ROLES.has(user?.role ?? "");
 
   return (
     <Routes>
@@ -63,7 +69,7 @@ function AdminRoutes() {
       <Route element={<ProtectedRoute />}>
         <Route element={<MainLayout />}>
           <Route index                    element={<Navigate to={defaultPath} replace />} />
-          <Route path="/dashboard"        element={<Dashboard />} />
+          <Route path="/dashboard"        element={showTaskQueue ? <MyTasksDashboard /> : <Dashboard />} />
           <Route path="/projects"         element={<Projects />} />
           <Route path="/contractors"      element={<Contractors />} />
           <Route path="/companies"        element={<Companies />} />
@@ -91,7 +97,7 @@ function AdminRoutes() {
 
 const AppRoutes = () => {
   const { user } = useAuth();
-  if (user?.role === "dri") return <DriRoutes />;
+  if (user?.role === "site-dri") return <DriRoutes />;
   return <AdminRoutes />;
 };
 
