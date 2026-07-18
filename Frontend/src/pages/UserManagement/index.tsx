@@ -57,7 +57,7 @@ const MODULE_DEFS: ModuleDef[] = [
   { id: "approvals",        name: "Approvals",          icon: "✅", group: "Billing",       actions: ["view","approve"] },
   { id: "ledger",           name: "Ledger",             icon: "📒", group: "Billing",       actions: ["view"] },
   { id: "user-management",  name: "User Management",    icon: "👥", group: "Admin",         actions: ["view","create","edit","delete"] },
-  { id: "dri-dashboard",    name: "DRI Work Dashboard", icon: "🏗️", group: "Admin",         actions: ["view"] },
+  { id: "dri-dashboard",    name: "DRI Work Dashboard", icon: "🏗️", group: "Admin",         actions: ["view","create","edit"] },
   { id: "public-forms",     name: "Public Forms",       icon: "🔗", group: "Admin",         actions: ["view"] },
   { id: "sla-settings",     name: "SLA Settings",       icon: "⚙️", group: "SLA",           actions: ["view","create","edit","delete"] },
   { id: "sla-dashboard",    name: "SLA Dashboard",      icon: "⏱️", group: "SLA",           actions: ["view"] },
@@ -71,7 +71,7 @@ const ROLE_DEFAULTS: Record<string, Record<string, PermAction[]>> = {
     "work-orders": ["view","create","edit","delete"], "work-progress": ["view","create","edit","delete"],
     "bill-requests": ["view","create","request","approve"], "billing-payments": ["view","create","edit","approve"],
     approvals: ["view","approve"], ledger: ["view"],
-    "user-management": ["view","create","edit","delete"], "dri-dashboard": ["view"],
+    "user-management": ["view","create","edit","delete"], "dri-dashboard": ["view","create","edit"],
     "public-forms": ["view"], "sla-settings": ["view","create","edit","delete"], "sla-dashboard": ["view"],
   },
   gm: {

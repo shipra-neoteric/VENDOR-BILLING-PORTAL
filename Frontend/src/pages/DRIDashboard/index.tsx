@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from "react";
-import { Select, Spin, Tag } from "antd";
+import { Select, Spin, Tag, Button, Modal, Form, InputNumber, DatePicker, Input, Checkbox, message } from "antd";
 import apiClient from "../../services/apiClient";
+import { useAuth } from "../../context/AuthContext";
 import dayjs from "dayjs";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -95,6 +96,10 @@ function BackBtn({ label, onClick }: { label: string; onClick: () => void }) {
 type PageView = "overview" | "dri-projects" | "dri-detail";
 
 export default function DRIDashboard() {
+  const { user } = useAuth();
+  const canEdit = user?.role === "owner"
+    || !!user?.permissions?.find(p => p.module === "dri-dashboard")?.actions.includes("edit");
+
   const [allDRIs,  setAllDRIs]  = useState<DRIUser[]>([]);
   const [allWOs,   setAllWOs]   = useState<WORow[]>([]);
   const [allBills, setAllBills] = useState<BillReq[]>([]);
@@ -109,6 +114,18 @@ export default function DRIDashboard() {
   // Project detail
   const [woDetails,     setWoDetails]     = useState<Map<string, WODetail>>(new Map());
   const [detailLoading, setDetailLoading] = useState(false);
+
+  // Add-progress modal (owner/edit-permission only)
+  const [progModal,  setProgModal]  = useState(false);
+  const [progTarget, setProgTarget] = useState<{ woId: string; item: ScopeItemDetail } | null>(null);
+  const [progForm]   = Form.useForm();
+  const [progSaving,  setProgSaving]  = useState(false);
+
+  // Generate-bill modal (owner/edit-permission only)
+  const [billModal,     setBillModal]     = useState(false);
+  const [billWOIds,     setBillWOIds]     = useState<Set<string>>(new Set());
+  const [billRemarks,   setBillRemarks]   = useState("");
+  const [billGenerating,setBillGenerating]= useState(false);
 
   // ── Initial load ─────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -172,6 +189,72 @@ export default function DRIDashboard() {
       .catch(() => {})
       .finally(() => setDetailLoading(false));
   }, [projectWOs]);
+
+  const reloadWODetail = async (woId: string) => {
+    const r = await apiClient.get(`/work-orders/${woId}`);
+    setWoDetails(prev => new Map(prev).set(woId, r.data.workOrder));
+  };
+
+  // Work orders in the current project with unbilled progress and no bill
+  // request already pending against them — eligible for a new bill request.
+  const billableWODetails = useMemo(
+    () => Array.from(woDetails.values()).filter(d =>
+      d.scopeItems.some(si => Math.max(0, (si.completedQty || 0) - (si.lastBilledQty || 0)) > 0) &&
+      !projectBills.some(br => br.workOrderId === d._id && br.status === "pending")
+    ),
+    [woDetails, projectBills]
+  );
+
+  const openAddProgress = (woId: string, item: ScopeItemDetail) => {
+    setProgTarget({ woId, item });
+    progForm.resetFields();
+    setProgModal(true);
+  };
+
+  const handleAddProgress = async () => {
+    if (!progTarget) return;
+    const vals = await progForm.validateFields();
+    setProgSaving(true);
+    try {
+      await apiClient.post(`/work-orders/${progTarget.woId}/scope-items/${progTarget.item._id}/progress`, {
+        date: vals.date ? dayjs(vals.date).format("YYYY-MM-DD") : dayjs().format("YYYY-MM-DD"),
+        qtyAdded: vals.qtyAdded,
+        remarks: vals.remarks || "",
+      });
+      message.success(`+${fmtN(vals.qtyAdded)} ${progTarget.item.unit} recorded`);
+      setProgModal(false);
+      progForm.resetFields();
+      await reloadWODetail(progTarget.woId);
+    } catch (e: any) {
+      message.error(e?.response?.data?.message || "Failed to add progress");
+    } finally {
+      setProgSaving(false);
+    }
+  };
+
+  const openBillModal = () => {
+    setBillWOIds(new Set(billableWODetails.map(d => d._id)));
+    setBillRemarks("");
+    setBillModal(true);
+  };
+
+  const handleGenerateBill = async () => {
+    const workOrderIds = Array.from(billWOIds);
+    if (!workOrderIds.length) { message.warning("Select at least one work order"); return; }
+    setBillGenerating(true);
+    try {
+      const res = await apiClient.post("/bill-requests/batch", { workOrderIds, remarks: billRemarks });
+      message.success(res.data?.message || "Bill request submitted");
+      setBillModal(false);
+      await Promise.all(workOrderIds.map(id => reloadWODetail(id)));
+      const r = await apiClient.get("/bill-requests");
+      setAllBills(r.data.billRequests ?? []);
+    } catch (e: any) {
+      message.error(e?.response?.data?.message || "Failed to submit bill request");
+    } finally {
+      setBillGenerating(false);
+    }
+  };
 
   // ── Per-DRI stats for overview table ──────────────────────────────────────────
   const driStats = useMemo(() => allDRIs.map(dri => {
@@ -440,14 +523,27 @@ export default function DRIDashboard() {
       <Header />
 
       {/* Project sub-header */}
-      <div style={{ marginBottom: 20, padding: "16px 20px", background: "var(--nx-white)", border: "1px solid var(--nx-border)", borderRadius: 12 }}>
-        <div style={{ fontSize: 20, fontWeight: 800, color: "var(--nx-text)" }}>{selProjName}</div>
-        <div style={{ fontSize: 12, color: "var(--nx-text-2)", marginTop: 4 }}>
-          {projectWOs.length} work order{projectWOs.length !== 1 ? "s" : ""} · {vendorGroups.length} contractor{vendorGroups.length !== 1 ? "s" : ""}
-          <span style={{ marginLeft: 12, padding: "2px 8px", background: "#FFF4E8", border: "1px solid #FED7AA", borderRadius: 6, color: "#92400e", fontSize: 11, fontWeight: 600 }}>
-            👁 Read-only — admin view
-          </span>
+      <div style={{ marginBottom: 20, padding: "16px 20px", background: "var(--nx-white)", border: "1px solid var(--nx-border)", borderRadius: 12, display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
+        <div>
+          <div style={{ fontSize: 20, fontWeight: 800, color: "var(--nx-text)" }}>{selProjName}</div>
+          <div style={{ fontSize: 12, color: "var(--nx-text-2)", marginTop: 4 }}>
+            {projectWOs.length} work order{projectWOs.length !== 1 ? "s" : ""} · {vendorGroups.length} contractor{vendorGroups.length !== 1 ? "s" : ""}
+            {canEdit ? (
+              <span style={{ marginLeft: 12, padding: "2px 8px", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 6, color: "#166534", fontSize: 11, fontWeight: 600 }}>
+                ✎ Editable — owner access
+              </span>
+            ) : (
+              <span style={{ marginLeft: 12, padding: "2px 8px", background: "#FFF4E8", border: "1px solid #FED7AA", borderRadius: 6, color: "#92400e", fontSize: 11, fontWeight: 600 }}>
+                👁 Read-only — admin view
+              </span>
+            )}
+          </div>
         </div>
+        {canEdit && billableWODetails.length > 0 && (
+          <Button type="primary" style={{ background: "#f37916", borderColor: "#f37916" }} onClick={openBillModal}>
+            🧾 Generate Bill Request ({billableWODetails.length})
+          </Button>
+        )}
       </div>
 
       {/* Summary stats */}
@@ -520,7 +616,7 @@ export default function DRIDashboard() {
                         <table style={{ width: "100%", borderCollapse: "collapse" }}>
                           <thead>
                             <tr style={{ background: "var(--nx-fill-2)" }}>
-                              {["#", "Description", "Unit", "Planned", "Done", "Billed", "Unbilled", "Progress"].map(h => (
+                              {["#", "Description", "Unit", "Planned", "Done", "Billed", "Unbilled", "Progress", ...(canEdit ? ["Action"] : [])].map(h => (
                                 <th key={h} style={{ padding: "9px 12px", fontSize: 10, fontWeight: 700, color: "var(--nx-table-header-color)", textAlign: "left", textTransform: "uppercase", letterSpacing: "0.05em", whiteSpace: "nowrap", borderBottom: "1px solid var(--nx-border)" }}>{h}</th>
                               ))}
                             </tr>
@@ -552,6 +648,13 @@ export default function DRIDashboard() {
                                       <span style={{ fontSize: 10, fontWeight: 700, color: p >= 100 ? "#16a34a" : "#FF7A00", minWidth: 26 }}>{p}%</span>
                                     </div>
                                   </td>
+                                  {canEdit && (
+                                    <td style={{ padding: "9px 12px" }}>
+                                      <Button size="small" onClick={() => openAddProgress(wo._id, si)}>
+                                        + Progress
+                                      </Button>
+                                    </td>
+                                  )}
                                 </tr>
                               );
                             })}
@@ -596,6 +699,71 @@ export default function DRIDashboard() {
           )}
         </>
       )}
+
+      {/* ── Add Progress Modal (owner/edit-permission only) ──────────────────── */}
+      <Modal
+        open={progModal}
+        onCancel={() => { setProgModal(false); progForm.resetFields(); }}
+        title={`Add Progress — ${progTarget?.item.description ?? ""}`}
+        onOk={handleAddProgress}
+        confirmLoading={progSaving}
+        okText="Save"
+      >
+        <Form form={progForm} layout="vertical">
+          <Form.Item label="Date" name="date" initialValue={dayjs()}>
+            <DatePicker format="DD/MM/YYYY" style={{ width: "100%" }} />
+          </Form.Item>
+          <Form.Item
+            label={`Quantity Added (${progTarget?.item.unit ?? ""})`}
+            name="qtyAdded"
+            rules={[{ required: true, message: "Enter a quantity" }]}
+          >
+            <InputNumber style={{ width: "100%" }} min={0} />
+          </Form.Item>
+          <Form.Item label="Remarks (optional)" name="remarks">
+            <Input.TextArea rows={2} />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* ── Generate Bill Request Modal (owner/edit-permission only) ──────────── */}
+      <Modal
+        open={billModal}
+        onCancel={() => setBillModal(false)}
+        title={`Generate Bill Request — ${selProjName}`}
+        onOk={handleGenerateBill}
+        confirmLoading={billGenerating}
+        okText="Submit Bill Request"
+        width={560}
+      >
+        <div style={{ fontSize: 12, color: "var(--nx-text-muted)", marginBottom: 10 }}>
+          Work orders with unbilled progress in this project:
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}>
+          {billableWODetails.map(d => (
+            <label key={d._id} style={{ display: "flex", alignItems: "center", gap: 8, border: "1px solid var(--nx-border)", borderRadius: 8, padding: "8px 12px", cursor: "pointer" }}>
+              <Checkbox
+                checked={billWOIds.has(d._id)}
+                onChange={e => setBillWOIds(prev => {
+                  const next = new Set(prev);
+                  if (e.target.checked) next.add(d._id); else next.delete(d._id);
+                  return next;
+                })}
+              />
+              <div>
+                <div style={{ fontWeight: 600, fontSize: 13 }}>{d.workOrderNo}</div>
+                <div style={{ fontSize: 11, color: "var(--nx-text-muted)" }}>{d.vendorName} · {d.category}</div>
+              </div>
+            </label>
+          ))}
+        </div>
+        <Input.TextArea
+          placeholder="Remarks (optional)"
+          rows={2}
+          value={billRemarks}
+          onChange={e => setBillRemarks(e.target.value)}
+        />
+      </Modal>
     </div>
   );
 }
