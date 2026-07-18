@@ -38,7 +38,7 @@ interface BillRequestStage {
   billId?: {
     billNo: string; status: string; amount: number; paymentDate?: string;
     paidAmount?: number; retentionPercent?: number; retentionAmount?: number;
-    advanceRecovery?: number; gstPercent?: number; paymentUTR?: string;
+    advanceRecovery?: number; gstPercent?: number; tdsAmount?: number; paymentUTR?: string;
   } | null;
   milestoneAchieved: boolean; milestoneDate?: string;
   requestedBy?: { name: string; email: string };
@@ -46,6 +46,23 @@ interface BillRequestStage {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const fmtMoney = (n: number) => "₹" + Math.round(n).toLocaleString("en-IN");
+
+// Net of GST, hold/retention and advance recovery — the amount actually due to the
+// contractor before TDS, not the raw gross bill figure. Matches Bills/Ledger/Approvals.
+const netPayable = (b: NonNullable<BillRequestStage["billId"]>) =>
+  Math.round(b.amount * (1 + (b.gstPercent ?? 0) / 100) - (b.retentionAmount ?? 0) - (b.advanceRecovery ?? 0));
+
+// Same "Hold — <stage>" convention used across Bills/Approvals/Ledger so a bill's
+// status reads the same way everywhere in the system.
+const RB_STATUS_CFG: Record<string, { label: string; color: string }> = {
+  draft:              { label: "Draft",                    color: "#6B7280" },
+  submitted:          { label: "Hold — AGM Approved",       color: "#2563eb" },
+  verified:           { label: "Hold — GM Approved",        color: "#2563eb" },
+  approved:           { label: "Hold — Accounts Verified",  color: "#d97706" },
+  "payment-initiated":{ label: "Hold — Payment Initiated",  color: "#d97706" },
+  rejected:           { label: "Rejected",                  color: "#dc2626" },
+  paid:               { label: "Paid",                      color: "#16a34a" },
+};
 
 // ── Stage Lifecycle Stepper ───────────────────────────────────────────────────
 type StepStatus = "completed" | "current" | "pending" | "rejected";
@@ -386,24 +403,32 @@ export default function WorkOrderDashboard() {
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
                   <thead>
                     <tr style={{ background: "#F9FAFB" }}>
-                      {["Bill No", "Stage", "Amount", "Status", "Payment Date", ""].map(h => (
+                      {["Bill No", "Stage", "Bill Amount", "Status", "Amount Paid", "Payment Date", ""].map(h => (
                         <th key={h} style={{ padding: "9px 16px", fontSize: 11, fontWeight: 700, color: "#6B7280", textAlign: "left", textTransform: "uppercase", letterSpacing: "0.05em", borderBottom: "1px solid #E5E7EB", whiteSpace: "nowrap" }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {bills.map(({ stage, bill }, i) => (
-                      <tr key={bill.billNo} style={{ borderBottom: "1px solid #F3F4F6", background: i % 2 === 0 ? "#fff" : "#FAFAFA" }}>
-                        <td style={{ padding: "10px 16px", fontFamily: "monospace", fontWeight: 700, color: "#FF7A00", fontSize: 13 }}>{bill.billNo}</td>
-                        <td style={{ padding: "10px 16px", fontSize: 12, color: "#6B7280" }}>Stage {stage.stageNo}</td>
-                        <td style={{ padding: "10px 16px", fontFamily: "monospace", fontSize: 13, fontWeight: 600, color: "#111827" }}>{fmtMoney(bill.amount)}</td>
-                        <td style={{ padding: "10px 16px", fontSize: 12, color: "#6B7280", textTransform: "uppercase" }}>{bill.status}</td>
-                        <td style={{ padding: "10px 16px", fontSize: 12, color: "#6B7280" }}>{fmtDate(bill.paymentDate)}</td>
-                        <td style={{ padding: "10px 16px" }}>
-                          <Button type="link" size="small" onClick={() => openBill(stage)}>View</Button>
-                        </td>
-                      </tr>
-                    ))}
+                    {bills.map(({ stage, bill }, i) => {
+                      const cfg = RB_STATUS_CFG[bill.status] ?? { label: bill.status, color: "#6B7280" };
+                      const isPaid = bill.status === "paid";
+                      const actuallyPaid = bill.paidAmount ?? Math.max(0, netPayable(bill) - (bill.tdsAmount ?? 0));
+                      return (
+                        <tr key={bill.billNo} style={{ borderBottom: "1px solid #F3F4F6", background: i % 2 === 0 ? "#fff" : "#FAFAFA" }}>
+                          <td style={{ padding: "10px 16px", fontFamily: "monospace", fontWeight: 700, color: "#FF7A00", fontSize: 13 }}>{bill.billNo}</td>
+                          <td style={{ padding: "10px 16px", fontSize: 12, color: "#6B7280" }}>Stage {stage.stageNo}</td>
+                          <td style={{ padding: "10px 16px", fontFamily: "monospace", fontSize: 13, fontWeight: 600, color: "#111827" }}>{fmtMoney(bill.amount)}</td>
+                          <td style={{ padding: "10px 16px", fontSize: 12, fontWeight: 600, color: cfg.color }}>{cfg.label}</td>
+                          <td style={{ padding: "10px 16px", fontFamily: "monospace", fontSize: 13, fontWeight: 700, color: isPaid ? "#16a34a" : "#9CA3AF" }}>
+                            {isPaid ? fmtMoney(actuallyPaid) : `${fmtMoney(netPayable(bill))} pending`}
+                          </td>
+                          <td style={{ padding: "10px 16px", fontSize: 12, color: "#6B7280" }}>{fmtDate(bill.paymentDate)}</td>
+                          <td style={{ padding: "10px 16px" }}>
+                            <Button type="link" size="small" onClick={() => openBill(stage)}>View</Button>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
