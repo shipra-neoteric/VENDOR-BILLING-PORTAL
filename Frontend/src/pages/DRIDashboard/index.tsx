@@ -24,6 +24,7 @@ interface WORow {
 interface ScopeItemDetail {
   _id: string;
   description: string;
+  remarks?: string;
   unit: string;
   plannedQty: number;
   completedQty: number;
@@ -34,6 +35,7 @@ interface WODetail {
   _id: string;
   workOrderNo: string;
   projectName: string;
+  projectId?: { _id: string; name: string; code?: string; projectType?: string };
   vendorName?: string;
   category?: string;
   contractValue?: number;
@@ -77,6 +79,25 @@ function CountPill({ n, color }: { n: number; color: string }) {
     <span style={{ background: color + "22", color, fontSize: 11, fontWeight: 700, padding: "2px 10px", borderRadius: 12 }}>
       {n}
     </span>
+  );
+}
+
+// ── Location fields (Add Progress modal) ──────────────────────────────────────
+function LocationFields({ pt }: { pt: string }) {
+  return (
+    <div style={{ background: "var(--nx-fill-2)", border: "1px solid var(--nx-border)", borderRadius: 8, padding: 12, marginBottom: 12 }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: "var(--nx-text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>📍 Location (optional)</div>
+      {pt === "apartment" ? (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+          <Form.Item label="Tower" name="tower" style={{ marginBottom: 0 }}><Input placeholder="e.g. A, T1" size="small" /></Form.Item>
+          <Form.Item label="Floor" name="floor" style={{ marginBottom: 0 }}><Input placeholder="e.g. G, 1, 5" size="small" /></Form.Item>
+          <Form.Item label="Flat No" name="flatNo" style={{ marginBottom: 0 }}><Input placeholder="e.g. 101" size="small" /></Form.Item>
+        </div>
+      ) : (
+        <Form.Item label="Plot No" name="plotNo" style={{ marginBottom: 0 }}><Input placeholder="e.g. Plot-42" /></Form.Item>
+      )}
+      <Form.Item label="Note" name="locationNote" style={{ marginBottom: 0, marginTop: 8 }}><Input placeholder="Additional location details…" size="small" /></Form.Item>
+    </div>
   );
 }
 
@@ -205,9 +226,15 @@ export default function DRIDashboard() {
     [woDetails, projectBills]
   );
 
+  const progProjectType: "apartment" | "plot" = useMemo(() => {
+    if (!progTarget) return "apartment";
+    return woDetails.get(progTarget.woId)?.projectId?.projectType === "plot" ? "plot" : "apartment";
+  }, [progTarget, woDetails]);
+
   const openAddProgress = (woId: string, item: ScopeItemDetail) => {
     setProgTarget({ woId, item });
     progForm.resetFields();
+    progForm.setFieldsValue({ date: dayjs() });
     setProgModal(true);
   };
 
@@ -220,6 +247,12 @@ export default function DRIDashboard() {
         date: vals.date ? dayjs(vals.date).format("YYYY-MM-DD") : dayjs().format("YYYY-MM-DD"),
         qtyAdded: vals.qtyAdded,
         remarks: vals.remarks || "",
+        tower: vals.tower || "",
+        floor: vals.floor || "",
+        flatNo: vals.flatNo || "",
+        plotNo: vals.plotNo || "",
+        locationNote: vals.locationNote || "",
+        ...(vals.plannedQty ? { plannedQty: vals.plannedQty } : {}),
       });
       message.success(`+${fmtN(vals.qtyAdded)} ${progTarget.item.unit} recorded`);
       setProgModal(false);
@@ -706,23 +739,68 @@ export default function DRIDashboard() {
         onCancel={() => { setProgModal(false); progForm.resetFields(); }}
         title={`Add Progress — ${progTarget?.item.description ?? ""}`}
         onOk={handleAddProgress}
-        confirmLoading={progSaving}
-        okText="Save"
+        okText="Save Progress"
+        okButtonProps={{ loading: progSaving, style: { background: "#FF7A00", borderColor: "#FF7A00" } }}
+        destroyOnClose
       >
-        <Form form={progForm} layout="vertical">
-          <Form.Item label="Date" name="date" initialValue={dayjs()}>
-            <DatePicker format="DD/MM/YYYY" style={{ width: "100%" }} />
+        <Form form={progForm} layout="vertical" style={{ marginTop: 8 }}>
+          {progTarget?.item.remarks && (
+            <div style={{ background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: 8, padding: "10px 14px", marginBottom: 14, fontSize: 12, color: "#92400e" }}>
+              <span style={{ fontWeight: 700 }}>📌 Instruction: </span>{progTarget.item.remarks}
+            </div>
+          )}
+          <Form.Item label="Date" name="date" rules={[{ required: true, message: "Select date" }]}>
+            <DatePicker style={{ width: "100%" }} format="DD/MM/YYYY" disabledDate={d => d.isAfter(dayjs(), "day")} />
           </Form.Item>
+          <LocationFields pt={progProjectType} />
+          {progTarget && !progTarget.item.plannedQty && (
+            <div style={{ background: "#FFF8F0", border: "1px solid #FDDCB5", borderRadius: 8, padding: "10px 14px", marginBottom: 14 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: "#FF7A00", marginBottom: 6 }}>Planned quantity not set for this item</div>
+              <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 10 }}>You can set the total planned quantity now, or leave blank to log progress without a cap.</div>
+              <Form.Item label={`Total Planned Qty (${progTarget.item.unit})`} name="plannedQty" style={{ marginBottom: 0 }}>
+                <InputNumber style={{ width: "100%" }} min={0.00001} step={0.00001} precision={5} placeholder={progTarget.item.unit === "per-hr" ? "e.g. 200.0000" : "e.g. 5000"} />
+              </Form.Item>
+            </div>
+          )}
           <Form.Item
             label={`Quantity Added (${progTarget?.item.unit ?? ""})`}
             name="qtyAdded"
-            rules={[{ required: true, message: "Enter a quantity" }]}
+            extra={progTarget?.item.unit === "per-hr" ? "Tip: enter decimals for minutes — e.g. 13.67 = 13 hr 40 min" : undefined}
+            rules={[
+              { required: true, type: "number", min: 0.01, message: "Enter a valid quantity (e.g. 13.67)" },
+              {
+                validator: (_, value) => {
+                  if (!value || !progTarget) return Promise.resolve();
+                  if (!progTarget.item.plannedQty) return Promise.resolve();
+                  const max = Math.max(0, progTarget.item.plannedQty - progTarget.item.completedQty);
+                  if (value > max) return Promise.reject(new Error(`Max remaining: ${fmtN(max)} ${progTarget.item.unit}`));
+                  return Promise.resolve();
+                },
+              },
+            ]}
           >
-            <InputNumber style={{ width: "100%" }} min={0} />
+            <InputNumber
+              style={{ width: "100%" }} min={0.00001} step={0.00001} precision={5}
+              max={progTarget?.item.plannedQty ? Math.max(0, progTarget.item.plannedQty - progTarget.item.completedQty) : undefined}
+              placeholder={progTarget?.item.unit === "per-hr" ? "e.g. 13.6667" : "e.g. 500"}
+            />
           </Form.Item>
           <Form.Item label="Remarks (optional)" name="remarks">
-            <Input.TextArea rows={2} />
+            <Input.TextArea rows={2} placeholder="Notes for today's work…" />
           </Form.Item>
+          {progTarget && (
+            <div style={{ background: "var(--nx-fill-2)", border: "1px solid var(--nx-border)", borderRadius: 8, padding: 12, fontSize: 12 }}>
+              {[
+                { label: "Planned", value: progTarget.item.plannedQty > 0 ? `${fmtN(progTarget.item.plannedQty)} ${progTarget.item.unit}` : "Not set", color: progTarget.item.plannedQty > 0 ? "var(--nx-text)" : "#9ba3b8" },
+                { label: "Done", value: `${fmtN(progTarget.item.completedQty)} ${progTarget.item.unit}`, color: "#16a34a" },
+                { label: "Remaining", value: progTarget.item.plannedQty > 0 ? `${fmtN(Math.max(0, progTarget.item.plannedQty - progTarget.item.completedQty))} ${progTarget.item.unit}` : "Unlimited", color: "#FF7A00" },
+              ].map(r => (
+                <div key={r.label} style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                  <span style={{ color: "var(--nx-text-2)" }}>{r.label}</span><strong style={{ color: r.color }}>{r.value}</strong>
+                </div>
+              ))}
+            </div>
+          )}
         </Form>
       </Modal>
 
