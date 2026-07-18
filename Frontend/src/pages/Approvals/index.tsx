@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import type { Dayjs } from "dayjs";
 import {
-  Tabs, Button, Tag, Modal, Form, Input,
+  Tabs, Button, Tag, Modal, Form, Input, InputNumber,
   Descriptions, Row, Col, Empty, Spin, Alert, message,
 } from "antd";
 import {
@@ -10,10 +10,11 @@ import {
 import dayjs from "dayjs";
 import apiClient from "../../services/apiClient";
 import DateRangeFilter, { inDateRange } from "../../components/DateRangeFilter";
+import { useAuth } from "../../context/AuthContext";
 
 // ── Types ─────────────────────────────────────────────────────
-type BillStatus = "draft" | "submitted" | "verified" | "approved" | "rejected" | "paid";
-type ActionType = "verify" | "approve" | "reject" | "view";
+type BillStatus = "draft" | "submitted" | "verified" | "approved" | "payment-initiated" | "rejected" | "paid";
+type ActionType = "verify" | "approve" | "initiate" | "reject" | "view";
 
 interface BillUser { name?: string; role?: string; }
 interface Bill {
@@ -33,13 +34,18 @@ interface Bill {
   tdsPercent: number;
   retentionAmount?: number;
   advanceRecovery?: number;
+  tdsAmount?: number;
   remarks?: string;
   status: BillStatus;
   submittedAt?: string;
+  agmApprovedBy?: BillUser | null;
+  agmApprovedAt?: string;
   verifiedBy?: BillUser | null;
   verifiedAt?: string;
   approvedBy?: BillUser | null;
   approvedAt?: string;
+  paymentInitiatedBy?: BillUser | null;
+  paymentInitiatedAt?: string;
   rejectedBy?: BillUser | null;
   rejectReason?: string;
   createdAt?: string;
@@ -59,19 +65,20 @@ function calcAmounts(b: Bill) {
 }
 
 const STATUS_CFG: Record<BillStatus, { color: string; label: string }> = {
-  draft:     { color: "default", label: "Draft" },
-  submitted: { color: "blue",    label: "Submitted" },
-  verified:  { color: "cyan",    label: "Verified" },
-  approved:  { color: "green",   label: "Approved" },
-  rejected:  { color: "red",     label: "Rejected" },
-  paid:      { color: "purple",  label: "Paid" },
+  draft:              { color: "default", label: "Draft" },
+  submitted:          { color: "blue",    label: "AGM Approved · Hold" },
+  verified:           { color: "cyan",    label: "GM Approved · Hold" },
+  approved:           { color: "gold",    label: "Accounts Verified · Hold" },
+  "payment-initiated":{ color: "geekblue",label: "Payment Initiated · Hold" },
+  rejected:           { color: "red",     label: "Rejected" },
+  paid:               { color: "purple",  label: "Paid" },
 };
 
 // ── Bill action card ──────────────────────────────────────────
 function BillCard({
-  bill, showVerify, showApprove, onAction,
+  bill, showVerify, showApprove, showInitiate, showReject = true, onAction,
 }: {
-  bill: Bill; showVerify?: boolean; showApprove?: boolean;
+  bill: Bill; showVerify?: boolean; showApprove?: boolean; showInitiate?: boolean; showReject?: boolean;
   onAction: (bill: Bill, type: ActionType) => void;
 }) {
   const { gross, net } = calcAmounts(bill);
@@ -114,17 +121,25 @@ function BillCard({
             <Button size="small" icon={<CheckOutlined />}
               style={{ background: "#16a85a", borderColor: "#16a85a", color: "#fff" }}
               onClick={() => onAction(bill, "verify")}
-            >Verify</Button>
+            >GM Approve</Button>
           )}
           {showApprove && (
             <Button size="small" icon={<SafetyCertificateOutlined />} type="primary"
               style={{ background: "#f37916", borderColor: "#f37916" }}
               onClick={() => onAction(bill, "approve")}
-            >Approve & Certify</Button>
+            >Verify & Approve</Button>
           )}
-          <Button size="small" icon={<CloseOutlined />} danger onClick={() => onAction(bill, "reject")}>
-            Reject
-          </Button>
+          {showInitiate && (
+            <Button size="small" type="primary"
+              style={{ background: "#3730a3", borderColor: "#3730a3" }}
+              onClick={() => onAction(bill, "initiate")}
+            >Initiate Payment</Button>
+          )}
+          {showReject && (
+            <Button size="small" icon={<CloseOutlined />} danger onClick={() => onAction(bill, "reject")}>
+              Reject
+            </Button>
+          )}
         </div>
       </div>
       <div style={{ textAlign: "right", flexShrink: 0 }}>
@@ -143,6 +158,10 @@ function BillCard({
 
 // ── Main component ────────────────────────────────────────────
 export default function Approvals() {
+  const { user } = useAuth();
+  const canGM       = user?.role === "owner" || user?.role === "gm";
+  const canAccounts = user?.role === "owner" || user?.role === "accounts";
+
   const [bills, setBills]       = useState<Bill[]>([]);
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState("");
@@ -151,6 +170,7 @@ export default function Approvals() {
   const [actionType, setActionType] = useState<ActionType>("verify");
   const [modalOpen, setModalOpen]   = useState(false);
   const [remarks, setRemarks]       = useState("");
+  const [tdsAmount, setTdsAmount]   = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [dateFrom, setDateFrom]     = useState<Dayjs | null>(null);
   const [dateTo, setDateTo]         = useState<Dayjs | null>(null);
@@ -170,17 +190,20 @@ export default function Approvals() {
 
   useEffect(() => { load(); }, [load]);
 
-  const filteredByDate = bills.filter(b => inDateRange(b.billDate, dateFrom, dateTo));
-  const submitted = filteredByDate.filter(b => b.status === "submitted");
-  const verified  = filteredByDate.filter(b => b.status === "verified");
-  const approved  = filteredByDate.filter(b => b.status === "approved" || b.status === "paid");
-  const rejected  = filteredByDate.filter(b => b.status === "rejected");
-  const totalPending = submitted.length + verified.length;
+  const filteredByDate  = bills.filter(b => inDateRange(b.billDate, dateFrom, dateTo));
+  const submitted       = filteredByDate.filter(b => b.status === "submitted");
+  const verified        = filteredByDate.filter(b => b.status === "verified");
+  const readyToInitiate = filteredByDate.filter(b => b.status === "approved");
+  const initiated       = filteredByDate.filter(b => b.status === "payment-initiated");
+  const approved        = filteredByDate.filter(b => b.status === "approved" || b.status === "payment-initiated" || b.status === "paid");
+  const rejected        = filteredByDate.filter(b => b.status === "rejected");
+  const totalPending    = submitted.length + verified.length + readyToInitiate.length;
 
   function openAction(bill: Bill, type: ActionType) {
     setActionBill(bill);
     setActionType(type);
     setRemarks("");
+    setTdsAmount(null);
     setModalOpen(true);
   }
 
@@ -190,15 +213,19 @@ export default function Approvals() {
     try {
       const endpoint = actionType === "verify" ? "verify"
                      : actionType === "approve" ? "approve"
+                     : actionType === "initiate" ? "initiate-payment"
                      : "reject";
       const body = actionType === "reject"
         ? { reason: remarks || "No reason given" }
+        : actionType === "initiate"
+        ? { tdsAmount: tdsAmount ?? 0, remarks }
         : { remarks };
       await apiClient.patch(`/bills/${actionBill._id}/${endpoint}`, body);
       const msgs: Partial<Record<ActionType, string>> = {
-        verify:  "Bill verified — forwarded for GM approval",
-        approve: "Bill approved & certified",
-        reject:  "Bill rejected",
+        verify:   "GM approved — forwarded to Accounts for verification",
+        approve:  "Accounts verified & approved — ready for payment initiation",
+        initiate: "Payment initiated — on hold pending release",
+        reject:   "Bill rejected",
       };
       message.success(msgs[actionType]);
       setModalOpen(false);
@@ -240,9 +267,9 @@ export default function Approvals() {
       <Row gutter={12} style={{ marginBottom: 24 }}>
         {[
           { label: "Pending Action", value: totalPending, color: "#f37916", sub: "bills awaiting review" },
-          { label: "Needs Verification", value: submitted.length, color: "#2563eb", sub: "submitted by contractor" },
-          { label: "Needs Approval", value: verified.length, color: "#0d9488", sub: "verified by site engineer" },
-          { label: "Approved / Paid", value: approved.length, color: "#16a85a", sub: "certified & closed" },
+          { label: "Needs GM Approval", value: submitted.length, color: "#2563eb", sub: "AGM approved, awaiting GM" },
+          { label: "Needs Accounts Verification", value: verified.length, color: "#0d9488", sub: "GM approved, awaiting Accounts" },
+          { label: "Ready to Initiate Payment", value: readyToInitiate.length, color: "#3730a3", sub: "verified, awaiting TDS entry" },
         ].map(s => (
           <Col key={s.label} xs={12} sm={6}>
             <div style={{ background: "var(--nx-white)", border: "1px solid #e4e7ee", borderRadius: 12, padding: "16px 18px", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
@@ -271,43 +298,85 @@ export default function Approvals() {
             label: `Action Queue${totalPending ? ` (${totalPending})` : ""}`,
             children: (
               <>
-                {/* Pending Verification */}
+                {/* Pending GM Approval */}
                 <div style={{ marginBottom: 24 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
                     <span style={{ fontSize: 12, fontWeight: 600, color: "#5a6278", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                      Pending Verification
+                      Pending GM Approval
                     </span>
                     <span style={{ background: "#eff4ff", color: "#2563eb", borderRadius: 10, padding: "2px 8px", fontSize: 11, fontWeight: 600 }}>
                       {submitted.length}
                     </span>
                   </div>
                   {submitted.length === 0
-                    ? <Empty description="No bills pending verification" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                    ? <Empty description="No bills pending GM approval" image={Empty.PRESENTED_IMAGE_SIMPLE} />
                     : submitted.map(b => (
-                        <BillCard key={b._id} bill={b} showVerify onAction={openAction} />
+                        <BillCard key={b._id} bill={b} showVerify={canGM} onAction={openAction} />
                       ))
                   }
                 </div>
 
                 <div style={{ height: 1, background: "#e4e7ee", margin: "24px 0" }} />
 
-                {/* Pending Approval */}
-                <div>
+                {/* Pending Accounts Verification */}
+                <div style={{ marginBottom: 24 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
                     <span style={{ fontSize: 12, fontWeight: 600, color: "#5a6278", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                      Pending Approval
+                      Pending Accounts Verification
                     </span>
                     <span style={{ background: "#e8fff8", color: "#0d9488", borderRadius: 10, padding: "2px 8px", fontSize: 11, fontWeight: 600 }}>
                       {verified.length}
                     </span>
                   </div>
                   {verified.length === 0
-                    ? <Empty description="No bills pending approval" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                    ? <Empty description="No bills pending Accounts verification" image={Empty.PRESENTED_IMAGE_SIMPLE} />
                     : verified.map(b => (
-                        <BillCard key={b._id} bill={b} showApprove onAction={openAction} />
+                        <BillCard key={b._id} bill={b} showApprove={canAccounts} onAction={openAction} />
                       ))
                   }
                 </div>
+
+                <div style={{ height: 1, background: "#e4e7ee", margin: "24px 0" }} />
+
+                {/* Ready to Initiate Payment */}
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: "#5a6278", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                      Ready to Initiate Payment
+                    </span>
+                    <span style={{ background: "#eef2ff", color: "#3730a3", borderRadius: 10, padding: "2px 8px", fontSize: 11, fontWeight: 600 }}>
+                      {readyToInitiate.length}
+                    </span>
+                  </div>
+                  {readyToInitiate.length === 0
+                    ? <Empty description="No bills ready for payment initiation" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                    : readyToInitiate.map(b => (
+                        <BillCard key={b._id} bill={b} showInitiate={canAccounts} onAction={openAction} />
+                      ))
+                  }
+                </div>
+
+                {initiated.length > 0 && (
+                  <>
+                    <div style={{ height: 1, background: "#e4e7ee", margin: "24px 0" }} />
+                    <div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+                        <span style={{ fontSize: 12, fontWeight: 600, color: "#5a6278", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                          Payment Initiated — Awaiting Release
+                        </span>
+                        <span style={{ background: "#eef2ff", color: "#3730a3", borderRadius: 10, padding: "2px 8px", fontSize: 11, fontWeight: 600 }}>
+                          {initiated.length}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 10 }}>
+                        TDS has been entered — release the payment from the Billing & Payments page.
+                      </div>
+                      {initiated.map(b => (
+                        <BillCard key={b._id} bill={b} showReject={false} onAction={openAction} />
+                      ))}
+                    </div>
+                  </>
+                )}
 
                 {totalPending === 0 && (
                   <div style={{ textAlign: "center", padding: "48px 20px", color: "#9ba3b8" }}>
@@ -321,10 +390,10 @@ export default function Approvals() {
           },
           {
             key: "approved",
-            label: `Approved (${approved.length})`,
+            label: `Approved / Paid (${approved.length})`,
             children: approved.length === 0
               ? <Empty description="No approved bills yet" image={Empty.PRESENTED_IMAGE_SIMPLE} />
-              : approved.map(b => <BillCard key={b._id} bill={b} onAction={openAction} />),
+              : approved.map(b => <BillCard key={b._id} bill={b} showReject={b.status !== "paid"} onAction={openAction} />),
           },
           {
             key: "rejected",
@@ -360,7 +429,7 @@ export default function Approvals() {
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                   <thead>
                     <tr style={{ background: "#f5f6f8" }}>
-                      {["Bill No.", "Date", "Work Order", "Vendor", "Gross (incl. GST)", "Net Payable", "Status", "Verified By", "Approved/Rejected", ""].map(h => (
+                      {["Bill No.", "Date", "Work Order", "Vendor", "Gross (incl. GST)", "Net Payable", "Status", "Approval Stages", ""].map(h => (
                         <th key={h} style={{ padding: "10px 12px", textAlign: "left", fontSize: 11, fontWeight: 600, color: "#9ba3b8", textTransform: "uppercase", letterSpacing: "0.05em", borderBottom: "1px solid #e4e7ee", whiteSpace: "nowrap" }}>{h}</th>
                       ))}
                     </tr>
@@ -384,19 +453,29 @@ export default function Approvals() {
                           <td style={{ padding: "10px 12px" }}>
                             <Tag color={STATUS_CFG[b.status].color}>{STATUS_CFG[b.status].label.toUpperCase()}</Tag>
                           </td>
-                          <td style={{ padding: "10px 12px", fontSize: 12 }}>
-                            {b.verifiedBy ? (
-                              <span>{typeof b.verifiedBy === "object" ? b.verifiedBy.name : b.verifiedBy}
-                                <br /><span style={{ color: "#9ba3b8", fontSize: 11 }}>{b.verifiedAt ? dayjs(b.verifiedAt).format("DD MMM") : ""}</span>
-                              </span>
-                            ) : <span style={{ color: "#9ba3b8" }}>—</span>}
-                          </td>
-                          <td style={{ padding: "10px 12px", fontSize: 12 }}>
-                            {b.approvedBy ? (
-                              <span style={{ color: "#16a85a" }}>{typeof b.approvedBy === "object" ? b.approvedBy.name : b.approvedBy}</span>
-                            ) : b.rejectedBy ? (
-                              <span style={{ color: "#e03b3b" }}>{typeof b.rejectedBy === "object" ? b.rejectedBy.name : b.rejectedBy}{b.rejectReason ? ` — ${b.rejectReason}` : ""}</span>
-                            ) : <span style={{ color: "#9ba3b8" }}>—</span>}
+                          <td style={{ padding: "10px 12px" }}>
+                            {b.rejectedBy ? (
+                              <span style={{ color: "#e03b3b", fontSize: 12 }}>Rejected by {typeof b.rejectedBy === "object" ? b.rejectedBy.name : b.rejectedBy}{b.rejectReason ? ` — ${b.rejectReason}` : ""}</span>
+                            ) : (
+                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                {[
+                                  { label: "AGM", done: !!b.agmApprovedBy },
+                                  { label: "GM", done: !!b.verifiedBy },
+                                  { label: "Accounts", done: !!b.approvedBy },
+                                  { label: "Initiated", done: !!b.paymentInitiatedBy },
+                                  { label: "Paid", done: b.status === "paid" },
+                                ].map(s => (
+                                  <span key={s.label} style={{
+                                    fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 10,
+                                    background: s.done ? "#f0fdf4" : "#f5f6f8",
+                                    color: s.done ? "#16a85a" : "#9ba3b8",
+                                    border: `1px solid ${s.done ? "#bbf7d0" : "#e4e7ee"}`,
+                                  }}>
+                                    {s.done ? "✓ " : ""}{s.label}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
                           </td>
                           <td style={{ padding: "10px 12px" }}>
                             <Button size="small" onClick={() => openAction(b, "view")}>View</Button>
@@ -419,16 +498,18 @@ export default function Approvals() {
       <Modal
         open={modalOpen}
         title={
-          actionType === "verify" ? "Verify Bill — Site Engineer"
-          : actionType === "approve" ? "Approve Bill — GM / Owner"
+          actionType === "verify" ? "GM Approval"
+          : actionType === "approve" ? "Accounts Verification & Approval"
+          : actionType === "initiate" ? "Initiate Payment — Accounts"
           : actionType === "view" ? "Bill Details"
           : "Reject Bill"
         }
         onCancel={() => setModalOpen(false)}
         onOk={actionType === "view" ? () => setModalOpen(false) : executeAction}
         okText={
-          actionType === "verify" ? "✓  Verify"
-          : actionType === "approve" ? "✓  Approve & Certify"
+          actionType === "verify" ? "✓  GM Approve"
+          : actionType === "approve" ? "✓  Verify & Approve"
+          : actionType === "initiate" ? "Initiate Payment"
           : actionType === "view" ? "Close"
           : "✗  Reject Bill"
         }
@@ -439,6 +520,8 @@ export default function Approvals() {
             ? { background: "#e03b3b", borderColor: "#e03b3b" }
             : actionType === "approve"
             ? { background: "#f37916", borderColor: "#f37916" }
+            : actionType === "initiate"
+            ? { background: "#3730a3", borderColor: "#3730a3" }
             : actionType === "view"
             ? {}
             : { background: "#16a85a", borderColor: "#16a85a" },
@@ -511,6 +594,20 @@ export default function Approvals() {
                     </tbody>
                   </table>
                 </div>
+              )}
+
+              {actionType === "initiate" && (
+                <Form.Item label="TDS Amount to Deduct (₹)" style={{ marginBottom: 12 }}>
+                  <InputNumber
+                    style={{ width: "100%" }} min={0}
+                    placeholder="0"
+                    value={tdsAmount}
+                    onChange={v => setTdsAmount(v)}
+                  />
+                  <div style={{ fontSize: 11, color: "#9ba3b8", marginTop: 4 }}>
+                    The bill will go on hold until Accounts releases the payment.
+                  </div>
+                </Form.Item>
               )}
 
               {actionType !== "view" && (

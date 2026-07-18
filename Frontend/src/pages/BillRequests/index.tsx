@@ -52,7 +52,7 @@ interface BillRequest {
   status: "pending" | "approved" | "rejected";
   rejectReason?: string;
   requestedBy?: { name: string; email: string };
-  billId?: { billNo: string; status: string; amount: number; paidAmount?: number; retentionPercent?: number; retentionAmount?: number; advanceRecovery?: number; gstPercent?: number; paymentDate?: string; paymentMode?: string; paymentUTR?: string; paymentBank?: string; paymentReleasedBy?: string };
+  billId?: { billNo: string; status: string; amount: number; paidAmount?: number; retentionPercent?: number; retentionAmount?: number; advanceRecovery?: number; gstPercent?: number; tdsAmount?: number; paymentDate?: string; paymentMode?: string; paymentUTR?: string; paymentBank?: string; paymentReleasedBy?: string };
   milestoneAchieved?: boolean;
   milestoneDate?: string;
   createdAt: string;
@@ -73,6 +73,12 @@ export default function BillRequests() {
   const [rejectTarget,  setRejectTarget]  = useState<string | null>(null);
   const [rejectReason,  setRejectReason]  = useState("");
   const [saving,        setSaving]        = useState(false);
+
+  // AGM's approval — first stage of the bill chain: sets the hold/advance breakdown.
+  const [approveModal,     setApproveModal]     = useState(false);
+  const [approveTarget,    setApproveTarget]    = useState<string | null>(null);
+  const [approveRetention, setApproveRetention] = useState<number | null>(null);
+  const [approveAdvance,   setApproveAdvance]   = useState<number | null>(null);
 
   const [milestoneTarget, setMilestoneTarget] = useState<string | null>(null);
   const [paymentUTR,      setPaymentUTR]      = useState("");
@@ -136,13 +142,26 @@ export default function BillRequests() {
       .catch(() => setSlaInstance(null));
   }, [viewReq]);
 
-  const handleApprove = async (id: string) => {
+  const openApprove = (id: string) => {
+    setApproveTarget(id);
+    setApproveRetention(null);
+    setApproveAdvance(null);
+    setApproveModal(true);
+  };
+
+  const handleApprove = async () => {
+    if (!approveTarget) return;
     setSaving(true);
     try {
-      const res = await apiClient.put(`/bill-requests/${id}/approve`, {});
+      const body: Record<string, number> = {};
+      if (approveRetention != null) body.retentionAmount = approveRetention;
+      if (approveAdvance   != null) body.advanceRecovery = approveAdvance;
+      const res = await apiClient.put(`/bill-requests/${approveTarget}/approve`, body);
       message.success(res.data.message || "Approved & bill generated");
+      setApproveModal(false);
+      setApproveTarget(null);
       load(tab === "all" ? undefined : tab, showArchived);
-      if (viewReq?._id === id) setViewReq(null);
+      if (viewReq?._id === approveTarget) setViewReq(null);
     } catch (e: any) {
       message.error(e?.response?.data?.message || "Failed to approve");
     } finally { setSaving(false); }
@@ -309,14 +328,7 @@ export default function BillRequests() {
           <Button size="small" icon={<EyeOutlined />} onClick={() => setViewReq(r)}>View</Button>
           {r.status === "pending" && (
             <>
-              <Popconfirm
-                title="Approve this bill request?"
-                description="A running bill will be auto-generated."
-                onConfirm={() => handleApprove(r._id)}
-                okText="Approve"
-              >
-                <Button size="small" type="primary" icon={<CheckCircleOutlined />} loading={saving}>Approve</Button>
-              </Popconfirm>
+              <Button size="small" type="primary" icon={<CheckCircleOutlined />} onClick={() => openApprove(r._id)}>Approve</Button>
               <Button
                 size="small" danger icon={<CloseCircleOutlined />}
                 onClick={() => { setRejectTarget(r._id); setRejectModal(true); }}
@@ -470,9 +482,7 @@ export default function BillRequests() {
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
               <Button onClick={() => setViewReq(null)}>Close</Button>
               <Button danger onClick={() => { setRejectTarget(viewReq._id); setRejectModal(true); setViewReq(null); }}>Reject</Button>
-              <Popconfirm title="Approve & generate running bill?" onConfirm={() => handleApprove(viewReq._id)} okText="Confirm">
-                <Button type="primary" loading={saving}>Approve & Generate Bill</Button>
-              </Popconfirm>
+              <Button type="primary" onClick={() => { openApprove(viewReq._id); setViewReq(null); }}>Approve & Generate Bill</Button>
             </div>
           ) : viewReq?.status === "approved" && !viewReq?.milestoneAchieved ? (
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
@@ -664,6 +674,39 @@ export default function BillRequests() {
         )}
       </Modal>
 
+      {/* AGM Approve Modal — stage 1: sets hold/advance breakdown, then approves */}
+      <Modal
+        open={approveModal}
+        onCancel={() => { setApproveModal(false); setApproveTarget(null); }}
+        onOk={handleApprove}
+        title="Approve Bill Request — AGM Sign-off"
+        okText="Approve & Generate Bill"
+        okButtonProps={{ loading: saving }}
+        destroyOnClose
+      >
+        <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 14 }}>
+          A running bill will be generated for the amounts below. Leave a field blank to use the work order's automatic retention calculation.
+        </div>
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Hold / Retention Amount (₹)</div>
+          <InputNumber
+            style={{ width: "100%" }} min={0}
+            placeholder="Auto-calculated from work order retention %"
+            value={approveRetention}
+            onChange={v => setApproveRetention(v)}
+          />
+        </div>
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Advance Recovery Amount (₹)</div>
+          <InputNumber
+            style={{ width: "100%" }} min={0}
+            placeholder="0"
+            value={approveAdvance}
+            onChange={v => setApproveAdvance(v)}
+          />
+        </div>
+      </Modal>
+
       {/* Reject Modal */}
       <Modal
         open={rejectModal}
@@ -695,7 +738,8 @@ export default function BillRequests() {
           const billedAmt    = milestoneReq?.billId?.amount ?? 0;
           const hold         = holdAmount ?? 0;
           const advance      = advanceRecovery ?? 0;
-          const netToPay     = Math.max(0, billedAmt - hold - advance);
+          const tds          = milestoneReq?.billId?.tdsAmount ?? 0;
+          const netToPay     = Math.max(0, billedAmt - hold - advance - tds);
           const actualPaid   = paymentAmount ?? netToPay;
           const diff         = actualPaid - netToPay;
           return (
@@ -771,12 +815,19 @@ export default function BillRequests() {
                 )}
               </div>
 
+              {tds > 0 && (
+                <div style={{ background: "#f9fafb", border: "1px solid #E5E7EB", borderRadius: 8, padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div style={{ fontSize: 11, color: "#6B7280", fontWeight: 600, textTransform: "uppercase" }}>TDS Deducted <span style={{ fontWeight: 400, textTransform: "none" }}>(entered at payment initiation)</span></div>
+                  <div style={{ fontFamily: "monospace", fontWeight: 700, fontSize: 14, color: "#dc2626" }}>− {fmt(tds)}</div>
+                </div>
+              )}
+
               {/* Net to Pay summary */}
               <div style={{ background: "#f0fdf4", border: "2px solid #86efac", borderRadius: 8, padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div>
                   <div style={{ fontSize: 11, color: "#166534", fontWeight: 700, textTransform: "uppercase" }}>Net Amount to Pay</div>
                   <div style={{ fontSize: 11, color: "#6B7280", marginTop: 2 }}>
-                    {fmt(billedAmt)}{hold > 0 ? ` − ${fmt(hold)} hold` : ""}{advance > 0 ? ` − ${fmt(advance)} advance` : ""}
+                    {fmt(billedAmt)}{hold > 0 ? ` − ${fmt(hold)} hold` : ""}{advance > 0 ? ` − ${fmt(advance)} advance` : ""}{tds > 0 ? ` − ${fmt(tds)} TDS` : ""}
                   </div>
                 </div>
                 <div style={{ fontFamily: "monospace", fontWeight: 800, fontSize: 20, color: "#16a34a" }}>{fmt(netToPay)}</div>

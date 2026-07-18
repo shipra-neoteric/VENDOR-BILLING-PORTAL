@@ -8,10 +8,10 @@ const DEFAULT_USERS = [
     role:     'owner',
   },
   {
-    name:     'Site Engineer (DRI)',
+    name:     'Site DRI',
     email:    'dri@neotericgrp.in',
     password: 'DRI@1234',
-    role:     'dri',
+    role:     'site-dri',
   },
 ];
 

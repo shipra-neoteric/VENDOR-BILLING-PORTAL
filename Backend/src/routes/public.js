@@ -38,7 +38,7 @@ router.get('/companies', asyncHandler(async (_req, res) => {
 }));
 
 router.get('/dri-users', asyncHandler(async (_req, res) => {
-  const users = await User.find({ role: 'dri' }).select('_id name email').sort({ name: 1 }).lean();
+  const users = await User.find({ role: 'site-dri' }).select('_id name email').sort({ name: 1 }).lean();
   success(res, { users });
 }));
 

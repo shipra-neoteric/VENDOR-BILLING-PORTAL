@@ -13,11 +13,8 @@ export const ROLE_OPTIONS = [
   { label: "Owner",      value: "owner" },
   { label: "GM",         value: "gm" },
   { label: "AGM",        value: "agm" },
-  { label: "CEO",        value: "ceo" },
-  { label: "Engineer",   value: "engineer" },
   { label: "Accounts",   value: "accounts" },
-  { label: "Contractor", value: "contractor" },
-  { label: "DRI",        value: "dri" },
+  { label: "Site DRI",   value: "site-dri" },
 ];
 
 export const DAY_OPTIONS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"].map(d => ({

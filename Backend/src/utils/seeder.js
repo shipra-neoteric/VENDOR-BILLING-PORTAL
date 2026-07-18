@@ -32,7 +32,7 @@ async function seed() {
   const users = await User.insertMany([
     { name: 'Owner Admin',    email: 'owner@neotericgrp.in',    password: hashedPw, role: 'owner'      },
     { name: 'Jalaj Gupta',    email: 'gm@neotericgrp.in',       password: hashedPw, role: 'gm'         },
-    { name: 'Rishabh Sharma', email: 'engineer@neotericgrp.in', password: hashedPw, role: 'engineer'   },
+    { name: 'Rishabh Sharma', email: 'sitedri@neotericgrp.in',  password: hashedPw, role: 'site-dri'   },
     { name: 'Accounts Team',  email: 'accounts@neotericgrp.in', password: hashedPw, role: 'accounts'   },
   ]);
   const owner = users[0];
@@ -138,7 +138,7 @@ async function seed() {
   console.log('Login credentials (all passwords: password123):');
   console.log('  owner@neotericgrp.in    — Owner');
   console.log('  gm@neotericgrp.in       — GM');
-  console.log('  engineer@neotericgrp.in — Site Engineer');
+  console.log('  sitedri@neotericgrp.in  — Site DRI');
   console.log('  accounts@neotericgrp.in — Accounts\n');
 
   process.exit(0);

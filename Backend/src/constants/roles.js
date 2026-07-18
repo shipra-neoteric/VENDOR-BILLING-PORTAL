@@ -1,7 +1,7 @@
 module.exports = {
   OWNER:      'owner',
   GM:         'gm',
+  AGM:        'agm',
   ACCOUNTS:   'accounts',
-  ENGINEER:   'engineer',
-  CONTRACTOR: 'contractor',
+  SITE_DRI:   'site-dri',
 };

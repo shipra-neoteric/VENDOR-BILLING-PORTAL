@@ -6,8 +6,8 @@ const {
 
 router.use(authenticate);
 router.get('/',    listStages);
-router.post('/',   authorize('owner', 'gm', 'engineer'), createStage);
-router.put('/:id', authorize('owner', 'gm', 'engineer'), updateStage);
+router.post('/',   authorize('owner', 'gm'), createStage);
+router.put('/:id', authorize('owner', 'gm'), updateStage);
 router.delete('/:id', authorize('owner', 'gm'),          deleteStage);
 
 module.exports = router;

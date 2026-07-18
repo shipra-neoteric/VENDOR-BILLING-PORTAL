@@ -26,7 +26,7 @@ exports.listBillRequests = asyncHandler(async (req, res) => {
   const { status, workOrderId, vendorCode, projectId, archived } = req.query;
   const filter = {};
 
-  if (req.user.role === 'dri') filter.requestedBy = req.user._id;
+  if (req.user.role === 'site-dri') filter.requestedBy = req.user._id;
   if (status)      filter.status      = status;
   if (workOrderId) filter.workOrderId = workOrderId;
   if (vendorCode)  filter.vendorCode  = vendorCode;
@@ -37,7 +37,7 @@ exports.listBillRequests = asyncHandler(async (req, res) => {
   const requests = await BillRequest.find(filter)
     .populate('requestedBy', 'name email')
     .populate('processedBy', 'name')
-    .populate('billId', 'billNo status amount paidAmount retentionPercent retentionAmount advanceRecovery gstPercent tdsPercent paymentDate paymentMode paymentUTR paymentBank paymentReleasedBy')
+    .populate('billId', 'billNo status amount paidAmount retentionPercent retentionAmount advanceRecovery gstPercent tdsPercent tdsAmount paymentDate paymentMode paymentUTR paymentBank paymentReleasedBy')
     .sort({ stageNo: 1, createdAt: 1 });
 
   success(res, { billRequests: requests });
@@ -50,7 +50,7 @@ exports.createBillRequest = asyncHandler(async (req, res) => {
   const wo = await WorkOrder.findById(workOrderId);
   if (!wo) return notFound(res, 'Work order not found');
 
-  if (req.user.role === 'dri') {
+  if (req.user.role === 'site-dri') {
     const isAssigned = (wo.assignedDRI || []).some(
       id => id.toString() === req.user._id.toString()
     );
@@ -170,7 +170,11 @@ exports.approveBillRequest = asyncHandler(async (req, res) => {
 
   const totalAmount      = lineItems.reduce((s, l) => s + l.amount, 0);
   const retentionPercent = wo.retentionPercent ?? 0;
-  const retentionAmount  = Math.round(totalAmount * retentionPercent / 100);
+  const defaultRetention = Math.round(totalAmount * retentionPercent / 100);
+  // AGM sets the actual hold/advance figures as part of approval — falls back to the
+  // work order's automatic retention calc if AGM doesn't override it.
+  const retentionAmount  = req.body.retentionAmount != null ? Number(req.body.retentionAmount) : defaultRetention;
+  const advanceRecovery  = req.body.advanceRecovery != null ? Number(req.body.advanceRecovery) : 0;
   const billNo = await nextBillNo();
 
   const runningBill = await RunningBill.create({
@@ -187,10 +191,13 @@ exports.approveBillRequest = asyncHandler(async (req, res) => {
     amount:           totalAmount,
     retentionPercent,
     retentionAmount,
+    advanceRecovery,
     gstPercent:  wo.gstPercent ?? 18,
     tdsPercent:  0,
     generatedBy: req.user.name,
     status:      'submitted',
+    agmApprovedBy: req.user._id,
+    agmApprovedAt: new Date(),
     createdBy:   req.user._id,
   });
 
@@ -270,6 +277,11 @@ exports.markMilestone = asyncHandler(async (req, res) => {
   if (!br) return notFound(res, 'Bill request not found');
   if (br.status !== 'approved') return badRequest(res, 'Only approved bill requests can be marked as milestones');
   if (br.milestoneAchieved) return badRequest(res, 'Already marked as milestone');
+  // The linked bill must have cleared GM approval, Accounts verification, and payment
+  // initiation (TDS entered, on hold) before it can actually be released as paid.
+  if (br.billId?.status !== 'payment-initiated') {
+    return badRequest(res, `Cannot release payment — bill is still at "${br.billId?.status || 'unknown'}" stage. Complete GM approval, Accounts verification, and payment initiation first.`);
+  }
 
   br.milestoneAchieved = true;
   br.milestoneDate     = new Date();
@@ -333,7 +345,7 @@ exports.createBatchBillRequest = asyncHandler(async (req, res) => {
     const wo = await WorkOrder.findById(workOrderId);
     if (!wo) { skipped.push({ workOrderId, reason: 'Not found' }); continue; }
 
-    if (req.user.role === 'dri') {
+    if (req.user.role === 'site-dri') {
       const isAssigned = (wo.assignedDRI || []).some(
         id => id.toString() === req.user._id.toString()
       );

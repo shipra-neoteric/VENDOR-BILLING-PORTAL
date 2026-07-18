@@ -1278,5 +1278,5 @@ function DRIDashboard() {
 // ── Router ────────────────────────────────────────────────────────────────────
 export default function WorkProgress() {
   const { user } = useAuth();
-  return user?.role === "dri" ? <DRIDashboard /> : <WorkProgressAdmin />;
+  return user?.role === "site-dri" ? <DRIDashboard /> : <WorkProgressAdmin />;
 }

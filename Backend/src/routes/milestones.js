@@ -10,7 +10,7 @@ router.get('/',    listMilestones);
 router.post('/',   authorize('owner', 'gm'), createMilestone);
 router.put('/:id', authorize('owner', 'gm'), updateMilestone);
 router.delete('/:id',                        authorize('owner', 'gm'), deleteMilestone);
-router.post('/:id/activities',               authorize('owner', 'gm', 'engineer'), linkActivity);
+router.post('/:id/activities',               authorize('owner', 'gm'), linkActivity);
 router.delete('/:id/activities/:actId',      authorize('owner', 'gm'),             unlinkActivity);
 
 module.exports = router;

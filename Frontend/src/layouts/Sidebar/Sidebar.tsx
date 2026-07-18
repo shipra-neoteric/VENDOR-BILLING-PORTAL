@@ -130,7 +130,7 @@ function buildDRIGroups(perms: PermEntry[] | undefined): NavGroup[] {
 // ── Sidebar component ──────────────────────────────────────────────────────────
 export default function Sidebar() {
   const { user } = useAuth();
-  const isDRI  = user?.role === "dri";
+  const isDRI  = user?.role === "site-dri";
   const perms  = user?.permissions;
 
   const rawGroups = isDRI

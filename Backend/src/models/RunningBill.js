@@ -81,16 +81,23 @@ const runningBillSchema = new mongoose.Schema(
     supersededBy:  { type: mongoose.Schema.Types.ObjectId, ref: 'RunningBill', default: null },
     // ─────────────────────────────────────────────────────────
 
+    // submitted = AGM approved · verified = GM approved · approved = Accounts verified
+    // WO/bill match · payment-initiated = Accounts entered TDS, on hold · paid = released.
     status: {
       type: String,
-      enum: ['draft', 'submitted', 'verified', 'approved', 'rejected', 'paid'],
+      enum: ['draft', 'submitted', 'verified', 'approved', 'payment-initiated', 'rejected', 'paid'],
       default: 'submitted',
     },
     submittedAt: { type: Date },
+    agmApprovedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    agmApprovedAt: { type: Date },
     verifiedBy:  { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     verifiedAt:  { type: Date },
     approvedBy:  { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     approvedAt:  { type: Date },
+    paymentInitiatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    paymentInitiatedAt: { type: Date },
+    tdsAmount:   { type: Number, default: 0 },
     rejectedBy:  { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     rejectReason:{ type: String },
     paymentUTR:              { type: String },

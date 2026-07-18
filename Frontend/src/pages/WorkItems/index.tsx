@@ -1510,7 +1510,7 @@ export default function WorkItems() {
 
   // ── Load all data ─────────────────────────────────────────────
   useEffect(() => {
-    const isDRI = user?.role === "dri";
+    const isDRI = user?.role === "site-dri";
     Promise.all([
       apiClient.get<{ workOrders: any[] }>("/work-orders"),
       apiClient.get<{ contractors: any[] }>("/contractors"),
@@ -1518,7 +1518,7 @@ export default function WorkItems() {
       apiClient.get<{ bills: any[] }>("/bills"),
       apiClient.get<{ companies: any[] }>("/companies"),
       // DRI users can't access the users list endpoint — skip it
-      isDRI ? Promise.resolve({ data: { users: [] } }) : apiClient.get<{ users: any[] }>("/auth/users?role=dri"),
+      isDRI ? Promise.resolve({ data: { users: [] } }) : apiClient.get<{ users: any[] }>("/auth/users?role=site-dri"),
     ])
       .then(([woRes, cRes, pRes, billRes, coRes, driRes]) => {
         setWorkOrders(woRes.data.workOrders.map(normalizeWO));

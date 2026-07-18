@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from "react";
-import { Select, Spin, Tag, Button, Modal, Form, InputNumber, DatePicker, Input, Checkbox, message } from "antd";
+import { Select, Spin, Tag, Button, Modal, Form, InputNumber, DatePicker, Input, Checkbox, Empty, message } from "antd";
 import apiClient from "../../services/apiClient";
 import { useAuth } from "../../context/AuthContext";
 import dayjs from "dayjs";
@@ -157,7 +157,7 @@ export default function DRIDashboard() {
       apiClient.get("/bill-requests"),
     ])
       .then(([usersR, wosR, billsR]) => {
-        setAllDRIs((usersR.data.users ?? []).filter((u: DRIUser & { role: string }) => u.role === "dri"));
+        setAllDRIs((usersR.data.users ?? []).filter((u: DRIUser & { role: string }) => u.role === "site-dri"));
         setAllWOs(wosR.data.workOrders ?? []);
         setAllBills(billsR.data.billRequests ?? []);
       })
@@ -810,37 +810,89 @@ export default function DRIDashboard() {
         onCancel={() => setBillModal(false)}
         title={`Generate Bill Request — ${selProjName}`}
         onOk={handleGenerateBill}
+        okText={`Submit Bill Request${billWOIds.size > 1 ? ` (${billWOIds.size} Work Orders)` : ""}`}
         confirmLoading={billGenerating}
-        okText="Submit Bill Request"
-        width={560}
+        okButtonProps={{ disabled: billWOIds.size === 0, style: { background: "#FF7A00", borderColor: "#FF7A00" } }}
+        width={700}
+        destroyOnClose
       >
-        <div style={{ fontSize: 12, color: "var(--nx-text-muted)", marginBottom: 10 }}>
-          Work orders with unbilled progress in this project:
+        <div style={{ marginTop: 8 }}>
+          <div style={{ padding: 12, background: "#FFF4E8", border: "1px solid #FED7AA", borderRadius: 8, marginBottom: 16, fontSize: 12, color: "#92400e" }}>
+            <strong>Project bill request</strong> — select work orders to include. Quantities are auto-calculated from recorded progress since last billing.
+          </div>
+
+          {billableWODetails.length === 0 ? (
+            <Empty description="No pending progress to bill. Record daily progress first." />
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {vendorGroups.map(vg => {
+                const vgBillableWOs = vg.wos
+                  .map(wo => woDetails.get(wo._id))
+                  .filter((d): d is WODetail => !!d && billableWODetails.some(b => b._id === d._id));
+
+                if (!vgBillableWOs.length) return null;
+                return (
+                  <div key={vg.vendorCode} style={{ border: "1px solid var(--nx-border)", borderRadius: 10, overflow: "hidden" }}>
+                    <div style={{ background: "var(--nx-fill-2)", padding: "10px 14px", fontWeight: 700, fontSize: 13, color: "var(--nx-text)", borderBottom: "1px solid var(--nx-border)" }}>
+                      👷 {vg.vendorName} <span style={{ fontFamily: "monospace", color: "#FF7A00", fontSize: 11, fontWeight: 400 }}>({vg.vendorCode})</span>
+                    </div>
+                    {vgBillableWOs.map(detail => {
+                      const pendingItems = detail.scopeItems.filter(si => Math.max(0, (si.completedQty || 0) - (si.lastBilledQty || 0)) > 0);
+                      const isChecked = billWOIds.has(detail._id);
+                      return (
+                        <div key={detail._id} style={{ padding: "12px 14px", borderBottom: "1px solid var(--nx-border)", background: isChecked ? "var(--nx-fill-2)" : "var(--nx-white)" }}>
+                          <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                            <Checkbox
+                              checked={isChecked}
+                              onChange={e => setBillWOIds(prev => {
+                                const next = new Set(prev);
+                                if (e.target.checked) next.add(detail._id); else next.delete(detail._id);
+                                return next;
+                              })}
+                            />
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontWeight: 700, color: "#FF7A00", fontFamily: "monospace", fontSize: 13 }}>{detail.workOrderNo}</div>
+                              {detail.category && <div style={{ fontSize: 11, color: "var(--nx-text-muted)", marginBottom: 8 }}>{detail.category}</div>}
+                              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                                <tbody>
+                                  {pendingItems.map(si => {
+                                    const billedQty = Math.max(0, si.completedQty - (si.lastBilledQty || 0));
+                                    return (
+                                      <tr key={si._id}>
+                                        <td style={{ padding: "3px 0", color: "var(--nx-text)", fontWeight: 500 }}>{si.description}</td>
+                                        <td style={{ padding: "3px 8px", color: "var(--nx-text-2)" }}>{si.unit}</td>
+                                        <td style={{ padding: "3px 0", color: "var(--nx-text-2)" }}>Prev billed: {fmtN(si.lastBilledQty || 0)}</td>
+                                        <td style={{ padding: "3px 0", textAlign: "right", color: "#FF7A00", fontWeight: 700, fontFamily: "monospace" }}>+{fmtN(billedQty)}</td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {billableWODetails.length > 0 && (
+            <div style={{ marginTop: 16 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: "var(--nx-text-3)", marginBottom: 6 }}>Remarks (optional)</div>
+              <Input.TextArea rows={2} placeholder="Any notes for this consolidated bill request…"
+                value={billRemarks} onChange={e => setBillRemarks(e.target.value)} />
+            </div>
+          )}
+
+          {billWOIds.size > 0 && (
+            <div style={{ marginTop: 12, padding: "10px 14px", background: "#FFF4E8", border: "1px solid #FED7AA", borderRadius: 8, fontSize: 12, color: "#92400e" }}>
+              <strong>{billWOIds.size} work order{billWOIds.size !== 1 ? "s" : ""}</strong> will be included in this bill request.
+            </div>
+          )}
         </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}>
-          {billableWODetails.map(d => (
-            <label key={d._id} style={{ display: "flex", alignItems: "center", gap: 8, border: "1px solid var(--nx-border)", borderRadius: 8, padding: "8px 12px", cursor: "pointer" }}>
-              <Checkbox
-                checked={billWOIds.has(d._id)}
-                onChange={e => setBillWOIds(prev => {
-                  const next = new Set(prev);
-                  if (e.target.checked) next.add(d._id); else next.delete(d._id);
-                  return next;
-                })}
-              />
-              <div>
-                <div style={{ fontWeight: 600, fontSize: 13 }}>{d.workOrderNo}</div>
-                <div style={{ fontSize: 11, color: "var(--nx-text-muted)" }}>{d.vendorName} · {d.category}</div>
-              </div>
-            </label>
-          ))}
-        </div>
-        <Input.TextArea
-          placeholder="Remarks (optional)"
-          rows={2}
-          value={billRemarks}
-          onChange={e => setBillRemarks(e.target.value)}
-        />
       </Modal>
     </div>
   );

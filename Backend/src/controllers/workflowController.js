@@ -137,8 +137,8 @@ function assigneeKey(stage) {
 }
 
 const DEPARTMENTS = {
-  contractor: 'Site / Contractor', dri: 'Site / Engineering', engineer: 'Site / Engineering',
-  gm: 'Management', agm: 'Management', ceo: 'Management', owner: 'Management',
+  'site-dri': 'Site / Engineering',
+  gm: 'Management', agm: 'Management', owner: 'Management',
   accounts: 'Finance / Accounts',
 };
 function stageDepartment(stage) {

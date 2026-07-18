@@ -43,7 +43,7 @@ import { vendorLabel } from "../../utils/vendorLabel";
 
 // ── Types ────────────────────────────────────────────────────────
 
-type BillStatus = "draft" | "submitted" | "verified" | "approved" | "rejected" | "paid";
+type BillStatus = "draft" | "submitted" | "verified" | "approved" | "payment-initiated" | "rejected" | "paid";
 
 interface LineItem {
   key: number;
@@ -82,10 +82,15 @@ interface Bill {
   remarks?: string;
   status: BillStatus;
   submittedAt?: string;
+  agmApprovedBy?: { name: string; role: string } | null;
+  agmApprovedAt?: string;
   verifiedBy?: { name: string; role: string } | null;
   verifiedAt?: string;
   approvedBy?: { name: string; role: string } | null;
   approvedAt?: string;
+  paymentInitiatedBy?: { name: string; role: string } | null;
+  paymentInitiatedAt?: string;
+  tdsAmount?: number;
   rejectedBy?: { name: string; role: string } | null;
   rejectReason?: string;
   paymentDate?: string;
@@ -138,13 +143,16 @@ const nextKey = () => ++_key;
 
 const blankRow = (): LineItem => ({ key: nextKey(), description: "", unit: "", plannedQty: 0, billedQty: 0, rate: 0, amount: 0 });
 
+// Every pre-payment stage reads as "Hold" — only `paid` is ever shown as released,
+// per the rule that a bill must not look paid anywhere until payment actually clears.
 const STATUS_CFG: Record<BillStatus, { label: string; antColor: string }> = {
-  draft:     { label: "Draft",      antColor: "default" },
-  submitted: { label: "Submitted",  antColor: "processing" },
-  verified:  { label: "Verified",   antColor: "warning" },
-  approved:  { label: "Approved",   antColor: "success" },
-  rejected:  { label: "Rejected",   antColor: "error" },
-  paid:      { label: "Paid",       antColor: "purple" },
+  draft:              { label: "Draft",                      antColor: "default" },
+  submitted:          { label: "Hold — AGM Approved",         antColor: "processing" },
+  verified:           { label: "Hold — GM Approved",          antColor: "processing" },
+  approved:           { label: "Hold — Accounts Verified",    antColor: "warning" },
+  "payment-initiated":{ label: "Hold — Payment Initiated",    antColor: "warning" },
+  rejected:           { label: "Rejected",                    antColor: "error" },
+  paid:               { label: "Paid",                        antColor: "success" },
 };
 
 const BILL_TYPE_CFG: Record<string, { label: string; color: string }> = {
@@ -220,8 +228,18 @@ function printBill(bill: Bill, contractor: ContractorOpt | null, mode: 'pre' | '
     <div style="font-size:22px;font-weight:bold;letter-spacing:2px;color:#333">${mode === 'pre' ? 'RUNNING BILL' : 'PAYMENT RECEIPT'}</div>
     <div style="margin-top:6px;font-size:13px"><strong>Bill No:</strong> ${bill.billNo}</div>
     <div style="font-size:13px"><strong>Date:</strong> ${bill.billDate ? dayjs(bill.billDate).format("DD/MM/YYYY") : "-"}</div>
-    <div style="font-size:13px"><strong>Status:</strong> <span style="background:${mode === 'pre' ? '#f47b20' : '#16a34a'};color:#fff;padding:2px 8px;border-radius:10px;font-size:11px">${mode === 'pre' ? 'FOR PAYMENT' : 'PAID'}</span></div>
+    <div style="font-size:13px"><strong>Status:</strong> <span style="background:${mode === 'pre' ? '#f47b20' : '#16a34a'};color:#fff;padding:2px 8px;border-radius:10px;font-size:11px">${mode === 'pre' ? (STATUS_CFG[bill.status]?.label.toUpperCase() || 'ON HOLD') : 'PAID'}</span></div>
   </div>
+</div>
+
+<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px">
+  ${[
+    { label: "AGM",       done: !!bill.agmApprovedBy },
+    { label: "GM",        done: !!bill.verifiedBy },
+    { label: "Accounts",  done: !!bill.approvedBy },
+    { label: "Initiated", done: !!bill.paymentInitiatedBy },
+    { label: "Paid",      done: bill.status === "paid" },
+  ].map(s => `<span style="font-size:10px;font-weight:700;padding:3px 9px;border-radius:10px;background:${s.done ? '#f0fdf4' : '#f5f6f8'};color:${s.done ? '#16a34a' : '#9ba3b8'};border:1px solid ${s.done ? '#bbf7d0' : '#e5e7eb'}">${s.done ? '✓ ' : ''}${s.label}</span>`).join("")}
 </div>
 
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px">
@@ -351,13 +369,13 @@ ${bill.remarks ? `<div style="border:1px solid #e8e8e8;border-radius:6px;padding
 ${mode === 'pre' ? `<div style="display:flex;justify-content:space-around;margin-top:50px;padding-top:16px;border-top:1px solid #eee">
   <div style="text-align:center">
     <div style="border-top:1px solid #333;width:180px;margin:0 auto 6px"></div>
-    <p style="font-size:12px;color:#666;font-weight:600">AGM</p>
-    <p style="font-size:12px;color:#999">Neoteric Properties</p>
+    <p style="font-size:12px;color:#666;font-weight:600">AGM${bill.agmApprovedBy ? ` — ${bill.agmApprovedBy.name}` : ""}</p>
+    <p style="font-size:12px;color:#999">${bill.agmApprovedAt ? `Approved ${dayjs(bill.agmApprovedAt).format("DD/MM/YYYY")}` : "Neoteric Properties"}</p>
   </div>
   <div style="text-align:center">
     <div style="border-top:1px solid #333;width:180px;margin:0 auto 6px"></div>
-    <p style="font-size:12px;color:#666;font-weight:600">GM</p>
-    <p style="font-size:12px;color:#999">Neoteric Properties</p>
+    <p style="font-size:12px;color:#666;font-weight:600">GM${bill.verifiedBy ? ` — ${bill.verifiedBy.name}` : ""}</p>
+    <p style="font-size:12px;color:#999">${bill.verifiedAt ? `Approved ${dayjs(bill.verifiedAt).format("DD/MM/YYYY")}` : "Neoteric Properties"}</p>
   </div>
 </div>` : ""}
 
@@ -443,7 +461,7 @@ export default function Bills() {
 
   // Approve / Reject drawer
   const [actionBillId, setActionBillId] = useState<string | null>(null);
-  const [actionType, setActionType]     = useState<"approve" | "reject">("approve");
+  const [actionType, setActionType]     = useState<"verify" | "approve" | "reject">("approve");
   const [actionOpen, setActionOpen]     = useState(false);
   const [actionForm]                    = Form.useForm();
   const [actionSaving, setActionSaving] = useState(false);
@@ -453,6 +471,12 @@ export default function Bills() {
   const [payOpen, setPayOpen]     = useState(false);
   const [payForm]                 = Form.useForm();
   const [paySaving, setPaySaving] = useState(false);
+
+  // Initiate Payment (Accounts sets TDS, bill goes on hold pending release)
+  const [initiateBillId, setInitiateBillId] = useState<string | null>(null);
+  const [initiateOpen, setInitiateOpen]     = useState(false);
+  const [initiateForm]                      = Form.useForm();
+  const [initiateSaving, setInitiateSaving] = useState(false);
 
   // Edit deductions (for paid bills)
   const [dedOpen,   setDedOpen]   = useState(false);
@@ -683,7 +707,10 @@ export default function Bills() {
 
   function openAction(bill: Bill, type: "approve" | "reject") {
     setActionBillId(bill.id);
-    setActionType(type);
+    // "approve" maps to whichever stage this bill is actually waiting on — GM approval
+    // for a 'submitted' bill, or Accounts verification+approval for a 'verified' one —
+    // so this button can never skip GM's step.
+    setActionType(type === "approve" ? (bill.status === "submitted" ? "verify" : "approve") : "reject");
     actionForm.resetFields();
     setActionOpen(true);
   }
@@ -693,12 +720,14 @@ export default function Bills() {
     try {
       const values = await actionForm.validateFields();
       setActionSaving(true);
-      const endpoint = actionType === "approve" ? `/bills/${actionBillId}/approve` : `/bills/${actionBillId}/reject`;
-      const body     = actionType === "approve" ? { remarks: values.remarks } : { reason: values.reason };
+      const endpoint = actionType === "verify" ? `/bills/${actionBillId}/verify`
+        : actionType === "approve" ? `/bills/${actionBillId}/approve`
+        : `/bills/${actionBillId}/reject`;
+      const body = actionType === "reject" ? { reason: values.reason } : { remarks: values.remarks };
       const res = await apiClient.patch<{ bill: Record<string, unknown> }>(endpoint, body);
       const updated = normalizeId(res.data.bill) as unknown as Bill;
       setBills((prev) => prev.map((b) => (b.id === actionBillId ? updated : b)));
-      message.success(actionType === "approve" ? "Bill approved" : "Bill rejected");
+      message.success(actionType === "verify" ? "GM approved" : actionType === "approve" ? "Accounts verified & approved" : "Bill rejected");
       setActionOpen(false);
     } catch (err: unknown) {
       const e = err as { errorFields?: unknown; response?: { data?: { message?: string } } };
@@ -714,7 +743,11 @@ export default function Bills() {
   function openPay(bill: Bill) {
     setPayBillId(bill.id);
     payForm.resetFields();
-    payForm.setFieldsValue({ paymentDate: dayjs(), paymentMode: "neft", paidAmount: bill.amount });
+    // Default to the actual amount due: net of hold/retention and advance recovery,
+    // minus whatever TDS Accounts entered at the initiate-payment stage — not the
+    // raw gross bill amount.
+    const defaultPaid = Math.max(0, netAfterAdvance(bill) - (bill.tdsAmount || 0));
+    payForm.setFieldsValue({ paymentDate: dayjs(), paymentMode: "neft", paidAmount: defaultPaid });
     setPayOpen(true);
   }
 
@@ -744,6 +777,34 @@ export default function Bills() {
       message.error(e?.response?.data?.message || "Failed to record payment");
     } finally {
       setPaySaving(false);
+    }
+  }
+
+  // ── Initiate Payment ──────────────────────────────────────────
+
+  function openInitiate(bill: Bill) {
+    setInitiateBillId(bill.id);
+    initiateForm.resetFields();
+    setInitiateOpen(true);
+  }
+
+  async function handleInitiate() {
+    if (!initiateBillId) return;
+    try {
+      const values = await initiateForm.validateFields();
+      setInitiateSaving(true);
+      const body = { tdsAmount: values.tdsAmount || 0, remarks: values.remarks };
+      const res = await apiClient.patch<{ bill: Record<string, unknown> }>(`/bills/${initiateBillId}/initiate-payment`, body);
+      const updated = normalizeId(res.data.bill) as unknown as Bill;
+      setBills((prev) => prev.map((b) => (b.id === initiateBillId ? updated : b)));
+      message.success("Payment initiated — on hold pending release");
+      setInitiateOpen(false);
+    } catch (err: unknown) {
+      const e = err as { errorFields?: unknown; response?: { data?: { message?: string } } };
+      if (e?.errorFields) return;
+      message.error(e?.response?.data?.message || "Failed to initiate payment");
+    } finally {
+      setInitiateSaving(false);
     }
   }
 
@@ -883,7 +944,7 @@ export default function Bills() {
           {(r.status === "submitted" || r.status === "verified") && (
             <>
               <Button type="link" size="small" style={{ color: "#16a85a" }} icon={<CheckCircleOutlined />} onClick={() => openAction(r, "approve")}>
-                Approve
+                {r.status === "submitted" ? "GM Approve" : "Verify & Approve"}
               </Button>
               <Button type="link" size="small" danger icon={<CloseCircleOutlined />} onClick={() => openAction(r, "reject")}>
                 Reject
@@ -891,8 +952,13 @@ export default function Bills() {
             </>
           )}
           {r.status === "approved" && (
+            <Button type="link" size="small" style={{ color: "#3730a3", fontWeight: 700 }} icon={<DollarOutlined />} onClick={() => openInitiate(r)}>
+              Initiate Payment
+            </Button>
+          )}
+          {r.status === "payment-initiated" && (
             <Button type="link" size="small" style={{ color: "#7c3aed", fontWeight: 700 }} icon={<DollarOutlined />} onClick={() => openPay(r)}>
-              Pay
+              Release Payment
             </Button>
           )}
           <Popconfirm
@@ -1065,7 +1131,7 @@ export default function Bills() {
                     style={{ background: "#16a85a", borderColor: "#16a85a" }}
                     onClick={() => { setViewOpen(false); openAction(currentViewBill, "approve"); }}
                   >
-                    Approve
+                    {currentViewBill.status === "submitted" ? "GM Approve" : "Verify & Approve"}
                   </Button>
                   <Button danger icon={<CloseCircleOutlined />} onClick={() => { setViewOpen(false); openAction(currentViewBill, "reject"); }}>
                     Reject
@@ -1076,10 +1142,20 @@ export default function Bills() {
                 <Button
                   type="primary"
                   icon={<DollarOutlined />}
+                  style={{ background: "#3730a3", borderColor: "#3730a3" }}
+                  onClick={() => { setViewOpen(false); openInitiate(currentViewBill); }}
+                >
+                  Initiate Payment
+                </Button>
+              )}
+              {currentViewBill.status === "payment-initiated" && (
+                <Button
+                  type="primary"
+                  icon={<DollarOutlined />}
                   style={{ background: "#7c3aed", borderColor: "#7c3aed" }}
                   onClick={() => { setViewOpen(false); openPay(currentViewBill); }}
                 >
-                  Record Payment
+                  Release Payment
                 </Button>
               )}
             </Space>
@@ -1125,6 +1201,37 @@ export default function Bills() {
                 </Col>
               </Row>
             </div>
+
+            {/* Approval stage badges — who's signed off so far, live */}
+            {currentViewBill.status !== "rejected" && (
+              <div style={{ border: "1px solid #e4e7ee", borderRadius: 8, padding: "10px 14px", marginBottom: 16, background: "#fafbff" }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#5a6278", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Approval Stages</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                  {[
+                    { label: "AGM",       done: !!currentViewBill.agmApprovedBy,       by: currentViewBill.agmApprovedBy?.name,       at: currentViewBill.agmApprovedAt },
+                    { label: "GM",        done: !!currentViewBill.verifiedBy,          by: currentViewBill.verifiedBy?.name,          at: currentViewBill.verifiedAt },
+                    { label: "Accounts",  done: !!currentViewBill.approvedBy,          by: currentViewBill.approvedBy?.name,          at: currentViewBill.approvedAt },
+                    { label: "Initiated", done: !!currentViewBill.paymentInitiatedBy,  by: currentViewBill.paymentInitiatedBy?.name,  at: currentViewBill.paymentInitiatedAt },
+                    { label: "Paid",      done: currentViewBill.status === "paid",     by: currentViewBill.paymentReleasedBy,          at: currentViewBill.paymentDate },
+                  ].map(s => (
+                    <div key={s.label} style={{
+                      minWidth: 100, padding: "6px 10px", borderRadius: 8,
+                      background: s.done ? "#f0fdf4" : "#f5f6f8",
+                      border: `1px solid ${s.done ? "#bbf7d0" : "#e4e7ee"}`,
+                    }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: s.done ? "#16a85a" : "#9ba3b8", textTransform: "uppercase" }}>
+                        {s.done ? "✓ " : ""}{s.label}
+                      </div>
+                      {s.done && (
+                        <div style={{ fontSize: 11, color: "#5a6278", marginTop: 2 }}>
+                          {s.by || "—"}{s.at ? <><br />{dayjs(s.at).format("DD MMM YYYY")}</> : null}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Bill Relationship Chain */}
             {(currentViewBill.billType || currentViewBill.linkedBills?.length || currentViewBill.supersededBy) && (
@@ -1780,6 +1887,29 @@ export default function Bills() {
         )}
       </Drawer>
 
+      {/* ── Initiate Payment Modal — Accounts enters TDS, bill goes on hold ─────── */}
+      <Modal
+        open={initiateOpen}
+        onCancel={() => { setInitiateOpen(false); setInitiateBillId(null); }}
+        onOk={handleInitiate}
+        title="Initiate Payment"
+        okText="Initiate — Put on Hold"
+        okButtonProps={{ loading: initiateSaving, style: { background: "#3730a3", borderColor: "#3730a3" } }}
+        destroyOnClose
+      >
+        <Form form={initiateForm} layout="vertical">
+          <Form.Item label="TDS Amount to Deduct (₹)" name="tdsAmount">
+            <InputNumber style={{ width: "100%" }} min={0} placeholder="0" />
+          </Form.Item>
+          <Form.Item label="Remarks (optional)" name="remarks">
+            <Input.TextArea rows={2} />
+          </Form.Item>
+        </Form>
+        <div style={{ fontSize: 12, color: "#9ba3b8" }}>
+          The bill will show as "Hold — Payment Initiated" until Accounts releases the payment.
+        </div>
+      </Modal>
+
       {/* ── Pay Drawer ────────────────────────────────────────────── */}
       <Drawer
         open={payOpen}
@@ -1809,7 +1939,13 @@ export default function Bills() {
             <div style={{ background: "#f5f0ff", border: "1px solid #c4b5fd", borderRadius: 8, padding: "12px 14px", marginBottom: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <div>
                 <div style={{ fontSize: 11, color: "#9ba3b8", fontWeight: 700, textTransform: "uppercase" }}>Net Payable to Contractor</div>
-                <div style={{ fontFamily: "monospace", fontWeight: 800, fontSize: 22, color: "#7c3aed" }}>{fmt(payTarget.amount)}</div>
+                <div style={{ fontFamily: "monospace", fontWeight: 800, fontSize: 22, color: "#7c3aed" }}>{fmt(netAfterAdvance(payTarget))}</div>
+                <div style={{ fontSize: 10, color: "#9ba3b8" }}>
+                  {fmt(payTarget.amount)} gross
+                  {(payTarget.retentionAmount ?? 0) > 0 ? ` − ${fmt(payTarget.retentionAmount ?? 0)} hold` : ""}
+                  {(payTarget.advanceRecovery ?? 0) > 0 ? ` − ${fmt(payTarget.advanceRecovery ?? 0)} advance` : ""}
+                  {(payTarget.tdsAmount ?? 0) > 0 ? ` (before ${fmt(payTarget.tdsAmount ?? 0)} TDS below)` : ""}
+                </div>
               </div>
               <div style={{ textAlign: "right" }}>
                 <div style={{ fontSize: 12, fontWeight: 700 }}>{payTarget.vendorName}</div>
@@ -1891,7 +2027,10 @@ export default function Bills() {
                       const retRel  = (getFieldValue("retentionReleased") as number) || 0;
                       if (!paid || !payTarget) return null;
                       const billPart = paid - retRel;
-                      const diff     = Math.round(payTarget.amount - billPart);
+                      // Compare against the net-of-hold/advance figure, not the raw gross
+                      // amount, so this reads as "TDS only" instead of bundling in the
+                      // AGM's retention hold as if it were a deduction happening now.
+                      const diff     = Math.round(netAfterAdvance(payTarget) - billPart);
                       if (diff === 0 && retRel === 0) return null;
                       return (
                         <span style={{ color: "#6b7280", fontSize: 12 }}>

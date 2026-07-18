@@ -18,7 +18,7 @@ exports.listWorkOrders = asyncHandler(async (req, res) => {
   if (vendorCode) filter.vendorCode = vendorCode;
   if (status)     filter.status     = status;
   // DRI auto-filter: only their assigned work orders
-  if (req.user.role === 'dri' || assignedToMe === 'true') {
+  if (req.user.role === 'site-dri' || assignedToMe === 'true') {
     filter.assignedDRI = req.user._id;
   }
   if (search) {
@@ -79,7 +79,7 @@ exports.createWorkOrder = asyncHandler(async (req, res) => {
 
   // If the creator is a DRI, auto-assign them so they can see the WO in Work Progress
   const assignedDRI = Array.isArray(req.body.assignedDRI) ? [...req.body.assignedDRI] : [];
-  if (req.user.role === 'dri' && !assignedDRI.map(String).includes(String(req.user._id))) {
+  if (req.user.role === 'site-dri' && !assignedDRI.map(String).includes(String(req.user._id))) {
     assignedDRI.push(req.user._id);
   }
 

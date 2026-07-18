@@ -74,44 +74,27 @@ const ROLE_DEFAULTS: Record<string, Record<string, PermAction[]>> = {
     "user-management": ["view","create","edit","delete"], "dri-dashboard": ["view","create","edit"],
     "public-forms": ["view"], "sla-settings": ["view","create","edit","delete"], "sla-dashboard": ["view"],
   },
+  // GM's only job now is approval sign-off: reviewing work orders and the GM stage of the bill chain.
   gm: {
     dashboard: ["view"],
-    companies: ["view","create","edit"], projects: ["view","create","edit"],
-    contractors: ["view","create","edit"], categories: ["view","create","edit"],
-    "work-orders": ["view","create","edit"], "work-progress": ["view","create","edit"],
-    "bill-requests": ["view","approve"], "billing-payments": ["view","create","edit","approve"],
-    approvals: ["view","approve"], ledger: ["view"], "dri-dashboard": ["view"],
-    "sla-settings": ["view","create","edit"], "sla-dashboard": ["view"],
+    "work-orders": ["view","edit"],
+    "bill-requests": ["view"], approvals: ["view","approve"],
   },
+  // AGM reviews work orders and owns the first bill-approval stage (sets hold/advance amounts).
   agm: {
     dashboard: ["view"],
-    "work-orders": ["view","edit"], "work-progress": ["view"],
-    "bill-requests": ["view","approve"], approvals: ["view","approve"], ledger: ["view"],
-    "sla-dashboard": ["view"],
+    "work-orders": ["view","edit"],
+    "bill-requests": ["view","approve"],
   },
-  ceo: {
-    dashboard: ["view"],
-    "work-orders": ["view"], "bill-requests": ["view","approve"],
-    approvals: ["view","approve"], ledger: ["view"], "sla-dashboard": ["view"],
-  },
-  engineer: {
-    dashboard: ["view"],
-    companies: ["view"], projects: ["view"], contractors: ["view"], categories: ["view"],
-    "work-orders": ["view","create","edit"], "work-progress": ["view","create","edit"],
-    "bill-requests": ["view","request"],
-  },
+  // Accounts owns 3 of the 5 bill stages: verification, payment initiation, and release.
   accounts: {
     dashboard: ["view"],
     "billing-payments": ["view","create","edit","approve"],
     "bill-requests": ["view","approve"], approvals: ["view","approve"], ledger: ["view"],
   },
-  dri: {
-    dashboard: ["view"], "work-orders": ["view"],
-    "work-progress": ["view","create","edit"], "bill-requests": ["view","request"],
-    "dri-dashboard": ["view"],
-  },
-  contractor: {
-    dashboard: ["view"], "work-orders": ["view"], "work-progress": ["view"], "dri-dashboard": ["view"],
+  // Site DRI's whole portal is the DRI Work Dashboard — add progress + generate bill requests.
+  "site-dri": {
+    dashboard: ["view"], "dri-dashboard": ["view","create","edit"],
   },
 };
 
@@ -125,19 +108,16 @@ function permsToArray(map: Record<string, PermAction[]>): { module: string; acti
   return Object.entries(map).filter(([, a]) => a.length > 0).map(([module, actions]) => ({ module, actions }));
 }
 
-type UserRole = "owner" | "gm" | "agm" | "ceo" | "engineer" | "accounts" | "dri" | "contractor";
+type UserRole = "owner" | "gm" | "agm" | "accounts" | "site-dri";
 
 // ── Role config ───────────────────────────────────────────────────
 
 const ROLE_CFG: Record<UserRole, { label: string; color: string; description: string }> = {
   owner:      { label: "Owner / Admin",    color: "red",     description: "Full system access — all modules, user management" },
-  gm:         { label: "General Manager",  color: "purple",  description: "All modules except user management" },
-  agm:        { label: "AGM",              color: "gold",    description: "Approval-chain reviewer — work order & bill request sign-off" },
-  ceo:        { label: "CEO",              color: "volcano", description: "Final approval authority in the SLA workflow chain" },
-  engineer:   { label: "Site Engineer",    color: "blue",    description: "Work orders, progress, bill requests" },
-  accounts:   { label: "Accounts",         color: "cyan",    description: "Bills, payments, ledger" },
-  dri:        { label: "DRI (Field Eng.)", color: "orange",  description: "Work progress entry only — restricted portal" },
-  contractor: { label: "Contractor",       color: "geekblue",description: "Read-only contractor portal" },
+  gm:         { label: "General Manager",  color: "purple",  description: "Approvals only — work order sign-off & GM stage of bill approval" },
+  agm:        { label: "AGM",              color: "gold",    description: "Approvals only — work order sign-off & first stage of bill approval" },
+  accounts:   { label: "Accounts",         color: "cyan",    description: "Bills, payments, ledger — verification, payment initiation & release" },
+  "site-dri": { label: "Site DRI",         color: "orange",  description: "DRI Work Dashboard — add progress & generate bill requests" },
 };
 
 const ROLE_OPTIONS = Object.entries(ROLE_CFG).map(([value, { label, description }]) => ({
@@ -150,11 +130,8 @@ const AVATAR_COLORS: Record<UserRole, string> = {
   owner:      "#f37916",
   gm:         "#7c3aed",
   agm:        "#c9a227",
-  ceo:        "#c2410c",
-  engineer:   "#1677ff",
   accounts:   "#0891b2",
-  dri:        "#d4620c",
-  contractor: "#3b5bdb",
+  "site-dri": "#d4620c",
 };
 
 // ── Helpers ───────────────────────────────────────────────────────
@@ -401,8 +378,8 @@ export default function UserManagement() {
   function openCreate() {
     setEditUser(null);
     form.resetFields();
-    form.setFieldsValue({ isActive: true, role: "engineer" });
-    resetPermsForRole("engineer");
+    form.setFieldsValue({ isActive: true, role: "site-dri" });
+    resetPermsForRole("site-dri");
     setDrawerOpen(true);
   }
 
@@ -821,8 +798,8 @@ export default function UserManagement() {
             <ModulePermsGrid
               perms={perms}
               onToggle={togglePerm}
-              onReset={() => resetPermsForRole(form.getFieldValue("role") as string ?? "engineer")}
-              currentRole={form.getFieldValue("role") as string ?? "engineer"}
+              onReset={() => resetPermsForRole(form.getFieldValue("role") as string ?? "site-dri")}
+              currentRole={form.getFieldValue("role") as string ?? "site-dri"}
             />
           </div>
 

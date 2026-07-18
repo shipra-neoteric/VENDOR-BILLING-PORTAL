@@ -18,14 +18,13 @@ const stage = (name, assignedRole, slaHours) => ({
 const TEMPLATES = [
   {
     name: 'Work Order Sign-off Chain',
-    description: 'Contractor sign-off through final CEO approval on newly created work orders.',
+    description: 'AGM through final Owner approval on newly created work orders.',
     entityType: 'WorkOrder',
     isActive: true,
     stages: [
-      stage('Contractor Sign-off', 'contractor', 48),
       stage('AGM Approval', 'agm', 24),
       stage('GM Approval', 'gm', 24),
-      stage('CEO Approval', 'ceo', 48),
+      stage('Final Approval', 'owner', 48),
     ],
   },
   {
@@ -36,8 +35,7 @@ const TEMPLATES = [
     stages: [
       stage('AGM Approval', 'agm', 24),
       stage('GM Approval', 'gm', 24),
-      stage('Accounts Verification', 'accounts', 48),
-      stage('Accounts Final Approval', 'accounts', 24),
+      stage('Accounts Verification & Approval', 'accounts', 48),
       stage('Payment Initiated', 'accounts', 24),
       stage('Payment Released', 'accounts', 48),
     ],

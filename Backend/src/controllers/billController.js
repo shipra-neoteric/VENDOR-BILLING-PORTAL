@@ -6,6 +6,16 @@ const asyncHandler = require('../utils/asyncHandler');
 const { success, created, notFound, badRequest } = require('../utils/responseFormatter');
 const { nextBillNo } = require('../utils/codeGen');
 const emitEvent    = require('../utils/emitEvent');
+const { advanceInstance, cancelInstance } = require('../utils/slaEngine');
+
+// Advances the SLA tracker for whichever BillRequest generated this RunningBill —
+// no-ops silently if there's no linked request or no in-progress instance, so it's
+// safe to call unconditionally from every stage-transition action below.
+async function advanceBillRequestInstance(bill, actorUserId, remarks) {
+  const br = await BillRequest.findOne({ billId: bill._id }).select('_id');
+  if (!br) return;
+  await advanceInstance('BillRequest', br._id, actorUserId, remarks);
+}
 
 exports.listBills = asyncHandler(async (req, res) => {
   const { workOrderId, vendorCode, projectId, status, search, archived } = req.query;
@@ -27,8 +37,10 @@ exports.listBills = asyncHandler(async (req, res) => {
   }
 
   const bills = await RunningBill.find(filter)
+    .populate('agmApprovedBy', 'name role')
     .populate('verifiedBy', 'name role')
     .populate('approvedBy', 'name role')
+    .populate('paymentInitiatedBy', 'name role')
     .populate('rejectedBy', 'name role')
     .sort({ createdAt: -1 })
     .lean();
@@ -38,8 +50,10 @@ exports.listBills = asyncHandler(async (req, res) => {
 
 exports.getBill = asyncHandler(async (req, res) => {
   const bill = await RunningBill.findById(req.params.id)
+    .populate('agmApprovedBy', 'name role')
     .populate('verifiedBy', 'name role')
     .populate('approvedBy', 'name role')
+    .populate('paymentInitiatedBy', 'name role')
     .populate('rejectedBy', 'name role')
     .lean();
   if (!bill) return notFound(res, 'Bill not found');
@@ -137,6 +151,7 @@ exports.updateBill = asyncHandler(async (req, res) => {
   success(res, { bill }, 'Bill updated successfully');
 });
 
+// Stage 2 — GM approval.
 exports.verifyBill = asyncHandler(async (req, res) => {
   const bill = await RunningBill.findById(req.params.id);
   if (!bill) return notFound(res, 'Bill not found');
@@ -149,6 +164,7 @@ exports.verifyBill = asyncHandler(async (req, res) => {
   if (req.body.remarks) bill.remarks = req.body.remarks;
   await bill.save();
   await bill.populate('verifiedBy', 'name role');
+  await advanceBillRequestInstance(bill, req.user._id, 'GM approved');
 
   emitEvent('RUNNING_BILL_VERIFIED', {
     projectId:    bill.projectId,
@@ -161,9 +177,10 @@ exports.verifyBill = asyncHandler(async (req, res) => {
     metadata:     { billNo: bill.billNo, amount: bill.amount },
   });
 
-  success(res, { bill }, 'Bill verified — forwarded for approval');
+  success(res, { bill }, 'GM approved — forwarded to Accounts for verification');
 });
 
+// Stage 3 — Accounts verifies the work order/bill match and approves.
 exports.approveBill = asyncHandler(async (req, res) => {
   const bill = await RunningBill.findById(req.params.id);
   if (!bill) return notFound(res, 'Bill not found');
@@ -176,6 +193,7 @@ exports.approveBill = asyncHandler(async (req, res) => {
   if (req.body.remarks) bill.remarks = req.body.remarks;
   await bill.save();
   await bill.populate('approvedBy', 'name role');
+  await advanceBillRequestInstance(bill, req.user._id, 'Accounts verified & approved');
 
   emitEvent('RUNNING_BILL_APPROVED', {
     projectId:     bill.projectId,
@@ -188,7 +206,39 @@ exports.approveBill = asyncHandler(async (req, res) => {
     metadata:      { billNo: bill.billNo, amount: bill.amount },
   });
 
-  success(res, { bill }, 'Bill approved and certified');
+  success(res, { bill }, 'Accounts verified & approved — ready for payment initiation');
+});
+
+// Stage 4 — Accounts initiates payment: enters TDS to deduct, bill goes on hold
+// pending release.
+exports.initiatePayment = asyncHandler(async (req, res) => {
+  const bill = await RunningBill.findById(req.params.id);
+  if (!bill) return notFound(res, 'Bill not found');
+  if (bill.status !== 'approved') {
+    return badRequest(res, `Cannot initiate payment for a bill with status '${bill.status}'`);
+  }
+  bill.status = 'payment-initiated';
+  bill.paymentInitiatedBy = req.user._id;
+  bill.paymentInitiatedAt = new Date();
+  if (req.body.tdsPercent != null) bill.tdsPercent = Number(req.body.tdsPercent);
+  if (req.body.tdsAmount  != null) bill.tdsAmount  = Number(req.body.tdsAmount);
+  if (req.body.remarks) bill.remarks = req.body.remarks;
+  await bill.save();
+  await bill.populate('paymentInitiatedBy', 'name role');
+  await advanceBillRequestInstance(bill, req.user._id, 'Payment initiated');
+
+  emitEvent('PAYMENT_INITIATED', {
+    projectId:     bill.projectId,
+    workOrderId:   bill.workOrderId,
+    workOrderNo:   bill.workOrderNo,
+    runningBillId: bill._id,
+    vendorCode:    bill.vendorCode,
+    vendorName:    bill.vendorName,
+    user:          req.user,
+    metadata:      { billNo: bill.billNo, amount: bill.amount, tdsAmount: bill.tdsAmount },
+  });
+
+  success(res, { bill }, 'Payment initiated — on hold pending release');
 });
 
 exports.rejectBill = asyncHandler(async (req, res) => {
@@ -209,6 +259,7 @@ exports.rejectBill = asyncHandler(async (req, res) => {
     br.status = 'rejected';
     br.rejectReason = req.body.reason || 'Bill rejected in Billing & Payments';
     await br.save();
+    await cancelInstance('BillRequest', br._id, `Rejected: ${br.rejectReason}`);
 
     if (bill.workOrderId) {
       const wo = await WorkOrder.findById(bill.workOrderId);
@@ -230,11 +281,12 @@ exports.rejectBill = asyncHandler(async (req, res) => {
   success(res, { bill }, 'Bill rejected');
 });
 
+// Stage 5 — Accounts releases payment (final).
 exports.payBill = asyncHandler(async (req, res) => {
   const bill = await RunningBill.findById(req.params.id);
   if (!bill) return notFound(res, 'Bill not found');
-  if (bill.status !== 'approved') {
-    return badRequest(res, 'Only approved bills can be marked as paid');
+  if (bill.status !== 'payment-initiated') {
+    return badRequest(res, 'Payment must be initiated (TDS entered) before it can be released');
   }
   bill.status = 'paid';
   if (req.body.paymentUTR)        bill.paymentUTR        = req.body.paymentUTR;
@@ -247,6 +299,18 @@ exports.payBill = asyncHandler(async (req, res) => {
   if (req.body.retentionReleased != null) bill.retentionReleased     = Number(req.body.retentionReleased);
   if (req.body.retentionReleaseRemark)  bill.retentionReleaseRemark  = req.body.retentionReleaseRemark;
   await bill.save();
+  await advanceBillRequestInstance(bill, req.user._id, 'Payment released');
+
+  // Keep the originating BillRequest's own "done" flag in sync — payment can be
+  // released from here (Billing & Payments) or from the BillRequests page's own
+  // "Release Payment" action; whichever one runs first must mark both as complete
+  // so the other page doesn't keep showing a stale, already-actioned button.
+  const br = await BillRequest.findOne({ billId: bill._id });
+  if (br && !br.milestoneAchieved) {
+    br.milestoneAchieved = true;
+    br.milestoneDate = bill.paymentDate || new Date();
+    await br.save();
+  }
 
   emitEvent('PAYMENT_RELEASED', {
     projectId:     bill.projectId,
@@ -267,8 +331,10 @@ exports.getBillingChain = asyncHandler(async (req, res) => {
   const { workOrderId } = req.params;
   const bills = await RunningBill.find({ workOrderId })
     .populate('supersededBy', 'billNo billType')
+    .populate('agmApprovedBy', 'name role')
     .populate('verifiedBy',   'name role')
     .populate('approvedBy',   'name role')
+    .populate('paymentInitiatedBy', 'name role')
     .sort({ billingCycle: 1, createdAt: 1 })
     .lean();
   success(res, { bills });

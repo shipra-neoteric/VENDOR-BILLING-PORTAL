@@ -26,6 +26,9 @@ export const approveBill = (id: string, remarks?: string) =>
 export const rejectBill = (id: string, reason: string) =>
   apiClient.patch(`/bills/${id}/reject`, { reason });
 
+export const initiatePayment = (id: string, data: { tdsPercent?: number; tdsAmount?: number; remarks?: string }) =>
+  apiClient.patch(`/bills/${id}/initiate-payment`, data);
+
 export const payBill = (id: string, paymentData: {
   paymentUTR?: string;
   paymentChequeNo?: string;

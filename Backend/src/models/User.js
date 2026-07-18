@@ -8,8 +8,8 @@ const userSchema = new mongoose.Schema(
     password: { type: String, required: true, minlength: 6, select: false },
     role: {
       type: String,
-      enum: ['owner', 'gm', 'agm', 'ceo', 'engineer', 'accounts', 'contractor', 'dri'],
-      default: 'engineer',
+      enum: ['owner', 'gm', 'agm', 'accounts', 'site-dri'],
+      default: 'site-dri',
     },
     vendorCode: { type: String, default: null },
     isActive: { type: Boolean, default: true },

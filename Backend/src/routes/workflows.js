@@ -12,10 +12,10 @@ router.post('/templates',    authorizeOr('sla-settings', 'create', 'owner', 'gm'
 router.put('/templates/:id', authorizeOr('sla-settings', 'edit', 'owner', 'gm'), updateTemplate);
 router.delete('/templates/:id', authorizeOr('sla-settings', 'delete', 'owner', 'gm'), deleteTemplate);
 
-router.get('/instances',     authorizeOr('sla-dashboard', 'view', 'owner', 'gm', 'agm', 'ceo', 'accounts', 'engineer', 'dri'), listInstances);
-router.get('/instances/:id', authorizeOr('sla-dashboard', 'view', 'owner', 'gm', 'agm', 'ceo', 'accounts', 'engineer', 'dri'), getInstance);
+router.get('/instances',     authorizeOr('sla-dashboard', 'view', 'owner', 'gm', 'agm', 'accounts', 'site-dri'), listInstances);
+router.get('/instances/:id', authorizeOr('sla-dashboard', 'view', 'owner', 'gm', 'agm', 'accounts', 'site-dri'), getInstance);
 router.patch('/instances/:id/complete-stage', completeStage); // stage-assignment check happens in the controller
 
-router.get('/mis-report', authorizeOr('sla-dashboard', 'view', 'owner', 'gm', 'agm', 'ceo', 'accounts', 'engineer', 'dri'), getMISReport);
+router.get('/mis-report', authorizeOr('sla-dashboard', 'view', 'owner', 'gm', 'agm', 'accounts', 'site-dri'), getMISReport);
 
 module.exports = router;
