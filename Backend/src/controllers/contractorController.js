@@ -16,7 +16,10 @@ exports.listContractors = asyncHandler(async (req, res) => {
       { mobile:      { $regex: search, $options: 'i' } },
     ];
   }
-  const contractors = await Contractor.find(filter).sort({ createdAt: -1 });
+  // Sort by vendor code (zero-padded, so this is also numeric order) rather than
+  // createdAt — imports/edits can leave createdAt out of step with the code sequence,
+  // which is what a user actually expects a "vendor list" to be ordered by.
+  const contractors = await Contractor.find(filter).sort({ vendorCode: -1 });
   success(res, { contractors });
 });
 
