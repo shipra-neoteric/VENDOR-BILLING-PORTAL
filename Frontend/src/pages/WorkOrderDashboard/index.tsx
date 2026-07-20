@@ -26,6 +26,7 @@ interface WODetail {
   category: string; subCategory?: string; contractValue: number;
   gstPercent?: number;
   issueDate: string; status: string;
+  cancelReason?: string; cancelledAt?: string;
   scopeItems: ScopeItem[];
 }
 
@@ -247,8 +248,8 @@ export default function WorkOrderDashboard() {
     }))
   ).sort((a, b) => dayjs(b.date).valueOf() - dayjs(a.date).valueOf());
 
-  const woStatus = wo.status === "in-progress" ? "In Progress" : wo.status === "completed" ? "Completed" : wo.status === "issued" ? "Issued" : "Draft";
-  const woStatusColor = wo.status === "in-progress" ? "#f59e0b" : wo.status === "completed" ? "#16a34a" : "#6B7280";
+  const woStatus = wo.status === "cancelled" ? "Cancelled" : wo.status === "in-progress" ? "In Progress" : wo.status === "completed" ? "Completed" : wo.status === "issued" ? "Issued" : "Draft";
+  const woStatusColor = wo.status === "cancelled" ? "#dc2626" : wo.status === "in-progress" ? "#f59e0b" : wo.status === "completed" ? "#16a34a" : "#6B7280";
 
   return (
     <div style={{ maxWidth: 1100, margin: "0 auto", padding: "24px" }}>
@@ -274,6 +275,15 @@ export default function WorkOrderDashboard() {
             </div>
           </div>
         </div>
+        {wo.status === "cancelled" && (
+          <div style={{ marginTop: 14, background: "#FEF2F2", border: "1px solid #FCA5A5", borderRadius: 10, padding: "10px 14px" }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#dc2626", textTransform: "uppercase", letterSpacing: "0.05em" }}>Work Order Cancelled</div>
+            <div style={{ fontSize: 13, color: "#7f1d1d", marginTop: 2 }}>
+              {wo.cancelReason || "No remark provided"}
+              {wo.cancelledAt && <span style={{ color: "#b91c1c", marginLeft: 8 }}>({fmtDate(wo.cancelledAt)})</span>}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Stats Cards */}

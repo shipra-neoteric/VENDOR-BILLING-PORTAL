@@ -195,6 +195,31 @@ exports.updateWorkOrder = asyncHandler(async (req, res) => {
   success(res, { workOrder }, 'Work order updated successfully');
 });
 
+exports.cancelWorkOrder = asyncHandler(async (req, res) => {
+  const { remark } = req.body;
+  if (!remark || !remark.trim()) return badRequest(res, 'A remark is required to cancel a work order');
+
+  const workOrder = await WorkOrder.findById(req.params.id);
+  if (!workOrder) return notFound(res, 'Work order not found');
+  if (workOrder.status === 'cancelled') return badRequest(res, 'Work order is already cancelled');
+
+  const previousStatus = workOrder.status;
+  workOrder.status       = 'cancelled';
+  workOrder.cancelReason = remark.trim();
+  workOrder.cancelledBy  = req.user._id;
+  workOrder.cancelledAt  = new Date();
+  await workOrder.save();
+
+  await logAudit({
+    action: 'UPDATE', module: 'work-orders', user: req.user,
+    description: `Cancelled work order ${workOrder.workOrderNo}: ${remark.trim()}`,
+    entityType: 'WorkOrder', entityId: workOrder._id, entityLabel: workOrder.workOrderNo,
+    changes: { status: { from: previousStatus, to: 'cancelled' } },
+  });
+
+  success(res, { workOrder }, 'Work order cancelled');
+});
+
 exports.deleteWorkOrder = asyncHandler(async (req, res) => {
   const workOrder = await WorkOrder.findById(req.params.id);
   if (!workOrder) return notFound(res, 'Work order not found');
@@ -210,6 +235,7 @@ exports.deleteWorkOrder = asyncHandler(async (req, res) => {
 exports.addScopeProgress = asyncHandler(async (req, res) => {
   const workOrder = await WorkOrder.findById(req.params.id);
   if (!workOrder) return notFound(res, 'Work order not found');
+  if (workOrder.status === 'cancelled') return badRequest(res, 'Cannot add progress to a cancelled work order');
 
   const item = workOrder.scopeItems.id(req.params.itemId);
   if (!item) return notFound(res, 'Scope item not found');

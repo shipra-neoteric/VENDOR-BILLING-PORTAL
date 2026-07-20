@@ -114,7 +114,7 @@ export interface ScopeItem {
   subItems: ScopeSubItem[];
 }
 
-export type WorkOrderStatus = "draft" | "issued" | "in-progress" | "completed";
+export type WorkOrderStatus = "draft" | "issued" | "in-progress" | "completed" | "cancelled";
 
 export type WorkCategory =
   | "Civil / RCC"
@@ -165,6 +165,9 @@ export interface WorkOrder {
   paymentMilestones?: PaymentMilestone[];
   warrantyTerms?: string[];
   status: WorkOrderStatus;
+  cancelReason?: string;
+  cancelledBy?: { _id: string; name: string; email?: string } | string;
+  cancelledAt?: string;
   createdAt?: string;
   createdBy?: { _id: string; name: string; email?: string } | string;
 }

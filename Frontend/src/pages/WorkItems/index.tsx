@@ -33,6 +33,7 @@ import {
   HistoryOutlined,
   FilePdfOutlined,
   MoreOutlined,
+  StopOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 import type { Dayjs } from "dayjs";
@@ -69,6 +70,7 @@ const STATUS_CFG: Record<WorkOrderStatus, { color: string; label: string }> = {
   issued:        { color: "blue",    label: "Issued" },
   "in-progress": { color: "orange",  label: "In Progress" },
   completed:     { color: "green",   label: "Completed" },
+  cancelled:     { color: "red",     label: "Cancelled" },
 };
 
 const STATUS_OPTIONS = [
@@ -1477,6 +1479,9 @@ export default function WorkItems() {
   const [selectedWOId, setSelectedWOId] = useState<string | null>(null);
   const [drawerOpen,   setDrawerOpen]   = useState(false);
   const [docsRecord,   setDocsRecord]   = useState<WorkOrder | null>(null);
+  const [cancelRecord,    setCancelRecord]    = useState<WorkOrder | null>(null);
+  const [cancelRemark,    setCancelRemark]    = useState("");
+  const [cancelSubmitting, setCancelSubmitting] = useState(false);
   const currentSelectedWO = useMemo(
     () => workOrders.find(wo => wo.id === selectedWOId) || null,
     [workOrders, selectedWOId]
@@ -1803,6 +1808,27 @@ export default function WorkItems() {
     }
   };
 
+  const handleCancelWorkOrder = async () => {
+    if (!cancelRecord) return;
+    if (!cancelRemark.trim()) {
+      message.error("Please enter a remark for cancellation");
+      return;
+    }
+    setCancelSubmitting(true);
+    try {
+      const res = await apiClient.patch<{ workOrder: WorkOrder }>(`/work-orders/${cancelRecord.id}/cancel`, { remark: cancelRemark.trim() });
+      setWorkOrders(prev => prev.map(w => w.id === cancelRecord.id ? normalizeWO(res.data.workOrder) : w));
+      message.success(`Work order ${cancelRecord.workOrderNo} cancelled`);
+      setCancelRecord(null);
+      setCancelRemark("");
+    } catch (e: unknown) {
+      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message || "Failed to cancel work order";
+      message.error(msg);
+    } finally {
+      setCancelSubmitting(false);
+    }
+  };
+
   const handleDelete = async (wo: WorkOrder) => {
     try {
       await apiClient.delete(`/work-orders/${wo.id}`);
@@ -1938,10 +1964,12 @@ export default function WorkItems() {
       width: 110,
       render: (_: unknown, record: WorkOrder) => {
         const docCount = getWorkOrderDocuments(record).length;
+        const canCancel = record.status !== "cancelled" && record.status !== "completed";
         const menuItems: MenuProps["items"] = [
           { key: "edit", label: "Edit", icon: <EditOutlined /> },
           { key: "pdf-hindi", label: "Download PDF (Hindi)", icon: <FilePdfOutlined /> },
           ...(docCount > 0 ? [{ key: "doc", label: `Documents (${docCount})`, icon: <LinkOutlined /> }] : []),
+          ...(canCancel ? [{ key: "cancel", label: "Cancel Work Order", icon: <StopOutlined />, danger: true }] : []),
           ...(isOwner ? [{ key: "delete", label: "Delete", icon: <DeleteOutlined />, danger: true }] : []),
         ];
         const onMenuClick: MenuProps["onClick"] = ({ key }) => {
@@ -1951,6 +1979,9 @@ export default function WorkItems() {
             handleDownloadPDFHindi(record);
           } else if (key === "doc") {
             setDocsRecord(record);
+          } else if (key === "cancel") {
+            setCancelRemark("");
+            setCancelRecord(record);
           } else if (key === "delete") {
             Modal.confirm({
               title: `Delete ${record.workOrderNo}?`,
@@ -2063,6 +2094,7 @@ export default function WorkItems() {
               { label: "Issued",        value: "issued" },
               { label: "In Progress",   value: "in-progress" },
               { label: "Completed",     value: "completed" },
+              { label: "Cancelled",     value: "cancelled" },
             ]}
           />
 
@@ -2346,6 +2378,16 @@ export default function WorkItems() {
                   {STATUS_CFG[currentSelectedWO.status]?.label}
                 </Tag>
               </Descriptions.Item>
+              {currentSelectedWO.status === "cancelled" && (
+                <Descriptions.Item label="Cancellation Remark" span={2}>
+                  <span style={{ color: "#cf1322" }}>{currentSelectedWO.cancelReason || "—"}</span>
+                  {currentSelectedWO.cancelledAt && (
+                    <span style={{ color: "#9ba3b8", marginLeft: 8, fontSize: 12 }}>
+                      ({dayjs(currentSelectedWO.cancelledAt).format("DD MMM YYYY, hh:mm a")})
+                    </span>
+                  )}
+                </Descriptions.Item>
+              )}
               <Descriptions.Item label="Vendor Code">
                 <span style={{ fontFamily: "monospace", background: "#eff4ff", color: "#2563eb", padding: "2px 7px", borderRadius: 4, fontWeight: 600 }}>
                   {currentSelectedWO.vendorCode}
@@ -2672,6 +2714,28 @@ export default function WorkItems() {
             </a>
           ))}
         </div>
+      </Modal>
+
+      <Modal
+        open={!!cancelRecord}
+        onCancel={() => { setCancelRecord(null); setCancelRemark(""); }}
+        onOk={handleCancelWorkOrder}
+        okText="Cancel Work Order"
+        okType="danger"
+        okButtonProps={{ loading: cancelSubmitting, disabled: !cancelRemark.trim() }}
+        cancelText="Back"
+        title={`Cancel Work Order — ${cancelRecord?.workOrderNo ?? ""}`}
+      >
+        <p style={{ color: "#5a6278", marginBottom: 10 }}>
+          This marks the work order as <strong>Cancelled</strong>. Existing bills/progress are not deleted, but no further
+          progress or billing should be added against it. A remark is required.
+        </p>
+        <Input.TextArea
+          rows={3}
+          placeholder="Reason for cancelling this work order…"
+          value={cancelRemark}
+          onChange={e => setCancelRemark(e.target.value)}
+        />
       </Modal>
     </PageShell>
   );

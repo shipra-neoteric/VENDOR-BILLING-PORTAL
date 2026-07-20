@@ -99,9 +99,12 @@ const workOrderSchema = new mongoose.Schema(
     warrantyTerms:     [{ type: String }],
     status: {
       type: String,
-      enum: ['draft', 'issued', 'in-progress', 'completed'],
+      enum: ['draft', 'issued', 'in-progress', 'completed', 'cancelled'],
       default: 'draft',
     },
+    cancelReason: { type: String },
+    cancelledBy:  { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    cancelledAt:  { type: Date },
     assignedDRI: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },
