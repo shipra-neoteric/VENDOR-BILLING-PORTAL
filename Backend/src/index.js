@@ -58,6 +58,7 @@ app.use('/api/users',        require('./routes/users'));
 app.use('/api/workflows',    require('./routes/workflows'));
 app.use('/api/dpr',          require('./routes/dpr'));
 app.use('/api/report-schedules', require('./routes/reportSchedules'));
+app.use('/api/audit-logs',   require('./routes/auditLogs'));
 
 app.get('/api/health', (_req, res) =>
   res.json({ success: true, status: 'ok', timestamp: new Date().toISOString() })

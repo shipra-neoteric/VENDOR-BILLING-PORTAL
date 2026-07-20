@@ -3,6 +3,8 @@ const WorkOrder    = require('../models/WorkOrder');
 const Contractor   = require('../models/Contractor');
 const Project      = require('../models/Project');
 const Company      = require('../models/Company');
+const BillRequest  = require('../models/BillRequest');
+const RunningBill  = require('../models/RunningBill');
 const asyncHandler = require('../utils/asyncHandler');
 const { success, created, notFound, badRequest, conflict } = require('../utils/responseFormatter');
 const { nextWorkOrderNo } = require('../utils/codeGen');
@@ -10,6 +12,22 @@ const emitEvent    = require('../utils/emitEvent');
 const { startInstance } = require('../utils/slaEngine');
 const { milestonesExceedContract } = require('../utils/validateMilestones');
 const { documentsExceedLimit } = require('../utils/validateDocuments');
+const { logAudit, diffFields } = require('../utils/auditLog');
+
+// Per-scope-item rate/plannedQty diff, keyed by scope item _id — this is what actually
+// matters for an audit trail: did someone change the rate or planned qty on a line
+// item that bills have already been raised against.
+function diffScopeItems(before, after) {
+  const changes = {};
+  const beforeById = new Map((before || []).map(si => [String(si._id), si]));
+  for (const si of after || []) {
+    const prev = beforeById.get(String(si._id));
+    if (!prev) continue;
+    const itemChanges = diffFields(prev, si, ['rate', 'plannedQty', 'description']);
+    if (itemChanges) changes[si.description || String(si._id)] = itemChanges;
+  }
+  return Object.keys(changes).length ? changes : null;
+}
 
 exports.listWorkOrders = asyncHandler(async (req, res) => {
   const { projectId, vendorCode, status, search, assignedToMe } = req.query;
@@ -126,12 +144,54 @@ exports.updateWorkOrder = asyncHandler(async (req, res) => {
   const docCheck = documentsExceedLimit(updateData.documents);
   if (docCheck.exceeds) return badRequest(res, docCheck.reason);
 
+  const before = await WorkOrder.findById(req.params.id).lean();
+  if (!before) return notFound(res, 'Work order not found');
+
   const workOrder = await WorkOrder.findByIdAndUpdate(
     req.params.id,
     { $set: updateData },
     { new: true, runValidators: true }
   );
   if (!workOrder) return notFound(res, 'Work order not found');
+
+  const after = workOrder.toObject();
+  const topLevelChanges = diffFields(before, after, ['contractValue', 'retentionPercent', 'gstPercent', 'status']);
+  const scopeItemChanges = diffScopeItems(before.scopeItems, after.scopeItems);
+  const changes = (topLevelChanges || scopeItemChanges) ? { ...topLevelChanges, ...(scopeItemChanges ? { scopeItems: scopeItemChanges } : {}) } : null;
+  if (changes) {
+    await logAudit({
+      action: 'UPDATE', module: 'work-orders', user: req.user,
+      description: `Updated work order ${workOrder.workOrderNo}`,
+      entityType: 'WorkOrder', entityId: workOrder._id, entityLabel: workOrder.workOrderNo,
+      changes,
+    });
+  }
+
+  // Keep already-generated bills/bill-requests in sync when a work order's project
+  // assignment (or just its location label) changes — otherwise the old project keeps
+  // showing stale paid/certified amounts for money that's actually moved elsewhere.
+  const projectChanged = String(before.projectId || '') !== String(after.projectId || '');
+  const locationChanged = (before.projectLocation || '') !== (after.projectLocation || '');
+  if (projectChanged || locationChanged) {
+    const projectUpdate = {
+      projectId: after.projectId,
+      projectName: after.projectName,
+      projectLocation: after.projectLocation,
+    };
+    const [brResult, rbResult] = await Promise.all([
+      BillRequest.updateMany({ workOrderId: workOrder._id }, projectUpdate),
+      RunningBill.updateMany({ workOrderId: workOrder._id }, projectUpdate),
+    ]);
+    const totalSynced = (brResult.modifiedCount || 0) + (rbResult.modifiedCount || 0);
+    if (totalSynced > 0) {
+      await logAudit({
+        action: 'UPDATE', module: 'work-orders', user: req.user,
+        description: `Synced project reassignment (${before.projectName || '—'} → ${after.projectName || '—'}) to ${totalSynced} existing bill(s)/request(s) for ${workOrder.workOrderNo}`,
+        entityType: 'WorkOrder', entityId: workOrder._id, entityLabel: workOrder.workOrderNo,
+      });
+    }
+  }
+
   success(res, { workOrder }, 'Work order updated successfully');
 });
 
@@ -139,6 +199,11 @@ exports.deleteWorkOrder = asyncHandler(async (req, res) => {
   const workOrder = await WorkOrder.findById(req.params.id);
   if (!workOrder) return notFound(res, 'Work order not found');
   await workOrder.deleteOne();
+  await logAudit({
+    action: 'DELETE', module: 'work-orders', user: req.user,
+    description: `Deleted work order ${workOrder.workOrderNo}`,
+    entityType: 'WorkOrder', entityId: workOrder._id, entityLabel: workOrder.workOrderNo,
+  });
   success(res, null, `Work order ${workOrder.workOrderNo} deleted`);
 });
 

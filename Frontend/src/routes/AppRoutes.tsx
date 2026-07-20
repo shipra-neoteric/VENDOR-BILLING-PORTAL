@@ -20,6 +20,7 @@ import PublicForms          from "../pages/PublicForms";
 import SlaSettings          from "../pages/SlaSettings";
 import SlaSettingsDetail    from "../pages/SlaSettings/Detail";
 import SlaDashboard         from "../pages/SlaDashboard";
+import AuditLogs            from "../pages/AuditLogs";
 import Login                from "../features/auth";
 
 import MainLayout     from "../layouts/MainLayout/MainLayout";
@@ -88,6 +89,7 @@ function AdminRoutes() {
           <Route path="/sla-settings"    element={<SlaSettings />} />
           <Route path="/sla-settings/:id" element={<SlaSettingsDetail />} />
           <Route path="/sla-dashboard"   element={<SlaDashboard />} />
+          <Route path="/audit-logs"      element={<AuditLogs />} />
           <Route path="*"                element={<Navigate to={defaultPath} replace />} />
         </Route>
       </Route>

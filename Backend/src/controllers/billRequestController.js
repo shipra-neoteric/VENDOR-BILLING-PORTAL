@@ -5,6 +5,7 @@ const asyncHandler = require('../utils/asyncHandler');
 const { success, created, notFound, badRequest, forbidden } = require('../utils/responseFormatter');
 const emitEvent   = require('../utils/emitEvent');
 const { startInstance, advanceInstance, cancelInstance } = require('../utils/slaEngine');
+const { logAudit } = require('../utils/auditLog');
 
 async function nextReqNo() {
   const last = await BillRequest.findOne().sort({ createdAt: -1 }).select('reqNo');
@@ -227,6 +228,13 @@ exports.approveBillRequest = asyncHandler(async (req, res) => {
 
   await advanceInstance('BillRequest', br._id, req.user._id, 'Approved');
 
+  await logAudit({
+    action: 'APPROVE', module: 'bill-requests', user: req.user,
+    description: `Approved ${br.reqNo} — generated bill ${billNo} (₹${totalAmount.toLocaleString('en-IN')})`,
+    entityType: 'BillRequest', entityId: br._id, entityLabel: br.reqNo,
+    changes: { retentionAmount: { from: null, to: retentionAmount }, advanceRecovery: { from: null, to: advanceRecovery } },
+  });
+
   success(res, { billRequest: br, bill: runningBill }, `Approved — Bill ${billNo} generated for Stage ${br.stageNo}`);
 });
 
@@ -267,6 +275,12 @@ exports.rejectBillRequest = asyncHandler(async (req, res) => {
   });
 
   await cancelInstance('BillRequest', br._id, `Rejected: ${br.rejectReason}`);
+
+  await logAudit({
+    action: 'REJECT', module: 'bill-requests', user: req.user,
+    description: `Rejected ${br.reqNo}${br.rejectReason ? ` — ${br.rejectReason}` : ''}`,
+    entityType: 'BillRequest', entityId: br._id, entityLabel: br.reqNo,
+  });
 
   success(res, { billRequest: br }, `Stage ${br.stageNo} rejected — DRI can re-submit after corrections`);
 });
@@ -324,6 +338,12 @@ exports.markMilestone = asyncHandler(async (req, res) => {
       : slip.amountRecovered > 0 ? 'partial' : 'outstanding';
     await slip.save();
   }
+
+  await logAudit({
+    action: 'APPROVE', module: 'bill-requests', user: req.user,
+    description: `Payment released for ${br.reqNo}${br.billId?.billNo ? ` (bill ${br.billId.billNo})` : ''}`,
+    entityType: 'BillRequest', entityId: br._id, entityLabel: br.reqNo,
+  });
 
   success(res, { billRequest: br }, `Stage ${br.stageNo} — Payment released! Milestone achieved.`);
 });

@@ -3,6 +3,9 @@ const { validationResult } = require('express-validator');
 const User = require('../models/User');
 const asyncHandler = require('../utils/asyncHandler');
 const { success, created, fail, badRequest, unauthorized, forbidden } = require('../utils/responseFormatter');
+const { logAudit } = require('../utils/auditLog');
+
+const clientIp = (req) => (req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '').toString().split(',')[0].trim();
 
 const signToken = (id) =>
   jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRE || '7d' });
@@ -50,6 +53,12 @@ exports.login = asyncHandler(async (req, res) => {
   }
 
   const token = signToken(user._id);
+  await logAudit({
+    action: 'LOGIN', module: 'auth', user,
+    description: 'User logged in',
+    entityType: 'User', entityId: user._id, entityLabel: user.email,
+    ip: clientIp(req),
+  });
   success(res, { token, user: userPayload(user) }, 'Login successful');
 });
 

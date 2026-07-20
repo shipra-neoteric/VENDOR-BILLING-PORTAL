@@ -7,6 +7,7 @@ const { success, created, notFound, badRequest } = require('../utils/responseFor
 const { nextBillNo } = require('../utils/codeGen');
 const emitEvent    = require('../utils/emitEvent');
 const { advanceInstance, cancelInstance } = require('../utils/slaEngine');
+const { logAudit, diffFields } = require('../utils/auditLog');
 
 // Advances the SLA tracker for whichever BillRequest generated this RunningBill —
 // no-ops silently if there's no linked request or no in-progress instance, so it's
@@ -166,6 +167,12 @@ exports.verifyBill = asyncHandler(async (req, res) => {
   await bill.populate('verifiedBy', 'name role');
   await advanceBillRequestInstance(bill, req.user._id, 'GM approved');
 
+  await logAudit({
+    action: 'APPROVE', module: 'billing-payments', user: req.user,
+    description: `GM approved bill ${bill.billNo}`,
+    entityType: 'RunningBill', entityId: bill._id, entityLabel: bill.billNo,
+  });
+
   emitEvent('RUNNING_BILL_VERIFIED', {
     projectId:    bill.projectId,
     workOrderId:  bill.workOrderId,
@@ -194,6 +201,12 @@ exports.approveBill = asyncHandler(async (req, res) => {
   await bill.save();
   await bill.populate('approvedBy', 'name role');
   await advanceBillRequestInstance(bill, req.user._id, 'Accounts verified & approved');
+
+  await logAudit({
+    action: 'APPROVE', module: 'billing-payments', user: req.user,
+    description: `Accounts verified & approved bill ${bill.billNo}`,
+    entityType: 'RunningBill', entityId: bill._id, entityLabel: bill.billNo,
+  });
 
   emitEvent('RUNNING_BILL_APPROVED', {
     projectId:     bill.projectId,
@@ -226,6 +239,12 @@ exports.initiatePayment = asyncHandler(async (req, res) => {
   await bill.save();
   await bill.populate('paymentInitiatedBy', 'name role');
   await advanceBillRequestInstance(bill, req.user._id, 'Payment initiated');
+
+  await logAudit({
+    action: 'UPDATE', module: 'billing-payments', user: req.user,
+    description: `Payment initiated for bill ${bill.billNo} — TDS ₹${(bill.tdsAmount || 0).toLocaleString('en-IN')}`,
+    entityType: 'RunningBill', entityId: bill._id, entityLabel: bill.billNo,
+  });
 
   emitEvent('PAYMENT_INITIATED', {
     projectId:     bill.projectId,
@@ -278,6 +297,12 @@ exports.rejectBill = asyncHandler(async (req, res) => {
     }
   }
 
+  await logAudit({
+    action: 'REJECT', module: 'billing-payments', user: req.user,
+    description: `Rejected bill ${bill.billNo}${bill.rejectReason ? ` — ${bill.rejectReason}` : ''}`,
+    entityType: 'RunningBill', entityId: bill._id, entityLabel: bill.billNo,
+  });
+
   success(res, { bill }, 'Bill rejected');
 });
 
@@ -312,6 +337,12 @@ exports.payBill = asyncHandler(async (req, res) => {
     await br.save();
   }
 
+  await logAudit({
+    action: 'APPROVE', module: 'billing-payments', user: req.user,
+    description: `Payment released for bill ${bill.billNo}${bill.paidAmount != null ? ` — ₹${Math.round(bill.paidAmount).toLocaleString('en-IN')} paid` : ''}${bill.paymentUTR ? ` (UTR ${bill.paymentUTR})` : ''}`,
+    entityType: 'RunningBill', entityId: bill._id, entityLabel: bill.billNo,
+  });
+
   emitEvent('PAYMENT_RELEASED', {
     projectId:     bill.projectId,
     workOrderId:   bill.workOrderId,
@@ -345,9 +376,19 @@ exports.patchDeductions = asyncHandler(async (req, res) => {
   const bill = await RunningBill.findById(req.params.id);
   if (!bill) return notFound(res, 'Bill not found');
   if (bill.status !== 'paid') return badRequest(res, 'Can only adjust deductions on paid bills');
+  const before = { advanceRecovery: bill.advanceRecovery, retentionAmount: bill.retentionAmount };
   if (req.body.advanceRecovery != null) bill.advanceRecovery  = Number(req.body.advanceRecovery);
   if (req.body.retentionAmount  != null) bill.retentionAmount = Number(req.body.retentionAmount);
   await bill.save();
+
+  const changes = diffFields(before, bill.toObject(), ['advanceRecovery', 'retentionAmount']);
+  await logAudit({
+    action: 'UPDATE', module: 'billing-payments', user: req.user,
+    description: `Adjusted deductions on paid bill ${bill.billNo}`,
+    entityType: 'RunningBill', entityId: bill._id, entityLabel: bill.billNo,
+    changes,
+  });
+
   success(res, { bill }, 'Deductions updated');
 });
 

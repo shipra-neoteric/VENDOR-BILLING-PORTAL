@@ -1,6 +1,7 @@
 const User = require('../models/User');
 const asyncHandler = require('../utils/asyncHandler');
 const { success, created, notFound, badRequest } = require('../utils/responseFormatter');
+const { logAudit, diffFields } = require('../utils/auditLog');
 
 const ROLE_HIERARCHY = ['owner', 'gm', 'agm', 'accounts', 'site-dri'];
 
@@ -27,6 +28,13 @@ exports.createUser = asyncHandler(async (req, res) => {
   const user = await User.create({ name, email, password, role, permissions: permissions || [] });
   const safe = user.toObject();
   delete safe.password;
+
+  await logAudit({
+    action: 'CREATE', module: 'user-management', user: req.user,
+    description: `Created user ${user.name} (${user.email}) as ${user.role}`,
+    entityType: 'User', entityId: user._id, entityLabel: user.email,
+  });
+
   created(res, { user: safe }, `User ${user.name} created`);
 });
 
@@ -35,6 +43,7 @@ exports.updateUser = asyncHandler(async (req, res) => {
   const { name, email, role, isActive, permissions } = req.body;
   const user = await User.findById(req.params.id);
   if (!user) return notFound(res, 'User not found');
+  const before = user.toObject();
 
   // Prevent demoting/deactivating self
   if (req.user._id.toString() === user._id.toString()) {
@@ -57,6 +66,17 @@ exports.updateUser = asyncHandler(async (req, res) => {
   await user.save();
   const safe = user.toObject();
   delete safe.password;
+
+  const changes = diffFields(before, safe, ['name', 'email', 'role', 'isActive', 'permissions']);
+  if (changes) {
+    await logAudit({
+      action: 'UPDATE', module: 'user-management', user: req.user,
+      description: `Updated user ${user.name} (${user.email})`,
+      entityType: 'User', entityId: user._id, entityLabel: user.email,
+      changes,
+    });
+  }
+
   success(res, { user: safe }, 'User updated');
 });
 
@@ -71,6 +91,13 @@ exports.changePassword = asyncHandler(async (req, res) => {
 
   user.password = password;
   await user.save();
+
+  await logAudit({
+    action: 'UPDATE', module: 'user-management', user: req.user,
+    description: `Reset password for ${user.name} (${user.email})`,
+    entityType: 'User', entityId: user._id, entityLabel: user.email,
+  });
+
   success(res, {}, 'Password updated');
 });
 
@@ -83,5 +110,12 @@ exports.deleteUser = asyncHandler(async (req, res) => {
   }
   user.isActive = false;
   await user.save();
+
+  await logAudit({
+    action: 'UPDATE', module: 'user-management', user: req.user,
+    description: `Deactivated user ${user.name} (${user.email})`,
+    entityType: 'User', entityId: user._id, entityLabel: user.email,
+  });
+
   success(res, {}, `${user.name} has been deactivated`);
 });
