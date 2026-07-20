@@ -4,7 +4,7 @@ import {
   LayoutOutlined, BankOutlined, ApartmentOutlined, TeamOutlined, TagsOutlined,
   FileTextOutlined, LineChartOutlined, ProfileOutlined, WalletOutlined,
   CheckSquareOutlined, AccountBookOutlined, UsergroupAddOutlined, MonitorOutlined,
-  ShareAltOutlined, SettingOutlined, ClockCircleOutlined,
+  ShareAltOutlined, SettingOutlined, ClockCircleOutlined, HistoryOutlined,
 } from "@ant-design/icons";
 import { useAuth } from "../../context/AuthContext";
 import type { PermEntry } from "../../context/AuthContext";
@@ -25,19 +25,15 @@ interface NavGroup {
 const ADMIN_GROUPS: NavGroup[] = [
   {
     label: "Overview",
-    items: [{ name: "Dashboard", path: "/dashboard", icon: <LayoutOutlined />, moduleId: "dashboard" }],
-  },
-  {
-    label: "Project Setup",
     items: [
-      { name: "Companies",   path: "/companies",   icon: <BankOutlined />,       moduleId: "companies" },
-      { name: "Projects",    path: "/projects",    icon: <ApartmentOutlined />,  moduleId: "projects" },
-      { name: "Contractors", path: "/contractors", icon: <TeamOutlined />,       moduleId: "contractors" },
-      { name: "Categories",  path: "/categories",  icon: <TagsOutlined />,       moduleId: "categories" },
+      { name: "Dashboard",     path: "/dashboard",     icon: <LayoutOutlined />,       moduleId: "dashboard" },
+      { name: "MIS Dashboard", path: "/sla-dashboard",  icon: <ClockCircleOutlined />,  moduleId: "sla-dashboard" },
+      { name: "Projects",      path: "/projects",      icon: <ApartmentOutlined />,    moduleId: "projects" },
+      { name: "Contractors",   path: "/contractors",   icon: <TeamOutlined />,         moduleId: "contractors" },
     ],
   },
   {
-    label: "Execution",
+    label: "Operations",
     items: [
       { name: "Work Orders",   path: "/work-items",    icon: <FileTextOutlined />, moduleId: "work-orders" },
       { name: "Work Progress", path: "/work-progress", icon: <LineChartOutlined />, moduleId: "work-progress" },
@@ -46,26 +42,23 @@ const ADMIN_GROUPS: NavGroup[] = [
   {
     label: "Billing",
     items: [
-      { name: "Bill Requests",      path: "/bill-requests",    icon: <ProfileOutlined />,      moduleId: "bill-requests" },
+      { name: "Bill Requests",      path: "/bill-requests",    icon: <ProfileOutlined />,     moduleId: "bill-requests" },
+      { name: "Billing & Payments", path: "/bills",            icon: <WalletOutlined />,       moduleId: "billing-payments" },
+      { name: "Ledger",             path: "/ledger",           icon: <AccountBookOutlined />,  moduleId: "ledger" },
       { name: "Advance Payments",   path: "/advance-payments", icon: <BankOutlined />,         moduleId: "advance-payments" },
-      { name: "Billing & Payments", path: "/bills",            icon: <WalletOutlined />,        moduleId: "billing-payments" },
-      { name: "Approvals",          path: "/approvals",     icon: <CheckSquareOutlined />,   moduleId: "approvals" },
-      { name: "Ledger",             path: "/ledger",        icon: <AccountBookOutlined />,   moduleId: "ledger" },
-    ],
-  },
-  {
-    label: "SLA",
-    items: [
-      { name: "SLA Settings",  path: "/sla-settings",  icon: <SettingOutlined />,      moduleId: "sla-settings" },
-      { name: "SLA Dashboard", path: "/sla-dashboard", icon: <ClockCircleOutlined />,  moduleId: "sla-dashboard" },
     ],
   },
   {
     label: "Admin",
     items: [
-      { name: "User Management",    path: "/users",         icon: <UsergroupAddOutlined />, moduleId: "user-management" },
-      { name: "DRI Work Dashboard", path: "/dri-dashboard", icon: <MonitorOutlined />,      moduleId: "dri-dashboard" },
-      { name: "Public Forms",       path: "/public-forms",  icon: <ShareAltOutlined />,      moduleId: "public-forms" },
+      { name: "Approvals",          path: "/approvals",     icon: <CheckSquareOutlined />,   moduleId: "approvals" },
+      { name: "Companies",          path: "/companies",     icon: <BankOutlined />,           moduleId: "companies" },
+      { name: "Categories",         path: "/categories",    icon: <TagsOutlined />,           moduleId: "categories" },
+      { name: "DRI Work Dashboard", path: "/dri-dashboard", icon: <MonitorOutlined />,        moduleId: "dri-dashboard" },
+      { name: "Public Forms",       path: "/public-forms",  icon: <ShareAltOutlined />,        moduleId: "public-forms" },
+      { name: "Audit Logs",         path: "/audit-logs",    icon: <HistoryOutlined />,         moduleId: "audit-logs" },
+      { name: "Users",              path: "/users",         icon: <UsergroupAddOutlined />,   moduleId: "user-management" },
+      { name: "SLA Settings",       path: "/sla-settings",  icon: <SettingOutlined />,         moduleId: "sla-settings" },
     ],
   },
 ];
