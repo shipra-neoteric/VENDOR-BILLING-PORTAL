@@ -7,7 +7,10 @@ const rawApiUrl = (import.meta.env.VITE_API_URL || "http://localhost:5000/api").
 const apiClient = axios.create({
   baseURL: rawApiUrl,
   headers: { "Content-Type": "application/json" },
-  timeout: 15000,
+  // The backend runs on Render's free tier, which sleeps after ~15 min idle and takes
+  // 20-50s to wake back up on the next request. 15s was too short and made a normal
+  // cold start look like a broken connection — give it real room before giving up.
+  timeout: 45000,
 });
 
 apiClient.interceptors.request.use((config) => {
@@ -45,11 +48,31 @@ apiClient.interceptors.response.use(
     }
     return response;
   },
-  (error) => {
+  async (error) => {
+    const config = error.config || {};
+
+    // The free-tier backend can be asleep on the very first request after a period of
+    // inactivity, which surfaces as a timeout here. Silently retry once (the wake-up
+    // call already went out during the first attempt) before bothering the user.
+    // Only safe to auto-retry reads — retrying a timed-out POST/PATCH/DELETE could
+    // double-submit an action (e.g. create a bill twice) if the original request had
+    // actually reached the server and was just slow to respond.
+    const isSafeToRetry = (config.method || "get").toLowerCase() === "get";
+    if (error.code === "ECONNABORTED" && isSafeToRetry && !config.__retriedAfterWake) {
+      config.__retriedAfterWake = true;
+      try {
+        return await apiClient(config);
+      } catch (retryErr) {
+        return Promise.reject(retryErr);
+      }
+    }
+
     if (!error.response) {
-      message.error(
-        "Cannot connect to backend server. Make sure it is running on port 5000."
-      );
+      if (error.code === "ECONNABORTED") {
+        message.error("Server is taking longer than usual to respond. Please try again in a moment.");
+      } else {
+        message.error("Cannot connect to the server. Please check your internet connection and try again.");
+      }
     } else {
       const status = error.response.status;
       const msg = error.response.data?.message || error.message || "Request failed";
