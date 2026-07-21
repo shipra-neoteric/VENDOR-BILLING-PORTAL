@@ -104,7 +104,7 @@ export default function PaymentMilestonesBuilder({
       {items.map((m, idx) => (
         <div key={m.id} style={{ border: "1px solid #e4e7ee", borderRadius: 8, marginBottom: 10, padding: "12px 14px" }}>
           <Row gutter={[10, 10]}>
-            <Col xs={24} sm={5}>
+            <Col xs={24} sm={6}>
               <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Stage / Type</div>
               <Input
                 placeholder='e.g. "At the time of Order"'
@@ -125,7 +125,7 @@ export default function PaymentMilestonesBuilder({
               <Select value={m.mode} options={MODE_OPTIONS} style={{ width: "100%" }}
                 onChange={v => upd(m.id, { mode: v })} />
             </Col>
-            <Col xs={12} sm={4}>
+            <Col xs={12} sm={6}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
                 <span style={{ fontSize: 11, color: "#9ba3b8" }}>Amount</span>
                 <Segmented
@@ -159,7 +159,7 @@ export default function PaymentMilestonesBuilder({
                   min={0} onChange={v => upd(m.id, { amount: v })} />
               )}
             </Col>
-            <Col xs={12} sm={4}>
+            <Col xs={12} sm={5}>
               <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>GST</div>
               <GstSelect value={m.gstPercent} onChange={v => upd(m.id, { gstPercent: v })} style={{ width: "100%" }} />
             </Col>

@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { Fragment, useEffect, useState, useMemo } from "react";
 import { Select, Spin, Tag, Button, Modal, Form, InputNumber, DatePicker, Input, Checkbox, Empty, message } from "antd";
 import apiClient from "../../services/apiClient";
 import { useAuth } from "../../context/AuthContext";
@@ -21,6 +21,17 @@ interface WORow {
   scopeItems?: { description: string; completedQty: number; plannedQty: number }[];
 }
 
+interface SubItemDetail {
+  _id: string;
+  description: string;
+  remarks?: string;
+  unit: string;
+  plannedQty: number;
+  completedQty: number;
+  lastBilledQty: number;
+  status: string;
+}
+
 interface ScopeItemDetail {
   _id: string;
   description: string;
@@ -29,6 +40,8 @@ interface ScopeItemDetail {
   plannedQty: number;
   completedQty: number;
   lastBilledQty: number;
+  status?: string;
+  subItems?: SubItemDetail[];
 }
 
 interface WODetail {
@@ -136,9 +149,11 @@ export default function DRIDashboard() {
   const [woDetails,     setWoDetails]     = useState<Map<string, WODetail>>(new Map());
   const [detailLoading, setDetailLoading] = useState(false);
 
-  // Add-progress modal (owner/edit-permission only)
+  // Add-progress modal (owner/edit-permission only). `subItem` is set when
+  // progress is being logged against one particular rather than the item
+  // itself — an item with particulars can only take progress that way.
   const [progModal,  setProgModal]  = useState(false);
-  const [progTarget, setProgTarget] = useState<{ woId: string; item: ScopeItemDetail } | null>(null);
+  const [progTarget, setProgTarget] = useState<{ woId: string; item: ScopeItemDetail; subItem?: SubItemDetail } | null>(null);
   const [progForm]   = Form.useForm();
   const [progSaving,  setProgSaving]  = useState(false);
 
@@ -231,8 +246,12 @@ export default function DRIDashboard() {
     return woDetails.get(progTarget.woId)?.projectId?.projectType === "plot" ? "plot" : "apartment";
   }, [progTarget, woDetails]);
 
-  const openAddProgress = (woId: string, item: ScopeItemDetail) => {
-    setProgTarget({ woId, item });
+  // Whichever the modal is actually logging progress against — the item itself,
+  // or one specific particular when the item has them.
+  const progModalTarget = progTarget ? (progTarget.subItem ?? progTarget.item) : null;
+
+  const openAddProgress = (woId: string, item: ScopeItemDetail, subItem?: SubItemDetail) => {
+    setProgTarget({ woId, item, subItem });
     progForm.resetFields();
     progForm.setFieldsValue({ date: dayjs() });
     setProgModal(true);
@@ -241,9 +260,13 @@ export default function DRIDashboard() {
   const handleAddProgress = async () => {
     if (!progTarget) return;
     const vals = await progForm.validateFields();
+    const target = progTarget.subItem ?? progTarget.item;
+    const path = progTarget.subItem
+      ? `/work-orders/${progTarget.woId}/scope-items/${progTarget.item._id}/sub-items/${progTarget.subItem._id}/progress`
+      : `/work-orders/${progTarget.woId}/scope-items/${progTarget.item._id}/progress`;
     setProgSaving(true);
     try {
-      await apiClient.post(`/work-orders/${progTarget.woId}/scope-items/${progTarget.item._id}/progress`, {
+      await apiClient.post(path, {
         date: vals.date ? dayjs(vals.date).format("YYYY-MM-DD") : dayjs().format("YYYY-MM-DD"),
         qtyAdded: vals.qtyAdded,
         remarks: vals.remarks || "",
@@ -254,7 +277,7 @@ export default function DRIDashboard() {
         locationNote: vals.locationNote || "",
         ...(vals.plannedQty ? { plannedQty: vals.plannedQty } : {}),
       });
-      message.success(`+${fmtN(vals.qtyAdded)} ${progTarget.item.unit} recorded`);
+      message.success(`+${fmtN(vals.qtyAdded)} ${target.unit} recorded`);
       setProgModal(false);
       progForm.resetFields();
       await reloadWODetail(progTarget.woId);
@@ -656,39 +679,87 @@ export default function DRIDashboard() {
                           </thead>
                           <tbody>
                             {detail.scopeItems.map((si, idx) => {
-                              const p        = pctOf(si.completedQty, si.plannedQty);
-                              const billed   = si.lastBilledQty || 0;
-                              const unbilled = Math.max(0, si.completedQty - billed);
+                              const p          = pctOf(si.completedQty, si.plannedQty);
+                              const billed     = si.lastBilledQty || 0;
+                              const unbilled   = Math.max(0, si.completedQty - billed);
+                              const hasSubItems = (si.subItems?.length ?? 0) > 0;
+                              const rowBg = idx % 2 === 0 ? "var(--nx-white)" : "var(--nx-fill-2)";
                               return (
-                                <tr key={si._id} style={{ borderBottom: "1px solid var(--nx-border)", background: idx % 2 === 0 ? "var(--nx-white)" : "var(--nx-fill-2)" }}>
-                                  <td style={{ padding: "9px 12px", color: "var(--nx-text-muted)", fontSize: 12 }}>{idx + 1}</td>
-                                  <td style={{ padding: "9px 12px", fontWeight: 600, color: "var(--nx-text)", fontSize: 13 }}>{si.description}</td>
-                                  <td style={{ padding: "9px 12px", color: "var(--nx-text-2)", fontSize: 12 }}>{si.unit}</td>
-                                  <td style={{ padding: "9px 12px", fontFamily: "monospace", fontSize: 12, color: "var(--nx-text)" }}>{fmtN(si.plannedQty)}</td>
-                                  <td style={{ padding: "9px 12px", fontFamily: "monospace", fontSize: 12, color: si.completedQty > 0 ? "#16a34a" : "var(--nx-text-muted)" }}>{fmtN(si.completedQty)}</td>
-                                  <td style={{ padding: "9px 12px", fontFamily: "monospace", fontSize: 12, color: "#3b82f6" }}>{fmtN(billed)}</td>
-                                  <td style={{ padding: "9px 12px", fontFamily: "monospace", fontSize: 12 }}>
-                                    {unbilled > 0
-                                      ? <span style={{ color: "#FF7A00", fontWeight: 700 }}>{fmtN(unbilled)}</span>
-                                      : <span style={{ color: "var(--nx-text-muted)" }}>—</span>
-                                    }
-                                  </td>
-                                  <td style={{ padding: "9px 12px", minWidth: 120 }}>
-                                    <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                                      <div style={{ flex: 1, height: 6, background: "var(--nx-border)", borderRadius: 3, overflow: "hidden" }}>
-                                        <div style={{ width: `${p}%`, height: "100%", background: p >= 100 ? "#16a34a" : "#FF7A00", borderRadius: 3 }} />
-                                      </div>
-                                      <span style={{ fontSize: 10, fontWeight: 700, color: p >= 100 ? "#16a34a" : "#FF7A00", minWidth: 26 }}>{p}%</span>
-                                    </div>
-                                  </td>
-                                  {canEdit && (
-                                    <td style={{ padding: "9px 12px" }}>
-                                      <Button size="small" onClick={() => openAddProgress(wo._id, si)}>
-                                        + Progress
-                                      </Button>
+                                <Fragment key={si._id}>
+                                  <tr style={{ borderBottom: hasSubItems ? "none" : "1px solid var(--nx-border)", background: rowBg }}>
+                                    <td style={{ padding: "9px 12px", color: "var(--nx-text-muted)", fontSize: 12 }}>{idx + 1}</td>
+                                    <td style={{ padding: "9px 12px", fontWeight: 600, color: "var(--nx-text)", fontSize: 13 }}>
+                                      {si.description}
+                                      {hasSubItems && (
+                                        <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, color: "#9CA3AF", textTransform: "uppercase" }}>
+                                          {si.status === "completed" ? "✓ Complete" : `${si.subItems!.length} particulars`}
+                                        </span>
+                                      )}
                                     </td>
-                                  )}
-                                </tr>
+                                    <td style={{ padding: "9px 12px", color: "var(--nx-text-2)", fontSize: 12 }}>{si.unit}</td>
+                                    <td style={{ padding: "9px 12px", fontFamily: "monospace", fontSize: 12, color: "var(--nx-text)" }}>{fmtN(si.plannedQty)}</td>
+                                    <td style={{ padding: "9px 12px", fontFamily: "monospace", fontSize: 12, color: si.completedQty > 0 ? "#16a34a" : "var(--nx-text-muted)" }}>{fmtN(si.completedQty)}</td>
+                                    <td style={{ padding: "9px 12px", fontFamily: "monospace", fontSize: 12, color: "#3b82f6" }}>{fmtN(billed)}</td>
+                                    <td style={{ padding: "9px 12px", fontFamily: "monospace", fontSize: 12 }}>
+                                      {unbilled > 0
+                                        ? <span style={{ color: "#FF7A00", fontWeight: 700 }}>{fmtN(unbilled)}</span>
+                                        : <span style={{ color: "var(--nx-text-muted)" }}>—</span>
+                                      }
+                                    </td>
+                                    <td style={{ padding: "9px 12px", minWidth: 120 }}>
+                                      <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                                        <div style={{ flex: 1, height: 6, background: "var(--nx-border)", borderRadius: 3, overflow: "hidden" }}>
+                                          <div style={{ width: `${p}%`, height: "100%", background: p >= 100 ? "#16a34a" : "#FF7A00", borderRadius: 3 }} />
+                                        </div>
+                                        <span style={{ fontSize: 10, fontWeight: 700, color: p >= 100 ? "#16a34a" : "#FF7A00", minWidth: 26 }}>{p}%</span>
+                                      </div>
+                                    </td>
+                                    {canEdit && (
+                                      <td style={{ padding: "9px 12px" }}>
+                                        {!hasSubItems && (
+                                          <Button size="small" onClick={() => openAddProgress(wo._id, si)}>
+                                            + Progress
+                                          </Button>
+                                        )}
+                                      </td>
+                                    )}
+                                  </tr>
+                                  {hasSubItems && si.subItems!.map((sub, subIdx) => {
+                                    const sp = pctOf(sub.completedQty, sub.plannedQty);
+                                    const isLastSub = subIdx === si.subItems!.length - 1;
+                                    return (
+                                      <tr key={sub._id} style={{ borderBottom: isLastSub ? "1px solid var(--nx-border)" : "1px solid var(--nx-border-subtle, #F3F4F6)", background: "#FCFCFD" }}>
+                                        <td style={{ padding: "6px 12px 6px 28px", color: "var(--nx-text-muted)", fontSize: 11 }}>{idx + 1}.{subIdx + 1}</td>
+                                        <td style={{ padding: "6px 12px", fontWeight: 500, color: "var(--nx-text-2)", fontSize: 12 }}>
+                                          {sub.description}
+                                          {sub.status === "completed" && <span style={{ marginLeft: 6, color: "#16a34a", fontSize: 10, fontWeight: 700 }}>✓</span>}
+                                        </td>
+                                        <td style={{ padding: "6px 12px", color: "var(--nx-text-2)", fontSize: 11 }}>{sub.unit}</td>
+                                        <td style={{ padding: "6px 12px", fontFamily: "monospace", fontSize: 11, color: "var(--nx-text)" }}>{fmtN(sub.plannedQty)}</td>
+                                        <td style={{ padding: "6px 12px", fontFamily: "monospace", fontSize: 11, color: sub.completedQty > 0 ? "#16a34a" : "var(--nx-text-muted)" }}>{fmtN(sub.completedQty)}</td>
+                                        {/* Billing tracks at the item level (its completedQty rolls up from all
+                                            particulars), not per particular — shown blank here on purpose. */}
+                                        <td style={{ padding: "6px 12px", fontSize: 11, color: "var(--nx-text-muted)" }}>—</td>
+                                        <td style={{ padding: "6px 12px", fontSize: 11, color: "var(--nx-text-muted)" }}>—</td>
+                                        <td style={{ padding: "6px 12px", minWidth: 120 }}>
+                                          <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                                            <div style={{ flex: 1, height: 5, background: "var(--nx-border)", borderRadius: 3, overflow: "hidden" }}>
+                                              <div style={{ width: `${sp}%`, height: "100%", background: sp >= 100 ? "#16a34a" : "#FF7A00", borderRadius: 3 }} />
+                                            </div>
+                                            <span style={{ fontSize: 9.5, fontWeight: 700, color: sp >= 100 ? "#16a34a" : "#FF7A00", minWidth: 26 }}>{sp}%</span>
+                                          </div>
+                                        </td>
+                                        {canEdit && (
+                                          <td style={{ padding: "6px 12px" }}>
+                                            <Button size="small" onClick={() => openAddProgress(wo._id, si, sub)}>
+                                              + Progress
+                                            </Button>
+                                          </td>
+                                        )}
+                                      </tr>
+                                    );
+                                  })}
+                                </Fragment>
                               );
                             })}
                           </tbody>
@@ -737,43 +808,47 @@ export default function DRIDashboard() {
       <Modal
         open={progModal}
         onCancel={() => { setProgModal(false); progForm.resetFields(); }}
-        title={`Add Progress — ${progTarget?.item.description ?? ""}`}
+        title={
+          progTarget?.subItem
+            ? `Add Progress — ${progTarget.item.description} › ${progTarget.subItem.description}`
+            : `Add Progress — ${progTarget?.item.description ?? ""}`
+        }
         onOk={handleAddProgress}
         okText="Save Progress"
         okButtonProps={{ loading: progSaving, style: { background: "#FF7A00", borderColor: "#FF7A00" } }}
         destroyOnClose
       >
         <Form form={progForm} layout="vertical" style={{ marginTop: 8 }}>
-          {progTarget?.item.remarks && (
+          {progModalTarget?.remarks && (
             <div style={{ background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: 8, padding: "10px 14px", marginBottom: 14, fontSize: 12, color: "#92400e" }}>
-              <span style={{ fontWeight: 700 }}>📌 Instruction: </span>{progTarget.item.remarks}
+              <span style={{ fontWeight: 700 }}>📌 Instruction: </span>{progModalTarget.remarks}
             </div>
           )}
           <Form.Item label="Date" name="date" rules={[{ required: true, message: "Select date" }]}>
             <DatePicker style={{ width: "100%" }} format="DD/MM/YYYY" disabledDate={d => d.isAfter(dayjs(), "day")} />
           </Form.Item>
           <LocationFields pt={progProjectType} />
-          {progTarget && !progTarget.item.plannedQty && (
+          {progModalTarget && !progModalTarget.plannedQty && (
             <div style={{ background: "#FFF8F0", border: "1px solid #FDDCB5", borderRadius: 8, padding: "10px 14px", marginBottom: 14 }}>
               <div style={{ fontSize: 12, fontWeight: 600, color: "#FF7A00", marginBottom: 6 }}>Planned quantity not set for this item</div>
               <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 10 }}>You can set the total planned quantity now, or leave blank to log progress without a cap.</div>
-              <Form.Item label={`Total Planned Qty (${progTarget.item.unit})`} name="plannedQty" style={{ marginBottom: 0 }}>
-                <InputNumber style={{ width: "100%" }} min={0.00001} step={0.00001} precision={5} placeholder={progTarget.item.unit === "per-hr" ? "e.g. 200.0000" : "e.g. 5000"} />
+              <Form.Item label={`Total Planned Qty (${progModalTarget.unit})`} name="plannedQty" style={{ marginBottom: 0 }}>
+                <InputNumber style={{ width: "100%" }} min={0.00001} step={0.00001} precision={5} placeholder={progModalTarget.unit === "per-hr" ? "e.g. 200.0000" : "e.g. 5000"} />
               </Form.Item>
             </div>
           )}
           <Form.Item
-            label={`Quantity Added (${progTarget?.item.unit ?? ""})`}
+            label={`Quantity Added (${progModalTarget?.unit ?? ""})`}
             name="qtyAdded"
-            extra={progTarget?.item.unit === "per-hr" ? "Tip: enter decimals for minutes — e.g. 13.67 = 13 hr 40 min" : undefined}
+            extra={progModalTarget?.unit === "per-hr" ? "Tip: enter decimals for minutes — e.g. 13.67 = 13 hr 40 min" : undefined}
             rules={[
               { required: true, type: "number", min: 0.01, message: "Enter a valid quantity (e.g. 13.67)" },
               {
                 validator: (_, value) => {
-                  if (!value || !progTarget) return Promise.resolve();
-                  if (!progTarget.item.plannedQty) return Promise.resolve();
-                  const max = Math.max(0, progTarget.item.plannedQty - progTarget.item.completedQty);
-                  if (value > max) return Promise.reject(new Error(`Max remaining: ${fmtN(max)} ${progTarget.item.unit}`));
+                  if (!value || !progModalTarget) return Promise.resolve();
+                  if (!progModalTarget.plannedQty) return Promise.resolve();
+                  const max = Math.max(0, progModalTarget.plannedQty - progModalTarget.completedQty);
+                  if (value > max) return Promise.reject(new Error(`Max remaining: ${fmtN(max)} ${progModalTarget.unit}`));
                   return Promise.resolve();
                 },
               },
@@ -781,19 +856,19 @@ export default function DRIDashboard() {
           >
             <InputNumber
               style={{ width: "100%" }} min={0.00001} step={0.00001} precision={5}
-              max={progTarget?.item.plannedQty ? Math.max(0, progTarget.item.plannedQty - progTarget.item.completedQty) : undefined}
-              placeholder={progTarget?.item.unit === "per-hr" ? "e.g. 13.6667" : "e.g. 500"}
+              max={progModalTarget?.plannedQty ? Math.max(0, progModalTarget.plannedQty - progModalTarget.completedQty) : undefined}
+              placeholder={progModalTarget?.unit === "per-hr" ? "e.g. 13.6667" : "e.g. 500"}
             />
           </Form.Item>
           <Form.Item label="Remarks (optional)" name="remarks">
             <Input.TextArea rows={2} placeholder="Notes for today's work…" />
           </Form.Item>
-          {progTarget && (
+          {progModalTarget && (
             <div style={{ background: "var(--nx-fill-2)", border: "1px solid var(--nx-border)", borderRadius: 8, padding: 12, fontSize: 12 }}>
               {[
-                { label: "Planned", value: progTarget.item.plannedQty > 0 ? `${fmtN(progTarget.item.plannedQty)} ${progTarget.item.unit}` : "Not set", color: progTarget.item.plannedQty > 0 ? "var(--nx-text)" : "#9ba3b8" },
-                { label: "Done", value: `${fmtN(progTarget.item.completedQty)} ${progTarget.item.unit}`, color: "#16a34a" },
-                { label: "Remaining", value: progTarget.item.plannedQty > 0 ? `${fmtN(Math.max(0, progTarget.item.plannedQty - progTarget.item.completedQty))} ${progTarget.item.unit}` : "Unlimited", color: "#FF7A00" },
+                { label: "Planned", value: progModalTarget.plannedQty > 0 ? `${fmtN(progModalTarget.plannedQty)} ${progModalTarget.unit}` : "Not set", color: progModalTarget.plannedQty > 0 ? "var(--nx-text)" : "#9ba3b8" },
+                { label: "Done", value: `${fmtN(progModalTarget.completedQty)} ${progModalTarget.unit}`, color: "#16a34a" },
+                { label: "Remaining", value: progModalTarget.plannedQty > 0 ? `${fmtN(Math.max(0, progModalTarget.plannedQty - progModalTarget.completedQty))} ${progModalTarget.unit}` : "Unlimited", color: "#FF7A00" },
               ].map(r => (
                 <div key={r.label} style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
                   <span style={{ color: "var(--nx-text-2)" }}>{r.label}</span><strong style={{ color: r.color }}>{r.value}</strong>

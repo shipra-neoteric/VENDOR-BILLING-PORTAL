@@ -29,6 +29,20 @@ function diffScopeItems(before, after) {
   return Object.keys(changes).length ? changes : null;
 }
 
+// When an item has particulars, its own status/completedQty are derived from
+// them rather than tracked directly — called after any particular's progress
+// changes so the parent automatically flips to "completed" once every
+// particular is fully done.
+function recomputeParentFromSubItems(item) {
+  if (!item.subItems || item.subItems.length === 0) return;
+  item.completedQty = item.subItems.reduce((s, si) => s + (si.completedQty || 0), 0);
+  const allCompleted = item.subItems.every(si =>
+    si.plannedQty > 0 ? si.completedQty >= si.plannedQty : si.status === 'completed'
+  );
+  const anyStarted = item.subItems.some(si => (si.completedQty || 0) > 0);
+  item.status = allCompleted ? 'completed' : anyStarted ? 'running' : 'pending';
+}
+
 exports.listWorkOrders = asyncHandler(async (req, res) => {
   const { projectId, vendorCode, status, search, assignedToMe } = req.query;
   const filter = {};
@@ -285,6 +299,9 @@ exports.addScopeProgress = asyncHandler(async (req, res) => {
 
   const item = workOrder.scopeItems.id(req.params.itemId);
   if (!item) return notFound(res, 'Scope item not found');
+  if (item.subItems && item.subItems.length > 0) {
+    return badRequest(res, 'This item has particulars — add progress against the individual particular instead.');
+  }
 
   const { date, qtyAdded, remarks, tower, floor, flatNo, plotNo, locationNote, plannedQty } = req.body;
   if (!qtyAdded || qtyAdded <= 0) {
@@ -403,6 +420,137 @@ exports.deleteProgressEntry = asyncHandler(async (req, res) => {
   item.status = item.completedQty >= item.plannedQty ? 'completed'
     : item.completedQty > 0 ? 'running' : 'pending';
 
+  await workOrder.save();
+  success(res, { workOrder }, 'Progress entry deleted');
+});
+
+// ── Particular (sub-item) progress — same rules as a scope item's own progress,
+// but scoped to one particular, with the parent item's status/completedQty then
+// re-derived from all of its particulars.
+exports.addSubItemProgress = asyncHandler(async (req, res) => {
+  const workOrder = await WorkOrder.findById(req.params.id);
+  if (!workOrder) return notFound(res, 'Work order not found');
+  if (workOrder.status === 'cancelled') return badRequest(res, 'Cannot add progress to a cancelled work order');
+
+  const item = workOrder.scopeItems.id(req.params.itemId);
+  if (!item) return notFound(res, 'Scope item not found');
+  const subItem = item.subItems.id(req.params.subItemId);
+  if (!subItem) return notFound(res, 'Particular not found');
+
+  const { date, qtyAdded, remarks, tower, floor, flatNo, plotNo, locationNote, plannedQty } = req.body;
+  if (!qtyAdded || qtyAdded <= 0) return badRequest(res, 'qtyAdded must be greater than 0');
+
+  if (plannedQty !== undefined && Number(plannedQty) > 0) {
+    subItem.plannedQty = Number(plannedQty);
+  }
+
+  if (subItem.plannedQty > 0) {
+    const remaining = subItem.plannedQty - (subItem.completedQty || 0);
+    if (qtyAdded > remaining) {
+      return badRequest(res, `Cannot exceed planned quantity. Only ${remaining.toLocaleString()} ${subItem.unit} remaining.`);
+    }
+  }
+
+  subItem.progressEntries.push({ date: date || new Date(), qtyAdded, remarks, tower, floor, flatNo, plotNo, locationNote });
+  subItem.completedQty = subItem.progressEntries.reduce((s, e) => s + e.qtyAdded, 0);
+  subItem.status =
+    subItem.plannedQty > 0 && subItem.completedQty >= subItem.plannedQty ? 'completed'
+    : subItem.completedQty > 0                                            ? 'running'
+    :                                                                       'pending';
+
+  recomputeParentFromSubItems(item);
+  await workOrder.save();
+
+  emitEvent('PROGRESS_ADDED', {
+    projectId:   workOrder.projectId,
+    workOrderId: workOrder._id,
+    workOrderNo: workOrder.workOrderNo,
+    vendorCode:  workOrder.vendorCode,
+    vendorName:  workOrder.vendorName,
+    user:        req.user,
+    metadata:    { scopeItem: `${item.description} — ${subItem.description}`, qtyAdded, unit: subItem.unit },
+  });
+
+  success(res, { workOrder });
+});
+
+exports.editSubItemProgressEntry = asyncHandler(async (req, res) => {
+  const { id, itemId, subItemId, progressId } = req.params;
+  const { qtyAdded, date, remarks, tower, floor, flatNo, plotNo, locationNote } = req.body;
+
+  const workOrder = await WorkOrder.findById(id);
+  if (!workOrder) return notFound(res, 'Work order not found');
+
+  const item = workOrder.scopeItems.id(itemId);
+  if (!item) return notFound(res, 'Scope item not found');
+  const subItem = item.subItems.id(subItemId);
+  if (!subItem) return notFound(res, 'Particular not found');
+
+  const entry = subItem.progressEntries.id(progressId);
+  if (!entry) return notFound(res, 'Progress entry not found');
+
+  if (!qtyAdded || qtyAdded <= 0) return badRequest(res, 'qtyAdded must be greater than 0');
+
+  const otherTotal = subItem.progressEntries
+    .filter(e => String(e._id) !== String(progressId))
+    .reduce((s, e) => s + e.qtyAdded, 0);
+
+  if (otherTotal + qtyAdded > subItem.plannedQty) {
+    const maxAllowed = subItem.plannedQty - otherTotal;
+    return badRequest(res, `Cannot exceed planned quantity. Max allowed for this entry: ${maxAllowed.toLocaleString()} ${subItem.unit}`);
+  }
+
+  if (otherTotal + qtyAdded < (subItem.lastBilledQty || 0)) {
+    const minAllowed = (subItem.lastBilledQty || 0) - otherTotal;
+    return badRequest(res, `Cannot reduce below billed quantity. Min allowed: ${minAllowed.toLocaleString()} ${subItem.unit}`);
+  }
+
+  entry.qtyAdded = qtyAdded;
+  if (date) entry.date = new Date(date);
+  if (remarks !== undefined) entry.remarks = remarks;
+  if (tower        !== undefined) entry.tower        = tower;
+  if (floor        !== undefined) entry.floor        = floor;
+  if (flatNo       !== undefined) entry.flatNo       = flatNo;
+  if (plotNo       !== undefined) entry.plotNo       = plotNo;
+  if (locationNote !== undefined) entry.locationNote = locationNote;
+
+  subItem.completedQty = subItem.progressEntries.reduce((s, e) => s + e.qtyAdded, 0);
+  subItem.status = subItem.completedQty >= subItem.plannedQty ? 'completed'
+    : subItem.completedQty > 0 ? 'running' : 'pending';
+
+  recomputeParentFromSubItems(item);
+  await workOrder.save();
+  success(res, { workOrder }, 'Progress entry updated');
+});
+
+exports.deleteSubItemProgressEntry = asyncHandler(async (req, res) => {
+  const { id, itemId, subItemId, progressId } = req.params;
+
+  const workOrder = await WorkOrder.findById(id);
+  if (!workOrder) return notFound(res, 'Work order not found');
+
+  const item = workOrder.scopeItems.id(itemId);
+  if (!item) return notFound(res, 'Scope item not found');
+  const subItem = item.subItems.id(subItemId);
+  if (!subItem) return notFound(res, 'Particular not found');
+
+  const entry = subItem.progressEntries.id(progressId);
+  if (!entry) return notFound(res, 'Progress entry not found');
+
+  const newCompletedQty = subItem.progressEntries
+    .filter(e => String(e._id) !== String(progressId))
+    .reduce((s, e) => s + e.qtyAdded, 0);
+
+  if (newCompletedQty < (subItem.lastBilledQty || 0)) {
+    return badRequest(res, 'Cannot delete this entry — it covers work that has already been billed. Ask admin to reverse the bill first.');
+  }
+
+  subItem.progressEntries.pull(progressId);
+  subItem.completedQty = subItem.progressEntries.reduce((s, e) => s + e.qtyAdded, 0);
+  subItem.status = subItem.completedQty >= subItem.plannedQty ? 'completed'
+    : subItem.completedQty > 0 ? 'running' : 'pending';
+
+  recomputeParentFromSubItems(item);
   await workOrder.save();
   success(res, { workOrder }, 'Progress entry deleted');
 });

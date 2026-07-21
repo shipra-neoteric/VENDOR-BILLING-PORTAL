@@ -294,15 +294,25 @@ const mergeWithExisting = (
   status: existing?.status || "pending",
   completedQty: existing?.completedQty || 0,
   progressEntries: existing?.progressEntries || [],
-  subItems: d.subItems.map(si => ({
-    id: si.id,
-    description: si.description,
-    remarks: si.remarks || "",
-    unit: resolveUnit(si.unit, si.customUnit),
-    plannedQty: si.plannedQty || 0,
-    rate: si.rate || 0,
-    amount: calcSubItemAmt(si),
-  })),
+  // Preserve each particular's own recorded progress by id — otherwise saving
+  // an edit (even just changing the rate) would silently wipe out completed
+  // quantities and progress history already logged against it.
+  subItems: d.subItems.map(si => {
+    const existingSub = existing?.subItems.find(es => es.id === si.id);
+    return {
+      id: si.id,
+      description: si.description,
+      remarks: si.remarks || "",
+      unit: resolveUnit(si.unit, si.customUnit),
+      plannedQty: si.plannedQty || 0,
+      rate: si.rate || 0,
+      amount: calcSubItemAmt(si),
+      status: existingSub?.status || "pending",
+      completedQty: existingSub?.completedQty || 0,
+      lastBilledQty: existingSub?.lastBilledQty || 0,
+      progressEntries: existingSub?.progressEntries || [],
+    };
+  }),
 });
 
 // ── UnitCell ─────────────────────────────────────────────────

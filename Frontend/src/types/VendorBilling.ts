@@ -94,6 +94,10 @@ export interface ScopeSubItem {
   plannedQty: number;
   rate: number;
   amount: number;
+  status?: ScopeItemStatus;
+  completedQty?: number;
+  lastBilledQty?: number;
+  progressEntries?: WorkProgressEntry[];
 }
 
 export type ScopeItemStatus = "pending" | "running" | "completed";

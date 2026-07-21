@@ -5,6 +5,7 @@ const {
   listWorkOrders, getWorkOrder, createWorkOrder, updateWorkOrder, deleteWorkOrder, cancelWorkOrder,
   lockWorkOrder, unlockWorkOrder,
   addScopeProgress, editProgressEntry, deleteProgressEntry,
+  addSubItemProgress, editSubItemProgressEntry, deleteSubItemProgressEntry,
 } = require('../controllers/workOrderController');
 
 router.use(authenticate);
@@ -21,5 +22,8 @@ router.delete('/:id', authorizeOr('work-orders', 'delete', 'owner'), deleteWorkO
 router.post('/:id/scope-items/:itemId/progress',              addScopeProgress);
 router.patch('/:id/scope-items/:itemId/progress/:progressId', editProgressEntry);
 router.delete('/:id/scope-items/:itemId/progress/:progressId', deleteProgressEntry);
+router.post('/:id/scope-items/:itemId/sub-items/:subItemId/progress',              addSubItemProgress);
+router.patch('/:id/scope-items/:itemId/sub-items/:subItemId/progress/:progressId', editSubItemProgressEntry);
+router.delete('/:id/scope-items/:itemId/sub-items/:subItemId/progress/:progressId', deleteSubItemProgressEntry);
 
 module.exports = router;

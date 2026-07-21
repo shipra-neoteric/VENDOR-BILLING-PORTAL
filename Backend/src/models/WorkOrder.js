@@ -22,6 +22,13 @@ const subItemSchema = new mongoose.Schema(
     plannedQty:  { type: Number, default: 0 },
     rate:        { type: Number, default: 0 },
     amount:      { type: Number, default: 0 },
+    // Progress is tracked per particular when an item has them — the parent
+    // item's own status/completedQty are then derived from these (see
+    // recomputeParentFromSubItems in workOrderController.js).
+    status:          { type: String, enum: ['pending', 'running', 'completed'], default: 'pending' },
+    completedQty:    { type: Number, default: 0 },
+    lastBilledQty:   { type: Number, default: 0 },
+    progressEntries: [progressEntrySchema],
   },
   { _id: true }
 );

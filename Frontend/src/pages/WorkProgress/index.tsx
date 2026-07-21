@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { Fragment, useState, useEffect, useMemo } from "react";
 import {
   Select, Button, Modal, Form, Input, InputNumber, Checkbox,
   Tooltip, message, Spin, Empty, DatePicker, Badge, Popconfirm,
@@ -20,10 +20,16 @@ interface ProgressEntry {
   _id: string; date: string; qtyAdded: number; remarks?: string;
   tower?: string; floor?: string; flatNo?: string; plotNo?: string; locationNote?: string;
 }
+interface SubItemR {
+  _id: string; description: string; remarks?: string; unit: string;
+  plannedQty: number; completedQty: number; lastBilledQty: number;
+  status?: string; progressEntries?: ProgressEntry[];
+}
 interface ScopeItemR {
   _id: string; description: string; remarks?: string; unit: string;
   plannedQty: number; completedQty: number; lastBilledQty: number;
-  rate: number; progressEntries?: ProgressEntry[];
+  rate: number; status?: string; progressEntries?: ProgressEntry[];
+  subItems?: SubItemR[];
 }
 interface WOSummary {
   _id: string; workOrderNo: string; projectName: string;
@@ -382,10 +388,12 @@ function DRIDashboard() {
   // Bill requests for selected project
   const [projectBillReqs, setProjectBillReqs] = useState<BRSummary[]>([]);
 
-  // Progress modal
-  const [progWOId,  setProgWOId]  = useState<string | undefined>();
-  const [progItem,  setProgItem]  = useState<ScopeItemR | null>(null);
-  const [progModal, setProgModal] = useState(false);
+  // Progress modal. progSubItem is set when logging progress against one
+  // particular rather than the item itself (required once an item has any).
+  const [progWOId,    setProgWOId]    = useState<string | undefined>();
+  const [progItem,    setProgItem]    = useState<ScopeItemR | null>(null);
+  const [progSubItem, setProgSubItem] = useState<SubItemR | null>(null);
+  const [progModal,   setProgModal]   = useState(false);
   const [progForm]                = Form.useForm();
   const [saving,    setSaving]    = useState(false);
 
@@ -517,9 +525,13 @@ function DRIDashboard() {
   const handleAddProgress = async () => {
     if (!progWOId || !progItem) return;
     const vals = await progForm.validateFields();
+    const target = progSubItem ?? progItem;
+    const path = progSubItem
+      ? `/work-orders/${progWOId}/scope-items/${progItem._id}/sub-items/${progSubItem._id}/progress`
+      : `/work-orders/${progWOId}/scope-items/${progItem._id}/progress`;
     setSaving(true);
     try {
-      await apiClient.post(`/work-orders/${progWOId}/scope-items/${progItem._id}/progress`, {
+      await apiClient.post(path, {
         date:         vals.date ? dayjs(vals.date).format("YYYY-MM-DD") : dayjs().format("YYYY-MM-DD"),
         qtyAdded:     vals.qtyAdded,
         remarks:      vals.remarks || "",
@@ -530,11 +542,13 @@ function DRIDashboard() {
         locationNote: vals.locationNote || "",
         ...(vals.plannedQty ? { plannedQty: vals.plannedQty } : {}),
       });
-      message.success(`+${fmtN(vals.qtyAdded)} ${progItem.unit} recorded`);
+      message.success(`+${fmtN(vals.qtyAdded)} ${target.unit} recorded`);
       setProgModal(false);
       progForm.resetFields();
       await reloadWODetail(progWOId);
-    } catch { }
+    } catch (e: any) {
+      message.error(e?.response?.data?.message || "Failed to add progress");
+    }
     finally { setSaving(false); }
   };
 
@@ -833,11 +847,18 @@ function DRIDashboard() {
                               const unbilled = Math.max(0, si.completedQty - (si.lastBilledQty || 0));
                               const rem      = Math.max(0, si.plannedQty - si.completedQty);
                               const isDone   = p >= 100;
+                              const hasSubItems = (si.subItems?.length ?? 0) > 0;
                               return (
-                                <tr key={si._id} style={{ borderBottom: "1px solid var(--nx-border)", background: idx % 2 === 0 ? "var(--nx-white)" : "var(--nx-fill-2)" }}>
+                                <Fragment key={si._id}>
+                                <tr style={{ borderBottom: hasSubItems ? "none" : "1px solid var(--nx-border)", background: idx % 2 === 0 ? "var(--nx-white)" : "var(--nx-fill-2)" }}>
                                   <td style={{ padding: "9px 12px", color: "var(--nx-text-muted)", fontSize: 12 }}>{idx + 1}</td>
                                   <td style={{ padding: "9px 12px", fontWeight: 600, color: "var(--nx-text)", fontSize: 13 }}>
                                     {si.description}
+                                    {hasSubItems && (
+                                      <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, color: "#9CA3AF", textTransform: "uppercase" }}>
+                                        {isDone ? "✓ Complete" : `${si.subItems!.length} particulars`}
+                                      </span>
+                                    )}
                                     {si.remarks && <div style={{ fontSize: 11, fontWeight: 400, color: "#d97706", marginTop: 2 }}>📌 {si.remarks}</div>}
                                   </td>
                                   <td style={{ padding: "9px 12px", color: "var(--nx-text-2)", fontSize: 12 }}>{si.unit}</td>
@@ -858,21 +879,73 @@ function DRIDashboard() {
                                     </div>
                                   </td>
                                   <td style={{ padding: "9px 12px" }}>
-                                    <Button
-                                      size="small" disabled={isDone}
-                                      onClick={() => {
-                                        setProgWOId(woSum._id);
-                                        setProgItem(si);
-                                        progForm.resetFields();
-                                        progForm.setFieldsValue({ date: dayjs() });
-                                        setProgModal(true);
-                                      }}
-                                      style={!isDone ? { background: "#FF7A00", borderColor: "#FF7A00", color: "#fff", fontWeight: 600, fontSize: 12 } : { fontSize: 12 }}
-                                    >
-                                      {isDone ? "Done" : "+ Progress"}
-                                    </Button>
+                                    {!hasSubItems && (
+                                      <Button
+                                        size="small" disabled={isDone}
+                                        onClick={() => {
+                                          setProgWOId(woSum._id);
+                                          setProgItem(si);
+                                          setProgSubItem(null);
+                                          progForm.resetFields();
+                                          progForm.setFieldsValue({ date: dayjs() });
+                                          setProgModal(true);
+                                        }}
+                                        style={!isDone ? { background: "#FF7A00", borderColor: "#FF7A00", color: "#fff", fontWeight: 600, fontSize: 12 } : { fontSize: 12 }}
+                                      >
+                                        {isDone ? "Done" : "+ Progress"}
+                                      </Button>
+                                    )}
                                   </td>
                                 </tr>
+                                {hasSubItems && si.subItems!.map((sub, subIdx) => {
+                                  const sp = pctOf(sub.completedQty, sub.plannedQty);
+                                  const subRem = Math.max(0, sub.plannedQty - sub.completedQty);
+                                  const subDone = sp >= 100;
+                                  const isLastSub = subIdx === si.subItems!.length - 1;
+                                  return (
+                                    <tr key={sub._id} style={{ borderBottom: isLastSub ? "1px solid var(--nx-border)" : "1px solid #F3F4F6", background: "#FCFCFD" }}>
+                                      <td style={{ padding: "6px 12px 6px 28px", color: "var(--nx-text-muted)", fontSize: 11 }}>{idx + 1}.{subIdx + 1}</td>
+                                      <td style={{ padding: "6px 12px", fontWeight: 500, color: "var(--nx-text-2)", fontSize: 12 }}>
+                                        {sub.description}
+                                        {subDone && <span style={{ marginLeft: 6, color: "#16a34a", fontSize: 10, fontWeight: 700 }}>✓</span>}
+                                      </td>
+                                      <td style={{ padding: "6px 12px", color: "var(--nx-text-2)", fontSize: 11 }}>{sub.unit}</td>
+                                      <td style={{ padding: "6px 12px", fontFamily: "monospace", fontSize: 11, color: "var(--nx-text)" }}>{fmtN(sub.plannedQty)}</td>
+                                      <td style={{ padding: "6px 12px", fontFamily: "monospace", fontSize: 11, color: sub.completedQty > 0 ? "#16a34a" : "var(--nx-text-muted)" }}>{fmtN(sub.completedQty)}</td>
+                                      {/* Billing tracks at the item level (its completedQty rolls up from all
+                                          particulars), not per particular — shown blank here on purpose. */}
+                                      <td style={{ padding: "6px 12px", fontSize: 11, color: "var(--nx-text-muted)" }}>—</td>
+                                      <td style={{ padding: "6px 12px", fontFamily: "monospace", fontSize: 11, color: subRem > 0 ? "var(--nx-text-3)" : "#16a34a" }}>
+                                        {subRem > 0 ? fmtN(subRem) : "✓ Done"}
+                                      </td>
+                                      <td style={{ padding: "6px 12px", minWidth: 100 }}>
+                                        <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                                          <div style={{ flex: 1, height: 5, background: "var(--nx-border)", borderRadius: 3, overflow: "hidden" }}>
+                                            <div style={{ width: `${sp}%`, height: "100%", background: subDone ? "#16a34a" : "#FF7A00", borderRadius: 3 }} />
+                                          </div>
+                                          <span style={{ fontSize: 9.5, fontWeight: 700, color: subDone ? "#16a34a" : "#FF7A00", minWidth: 26 }}>{sp}%</span>
+                                        </div>
+                                      </td>
+                                      <td style={{ padding: "6px 12px" }}>
+                                        <Button
+                                          size="small" disabled={subDone}
+                                          onClick={() => {
+                                            setProgWOId(woSum._id);
+                                            setProgItem(si);
+                                            setProgSubItem(sub);
+                                            progForm.resetFields();
+                                            progForm.setFieldsValue({ date: dayjs() });
+                                            setProgModal(true);
+                                          }}
+                                          style={!subDone ? { background: "#FF7A00", borderColor: "#FF7A00", color: "#fff", fontWeight: 600, fontSize: 11 } : { fontSize: 11 }}
+                                        >
+                                          {subDone ? "Done" : "+ Progress"}
+                                        </Button>
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                                </Fragment>
                               );
                             })}
                           </tbody>
@@ -1026,16 +1099,16 @@ function DRIDashboard() {
 
       {/* ── Add Progress Modal ─────────────────────────────────────────────── */}
       <Modal
-        open={progModal} onCancel={() => { setProgModal(false); progForm.resetFields(); }}
-        title={`Add Progress — ${progItem?.description}`}
+        open={progModal} onCancel={() => { setProgModal(false); setProgSubItem(null); progForm.resetFields(); }}
+        title={progSubItem ? `Add Progress — ${progItem?.description} › ${progSubItem.description}` : `Add Progress — ${progItem?.description}`}
         onOk={handleAddProgress} okText="Save Progress"
         okButtonProps={{ loading: saving, style: { background: "#FF7A00", borderColor: "#FF7A00" } }}
         destroyOnClose
       >
         <Form form={progForm} layout="vertical" style={{ marginTop: 8 }}>
-          {progItem?.remarks && (
+          {(progSubItem ?? progItem)?.remarks && (
             <div style={{ background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: 8, padding: "10px 14px", marginBottom: 14, fontSize: 12, color: "#92400e" }}>
-              <span style={{ fontWeight: 700 }}>📌 Instruction: </span>{progItem.remarks}
+              <span style={{ fontWeight: 700 }}>📌 Instruction: </span>{(progSubItem ?? progItem)?.remarks}
             </div>
           )}
           <Form.Item label="Date" name="date" rules={[{ required: true, message: "Select date" }]}>
@@ -1043,7 +1116,7 @@ function DRIDashboard() {
           </Form.Item>
           <LocationFields pt={progProjectType} />
           {/* Set planned qty inline when it was never set on work order creation */}
-          {progItem && !progItem.plannedQty && (
+          {(progSubItem ?? progItem) && !(progSubItem ?? progItem)!.plannedQty && (
             <div style={{ background: "#FFF8F0", border: "1px solid #FDDCB5", borderRadius: 8, padding: "10px 14px", marginBottom: 14 }}>
               <div style={{ fontSize: 12, fontWeight: 600, color: "#FF7A00", marginBottom: 6 }}>
                 Planned quantity not set for this item
@@ -1051,26 +1124,27 @@ function DRIDashboard() {
               <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 10 }}>
                 You can set the total planned quantity now, or leave blank to log progress without a cap.
               </div>
-              <Form.Item label={`Total Planned Qty (${progItem.unit})`} name="plannedQty" style={{ marginBottom: 0 }}>
+              <Form.Item label={`Total Planned Qty (${(progSubItem ?? progItem)!.unit})`} name="plannedQty" style={{ marginBottom: 0 }}>
                 <InputNumber
                   style={{ width: "100%" }} min={0.00001} step={0.00001} precision={5}
-                  placeholder={progItem.unit === "per-hr" ? "e.g. 200.0000" : "e.g. 5000"}
+                  placeholder={(progSubItem ?? progItem)!.unit === "per-hr" ? "e.g. 200.0000" : "e.g. 5000"}
                 />
               </Form.Item>
             </div>
           )}
 
           <Form.Item
-            label={`Quantity Added (${progItem?.unit})`} name="qtyAdded"
-            extra={progItem?.unit === "per-hr" ? "Tip: enter decimals for minutes — e.g. 13.67 = 13 hr 40 min" : undefined}
+            label={`Quantity Added (${(progSubItem ?? progItem)?.unit})`} name="qtyAdded"
+            extra={(progSubItem ?? progItem)?.unit === "per-hr" ? "Tip: enter decimals for minutes — e.g. 13.67 = 13 hr 40 min" : undefined}
             rules={[
               { required: true, type: "number", min: 0.01, message: "Enter a valid quantity (e.g. 13.67)" },
               {
                 validator: (_: unknown, value: number) => {
-                  if (!value || !progItem) return Promise.resolve();
-                  if (!progItem.plannedQty) return Promise.resolve();
-                  const max = Math.max(0, progItem.plannedQty - progItem.completedQty);
-                  if (value > max) return Promise.reject(new Error(`Max remaining: ${fmtN(max)} ${progItem.unit}`));
+                  const t = progSubItem ?? progItem;
+                  if (!value || !t) return Promise.resolve();
+                  if (!t.plannedQty) return Promise.resolve();
+                  const max = Math.max(0, t.plannedQty - t.completedQty);
+                  if (value > max) return Promise.reject(new Error(`Max remaining: ${fmtN(max)} ${t.unit}`));
                   return Promise.resolve();
                 },
               },
@@ -1079,19 +1153,19 @@ function DRIDashboard() {
             <InputNumber
               style={{ width: "100%" }}
               min={0.00001} step={0.00001} precision={5}
-              max={progItem?.plannedQty ? Math.max(0, progItem.plannedQty - progItem.completedQty) : undefined}
-              placeholder={progItem?.unit === "per-hr" ? "e.g. 13.6667" : "e.g. 500"}
+              max={(progSubItem ?? progItem)?.plannedQty ? Math.max(0, (progSubItem ?? progItem)!.plannedQty - (progSubItem ?? progItem)!.completedQty) : undefined}
+              placeholder={(progSubItem ?? progItem)?.unit === "per-hr" ? "e.g. 13.6667" : "e.g. 500"}
             />
           </Form.Item>
           <Form.Item label="Remarks (optional)" name="remarks">
             <Input.TextArea rows={2} placeholder="Notes for today's work…" />
           </Form.Item>
-          {progItem && (
+          {(progSubItem ?? progItem) && (
             <div style={{ background: "var(--nx-fill-2)", border: "1px solid var(--nx-border)", borderRadius: 8, padding: 12, fontSize: 12 }}>
               {[
-                { label: "Planned",   value: progItem.plannedQty > 0 ? `${fmtN(progItem.plannedQty)} ${progItem.unit}` : "Not set",           color: progItem.plannedQty > 0 ? "var(--nx-text)" : "#9ba3b8" },
-                { label: "Done",      value: `${fmtN(progItem.completedQty)} ${progItem.unit}`,                                               color: "#16a34a" },
-                { label: "Remaining", value: progItem.plannedQty > 0 ? `${fmtN(Math.max(0, progItem.plannedQty - progItem.completedQty))} ${progItem.unit}` : "Unlimited", color: "#FF7A00" },
+                { label: "Planned",   value: (progSubItem ?? progItem)!.plannedQty > 0 ? `${fmtN((progSubItem ?? progItem)!.plannedQty)} ${(progSubItem ?? progItem)!.unit}` : "Not set",           color: (progSubItem ?? progItem)!.plannedQty > 0 ? "var(--nx-text)" : "#9ba3b8" },
+                { label: "Done",      value: `${fmtN((progSubItem ?? progItem)!.completedQty)} ${(progSubItem ?? progItem)!.unit}`,                                               color: "#16a34a" },
+                { label: "Remaining", value: (progSubItem ?? progItem)!.plannedQty > 0 ? `${fmtN(Math.max(0, (progSubItem ?? progItem)!.plannedQty - (progSubItem ?? progItem)!.completedQty))} ${(progSubItem ?? progItem)!.unit}` : "Unlimited", color: "#FF7A00" },
               ].map(r => (
                 <div key={r.label} style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
                   <span style={{ color: "var(--nx-text-2)" }}>{r.label}</span>
