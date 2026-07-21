@@ -46,7 +46,12 @@ exports.listWorkOrders = asyncHandler(async (req, res) => {
       { projectName: { $regex: search, $options: 'i' } },
     ];
   }
+  // Attached files are stored as base64 data URIs directly on the document, which can
+  // run into MBs per work order — excluding the actual bytes here (keeping just the
+  // file names, so document counts/badges still work) is what keeps this list fast.
+  // Any screen that needs the real file content re-fetches the single work order.
   const workOrders = await WorkOrder.find(filter)
+    .select('-documents.url -documentUrl')
     .populate('projectId', 'code name projectType')
     .populate('assignedDRI', 'name email')
     .populate('createdBy', 'name email')

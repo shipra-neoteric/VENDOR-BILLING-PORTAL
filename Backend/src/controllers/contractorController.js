@@ -19,7 +19,10 @@ exports.listContractors = asyncHandler(async (req, res) => {
   // Sort by vendor code (zero-padded, so this is also numeric order) rather than
   // createdAt — imports/edits can leave createdAt out of step with the code sequence,
   // which is what a user actually expects a "vendor list" to be ordered by.
-  const contractors = await Contractor.find(filter).sort({ vendorCode: -1 });
+  // `documents` holds base64 data URIs for GST/PAN certs etc. (can run MBs per
+  // contractor) and is only ever rendered in the single-contractor view drawer, so it's
+  // excluded here to keep the list fast — that drawer fetches the full record itself.
+  const contractors = await Contractor.find(filter).select('-documents').sort({ vendorCode: -1 });
   success(res, { contractors });
 });
 

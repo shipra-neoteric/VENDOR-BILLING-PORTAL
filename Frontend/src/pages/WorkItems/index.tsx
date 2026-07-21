@@ -1687,7 +1687,11 @@ export default function WorkItems() {
     }
   };
 
-  const openEdit = (wo: WorkOrder) => {
+  const openEdit = async (woIn: WorkOrder) => {
+    // Must have the real document bytes before populating the form — otherwise saving
+    // without touching the documents field would resubmit url-less entries and wipe
+    // out the actual attached files on this work order.
+    const wo = await ensureFullWorkOrder(woIn);
     setEditWOId(wo.id);
     editForm.setFieldsValue({ ...wo, issueDate: dayjs(wo.issueDate), category: wo.category || "", subCategory: wo.subCategory || "", assignedDRI: ((wo as any).assignedDRI || []).map((d: any) => d._id || d), gstPercent: wo.gstPercent ?? 18, retentionPercent: (wo as any).retentionPercent ?? 0 });
     setEditScopeItems((wo.scopeItems || []).map(toDraft));
@@ -1780,12 +1784,26 @@ export default function WorkItems() {
     }
   };
 
+  // The work orders list omits each attached document's actual file content (some run
+  // several MB as base64) to keep the list fast — screens that need the real bytes
+  // (PDF download/merge, the Documents modal, the edit form) fetch the single work
+  // order fresh first, but only when that WO actually has a document missing its url.
+  const ensureFullWorkOrder = async (wo: WorkOrder): Promise<WorkOrder> => {
+    const docs = getWorkOrderDocuments(wo);
+    if (docs.length === 0 || docs.every(d => d.url)) return wo;
+    const res = await apiClient.get<{ workOrder: WorkOrder }>(`/work-orders/${wo.id}`);
+    const full = normalizeWO(res.data.workOrder);
+    setWorkOrders(prev => prev.map(w => w.id === wo.id ? full : w));
+    return full;
+  };
+
   const handleDownloadPDF = async (wo: WorkOrder) => {
     setPdfLoading(true);
     try {
-      const company    = companies.find((c: any) => c._id === (wo as any).companyId) ?? null;
-      const contractor = contractors.find(c => c.vendorCode === wo.vendorCode) ?? null;
-      await downloadWorkOrderPDF(wo as any, company, contractor as any);
+      const full = await ensureFullWorkOrder(wo);
+      const company    = companies.find((c: any) => c._id === (full as any).companyId) ?? null;
+      const contractor = contractors.find(c => c.vendorCode === full.vendorCode) ?? null;
+      await downloadWorkOrderPDF(full as any, company, contractor as any);
     } catch {
       message.error("Failed to generate PDF");
     } finally {
@@ -1797,9 +1815,10 @@ export default function WorkItems() {
     setPdfLoading(true);
     const hide = message.loading("Translating to Hindi…", 0);
     try {
-      const company    = companies.find((c: any) => c._id === (wo as any).companyId) ?? null;
-      const contractor = contractors.find(c => c.vendorCode === wo.vendorCode) ?? null;
-      await downloadWorkOrderPDFHindi(wo as any, company, contractor as any);
+      const full = await ensureFullWorkOrder(wo);
+      const company    = companies.find((c: any) => c._id === (full as any).companyId) ?? null;
+      const contractor = contractors.find(c => c.vendorCode === full.vendorCode) ?? null;
+      await downloadWorkOrderPDFHindi(full as any, company, contractor as any);
     } catch {
       message.error("Failed to generate Hindi PDF");
     } finally {
@@ -1978,7 +1997,7 @@ export default function WorkItems() {
           } else if (key === "pdf-hindi") {
             handleDownloadPDFHindi(record);
           } else if (key === "doc") {
-            setDocsRecord(record);
+            ensureFullWorkOrder(record).then(setDocsRecord);
           } else if (key === "cancel") {
             setCancelRemark("");
             setCancelRecord(record);
@@ -2000,7 +2019,7 @@ export default function WorkItems() {
               <Button
                 type="text"
                 size="small"
-                onClick={() => { setSelectedWOId(record.id); setDrawerOpen(true); }}
+                onClick={() => { ensureFullWorkOrder(record); setSelectedWOId(record.id); setDrawerOpen(true); }}
                 style={{ fontSize: 16 }}
               >
                 👁️

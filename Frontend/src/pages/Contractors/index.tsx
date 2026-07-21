@@ -368,7 +368,18 @@ export default function Contractors() {
           <Button
             type="link"
             size="small"
-            onClick={() => { setSelected(record); setViewOpen(true); }}
+            onClick={() => {
+              setSelected(record);
+              setViewOpen(true);
+              // The list omits each contractor's uploaded documents (GST/PAN certs
+              // etc. can run MBs as base64) to keep it fast — fetch the full record
+              // here so the profile drawer's download links actually work.
+              apiClient.get<{ contractor: Contractor }>(`/contractors/${record.id}`).then(res => {
+                const full = normalizeId(res.data.contractor);
+                setSelected(full);
+                setContractors(prev => prev.map(c => c.id === record.id ? full : c));
+              }).catch(() => {});
+            }}
           >
             View Profile
           </Button>
