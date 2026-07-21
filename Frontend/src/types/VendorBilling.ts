@@ -137,7 +137,6 @@ export interface PaymentMilestone {
   amountPercent?: number | null;
   discount?: number;
   gstPercent: number;
-  gstType: "inclusive" | "exclusive";
   payable: number;
 }
 

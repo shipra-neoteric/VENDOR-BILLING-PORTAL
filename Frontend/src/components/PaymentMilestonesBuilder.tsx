@@ -18,7 +18,6 @@ export interface MilestoneDraft {
   amountMode: "fixed" | "percent";
   amountPercent: number | null;
   gstPercent: number;
-  gstType: "inclusive" | "exclusive";
 }
 
 const MODE_OPTIONS = [
@@ -35,13 +34,12 @@ export function newMilestone(): MilestoneDraft {
     id: crypto.randomUUID(),
     stage: "", date: "", type: "", mode: "Bank Transfer",
     amount: null, amountMode: "fixed", amountPercent: null,
-    gstPercent: 18, gstType: "exclusive",
+    gstPercent: 18,
   };
 }
 
 export function calcPayable(m: MilestoneDraft): number {
   const amt = m.amount || 0;
-  if (m.gstType === "inclusive") return Math.round(amt);
   return Math.round(amt * (1 + (m.gstPercent || 0) / 100));
 }
 
@@ -162,16 +160,8 @@ export default function PaymentMilestonesBuilder({
               )}
             </Col>
             <Col xs={12} sm={4}>
-              <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>GST %</div>
+              <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>GST</div>
               <GstSelect value={m.gstPercent} onChange={v => upd(m.id, { gstPercent: v })} style={{ width: "100%" }} />
-            </Col>
-            <Col xs={12} sm={4}>
-              <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>GST Type</div>
-              <Select
-                value={m.gstType} style={{ width: "100%" }}
-                options={[{ label: "Exclusive", value: "exclusive" }, { label: "Inclusive", value: "inclusive" }]}
-                onChange={v => upd(m.id, { gstType: v })}
-              />
             </Col>
           </Row>
           <Row gutter={[10, 0]} style={{ marginTop: 8 }}>

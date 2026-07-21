@@ -442,7 +442,7 @@ export default function PublicWorkOrderForm() {
         paymentMilestones: milestones.map(m => ({
           stage: m.stage, date: m.date, type: m.type, mode: m.mode,
           amount: m.amount || 0, amountMode: m.amountMode, amountPercent: m.amountPercent,
-          gstPercent: m.gstPercent, gstType: m.gstType,
+          gstPercent: m.gstPercent,
           payable: calcPayable(m),
         })),
         warrantyTerms: warrantyTerms.filter(t => t.trim()),

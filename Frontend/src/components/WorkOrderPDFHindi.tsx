@@ -106,7 +106,6 @@ interface PaymentMilestoneData {
   mode?: string;
   amount?: number;
   gstPercent?: number;
-  gstType?: "inclusive" | "exclusive";
   payable?: number;
 }
 
@@ -368,7 +367,7 @@ export function WorkOrderDocumentHindi({ wo, company, contractor }: Props) {
                 <Text style={S.msDate}>{m.date ? fmtDate(m.date) : "—"}</Text>
                 <Text style={S.msMode}>{m.mode || "—"}</Text>
                 <Text style={S.msAmt}>{m.amount ? fmtAmt(m.amount) : "—"}</Text>
-                <Text style={S.msGst}>{m.gstPercent ?? 0}% {m.gstType === "inclusive" ? "सहित" : "अतिरिक्त"}</Text>
+                <Text style={S.msGst}>{m.gstPercent ?? 0}%</Text>
                 <Text style={S.msPay}>{m.payable ? fmtAmt(m.payable) : "—"}</Text>
               </View>
             ))}

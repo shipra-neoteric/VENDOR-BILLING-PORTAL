@@ -201,13 +201,13 @@ const toMilestoneDraft = (pm: PaymentMilestone): MilestoneDraft => ({
   id: pm.id, stage: pm.stage, date: pm.date, type: pm.type,
   mode: pm.mode, amount: pm.amount,
   amountMode: pm.amountMode ?? "fixed", amountPercent: pm.amountPercent ?? null,
-  gstPercent: pm.gstPercent, gstType: pm.gstType,
+  gstPercent: pm.gstPercent,
 });
 
 const milestoneDraftToPayload = (m: MilestoneDraft) => ({
   stage: m.stage, date: m.date, type: m.type, mode: m.mode,
   amount: m.amount || 0, amountMode: m.amountMode, amountPercent: m.amountPercent,
-  gstPercent: m.gstPercent, gstType: m.gstType,
+  gstPercent: m.gstPercent,
   payable: calcPayable(m),
 });
 
@@ -2553,7 +2553,7 @@ export default function WorkItems() {
                           <td style={{ padding: "9px 16px", fontSize: 12, color: "#6B7280" }}>{m.date ? dayjs(m.date).format("DD MMM YYYY") : "—"}</td>
                           <td style={{ padding: "9px 16px", fontSize: 12, color: "#6B7280" }}>{m.mode}</td>
                           <td style={{ padding: "9px 16px", fontFamily: "monospace", fontSize: 13, color: "#374151" }}>{fmt(m.amount || 0)}</td>
-                          <td style={{ padding: "9px 16px", fontSize: 12, color: "#6B7280" }}>{m.gstPercent}% {m.gstType === "inclusive" ? "Incl." : "Excl."}</td>
+                          <td style={{ padding: "9px 16px", fontSize: 12, color: "#6B7280" }}>{m.gstPercent}%</td>
                           <td style={{ padding: "9px 16px", fontFamily: "monospace", fontSize: 13, fontWeight: 700, color: "#FF7A00" }}>{fmt(m.payable || 0)}</td>
                         </tr>
                       ))}
