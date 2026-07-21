@@ -149,13 +149,14 @@ const resolveUnit = (unit: string, customUnit: string) =>
 const isKnownUnit = (unit: string) =>
   UNIT_OPTIONS.some(u => u.value === unit && u.value !== "custom");
 
+// Sub-items ("Particulars") are a read-only breakdown for reference only — the
+// main work item's own qty/rate is always what drives the contract value, so
+// the two don't get added together or shown as if both count.
 const calcSubItemAmt = (si: ScopeSubItemDraft) =>
   (si.plannedQty || 0) * (si.rate || 0);
 
 const calcDraftItemAmt = (item: ScopeItemDraft): number =>
-  item.subItems.length > 0
-    ? item.subItems.reduce((s, si) => s + calcSubItemAmt(si), 0)
-    : (item.plannedQty || 0) * (item.rate || 0);
+  (item.plannedQty || 0) * (item.rate || 0);
 
 const calcTotalAmt = (items: ScopeItemDraft[]) =>
   items.reduce((s, it) => s + calcDraftItemAmt(it), 0);
@@ -255,7 +256,7 @@ const draftToNewItem = (d: ScopeItemDraft): ScopeItem => ({
   remarks: d.remarks,
   unit: resolveUnit(d.unit, d.customUnit),
   plannedQty: d.plannedQty || 0,
-  rate: d.subItems.length > 0 ? 0 : (d.rate || 0),
+  rate: d.rate || 0,
   amount: calcDraftItemAmt(d),
   gstPercent: d.gstPercent,
   plannedStart: d.plannedStart,
@@ -283,7 +284,7 @@ const mergeWithExisting = (
   remarks: d.remarks,
   unit: resolveUnit(d.unit, d.customUnit),
   plannedQty: d.plannedQty || 0,
-  rate: d.subItems.length > 0 ? 0 : (d.rate || 0),
+  rate: d.rate || 0,
   amount: calcDraftItemAmt(d),
   gstPercent: d.gstPercent,
   plannedStart: d.plannedStart,
@@ -578,32 +579,22 @@ function ScopeItemsBuilder({ items, onChange, allCategories = [], topCatId = nul
 
               const unitQtyRateCols = (
                 <>
-                  <Col span={item.subItems.length > 0 ? 6 : 4}>
+                  <Col span={4}>
                     <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Unit</div>
                     <UnitCell unit={item.unit} customUnit={item.customUnit} onChange={patch => upd(item.id, patch)} />
                   </Col>
-                  {item.subItems.length === 0 && (
-                    <>
-                      <Col span={4}>
-                        <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Planned Qty</div>
-                        <InputNumber placeholder="Qty" value={item.plannedQty} onChange={v => upd(item.id, { plannedQty: v })} style={{ width: "100%" }} min={0} />
-                      </Col>
-                      <Col span={4}>
-                        <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Rate (₹)</div>
-                        <InputNumber placeholder="Rate" value={item.rate} onChange={v => upd(item.id, { rate: v })} style={{ width: "100%" }} min={0} />
-                      </Col>
-                      <Col span={4}>
-                        <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Amount</div>
-                        {amtBox()}
-                      </Col>
-                    </>
-                  )}
-                  {item.subItems.length > 0 && (
-                    <Col span={6}>
-                      <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Total (from sub-items)</div>
-                      {amtBox(13)}
-                    </Col>
-                  )}
+                  <Col span={4}>
+                    <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Planned Qty</div>
+                    <InputNumber placeholder="Qty" value={item.plannedQty} onChange={v => upd(item.id, { plannedQty: v })} style={{ width: "100%" }} min={0} />
+                  </Col>
+                  <Col span={4}>
+                    <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Rate (₹)</div>
+                    <InputNumber placeholder="Rate" value={item.rate} onChange={v => upd(item.id, { rate: v })} style={{ width: "100%" }} min={0} />
+                  </Col>
+                  <Col span={4}>
+                    <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Amount</div>
+                    {amtBox()}
+                  </Col>
                 </>
               );
 
@@ -628,7 +619,7 @@ function ScopeItemsBuilder({ items, onChange, allCategories = [], topCatId = nul
                     </Row>
                     {/* Row 2: Sub-Sub-Category + Unit + Qty + Rate + Amount */}
                     <Row gutter={[10, 0]} style={{ marginTop: 8 }}>
-                      <Col span={item.subItems.length > 0 ? 12 : 8}>
+                      <Col span={8}>
                         <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Sub-Sub-Category</div>
                         <CategoryCreatableSelect
                           placeholder="Select or type to add (optional)"
@@ -650,7 +641,7 @@ function ScopeItemsBuilder({ items, onChange, allCategories = [], topCatId = nul
               // Standard layout: description/sub-cat + unit/qty/rate on same row
               return (
                 <Row gutter={[10, 0]}>
-                  <Col span={item.subItems.length > 0 ? 12 : 8}>
+                  <Col span={8}>
                     {subCatOptions.length > 0 ? (
                       <>
                         <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Sub-Category *</div>
@@ -736,7 +727,7 @@ function ScopeItemsBuilder({ items, onChange, allCategories = [], topCatId = nul
                   onClick={() => upd(item.id, { showSubItems: !item.showSubItems })}
                   style={{ color: "#5a6278", padding: 0 }}
                 >
-                  {item.showSubItems ? "Hide" : "Add"} Sub-Items
+                  {item.showSubItems ? "Hide" : "Add"} Particulars
                   {item.subItems.length > 0 && (
                     <Tag color="blue" style={{ marginLeft: 4, fontSize: 10 }}>
                       {item.subItems.length}
@@ -766,7 +757,10 @@ function ScopeItemsBuilder({ items, onChange, allCategories = [], topCatId = nul
                     marginBottom: 10,
                   }}
                 >
-                  Sub-Items — Detailed Pricing Breakdown
+                  Particulars — Reference Only, Not Included in Contract Value
+                </div>
+                <div style={{ color: "#9ba3b8", fontSize: 11, marginTop: -6, marginBottom: 10 }}>
+                  The main item's own Qty/Rate/Amount above drive the contract value. Particulars are just a descriptive breakdown for this item.
                 </div>
 
                 {item.subItems.length === 0 && (

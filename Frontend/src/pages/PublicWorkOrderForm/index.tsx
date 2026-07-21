@@ -88,9 +88,10 @@ interface ScopeDraft {
 
 const fmt = (n: number) => "₹" + Math.round(n).toLocaleString("en-IN");
 
+// Sub-items ("Particulars") are a read-only descriptive breakdown — the main
+// item's own qty/rate always drives the amount, so the two never get summed
+// together.
 function calcItemAmt(item: ScopeDraft) {
-  if (item.subItems.length > 0)
-    return item.subItems.reduce((s, si) => s + (si.plannedQty || 0) * (si.rate || 0), 0);
   return (item.plannedQty || 0) * (item.rate || 0);
 }
 
@@ -219,7 +220,7 @@ function ScopeItemCard({
       <div style={{ padding: "14px 14px 10px" }}>
         {/* Row 1: Sub-Category / Description | Unit | Qty | Rate | Amount */}
         <Row gutter={[10, 10]}>
-          <Col xs={24} sm={item.subItems.length > 0 ? 12 : 8}>
+          <Col xs={24} sm={8}>
             {subCatOptions.length > 0 ? (
               <>
                 <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Sub-Category *</div>
@@ -242,7 +243,7 @@ function ScopeItemCard({
             )}
           </Col>
 
-          <Col xs={12} sm={item.subItems.length > 0 ? 6 : 4}>
+          <Col xs={12} sm={4}>
             <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Unit</div>
             <Select value={item.unit} options={UNIT_OPTIONS} style={{ width: "100%" }} placement="bottomLeft"
               onChange={v => onChange({ unit: v })} showSearch
@@ -252,31 +253,21 @@ function ScopeItemCard({
             />
           </Col>
 
-          {item.subItems.length === 0 && (
-            <>
-              <Col xs={12} sm={4}>
-                <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Planned Qty</div>
-                <InputNumber placeholder="Qty" value={item.plannedQty} style={{ width: "100%" }}
-                  min={0} step={0.01} precision={2}
-                  onChange={v => onChange({ plannedQty: v })} />
-              </Col>
-              <Col xs={12} sm={4}>
-                <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Rate (₹)</div>
-                <InputNumber placeholder="Rate" value={item.rate} style={{ width: "100%" }}
-                  min={0} onChange={v => onChange({ rate: v })} />
-              </Col>
-              <Col xs={24} sm={4}>
-                <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Amount</div>
-                <AmtBox value={amt} />
-              </Col>
-            </>
-          )}
-          {item.subItems.length > 0 && (
-            <Col xs={24} sm={6}>
-              <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Total (from sub-items)</div>
-              <AmtBox value={amt} />
-            </Col>
-          )}
+          <Col xs={12} sm={4}>
+            <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Planned Qty</div>
+            <InputNumber placeholder="Qty" value={item.plannedQty} style={{ width: "100%" }}
+              min={0} step={0.01} precision={2}
+              onChange={v => onChange({ plannedQty: v })} />
+          </Col>
+          <Col xs={12} sm={4}>
+            <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Rate (₹)</div>
+            <InputNumber placeholder="Rate" value={item.rate} style={{ width: "100%" }}
+              min={0} onChange={v => onChange({ rate: v })} />
+          </Col>
+          <Col xs={24} sm={4}>
+            <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Amount</div>
+            <AmtBox value={amt} />
+          </Col>
         </Row>
 
         {/* Row 1b: GST + Incl. GST amount */}
@@ -324,7 +315,7 @@ function ScopeItemCard({
               onClick={() => onChange({ showSubItems: !item.showSubItems })}
               style={{ color: "#5a6278", padding: 0 }}
             >
-              {item.showSubItems ? "Hide" : "Add"} Sub-Items
+              {item.showSubItems ? "Hide" : "Add"} Particulars
               {item.subItems.length > 0 && (
                 <Tag color="blue" style={{ marginLeft: 4, fontSize: 10 }}>{item.subItems.length}</Tag>
               )}
@@ -336,7 +327,7 @@ function ScopeItemCard({
         {item.showSubItems && (
           <div style={{ marginTop: 12, background: "#f8f9fc", border: "1px solid #dde1ec", borderRadius: 6, padding: 12 }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: "#9ba3b8", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 10 }}>
-              Sub-Items — Detailed Pricing Breakdown
+              Particulars — Reference Only, Not Included in Contract Value
             </div>
             {item.subItems.length === 0 && (
               <div style={{ color: "#9ba3b8", fontSize: 12, marginBottom: 8 }}>No sub-items yet.</div>
@@ -458,8 +449,8 @@ export default function PublicWorkOrderForm() {
         scopeItems: validScope.map(i => ({
           description: i.description,
           unit:        i.unit,
-          plannedQty:  i.subItems.length > 0 ? 0 : (i.plannedQty || 0),
-          rate:        i.subItems.length > 0 ? 0 : (i.rate || 0),
+          plannedQty:  i.plannedQty || 0,
+          rate:        i.rate || 0,
           amount:      calcItemAmt(i),
           gstPercent:  i.gstPercent,
           remarks:     i.remarks,

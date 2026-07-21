@@ -223,27 +223,21 @@ export function WorkOrderDocumentHindi({ wo, company, contractor }: Props) {
   const companyAddr = [company?.address, company?.city, company?.state].filter(Boolean).join(", ");
   const contractorAddr = contractor?.address || "—";
 
+  // Sub-items ("Particulars") are a read-only descriptive breakdown — the main
+  // item's own qty/rate/amount always drives the contract value.
   const lineItems: Array<{ desc: string; unit?: string; qty?: number; rate?: number; amount?: number; gstPercent?: number; start?: string; end?: string; isChild?: boolean }> = [];
   for (const item of wo.scopeItems || []) {
-    if ((item.subItems?.length ?? 0) > 0) {
-      lineItems.push({ desc: item.description, unit: "", qty: undefined, rate: undefined, amount: undefined, gstPercent: item.gstPercent, start: item.plannedStart, end: item.plannedEnd });
-      for (const sub of item.subItems ?? []) {
-        lineItems.push({ desc: "  " + sub.description, unit: sub.unit, qty: sub.plannedQty, rate: sub.rate, amount: sub.amount ?? (sub.plannedQty ?? 0) * (sub.rate ?? 0), isChild: true });
-      }
-    } else {
-      lineItems.push({ desc: item.description, unit: item.unit, qty: item.plannedQty, rate: item.rate, amount: item.amount ?? (item.plannedQty ?? 0) * (item.rate ?? 0), gstPercent: item.gstPercent, start: item.plannedStart, end: item.plannedEnd });
+    const amount = item.amount ?? (item.plannedQty ?? 0) * (item.rate ?? 0);
+    lineItems.push({ desc: item.description, unit: item.unit, qty: item.plannedQty, rate: item.rate, amount, gstPercent: item.gstPercent, start: item.plannedStart, end: item.plannedEnd });
+    for (const sub of item.subItems ?? []) {
+      lineItems.push({ desc: "  " + sub.description, unit: sub.unit, qty: sub.plannedQty, isChild: true });
     }
   }
 
-  const totalAmt = lineItems.filter(l => !l.isChild || true).reduce((s, l) => {
-    if (!l.isChild && (wo.scopeItems?.find(i => i.description === l.desc)?.subItems?.length ?? 0) > 0) return s;
-    return s + (l.amount ?? 0);
-  }, 0) || wo.contractValue || 0;
+  const totalAmt = (wo.scopeItems || []).reduce((s, item) => s + (item.amount ?? (item.plannedQty ?? 0) * (item.rate ?? 0)), 0) || wo.contractValue || 0;
 
   const totalInclGst = (wo.scopeItems || []).reduce((s, item) => {
-    const base = item.amount ?? ((item.subItems?.length ?? 0) > 0
-      ? (item.subItems ?? []).reduce((ss, si) => ss + (si.amount ?? (si.plannedQty ?? 0) * (si.rate ?? 0)), 0)
-      : (item.plannedQty ?? 0) * (item.rate ?? 0));
+    const base = item.amount ?? (item.plannedQty ?? 0) * (item.rate ?? 0);
     return s + base * (1 + (item.gstPercent ?? 0) / 100);
   }, 0);
 
