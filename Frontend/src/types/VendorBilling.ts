@@ -157,6 +157,7 @@ export interface WorkOrder {
   category?: WorkCategory;
   subCategory?: string;
   scopeOfWork?: string;
+  totalTenure?: string;
   scopeItems: ScopeItem[];
   contractValue: number;
   discount?: number;

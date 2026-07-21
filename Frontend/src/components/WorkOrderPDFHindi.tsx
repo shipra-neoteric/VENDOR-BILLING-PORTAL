@@ -120,6 +120,7 @@ interface WOData {
   category?: string;
   subCategory?: string;
   scopeOfWork?: string;
+  totalTenure?: string;
   description?: string;
   vendorName?: string;
   vendorCode?: string;
@@ -294,7 +295,8 @@ export function WorkOrderDocumentHindi({ wo, company, contractor }: Props) {
           {wo.projectLocation ? <InfoRow label="स्थान" value={wo.projectLocation} /> : null}
           <InfoRow label="श्रेणी"               value={wo.category} />
           {wo.subCategory ? <InfoRow label="उप-श्रेणी" value={wo.subCategory} /> : null}
-          <InfoRow label="कार्य शीर्षक / विवरण" value={wo.description || wo.scopeOfWork} last />
+          <InfoRow label="कार्य शीर्षक / विवरण" value={wo.description || wo.scopeOfWork} />
+          <InfoRow label="संपूर्ण कार्य की कुल अवधि" value={wo.totalTenure} last />
         </SectionBox>
 
         {/* ── Scope of Work ── */}
@@ -445,7 +447,7 @@ async function buildHindiWO(wo: WOData): Promise<WOData> {
 
   const [
     translatedDescs, translatedSubDescs, translatedMilestoneTexts, translatedTerms,
-    translatedOverall, translatedCategory, translatedSubCategory,
+    translatedOverall, translatedCategory, translatedSubCategory, translatedTenure,
   ] = await Promise.all([
     translateManyToHindi(descTexts),
     translateManyToHindi(subDescTexts),
@@ -454,6 +456,7 @@ async function buildHindiWO(wo: WOData): Promise<WOData> {
     translateToHindi(overallDesc),
     translateToHindi(wo.category),
     translateToHindi(wo.subCategory),
+    translateToHindi(wo.totalTenure || ""),
   ]);
 
   let subIdx = 0;
@@ -476,6 +479,7 @@ async function buildHindiWO(wo: WOData): Promise<WOData> {
     description: translatedOverall || overallDesc,
     category: translatedCategory || wo.category,
     subCategory: translatedSubCategory || wo.subCategory,
+    totalTenure: translatedTenure || wo.totalTenure,
     scopeItems: newScopeItems,
     paymentMilestones: newMilestones,
     warrantyTerms: translatedTerms,

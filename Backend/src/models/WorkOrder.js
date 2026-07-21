@@ -87,6 +87,7 @@ const workOrderSchema = new mongoose.Schema(
     },
     description:   { type: String, default: '' },
     scopeOfWork:   { type: String },
+    totalTenure:   { type: String, default: '' },
     scopeItems:    [scopeItemSchema],
     contractValue: { type: Number, default: 0 },
     // Flat rupee discount off the overall contract value — entered once payment

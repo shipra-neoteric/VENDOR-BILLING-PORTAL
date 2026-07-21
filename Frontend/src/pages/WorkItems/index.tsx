@@ -1432,6 +1432,14 @@ function WOFormFields({
         />
       </Form.Item>
 
+      <Form.Item
+        label="Total Tenure of Entire Work"
+        name="totalTenure"
+        tooltip="Overall time allotted to complete this work order — shown in the PDF under Project Details"
+      >
+        <Input placeholder="e.g. 45 Days, 3 Months" />
+      </Form.Item>
+
       <Form.Item label="Upload Work Order Documents" name="documents">
         <DocumentsUpload />
       </Form.Item>
@@ -1669,6 +1677,7 @@ export default function WorkItems() {
         companyId:    values.companyId   || null,
         assignedDRI:  values.assignedDRI || [],
         description:  values.description?.trim() || "",
+        totalTenure:  values.totalTenure?.trim() || "",
         scopeOfWork,
         scopeItems:   createScopeItems.map(draftToNewItem),
         contractValue: totalAmt,
@@ -1747,6 +1756,7 @@ export default function WorkItems() {
         assignedDRI:  values.assignedDRI  ?? (currentEditWO as any).assignedDRI ?? [],
         issueDate:    values.issueDate ? dayjs(values.issueDate).format("YYYY-MM-DD") : currentEditWO.issueDate,
         description:  values.description?.trim() || "",
+        totalTenure:  values.totalTenure?.trim() || "",
         scopeOfWork,
         scopeItems:   savedItems,
         contractValue: totalAmt,
