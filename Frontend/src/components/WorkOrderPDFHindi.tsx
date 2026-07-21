@@ -231,7 +231,7 @@ export function WorkOrderDocumentHindi({ wo, company, contractor }: Props) {
     const amount = item.amount ?? (item.plannedQty ?? 0) * (item.rate ?? 0);
     lineItems.push({ desc: item.description, unit: item.unit, qty: item.plannedQty, rate: item.rate, amount, gstPercent: item.gstPercent, start: item.plannedStart, end: item.plannedEnd });
     for (const sub of item.subItems ?? []) {
-      lineItems.push({ desc: "  " + sub.description, unit: sub.unit, qty: sub.plannedQty, isChild: true });
+      lineItems.push({ desc: "  " + sub.description, unit: sub.unit, qty: sub.plannedQty, rate: sub.rate, amount: sub.amount ?? (sub.plannedQty ?? 0) * (sub.rate ?? 0), isChild: true });
     }
   }
 

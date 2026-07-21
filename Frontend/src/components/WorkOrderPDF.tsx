@@ -47,7 +47,7 @@ const S = StyleSheet.create({
   scopeAlt:     { flexDirection: "row", borderTopWidth: 1, borderTopColor: BORDER, padding: "5px 8px", backgroundColor: LIGHT },
   scopeChild:   { flexDirection: "row", borderTopWidth: 0.5, borderTopColor: BORDER, padding: "4px 8px 4px 4px", backgroundColor: "#FCFCFD" },
   scopeChildRule: { width: 2, backgroundColor: "#E5E7EB", marginRight: 6, borderRadius: 1 },
-  particularsLbl: { fontSize: 6.5, color: "#9CA3AF", textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 2, paddingLeft: 8, marginTop: 2 },
+  particularsLbl: { fontSize: 7, color: "#9CA3AF", textTransform: "uppercase", letterSpacing: 0.3, marginBottom: 2, paddingLeft: 8, marginTop: 2 },
   colDesc:      { flex: 2.2, paddingRight: 6 },
   colDescText:  { fontSize: 8.5 },
   colRemarks:   { fontSize: 7.5, color: GRAY, fontFamily: "Helvetica-Oblique", marginTop: 1.5, lineHeight: 1.3 },
@@ -233,16 +233,17 @@ export function WorkOrderDocument({ wo, company, contractor }: Props) {
   const contractorAddr = contractor?.address || "—";
 
   // Flatten scope items. Each main item's own qty/rate/amount is what drives the
-  // contract value; sub-items ("Particulars") are a read-only descriptive
-  // breakdown underneath — their qty/rate are shown for reference only and never
-  // add into any total, so there's no double-counting between an item and its
-  // own particulars.
+  // contract value (totalAmt/totalInclGst below are computed straight from
+  // wo.scopeItems, never from this flattened list) — sub-items ("Particulars")
+  // show their own qty/rate/amount too, but purely for reference; they're never
+  // summed into any total, so there's no double-counting between an item and
+  // its own particulars.
   const lineItems: Array<{ desc: string; remarks?: string; unit?: string; qty?: number; rate?: number; amount?: number; gstPercent?: number; start?: string; end?: string; isChild?: boolean; isParent?: boolean }> = [];
   for (const item of wo.scopeItems || []) {
     const amount = item.amount ?? (item.plannedQty ?? 0) * (item.rate ?? 0);
     lineItems.push({ desc: item.description, remarks: item.remarks, unit: item.unit, qty: item.plannedQty, rate: item.rate, amount, gstPercent: item.gstPercent, start: item.plannedStart, end: item.plannedEnd, isParent: (item.subItems?.length ?? 0) > 0 });
     for (const sub of item.subItems ?? []) {
-      lineItems.push({ desc: sub.description, remarks: sub.remarks, unit: sub.unit, qty: sub.plannedQty, isChild: true });
+      lineItems.push({ desc: sub.description, remarks: sub.remarks, unit: sub.unit, qty: sub.plannedQty, rate: sub.rate, amount: sub.amount ?? (sub.plannedQty ?? 0) * (sub.rate ?? 0), isChild: true });
     }
   }
 
@@ -338,7 +339,7 @@ export function WorkOrderDocument({ wo, company, contractor }: Props) {
               const isFirstParticular = item.isChild && (i === 0 || !lineItems[i - 1].isChild);
               return (
                 <View key={i}>
-                  {isFirstParticular && <Text style={S.particularsLbl}>Particulars</Text>}
+                  {isFirstParticular && <Text style={S.particularsLbl}>Particulars (reference only — not included in contract value)</Text>}
                   <View style={rowStyle} wrap={false}>
                     {item.isChild && <View style={S.scopeChildRule} />}
                     <View style={S.colDesc}>
@@ -347,13 +348,13 @@ export function WorkOrderDocument({ wo, company, contractor }: Props) {
                       </Text>
                       {item.remarks ? <Text style={S.colRemarks}>{item.remarks}</Text> : null}
                     </View>
-                    <Text style={S.colUnit}>{item.unit || "—"}</Text>
-                    <Text style={S.colQty}>{item.qty != null ? item.qty.toLocaleString("en-IN") : "—"}</Text>
-                    <Text style={S.colRate}>{item.rate != null && item.rate > 0 ? item.rate.toLocaleString("en-IN") : "—"}</Text>
+                    <Text style={[S.colUnit, item.isChild ? { color: GRAY } : {}]}>{item.unit || "—"}</Text>
+                    <Text style={[S.colQty, item.isChild ? { color: GRAY } : {}]}>{item.qty != null ? item.qty.toLocaleString("en-IN") : "—"}</Text>
+                    <Text style={[S.colRate, item.isChild ? { color: GRAY } : {}]}>{item.rate != null && item.rate > 0 ? item.rate.toLocaleString("en-IN") : "—"}</Text>
                     <Text style={S.colGst}>{item.gstPercent != null ? `${item.gstPercent}%` : "—"}</Text>
                     <Text style={S.colDate}>{item.start ? fmtDate(item.start) : "—"}</Text>
                     <Text style={S.colDate}>{item.end ? fmtDate(item.end) : "—"}</Text>
-                    <Text style={[S.colAmt, { fontFamily: item.amount ? "Helvetica-Bold" : "Helvetica" }]}>
+                    <Text style={[S.colAmt, item.isChild ? { color: GRAY, fontFamily: "Helvetica-Oblique" } : { fontFamily: item.amount ? "Helvetica-Bold" : "Helvetica" }]}>
                       {item.amount ? fmtAmt(item.amount) : "—"}
                     </Text>
                   </View>
