@@ -1,7 +1,12 @@
-import { Document, Page, View, Text, StyleSheet } from "@react-pdf/renderer";
+import { Document, Page, View, Text, StyleSheet, Font } from "@react-pdf/renderer";
 import { pdf } from "@react-pdf/renderer";
 import { getWorkOrderDocuments } from "./DocumentsUpload";
 import { mergeAttachmentsIntoPdf } from "../utils/pdfMerge";
+
+// react-pdf hyphenates long words by default (e.g. "CONSULTANTS" -> "CON-SULTANTS"
+// split across lines), which reads as garbled/broken text in narrow table cells —
+// wrap whole words onto the next line instead.
+Font.registerHyphenationCallback(word => [word]);
 
 // ── Palette ────────────────────────────────────────────────────
 const ORANGE = "#FF7A00";
@@ -32,9 +37,11 @@ const S = StyleSheet.create({
   secTitle:  { fontFamily: "Helvetica-Bold", color: "#fff", fontSize: 9, letterSpacing: 0.4, textTransform: "uppercase" },
   row:       { flexDirection: "row", borderTopWidth: 1, borderTopColor: BORDER },
   rowLast:   { flexDirection: "row" },
-  cellLabel: { width: "38%", backgroundColor: LIGHT, padding: "5px 10px", fontFamily: "Helvetica-Bold", fontSize: 9, color: MID },
-  cellVal:   { flex: 1, padding: "5px 10px", fontSize: 9, color: DARK },
-  cellValMono: { flex: 1, padding: "5px 10px", fontSize: 9, color: DARK, fontFamily: "Helvetica-Oblique" },
+  cellLabel: { width: "38%", backgroundColor: LIGHT, padding: "5px 10px" },
+  cellLabelText: { fontFamily: "Helvetica-Bold", fontSize: 9, color: MID, lineHeight: 1.35 },
+  cellVal:   { flex: 1, padding: "5px 10px" },
+  cellValText: { fontSize: 9, color: DARK, lineHeight: 1.35 },
+  cellValMonoText: { fontSize: 9, color: DARK, fontFamily: "Helvetica-Oblique", lineHeight: 1.35 },
 
   // ── Scope table
   scopeHdr:  { flexDirection: "row", backgroundColor: HDR_BG, padding: "5px 8px" },
@@ -197,8 +204,8 @@ const TERMS = [
 function InfoRow({ label, value, mono = false, last = false }: { label: string; value?: string; mono?: boolean; last?: boolean }) {
   return (
     <View style={last ? S.rowLast : S.row}>
-      <Text style={S.cellLabel}>{label}</Text>
-      <Text style={mono ? S.cellValMono : S.cellVal}>{value || "—"}</Text>
+      <View style={S.cellLabel}><Text style={S.cellLabelText}>{label}</Text></View>
+      <View style={S.cellVal}><Text style={mono ? S.cellValMonoText : S.cellValText}>{value || "—"}</Text></View>
     </View>
   );
 }
