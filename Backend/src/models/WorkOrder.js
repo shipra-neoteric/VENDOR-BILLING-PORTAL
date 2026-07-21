@@ -110,6 +110,12 @@ const workOrderSchema = new mongoose.Schema(
     cancelReason: { type: String },
     cancelledBy:  { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     cancelledAt:  { type: Date },
+    // Once locked, rates/scope/milestones/contract value can no longer be edited
+    // (updateWorkOrder rejects the request) — used once a deal's final rates are
+    // decided so no one can quietly renegotiate the terms afterwards.
+    isLocked:   { type: Boolean, default: false },
+    lockedBy:   { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    lockedAt:   { type: Date },
     assignedDRI: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },

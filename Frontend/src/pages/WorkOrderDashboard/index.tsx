@@ -27,6 +27,7 @@ interface WODetail {
   gstPercent?: number;
   issueDate: string; status: string;
   cancelReason?: string; cancelledAt?: string;
+  isLocked?: boolean;
   scopeItems: ScopeItem[];
 }
 
@@ -266,6 +267,11 @@ export default function WorkOrderDashboard() {
               <span style={{ marginLeft: 12, fontSize: 12, fontWeight: 600, color: woStatusColor, background: "#F9FAFB", border: `1px solid ${woStatusColor}`, borderRadius: 20, padding: "2px 10px" }}>
                 {woStatus}
               </span>
+              {wo.isLocked && (
+                <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 600, color: "#B45309", background: "#FFFBEB", border: "1px solid #B45309", borderRadius: 20, padding: "2px 10px" }}>
+                  🔒 Locked
+                </span>
+              )}
             </div>
             <div style={{ fontSize: 14, color: "#6B7280", marginTop: 4 }}>
               {wo.projectName} · {wo.category}{wo.subCategory ? ` › ${wo.subCategory}` : ""}

@@ -171,6 +171,9 @@ export interface WorkOrder {
   cancelReason?: string;
   cancelledBy?: { _id: string; name: string; email?: string } | string;
   cancelledAt?: string;
+  isLocked?: boolean;
+  lockedBy?: { _id: string; name: string; email?: string } | string;
+  lockedAt?: string;
   createdAt?: string;
   createdBy?: { _id: string; name: string; email?: string } | string;
 }

@@ -34,6 +34,8 @@ import {
   FilePdfOutlined,
   MoreOutlined,
   StopOutlined,
+  LockOutlined,
+  UnlockOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 import type { Dayjs } from "dayjs";
@@ -1872,6 +1874,29 @@ export default function WorkItems() {
     }
   };
 
+  const handleLockToggle = (wo: WorkOrder) => {
+    const locking = !wo.isLocked;
+    Modal.confirm({
+      title: locking ? `Lock ${wo.workOrderNo}?` : `Unlock ${wo.workOrderNo}?`,
+      icon: locking ? <LockOutlined /> : <UnlockOutlined />,
+      content: locking
+        ? "Once locked, its rates, scope items, milestones, and contract value can no longer be edited until it's unlocked again."
+        : "This will allow rates, scope items, milestones, and contract value to be edited again.",
+      okText: locking ? "Lock" : "Unlock",
+      cancelText: "Cancel",
+      onOk: async () => {
+        try {
+          const res = await apiClient.patch<{ workOrder: WorkOrder }>(`/work-orders/${wo.id}/${locking ? "lock" : "unlock"}`);
+          setWorkOrders(prev => prev.map(w => w.id === wo.id ? normalizeWO(res.data.workOrder) : w));
+          message.success(`Work order ${wo.workOrderNo} ${locking ? "locked" : "unlocked"}`);
+        } catch (e: unknown) {
+          const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message || "Failed to update lock status";
+          message.error(msg);
+        }
+      },
+    });
+  };
+
   const handleDelete = async (wo: WorkOrder) => {
     try {
       await apiClient.delete(`/work-orders/${wo.id}`);
@@ -1974,6 +1999,13 @@ export default function WorkItems() {
         return (
           <div>
             <Tag color={STATUS_CFG[s]?.color}>{STATUS_CFG[s]?.label ?? s}</Tag>
+            {record.isLocked && (
+              <Tooltip title="Rates, scope items, milestones, and contract value are locked">
+                <Tag color="gold" icon={<LockOutlined />} style={{ fontSize: 11, cursor: "default", marginTop: 3 }}>
+                  Locked
+                </Tag>
+              </Tooltip>
+            )}
             {delays > 0 && (
               <div style={{ marginTop: 3 }}>
                 <Tooltip title={`${delays} scope item${delays > 1 ? "s" : ""} past their planned end date`}>
@@ -2009,9 +2041,14 @@ export default function WorkItems() {
         const docCount = getWorkOrderDocuments(record).length;
         const canCancel = record.status !== "cancelled" && record.status !== "completed";
         const menuItems: MenuProps["items"] = [
-          { key: "edit", label: "Edit", icon: <EditOutlined /> },
+          { key: "edit", label: "Edit", icon: <EditOutlined />, disabled: record.isLocked, ...(record.isLocked ? { title: "Locked — unlock to edit" } : {}) },
           { key: "pdf-hindi", label: "Download PDF (Hindi)", icon: <FilePdfOutlined /> },
           ...(docCount > 0 ? [{ key: "doc", label: `Documents (${docCount})`, icon: <LinkOutlined /> }] : []),
+          ...(isOwner ? [{
+            key: "lock-toggle",
+            label: record.isLocked ? "Unlock Work Order" : "Lock Work Order",
+            icon: record.isLocked ? <UnlockOutlined /> : <LockOutlined />,
+          }] : []),
           ...(canCancel ? [{ key: "cancel", label: "Cancel Work Order", icon: <StopOutlined />, danger: true }] : []),
           ...(isOwner ? [{ key: "delete", label: "Delete", icon: <DeleteOutlined />, danger: true }] : []),
         ];
@@ -2022,6 +2059,8 @@ export default function WorkItems() {
             handleDownloadPDFHindi(record);
           } else if (key === "doc") {
             ensureFullWorkOrder(record).then(setDocsRecord);
+          } else if (key === "lock-toggle") {
+            handleLockToggle(record);
           } else if (key === "cancel") {
             setCancelRemark("");
             setCancelRecord(record);
@@ -2423,7 +2462,18 @@ export default function WorkItems() {
                 <Tag color={STATUS_CFG[currentSelectedWO.status]?.color}>
                   {STATUS_CFG[currentSelectedWO.status]?.label}
                 </Tag>
+                {currentSelectedWO.isLocked && (
+                  <Tag color="gold" icon={<LockOutlined />} style={{ marginLeft: 6 }}>Locked</Tag>
+                )}
               </Descriptions.Item>
+              {currentSelectedWO.isLocked && (
+                <Descriptions.Item label="Locked" span={2}>
+                  <span style={{ color: "#9ba3b8", fontSize: 12 }}>
+                    Rates, scope items, milestones, and contract value cannot be edited until unlocked.
+                    {currentSelectedWO.lockedAt && ` (${dayjs(currentSelectedWO.lockedAt).format("DD MMM YYYY, hh:mm a")})`}
+                  </span>
+                </Descriptions.Item>
+              )}
               {currentSelectedWO.status === "cancelled" && (
                 <Descriptions.Item label="Cancellation Remark" span={2}>
                   <span style={{ color: "#cf1322" }}>{currentSelectedWO.cancelReason || "—"}</span>

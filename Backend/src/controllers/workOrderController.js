@@ -151,6 +151,7 @@ exports.updateWorkOrder = asyncHandler(async (req, res) => {
 
   const before = await WorkOrder.findById(req.params.id).lean();
   if (!before) return notFound(res, 'Work order not found');
+  if (before.isLocked) return badRequest(res, 'This work order is locked and cannot be edited. Unlock it first.');
 
   const workOrder = await WorkOrder.findByIdAndUpdate(
     req.params.id,
@@ -223,6 +224,46 @@ exports.cancelWorkOrder = asyncHandler(async (req, res) => {
   });
 
   success(res, { workOrder }, 'Work order cancelled');
+});
+
+exports.lockWorkOrder = asyncHandler(async (req, res) => {
+  const workOrder = await WorkOrder.findById(req.params.id);
+  if (!workOrder) return notFound(res, 'Work order not found');
+  if (workOrder.isLocked) return badRequest(res, 'Work order is already locked');
+
+  workOrder.isLocked = true;
+  workOrder.lockedBy  = req.user._id;
+  workOrder.lockedAt  = new Date();
+  await workOrder.save();
+
+  await logAudit({
+    action: 'UPDATE', module: 'work-orders', user: req.user,
+    description: `Locked work order ${workOrder.workOrderNo} — rates and terms can no longer be edited`,
+    entityType: 'WorkOrder', entityId: workOrder._id, entityLabel: workOrder.workOrderNo,
+    changes: { isLocked: { from: false, to: true } },
+  });
+
+  success(res, { workOrder }, 'Work order locked');
+});
+
+exports.unlockWorkOrder = asyncHandler(async (req, res) => {
+  const workOrder = await WorkOrder.findById(req.params.id);
+  if (!workOrder) return notFound(res, 'Work order not found');
+  if (!workOrder.isLocked) return badRequest(res, 'Work order is not locked');
+
+  workOrder.isLocked = false;
+  workOrder.lockedBy  = undefined;
+  workOrder.lockedAt  = undefined;
+  await workOrder.save();
+
+  await logAudit({
+    action: 'UPDATE', module: 'work-orders', user: req.user,
+    description: `Unlocked work order ${workOrder.workOrderNo}`,
+    entityType: 'WorkOrder', entityId: workOrder._id, entityLabel: workOrder.workOrderNo,
+    changes: { isLocked: { from: true, to: false } },
+  });
+
+  success(res, { workOrder }, 'Work order unlocked');
 });
 
 exports.deleteWorkOrder = asyncHandler(async (req, res) => {
