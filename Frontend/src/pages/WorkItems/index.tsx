@@ -115,6 +115,7 @@ const UNIT_OPTIONS = [
 interface ScopeSubItemDraft {
   id: string;
   description: string;
+  remarks: string;
   unit: string;
   customUnit: string;
   plannedQty: number | null;
@@ -199,19 +200,21 @@ const toMilestoneDraft = (pm: PaymentMilestone): MilestoneDraft => ({
   id: pm.id, stage: pm.stage, date: pm.date, type: pm.type,
   mode: pm.mode, amount: pm.amount,
   amountMode: pm.amountMode ?? "fixed", amountPercent: pm.amountPercent ?? null,
+  discount: pm.discount ?? null,
   gstPercent: pm.gstPercent, gstType: pm.gstType,
 });
 
 const milestoneDraftToPayload = (m: MilestoneDraft) => ({
   stage: m.stage, date: m.date, type: m.type, mode: m.mode,
   amount: m.amount || 0, amountMode: m.amountMode, amountPercent: m.amountPercent,
+  discount: m.discount || 0,
   gstPercent: m.gstPercent, gstType: m.gstType,
   payable: calcPayable(m),
 });
 
 const newSubDraft = (): ScopeSubItemDraft => ({
   id: crypto.randomUUID(),
-  description: "", unit: "sq.ft", customUnit: "",
+  description: "", remarks: "", unit: "sq.ft", customUnit: "",
   plannedQty: null, rate: null,
 });
 
@@ -240,6 +243,7 @@ const toDraft = (si: ScopeItem): ScopeItemDraft => ({
   subItems: si.subItems.map(sub => ({
     id: sub.id,
     description: sub.description,
+    remarks: sub.remarks ?? "",
     unit: isKnownUnit(sub.unit) ? sub.unit : "custom",
     customUnit: isKnownUnit(sub.unit) ? "" : sub.unit,
     plannedQty: sub.plannedQty,
@@ -264,6 +268,7 @@ const draftToNewItem = (d: ScopeItemDraft): ScopeItem => ({
   subItems: d.subItems.map(si => ({
     id: si.id,
     description: si.description,
+    remarks: si.remarks || "",
     unit: resolveUnit(si.unit, si.customUnit),
     plannedQty: si.plannedQty || 0,
     rate: si.rate || 0,
@@ -291,6 +296,7 @@ const mergeWithExisting = (
   subItems: d.subItems.map(si => ({
     id: si.id,
     description: si.description,
+    remarks: si.remarks || "",
     unit: resolveUnit(si.unit, si.customUnit),
     plannedQty: si.plannedQty || 0,
     rate: si.rate || 0,
@@ -775,14 +781,18 @@ function ScopeItemsBuilder({ items, onChange, allCategories = [], topCatId = nul
                   <div
                     key={si.id}
                     style={{
-                      display: "flex",
-                      gap: 8,
-                      alignItems: "center",
                       marginBottom: 8,
                       background: "var(--nx-white)",
                       border: "1px solid #e4e7ee",
                       borderRadius: 6,
                       padding: "8px 10px",
+                    }}
+                  >
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: 8,
+                      alignItems: "center",
                       flexWrap: "wrap",
                     }}
                   >
@@ -848,6 +858,14 @@ function ScopeItemsBuilder({ items, onChange, allCategories = [], topCatId = nul
                       onClick={() => removeSub(item.id, si.id)}
                       style={{ padding: 0 }}
                     />
+                  </div>
+                  <Input
+                    placeholder="Remarks (optional)"
+                    value={si.remarks}
+                    onChange={e => updSub(item.id, si.id, { remarks: e.target.value })}
+                    style={{ marginTop: 6 }}
+                    size="small"
+                  />
                   </div>
                 ))}
 

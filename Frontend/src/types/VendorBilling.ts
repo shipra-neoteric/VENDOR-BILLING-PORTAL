@@ -89,6 +89,7 @@ export interface WorkProgressEntry {
 export interface ScopeSubItem {
   id: string;
   description: string;
+  remarks?: string;
   unit: string;
   plannedQty: number;
   rate: number;
@@ -134,6 +135,7 @@ export interface PaymentMilestone {
   amount: number;
   amountMode?: "fixed" | "percent";
   amountPercent?: number | null;
+  discount?: number;
   gstPercent: number;
   gstType: "inclusive" | "exclusive";
   payable: number;

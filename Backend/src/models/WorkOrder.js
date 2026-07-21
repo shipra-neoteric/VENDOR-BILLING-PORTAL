@@ -17,6 +17,7 @@ const progressEntrySchema = new mongoose.Schema(
 const subItemSchema = new mongoose.Schema(
   {
     description: { type: String },
+    remarks:     { type: String, default: '' },
     unit:        { type: String },
     plannedQty:  { type: Number, default: 0 },
     rate:        { type: Number, default: 0 },
@@ -54,6 +55,7 @@ const paymentMilestoneSchema = new mongoose.Schema(
     amount:     { type: Number, default: 0 },
     amountMode:    { type: String, enum: ['fixed', 'percent'], default: 'fixed' },
     amountPercent: { type: Number, default: null },
+    discount:   { type: Number, default: 0 },
     gstPercent: { type: Number, default: 18 },
     gstType:    { type: String, enum: ['inclusive', 'exclusive'], default: 'exclusive' },
     payable:    { type: Number, default: 0 },

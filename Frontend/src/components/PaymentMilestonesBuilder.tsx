@@ -17,6 +17,9 @@ export interface MilestoneDraft {
   amount: number | null;
   amountMode: "fixed" | "percent";
   amountPercent: number | null;
+  // Flat rupee discount applied to this milestone only, before GST — e.g. a
+  // negotiated reduction agreed on at this payment stage.
+  discount: number | null;
   gstPercent: number;
   gstType: "inclusive" | "exclusive";
 }
@@ -34,13 +37,13 @@ export function newMilestone(): MilestoneDraft {
   return {
     id: crypto.randomUUID(),
     stage: "", date: "", type: "", mode: "Bank Transfer",
-    amount: null, amountMode: "fixed", amountPercent: null,
+    amount: null, amountMode: "fixed", amountPercent: null, discount: null,
     gstPercent: 18, gstType: "exclusive",
   };
 }
 
 export function calcPayable(m: MilestoneDraft): number {
-  const amt = m.amount || 0;
+  const amt = Math.max(0, (m.amount || 0) - (m.discount || 0));
   if (m.gstType === "inclusive") return Math.round(amt);
   return Math.round(amt * (1 + (m.gstPercent || 0) / 100));
 }
@@ -168,10 +171,20 @@ export default function PaymentMilestonesBuilder({
                 onChange={v => upd(m.id, { gstType: v })}
               />
             </Col>
+            <Col xs={12} sm={4}>
+              <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Discount (₹)</div>
+              <InputNumber
+                placeholder="0" value={m.discount} style={{ width: "100%" }}
+                min={0} onChange={v => upd(m.id, { discount: v })}
+              />
+            </Col>
           </Row>
           <Row gutter={[10, 0]} style={{ marginTop: 8 }}>
             <Col flex="auto">
               <div style={{ fontSize: 12, color: "#5a6278" }}>
+                {(m.discount || 0) > 0 && (
+                  <>Less discount: <strong style={{ fontFamily: "monospace", color: "#dc2626" }}>{fmt(m.discount || 0)}</strong> · </>
+                )}
                 Payable: <strong style={{ fontFamily: "monospace", color: "#d4620c" }}>{fmt(calcPayable(m))}</strong>
               </div>
             </Col>

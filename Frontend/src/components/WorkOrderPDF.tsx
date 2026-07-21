@@ -44,10 +44,15 @@ const S = StyleSheet.create({
   cellValMonoText: { fontSize: 9, color: DARK, fontFamily: "Helvetica-Oblique", lineHeight: 1.35 },
 
   // ── Scope table
-  scopeHdr:  { flexDirection: "row", backgroundColor: HDR_BG, padding: "5px 8px" },
-  scopeRow:  { flexDirection: "row", borderTopWidth: 1, borderTopColor: BORDER, padding: "4px 8px" },
-  scopeAlt:  { flexDirection: "row", borderTopWidth: 1, borderTopColor: BORDER, padding: "4px 8px", backgroundColor: LIGHT },
-  colDesc:   { flex: 2.2, fontSize: 8.5, paddingRight: 6 },
+  scopeHdr:     { flexDirection: "row", backgroundColor: HDR_BG, padding: "5px 8px" },
+  scopeRow:     { flexDirection: "row", borderTopWidth: 1, borderTopColor: BORDER, padding: "5px 8px" },
+  scopeAlt:     { flexDirection: "row", borderTopWidth: 1, borderTopColor: BORDER, padding: "5px 8px", backgroundColor: LIGHT },
+  scopeChild:   { flexDirection: "row", borderTopWidth: 0.5, borderTopColor: BORDER, padding: "4px 8px 4px 4px", backgroundColor: "#FCFCFD" },
+  scopeChildRule: { width: 2, backgroundColor: "#E5E7EB", marginRight: 6, borderRadius: 1 },
+  particularsLbl: { fontSize: 6.5, color: "#9CA3AF", textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 2, paddingLeft: 8, marginTop: 2 },
+  colDesc:      { flex: 2.2, paddingRight: 6 },
+  colDescText:  { fontSize: 8.5 },
+  colRemarks:   { fontSize: 7.5, color: GRAY, fontFamily: "Helvetica-Oblique", marginTop: 1.5, lineHeight: 1.3 },
   colUnit:   { width: 40, fontSize: 8.5, textAlign: "center", paddingRight: 6 },
   colQty:    { width: 42, fontSize: 8.5, textAlign: "right", paddingRight: 8 },
   colDate:   { width: 52, fontSize: 8.5, textAlign: "center", paddingRight: 6 },
@@ -64,12 +69,13 @@ const S = StyleSheet.create({
   msHdr:     { flexDirection: "row", backgroundColor: HDR_BG, padding: "5px 6px" },
   msRow:     { flexDirection: "row", borderTopWidth: 1, borderTopColor: BORDER, padding: "4px 6px" },
   msAlt:     { flexDirection: "row", borderTopWidth: 1, borderTopColor: BORDER, padding: "4px 6px", backgroundColor: LIGHT },
-  msStage:   { flex: 1.6, fontSize: 8.5 },
-  msDate:    { width: 56, fontSize: 8.5, textAlign: "center" },
-  msMode:    { width: 66, fontSize: 8.5, textAlign: "center" },
-  msAmt:     { width: 62, fontSize: 8.5, textAlign: "right" },
-  msGst:     { width: 62, fontSize: 8, textAlign: "center" },
-  msPay:     { width: 66, fontSize: 8.5, textAlign: "right", fontFamily: "Helvetica-Bold" },
+  msStage:   { flex: 1.3, fontSize: 8.5 },
+  msDate:    { width: 50, fontSize: 8.5, textAlign: "center" },
+  msMode:    { width: 58, fontSize: 8.5, textAlign: "center" },
+  msAmt:     { width: 56, fontSize: 8.5, textAlign: "right" },
+  msDisc:    { width: 46, fontSize: 8, textAlign: "right", color: "#B91C1C" },
+  msGst:     { width: 56, fontSize: 8, textAlign: "center" },
+  msPay:     { width: 62, fontSize: 8.5, textAlign: "right", fontFamily: "Helvetica-Bold" },
 
   // ── Warranty
   warrRow:   { flexDirection: "row", marginBottom: 3.5, gap: 4 },
@@ -109,6 +115,7 @@ interface PaymentMilestoneData {
   type?: string;
   mode?: string;
   amount?: number;
+  discount?: number;
   gstPercent?: number;
   gstType?: "inclusive" | "exclusive";
   payable?: number;
@@ -134,6 +141,7 @@ interface WOData {
   tdsPercent?: number;
   scopeItems?: Array<{
     description: string;
+    remarks?: string;
     unit?: string;
     plannedQty?: number;
     rate?: number;
@@ -141,7 +149,7 @@ interface WOData {
     gstPercent?: number;
     plannedStart?: string;
     plannedEnd?: string;
-    subItems?: Array<{ description: string; unit?: string; plannedQty?: number; rate?: number; amount?: number }>;
+    subItems?: Array<{ description: string; remarks?: string; unit?: string; plannedQty?: number; rate?: number; amount?: number }>;
   }>;
   paymentMilestones?: PaymentMilestoneData[];
   warrantyTerms?: string[];
@@ -226,16 +234,16 @@ export function WorkOrderDocument({ wo, company, contractor }: Props) {
   const companyAddr = [company?.address, company?.city, company?.state].filter(Boolean).join(", ");
   const contractorAddr = contractor?.address || "—";
 
-  // Flatten scope items (include sub-items as child rows)
-  const lineItems: Array<{ desc: string; unit?: string; qty?: number; rate?: number; amount?: number; gstPercent?: number; start?: string; end?: string; isChild?: boolean }> = [];
+  // Flatten scope items (include sub-items as child "particulars" rows)
+  const lineItems: Array<{ desc: string; remarks?: string; unit?: string; qty?: number; rate?: number; amount?: number; gstPercent?: number; start?: string; end?: string; isChild?: boolean; isParent?: boolean }> = [];
   for (const item of wo.scopeItems || []) {
     if ((item.subItems?.length ?? 0) > 0) {
-      lineItems.push({ desc: item.description, unit: "", qty: undefined, rate: undefined, amount: undefined, gstPercent: item.gstPercent, start: item.plannedStart, end: item.plannedEnd });
+      lineItems.push({ desc: item.description, remarks: item.remarks, unit: "", qty: undefined, rate: undefined, amount: undefined, gstPercent: item.gstPercent, start: item.plannedStart, end: item.plannedEnd, isParent: true });
       for (const sub of item.subItems ?? []) {
-        lineItems.push({ desc: "  " + sub.description, unit: sub.unit, qty: sub.plannedQty, rate: sub.rate, amount: sub.amount ?? (sub.plannedQty ?? 0) * (sub.rate ?? 0), isChild: true });
+        lineItems.push({ desc: sub.description, remarks: sub.remarks, unit: sub.unit, qty: sub.plannedQty, rate: sub.rate, amount: sub.amount ?? (sub.plannedQty ?? 0) * (sub.rate ?? 0), isChild: true });
       }
     } else {
-      lineItems.push({ desc: item.description, unit: item.unit, qty: item.plannedQty, rate: item.rate, amount: item.amount ?? (item.plannedQty ?? 0) * (item.rate ?? 0), gstPercent: item.gstPercent, start: item.plannedStart, end: item.plannedEnd });
+      lineItems.push({ desc: item.description, remarks: item.remarks, unit: item.unit, qty: item.plannedQty, rate: item.rate, amount: item.amount ?? (item.plannedQty ?? 0) * (item.rate ?? 0), gstPercent: item.gstPercent, start: item.plannedStart, end: item.plannedEnd });
     }
   }
 
@@ -325,22 +333,34 @@ export function WorkOrderDocument({ wo, company, contractor }: Props) {
               <Text style={[S.colDate, S.hdrText]}>End</Text>
               <Text style={[S.colAmt, S.hdrText]}>Amount</Text>
             </View>
-            {lineItems.map((item, i) => (
-              <View key={i} style={i % 2 === 0 ? S.scopeRow : S.scopeAlt} wrap={false}>
-                <Text style={[S.colDesc, item.isChild ? { color: GRAY, paddingLeft: 8 } : { fontFamily: "Helvetica-Bold", color: MID }]}>
-                  {item.desc}
-                </Text>
-                <Text style={S.colUnit}>{item.unit || "—"}</Text>
-                <Text style={S.colQty}>{item.qty != null ? item.qty.toLocaleString("en-IN") : "—"}</Text>
-                <Text style={S.colRate}>{item.rate != null && item.rate > 0 ? item.rate.toLocaleString("en-IN") : "—"}</Text>
-                <Text style={S.colGst}>{item.gstPercent != null ? `${item.gstPercent}%` : "—"}</Text>
-                <Text style={S.colDate}>{item.start ? fmtDate(item.start) : "—"}</Text>
-                <Text style={S.colDate}>{item.end ? fmtDate(item.end) : "—"}</Text>
-                <Text style={[S.colAmt, { fontFamily: item.amount ? "Helvetica-Bold" : "Helvetica" }]}>
-                  {item.amount ? fmtAmt(item.amount) : "—"}
-                </Text>
-              </View>
-            ))}
+            {(() => { let groupIdx = -1; return lineItems.map((item, i) => {
+              if (!item.isChild) groupIdx += 1;
+              const rowStyle = item.isChild ? S.scopeChild : (groupIdx % 2 === 0 ? S.scopeRow : S.scopeAlt);
+              const isFirstParticular = item.isChild && (i === 0 || !lineItems[i - 1].isChild);
+              return (
+                <View key={i}>
+                  {isFirstParticular && <Text style={S.particularsLbl}>Particulars</Text>}
+                  <View style={rowStyle} wrap={false}>
+                    {item.isChild && <View style={S.scopeChildRule} />}
+                    <View style={S.colDesc}>
+                      <Text style={[S.colDescText, item.isChild ? { color: GRAY } : { fontFamily: "Helvetica-Bold", color: MID }]}>
+                        {item.desc}
+                      </Text>
+                      {item.remarks ? <Text style={S.colRemarks}>{item.remarks}</Text> : null}
+                    </View>
+                    <Text style={S.colUnit}>{item.unit || "—"}</Text>
+                    <Text style={S.colQty}>{item.qty != null ? item.qty.toLocaleString("en-IN") : "—"}</Text>
+                    <Text style={S.colRate}>{item.rate != null && item.rate > 0 ? item.rate.toLocaleString("en-IN") : "—"}</Text>
+                    <Text style={S.colGst}>{item.gstPercent != null ? `${item.gstPercent}%` : "—"}</Text>
+                    <Text style={S.colDate}>{item.start ? fmtDate(item.start) : "—"}</Text>
+                    <Text style={S.colDate}>{item.end ? fmtDate(item.end) : "—"}</Text>
+                    <Text style={[S.colAmt, { fontFamily: item.amount ? "Helvetica-Bold" : "Helvetica" }]}>
+                      {item.amount ? fmtAmt(item.amount) : "—"}
+                    </Text>
+                  </View>
+                </View>
+              );
+            }); })()}
             {/* Total */}
             <View style={S.totalRow}>
               <Text style={S.totalLabel}>Total:</Text>
@@ -370,6 +390,7 @@ export function WorkOrderDocument({ wo, company, contractor }: Props) {
               <Text style={[S.msDate, S.hdrText]}>Date</Text>
               <Text style={[S.msMode, S.hdrText]}>Mode</Text>
               <Text style={[S.msAmt, S.hdrText]}>Amount</Text>
+              <Text style={[S.msDisc, S.hdrText]}>Disc.</Text>
               <Text style={[S.msGst, S.hdrText]}>GST</Text>
               <Text style={[S.msPay, S.hdrText]}>Payable</Text>
             </View>
@@ -379,6 +400,7 @@ export function WorkOrderDocument({ wo, company, contractor }: Props) {
                 <Text style={S.msDate}>{m.date ? fmtDate(m.date) : "—"}</Text>
                 <Text style={S.msMode}>{m.mode || "—"}</Text>
                 <Text style={S.msAmt}>{m.amount ? fmtAmt(m.amount) : "—"}</Text>
+                <Text style={S.msDisc}>{m.discount ? "-" + fmtAmt(m.discount) : "—"}</Text>
                 <Text style={S.msGst}>{m.gstPercent ?? 0}% {m.gstType === "inclusive" ? "Incl." : "Excl."}</Text>
                 <Text style={S.msPay}>{m.payable ? fmtAmt(m.payable) : "—"}</Text>
               </View>
