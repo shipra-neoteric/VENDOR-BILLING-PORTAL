@@ -37,11 +37,9 @@ const S = StyleSheet.create({
   secTitle:  { fontFamily: "Helvetica-Bold", color: "#fff", fontSize: 9, letterSpacing: 0.4, textTransform: "uppercase" },
   row:       { flexDirection: "row", borderTopWidth: 1, borderTopColor: BORDER },
   rowLast:   { flexDirection: "row" },
-  cellLabel: { width: "38%", backgroundColor: LIGHT, padding: "5px 10px" },
-  cellLabelText: { fontFamily: "Helvetica-Bold", fontSize: 9, color: MID, lineHeight: 1.35 },
-  cellVal:   { flex: 1, padding: "5px 10px" },
-  cellValText: { fontSize: 9, color: DARK, lineHeight: 1.35 },
-  cellValMonoText: { fontSize: 9, color: DARK, fontFamily: "Helvetica-Oblique", lineHeight: 1.35 },
+  cellLabel: { width: "38%", backgroundColor: LIGHT, padding: "5px 10px", fontFamily: "Helvetica-Bold", fontSize: 9, color: MID, lineHeight: 1.35 },
+  cellVal:   { flex: 1, padding: "5px 10px", fontSize: 9, color: DARK, lineHeight: 1.35 },
+  cellValMono: { flex: 1, padding: "5px 10px", fontSize: 9, color: DARK, fontFamily: "Helvetica-Oblique", lineHeight: 1.35 },
 
   // ── Scope table
   scopeHdr:     { flexDirection: "row", backgroundColor: HDR_BG, padding: "5px 8px" },
@@ -69,13 +67,12 @@ const S = StyleSheet.create({
   msHdr:     { flexDirection: "row", backgroundColor: HDR_BG, padding: "5px 6px" },
   msRow:     { flexDirection: "row", borderTopWidth: 1, borderTopColor: BORDER, padding: "4px 6px" },
   msAlt:     { flexDirection: "row", borderTopWidth: 1, borderTopColor: BORDER, padding: "4px 6px", backgroundColor: LIGHT },
-  msStage:   { flex: 1.3, fontSize: 8.5 },
-  msDate:    { width: 50, fontSize: 8.5, textAlign: "center" },
-  msMode:    { width: 58, fontSize: 8.5, textAlign: "center" },
-  msAmt:     { width: 56, fontSize: 8.5, textAlign: "right" },
-  msDisc:    { width: 46, fontSize: 8, textAlign: "right", color: "#B91C1C" },
-  msGst:     { width: 56, fontSize: 8, textAlign: "center" },
-  msPay:     { width: 62, fontSize: 8.5, textAlign: "right", fontFamily: "Helvetica-Bold" },
+  msStage:   { flex: 1.6, fontSize: 8.5 },
+  msDate:    { width: 56, fontSize: 8.5, textAlign: "center" },
+  msMode:    { width: 66, fontSize: 8.5, textAlign: "center" },
+  msAmt:     { width: 62, fontSize: 8.5, textAlign: "right" },
+  msGst:     { width: 62, fontSize: 8, textAlign: "center" },
+  msPay:     { width: 66, fontSize: 8.5, textAlign: "right", fontFamily: "Helvetica-Bold" },
 
   // ── Warranty
   warrRow:   { flexDirection: "row", marginBottom: 3.5, gap: 4 },
@@ -115,7 +112,6 @@ interface PaymentMilestoneData {
   type?: string;
   mode?: string;
   amount?: number;
-  discount?: number;
   gstPercent?: number;
   gstType?: "inclusive" | "exclusive";
   payable?: number;
@@ -137,6 +133,7 @@ interface WOData {
   ownerName?: string;
   mobile?: string;
   contractValue?: number;
+  discount?: number;
   gstPercent?: number;
   tdsPercent?: number;
   scopeItems?: Array<{
@@ -212,8 +209,8 @@ const TERMS = [
 function InfoRow({ label, value, mono = false, last = false }: { label: string; value?: string; mono?: boolean; last?: boolean }) {
   return (
     <View style={last ? S.rowLast : S.row}>
-      <View style={S.cellLabel}><Text style={S.cellLabelText}>{label}</Text></View>
-      <View style={S.cellVal}><Text style={mono ? S.cellValMonoText : S.cellValText}>{value || "—"}</Text></View>
+      <Text style={S.cellLabel}>{label}</Text>
+      <Text style={mono ? S.cellValMono : S.cellVal}>{value || "—"}</Text>
     </View>
   );
 }
@@ -318,8 +315,12 @@ export function WorkOrderDocument({ wo, company, contractor }: Props) {
         </SectionBox>
 
         {/* ── Scope of Work (with pricing) ── */}
+        {/* Not wrap={false}: with many items this table is often taller than one A4
+            page, and forcing an over-height block to stay unbroken corrupts the
+            layout — let it paginate naturally (individual rows below still don't
+            split mid-row via their own wrap={false}). */}
         {lineItems.length > 0 && (
-          <View style={[S.table, S.sectionGap]} wrap={false}>
+          <View style={[S.table, S.sectionGap]}>
             <View style={S.secHeader}>
               <Text style={S.secTitle}>Scope of Work</Text>
             </View>
@@ -381,7 +382,7 @@ export function WorkOrderDocument({ wo, company, contractor }: Props) {
 
         {/* ── Payment Milestones ── */}
         {milestones.length > 0 && (
-          <View style={[S.table, S.sectionGap]} wrap={false}>
+          <View style={[S.table, S.sectionGap]}>
             <View style={S.secHeader}>
               <Text style={S.secTitle}>Payment Milestones</Text>
             </View>
@@ -390,7 +391,6 @@ export function WorkOrderDocument({ wo, company, contractor }: Props) {
               <Text style={[S.msDate, S.hdrText]}>Date</Text>
               <Text style={[S.msMode, S.hdrText]}>Mode</Text>
               <Text style={[S.msAmt, S.hdrText]}>Amount</Text>
-              <Text style={[S.msDisc, S.hdrText]}>Disc.</Text>
               <Text style={[S.msGst, S.hdrText]}>GST</Text>
               <Text style={[S.msPay, S.hdrText]}>Payable</Text>
             </View>
@@ -400,21 +400,34 @@ export function WorkOrderDocument({ wo, company, contractor }: Props) {
                 <Text style={S.msDate}>{m.date ? fmtDate(m.date) : "—"}</Text>
                 <Text style={S.msMode}>{m.mode || "—"}</Text>
                 <Text style={S.msAmt}>{m.amount ? fmtAmt(m.amount) : "—"}</Text>
-                <Text style={S.msDisc}>{m.discount ? "-" + fmtAmt(m.discount) : "—"}</Text>
                 <Text style={S.msGst}>{m.gstPercent ?? 0}% {m.gstType === "inclusive" ? "Incl." : "Excl."}</Text>
                 <Text style={S.msPay}>{m.payable ? fmtAmt(m.payable) : "—"}</Text>
               </View>
             ))}
             <View style={S.totalRow}>
-              <Text style={S.totalLabel}>Grand Total:</Text>
+              <Text style={S.totalLabel}>{wo.discount ? "Subtotal:" : "Grand Total:"}</Text>
               <Text style={S.totalVal}>{fmtAmt(grandPayable)}</Text>
             </View>
+            {!!wo.discount && (
+              <>
+                <View style={S.gstRow}>
+                  <Text style={[S.gstLabel, { color: "#B91C1C" }]}>Less: Discount</Text>
+                  <Text style={[S.gstVal, { color: "#B91C1C" }]}>-{fmtAmt(wo.discount)}</Text>
+                </View>
+                <View style={[S.gstRow, { borderTopWidth: 1.5, borderTopColor: BORDER }]}>
+                  <Text style={[S.gstLabel, { color: MID, fontFamily: "Helvetica-Bold" }]}>Final Payable:</Text>
+                  <Text style={[S.gstVal, { color: MID, fontFamily: "Helvetica-Bold" }]}>
+                    {fmtAmt(Math.max(0, grandPayable - wo.discount))}
+                  </Text>
+                </View>
+              </>
+            )}
           </View>
         )}
 
         {/* ── Warranty / Guarantee Terms ── */}
         {warrantyTerms.length > 0 && (
-          <View style={[S.table, S.sectionGap]} wrap={false}>
+          <View style={[S.table, S.sectionGap]}>
             <View style={S.secHeader}>
               <Text style={S.secTitle}>Special Terms and Conditions</Text>
             </View>
@@ -430,7 +443,7 @@ export function WorkOrderDocument({ wo, company, contractor }: Props) {
         )}
 
         {/* ── General Terms & Conditions ── */}
-        <View style={{ marginBottom: 10 }} wrap={false}>
+        <View style={{ marginBottom: 10 }}>
           <Text style={S.termsHdr}>General Terms & Conditions</Text>
           {TERMS.map((t, i) => (
             <View key={i} style={S.termRow}>

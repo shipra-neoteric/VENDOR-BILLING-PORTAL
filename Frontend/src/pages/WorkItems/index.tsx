@@ -200,14 +200,12 @@ const toMilestoneDraft = (pm: PaymentMilestone): MilestoneDraft => ({
   id: pm.id, stage: pm.stage, date: pm.date, type: pm.type,
   mode: pm.mode, amount: pm.amount,
   amountMode: pm.amountMode ?? "fixed", amountPercent: pm.amountPercent ?? null,
-  discount: pm.discount ?? null,
   gstPercent: pm.gstPercent, gstType: pm.gstType,
 });
 
 const milestoneDraftToPayload = (m: MilestoneDraft) => ({
   stage: m.stage, date: m.date, type: m.type, mode: m.mode,
   amount: m.amount || 0, amountMode: m.amountMode, amountPercent: m.amountPercent,
-  discount: m.discount || 0,
   gstPercent: m.gstPercent, gstType: m.gstType,
   payable: calcPayable(m),
 });
@@ -1519,6 +1517,8 @@ export default function WorkItems() {
 
   const [createMilestones, setCreateMilestones] = useState<MilestoneDraft[]>([]);
   const [editMilestones,   setEditMilestones]   = useState<MilestoneDraft[]>([]);
+  const [createDiscount,   setCreateDiscount]   = useState<number | null>(null);
+  const [editDiscount,     setEditDiscount]     = useState<number | null>(null);
   const [createWarranty,   setCreateWarranty]   = useState<string[]>([]);
   const [editWarranty,     setEditWarranty]     = useState<string[]>([]);
 
@@ -1678,6 +1678,7 @@ export default function WorkItems() {
         scopeOfWork,
         scopeItems:   createScopeItems.map(draftToNewItem),
         contractValue: totalAmt,
+        discount:          createDiscount || 0,
         gstPercent:        values.gstPercent ?? 18,
         retentionPercent:  values.retentionPercent ?? 0,
         status:            values.status || "draft",
@@ -1696,6 +1697,7 @@ export default function WorkItems() {
       createForm.resetFields();
       setCreateScopeItems([]);
       setCreateMilestones([]);
+      setCreateDiscount(null);
       setCreateWarranty([]);
       setCreateDrawerOpen(false);
     } catch (err: unknown) {
@@ -1714,6 +1716,7 @@ export default function WorkItems() {
     editForm.setFieldsValue({ ...wo, issueDate: dayjs(wo.issueDate), category: wo.category || "", subCategory: wo.subCategory || "", assignedDRI: ((wo as any).assignedDRI || []).map((d: any) => d._id || d), gstPercent: wo.gstPercent ?? 18, retentionPercent: (wo as any).retentionPercent ?? 0 });
     setEditScopeItems((wo.scopeItems || []).map(toDraft));
     setEditMilestones((wo.paymentMilestones || []).map(toMilestoneDraft));
+    setEditDiscount(wo.discount || null);
     setEditWarranty(wo.warrantyTerms || []);
     setEditModalOpen(true);
   };
@@ -1753,6 +1756,7 @@ export default function WorkItems() {
         scopeOfWork,
         scopeItems:   savedItems,
         contractValue: totalAmt,
+        discount:          editDiscount || 0,
         gstPercent:        values.gstPercent ?? currentEditWO.gstPercent ?? 18,
         retentionPercent:  values.retentionPercent ?? (currentEditWO as any).retentionPercent ?? 0,
         status:            values.status,
@@ -2090,6 +2094,7 @@ export default function WorkItems() {
             createForm.setFieldsValue({ status: "draft", assignedDRI: defaultDRIIds });
             setCreateScopeItems([]);
             setCreateMilestones([]);
+            setCreateDiscount(null);
             setCreateWarranty([]);
             setCreateDrawerOpen(true);
           }}
@@ -2287,7 +2292,7 @@ export default function WorkItems() {
         }
         footer={
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-            <Button size="large" onClick={() => { createForm.resetFields(); setCreateScopeItems([]); setCreateMilestones([]); setCreateWarranty([]); setCreateDrawerOpen(false); }}>
+            <Button size="large" onClick={() => { createForm.resetFields(); setCreateScopeItems([]); setCreateMilestones([]); setCreateDiscount(null); setCreateWarranty([]); setCreateDrawerOpen(false); }}>
               Cancel
             </Button>
             <Button
@@ -2331,6 +2336,8 @@ export default function WorkItems() {
             items={createMilestones}
             onChange={setCreateMilestones}
             contractValueInclGst={calcTotalInclGst(createScopeItems)}
+            discount={createDiscount}
+            onDiscountChange={setCreateDiscount}
           />
         </div>
         <div style={{ borderTop: "1px solid #E5E7EB", marginTop: 16, paddingTop: 16 }}>
@@ -2637,6 +2644,8 @@ export default function WorkItems() {
             items={editMilestones}
             onChange={setEditMilestones}
             contractValueInclGst={calcTotalInclGst(editScopeItems)}
+            discount={editDiscount}
+            onDiscountChange={setEditDiscount}
           />
         </div>
         <div style={{ borderTop: "1px solid #E5E7EB", marginTop: 16, paddingTop: 16 }}>

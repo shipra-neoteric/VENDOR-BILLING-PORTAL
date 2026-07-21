@@ -55,7 +55,6 @@ const paymentMilestoneSchema = new mongoose.Schema(
     amount:     { type: Number, default: 0 },
     amountMode:    { type: String, enum: ['fixed', 'percent'], default: 'fixed' },
     amountPercent: { type: Number, default: null },
-    discount:   { type: Number, default: 0 },
     gstPercent: { type: Number, default: 18 },
     gstType:    { type: String, enum: ['inclusive', 'exclusive'], default: 'exclusive' },
     payable:    { type: Number, default: 0 },
@@ -90,6 +89,9 @@ const workOrderSchema = new mongoose.Schema(
     scopeOfWork:   { type: String },
     scopeItems:    [scopeItemSchema],
     contractValue: { type: Number, default: 0 },
+    // Flat rupee discount off the overall contract value — entered once payment
+    // milestones are set up, not per-milestone.
+    discount:      { type: Number, default: 0 },
     gstPercent:    { type: Number, default: 18 },
     retentionPercent: { type: Number, default: 0 },
     // Deprecated single-document pair — kept read-only for work orders saved

@@ -159,6 +159,7 @@ export interface WorkOrder {
   scopeOfWork?: string;
   scopeItems: ScopeItem[];
   contractValue: number;
+  discount?: number;
   gstPercent?: number;
   retentionPercent?: number;
   documentName?: string;

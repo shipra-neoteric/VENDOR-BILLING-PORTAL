@@ -17,9 +17,6 @@ export interface MilestoneDraft {
   amount: number | null;
   amountMode: "fixed" | "percent";
   amountPercent: number | null;
-  // Flat rupee discount applied to this milestone only, before GST — e.g. a
-  // negotiated reduction agreed on at this payment stage.
-  discount: number | null;
   gstPercent: number;
   gstType: "inclusive" | "exclusive";
 }
@@ -37,13 +34,13 @@ export function newMilestone(): MilestoneDraft {
   return {
     id: crypto.randomUUID(),
     stage: "", date: "", type: "", mode: "Bank Transfer",
-    amount: null, amountMode: "fixed", amountPercent: null, discount: null,
+    amount: null, amountMode: "fixed", amountPercent: null,
     gstPercent: 18, gstType: "exclusive",
   };
 }
 
 export function calcPayable(m: MilestoneDraft): number {
-  const amt = Math.max(0, (m.amount || 0) - (m.discount || 0));
+  const amt = m.amount || 0;
   if (m.gstType === "inclusive") return Math.round(amt);
   return Math.round(amt * (1 + (m.gstPercent || 0) / 100));
 }
@@ -56,10 +53,15 @@ const fmt = (n: number) => "₹" + Math.round(n).toLocaleString("en-IN");
 
 export default function PaymentMilestonesBuilder({
   items, onChange, contractValueInclGst,
+  discount = null, onDiscountChange,
 }: {
   items: MilestoneDraft[];
   onChange: (items: MilestoneDraft[]) => void;
   contractValueInclGst?: number;
+  // Flat rupee discount off the overall contract value — only meaningful (and
+  // shown) once payment milestones exist, not a per-milestone figure.
+  discount?: number | null;
+  onDiscountChange?: (v: number | null) => void;
 }) {
   const upd = (id: string, patch: Partial<MilestoneDraft>) =>
     onChange(items.map(m => m.id === id ? { ...m, ...patch } : m));
@@ -171,20 +173,10 @@ export default function PaymentMilestonesBuilder({
                 onChange={v => upd(m.id, { gstType: v })}
               />
             </Col>
-            <Col xs={12} sm={4}>
-              <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Discount (₹)</div>
-              <InputNumber
-                placeholder="0" value={m.discount} style={{ width: "100%" }}
-                min={0} onChange={v => upd(m.id, { discount: v })}
-              />
-            </Col>
           </Row>
           <Row gutter={[10, 0]} style={{ marginTop: 8 }}>
             <Col flex="auto">
               <div style={{ fontSize: 12, color: "#5a6278" }}>
-                {(m.discount || 0) > 0 && (
-                  <>Less discount: <strong style={{ fontFamily: "monospace", color: "#dc2626" }}>{fmt(m.discount || 0)}</strong> · </>
-                )}
                 Payable: <strong style={{ fontFamily: "monospace", color: "#d4620c" }}>{fmt(calcPayable(m))}</strong>
               </div>
             </Col>
@@ -199,12 +191,28 @@ export default function PaymentMilestonesBuilder({
       {items.length > 0 && (
         <div style={{ background: exceeds ? "#fef2f2" : "#fff8f3", border: `1px solid ${exceeds ? "#fca5a5" : "#f8c9a0"}`, borderRadius: 8, padding: "10px 16px" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span style={{ fontWeight: 600, color: "#5a6278" }}>Grand Total Payable</span>
+            <span style={{ fontWeight: 600, color: "#5a6278" }}>{(discount || 0) > 0 ? "Subtotal" : "Grand Total Payable"}</span>
             <span style={{ fontFamily: "monospace", fontWeight: 700, color: exceeds ? "#dc2626" : "#d4620c", fontSize: 15 }}>{fmt(grandTotal)}</span>
           </div>
           {exceeds && (
             <div style={{ fontSize: 12, color: "#dc2626", marginTop: 6, fontWeight: 600 }}>
               ⚠ Exceeds the scope of work's contract value (incl. GST) of {fmt(contractValueInclGst!)} by {fmt(grandTotal - contractValueInclGst!)}
+            </div>
+          )}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 10, paddingTop: 10, borderTop: "1px dashed #f8c9a0" }}>
+            <span style={{ fontSize: 12, color: "#5a6278" }}>Overall Discount on Contract Value (₹)</span>
+            <InputNumber
+              placeholder="0" value={discount} min={0} size="small"
+              style={{ width: 130 }}
+              onChange={v => onDiscountChange?.(v)}
+            />
+          </div>
+          {(discount || 0) > 0 && (
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10, paddingTop: 10, borderTop: "1px solid #f8c9a0" }}>
+              <span style={{ fontWeight: 700, color: "#1a1f2e" }}>Final Payable (after discount)</span>
+              <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#16a34a", fontSize: 16 }}>
+                {fmt(Math.max(0, grandTotal - (discount || 0)))}
+              </span>
             </div>
           )}
         </div>
