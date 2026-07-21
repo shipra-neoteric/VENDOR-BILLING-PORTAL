@@ -1,8 +1,6 @@
 import { Document, Page, View, Text, StyleSheet, Font } from "@react-pdf/renderer";
 import { pdf } from "@react-pdf/renderer";
 import { translateToHindi, translateManyToHindi } from "../utils/translateToHindi";
-import { getWorkOrderDocuments } from "./DocumentsUpload";
-import { mergeAttachmentsIntoPdf } from "../utils/pdfMerge";
 
 // Devanagari-capable static (non-variable) font — required because react-pdf/fontkit
 // doesn't reliably render OpenType variable fonts, and Hindi text needs a font with
@@ -495,13 +493,7 @@ export async function downloadWorkOrderPDFHindi(
   const blob = await pdf(
     <WorkOrderDocumentHindi wo={translatedWo} company={company} contractor={contractor} />
   ).toBlob();
-  const mainBytes = new Uint8Array(await blob.arrayBuffer());
-  const documents = getWorkOrderDocuments(wo);
-  const finalBytes = documents.length > 0
-    ? await mergeAttachmentsIntoPdf(mainBytes, documents)
-    : mainBytes;
-  const finalBlob = new Blob([finalBytes as BlobPart], { type: "application/pdf" });
-  const url = URL.createObjectURL(finalBlob);
+  const url = URL.createObjectURL(blob);
   const a   = document.createElement("a");
   a.href     = url;
   a.download = `${wo.workOrderNo}-hindi.pdf`;

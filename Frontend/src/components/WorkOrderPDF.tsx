@@ -1,7 +1,5 @@
 import { Document, Page, View, Text, StyleSheet, Font } from "@react-pdf/renderer";
 import { pdf } from "@react-pdf/renderer";
-import { getWorkOrderDocuments } from "./DocumentsUpload";
-import { mergeAttachmentsIntoPdf } from "../utils/pdfMerge";
 
 // react-pdf hyphenates long words by default (e.g. "CONSULTANTS" -> "CON-SULTANTS"
 // split across lines), which reads as garbled/broken text in narrow table cells —
@@ -479,6 +477,9 @@ export function WorkOrderDocument({ wo, company, contractor }: Props) {
 }
 
 // ── Download helper ────────────────────────────────────────────
+// Deliberately does not merge in the uploaded work order documents (quotations,
+// scanned attachments, etc.) — the download is just the generated Work Order
+// itself; attachments are viewed separately via the Documents modal.
 export async function downloadWorkOrderPDF(
   wo: WOData,
   company?: CompanyData | null,
@@ -487,13 +488,7 @@ export async function downloadWorkOrderPDF(
   const blob = await pdf(
     <WorkOrderDocument wo={wo} company={company} contractor={contractor} />
   ).toBlob();
-  const mainBytes = new Uint8Array(await blob.arrayBuffer());
-  const documents = getWorkOrderDocuments(wo);
-  const finalBytes = documents.length > 0
-    ? await mergeAttachmentsIntoPdf(mainBytes, documents)
-    : mainBytes;
-  const finalBlob = new Blob([finalBytes as BlobPart], { type: "application/pdf" });
-  const url = URL.createObjectURL(finalBlob);
+  const url = URL.createObjectURL(blob);
   const a   = document.createElement("a");
   a.href     = url;
   a.download = `${wo.workOrderNo}.pdf`;

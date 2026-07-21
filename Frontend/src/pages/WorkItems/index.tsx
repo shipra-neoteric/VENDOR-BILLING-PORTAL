@@ -1826,10 +1826,9 @@ export default function WorkItems() {
   const handleDownloadPDF = async (wo: WorkOrder) => {
     setPdfLoading(true);
     try {
-      const full = await ensureFullWorkOrder(wo);
-      const company    = companies.find((c: any) => c._id === (full as any).companyId) ?? null;
-      const contractor = contractors.find(c => c.vendorCode === full.vendorCode) ?? null;
-      await downloadWorkOrderPDF(full as any, company, contractor as any);
+      const company    = companies.find((c: any) => c._id === (wo as any).companyId) ?? null;
+      const contractor = contractors.find(c => c.vendorCode === wo.vendorCode) ?? null;
+      await downloadWorkOrderPDF(wo as any, company, contractor as any);
     } catch {
       message.error("Failed to generate PDF");
     } finally {
@@ -1841,10 +1840,9 @@ export default function WorkItems() {
     setPdfLoading(true);
     const hide = message.loading("Translating to Hindi…", 0);
     try {
-      const full = await ensureFullWorkOrder(wo);
-      const company    = companies.find((c: any) => c._id === (full as any).companyId) ?? null;
-      const contractor = contractors.find(c => c.vendorCode === full.vendorCode) ?? null;
-      await downloadWorkOrderPDFHindi(full as any, company, contractor as any);
+      const company    = companies.find((c: any) => c._id === (wo as any).companyId) ?? null;
+      const contractor = contractors.find(c => c.vendorCode === wo.vendorCode) ?? null;
+      await downloadWorkOrderPDFHindi(wo as any, company, contractor as any);
     } catch {
       message.error("Failed to generate Hindi PDF");
     } finally {
