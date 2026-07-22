@@ -7,7 +7,7 @@ export interface PermEntry {
   actions: string[];
 }
 
-interface AuthUser {
+export interface AuthUser {
   id: string;
   name: string;
   email: string;
@@ -21,6 +21,10 @@ interface AuthContextType {
   token: string | null;
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
+  // Applies an already-issued token/user pair directly, without calling the
+  // login API — used by the Owner "switch account" feature, which mints a
+  // session for another user via a dedicated backend endpoint.
+  setSession: (token: string, user: AuthUser) => void;
   isAuthenticated: boolean;
 }
 
@@ -48,8 +52,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }, []);
 
+  const setSession = useCallback((newToken: string, newUser: AuthUser) => {
+    sessionStorage.setItem("token", newToken);
+    sessionStorage.setItem("user", JSON.stringify(newUser));
+    setToken(newToken);
+    setUser(newUser);
+  }, []);
+
   return (
-    <AuthContext.Provider value={{ user, token, login, logout, isAuthenticated: !!token }}>
+    <AuthContext.Provider value={{ user, token, login, logout, setSession, isAuthenticated: !!token }}>
       {children}
     </AuthContext.Provider>
   );

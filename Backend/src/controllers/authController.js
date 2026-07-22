@@ -2,7 +2,7 @@ const jwt  = require('jsonwebtoken');
 const { validationResult } = require('express-validator');
 const User = require('../models/User');
 const asyncHandler = require('../utils/asyncHandler');
-const { success, created, fail, badRequest, unauthorized, forbidden } = require('../utils/responseFormatter');
+const { success, created, fail, badRequest, unauthorized, forbidden, notFound } = require('../utils/responseFormatter');
 const { logAudit } = require('../utils/auditLog');
 
 const clientIp = (req) => (req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '').toString().split(',')[0].trim();
@@ -64,6 +64,24 @@ exports.login = asyncHandler(async (req, res) => {
 
 exports.getMe = asyncHandler(async (req, res) => {
   success(res, { user: req.user });
+});
+
+// Owner-only "quick switch" — mints a real session token for another account
+// without needing their password, for convenience while testing different
+// roles. Gated to owner at the route level; every switch is audit-logged.
+exports.switchUser = asyncHandler(async (req, res) => {
+  const target = await User.findById(req.params.userId);
+  if (!target) return notFound(res, 'User not found');
+  if (!target.isActive) return forbidden(res, 'That account is deactivated');
+
+  const token = signToken(target._id);
+  await logAudit({
+    action: 'LOGIN', module: 'auth', user: req.user,
+    description: `Owner switched into ${target.name}'s account (${target.email})`,
+    entityType: 'User', entityId: target._id, entityLabel: target.email,
+    ip: clientIp(req),
+  });
+  success(res, { token, user: userPayload(target) }, `Switched to ${target.name}`);
 });
 
 exports.listUsers = asyncHandler(async (req, res) => {

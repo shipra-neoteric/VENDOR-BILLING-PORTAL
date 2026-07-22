@@ -14,8 +14,13 @@ const apiClient = axios.create({
 });
 
 apiClient.interceptors.request.use((config) => {
-  const token = sessionStorage.getItem("token");
-  if (token) config.headers.Authorization = `Bearer ${token}`;
+  // Only fill in the current session's token if the caller hasn't already set
+  // their own Authorization header — the "switch account" flow needs to send
+  // the stashed admin token for one specific call while impersonating.
+  if (!config.headers.Authorization) {
+    const token = sessionStorage.getItem("token");
+    if (token) config.headers.Authorization = `Bearer ${token}`;
+  }
   return config;
 });
 
