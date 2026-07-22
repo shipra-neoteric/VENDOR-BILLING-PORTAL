@@ -1,14 +1,9 @@
 const AdvanceSlip   = require('../models/AdvanceSlip');
 const asyncHandler  = require('../utils/asyncHandler');
 const { success, notFound, badRequest } = require('../utils/responseFormatter');
+const { nextCode } = require('../utils/sequence');
 
-// Auto-increment slip number: ADV-0001, ADV-0002 ...
-async function nextSlipNo() {
-  const last = await AdvanceSlip.findOne().sort({ createdAt: -1 }).select('slipNo');
-  if (!last?.slipNo) return 'ADV-0001';
-  const m = last.slipNo.match(/(\d+)$/);
-  return m ? `ADV-${String(Number(m[1]) + 1).padStart(4, '0')}` : 'ADV-0001';
-}
+const nextSlipNo = () => nextCode('advanceSlipNo', 'ADV-', 4);
 
 // GET /api/advance-slips
 exports.listAdvanceSlips = asyncHandler(async (req, res) => {

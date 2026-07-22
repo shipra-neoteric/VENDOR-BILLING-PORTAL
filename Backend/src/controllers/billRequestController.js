@@ -8,6 +8,8 @@ const emitEvent   = require('../utils/emitEvent');
 const { startInstance, advanceInstance, cancelInstance } = require('../utils/slaEngine');
 const { logAudit } = require('../utils/auditLog');
 const { hasUnapprovedVariance } = require('../utils/varianceCheck');
+const { nextCode } = require('../utils/sequence');
+const { nextBillNo } = require('../utils/codeGen');
 
 // Gathers the DRI's day-to-day notes for whichever progress entries haven't
 // been carried into a bill yet (marks them as consumed on the way out), so
@@ -26,20 +28,7 @@ function collectAndMarkProgressRemarks(si, billRequestId) {
   return notes.join('; ');
 }
 
-async function nextReqNo() {
-  const last = await BillRequest.findOne().sort({ createdAt: -1 }).select('reqNo');
-  if (!last?.reqNo) return 'BR-0001';
-  const num = parseInt(last.reqNo.replace('BR-', ''), 10) || 0;
-  return 'BR-' + String(num + 1).padStart(4, '0');
-}
-
-async function nextBillNo() {
-  const last = await RunningBill.findOne().sort({ createdAt: -1 }).select('billNo');
-  if (!last?.billNo) return 'RA-0001';
-  const m = last.billNo.match(/(\d+)$/);
-  const num = m ? parseInt(m[1], 10) : 0;
-  return 'RA-' + String(num + 1).padStart(4, '0');
-}
+const nextReqNo = () => nextCode('billRequestReqNo', 'BR-', 4);
 
 // GET /api/bill-requests
 exports.listBillRequests = asyncHandler(async (req, res) => {
