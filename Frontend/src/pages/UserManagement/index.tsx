@@ -55,6 +55,7 @@ const MODULE_DEFS: ModuleDef[] = [
   { id: "bill-requests",    name: "Bill Requests",      icon: "📨", group: "Billing",       actions: ["view","create","request","approve"] },
   { id: "billing-payments", name: "Billing & Payments", icon: "💳", group: "Billing",       actions: ["view","create","edit","approve"] },
   { id: "advance-payments", name: "Advance Payments",   icon: "🏦", group: "Billing",       actions: ["view","create","edit","delete"] },
+  { id: "bill-review",      name: "Bill Review",        icon: "🧾", group: "Billing",       actions: ["view","approve"] },
   { id: "approvals",        name: "Approvals",          icon: "✅", group: "Billing",       actions: ["view","approve"] },
   { id: "ledger",           name: "Ledger",             icon: "📒", group: "Billing",       actions: ["view"] },
   { id: "user-management",  name: "User Management",    icon: "👥", group: "Admin",         actions: ["view","create","edit","delete"] },
@@ -72,23 +73,26 @@ const ROLE_DEFAULTS: Record<string, Record<string, PermAction[]>> = {
     contractors: ["view","create","edit","delete"], categories: ["view","create","edit","delete"],
     "work-orders": ["view","create","edit","delete"], "work-progress": ["view","create","edit","delete"],
     "bill-requests": ["view","create","request","approve"], "billing-payments": ["view","create","edit","approve"],
-    "advance-payments": ["view","create","edit","delete"],
+    "advance-payments": ["view","create","edit","delete"], "bill-review": ["view","approve"],
     approvals: ["view","approve"], ledger: ["view"],
     "user-management": ["view","create","edit","delete"], "dri-dashboard": ["view","create","edit"],
     "public-forms": ["view"], "audit-logs": ["view"],
     "sla-settings": ["view","create","edit","delete"], "sla-dashboard": ["view"],
   },
-  // GM's only job now is approval sign-off: reviewing work orders and the GM stage of the bill chain.
+  // GM reviews DRI progress + generates bill requests (Bill Review), reviews work
+  // orders, and owns the GM stage of the bill chain.
   gm: {
     dashboard: ["view"],
     "work-orders": ["view","edit"],
-    "bill-requests": ["view"], approvals: ["view","approve"],
+    "bill-requests": ["view","create"], "bill-review": ["view","approve"],
+    approvals: ["view","approve"],
   },
-  // AGM reviews work orders and owns the first bill-approval stage (sets hold/advance amounts).
+  // AGM reviews DRI progress + generates bill requests (Bill Review), reviews
+  // work orders, and owns the first bill-approval stage (sets hold/advance).
   agm: {
     dashboard: ["view"],
     "work-orders": ["view","edit"],
-    "bill-requests": ["view","approve"],
+    "bill-requests": ["view","create","approve"], "bill-review": ["view","approve"],
   },
   // Accounts owns 3 of the 5 bill stages: verification, payment initiation, and release.
   accounts: {
@@ -97,7 +101,8 @@ const ROLE_DEFAULTS: Record<string, Record<string, PermAction[]>> = {
     "advance-payments": ["view","create","edit"],
     "bill-requests": ["view","approve"], approvals: ["view","approve"], ledger: ["view"],
   },
-  // Site DRI's whole portal is the DRI Work Dashboard — add progress + generate bill requests.
+  // Site DRI's whole portal is the DRI Work Dashboard — logs progress only;
+  // AGM/GM decide whether/how progress becomes a bill request.
   "site-dri": {
     dashboard: ["view"], "dri-dashboard": ["view","create","edit"],
   },
@@ -119,10 +124,10 @@ type UserRole = "owner" | "gm" | "agm" | "accounts" | "site-dri";
 
 const ROLE_CFG: Record<UserRole, { label: string; color: string; description: string }> = {
   owner:      { label: "Owner / Admin",    color: "red",     description: "Full system access — all modules, user management" },
-  gm:         { label: "General Manager",  color: "purple",  description: "Approvals only — work order sign-off & GM stage of bill approval" },
-  agm:        { label: "AGM",              color: "gold",    description: "Approvals only — work order sign-off & first stage of bill approval" },
+  gm:         { label: "General Manager",  color: "purple",  description: "Reviews DRI progress, generates bill requests, work order sign-off & GM stage of bill approval" },
+  agm:        { label: "AGM",              color: "gold",    description: "Reviews DRI progress, generates bill requests, work order sign-off & first stage of bill approval" },
   accounts:   { label: "Accounts",         color: "cyan",    description: "Bills, payments, ledger — verification, payment initiation & release" },
-  "site-dri": { label: "Site DRI",         color: "orange",  description: "DRI Work Dashboard — add progress & generate bill requests" },
+  "site-dri": { label: "Site DRI",         color: "orange",  description: "DRI Work Dashboard — logs daily progress only" },
 };
 
 const ROLE_OPTIONS = Object.entries(ROLE_CFG).map(([value, { label, description }]) => ({

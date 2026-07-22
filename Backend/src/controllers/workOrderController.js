@@ -43,6 +43,20 @@ function recomputeParentFromSubItems(item) {
   item.status = allCompleted ? 'completed' : anyStarted ? 'running' : 'pending';
 }
 
+// Progress is never hard-blocked at plannedQty — AGM/GM see an over-logged item
+// flagged (yellow ≤10% over, red beyond that, computed client-side) and must
+// explicitly sign off before it can be billed. A prior sign-off only gets
+// invalidated if completedQty actually changed since it was approved — not by
+// an unrelated edit (e.g. fixing a remarks/location typo) that nets out to the
+// same quantity.
+function applyVarianceGate(target) {
+  if (target.plannedQty > 0 && target.completedQty > target.plannedQty) {
+    if (target.varianceApproved && target.completedQty !== target.varianceApprovedAtQty) {
+      target.varianceApproved = false;
+    }
+  }
+}
+
 exports.listWorkOrders = asyncHandler(async (req, res) => {
   const { projectId, vendorCode, status, search, assignedToMe } = req.query;
   const filter = {};
@@ -313,23 +327,16 @@ exports.addScopeProgress = asyncHandler(async (req, res) => {
     item.plannedQty = Number(plannedQty);
   }
 
-  // Only enforce the cap when a planned qty is actually set
-  if (item.plannedQty > 0) {
-    const remaining = item.plannedQty - (item.completedQty || 0);
-    if (qtyAdded > remaining) {
-      return badRequest(
-        res,
-        `Cannot exceed planned quantity. Only ${remaining.toLocaleString()} ${item.unit} remaining.`
-      );
-    }
-  }
-
+  // Progress is allowed to exceed plannedQty — never hard-blocked here. AGM/GM
+  // see the overage flagged (yellow/red) on the Bill Review page and must sign
+  // off on it before that item is billable.
   item.progressEntries.push({ date: date || new Date(), qtyAdded, remarks, tower, floor, flatNo, plotNo, locationNote });
   item.completedQty = item.progressEntries.reduce((s, e) => s + e.qtyAdded, 0);
   item.status =
     item.plannedQty > 0 && item.completedQty >= item.plannedQty ? 'completed'
     : item.completedQty > 0                                      ? 'running'
     :                                                               'pending';
+  applyVarianceGate(item);
 
   await workOrder.save();
 
@@ -340,7 +347,11 @@ exports.addScopeProgress = asyncHandler(async (req, res) => {
     vendorCode:  workOrder.vendorCode,
     vendorName:  workOrder.vendorName,
     user:        req.user,
-    metadata:    { scopeItem: item.description, qtyAdded, unit: item.unit },
+    remarks:     remarks || '',
+    metadata:    {
+      scopeItem: item.description, qtyAdded, unit: item.unit,
+      plannedQty: item.plannedQty, completedQty: item.completedQty,
+    },
   });
 
   success(res, { workOrder });
@@ -366,12 +377,8 @@ exports.editProgressEntry = asyncHandler(async (req, res) => {
     .filter(e => String(e._id) !== String(progressId))
     .reduce((s, e) => s + e.qtyAdded, 0);
 
-  if (otherTotal + qtyAdded > item.plannedQty) {
-    const maxAllowed = item.plannedQty - otherTotal;
-    return badRequest(res, `Cannot exceed planned quantity. Max allowed for this entry: ${maxAllowed.toLocaleString()} ${item.unit}`);
-  }
-
-  // Prevent reducing below already-billed quantity
+  // Prevent reducing below already-billed quantity — the only remaining hard
+  // cap; exceeding plannedQty itself is allowed (flagged for AGM/GM instead).
   if (otherTotal + qtyAdded < (item.lastBilledQty || 0)) {
     const minAllowed = (item.lastBilledQty || 0) - otherTotal;
     return badRequest(res, `Cannot reduce below billed quantity. Min allowed: ${minAllowed.toLocaleString()} ${item.unit}`);
@@ -387,8 +394,9 @@ exports.editProgressEntry = asyncHandler(async (req, res) => {
   if (locationNote !== undefined) entry.locationNote = locationNote;
 
   item.completedQty = item.progressEntries.reduce((s, e) => s + e.qtyAdded, 0);
-  item.status = item.completedQty >= item.plannedQty ? 'completed'
+  item.status = item.plannedQty > 0 && item.completedQty >= item.plannedQty ? 'completed'
     : item.completedQty > 0 ? 'running' : 'pending';
+  applyVarianceGate(item);
 
   await workOrder.save();
   success(res, { workOrder }, 'Progress entry updated');
@@ -417,8 +425,9 @@ exports.deleteProgressEntry = asyncHandler(async (req, res) => {
 
   item.progressEntries.pull(progressId);
   item.completedQty = item.progressEntries.reduce((s, e) => s + e.qtyAdded, 0);
-  item.status = item.completedQty >= item.plannedQty ? 'completed'
+  item.status = item.plannedQty > 0 && item.completedQty >= item.plannedQty ? 'completed'
     : item.completedQty > 0 ? 'running' : 'pending';
+  applyVarianceGate(item);
 
   await workOrder.save();
   success(res, { workOrder }, 'Progress entry deleted');
@@ -444,19 +453,13 @@ exports.addSubItemProgress = asyncHandler(async (req, res) => {
     subItem.plannedQty = Number(plannedQty);
   }
 
-  if (subItem.plannedQty > 0) {
-    const remaining = subItem.plannedQty - (subItem.completedQty || 0);
-    if (qtyAdded > remaining) {
-      return badRequest(res, `Cannot exceed planned quantity. Only ${remaining.toLocaleString()} ${subItem.unit} remaining.`);
-    }
-  }
-
   subItem.progressEntries.push({ date: date || new Date(), qtyAdded, remarks, tower, floor, flatNo, plotNo, locationNote });
   subItem.completedQty = subItem.progressEntries.reduce((s, e) => s + e.qtyAdded, 0);
   subItem.status =
     subItem.plannedQty > 0 && subItem.completedQty >= subItem.plannedQty ? 'completed'
     : subItem.completedQty > 0                                            ? 'running'
     :                                                                       'pending';
+  applyVarianceGate(subItem);
 
   recomputeParentFromSubItems(item);
   await workOrder.save();
@@ -468,7 +471,11 @@ exports.addSubItemProgress = asyncHandler(async (req, res) => {
     vendorCode:  workOrder.vendorCode,
     vendorName:  workOrder.vendorName,
     user:        req.user,
-    metadata:    { scopeItem: `${item.description} — ${subItem.description}`, qtyAdded, unit: subItem.unit },
+    remarks:     remarks || '',
+    metadata:    {
+      scopeItem: `${item.description} — ${subItem.description}`, qtyAdded, unit: subItem.unit,
+      plannedQty: subItem.plannedQty, completedQty: subItem.completedQty,
+    },
   });
 
   success(res, { workOrder });
@@ -495,11 +502,6 @@ exports.editSubItemProgressEntry = asyncHandler(async (req, res) => {
     .filter(e => String(e._id) !== String(progressId))
     .reduce((s, e) => s + e.qtyAdded, 0);
 
-  if (otherTotal + qtyAdded > subItem.plannedQty) {
-    const maxAllowed = subItem.plannedQty - otherTotal;
-    return badRequest(res, `Cannot exceed planned quantity. Max allowed for this entry: ${maxAllowed.toLocaleString()} ${subItem.unit}`);
-  }
-
   if (otherTotal + qtyAdded < (subItem.lastBilledQty || 0)) {
     const minAllowed = (subItem.lastBilledQty || 0) - otherTotal;
     return badRequest(res, `Cannot reduce below billed quantity. Min allowed: ${minAllowed.toLocaleString()} ${subItem.unit}`);
@@ -515,8 +517,9 @@ exports.editSubItemProgressEntry = asyncHandler(async (req, res) => {
   if (locationNote !== undefined) entry.locationNote = locationNote;
 
   subItem.completedQty = subItem.progressEntries.reduce((s, e) => s + e.qtyAdded, 0);
-  subItem.status = subItem.completedQty >= subItem.plannedQty ? 'completed'
+  subItem.status = subItem.plannedQty > 0 && subItem.completedQty >= subItem.plannedQty ? 'completed'
     : subItem.completedQty > 0 ? 'running' : 'pending';
+  applyVarianceGate(subItem);
 
   recomputeParentFromSubItems(item);
   await workOrder.save();
@@ -547,10 +550,68 @@ exports.deleteSubItemProgressEntry = asyncHandler(async (req, res) => {
 
   subItem.progressEntries.pull(progressId);
   subItem.completedQty = subItem.progressEntries.reduce((s, e) => s + e.qtyAdded, 0);
-  subItem.status = subItem.completedQty >= subItem.plannedQty ? 'completed'
+  subItem.status = subItem.plannedQty > 0 && subItem.completedQty >= subItem.plannedQty ? 'completed'
     : subItem.completedQty > 0 ? 'running' : 'pending';
+  applyVarianceGate(subItem);
 
   recomputeParentFromSubItems(item);
   await workOrder.save();
   success(res, { workOrder }, 'Progress entry deleted');
+});
+
+// AGM/GM sign off on a scope item's (or particular's) progress currently
+// exceeding its planned quantity — required before that item can be selected
+// into a bill request. See applyVarianceGate() for when this gets reset.
+exports.approveScopeItemVariance = asyncHandler(async (req, res) => {
+  const workOrder = await WorkOrder.findById(req.params.id);
+  if (!workOrder) return notFound(res, 'Work order not found');
+
+  const item = workOrder.scopeItems.id(req.params.itemId);
+  if (!item) return notFound(res, 'Scope item not found');
+
+  if (!(item.plannedQty > 0 && item.completedQty > item.plannedQty)) {
+    return badRequest(res, 'This item has no unapproved variance');
+  }
+
+  item.varianceApproved = true;
+  item.varianceApprovedBy = req.user._id;
+  item.varianceApprovedAt = new Date();
+  item.varianceApprovedAtQty = item.completedQty;
+  await workOrder.save();
+
+  await logAudit({
+    action: 'APPROVE', module: 'work-orders', user: req.user,
+    description: `Approved progress variance on ${item.description} for ${workOrder.workOrderNo} (${item.completedQty}/${item.plannedQty} ${item.unit})`,
+    entityType: 'WorkOrder', entityId: workOrder._id, entityLabel: workOrder.workOrderNo,
+  });
+
+  success(res, { workOrder }, 'Variance approved');
+});
+
+exports.approveSubItemVariance = asyncHandler(async (req, res) => {
+  const workOrder = await WorkOrder.findById(req.params.id);
+  if (!workOrder) return notFound(res, 'Work order not found');
+
+  const item = workOrder.scopeItems.id(req.params.itemId);
+  if (!item) return notFound(res, 'Scope item not found');
+  const subItem = item.subItems.id(req.params.subItemId);
+  if (!subItem) return notFound(res, 'Particular not found');
+
+  if (!(subItem.plannedQty > 0 && subItem.completedQty > subItem.plannedQty)) {
+    return badRequest(res, 'This particular has no unapproved variance');
+  }
+
+  subItem.varianceApproved = true;
+  subItem.varianceApprovedBy = req.user._id;
+  subItem.varianceApprovedAt = new Date();
+  subItem.varianceApprovedAtQty = subItem.completedQty;
+  await workOrder.save();
+
+  await logAudit({
+    action: 'APPROVE', module: 'work-orders', user: req.user,
+    description: `Approved progress variance on ${item.description} — ${subItem.description} for ${workOrder.workOrderNo} (${subItem.completedQty}/${subItem.plannedQty} ${subItem.unit})`,
+    entityType: 'WorkOrder', entityId: workOrder._id, entityLabel: workOrder.workOrderNo,
+  });
+
+  success(res, { workOrder }, 'Variance approved');
 });

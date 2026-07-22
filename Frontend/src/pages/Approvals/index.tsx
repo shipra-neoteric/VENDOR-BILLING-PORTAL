@@ -171,6 +171,10 @@ export default function Approvals() {
   const [modalOpen, setModalOpen]   = useState(false);
   const [remarks, setRemarks]       = useState("");
   const [tdsAmount, setTdsAmount]   = useState<number | null>(null);
+  // GM can see + optionally overwrite the hold/retention and advance figures
+  // AGM set at approval time — left as AGM's value unless GM actually edits it.
+  const [verifyRetention, setVerifyRetention] = useState<number | null>(null);
+  const [verifyAdvance,   setVerifyAdvance]   = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [dateFrom, setDateFrom]     = useState<Dayjs | null>(null);
   const [dateTo, setDateTo]         = useState<Dayjs | null>(null);
@@ -204,6 +208,8 @@ export default function Approvals() {
     setActionType(type);
     setRemarks("");
     setTdsAmount(null);
+    setVerifyRetention(bill.retentionAmount ?? null);
+    setVerifyAdvance(bill.advanceRecovery ?? null);
     setModalOpen(true);
   }
 
@@ -219,6 +225,8 @@ export default function Approvals() {
         ? { reason: remarks || "No reason given" }
         : actionType === "initiate"
         ? { tdsAmount: tdsAmount ?? 0, remarks }
+        : actionType === "verify"
+        ? { remarks, retentionAmount: verifyRetention, advanceRecovery: verifyAdvance }
         : { remarks };
       await apiClient.patch(`/bills/${actionBill._id}/${endpoint}`, body);
       const msgs: Partial<Record<ActionType, string>> = {
@@ -593,6 +601,26 @@ export default function Approvals() {
                       ))}
                     </tbody>
                   </table>
+                </div>
+              )}
+
+              {actionType === "verify" && (
+                <div style={{ marginBottom: 12, padding: "10px 12px", background: "#FFF8F3", border: "1px solid #f8c9a0", borderRadius: 8 }}>
+                  <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 8 }}>
+                    {actionBill.agmApprovedBy?.name
+                      ? <>Set by AGM — <strong style={{ color: "#374151" }}>{actionBill.agmApprovedBy.name}</strong>. You can leave as-is or overwrite before approving.</>
+                      : "No AGM figures on record — enter if needed."}
+                  </div>
+                  <Row gutter={10}>
+                    <Col span={12}>
+                      <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Hold / Retention (₹)</div>
+                      <InputNumber style={{ width: "100%" }} min={0} value={verifyRetention} onChange={setVerifyRetention} />
+                    </Col>
+                    <Col span={12}>
+                      <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Advance Recovery (₹)</div>
+                      <InputNumber style={{ width: "100%" }} min={0} value={verifyAdvance} onChange={setVerifyAdvance} />
+                    </Col>
+                  </Row>
                 </div>
               )}
 

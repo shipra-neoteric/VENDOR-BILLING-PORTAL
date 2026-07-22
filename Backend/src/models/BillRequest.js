@@ -8,6 +8,9 @@ const itemSchema = new Schema({
   billedQty:    { type: Number, required: true, min: 0 },
   rate:         { type: Number, default: 0 },
   amount:       { type: Number, default: 0 },
+  // Notes the DRI wrote against the specific progress entries being billed
+  // here — distinct from the scope item's own static instruction remarks.
+  progressRemarks: { type: String, default: '' },
 }, { _id: false });
 
 const billRequestSchema = new Schema(

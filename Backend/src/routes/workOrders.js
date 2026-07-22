@@ -6,6 +6,7 @@ const {
   lockWorkOrder, unlockWorkOrder,
   addScopeProgress, editProgressEntry, deleteProgressEntry,
   addSubItemProgress, editSubItemProgressEntry, deleteSubItemProgressEntry,
+  approveScopeItemVariance, approveSubItemVariance,
 } = require('../controllers/workOrderController');
 
 router.use(authenticate);
@@ -25,5 +26,7 @@ router.delete('/:id/scope-items/:itemId/progress/:progressId', deleteProgressEnt
 router.post('/:id/scope-items/:itemId/sub-items/:subItemId/progress',              addSubItemProgress);
 router.patch('/:id/scope-items/:itemId/sub-items/:subItemId/progress/:progressId', editSubItemProgressEntry);
 router.delete('/:id/scope-items/:itemId/sub-items/:subItemId/progress/:progressId', deleteSubItemProgressEntry);
+router.patch('/:id/scope-items/:itemId/approve-variance', authorizeOr('bill-review', 'approve', 'owner', 'gm', 'agm'), approveScopeItemVariance);
+router.patch('/:id/scope-items/:itemId/sub-items/:subItemId/approve-variance', authorizeOr('bill-review', 'approve', 'owner', 'gm', 'agm'), approveSubItemVariance);
 
 module.exports = router;

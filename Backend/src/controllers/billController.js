@@ -8,6 +8,7 @@ const { nextBillNo } = require('../utils/codeGen');
 const emitEvent    = require('../utils/emitEvent');
 const { advanceInstance, cancelInstance } = require('../utils/slaEngine');
 const { logAudit, diffFields } = require('../utils/auditLog');
+const { hasUnapprovedVariance } = require('../utils/varianceCheck');
 
 // Advances the SLA tracker for whichever BillRequest generated this RunningBill —
 // no-ops silently if there's no linked request or no in-progress instance, so it's
@@ -75,6 +76,19 @@ exports.createBill = asyncHandler(async (req, res) => {
   const lineItems = Array.isArray(req.body.lineItems) ? req.body.lineItems : [];
   if (lineItems.length === 0) {
     return badRequest(res, 'At least one work item is required');
+  }
+
+  // This manual entry path bypasses the Bill Review checklist entirely, so any
+  // line linked to a WO scope item must still respect that item's variance
+  // sign-off — otherwise it's a silent backdoor around the whole review flow.
+  if (workOrder) {
+    for (const li of lineItems) {
+      if (!li.scopeItemId) continue;
+      const si = workOrder.scopeItems.id(li.scopeItemId);
+      if (si && hasUnapprovedVariance(si)) {
+        return badRequest(res, `"${si.description}" has unapproved progress variance — approve it on the Bill Review page before billing.`);
+      }
+    }
   }
 
   const amount = lineItems.reduce((sum, li) => sum + (Number(li.amount) || 0), 0);
@@ -159,6 +173,14 @@ exports.verifyBill = asyncHandler(async (req, res) => {
   if (bill.status !== 'submitted') {
     return badRequest(res, `Cannot verify a bill with status '${bill.status}'`);
   }
+
+  // GM can see AGM's hold/advance figures and choose to overwrite them here —
+  // diffed into the audit log so there's a clear record of who changed what.
+  const before = { retentionAmount: bill.retentionAmount, advanceRecovery: bill.advanceRecovery };
+  if (req.body.retentionAmount != null) bill.retentionAmount = Number(req.body.retentionAmount);
+  if (req.body.advanceRecovery != null) bill.advanceRecovery = Number(req.body.advanceRecovery);
+  const amountChanges = diffFields(before, { retentionAmount: bill.retentionAmount, advanceRecovery: bill.advanceRecovery }, ['retentionAmount', 'advanceRecovery']);
+
   bill.status     = 'verified';
   bill.verifiedBy = req.user._id;
   bill.verifiedAt = new Date();
@@ -169,8 +191,11 @@ exports.verifyBill = asyncHandler(async (req, res) => {
 
   await logAudit({
     action: 'APPROVE', module: 'billing-payments', user: req.user,
-    description: `GM approved bill ${bill.billNo}`,
+    description: amountChanges
+      ? `GM approved bill ${bill.billNo} and adjusted AGM's hold/advance figures`
+      : `GM approved bill ${bill.billNo}`,
     entityType: 'RunningBill', entityId: bill._id, entityLabel: bill.billNo,
+    ...(amountChanges ? { changes: amountChanges } : {}),
   });
 
   emitEvent('RUNNING_BILL_VERIFIED', {

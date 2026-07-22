@@ -156,6 +156,20 @@ export default function MyTasksDashboard() {
       title={`Welcome back, ${user?.name?.split(" ")[0] || roleLabel}`}
       description={`Here's what's waiting on your approval right now.`}
     >
+      {(role === "gm" || role === "agm") && (
+        <div style={{ background: "var(--nx-white)", border: "1px solid #e4e7ee", borderRadius: 12, padding: "16px 18px", marginBottom: 20, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 14, color: "var(--nx-text)" }}>Bill Review</div>
+            <div style={{ fontSize: 12, color: "var(--nx-text-2)", marginTop: 2 }}>
+              See what DRI has been logging project-by-project, approve any over-plan progress, and pick what goes into a bill.
+            </div>
+          </div>
+          <Button type="primary" style={{ background: "#FF7A00", borderColor: "#FF7A00" }} onClick={() => navigate("/bill-review")}>
+            Open Bill Review →
+          </Button>
+        </div>
+      )}
+
       {role === "gm" && (
         <>
           <QueueSection
@@ -181,7 +195,7 @@ export default function MyTasksDashboard() {
           <QueueSection
             title="Bill Requests Awaiting Your Approval" color="#d97706"
             rows={agmReqRows} emptyText="No bill requests waiting on your approval" buttonLabel="Approve →"
-            onOpen={() => navigate("/bill-requests")}
+            onOpen={() => navigate("/bill-review")}
           />
         </>
       )}

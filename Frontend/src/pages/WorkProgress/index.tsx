@@ -1,6 +1,6 @@
 import { Fragment, useState, useEffect, useMemo } from "react";
 import {
-  Select, Button, Modal, Form, Input, InputNumber, Checkbox,
+  Select, Button, Modal, Form, Input, InputNumber,
   Tooltip, message, Spin, Empty, DatePicker, Badge, Popconfirm,
 } from "antd";
 import { ArrowLeftOutlined } from "@ant-design/icons";
@@ -409,12 +409,6 @@ function DRIDashboard() {
   // Quick search in project detail view
   const [driSearch, setDriSearch] = useState("");
 
-  // Vendor bill modal
-  const [billModal,      setBillModal]      = useState(false);
-  const [selectedWOIds,  setSelectedWOIds]  = useState<Set<string>>(new Set());
-  const [billRemarks,    setBillRemarks]    = useState("");
-  const [billGenerating, setBillGenerating] = useState(false);
-
   // ── Load all WOs once ──────────────────────────────────────────────────────
   useEffect(() => {
     apiClient.get("/work-orders")
@@ -515,12 +509,6 @@ function DRIDashboard() {
     setWoDetails(prev => new Map(prev).set(woId, r.data.workOrder));
   };
 
-  const reloadBillReqs = async () => {
-    if (!selProjectId) return;
-    const r = await apiClient.get(`/bill-requests?projectId=${selProjectId}`);
-    setProjectBillReqs(r.data.billRequests ?? []);
-  };
-
   // ── Progress handlers ──────────────────────────────────────────────────────
   const handleAddProgress = async () => {
     if (!progWOId || !progItem) return;
@@ -576,28 +564,6 @@ function DRIDashboard() {
       await reloadWODetail(woId);
     } catch { }
     finally { setDeleting(null); }
-  };
-
-  // ── Project bill generation ────────────────────────────────────────────────
-  const openBillModal = () => {
-    setSelectedWOIds(new Set(pendingWODetails.map(d => d._id)));
-    setBillRemarks(""); setBillModal(true);
-  };
-
-  const handleGenerateBill = async () => {
-    const workOrderIds = Array.from(selectedWOIds);
-    if (!workOrderIds.length) { message.warning("Select at least one work order"); return; }
-    setBillGenerating(true);
-    try {
-      const res = await apiClient.post("/bill-requests/batch", { workOrderIds, remarks: billRemarks });
-      message.success(res.data?.message || "Bill request submitted!");
-      setBillModal(false);
-      await Promise.all(workOrderIds.map(id => reloadWODetail(id)));
-      await reloadBillReqs();
-    } catch (e: any) {
-      message.error(e?.response?.data?.message || "Failed to submit bill request");
-    }
-    finally { setBillGenerating(false); }
   };
 
   const progProjectType: "apartment" | "plot" = useMemo(() => {
@@ -728,16 +694,13 @@ function DRIDashboard() {
             </div>
           </div>
         </div>
-        <Tooltip title={!hasPending ? "No unbilled progress. Record daily progress first." : ""}>
-          <Button
-            type="primary" size="large"
-            disabled={!hasPending}
-            onClick={openBillModal}
-            style={hasPending ? { background: "#FF7A00", borderColor: "#FF7A00", fontWeight: 700 } : {}}
-          >
-            🧾 Generate Bill Request for {selProjectName}
-          </Button>
-        </Tooltip>
+        {hasPending && (
+          <Tooltip title="AGM/GM review your logged progress and decide when to generate a bill request — not done from here anymore.">
+            <span style={{ background: "#FFF4E8", border: "1px solid #FED7AA", color: "#FF7A00", fontWeight: 600, fontSize: 12, padding: "6px 14px", borderRadius: 8 }}>
+              🧾 {pendingWODetails.reduce((s, d) => s + d.scopeItems.filter(si => Math.max(0, (si.completedQty || 0) - (si.lastBilledQty || 0)) > 0).length, 0)} item(s) awaiting AGM/GM bill review
+            </span>
+          </Tooltip>
+        )}
       </div>
 
       {/* Search bar */}
@@ -1253,96 +1216,6 @@ function DRIDashboard() {
               </div>
             );
           })()}
-        </div>
-      </Modal>
-
-      {/* ── Vendor Bill Generator Modal ────────────────────────────────────── */}
-      <Modal
-        open={billModal} onCancel={() => setBillModal(false)}
-        title={`Generate Bill Request — ${selProjectName}`}
-        onOk={handleGenerateBill}
-        okText={`Submit Bill Request${selectedWOIds.size > 1 ? ` (${selectedWOIds.size} Work Orders)` : ""}`}
-        width={700}
-        okButtonProps={{ loading: billGenerating, disabled: selectedWOIds.size === 0, style: { background: "#FF7A00", borderColor: "#FF7A00" } }}
-        destroyOnClose
-      >
-        <div style={{ marginTop: 8 }}>
-          <div style={{ padding: 12, background: "#FFF4E8", border: "1px solid #FED7AA", borderRadius: 8, marginBottom: 16, fontSize: 12, color: "#92400e" }}>
-            <strong>Project bill request</strong> — select work orders to include. Quantities are auto-calculated from recorded progress since last billing.
-          </div>
-
-          {pendingWODetails.length === 0 ? (
-            <Empty description="No pending progress to bill. Record daily progress first." />
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              {vendorGroups.map(vg => {
-                const vgPendingWOs = vg.wos
-                  .map(wo => woDetails.get(wo._id))
-                  .filter((d): d is WODetail => !!d && d.scopeItems.some(si => Math.max(0, (si.completedQty || 0) - (si.lastBilledQty || 0)) > 0))
-                  .filter(d => !projectBillReqs.some(br => br.workOrderId === d._id && br.status === "pending"));
-
-                if (!vgPendingWOs.length) return null;
-                return (
-                  <div key={vg.vendorCode} style={{ border: "1px solid var(--nx-border)", borderRadius: 10, overflow: "hidden" }}>
-                    <div style={{ background: "var(--nx-fill-2)", padding: "10px 14px", fontWeight: 700, fontSize: 13, color: "var(--nx-text)", borderBottom: "1px solid var(--nx-border)" }}>
-                      👷 {vg.vendorName} <span style={{ fontFamily: "monospace", color: "#FF7A00", fontSize: 11, fontWeight: 400 }}>({vg.vendorCode})</span>
-                    </div>
-                    {vgPendingWOs.map(detail => {
-                      const pendingItems = detail.scopeItems.filter(si => Math.max(0, (si.completedQty || 0) - (si.lastBilledQty || 0)) > 0);
-                      const isChecked = selectedWOIds.has(detail._id);
-                      return (
-                        <div key={detail._id} style={{ padding: "12px 14px", borderBottom: "1px solid var(--nx-border)", background: isChecked ? "var(--nx-fill-2)" : "var(--nx-white)" }}>
-                          <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
-                            <Checkbox
-                              checked={isChecked}
-                              onChange={e => {
-                                const next = new Set(selectedWOIds);
-                                if (e.target.checked) next.add(detail._id); else next.delete(detail._id);
-                                setSelectedWOIds(next);
-                              }}
-                            />
-                            <div style={{ flex: 1 }}>
-                              <div style={{ fontWeight: 700, color: "#FF7A00", fontFamily: "monospace", fontSize: 13 }}>{detail.workOrderNo}</div>
-                              {detail.category && <div style={{ fontSize: 11, color: "var(--nx-text-muted)", marginBottom: 8 }}>{detail.category}{detail.subCategory ? ` › ${detail.subCategory}` : ""}</div>}
-                              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-                                <tbody>
-                                  {pendingItems.map(si => {
-                                    const billedQty = Math.max(0, si.completedQty - (si.lastBilledQty || 0));
-                                    return (
-                                      <tr key={si._id}>
-                                        <td style={{ padding: "3px 0", color: "var(--nx-text)", fontWeight: 500 }}>{si.description}</td>
-                                        <td style={{ padding: "3px 8px", color: "var(--nx-text-2)" }}>{si.unit}</td>
-                                        <td style={{ padding: "3px 0", color: "var(--nx-text-2)" }}>Prev billed: {fmtN(si.lastBilledQty || 0)}</td>
-                                        <td style={{ padding: "3px 0", textAlign: "right", color: "#FF7A00", fontWeight: 700, fontFamily: "monospace" }}>+{fmtN(billedQty)}</td>
-                                      </tr>
-                                    );
-                                  })}
-                                </tbody>
-                              </table>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {pendingWODetails.length > 0 && (
-            <div style={{ marginTop: 16 }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: "var(--nx-text-3)", marginBottom: 6 }}>Remarks (optional)</div>
-              <Input.TextArea rows={2} placeholder="Any notes for this consolidated bill request…"
-                value={billRemarks} onChange={e => setBillRemarks(e.target.value)} />
-            </div>
-          )}
-
-          {selectedWOIds.size > 0 && (
-            <div style={{ marginTop: 12, padding: "10px 14px", background: "#FFF4E8", border: "1px solid #FED7AA", borderRadius: 8, fontSize: 12, color: "#92400e" }}>
-              <strong>{selectedWOIds.size} work order{selectedWOIds.size !== 1 ? "s" : ""}</strong> will be included in this bill request.
-            </div>
-          )}
         </div>
       </Modal>
     </div>

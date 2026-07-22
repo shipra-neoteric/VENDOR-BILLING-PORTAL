@@ -1,3 +1,4 @@
+const mongoose    = require('mongoose');
 const BillRequest = require('../models/BillRequest');
 const WorkOrder   = require('../models/WorkOrder');
 const RunningBill = require('../models/RunningBill');
@@ -6,6 +7,24 @@ const { success, created, notFound, badRequest, forbidden } = require('../utils/
 const emitEvent   = require('../utils/emitEvent');
 const { startInstance, advanceInstance, cancelInstance } = require('../utils/slaEngine');
 const { logAudit } = require('../utils/auditLog');
+const { hasUnapprovedVariance } = require('../utils/varianceCheck');
+
+// Gathers the DRI's day-to-day notes for whichever progress entries haven't
+// been carried into a bill yet (marks them as consumed on the way out), so
+// they ride along into the BillRequest/RunningBill line item instead of
+// staying trapped on the WorkOrder document.
+function collectAndMarkProgressRemarks(si, billRequestId) {
+  const sources = (si.subItems && si.subItems.length > 0) ? si.subItems : [si];
+  const notes = [];
+  for (const src of sources) {
+    for (const entry of src.progressEntries) {
+      if (entry.billedInRequestId) continue;
+      if (entry.remarks && entry.remarks.trim()) notes.push(entry.remarks.trim());
+      entry.billedInRequestId = billRequestId;
+    }
+  }
+  return notes.join('; ');
+}
 
 async function nextReqNo() {
   const last = await BillRequest.findOne().sort({ createdAt: -1 }).select('reqNo');
@@ -46,7 +65,7 @@ exports.listBillRequests = asyncHandler(async (req, res) => {
 
 // POST /api/bill-requests  — qty is auto-calculated, only remarks accepted from client
 exports.createBillRequest = asyncHandler(async (req, res) => {
-  const { workOrderId, remarks } = req.body;
+  const { workOrderId, remarks, scopeItemIds } = req.body;
 
   const wo = await WorkOrder.findById(workOrderId);
   if (!wo) return notFound(res, 'Work order not found');
@@ -64,8 +83,18 @@ exports.createBillRequest = asyncHandler(async (req, res) => {
     return badRequest(res, `Stage ${existing.stageNo} (${existing.reqNo}) is already pending approval. Wait for admin review before submitting a new request.`);
   }
 
+  // AGM/GM can hand-pick which completed items go into this cycle (checklist
+  // on the Bill Review page); omitting scopeItemIds bills every pending item,
+  // preserving Owner's existing one-click bypass behavior.
+  const selectedIds = Array.isArray(scopeItemIds) && scopeItemIds.length > 0
+    ? new Set(scopeItemIds.map(String))
+    : null;
+  const candidateItems = selectedIds
+    ? wo.scopeItems.filter(si => selectedIds.has(String(si._id)))
+    : wo.scopeItems;
+
   // Auto-calculate pending qty per scope item
-  const pendingItems = wo.scopeItems
+  const pendingItems = candidateItems
     .map(si => ({
       scopeItemId:  si._id,
       description:  si.description,
@@ -80,6 +109,15 @@ exports.createBillRequest = asyncHandler(async (req, res) => {
     return badRequest(res, 'No new progress to bill. Record daily progress first before generating a bill request.');
   }
 
+  // Any item still over its planned qty (or one of its particulars) must be
+  // explicitly signed off by AGM/GM before it can go into a bill.
+  for (const pi of pendingItems) {
+    const si = wo.scopeItems.id(pi.scopeItemId);
+    if (hasUnapprovedVariance(si)) {
+      return badRequest(res, `"${si.description}" has unapproved progress variance — approve it before billing.`);
+    }
+  }
+
   // Stage number and billing period
   const stageNo = await BillRequest.countDocuments({ workOrderId: wo._id }) + 1;
   const lastBR  = await BillRequest.findOne({ workOrderId: wo._id }).sort({ createdAt: -1 }).select('createdAt periodTo');
@@ -87,8 +125,18 @@ exports.createBillRequest = asyncHandler(async (req, res) => {
   const periodTo   = new Date();
 
   const reqNo = await nextReqNo();
+  const billRequestId = new mongoose.Types.ObjectId();
+
+  // Carry each billed item's not-yet-billed progress-entry remarks along, and
+  // mark those entries consumed (on the in-memory WO doc — saved below).
+  const progressRemarksByItem = new Map();
+  for (const pi of pendingItems) {
+    const si = wo.scopeItems.id(pi.scopeItemId);
+    progressRemarksByItem.set(String(pi.scopeItemId), collectAndMarkProgressRemarks(si, billRequestId));
+  }
 
   const billRequest = await BillRequest.create({
+    _id: billRequestId,
     reqNo,
     stageNo,
     workOrderId: wo._id,
@@ -107,6 +155,7 @@ exports.createBillRequest = asyncHandler(async (req, res) => {
       description: it.description,
       unit:        it.unit,
       billedQty:   it.billedQty,
+      progressRemarks: progressRemarksByItem.get(String(it.scopeItemId)) || '',
     })),
     remarks:     remarks || '',
     requestedBy: req.user._id,
@@ -161,6 +210,7 @@ exports.approveBillRequest = asyncHandler(async (req, res) => {
       scopeItemId: item.scopeItemId,
       description: item.description,
       remarks:     scopeItem?.remarks   || '',
+      progressRemarks: item.progressRemarks || '',
       unit:        item.unit,
       plannedQty:  scopeItem?.plannedQty ?? 0,
       billedQty:   item.billedQty,
@@ -393,8 +443,18 @@ exports.createBatchBillRequest = asyncHandler(async (req, res) => {
     const periodFrom = lastBR?.periodTo ?? wo.issueDate ?? new Date();
     const periodTo   = new Date();
     const reqNo      = await nextReqNo();
+    const billRequestId = new mongoose.Types.ObjectId();
+
+    // This is Owner's direct-bypass path — bills everything pending without a
+    // variance gate, but still carries progress remarks through for free.
+    const progressRemarksByItem = new Map();
+    for (const pi of pendingItems) {
+      const si = wo.scopeItems.id(pi.scopeItemId);
+      progressRemarksByItem.set(String(pi.scopeItemId), collectAndMarkProgressRemarks(si, billRequestId));
+    }
 
     const br = await BillRequest.create({
+      _id: billRequestId,
       reqNo, stageNo,
       workOrderId: wo._id,
       workOrderNo: wo.workOrderNo,
@@ -411,6 +471,7 @@ exports.createBatchBillRequest = asyncHandler(async (req, res) => {
         description: it.description,
         unit:        it.unit,
         billedQty:   it.billedQty,
+        progressRemarks: progressRemarksByItem.get(String(it.scopeItemId)) || '',
       })),
       remarks:     remarks || '',
       requestedBy: req.user._id,

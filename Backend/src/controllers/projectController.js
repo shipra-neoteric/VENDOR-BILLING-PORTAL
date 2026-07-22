@@ -182,3 +182,19 @@ exports.getProjectActivity = asyncHandler(async (req, res) => {
     .limit(parseInt(limit));
   success(res, { events });
 });
+
+// GET /api/projects/activity — cross-project feed, used by the AGM/GM Bill
+// Review page's "Recent DRI Progress" nutshell. Defaults to progress entries
+// only (not every event type) since that's what AGM/GM need to review; reads
+// straight off the already-recorded ProjectEvent rows instead of re-fetching
+// every work order, so it stays cheap regardless of how many WOs exist.
+exports.getAllProjectsActivity = asyncHandler(async (req, res) => {
+  const { type = 'PROGRESS_ADDED', limit = 100, projectId } = req.query;
+  const filter = { type };
+  if (projectId) filter.projectId = projectId;
+  const events = await ProjectEvent.find(filter)
+    .populate('projectId', 'name code')
+    .sort({ createdAt: -1 })
+    .limit(Math.min(parseInt(limit) || 100, 300));
+  success(res, { events });
+});

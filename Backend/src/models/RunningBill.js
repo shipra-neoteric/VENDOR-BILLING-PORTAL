@@ -4,6 +4,9 @@ const lineItemSchema = new mongoose.Schema({
   scopeItemId: { type: mongoose.Schema.Types.ObjectId },
   description: { type: String, required: true },
   remarks:     { type: String, default: '' },
+  // Notes from the actual progress entries billed here — distinct from
+  // `remarks` above, which is the scope item's static instruction note.
+  progressRemarks: { type: String, default: '' },
   unit:        { type: String, default: '' },
   plannedQty:  { type: Number, default: 0 },
   billedQty:   { type: Number, required: true },

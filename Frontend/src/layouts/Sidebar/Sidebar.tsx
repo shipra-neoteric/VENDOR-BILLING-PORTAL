@@ -5,6 +5,7 @@ import {
   FileTextOutlined, LineChartOutlined, ProfileOutlined, WalletOutlined,
   CheckSquareOutlined, AccountBookOutlined, UsergroupAddOutlined, MonitorOutlined,
   ShareAltOutlined, SettingOutlined, ClockCircleOutlined, HistoryOutlined,
+  FileSearchOutlined,
 } from "@ant-design/icons";
 import { useAuth } from "../../context/AuthContext";
 import type { PermEntry } from "../../context/AuthContext";
@@ -42,6 +43,7 @@ const ADMIN_GROUPS: NavGroup[] = [
   {
     label: "Billing",
     items: [
+      { name: "Bill Review",        path: "/bill-review",      icon: <FileSearchOutlined />,   moduleId: "bill-review" },
       { name: "Bill Requests",      path: "/bill-requests",    icon: <ProfileOutlined />,     moduleId: "bill-requests" },
       { name: "Billing & Payments", path: "/bills",            icon: <WalletOutlined />,       moduleId: "billing-payments" },
       { name: "Ledger",             path: "/ledger",           icon: <AccountBookOutlined />,  moduleId: "ledger" },

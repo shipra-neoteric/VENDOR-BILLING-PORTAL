@@ -10,6 +10,11 @@ const progressEntrySchema = new mongoose.Schema(
     flatNo:       { type: String, default: '' },
     plotNo:       { type: String, default: '' },
     locationNote: { type: String, default: '' },
+    // Set once this entry's remarks have been carried into a BillRequest, so a
+    // later (possibly partial) billing cycle knows exactly which entries are
+    // still "new" — cumulative qty alone can't tell that apart once billing
+    // becomes selective per item.
+    billedInRequestId: { type: mongoose.Schema.Types.ObjectId, ref: 'BillRequest', default: null },
   },
   { _id: true, timestamps: false }
 );
@@ -29,6 +34,15 @@ const subItemSchema = new mongoose.Schema(
     completedQty:    { type: Number, default: 0 },
     lastBilledQty:   { type: Number, default: 0 },
     progressEntries: [progressEntrySchema],
+    // Progress is allowed to exceed plannedQty (never hard-blocked) — AGM/GM
+    // must explicitly sign off on the overage before it can be billed.
+    // varianceApprovedAtQty snapshots the completedQty that was actually
+    // reviewed, so a later edit only invalidates the sign-off if the qty
+    // genuinely changed — not for e.g. a remarks/location correction.
+    varianceApproved:     { type: Boolean, default: false },
+    varianceApprovedBy:   { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    varianceApprovedAt:   { type: Date },
+    varianceApprovedAtQty:{ type: Number },
   },
   { _id: true }
 );
@@ -49,6 +63,11 @@ const scopeItemSchema = new mongoose.Schema(
     lastBilledQty:   { type: Number, default: 0 },
     progressEntries: [progressEntrySchema],
     subItems:        [subItemSchema],
+    // Same variance sign-off as subItemSchema, for items with no particulars.
+    varianceApproved:     { type: Boolean, default: false },
+    varianceApprovedBy:   { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    varianceApprovedAt:   { type: Date },
+    varianceApprovedAtQty:{ type: Number },
   },
   { _id: true }
 );
