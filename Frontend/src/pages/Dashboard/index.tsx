@@ -12,7 +12,7 @@ import type { ComparisonMode } from "../../features/dashboard/components/MiniCha
 import { useDueReportSchedules } from "../../features/dashboard/hooks/useReportSchedules";
 
 interface ProjectOption { _id: string; name: string; parentId?: string | null; }
-type ViewType = "operational" | "financial";
+type ViewType = "operational" | "financial" | "both";
 type RangePreset = "all" | "today" | "week" | "lastWeek" | "custom";
 
 // Monday-start week, independent of dayjs locale config.
@@ -21,7 +21,7 @@ function startOfWeek(d: Dayjs): Dayjs {
 }
 
 export default function Dashboard() {
-  const [view, setView] = useState<ViewType>("operational");
+  const [view, setView] = useState<ViewType>("both");
   const [date, setDate] = useState<Dayjs>(dayjs());
   const [rangePreset, setRangePreset] = useState<RangePreset>("today");
   const [customRange, setCustomRange] = useState<[Dayjs, Dayjs]>([dayjs().subtract(6, "day"), dayjs()]);
@@ -91,6 +91,7 @@ export default function Dashboard() {
           options={[
             { label: "🏗️ Operational", value: "operational" },
             { label: "💰 Financial", value: "financial" },
+            { label: "🔎 Both", value: "both" },
           ]}
           size="large"
         />
@@ -146,6 +147,24 @@ export default function Dashboard() {
         <Skeleton active paragraph={{ rows: 8 }} />
       ) : error || !data ? (
         <Alert type="error" showIcon message={(error as Error)?.message ?? "Failed to load MIS report"} style={{ margin: 24, borderRadius: 10 }} />
+      ) : view === "both" ? (
+        <>
+          {/* Operational section */}
+          <div style={{ fontSize: 15, fontWeight: 700, color: "var(--nx-text)", marginBottom: 10 }}>🏗️ Operational</div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, background: "var(--nx-white)", border: "1px solid #E5E7EB", borderRadius: 10, padding: "12px 16px", marginBottom: 20 }}>
+            <ReportSummaryHeader report={data} viewType="operational" projectLabel={projectLabel} />
+            <ReportToolbar report={data} viewType="operational" projectLabel={projectLabel} projectId={projectId} />
+          </div>
+          <OperationalView data={data.operational} comparisonMode={comparisonMode} />
+
+          {/* Financial section */}
+          <div style={{ fontSize: 15, fontWeight: 700, color: "var(--nx-text)", margin: "32px 0 10px", paddingTop: 24, borderTop: "1px solid #E5E7EB" }}>💰 Financial</div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, background: "var(--nx-white)", border: "1px solid #E5E7EB", borderRadius: 10, padding: "12px 16px", marginBottom: 20 }}>
+            <ReportSummaryHeader report={data} viewType="financial" projectLabel={projectLabel} />
+            <ReportToolbar report={data} viewType="financial" projectLabel={projectLabel} projectId={projectId} />
+          </div>
+          <FinancialView financial={data.financial} comparisonMode={comparisonMode} projectPerformance={data.operational.projectPerformance} />
+        </>
       ) : (
         <>
           {/* Report summary + export toolbar */}
