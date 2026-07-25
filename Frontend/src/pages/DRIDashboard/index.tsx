@@ -164,20 +164,19 @@ export default function DRIDashboard() {
   const [billGenerating,setBillGenerating]= useState(false);
 
   // ── Initial load ─────────────────────────────────────────────────────────────
+  // Each fetch settles independently — one endpoint failing must not blank out
+  // data the other calls already fetched successfully.
   useEffect(() => {
     setLoading(true);
-    Promise.all([
-      apiClient.get("/users"),
-      apiClient.get("/work-orders"),
-      apiClient.get("/bill-requests"),
-    ])
-      .then(([usersR, wosR, billsR]) => {
-        setAllDRIs((usersR.data.users ?? []).filter((u: DRIUser & { role: string }) => u.role === "site-dri"));
-        setAllWOs(wosR.data.workOrders ?? []);
-        setAllBills(billsR.data.billRequests ?? []);
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    const calls = [
+      apiClient.get("/auth/users?role=site-dri")
+        .then(r => setAllDRIs(r.data.users ?? [])),
+      apiClient.get("/work-orders")
+        .then(r => setAllWOs(r.data.workOrders ?? [])),
+      apiClient.get("/bill-requests")
+        .then(r => setAllBills(r.data.billRequests ?? [])),
+    ];
+    Promise.allSettled(calls).finally(() => setLoading(false));
   }, []);
 
   // ── Derived: DRI's WOs ────────────────────────────────────────────────────────

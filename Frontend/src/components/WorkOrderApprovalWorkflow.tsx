@@ -173,10 +173,8 @@ export default function WorkOrderApprovalWorkflow<T extends ApprovalWorkOrder>({
   const wo = workOrder;
 
   // Best-effort id → name lookup for approvalHistory/maker/checker/approver/
-  // finalApprovedBy — none of those come back populated from the backend, and
-  // /auth/users itself is only reachable for owner/gm/accounts (or explicit
-  // user-management:view perm), so this silently no-ops for anyone else and
-  // falls back to a role label instead of fabricating a name.
+  // finalApprovedBy — none of those come back populated from the backend.
+  // Falls back to a role label instead of fabricating a name if this fails.
   const [userMap, setUserMap] = useState<Record<string, string>>({});
   useEffect(() => {
     apiClient.get("/auth/users")

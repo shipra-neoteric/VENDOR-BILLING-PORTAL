@@ -23,7 +23,7 @@ export default function SlaSettingsDetail() {
   const load = useCallback(async () => {
     setLoading(true); setError("");
     try {
-      const uRes = await apiClient.get("/users").catch(() => ({ data: { users: [] } }));
+      const uRes = await apiClient.get("/auth/users").catch(() => ({ data: { users: [] } }));
       setUsers(uRes.data.users ?? []);
 
       if (!isNew) {

@@ -1,5 +1,5 @@
 const router = require('express').Router();
-const { authenticate, authorize, authorizeOr } = require('../middleware/auth');
+const { authenticate, authorize } = require('../middleware/auth');
 const { registerRules, loginRules } = require('../validators/auth.validator');
 const { register, login, getMe, changePassword, listUsers, switchUser } = require('../controllers/authController');
 
@@ -7,14 +7,14 @@ router.post('/register', registerRules, register);
 router.post('/login',    loginRules,    login);
 router.get('/me',        authenticate,  getMe);
 router.patch('/change-password', authenticate, changePassword);
-// Populating a "assign DRI" dropdown (Work Orders, DPR, etc.) isn't a User
-// Management action — any authenticated user can see this narrow,
-// site-dri-filtered list. Only an unfiltered/full user list needs real
-// user-management view access.
-router.get('/users', authenticate, (req, res, next) => {
-  if (req.query.role === 'site-dri') return next();
-  return authorizeOr('user-management', 'view', 'owner', 'gm', 'accounts')(req, res, next);
-}, listUsers);
+// Read-only staff directory (name/email/role/isActive — no passwords) used
+// all over the app for name lookups and assignment dropdowns: resolving
+// maker/checker/approver names on the Work Order timeline, the "assign DRI"
+// picker, SLA stage assignees, etc. None of that is a User Management action,
+// so it's open to any authenticated user. Actually managing accounts
+// (create/edit/delete/reset-password) is a separate, real permission —
+// see /api/users, gated by the user-management checklist.
+router.get('/users', authenticate, listUsers);
 router.post('/switch/:userId', authenticate, authorize('owner'), switchUser);
 
 module.exports = router;
