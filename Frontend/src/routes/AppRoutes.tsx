@@ -8,12 +8,11 @@ import Companies            from "../features/companies";
 import Categories           from "../features/categories";
 import WorkItems            from "../features/work-items";
 import WorkProgress         from "../features/work-progress";
-import Bills                from "../features/bills";
+import AccountsPayment      from "../pages/AccountsPayment";
 import BillRequests         from "../pages/BillRequests";
 import BillReview           from "../pages/BillReview";
 import AdvancePayments      from "../pages/AdvancePayments";
 import WorkOrderDashboard   from "../pages/WorkOrderDashboard";
-import Approvals            from "../features/approvals";
 import Ledger               from "../features/ledger";
 import UserManagement       from "../pages/UserManagement";
 import DRIDashboard         from "../pages/DRIDashboard";
@@ -45,9 +44,8 @@ function DriRoutes() {
           <Route path="/categories"       element={<Categories />} />
           <Route path="/work-items"       element={<WorkItems />} />
           <Route path="/work-items/:id"   element={<WorkOrderDashboard />} />
-          <Route path="/bills"            element={<Bills />} />
+          <Route path="/accounts-payment"  element={<AccountsPayment />} />
           <Route path="/bill-requests"    element={<BillRequests />} />
-          <Route path="/approvals"        element={<Approvals />} />
           <Route path="/ledger"           element={<Ledger />} />
           <Route path="*"                 element={<Navigate to="/work-progress" replace />} />
         </Route>
@@ -56,14 +54,17 @@ function DriRoutes() {
   );
 }
 
-// GM/AGM/Accounts land on a personalized "what's pending for you" queue instead of
-// the shared Operational/Financial KPI dashboard — Owner keeps the full dashboard.
-const TASK_QUEUE_ROLES = new Set(["gm", "agm", "accounts"]);
+// GM/AGM land on a personalized "what's pending for you" queue instead of the
+// shared Operational/Financial KPI dashboard — Owner keeps the full dashboard.
+// Accounts used to share that queue page too, but they explicitly rejected its
+// look — their "/dashboard" is now just the redesigned Accounts Payment page.
+const TASK_QUEUE_ROLES = new Set(["gm", "agm"]);
 
 function AdminRoutes() {
   const { user } = useAuth();
-  const defaultPath = getDefaultPath(user?.permissions);
+  const defaultPath = getDefaultPath(user?.permissions, user?.role);
   const showTaskQueue = TASK_QUEUE_ROLES.has(user?.role ?? "");
+  const isAccounts = user?.role === "accounts";
 
   return (
     <Routes>
@@ -71,7 +72,7 @@ function AdminRoutes() {
       <Route element={<ProtectedRoute />}>
         <Route element={<MainLayout />}>
           <Route index                    element={<Navigate to={defaultPath} replace />} />
-          <Route path="/dashboard"        element={showTaskQueue ? <MyTasksDashboard /> : <Dashboard />} />
+          <Route path="/dashboard"        element={isAccounts ? <AccountsPayment /> : showTaskQueue ? <MyTasksDashboard /> : <Dashboard />} />
           <Route path="/projects"         element={<Projects />} />
           <Route path="/contractors"      element={<Contractors />} />
           <Route path="/companies"        element={<Companies />} />
@@ -79,11 +80,10 @@ function AdminRoutes() {
           <Route path="/work-items"         element={<WorkItems />} />
           <Route path="/work-items/:id"   element={<WorkOrderDashboard />} />
           <Route path="/work-progress"    element={<WorkProgress />} />
-          <Route path="/bills"            element={<Bills />} />
+          <Route path="/accounts-payment"  element={<AccountsPayment />} />
           <Route path="/bill-requests"    element={<BillRequests />} />
           <Route path="/bill-review"      element={<BillReview />} />
           <Route path="/advance-payments" element={<AdvancePayments />} />
-          <Route path="/approvals"        element={<Approvals />} />
           <Route path="/ledger"           element={<Ledger />} />
           <Route path="/users"            element={<UserManagement />} />
           <Route path="/dri-dashboard"   element={<DRIDashboard />} />

@@ -25,7 +25,7 @@ interface AppUser {
   permissions?: { module: string; actions: string[] }[];
 }
 
-type PermAction = "view" | "create" | "edit" | "delete" | "approve" | "request";
+type PermAction = "view" | "create" | "edit" | "delete" | "approve" | "request" | "maker" | "checker" | "approver" | "release" | "reject" | "ceo-approve" | "send-back";
 
 interface ModuleDef {
   id: string;
@@ -36,12 +36,19 @@ interface ModuleDef {
 }
 
 const ACTION_CFG: Record<PermAction, { label: string; bg: string }> = {
-  view:    { label: "View",    bg: "#6366f1" },
-  create:  { label: "Create",  bg: "#16a34a" },
-  edit:    { label: "Edit",    bg: "#2563eb" },
-  delete:  { label: "Delete",  bg: "#dc2626" },
-  approve: { label: "Approve", bg: "#d97706" },
-  request: { label: "Request", bg: "#7c3aed" },
+  view:     { label: "View",     bg: "#6366f1" },
+  create:   { label: "Create",   bg: "#16a34a" },
+  edit:     { label: "Edit",     bg: "#2563eb" },
+  delete:   { label: "Delete",   bg: "#dc2626" },
+  approve:  { label: "Approve",  bg: "#d97706" },
+  request:  { label: "Request",  bg: "#7c3aed" },
+  maker:    { label: "L1 Maker",    bg: "#0891b2" },
+  checker:  { label: "L2 Checker",  bg: "#2563eb" },
+  approver: { label: "L3 Approver", bg: "#d97706" },
+  release:  { label: "Release",     bg: "#16a34a" },
+  reject:   { label: "Reject",      bg: "#dc2626" },
+  "ceo-approve": { label: "L4 Final Approval", bg: "#7c3aed" },
+  "send-back":   { label: "Send Back",         bg: "#dc2626" },
 };
 
 const MODULE_DEFS: ModuleDef[] = [
@@ -50,13 +57,12 @@ const MODULE_DEFS: ModuleDef[] = [
   { id: "projects",         name: "Projects",           icon: "🏗️", group: "Project Setup", actions: ["view","create","edit","delete"] },
   { id: "contractors",      name: "Contractors",        icon: "👷", group: "Project Setup", actions: ["view","create","edit","delete"] },
   { id: "categories",       name: "Categories",         icon: "🏷️", group: "Project Setup", actions: ["view","create","edit","delete"] },
-  { id: "work-orders",      name: "Work Orders",        icon: "📋", group: "Execution",     actions: ["view","create","edit","delete"] },
+  { id: "work-orders",      name: "Work Orders",        icon: "📋", group: "Execution",     actions: ["view","create","edit","delete","maker","checker","approver","ceo-approve","send-back"] },
   { id: "work-progress",    name: "Work Progress",      icon: "📊", group: "Execution",     actions: ["view","create","edit","delete"] },
   { id: "bill-requests",    name: "Bill Requests",      icon: "📨", group: "Billing",       actions: ["view","create","request","approve"] },
-  { id: "billing-payments", name: "Billing & Payments", icon: "💳", group: "Billing",       actions: ["view","create","edit","approve"] },
+  { id: "accounts-payment", name: "Accounts Payment",   icon: "💰", group: "Billing",       actions: ["view","create","edit","maker","checker","approver","release","reject"] },
   { id: "advance-payments", name: "Advance Payments",   icon: "🏦", group: "Billing",       actions: ["view","create","edit","delete"] },
   { id: "bill-review",      name: "Bill Review",        icon: "🧾", group: "Billing",       actions: ["view","approve"] },
-  { id: "approvals",        name: "Approvals",          icon: "✅", group: "Billing",       actions: ["view","approve"] },
   { id: "ledger",           name: "Ledger",             icon: "📒", group: "Billing",       actions: ["view"] },
   { id: "user-management",  name: "User Management",    icon: "👥", group: "Admin",         actions: ["view","create","edit","delete"] },
   { id: "dri-dashboard",    name: "DRI Work Dashboard", icon: "🏗️", group: "Admin",         actions: ["view","create","edit"] },
@@ -65,48 +71,6 @@ const MODULE_DEFS: ModuleDef[] = [
   { id: "sla-settings",     name: "SLA Settings",       icon: "⚙️", group: "SLA",           actions: ["view","create","edit","delete"] },
   { id: "sla-dashboard",    name: "SLA Dashboard",      icon: "⏱️", group: "SLA",           actions: ["view"] },
 ];
-
-const ROLE_DEFAULTS: Record<string, Record<string, PermAction[]>> = {
-  owner: {
-    dashboard: ["view"],
-    companies: ["view","create","edit","delete"], projects: ["view","create","edit","delete"],
-    contractors: ["view","create","edit","delete"], categories: ["view","create","edit","delete"],
-    "work-orders": ["view","create","edit","delete"], "work-progress": ["view","create","edit","delete"],
-    "bill-requests": ["view","create","request","approve"], "billing-payments": ["view","create","edit","approve"],
-    "advance-payments": ["view","create","edit","delete"], "bill-review": ["view","approve"],
-    approvals: ["view","approve"], ledger: ["view"],
-    "user-management": ["view","create","edit","delete"], "dri-dashboard": ["view","create","edit"],
-    "public-forms": ["view"], "audit-logs": ["view"],
-    "sla-settings": ["view","create","edit","delete"], "sla-dashboard": ["view"],
-  },
-  // GM reviews DRI progress + generates bill requests (Bill Review), reviews work
-  // orders, and owns the GM stage of the bill chain.
-  gm: {
-    dashboard: ["view"],
-    "work-orders": ["view","edit"],
-    "bill-requests": ["view","create"], "bill-review": ["view","approve"],
-    approvals: ["view","approve"],
-  },
-  // AGM reviews DRI progress + generates bill requests (Bill Review), reviews
-  // work orders, and owns the first bill-approval stage (sets hold/advance).
-  agm: {
-    dashboard: ["view"],
-    "work-orders": ["view","edit"],
-    "bill-requests": ["view","create","approve"], "bill-review": ["view","approve"],
-  },
-  // Accounts owns 3 of the 5 bill stages: verification, payment initiation, and release.
-  accounts: {
-    dashboard: ["view"],
-    "billing-payments": ["view","create","edit","approve"],
-    "advance-payments": ["view","create","edit"],
-    "bill-requests": ["view","approve"], approvals: ["view","approve"], ledger: ["view"],
-  },
-  // Site DRI's whole portal is the DRI Work Dashboard — logs progress only;
-  // AGM/GM decide whether/how progress becomes a bill request.
-  "site-dri": {
-    dashboard: ["view"], "dri-dashboard": ["view","create","edit"],
-  },
-};
 
 function permsToMap(arr: { module: string; actions: string[] }[]): Record<string, PermAction[]> {
   const out: Record<string, PermAction[]> = {};
@@ -118,15 +82,16 @@ function permsToArray(map: Record<string, PermAction[]>): { module: string; acti
   return Object.entries(map).filter(([, a]) => a.length > 0).map(([module, actions]) => ({ module, actions }));
 }
 
-type UserRole = "owner" | "gm" | "agm" | "accounts" | "site-dri";
+type UserRole = "owner" | "gm" | "agm" | "accounts" | "process-coordinator" | "site-dri";
 
 // ── Role config ───────────────────────────────────────────────────
 
 const ROLE_CFG: Record<UserRole, { label: string; color: string; description: string }> = {
   owner:      { label: "Owner / Admin",    color: "red",     description: "Full system access — all modules, user management" },
-  gm:         { label: "General Manager",  color: "purple",  description: "Reviews DRI progress, generates bill requests, work order sign-off & GM stage of bill approval" },
+  gm:         { label: "General Manager",  color: "purple",  description: "Reviews DRI progress, generates bill requests, work order sign-off & Accounts Payment checker stage" },
   agm:        { label: "AGM",              color: "gold",    description: "Reviews DRI progress, generates bill requests, work order sign-off & first stage of bill approval" },
-  accounts:   { label: "Accounts",         color: "cyan",    description: "Bills, payments, ledger — verification, payment initiation & release" },
+  accounts:   { label: "Accounts",         color: "cyan",    description: "Accounts Payment (maker/checker/approver/release), advance payments, ledger — per-user level assigned individually" },
+  "process-coordinator": { label: "Process Coordinator", color: "geekblue", description: "Access assigned individually via the module permissions checklist below" },
   "site-dri": { label: "Site DRI",         color: "orange",  description: "DRI Work Dashboard — logs daily progress only" },
 };
 
@@ -141,6 +106,7 @@ const AVATAR_COLORS: Record<UserRole, string> = {
   gm:         "#7c3aed",
   agm:        "#c9a227",
   accounts:   "#0891b2",
+  "process-coordinator": "#2f54eb",
   "site-dri": "#d4620c",
 };
 
@@ -177,13 +143,9 @@ function StatCard({ label, value, sub, color }: {
 function ModulePermsGrid({
   perms,
   onToggle,
-  onReset,
-  currentRole,
 }: {
   perms: Record<string, PermAction[]>;
   onToggle: (mod: string, action: PermAction) => void;
-  onReset: () => void;
-  currentRole: string;
 }) {
   const groups = [...new Set(MODULE_DEFS.map(m => m.group))];
 
@@ -191,32 +153,14 @@ function ModulePermsGrid({
     <div style={{ border: "1px solid var(--nx-border)", borderRadius: 10, overflow: "hidden" }}>
       {/* Header */}
       <div style={{
-        display: "flex", justifyContent: "space-between", alignItems: "center",
         padding: "10px 14px", background: "var(--nx-fill-2)",
         borderBottom: "1px solid var(--nx-border)",
       }}>
         <div style={{ fontSize: 12, fontWeight: 700, color: "var(--nx-text-muted)", textTransform: "uppercase", letterSpacing: "0.07em" }}>
           Module Permissions
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-            {(Object.entries(ACTION_CFG) as [PermAction, typeof ACTION_CFG[PermAction]][]).map(([key, cfg]) => (
-              <span key={key} style={{ fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 4, background: cfg.bg, color: "#fff" }}>
-                {cfg.label[0]} = {cfg.label}
-              </span>
-            ))}
-          </div>
-          <button
-            type="button"
-            onClick={onReset}
-            style={{
-              fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 6,
-              background: "#FF7A0015", border: "1px solid #FF7A0044", color: "#FF7A00",
-              cursor: "pointer", whiteSpace: "nowrap",
-            }}
-          >
-            ↺ Reset to {ROLE_CFG[currentRole as UserRole]?.label ?? currentRole} defaults
-          </button>
+        <div style={{ fontSize: 11.5, color: "var(--nx-text-muted)", marginTop: 3 }}>
+          Tick exactly what this person should be able to do — nothing is granted automatically by role.
         </div>
       </div>
 
@@ -234,68 +178,58 @@ function ModulePermsGrid({
             </div>
             {MODULE_DEFS.filter(m => m.group === group).map(mod => {
               const activeActions = perms[mod.id] ?? [];
-              const allOn = mod.actions.every(a => activeActions.includes(a));
 
               return (
                 <div
                   key={mod.id}
                   style={{
-                    display: "flex", alignItems: "center", gap: 8,
-                    padding: "5px 14px",
+                    display: "flex", alignItems: "flex-start", gap: 10,
+                    padding: "8px 14px",
                     background: activeActions.length > 0 ? "var(--nx-white)" : "var(--nx-fill-2)",
+                    borderTop: "1px solid var(--nx-border)",
                   }}
                 >
-                  {/* Toggle all for this module */}
-                  <button
-                    type="button"
-                    title={allOn ? "Remove all permissions" : "Grant all permissions"}
-                    onClick={() => {
-                      if (allOn) {
-                        mod.actions.forEach(a => { if (activeActions.includes(a)) onToggle(mod.id, a); });
-                      } else {
-                        mod.actions.forEach(a => { if (!activeActions.includes(a)) onToggle(mod.id, a); });
-                      }
-                    }}
-                    style={{
-                      width: 16, height: 16, borderRadius: 4, border: "1.5px solid",
-                      borderColor: allOn ? "#FF7A00" : "var(--nx-border)",
-                      background: allOn ? "#FF7A00" : "var(--nx-white)",
-                      cursor: "pointer", flexShrink: 0, fontSize: 9, color: allOn ? "#fff" : "var(--nx-text-muted)",
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                    }}
-                  >
-                    {allOn ? "✓" : ""}
-                  </button>
-
                   {/* Icon + Name */}
-                  <span style={{ fontSize: 14, flexShrink: 0 }}>{mod.icon}</span>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: "var(--nx-text)", width: 130, flexShrink: 0 }}>
-                    {mod.name}
-                  </span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, width: 150, flexShrink: 0, paddingTop: 3 }}>
+                    <span style={{ fontSize: 14, flexShrink: 0 }}>{mod.icon}</span>
+                    <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--nx-text)" }}>
+                      {mod.name}
+                    </span>
+                  </div>
 
-                  {/* Action toggles */}
-                  <div style={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
+                  {/* Checklist of actions — full labels, real checkboxes, never ambiguous */}
+                  <div style={{ display: "flex", gap: "6px 14px", flexWrap: "wrap", flex: 1 }}>
                     {mod.actions.map(action => {
                       const cfg = ACTION_CFG[action];
                       const on  = activeActions.includes(action);
                       return (
-                        <button
+                        <label
                           key={action}
-                          type="button"
-                          title={cfg.label}
-                          onClick={() => onToggle(mod.id, action)}
                           style={{
-                            width: 34, height: 20, borderRadius: 4, border: "1.5px solid",
-                            borderColor: on ? cfg.bg : "var(--nx-border)",
-                            background: on ? cfg.bg : "var(--nx-white)",
-                            color: on ? "#fff" : "var(--nx-text-muted)",
-                            fontSize: 9.5, fontWeight: 700, cursor: "pointer",
-                            transition: "all 0.12s",
-                            display: "flex", alignItems: "center", justifyContent: "center",
+                            display: "flex", alignItems: "center", gap: 5,
+                            cursor: "pointer", userSelect: "none",
                           }}
                         >
-                          {action[0].toUpperCase()}
-                        </button>
+                          <span
+                            onClick={() => onToggle(mod.id, action)}
+                            style={{
+                              width: 15, height: 15, borderRadius: 4, border: "1.5px solid",
+                              borderColor: on ? cfg.bg : "var(--nx-border)",
+                              background: on ? cfg.bg : "var(--nx-white)",
+                              display: "flex", alignItems: "center", justifyContent: "center",
+                              flexShrink: 0, fontSize: 10, color: "#fff", fontWeight: 700,
+                              transition: "all 0.12s",
+                            }}
+                          >
+                            {on ? "✓" : ""}
+                          </span>
+                          <span
+                            onClick={() => onToggle(mod.id, action)}
+                            style={{ fontSize: 12, color: on ? "var(--nx-text)" : "var(--nx-text-muted)", fontWeight: on ? 600 : 400 }}
+                          >
+                            {cfg.label}
+                          </span>
+                        </label>
                       );
                     })}
                   </div>
@@ -331,10 +265,6 @@ export default function UserManagement() {
       const cur = prev[mod] ?? [];
       return { ...prev, [mod]: cur.includes(action) ? cur.filter(a => a !== action) : [...cur, action] };
     });
-  }
-
-  function resetPermsForRole(role: string) {
-    setPerms(ROLE_DEFAULTS[role] ?? {});
   }
 
   // Password modal
@@ -389,14 +319,14 @@ export default function UserManagement() {
     setEditUser(null);
     form.resetFields();
     form.setFieldsValue({ isActive: true, role: "site-dri" });
-    resetPermsForRole("site-dri");
+    setPerms({});
     setDrawerOpen(true);
   }
 
   function openEdit(u: AppUser) {
     setEditUser(u);
     form.setFieldsValue({ name: u.name, email: u.email, role: u.role, isActive: u.isActive });
-    setPerms(u.permissions ? permsToMap(u.permissions) : ROLE_DEFAULTS[u.role] ?? {});
+    setPerms(u.permissions ? permsToMap(u.permissions) : {});
     setDrawerOpen(true);
   }
 
@@ -621,38 +551,6 @@ export default function UserManagement() {
         </Col>
       </Row>
 
-      {/* ── Role Access Matrix ── */}
-      <div style={{
-        background: "var(--nx-fill)",
-        border: "1px solid var(--nx-border)",
-        borderRadius: 12,
-        padding: "16px 20px",
-        marginBottom: 20,
-      }}>
-        <div style={{
-          fontWeight: 700,
-          fontSize: 12,
-          color: "var(--nx-text-muted)",
-          textTransform: "uppercase",
-          letterSpacing: "0.08em",
-          marginBottom: 14,
-        }}>
-          Role Access Matrix
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "10px 24px" }}>
-          {ROLE_OPTIONS.map((r) => (
-            <div key={r.value} style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-              <Tag color={ROLE_CFG[r.value]?.color} style={{ fontWeight: 600, fontSize: 12, flexShrink: 0, marginTop: 1 }}>
-                {r.label}
-              </Tag>
-              <span style={{ fontSize: 13, color: "var(--nx-text-3)", lineHeight: 1.5 }}>
-                {r.description}
-              </span>
-            </div>
-          ))}
-        </div>
-      </div>
-
       {/* ── Filters ── */}
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14, alignItems: "center" }}>
         <Input.Search
@@ -777,7 +675,6 @@ export default function UserManagement() {
             <Select
               size="large"
               placeholder="Select role…"
-              onChange={(role: string) => resetPermsForRole(role)}
               optionRender={(opt) => (
                 <div style={{ padding: "4px 0" }}>
                   <Tag color={ROLE_CFG[opt.data.value as UserRole]?.color} style={{ fontWeight: 600, marginBottom: 4 }}>
@@ -808,8 +705,6 @@ export default function UserManagement() {
             <ModulePermsGrid
               perms={perms}
               onToggle={togglePerm}
-              onReset={() => resetPermsForRole(form.getFieldValue("role") as string ?? "site-dri")}
-              currentRole={form.getFieldValue("role") as string ?? "site-dri"}
             />
           </div>
 

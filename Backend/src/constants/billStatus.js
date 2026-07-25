@@ -1,8 +1,9 @@
 module.exports = {
-  DRAFT:     'draft',
-  SUBMITTED: 'submitted',
-  VERIFIED:  'verified',
-  APPROVED:  'approved',
-  PAID:      'paid',
-  REJECTED:  'rejected',
+  DRAFT:             'draft',
+  SUBMITTED:         'submitted',
+  VERIFIED:          'verified',
+  APPROVED:          'approved',
+  PAYMENT_INITIATED: 'payment-initiated',
+  PAID:              'paid',
+  REJECTED:          'rejected',
 };

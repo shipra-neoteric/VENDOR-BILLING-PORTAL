@@ -235,7 +235,7 @@ exports.approveBillRequest = asyncHandler(async (req, res) => {
     gstPercent:  wo.gstPercent ?? 18,
     tdsPercent:  0,
     generatedBy: req.user.name,
-    status:      'submitted',
+    status:      'draft',
     agmApprovedBy: req.user._id,
     agmApprovedAt: new Date(),
     createdBy:   req.user._id,
@@ -324,68 +324,10 @@ exports.rejectBillRequest = asyncHandler(async (req, res) => {
   success(res, { billRequest: br }, `Stage ${br.stageNo} rejected — DRI can re-submit after corrections`);
 });
 
-// PUT /api/bill-requests/:id/milestone  — Mark payment released / milestone achieved
-exports.markMilestone = asyncHandler(async (req, res) => {
-  const br = await BillRequest.findById(req.params.id).populate('billId', 'billNo status amount');
-  if (!br) return notFound(res, 'Bill request not found');
-  if (br.status !== 'approved') return badRequest(res, 'Only approved bill requests can be marked as milestones');
-  if (br.milestoneAchieved) return badRequest(res, 'Already marked as milestone');
-  // The linked bill must have cleared GM approval, Accounts verification, and payment
-  // initiation (TDS entered, on hold) before it can actually be released as paid.
-  if (br.billId?.status !== 'payment-initiated') {
-    return badRequest(res, `Cannot release payment — bill is still at "${br.billId?.status || 'unknown'}" stage. Complete GM approval, Accounts verification, and payment initiation first.`);
-  }
-
-  br.milestoneAchieved = true;
-  br.milestoneDate     = new Date();
-  await br.save();
-
-  await advanceInstance('BillRequest', br._id, req.user._id, 'Payment released');
-
-  if (br.billId) {
-    const billUpdate = {
-      status:             'paid',
-      paymentDate:        new Date(),
-      paymentReleasedBy:  req.user.name,
-      ...(req.body.paymentUTR  ? { paymentUTR:  req.body.paymentUTR  } : {}),
-      ...(req.body.paidAmount  != null ? { paidAmount:       Number(req.body.paidAmount)      } : {}),
-      ...(req.body.holdAmount  != null ? { retentionAmount:  Number(req.body.holdAmount)      } : {}),
-      ...(req.body.advanceRecoveries?.length
-          ? { advanceRecovery: req.body.advanceRecoveries.reduce((s, r) => s + (r.amount || 0), 0) }
-          : req.body.advanceRecoveryAmount != null
-            ? { advanceRecovery: Number(req.body.advanceRecoveryAmount) }
-            : {}),
-    };
-    await RunningBill.findByIdAndUpdate(br.billId, billUpdate);
-  }
-
-  // Process advance recoveries
-  const AdvanceSlip = require('../models/AdvanceSlip');
-  const recoveries  = req.body.advanceRecoveries || [];
-  for (const rec of recoveries) {
-    if (!rec.slipId || !rec.amount || rec.amount <= 0) continue;
-    const slip = await AdvanceSlip.findById(rec.slipId);
-    if (!slip) continue;
-    slip.amountRecovered += rec.amount;
-    slip.recoveries.push({
-      amount:     rec.amount,
-      date:       new Date(),
-      releasedBy: req.user.name,
-    });
-    slip.status = slip.amountRecovered >= slip.amount
-      ? 'recovered'
-      : slip.amountRecovered > 0 ? 'partial' : 'outstanding';
-    await slip.save();
-  }
-
-  await logAudit({
-    action: 'APPROVE', module: 'bill-requests', user: req.user,
-    description: `Payment released for ${br.reqNo}${br.billId?.billNo ? ` (bill ${br.billId.billNo})` : ''}`,
-    entityType: 'BillRequest', entityId: br._id, entityLabel: br.reqNo,
-  });
-
-  success(res, { billRequest: br }, `Stage ${br.stageNo} — Payment released! Milestone achieved.`);
-});
+// Payment release now happens exclusively via the Accounts Payment module
+// (billController.releasePayment), which also syncs milestoneAchieved on this
+// BillRequest and processes AdvanceSlip recoveries — see that function for the
+// single canonical release path.
 
 // POST /api/bill-requests/batch
 // Creates one bill request per work order, all grouped under a shared batchId.

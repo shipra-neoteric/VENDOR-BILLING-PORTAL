@@ -84,8 +84,11 @@ const runningBillSchema = new mongoose.Schema(
     supersededBy:  { type: mongoose.Schema.Types.ObjectId, ref: 'RunningBill', default: null },
     // ─────────────────────────────────────────────────────────
 
-    // submitted = AGM approved · verified = GM approved · approved = Accounts verified
-    // WO/bill match · payment-initiated = Accounts entered TDS, on hold · paid = released.
+    // draft = awaiting L1 maker confirm · submitted = L1 maker confirmed (or, for
+    // legacy bills predating the maker stage, AGM approved) · verified = legacy-only,
+    // GM approved (no longer set on new bills) · approved = L2 checker verified
+    // WO/bill match + set hold/advance · payment-initiated = L3 approver entered
+    // TDS, on hold pending physical verification · paid = released.
     status: {
       type: String,
       enum: ['draft', 'submitted', 'verified', 'approved', 'payment-initiated', 'rejected', 'paid'],
@@ -94,13 +97,23 @@ const runningBillSchema = new mongoose.Schema(
     submittedAt: { type: Date },
     agmApprovedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     agmApprovedAt: { type: Date },
+    makerBy:  { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    makerAt:  { type: Date },
     verifiedBy:  { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     verifiedAt:  { type: Date },
+    checkerBy:  { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    checkerAt:  { type: Date },
     approvedBy:  { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     approvedAt:  { type: Date },
     paymentInitiatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     paymentInitiatedAt: { type: Date },
     tdsAmount:   { type: Number, default: 0 },
+    physicalVerification: {
+      done:   { type: Boolean, default: false },
+      by:     { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      at:     { type: Date },
+      remark: { type: String, default: '' },
+    },
     rejectedBy:  { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     rejectReason:{ type: String },
     paymentUTR:              { type: String },

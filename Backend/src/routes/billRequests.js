@@ -6,7 +6,6 @@ const {
   createBatchBillRequest,
   approveBillRequest,
   rejectBillRequest,
-  markMilestone,
   archiveBillRequest,
   unarchiveBillRequest,
   archiveBillRequestsBulk,
@@ -24,8 +23,8 @@ router.post('/',               authorizeOr('bill-requests', 'create', 'owner', '
 // Stage 1 (AGM sets hold/advance and approves) — restricted to AGM/owner only.
 router.put('/:id/approve',   authorizeOr('bill-requests', 'approve', 'owner', 'agm'), approveBillRequest);
 router.put('/:id/reject',    authorizeOr('bill-requests', 'approve', 'owner', 'agm', 'gm', 'accounts'), rejectBillRequest);
-// Stage 5 (Accounts releases payment, only once the linked bill is 'payment-initiated').
-router.put('/:id/milestone', authorizeOr('bill-requests', 'approve', 'owner', 'accounts'), markMilestone);
+// Payment release lives entirely in the Accounts Payment module now (see
+// billController.releasePayment) — no milestone route here anymore.
 router.patch('/archive-bulk',   authorizeOr('bill-requests', 'edit', 'owner', 'gm', 'accounts'), archiveBillRequestsBulk);
 router.patch('/unarchive-bulk', authorizeOr('bill-requests', 'edit', 'owner', 'gm', 'accounts'), unarchiveBillRequestsBulk);
 router.patch('/:id/archive',    authorizeOr('bill-requests', 'edit', 'owner', 'gm', 'accounts'), archiveBillRequest);

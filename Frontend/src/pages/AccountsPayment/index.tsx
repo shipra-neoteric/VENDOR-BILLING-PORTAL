@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
+import type { ReactNode } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Alert,
   Button,
+  Checkbox,
   Col,
   DatePicker,
   Descriptions,
@@ -10,28 +13,34 @@ import {
   Form,
   Input,
   InputNumber,
-  Modal,
+  Popconfirm,
   Row,
   Select,
   Space,
   Spin,
+  Steps,
   Switch,
   Table,
   Tag,
+  Tooltip,
   message,
-  Popconfirm,
 } from "antd";
 import {
+  ArrowRightOutlined,
+  CheckCircleFilled,
   CheckCircleOutlined,
   ClockCircleOutlined,
+  CloseCircleFilled,
   CloseCircleOutlined,
   DeleteOutlined,
   DollarOutlined,
-  DownloadOutlined,
-  EyeOutlined,
-  FileTextOutlined,
+  ExclamationCircleFilled,
+  FileAddOutlined,
   InboxOutlined,
   PlusOutlined,
+  PrinterOutlined,
+  SafetyCertificateOutlined,
+  SearchOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 import type { Dayjs } from "dayjs";
@@ -40,10 +49,23 @@ import apiClient from "../../services/apiClient";
 import DateRangeFilter, { inDateRange } from "../../components/DateRangeFilter";
 import { selectableProjects } from "../../utils/projectOptions";
 import { vendorLabel } from "../../utils/vendorLabel";
+import { useAuth } from "../../context/AuthContext";
+import type { AuthUser } from "../../context/AuthContext";
+import StatusTag from "../../shared/components/StatusTag";
+import { BILL_STATUS_LABEL } from "../../shared/constants/billStatus";
 
 // ── Types ────────────────────────────────────────────────────────
 
 type BillStatus = "draft" | "submitted" | "verified" | "approved" | "payment-initiated" | "rejected" | "paid";
+
+interface BillUser { _id?: string; name?: string; role?: string; }
+
+interface PhysicalVerification {
+  done: boolean;
+  by?: BillUser | string | null;
+  at?: string;
+  remark?: string;
+}
 
 interface LineItem {
   key: number;
@@ -82,16 +104,21 @@ interface Bill {
   remarks?: string;
   status: BillStatus;
   submittedAt?: string;
-  agmApprovedBy?: { name: string; role: string } | null;
+  agmApprovedBy?: BillUser | null;
   agmApprovedAt?: string;
-  verifiedBy?: { name: string; role: string } | null;
+  makerBy?: BillUser | null;
+  makerAt?: string;
+  verifiedBy?: BillUser | null;
   verifiedAt?: string;
-  approvedBy?: { name: string; role: string } | null;
+  checkerBy?: BillUser | null;
+  checkerAt?: string;
+  approvedBy?: BillUser | null;
   approvedAt?: string;
-  paymentInitiatedBy?: { name: string; role: string } | null;
+  paymentInitiatedBy?: BillUser | null;
   paymentInitiatedAt?: string;
   tdsAmount?: number;
-  rejectedBy?: { name: string; role: string } | null;
+  physicalVerification?: PhysicalVerification;
+  rejectedBy?: BillUser | null;
   rejectReason?: string;
   paymentDate?: string;
   paymentUTR?: string;
@@ -123,6 +150,7 @@ interface ContractorOpt {
 }
 interface ScopeItemOpt { id: string; description: string; unit: string; plannedQty: number; completedQty: number; rate?: number; }
 interface WorkOrderOpt { id: string; workOrderNo: string; projectId: string; projectName: string; vendorCode: string; vendorName: string; scopeItems: ScopeItemOpt[]; }
+interface AdvanceSlipOpt { _id: string; slipNo: string; amount: number; amountRecovered: number; balance: number; date?: string; reference?: string; }
 
 // ── Helpers ──────────────────────────────────────────────────────
 
@@ -143,17 +171,28 @@ const nextKey = () => ++_key;
 
 const blankRow = (): LineItem => ({ key: nextKey(), description: "", unit: "", plannedQty: 0, billedQty: 0, rate: 0, amount: 0 });
 
-// Every pre-payment stage reads as "Hold" — only `paid` is ever shown as released,
-// per the rule that a bill must not look paid anywhere until payment actually clears.
-const STATUS_CFG: Record<BillStatus, { label: string; antColor: string }> = {
-  draft:              { label: "Draft",                      antColor: "default" },
-  submitted:          { label: "Hold — AGM Approved",         antColor: "processing" },
-  verified:           { label: "Hold — GM Approved",          antColor: "processing" },
-  approved:           { label: "Hold — Accounts Verified",    antColor: "warning" },
-  "payment-initiated":{ label: "Hold — Payment Initiated",    antColor: "warning" },
-  rejected:           { label: "Rejected",                    antColor: "error" },
-  paid:               { label: "Paid",                        antColor: "success" },
-};
+// A grant for module 'accounts-payment' with the given action name — Owner always
+// bypasses, matching every other permission check in this codebase.
+function hasPerm(user: AuthUser | null, action: string): boolean {
+  if (!user) return false;
+  if (user.role === "owner") return true;
+  return !!user.permissions?.find((p) => p.module === "accounts-payment")?.actions.includes(action);
+}
+
+// Segregation-of-duties guard: is `user` the same person who acted as `actor` at the
+// previous stage? Owner is exempt, mirroring the backend's own bypass for owner.
+function sameActor(user: AuthUser | null, actor?: BillUser | null): boolean {
+  if (!user || !actor?._id || user.role === "owner") return false;
+  return actor._id === user.id;
+}
+
+// physicalVerification.by only comes back populated on the mutation response that set
+// it — list/detail GETs don't populate that sub-field — so this stays defensive against
+// either shape (populated object or a raw id string) rather than assuming one.
+function physByName(by?: BillUser | string | null): string | undefined {
+  if (!by || typeof by === "string") return undefined;
+  return by.name;
+}
 
 const BILL_TYPE_CFG: Record<string, { label: string; color: string }> = {
   running:              { label: "Running Bill",     color: "#2563eb" },
@@ -180,6 +219,17 @@ const RELATIONSHIP_OPTIONS = [
   { value: "SETTLEMENT_OF",       label: "SETTLEMENT_OF — settling outstanding balance" },
   { value: "CORRECTION_OF",       label: "CORRECTION_OF — correcting a previous bill" },
   { value: "RETENTION_RELEASE_OF",label: "RETENTION_RELEASE_OF — releasing held retention" },
+];
+
+const PAYMENT_MODE_OPTIONS = [
+  { label: "NEFT", value: "neft" },
+  { label: "RTGS", value: "rtgs" },
+  { label: "IMPS", value: "imps" },
+  { label: "Internet Banking", value: "internet_banking" },
+  { label: "UPI", value: "upi" },
+  { label: "Cheque", value: "cheque" },
+  { label: "Demand Draft (DD)", value: "dd" },
+  { label: "Cash", value: "cash" },
 ];
 
 // ── Print / Download ─────────────────────────────────────────────
@@ -228,7 +278,7 @@ function printBill(bill: Bill, contractor: ContractorOpt | null, mode: 'pre' | '
     <div style="font-size:22px;font-weight:bold;letter-spacing:2px;color:#333">${mode === 'pre' ? 'RUNNING BILL' : 'PAYMENT RECEIPT'}</div>
     <div style="margin-top:6px;font-size:13px"><strong>Bill No:</strong> ${bill.billNo}</div>
     <div style="font-size:13px"><strong>Date:</strong> ${bill.billDate ? dayjs(bill.billDate).format("DD/MM/YYYY") : "-"}</div>
-    <div style="font-size:13px"><strong>Status:</strong> <span style="background:${mode === 'pre' ? '#f47b20' : '#16a34a'};color:#fff;padding:2px 8px;border-radius:10px;font-size:11px">${mode === 'pre' ? (STATUS_CFG[bill.status]?.label.toUpperCase() || 'ON HOLD') : 'PAID'}</span></div>
+    <div style="font-size:13px"><strong>Status:</strong> <span style="background:${mode === 'pre' ? '#f47b20' : '#16a34a'};color:#fff;padding:2px 8px;border-radius:10px;font-size:11px">${mode === 'pre' ? ((BILL_STATUS_LABEL[bill.status] || 'ON HOLD').toUpperCase()) : 'PAID'}</span></div>
   </div>
 </div>
 
@@ -399,42 +449,256 @@ ${mode === 'pre' ? `<div style="display:flex;justify-content:space-around;margin
   }
 }
 
-// ── StatCard ─────────────────────────────────────────────────────
+// ── Small visual building blocks ──────────────────────────────────
 
 function StatCard({
-  title, value, sub, color, bg, icon,
+  label, value, sub, icon, accent,
 }: {
-  title: string; value: React.ReactNode; sub?: string;
-  color?: string; bg?: string; icon?: React.ReactNode;
+  label: string; value: ReactNode; sub?: string; icon: ReactNode; accent: string;
 }) {
   return (
-    <div style={{ background: bg || "#fff", border: "1px solid #e4e7ee", borderRadius: 10, padding: "14px 16px" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, fontWeight: 700, color: "#9ba3b8", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-        {icon} {title}
+    <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 12, padding: "16px 18px" }}>
+      <div style={{
+        width: 40, height: 40, borderRadius: 10, background: `${accent}1A`,
+        display: "flex", alignItems: "center", justifyContent: "center", color: accent, fontSize: 18, marginBottom: 12,
+      }}>
+        {icon}
       </div>
-      <div style={{ fontSize: 22, fontWeight: 800, color: color || "#1a1f2e", marginTop: 4 }}>{value}</div>
-      {sub && <div style={{ fontSize: 11, color: "#9ba3b8", marginTop: 2 }}>{sub}</div>}
+      <div style={{ fontSize: 11, fontWeight: 700, color: "#9CA3AF", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+        {label}
+      </div>
+      <div style={{ fontSize: 24, fontWeight: 800, color: "#1a1f2e", marginTop: 2, lineHeight: 1.2 }}>{value}</div>
+      {sub && <div style={{ fontSize: 11.5, color: "#9CA3AF", marginTop: 3 }}>{sub}</div>}
+    </div>
+  );
+}
+
+interface TabDef { key: string; label: string; count: number; }
+
+function PillTabs({ tabs, active, onChange }: { tabs: TabDef[]; active: string; onChange: (k: string) => void }) {
+  return (
+    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 18 }}>
+      {tabs.map((t) => {
+        const isActive = t.key === active;
+        return (
+          <button
+            key={t.key}
+            type="button"
+            onClick={() => onChange(t.key)}
+            style={{
+              display: "flex", alignItems: "center", gap: 7,
+              padding: "7px 15px", borderRadius: 20,
+              border: isActive ? "1.5px solid #1a1f2e" : "1px solid transparent",
+              background: isActive ? "#fff" : "transparent",
+              fontWeight: isActive ? 700 : 500,
+              color: isActive ? "#1a1f2e" : "#6B7280",
+              fontSize: 13, cursor: "pointer", outline: "none",
+            }}
+          >
+            {t.label}
+            {t.count > 0 && (
+              <span style={{ background: "#DCFCE7", color: "#15803D", borderRadius: 10, padding: "1px 7px", fontSize: 11, fontWeight: 700 }}>
+                {t.count}
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function InfoCard({ title, accent, children, extra }: { title: string; accent: string; children: ReactNode; extra?: ReactNode }) {
+  return (
+    <div style={{ border: "1px solid #E5E7EB", borderRadius: 12, padding: "14px 16px", height: "100%" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ width: 4, height: 15, borderRadius: 2, background: accent }} />
+          <div style={{ fontWeight: 700, fontSize: 13, color: "#1a1f2e" }}>{title}</div>
+        </div>
+        {extra}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function InfoRow({ label, value, mono, bold }: { label: string; value: ReactNode; mono?: boolean; bold?: boolean }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "4px 0", fontSize: 12.5 }}>
+      <span style={{ color: "#9CA3AF" }}>{label}</span>
+      <span style={{ fontFamily: mono ? "monospace" : undefined, fontWeight: bold ? 700 : 500, textAlign: "right" }}>{value}</span>
+    </div>
+  );
+}
+
+function MutedNote({ text }: { text: string }) {
+  return (
+    <div style={{ marginTop: 16, padding: "10px 14px", background: "#F9FAFB", border: "1px dashed #E5E7EB", borderRadius: 8, color: "#9CA3AF", fontSize: 12.5 }}>
+      {text}
+    </div>
+  );
+}
+
+const sectionPanelStyle: React.CSSProperties = {
+  border: "1px solid #E5E7EB", borderRadius: 10, padding: "14px 16px", marginTop: 16, background: "#F9FAFB",
+};
+
+// Maker → Checker → Approver → Physical Verify → Paid stepper, driven from the
+// real fields on the bill rather than any separately-tracked UI state.
+function buildSteps(bill: Bill): { title: string; content: string; icon: ReactNode; status: "wait" | "process" | "finish" | "error" }[] {
+  const doneFlags = [
+    !!bill.makerBy,
+    !!bill.checkerBy,
+    !!bill.paymentInitiatedBy,
+    !!bill.physicalVerification?.done,
+    bill.status === "paid",
+  ];
+  let currentIdx = doneFlags.findIndex((d) => !d);
+  if (currentIdx === -1) currentIdx = doneFlags.length;
+
+  const meta = [
+    { title: "Maker",            by: bill.makerBy?.name,                          at: bill.makerAt },
+    { title: "Checker",          by: bill.checkerBy?.name,                        at: bill.checkerAt },
+    { title: "Approver",         by: bill.paymentInitiatedBy?.name,               at: bill.paymentInitiatedAt },
+    { title: "Physical Verify",  by: physByName(bill.physicalVerification?.by),   at: bill.physicalVerification?.at },
+    { title: "Paid",             by: bill.paymentReleasedBy,                      at: bill.paymentDate },
+  ];
+
+  return meta.map((m, idx) => {
+    const done = doneFlags[idx];
+    const isCurrent = idx === currentIdx;
+    let status: "wait" | "process" | "finish" | "error" = "wait";
+    let icon: ReactNode = <span style={{ fontWeight: 700 }}>{idx + 1}</span>;
+    if (done) {
+      status = "finish";
+      icon = <CheckCircleFilled style={{ color: "#16A34A" }} />;
+    } else if (bill.status === "rejected" && isCurrent) {
+      status = "error";
+      icon = <CloseCircleFilled style={{ color: "#DC2626" }} />;
+    } else if (isCurrent) {
+      status = "process";
+      icon = <ExclamationCircleFilled style={{ color: "#D97706" }} />;
+    }
+    const content = done
+      ? `${m.by || "—"}${m.at ? " · " + dayjs(m.at).format("DD MMM") : ""}`
+      : bill.status === "rejected" && isCurrent
+        ? "Rejected here"
+        : "";
+    return { title: m.title, content, icon, status };
+  });
+}
+
+// Read-only "paid" summary + an owner-only inline (no popup) deductions editor.
+function PaidPanel({ bill, isOwner, onUpdated }: { bill: Bill; isOwner: boolean; onUpdated: (b: Bill) => void }) {
+  const [editing, setEditing] = useState(false);
+  const [retention, setRetention] = useState(bill.retentionAmount ?? 0);
+  const [advance, setAdvance] = useState(bill.advanceRecovery ?? 0);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setRetention(bill.retentionAmount ?? 0);
+    setAdvance(bill.advanceRecovery ?? 0);
+    setEditing(false);
+  }, [bill.id]);
+
+  async function save() {
+    setSaving(true);
+    try {
+      const res = await apiClient.patch<{ bill: Record<string, unknown> }>(`/bills/${bill.id}/deductions`, {
+        advanceRecovery: advance, retentionAmount: retention,
+      });
+      onUpdated(normalizeId(res.data.bill) as unknown as Bill);
+      message.success("Deductions updated");
+      setEditing(false);
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { message?: string } } };
+      message.error(e?.response?.data?.message || "Failed to update deductions");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div style={{ marginTop: 16, background: "#F5F0FF", border: "1px solid #C4B5FD", borderRadius: 10, padding: "14px 16px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+        <div style={{ fontWeight: 700, fontSize: 13, color: "#7C3AED" }}>Payment Released</div>
+        {isOwner && !editing && (
+          <Button size="small" onClick={() => setEditing(true)}>Edit Deductions</Button>
+        )}
+      </div>
+      {editing ? (
+        <div>
+          <Row gutter={12}>
+            <Col span={12}>
+              <div style={{ fontSize: 11, color: "#9CA3AF", marginBottom: 4 }}>Hold / Retention (₹)</div>
+              <InputNumber style={{ width: "100%" }} min={0} value={retention} onChange={(v) => setRetention(Number(v) || 0)} />
+            </Col>
+            <Col span={12}>
+              <div style={{ fontSize: 11, color: "#9CA3AF", marginBottom: 4 }}>Advance Recovery (₹)</div>
+              <InputNumber style={{ width: "100%" }} min={0} value={advance} onChange={(v) => setAdvance(Number(v) || 0)} />
+            </Col>
+          </Row>
+          <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+            <Button type="primary" size="small" loading={saving} style={{ background: "#7C3AED", borderColor: "#7C3AED" }} onClick={save}>Save</Button>
+            <Button size="small" onClick={() => setEditing(false)}>Cancel</Button>
+          </div>
+        </div>
+      ) : (
+        <Descriptions column={2} size="small" colon={false}>
+          <Descriptions.Item label={<span style={{ color: "#9ba3b8" }}>Payment Date</span>}>
+            {bill.paymentDate ? dayjs(bill.paymentDate).format("DD MMM YYYY") : "—"}
+          </Descriptions.Item>
+          <Descriptions.Item label={<span style={{ color: "#9ba3b8" }}>Mode</span>}>
+            <Tag color="purple">
+              {({ neft: "NEFT", rtgs: "RTGS", imps: "IMPS", internet_banking: "Internet Banking", upi: "UPI", cheque: "Cheque", dd: "DD", cash: "Cash" } as Record<string, string>)[bill.paymentMode || ""] || bill.paymentMode?.toUpperCase() || "—"}
+            </Tag>
+          </Descriptions.Item>
+          <Descriptions.Item label={<span style={{ color: "#9ba3b8" }}>UTR / Ref</span>}>
+            <span style={{ fontFamily: "monospace", fontWeight: 700 }}>{bill.paymentUTR || "—"}</span>
+          </Descriptions.Item>
+          <Descriptions.Item label={<span style={{ color: "#9ba3b8" }}>Bank</span>}>
+            {bill.paymentBank || "—"}
+          </Descriptions.Item>
+          <Descriptions.Item label={<span style={{ color: "#9ba3b8" }}>Released By</span>}>
+            {bill.paymentReleasedBy || "—"}
+          </Descriptions.Item>
+          <Descriptions.Item label={<span style={{ color: "#9ba3b8" }}>Amount Paid</span>}>
+            <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#16a85a" }}>{bill.paidAmount != null ? fmt(bill.paidAmount) : "—"}</span>
+          </Descriptions.Item>
+        </Descriptions>
+      )}
     </div>
   );
 }
 
 // ── Main Component ───────────────────────────────────────────────
 
-export default function Bills() {
+export default function AccountsPayment() {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const canCreate  = hasPerm(user, "create");
+  const canMaker   = hasPerm(user, "maker");
+  const canChecker = hasPerm(user, "checker");
+  const canApprover = hasPerm(user, "approver");
+  const canRelease = hasPerm(user, "release");
+  const canRejectAny = canMaker || canChecker || canApprover || canRelease || hasPerm(user, "reject");
+  const isOwner = user?.role === "owner";
+
   const [bills, setBills]             = useState<Bill[]>([]);
   const [loading, setLoading]         = useState(true);
   const [projects, setProjects]       = useState<ProjectOpt[]>([]);
   const [contractors, setContractors] = useState<ContractorOpt[]>([]);
 
+  const [activeTab, setActiveTab] = useState("all");
+
   // Filters
   const [search, setSearch]             = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
   const [projectFilter, setProjectFilter] = useState<string | undefined>(undefined);
+  const [vendorFilter, setVendorFilter]   = useState<string | undefined>(undefined);
   const [dateFrom, setDateFrom]         = useState<Dayjs | null>(null);
   const [dateTo, setDateTo]             = useState<Dayjs | null>(null);
   const [showArchived, setShowArchived] = useState(false);
-  const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([]);
-  const [archiving, setArchiving]       = useState(false);
 
   // New Bill drawer
   const [newOpen, setNewOpen]           = useState(false);
@@ -444,51 +708,57 @@ export default function Bills() {
   const [newContractorId, setNewContractorId] = useState<string>("");
   const [woList, setWoList]             = useState<WorkOrderOpt[]>([]);
   const [lineItems, setLineItems]       = useState<LineItem[]>([blankRow()]);
-
-  // GST slab for new bill (TDS is decided at payment time)
   const [newGstPercent, setNewGstPercent] = useState<number>(18);
-
-  // Bill Relationship Engine state
   const [newBillType, setNewBillType]         = useState<string>("running");
   const [newRelType, setNewRelType]           = useState<string>("NONE");
   const [newLinkedBillIds, setNewLinkedBillIds] = useState<string[]>([]);
   const [newSelectedWOId, setNewSelectedWOId] = useState<string>("");
   const [woExistingBills, setWoExistingBills] = useState<Bill[]>([]);
 
-  // View drawer
-  const [viewBill, setViewBill]   = useState<Bill | null>(null);
-  const [viewOpen, setViewOpen]   = useState(false);
+  // ── The one shared bill detail Drawer ─────────────────────────
+  const [drawerBillId, setDrawerBillId] = useState<string | null>(null);
+  const [drawerOpen, setDrawerOpen]     = useState(false);
+  const [drawerWOCategory, setDrawerWOCategory] = useState<string | undefined>(undefined);
 
-  // Approve / Reject drawer
-  const [actionBillId, setActionBillId] = useState<string | null>(null);
-  const [actionType, setActionType]     = useState<"verify" | "approve" | "reject">("approve");
-  const [actionOpen, setActionOpen]     = useState(false);
-  const [actionForm]                    = Form.useForm();
-  const [actionSaving, setActionSaving] = useState(false);
+  // Reject (inline, any stage)
+  const [rejecting, setRejecting]       = useState(false);
+  const [rejectReason, setRejectReason] = useState("");
+  const [rejectSaving, setRejectSaving] = useState(false);
 
-  // Pay drawer
-  const [payBillId, setPayBillId] = useState<string | null>(null);
-  const [payOpen, setPayOpen]     = useState(false);
-  const [payForm]                 = Form.useForm();
-  const [paySaving, setPaySaving] = useState(false);
+  // Maker confirm (Stage 1)
+  const [makerRemarks, setMakerRemarks] = useState("");
+  const [makerSaving, setMakerSaving]   = useState(false);
 
-  // Initiate Payment (Accounts sets TDS, bill goes on hold pending release)
-  const [initiateBillId, setInitiateBillId] = useState<string | null>(null);
-  const [initiateOpen, setInitiateOpen]     = useState(false);
-  const [initiateForm]                      = Form.useForm();
-  const [initiateSaving, setInitiateSaving] = useState(false);
+  // Checker approve (Stage 2)
+  const [checkerRetention, setCheckerRetention] = useState(0);
+  const [checkerAdvance, setCheckerAdvance]     = useState(0);
+  const [checkerRemarks, setCheckerRemarks]     = useState("");
+  const [checkerSaving, setCheckerSaving]       = useState(false);
 
-  // Edit deductions (for paid bills)
-  const [dedOpen,   setDedOpen]   = useState(false);
-  const [dedBillId, setDedBillId] = useState<string | null>(null);
-  const [dedForm]                 = Form.useForm();
-  const [dedSaving, setDedSaving] = useState(false);
+  // Approver initiate (Stage 3)
+  const [approverTdsPercent, setApproverTdsPercent] = useState(1);
+  const [approverTdsAmount, setApproverTdsAmount]   = useState(0);
+  const [approverRemarks, setApproverRemarks]       = useState("");
+  const [approverSaving, setApproverSaving]         = useState(false);
+
+  // Physical verification
+  const [physPrinted, setPhysPrinted]       = useState(false);
+  const [physAttachments, setPhysAttachments] = useState(false);
+  const [physSigned, setPhysSigned]         = useState(false);
+  const [physRemark, setPhysRemark]         = useState("");
+  const [physSaving, setPhysSaving]         = useState(false);
+
+  // Release (Stage 4)
+  const [releaseForm]                       = Form.useForm();
+  const [releaseSaving, setReleaseSaving]   = useState(false);
+  const [releasePendingAdvances, setReleasePendingAdvances] = useState<AdvanceSlipOpt[]>([]);
+  const [releaseAdvancesLoading, setReleaseAdvancesLoading] = useState(false);
+  const [releaseAdvanceAmount, setReleaseAdvanceAmount]     = useState<number | null>(null);
 
   // ── Load data ────────────────────────────────────────────────
 
   const loadBills = useCallback((archived: boolean) => {
     setLoading(true);
-    setSelectedRowKeys([]);
     apiClient
       .get<{ bills: Record<string, unknown>[] }>(`/bills${archived ? "?archived=true" : ""}`)
       .then((r) => setBills((r.data.bills || []).map((b) => normalizeId(b) as unknown as Bill)))
@@ -507,9 +777,8 @@ export default function Bills() {
     apiClient.get<{ contractors: Record<string, unknown>[] }>("/contractors")
       .then((r) => setContractors((r.data.contractors || []).map((c) => normalizeId(c) as unknown as ContractorOpt)))
       .catch(() => {});
-  }, [loadBills]);
+  }, []);
 
-  // Load work orders when project + contractor selected
   useEffect(() => {
     if (!newProjectId || !newContractorId) { setWoList([]); return; }
     const c = contractors.find((x) => x.id === newContractorId);
@@ -529,6 +798,34 @@ export default function Bills() {
     [contractors, newContractorId]
   );
 
+  const draftBills             = useMemo(() => bills.filter((b) => b.status === "draft"), [bills]);
+  const submittedBills         = useMemo(() => bills.filter((b) => b.status === "submitted" || b.status === "verified"), [bills]);
+  const approvedBills          = useMemo(() => bills.filter((b) => b.status === "approved"), [bills]);
+  const paymentInitiatedBills  = useMemo(() => bills.filter((b) => b.status === "payment-initiated"), [bills]);
+  const paidBills              = useMemo(() => bills.filter((b) => b.status === "paid"), [bills]);
+  const rejectedBills          = useMemo(() => bills.filter((b) => b.status === "rejected"), [bills]);
+
+  const stats = useMemo(() => {
+    const now = dayjs();
+    const paidThisMonth = bills.filter((b) => b.status === "paid" && b.paymentDate && dayjs(b.paymentDate).isSame(now, "month"));
+    return {
+      paidThisMonthCount: paidThisMonth.length,
+      paidThisMonthAmt:   paidThisMonth.reduce((s, b) => s + (b.paidAmount ?? netAfterAdvance(b)), 0),
+    };
+  }, [bills]);
+
+  function matchesTab(b: Bill, tab: string): boolean {
+    switch (tab) {
+      case "draft":          return b.status === "draft";
+      case "toVerify":       return b.status === "submitted" || b.status === "verified";
+      case "toApprove":      return b.status === "approved";
+      case "paymentPending": return b.status === "payment-initiated";
+      case "paid":           return b.status === "paid";
+      case "rejected":       return b.status === "rejected";
+      default:               return true; // "all"
+    }
+  }
+
   const filteredBills = useMemo(() => {
     return bills.filter((b) => {
       const q = search.toLowerCase();
@@ -539,39 +836,82 @@ export default function Bills() {
         (b.workOrderNo || "").toLowerCase().includes(q) ||
         (b.projectName || "").toLowerCase().includes(q) ||
         (b.generatedBy || "").toLowerCase().includes(q);
-      const matchStatus  = statusFilter === "all" || b.status === statusFilter;
+      const matchTab     = matchesTab(b, activeTab);
       const matchProject = !projectFilter || b.projectId === projectFilter;
+      const matchVendor  = !vendorFilter || b.vendorCode === vendorFilter;
       const matchDate    = inDateRange(b.billDate, dateFrom, dateTo);
-      return matchSearch && matchStatus && matchProject && matchDate;
+      return matchSearch && matchTab && matchProject && matchVendor && matchDate;
     });
-  }, [bills, search, statusFilter, projectFilter, dateFrom, dateTo]);
+  }, [bills, search, activeTab, projectFilter, vendorFilter, dateFrom, dateTo]);
 
-  const stats = useMemo(() => ({
-    submitted: bills.filter((b) => b.status === "submitted" || b.status === "verified").length,
-    approved:  bills.filter((b) => b.status === "approved").length,
-    paid:      bills.filter((b) => b.status === "paid").length,
-    totalPaid: bills.filter((b) => b.status === "paid").reduce((s, b) => s + netAfterAdvance(b), 0),
-  }), [bills]);
+  const tabs: TabDef[] = [
+    { key: "all",            label: "All",             count: 0 },
+    { key: "draft",          label: "Draft",           count: draftBills.length },
+    { key: "toVerify",       label: "To Verify",       count: submittedBills.length },
+    { key: "toApprove",      label: "To Approve",      count: approvedBills.length },
+    { key: "paymentPending", label: "Payment Pending", count: paymentInitiatedBills.length },
+    { key: "paid",           label: "Paid",            count: paidBills.length },
+    { key: "rejected",       label: "Rejected",        count: rejectedBills.length },
+  ];
 
   const totalLineAmount = useMemo(
     () => lineItems.reduce((s, li) => s + (li.amount || 0), 0),
     [lineItems]
   );
 
-  const currentViewBill = useMemo(
-    () => (viewBill ? bills.find((b) => b.id === viewBill.id) || viewBill : null),
-    [bills, viewBill]
+  const drawerBill = useMemo(
+    () => (drawerBillId ? bills.find((b) => b.id === drawerBillId) || null : null),
+    [bills, drawerBillId]
   );
 
-  const payTarget = useMemo(
-    () => (payBillId ? bills.find((b) => b.id === payBillId) || null : null),
-    [bills, payBillId]
-  );
+  // Reset every action section's local state whenever the drawer is opened for
+  // a bill, or the open bill's own stage changes underneath it (e.g. right
+  // after a maker-confirm succeeds, so the checker section is ready to go
+  // without needing to close and reopen the drawer).
+  useEffect(() => {
+    if (!drawerOpen || !drawerBill) return;
+    setRejecting(false);
+    setRejectReason("");
+    setMakerRemarks("");
+    setCheckerRetention(drawerBill.retentionAmount ?? 0);
+    setCheckerAdvance(drawerBill.advanceRecovery ?? 0);
+    setCheckerRemarks("");
+    setApproverTdsPercent(drawerBill.tdsPercent ?? 1);
+    setApproverTdsAmount(drawerBill.tdsAmount ?? 0);
+    setApproverRemarks("");
+    setPhysPrinted(false);
+    setPhysAttachments(false);
+    setPhysSigned(false);
+    setPhysRemark("");
 
-  const actionTarget = useMemo(
-    () => (actionBillId ? bills.find((b) => b.id === actionBillId) || null : null),
-    [bills, actionBillId]
-  );
+    if (drawerBill.status === "payment-initiated" && drawerBill.physicalVerification?.done) {
+      releaseForm.resetFields();
+      const defaultPaid = Math.max(0, netAfterAdvance(drawerBill) - (drawerBill.tdsAmount || 0));
+      releaseForm.setFieldsValue({ paymentDate: dayjs(), paymentMode: "neft", paidAmount: defaultPaid });
+      setReleaseAdvanceAmount(drawerBill.advanceRecovery || null);
+      setReleasePendingAdvances([]);
+      if (drawerBill.projectId && drawerBill.vendorCode) {
+        setReleaseAdvancesLoading(true);
+        apiClient.get<{ advanceSlips: AdvanceSlipOpt[] }>(`/advance-slips/pending?projectId=${drawerBill.projectId}&vendorCode=${drawerBill.vendorCode}`)
+          .then((r) => {
+            const slips = (r.data.advanceSlips || []).slice().sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+            setReleasePendingAdvances(slips);
+          })
+          .catch(() => setReleasePendingAdvances([]))
+          .finally(() => setReleaseAdvancesLoading(false));
+      }
+    }
+
+    if (drawerBill.workOrderId) {
+      setDrawerWOCategory(undefined);
+      apiClient.get<{ workOrder: Record<string, unknown> }>(`/work-orders/${drawerBill.workOrderId}`)
+        .then((r) => setDrawerWOCategory((r.data.workOrder?.category as string) || ""))
+        .catch(() => setDrawerWOCategory(undefined));
+    } else {
+      setDrawerWOCategory(undefined);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [drawerOpen, drawerBillId, drawerBill?.status, drawerBill?.physicalVerification?.done]);
 
   // ── Line item helpers ────────────────────────────────────────
 
@@ -652,7 +992,6 @@ export default function Bills() {
     const project = projects.find((p) => p.id === newProjectId);
     const contractor = selectedContractor;
 
-    // Build linkedBills from selected IDs
     const linkedBills = newLinkedBillIds.map(id => {
       const found = woExistingBills.find(b => b.id === id);
       return { billId: id, billNo: found?.billNo ?? id, relationshipType: newRelType };
@@ -683,7 +1022,7 @@ export default function Bills() {
     try {
       const res = await apiClient.post<{ bill: Record<string, unknown> }>("/bills", payload);
       setBills((prev) => [normalizeId(res.data.bill) as unknown as Bill, ...prev]);
-      message.success(`Bill ${res.data.bill.billNo} submitted for approval`);
+      message.success(`Bill ${res.data.bill.billNo} created — awaiting maker confirmation`);
       setNewOpen(false);
     } catch (err: unknown) {
       const e = err as { response?: { data?: { message?: string } } };
@@ -693,7 +1032,7 @@ export default function Bills() {
     }
   }
 
-  // ── Download ─────────────────────────────────────────────────
+  // ── Download / Print ─────────────────────────────────────────
 
   const downloadBill = useCallback(
     (bill: Bill, mode: 'pre' | 'post' = 'pre') => {
@@ -703,59 +1042,110 @@ export default function Bills() {
     [contractors]
   );
 
-  // ── Approve / Reject ─────────────────────────────────────────
+  // ── Drawer open/close ─────────────────────────────────────────
 
-  function openAction(bill: Bill, type: "approve" | "reject") {
-    setActionBillId(bill.id);
-    // "approve" maps to whichever stage this bill is actually waiting on — GM approval
-    // for a 'submitted' bill, or Accounts verification+approval for a 'verified' one —
-    // so this button can never skip GM's step.
-    setActionType(type === "approve" ? (bill.status === "submitted" ? "verify" : "approve") : "reject");
-    actionForm.resetFields();
-    setActionOpen(true);
+  function openDrawer(bill: Bill) {
+    setDrawerBillId(bill.id);
+    setDrawerOpen(true);
   }
 
-  async function handleAction() {
-    if (!actionBillId) return;
+  function closeDrawer() {
+    setDrawerOpen(false);
+    setDrawerBillId(null);
+  }
+
+  function updateBillInList(updated: Bill) {
+    setBills((prev) => prev.map((b) => (b.id === updated.id ? updated : b)));
+  }
+
+  // ── Stage actions (all fire from the single drawer) ───────────
+
+  async function handleMakerConfirm() {
+    if (!drawerBillId) return;
+    setMakerSaving(true);
     try {
-      const values = await actionForm.validateFields();
-      setActionSaving(true);
-      const endpoint = actionType === "verify" ? `/bills/${actionBillId}/verify`
-        : actionType === "approve" ? `/bills/${actionBillId}/approve`
-        : `/bills/${actionBillId}/reject`;
-      const body = actionType === "reject" ? { reason: values.reason } : { remarks: values.remarks };
-      const res = await apiClient.patch<{ bill: Record<string, unknown> }>(endpoint, body);
-      const updated = normalizeId(res.data.bill) as unknown as Bill;
-      setBills((prev) => prev.map((b) => (b.id === actionBillId ? updated : b)));
-      message.success(actionType === "verify" ? "GM approved" : actionType === "approve" ? "Accounts verified & approved" : "Bill rejected");
-      setActionOpen(false);
+      const res = await apiClient.patch<{ bill: Record<string, unknown> }>(`/bills/${drawerBillId}/maker-confirm`, { remarks: makerRemarks || undefined });
+      updateBillInList(normalizeId(res.data.bill) as unknown as Bill);
+      message.success("Confirmed — forwarded to checker");
     } catch (err: unknown) {
-      const e = err as { errorFields?: unknown; response?: { data?: { message?: string } } };
-      if (e?.errorFields) return;
-      message.error(e?.response?.data?.message || "Action failed");
+      const e = err as { response?: { data?: { message?: string } } };
+      message.error(e?.response?.data?.message || "Failed to confirm");
     } finally {
-      setActionSaving(false);
+      setMakerSaving(false);
     }
   }
 
-  // ── Pay ──────────────────────────────────────────────────────
-
-  function openPay(bill: Bill) {
-    setPayBillId(bill.id);
-    payForm.resetFields();
-    // Default to the actual amount due: net of hold/retention and advance recovery,
-    // minus whatever TDS Accounts entered at the initiate-payment stage — not the
-    // raw gross bill amount.
-    const defaultPaid = Math.max(0, netAfterAdvance(bill) - (bill.tdsAmount || 0));
-    payForm.setFieldsValue({ paymentDate: dayjs(), paymentMode: "neft", paidAmount: defaultPaid });
-    setPayOpen(true);
+  async function handleCheckerApprove() {
+    if (!drawerBillId) return;
+    setCheckerSaving(true);
+    try {
+      const res = await apiClient.patch<{ bill: Record<string, unknown> }>(`/bills/${drawerBillId}/checker-approve`, {
+        retentionAmount: checkerRetention,
+        advanceRecovery: checkerAdvance,
+        remarks: checkerRemarks || undefined,
+      });
+      updateBillInList(normalizeId(res.data.bill) as unknown as Bill);
+      message.success("Checker approved — ready for final sign-off");
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { message?: string } } };
+      message.error(e?.response?.data?.message || "Check failed");
+    } finally {
+      setCheckerSaving(false);
+    }
   }
 
-  async function handlePay() {
-    if (!payBillId) return;
+  async function handleApproverInitiate() {
+    if (!drawerBillId) return;
+    setApproverSaving(true);
     try {
-      const values = await payForm.validateFields();
-      setPaySaving(true);
+      const res = await apiClient.patch<{ bill: Record<string, unknown> }>(`/bills/${drawerBillId}/approver-initiate`, {
+        tdsPercent: approverTdsPercent,
+        tdsAmount:  approverTdsAmount,
+        remarks:    approverRemarks || undefined,
+      });
+      updateBillInList(normalizeId(res.data.bill) as unknown as Bill);
+      message.success("Payment initiated — pending physical verification and release");
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { message?: string } } };
+      message.error(e?.response?.data?.message || "Failed to initiate payment");
+    } finally {
+      setApproverSaving(false);
+    }
+  }
+
+  async function handlePhysVerifyConfirm() {
+    if (!drawerBillId) return;
+    setPhysSaving(true);
+    try {
+      const res = await apiClient.patch<{ bill: Record<string, unknown> }>(`/bills/${drawerBillId}/physical-verify`, { remark: physRemark });
+      updateBillInList(normalizeId(res.data.bill) as unknown as Bill);
+      message.success("Physical verification recorded — ready for release");
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { message?: string } } };
+      message.error(e?.response?.data?.message || "Failed to record verification");
+    } finally {
+      setPhysSaving(false);
+    }
+  }
+
+  async function handleReleaseConfirm() {
+    if (!drawerBillId || !drawerBill) return;
+    try {
+      const values = await releaseForm.validateFields();
+      setReleaseSaving(true);
+
+      // Distribute the entered recovery amount across outstanding slips oldest-first,
+      // capped at each slip's own balance, so a single number the user types becomes
+      // a concrete per-slip ledger update on the backend.
+      const recoveries: { slipId: string; amount: number }[] = [];
+      let remaining = releaseAdvanceAmount || 0;
+      for (const slip of releasePendingAdvances) {
+        if (remaining <= 0) break;
+        const take = Math.min(remaining, slip.balance);
+        if (take > 0) recoveries.push({ slipId: slip._id, amount: take });
+        remaining -= take;
+      }
+
       const body = {
         paymentUTR:             values.paymentUTR,
         paymentMode:            values.paymentMode,
@@ -765,72 +1155,38 @@ export default function Bills() {
         paidAmount:             values.paidAmount,
         retentionReleased:      values.retentionReleased || 0,
         retentionReleaseRemark: values.retentionReleaseRemark || "",
+        ...(recoveries.length ? { advanceRecoveries: recoveries } : {}),
       };
-      const res = await apiClient.patch<{ bill: Record<string, unknown> }>(`/bills/${payBillId}/pay`, body);
-      const updated = normalizeId(res.data.bill) as unknown as Bill;
-      setBills((prev) => prev.map((b) => (b.id === payBillId ? updated : b)));
-      message.success("Payment recorded");
-      setPayOpen(false);
+      const res = await apiClient.patch<{ bill: Record<string, unknown> }>(`/bills/${drawerBillId}/release`, body);
+      updateBillInList(normalizeId(res.data.bill) as unknown as Bill);
+      message.success("Payment released");
     } catch (err: unknown) {
       const e = err as { errorFields?: unknown; response?: { data?: { message?: string } } };
       if (e?.errorFields) return;
-      message.error(e?.response?.data?.message || "Failed to record payment");
+      message.error(e?.response?.data?.message || "Failed to release payment");
     } finally {
-      setPaySaving(false);
+      setReleaseSaving(false);
     }
   }
 
-  // ── Initiate Payment ──────────────────────────────────────────
-
-  function openInitiate(bill: Bill) {
-    setInitiateBillId(bill.id);
-    initiateForm.resetFields();
-    setInitiateOpen(true);
-  }
-
-  async function handleInitiate() {
-    if (!initiateBillId) return;
+  async function handleRejectConfirm() {
+    if (!drawerBillId || !rejectReason.trim()) return;
+    setRejectSaving(true);
     try {
-      const values = await initiateForm.validateFields();
-      setInitiateSaving(true);
-      const body = { tdsAmount: values.tdsAmount || 0, remarks: values.remarks };
-      const res = await apiClient.patch<{ bill: Record<string, unknown> }>(`/bills/${initiateBillId}/initiate-payment`, body);
-      const updated = normalizeId(res.data.bill) as unknown as Bill;
-      setBills((prev) => prev.map((b) => (b.id === initiateBillId ? updated : b)));
-      message.success("Payment initiated — on hold pending release");
-      setInitiateOpen(false);
+      const res = await apiClient.patch<{ bill: Record<string, unknown> }>(`/bills/${drawerBillId}/reject`, { reason: rejectReason });
+      updateBillInList(normalizeId(res.data.bill) as unknown as Bill);
+      message.success("Bill rejected");
+      setRejecting(false);
+      setRejectReason("");
     } catch (err: unknown) {
-      const e = err as { errorFields?: unknown; response?: { data?: { message?: string } } };
-      if (e?.errorFields) return;
-      message.error(e?.response?.data?.message || "Failed to initiate payment");
+      const e = err as { response?: { data?: { message?: string } } };
+      message.error(e?.response?.data?.message || "Failed to reject");
     } finally {
-      setInitiateSaving(false);
+      setRejectSaving(false);
     }
   }
 
-  // ── Patch deductions ─────────────────────────────────────────
-  async function handlePatchDeductions() {
-    if (!dedBillId) return;
-    try {
-      const values = await dedForm.validateFields();
-      setDedSaving(true);
-      const res = await apiClient.patch<{ bill: Record<string, unknown> }>(`/bills/${dedBillId}/deductions`, {
-        advanceRecovery: values.advanceRecovery ?? 0,
-        retentionAmount: values.retentionAmount ?? 0,
-      });
-      const updated = normalizeId(res.data.bill) as unknown as Bill;
-      setBills((prev) => prev.map((b) => (b.id === dedBillId ? updated : b)));
-      message.success("Deductions updated");
-      setDedOpen(false);
-      setDedBillId(null);
-    } catch (err: unknown) {
-      const e = err as { errorFields?: unknown; response?: { data?: { message?: string } } };
-      if (e?.errorFields) return;
-      message.error(e?.response?.data?.message || "Failed to update deductions");
-    } finally { setDedSaving(false); }
-  }
-
-  // ── Archive / Unarchive ──────────────────────────────────────
+  // ── Archive / Unarchive ──────────────────────────────────────────
 
   async function archiveOne(bill: Bill) {
     try {
@@ -842,243 +1198,448 @@ export default function Bills() {
     }
   }
 
-  async function archiveSelected() {
-    if (selectedRowKeys.length === 0) return;
-    setArchiving(true);
-    try {
-      await apiClient.patch(`/bills/${showArchived ? "unarchive-bulk" : "archive-bulk"}`, { ids: selectedRowKeys });
-      message.success(`${selectedRowKeys.length} bill(s) ${showArchived ? "unarchived" : "archived"}`);
-      loadBills(showArchived);
-    } catch (e: unknown) {
-      message.error((e as { response?: { data?: { message?: string } } })?.response?.data?.message || "Action failed");
-    } finally {
-      setArchiving(false);
-    }
-  }
-
-  // ── Table columns ────────────────────────────────────────────
+  // ── Table columns ──────────────────────────────────────────────
 
   const columns = [
     {
       title: "Bill No.",
       dataIndex: "billNo",
-      width: 110,
-      render: (v: string) => (
-        <span style={{ fontFamily: "monospace", color: "#f37916", fontWeight: 700 }}>{v}</span>
-      ),
+      width: 120,
+      render: (v: string) => <span style={{ fontFamily: "monospace", color: "#2563EB", fontWeight: 700 }}>{v}</span>,
     },
     {
-      title: "Date",
-      dataIndex: "billDate",
-      width: 100,
-      render: (v: string) => (v ? dayjs(v).format("DD MMM YYYY") : "—"),
+      title: "Work Order",
+      dataIndex: "workOrderNo",
+      width: 140,
+      render: (v?: string) => v
+        ? <Tag style={{ fontFamily: "monospace", background: "#EFF6FF", color: "#2563EB", border: "1px solid #BFDBFE", borderRadius: 6 }}>{v}</Tag>
+        : <span style={{ color: "#C0C4CC" }}>—</span>,
+    },
+    {
+      title: "Vendor",
+      dataIndex: "vendorName",
+      width: 180,
+      render: (v?: string) => v || <span style={{ color: "#C0C4CC" }}>—</span>,
     },
     {
       title: "Project",
       dataIndex: "projectName",
-      width: 160,
-      render: (v: string) => v || <span style={{ color: "#c0c4cc" }}>—</span>,
-    },
-    {
-      title: "Contractor",
-      dataIndex: "vendorName",
-      width: 160,
-    },
-    {
-      title: "Vendor Code",
-      dataIndex: "vendorCode",
-      width: 110,
-      render: (v: string) => v ? <Tag color="orange" style={{ fontFamily: "monospace" }}>{v}</Tag> : "—",
+      width: 170,
+      render: (v?: string) => v || <span style={{ color: "#C0C4CC" }}>—</span>,
     },
     {
       title: "Amount",
       dataIndex: "amount",
       width: 130,
-      render: (_: number, r: Bill) => (
-        <span style={{ fontFamily: "monospace", fontWeight: 700 }}>{fmt(netAfterAdvance(r))}</span>
-      ),
-    },
-    {
-      title: "Type",
-      dataIndex: "billType",
-      width: 120,
-      render: (v: string, r: Bill) => {
-        if (r.isActive === false) {
-          return (
-            <div>
-              <Tag color="default" style={{ fontSize: 10, fontWeight: 600 }}>SUPERSEDED</Tag>
-              {r.supersededBy && <div style={{ fontSize: 10, color: "#7c3aed", marginTop: 2 }}>↩ {r.supersededBy.billNo}</div>}
-            </div>
-          );
-        }
-        const cfg = BILL_TYPE_CFG[v || "running"];
-        return <Tag style={{ fontSize: 10, color: cfg?.color || "#2563eb", borderColor: cfg?.color || "#2563eb", background: `${cfg?.color || "#2563eb"}10` }}>{cfg?.label || "Running Bill"}</Tag>;
-      },
+      align: "right" as const,
+      render: (_: number, r: Bill) => <span style={{ fontFamily: "monospace", fontWeight: 700 }}>{fmt(netAfterAdvance(r))}</span>,
     },
     {
       title: "Status",
       dataIndex: "status",
-      width: 110,
-      render: (v: BillStatus) => (
-        <Tag color={STATUS_CFG[v]?.antColor || "default"} style={{ fontWeight: 600, fontSize: 11 }}>
-          {STATUS_CFG[v]?.label || v}
-        </Tag>
-      ),
+      width: 150,
+      render: (v: BillStatus) => <StatusTag status={v} />,
     },
     {
-      title: "Actions",
-      width: 230,
+      title: "Date",
+      dataIndex: "billDate",
+      width: 110,
+      render: (v: string) => (v ? dayjs(v).format("DD MMM YYYY") : "—"),
+    },
+    {
+      title: "",
+      key: "actions",
+      width: 56,
       render: (_: unknown, r: Bill) => (
-        <Space size={0} wrap>
-          <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => { setViewBill(r); setViewOpen(true); }}>
-            View
-          </Button>
-          <Button type="link" size="small" icon={<DownloadOutlined />} onClick={() => downloadBill(r, 'pre')}>
-            Download Bill
-          </Button>
-          {r.status === "paid" && (
-            <Button type="link" size="small" icon={<DownloadOutlined />} style={{ color: "#16a34a" }} onClick={() => downloadBill(r, 'post')}>
-              Receipt
-            </Button>
-          )}
-          {(r.status === "submitted" || r.status === "verified") && (
-            <>
-              <Button type="link" size="small" style={{ color: "#16a85a" }} icon={<CheckCircleOutlined />} onClick={() => openAction(r, "approve")}>
-                {r.status === "submitted" ? "GM Approve" : "Verify & Approve"}
-              </Button>
-              <Button type="link" size="small" danger icon={<CloseCircleOutlined />} onClick={() => openAction(r, "reject")}>
-                Reject
-              </Button>
-            </>
-          )}
-          {r.status === "approved" && (
-            <Button type="link" size="small" style={{ color: "#3730a3", fontWeight: 700 }} icon={<DollarOutlined />} onClick={() => openInitiate(r)}>
-              Initiate Payment
-            </Button>
-          )}
-          {r.status === "payment-initiated" && (
-            <Button type="link" size="small" style={{ color: "#7c3aed", fontWeight: 700 }} icon={<DollarOutlined />} onClick={() => openPay(r)}>
-              Release Payment
-            </Button>
-          )}
+        <div onClick={(e) => e.stopPropagation()}>
           <Popconfirm
             title={showArchived ? `Unarchive ${r.billNo}?` : `Archive ${r.billNo}?`}
             description={showArchived ? "It will reappear in the normal bill list." : "It will be hidden from the normal bill list, but not deleted."}
             onConfirm={() => archiveOne(r)}
           >
-            <Button type="link" size="small" icon={<InboxOutlined />} style={{ color: "#6B7280" }}>
-              {showArchived ? "Unarchive" : "Archive"}
-            </Button>
+            <Button type="text" size="small" icon={<InboxOutlined />} style={{ color: "#9CA3AF" }} />
           </Popconfirm>
-        </Space>
+        </div>
       ),
     },
   ];
 
-  // ── Render ───────────────────────────────────────────────────
+  // ── Drawer: contextual action section (per stage + permission) ───
+
+  function renderActionSection(bill: Bill): ReactNode {
+    if (rejecting) {
+      return (
+        <div style={{ ...sectionPanelStyle, background: "#FEF2F2", border: "1px solid #FECACA" }}>
+          <div style={{ fontWeight: 700, fontSize: 13, color: "#DC2626", marginBottom: 8 }}>Reject Bill</div>
+          <Input.TextArea
+            rows={3}
+            placeholder="Explain why this bill is being rejected…"
+            value={rejectReason}
+            onChange={(e) => setRejectReason(e.target.value)}
+          />
+          <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+            <Button danger type="primary" loading={rejectSaving} disabled={!rejectReason.trim()} onClick={handleRejectConfirm}>
+              Confirm Rejection
+            </Button>
+            <Button onClick={() => { setRejecting(false); setRejectReason(""); }}>Cancel</Button>
+          </div>
+        </div>
+      );
+    }
+
+    switch (bill.status) {
+      case "draft":
+        if (!canMaker) return <MutedNote text="Awaiting a maker to confirm this bill." />;
+        return (
+          <div style={sectionPanelStyle}>
+            <div style={{ fontWeight: 700, fontSize: 13, color: "#FF7A00", marginBottom: 8 }}>Confirm as Maker</div>
+            <Input.TextArea rows={2} placeholder="Remarks (optional)" value={makerRemarks} onChange={(e) => setMakerRemarks(e.target.value)} />
+          </div>
+        );
+
+      case "submitted":
+      case "verified": {
+        if (!canChecker) return <MutedNote text="Awaiting a checker to review this bill." />;
+        const guard = sameActor(user, bill.makerBy) ? "You confirmed this bill as maker — a different user must check it." : undefined;
+        return (
+          <div style={sectionPanelStyle}>
+            <div style={{ fontWeight: 700, fontSize: 13, color: "#16a85a", marginBottom: 8 }}>Checker Review</div>
+            {guard && <div style={{ fontSize: 12, color: "#d97706", marginBottom: 8 }}>⚠ {guard}</div>}
+            <Row gutter={12}>
+              <Col span={12}>
+                <div style={{ fontSize: 11, color: "#9CA3AF", marginBottom: 4 }}>Hold / Retention (₹)</div>
+                <InputNumber style={{ width: "100%" }} min={0} value={checkerRetention} onChange={(v) => setCheckerRetention(Number(v) || 0)} />
+              </Col>
+              <Col span={12}>
+                <div style={{ fontSize: 11, color: "#9CA3AF", marginBottom: 4 }}>Advance Recovery (₹)</div>
+                <InputNumber style={{ width: "100%" }} min={0} value={checkerAdvance} onChange={(v) => setCheckerAdvance(Number(v) || 0)} />
+              </Col>
+            </Row>
+            <Input.TextArea rows={2} style={{ marginTop: 8 }} placeholder="Remarks (optional)" value={checkerRemarks} onChange={(e) => setCheckerRemarks(e.target.value)} />
+          </div>
+        );
+      }
+
+      case "approved": {
+        if (!canApprover) return <MutedNote text="Awaiting an approver to sign off on this bill." />;
+        const guard = sameActor(user, bill.checkerBy) ? "You checked this bill — a different user must give final approval." : undefined;
+        return (
+          <div style={sectionPanelStyle}>
+            <div style={{ fontWeight: 700, fontSize: 13, color: "#3730a3", marginBottom: 8 }}>Approver Sign-off</div>
+            {guard && <div style={{ fontSize: 12, color: "#d97706", marginBottom: 8 }}>⚠ {guard}</div>}
+            <Row gutter={12}>
+              <Col span={12}>
+                <div style={{ fontSize: 11, color: "#9CA3AF", marginBottom: 4 }}>TDS %</div>
+                <InputNumber style={{ width: "100%" }} min={0} max={100} value={approverTdsPercent} onChange={(v) => setApproverTdsPercent(Number(v) || 0)} />
+              </Col>
+              <Col span={12}>
+                <div style={{ fontSize: 11, color: "#9CA3AF", marginBottom: 4 }}>TDS Amount to Deduct (₹)</div>
+                <InputNumber style={{ width: "100%" }} min={0} value={approverTdsAmount} onChange={(v) => setApproverTdsAmount(Number(v) || 0)} />
+              </Col>
+            </Row>
+            <Input.TextArea rows={2} style={{ marginTop: 8 }} placeholder="Remarks (optional)" value={approverRemarks} onChange={(e) => setApproverRemarks(e.target.value)} />
+            <div style={{ fontSize: 11.5, color: "#9CA3AF", marginTop: 8 }}>
+              The bill will show as "Payment Initiated" until physical verification and release.
+            </div>
+          </div>
+        );
+      }
+
+      case "payment-initiated": {
+        if (!bill.physicalVerification?.done) {
+          if (!canRelease) return <MutedNote text="Awaiting physical verification." />;
+          return (
+            <div style={sectionPanelStyle}>
+              <div style={{ fontWeight: 700, fontSize: 13, color: "#d97706", marginBottom: 8 }}>Physical Verification</div>
+              <div style={{ fontSize: 12, color: "#5a6278", marginBottom: 10 }}>
+                Confirm the physical checkpoint before this payment can be released:
+              </div>
+              <Space direction="vertical" size={8} style={{ width: "100%", marginBottom: 10 }}>
+                <Checkbox checked={physPrinted} onChange={(e) => setPhysPrinted(e.target.checked)}>Bill printed</Checkbox>
+                <Checkbox checked={physAttachments} onChange={(e) => setPhysAttachments(e.target.checked)}>Work order attachments reviewed</Checkbox>
+                <Checkbox checked={physSigned} onChange={(e) => setPhysSigned(e.target.checked)}>Physically (wet-signature) signed off</Checkbox>
+              </Space>
+              <Input.TextArea rows={2} placeholder="Remark (optional)" value={physRemark} onChange={(e) => setPhysRemark(e.target.value)} />
+            </div>
+          );
+        }
+        if (!canRelease) return <MutedNote text="Physically verified — awaiting payment release." />;
+        return (
+          <div style={sectionPanelStyle}>
+            <div style={{ fontWeight: 700, fontSize: 13, color: "#7c3aed", marginBottom: 8 }}>Release Payment</div>
+
+            <div style={{ border: "1px solid #fde68a", borderRadius: 8, padding: "12px 14px", marginBottom: 14, background: "#fefce8" }}>
+              <div style={{ fontWeight: 700, fontSize: 12.5, color: "#92400e", marginBottom: 8 }}>Advance Recovery</div>
+              {releaseAdvancesLoading && <div style={{ fontSize: 12, color: "#9CA3AF", marginBottom: 8 }}>Checking pending advances…</div>}
+              {!releaseAdvancesLoading && releasePendingAdvances.length > 0 && (
+                <div style={{ marginBottom: 10 }}>
+                  {releasePendingAdvances.map(slip => (
+                    <div key={slip._id} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, padding: "3px 0", borderBottom: "1px solid #fde68a" }}>
+                      <span style={{ color: "#78350f" }}>{slip.slipNo}{slip.reference ? ` — ${slip.reference}` : ""}</span>
+                      <span style={{ fontFamily: "monospace", fontWeight: 600, color: "#b45309" }}>Balance: ₹{Math.round(slip.balance).toLocaleString("en-IN")}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {!releaseAdvancesLoading && releasePendingAdvances.length === 0 && (
+                <div style={{ fontSize: 12, color: "#9CA3AF", marginBottom: 8 }}>No outstanding advance slips for this vendor on this project.</div>
+              )}
+              <InputNumber<number>
+                style={{ width: "100%" }}
+                prefix="− ₹"
+                value={releaseAdvanceAmount}
+                onChange={(v) => setReleaseAdvanceAmount(v)}
+                min={0}
+                max={releasePendingAdvances.length > 0 ? releasePendingAdvances.reduce((s, sl) => s + sl.balance, 0) : undefined}
+                precision={0}
+                placeholder="0 — leave blank to skip recovery"
+              />
+              <div style={{ fontSize: 11, color: "#92400e", marginTop: 6 }}>
+                Allocated oldest-first across the slips above, capped at each slip's balance.
+              </div>
+            </div>
+
+            <Form form={releaseForm} layout="vertical">
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Item label="Payment Date" name="paymentDate" rules={[{ required: true }]}>
+                    <DatePicker style={{ width: "100%" }} format="DD/MM/YYYY" />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item label="Payment Mode" name="paymentMode" rules={[{ required: true }]}>
+                    <Select options={PAYMENT_MODE_OPTIONS} />
+                  </Form.Item>
+                </Col>
+              </Row>
+              <Form.Item label="UTR / Transaction Reference" name="paymentUTR">
+                <Input placeholder="e.g. HDFC202606270001234" style={{ fontFamily: "monospace" }} />
+              </Form.Item>
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Item label="Bank" name="paymentBank">
+                    <Input placeholder="e.g. HDFC Bank" />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item label="Released By" name="paymentReleasedBy" rules={[{ required: true }]}>
+                    <Input placeholder="Finance officer name" />
+                  </Form.Item>
+                </Col>
+              </Row>
+              <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, padding: "12px 14px", marginBottom: 16 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: "#1d4ed8", marginBottom: 10 }}>
+                  🔓 Hold / Retention Release (optional)
+                </div>
+                <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 10 }}>
+                  If this payment also includes releasing previously withheld retention, enter the hold amount below. It will appear as a separate line in the receipt with no TDS.
+                </div>
+                <Row gutter={12}>
+                  <Col span={12}>
+                    <Form.Item label="Hold Amount Released (₹)" name="retentionReleased" initialValue={0} style={{ marginBottom: 0 }}>
+                      <InputNumber<number>
+                        style={{ width: "100%", fontFamily: "monospace" }}
+                        min={0} precision={0}
+                        formatter={(v) => `₹ ${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ",")}
+                        parser={(v) => Number((v || "").replace(/[₹\s,]/g, ""))}
+                      />
+                    </Form.Item>
+                  </Col>
+                  <Col span={12}>
+                    <Form.Item label="Remark (e.g. RA-0010 DLP)" name="retentionReleaseRemark" style={{ marginBottom: 0 }}>
+                      <Input placeholder="Which bill / period" />
+                    </Form.Item>
+                  </Col>
+                </Row>
+              </div>
+
+              <Form.Item
+                label="Total Amount Paid (₹)"
+                name="paidAmount"
+                rules={[{ required: true, message: "Enter the total amount actually paid" }]}
+                extra={
+                  <Form.Item noStyle shouldUpdate={(prev, cur) => prev.paidAmount !== cur.paidAmount || prev.retentionReleased !== cur.retentionReleased}>
+                    {({ getFieldValue }) => {
+                      const paid    = getFieldValue("paidAmount") as number | undefined;
+                      const retRel  = (getFieldValue("retentionReleased") as number) || 0;
+                      if (!paid) return null;
+                      const billPart = paid - retRel;
+                      const diff     = Math.round(netAfterAdvance(bill) - billPart);
+                      if (diff === 0 && retRel === 0) return null;
+                      return (
+                        <span style={{ color: "#6b7280", fontSize: 12 }}>
+                          Bill portion ₹{billPart.toLocaleString("en-IN")}
+                          {retRel > 0 ? ` + Hold release ₹${retRel.toLocaleString("en-IN")}` : ""}
+                          {diff !== 0 ? ` · ₹${Math.abs(diff).toLocaleString("en-IN")} ${diff > 0 ? "TDS/deduction" : "extra"} on bill` : ""}
+                        </span>
+                      );
+                    }}
+                  </Form.Item>
+                }
+              >
+                <InputNumber<number>
+                  style={{ width: "100%", fontFamily: "monospace", fontWeight: 700 }}
+                  min={0}
+                  precision={0}
+                  formatter={(v) => `₹ ${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ",")}
+                  parser={(v) => Number((v || "").replace(/[₹\s,]/g, ""))}
+                />
+              </Form.Item>
+            </Form>
+          </div>
+        );
+      }
+
+      case "paid":
+        return <PaidPanel bill={bill} isOwner={isOwner} onUpdated={updateBillInList} />;
+
+      case "rejected":
+        return bill.rejectReason ? (
+          <Alert
+            style={{ marginTop: 16 }}
+            type="error"
+            showIcon
+            message={<span><strong>Rejection Reason:</strong> {bill.rejectReason}{bill.rejectedBy?.name ? ` — ${bill.rejectedBy.name}` : ""}</span>}
+          />
+        ) : null;
+
+      default:
+        return null;
+    }
+  }
+
+  function footerPrimary(bill: Bill): { label: string; color: string; onClick: () => void; loading: boolean; disabled?: boolean; tooltip?: string } | null {
+    switch (bill.status) {
+      case "draft":
+        return canMaker ? { label: "Confirm", color: "#FF7A00", onClick: handleMakerConfirm, loading: makerSaving } : null;
+      case "submitted":
+      case "verified": {
+        if (!canChecker) return null;
+        const guard = sameActor(user, bill.makerBy) ? "You confirmed this bill as maker — a different user must check it." : undefined;
+        return { label: "Verify & Approve", color: "#16a85a", onClick: handleCheckerApprove, loading: checkerSaving, disabled: !!guard, tooltip: guard };
+      }
+      case "approved": {
+        if (!canApprover) return null;
+        const guard = sameActor(user, bill.checkerBy) ? "You checked this bill — a different user must give final approval." : undefined;
+        return { label: "Approve & Initiate Payment", color: "#3730a3", onClick: handleApproverInitiate, loading: approverSaving, disabled: !!guard, tooltip: guard };
+      }
+      case "payment-initiated":
+        if (!canRelease) return null;
+        if (!bill.physicalVerification?.done) {
+          return { label: "Mark Physically Verified", color: "#d97706", onClick: handlePhysVerifyConfirm, loading: physSaving, disabled: !(physPrinted && physAttachments && physSigned) };
+        }
+        return { label: "Release Payment", color: "#7c3aed", onClick: handleReleaseConfirm, loading: releaseSaving };
+      default:
+        return null;
+    }
+  }
+
+  // ── Render ───────────────────────────────────────────────────────
+
+  const primaryAction = drawerBill ? footerPrimary(drawerBill) : null;
 
   return (
     <PageShell
-      title="Billing & Payments"
-      description="Generate bills for completed work · Approval chain · Payment release"
+      title="Accounts Payment"
+      description="Verify bills and process vendor payments"
       cta={
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          size="large"
-          onClick={openNewBill}
-          style={{ background: "#FF7A00", borderColor: "#FF7A00" }}
-        >
-          New Bill
-        </Button>
+        canCreate ? (
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            size="large"
+            onClick={openNewBill}
+            style={{ background: "#FF7A00", borderColor: "#FF7A00" }}
+          >
+            New Bill
+          </Button>
+        ) : undefined
       }
     >
-      {/* Stats */}
-      <Row gutter={[12, 12]} style={{ marginBottom: 20 }}>
-        <Col xs={12} sm={6}>
-          <StatCard title="Pending Approval" value={stats.submitted} sub="submitted bills" color="#1677ff" bg="#f0f6ff" icon={<ClockCircleOutlined />} />
+      <style>{`
+        .ap-table .ant-table-thead > tr > th { background: #F9FAFB !important; font-weight: 600; color: #6B7280; border-bottom: 1px solid #E5E7EB !important; }
+        .ap-table .ant-table-tbody > tr > td { border-bottom: 1px solid #F1F2F4; cursor: pointer; }
+        .ap-table .ant-table-tbody > tr:hover > td { background: #F9FAFB !important; }
+      `}</style>
+
+      {/* Stat cards */}
+      <Row gutter={[12, 12]} style={{ marginBottom: 22 }}>
+        <Col xs={12} sm={8} md={4}>
+          <StatCard label="Draft" value={draftBills.length} sub="Awaiting maker" icon={<FileAddOutlined />} accent="#6B7280" />
         </Col>
-        <Col xs={12} sm={6}>
-          <StatCard title="Approved" value={stats.approved} sub="awaiting payment" color="#16a85a" bg="#f0faf4" icon={<CheckCircleOutlined />} />
+        <Col xs={12} sm={8} md={4}>
+          <StatCard label="To Verify" value={submittedBills.length} sub="Awaiting checker" icon={<SafetyCertificateOutlined />} accent="#2563EB" />
         </Col>
-        <Col xs={12} sm={6}>
-          <StatCard title="Payments Released" value={stats.paid} color="#7c3aed" icon={<DollarOutlined />} />
+        <Col xs={12} sm={8} md={4}>
+          <StatCard label="To Approve" value={approvedBills.length} sub="Awaiting approver" icon={<CheckCircleOutlined />} accent="#7C3AED" />
         </Col>
-        <Col xs={12} sm={6}>
-          <StatCard title="Total Paid" value={fmt(stats.totalPaid)} color="#16a85a" bg="#f0faf4" icon={<FileTextOutlined />} />
+        <Col xs={12} sm={8} md={4}>
+          <StatCard label="Payment Pending" value={paymentInitiatedBills.length} sub="Verify + release" icon={<ClockCircleOutlined />} accent="#D97706" />
+        </Col>
+        <Col xs={12} sm={8} md={4}>
+          <StatCard label="Paid" value={stats.paidThisMonthCount} sub={`${fmt(stats.paidThisMonthAmt)} this month`} icon={<DollarOutlined />} accent="#16A34A" />
+        </Col>
+        <Col xs={12} sm={8} md={4}>
+          <StatCard label="Rejected" value={rejectedBills.length} sub="Bills rejected" icon={<CloseCircleOutlined />} accent="#DC2626" />
         </Col>
       </Row>
 
-      {/* Filter bar */}
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14, alignItems: "center" }}>
-        <Input.Search
-          placeholder="Search bills…"
+      <PillTabs tabs={tabs} active={activeTab} onChange={setActiveTab} />
+
+      {/* Filter row */}
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16, alignItems: "center" }}>
+        <Input
+          allowClear
+          prefix={<SearchOutlined style={{ color: "#9CA3AF" }} />}
+          placeholder="Search by bill no, vendor, work order, project…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          allowClear
-          style={{ width: 280 }}
+          style={{ width: 300, borderRadius: 8 }}
         />
-        <Select
-          value={statusFilter}
-          onChange={setStatusFilter}
-          style={{ width: 180 }}
-          options={[
-            { label: "All Status",  value: "all" },
-            { label: "Submitted",   value: "submitted" },
-            { label: "Verified",    value: "verified" },
-            { label: "Approved",    value: "approved" },
-            { label: "Rejected",    value: "rejected" },
-            { label: "Paid",        value: "paid" },
-          ]}
-        />
+        <DateRangeFilter onChange={(from, to) => { setDateFrom(from); setDateTo(to); }} />
         <Select
           allowClear
           showSearch
-          placeholder="Filter by project…"
+          placeholder="All Projects"
           value={projectFilter}
           onChange={setProjectFilter}
           options={selectableProjects(projects).map((p) => ({ label: p.name, value: p.id }))}
           filterOption={(input, opt) => String(opt?.label ?? "").toLowerCase().includes(input.toLowerCase())}
+          style={{ width: 200 }}
+        />
+        <Select
+          allowClear
+          showSearch
+          placeholder="All Vendors"
+          value={vendorFilter}
+          onChange={setVendorFilter}
+          options={contractors.map((c) => ({ label: `${vendorLabel(c.companyName, c.shortCode)} (${c.vendorCode})`, value: c.vendorCode }))}
+          filterOption={(input, opt) => String(opt?.label ?? "").toLowerCase().includes(input.toLowerCase())}
           style={{ width: 220 }}
         />
-        <DateRangeFilter onChange={(from, to) => { setDateFrom(from); setDateTo(to); }} />
         <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#5a6278" }}>
           <Switch size="small" checked={showArchived} onChange={setShowArchived} />
           Show Archived
         </label>
-        {selectedRowKeys.length > 0 && (
-          <Popconfirm
-            title={showArchived ? `Unarchive ${selectedRowKeys.length} bill(s)?` : `Archive ${selectedRowKeys.length} bill(s)?`}
-            onConfirm={archiveSelected}
-          >
-            <Button icon={<InboxOutlined />} loading={archiving}>
-              {showArchived ? "Unarchive" : "Archive"} Selected ({selectedRowKeys.length})
-            </Button>
-          </Popconfirm>
-        )}
         <span style={{ marginLeft: "auto", color: "#9ba3b8", fontSize: 12 }}>
           {filteredBills.length} bill{filteredBills.length !== 1 ? "s" : ""}
         </span>
       </div>
 
-      {/* Bills table */}
-      <div style={{ background: "var(--nx-white)", border: "1px solid #E5E7EB", borderRadius: 10, overflow: "hidden" }}>
+      <div className="ap-table" style={{ background: "var(--nx-white)", border: "1px solid #E5E7EB", borderRadius: 10, overflow: "hidden" }}>
         <Spin spinning={loading}>
           <Table
             rowKey="id"
             dataSource={filteredBills}
             columns={columns}
-            rowSelection={{
-              selectedRowKeys,
-              onChange: (keys) => setSelectedRowKeys(keys as string[]),
-            }}
-            scroll={{ x: 1200 }}
+            onRow={(record) => ({ onClick: () => openDrawer(record) })}
+            scroll={{ x: 1300 }}
             pagination={{ pageSize: 10, showSizeChanger: false }}
             locale={{
               emptyText: loading ? " " : (
                 <div style={{ padding: "48px", textAlign: "center", color: "#9ba3b8" }}>
                   <div style={{ fontSize: 32, marginBottom: 10 }}>🧾</div>
-                  <div style={{ fontWeight: 700, color: "#5a6278", fontSize: 15 }}>No bills yet</div>
+                  <div style={{ fontWeight: 700, color: "#5a6278", fontSize: 15 }}>No bills found</div>
                   <div style={{ fontSize: 12, marginTop: 4 }}>Click "New Bill" to generate the first bill.</div>
                 </div>
               ),
@@ -1087,177 +1648,120 @@ export default function Bills() {
         </Spin>
       </div>
 
-      {/* ── View Drawer ──────────────────────────────────────────── */}
+      {/* ── The one shared Bill Detail Drawer ─────────────────────── */}
       <Drawer
-        open={viewOpen}
-        onClose={() => setViewOpen(false)}
-        width={720}
+        open={drawerOpen}
+        onClose={closeDrawer}
+        placement="right"
+        width={960}
+        destroyOnClose
         title={
-          currentViewBill && (
+          drawerBill && (
             <div>
-              <span style={{ fontFamily: "monospace", color: "#f37916", fontWeight: 800, fontSize: 16 }}>
-                {currentViewBill.billNo}
-              </span>
-              <Tag
-                color={STATUS_CFG[currentViewBill.status]?.antColor || "default"}
-                style={{ marginLeft: 12, fontWeight: 600 }}
-              >
-                {STATUS_CFG[currentViewBill.status]?.label}
-              </Tag>
+              <span style={{ fontFamily: "monospace", color: "#2563EB", fontWeight: 800, fontSize: 16 }}>{drawerBill.billNo}</span>
+              <span style={{ marginLeft: 12 }}><StatusTag status={drawerBill.status} /></span>
               <div style={{ fontSize: 12, color: "#9ba3b8", fontWeight: 400, marginTop: 4 }}>
-                {currentViewBill.vendorName}
-                {currentViewBill.workOrderNo ? ` · ${currentViewBill.workOrderNo}` : ""}
-                {" · "}{dayjs(currentViewBill.billDate).format("DD MMM YYYY")}
+                {drawerBill.vendorName}
+                {drawerBill.workOrderNo ? ` · ${drawerBill.workOrderNo}` : ""}
+                {" · "}{dayjs(drawerBill.billDate).format("DD MMM YYYY")}
               </div>
             </div>
           )
         }
-        extra={
-          currentViewBill && (
-            <Space>
-              <Button icon={<DownloadOutlined />} onClick={() => downloadBill(currentViewBill, 'pre')}>
-                Download Bill
+        footer={
+          drawerBill && (
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <Button icon={<PrinterOutlined />} onClick={() => downloadBill(drawerBill, drawerBill.status === "paid" ? "post" : "pre")}>
+                Print
               </Button>
-              {currentViewBill.status === "paid" && (
-                <Button icon={<DownloadOutlined />} style={{ color: "#16a34a", borderColor: "#16a34a" }} onClick={() => downloadBill(currentViewBill, 'post')}>
-                  Download Receipt
-                </Button>
-              )}
-              {(currentViewBill.status === "submitted" || currentViewBill.status === "verified") && (
-                <>
-                  <Button
-                    type="primary"
-                    icon={<CheckCircleOutlined />}
-                    style={{ background: "#16a85a", borderColor: "#16a85a" }}
-                    onClick={() => { setViewOpen(false); openAction(currentViewBill, "approve"); }}
-                  >
-                    {currentViewBill.status === "submitted" ? "GM Approve" : "Verify & Approve"}
-                  </Button>
-                  <Button danger icon={<CloseCircleOutlined />} onClick={() => { setViewOpen(false); openAction(currentViewBill, "reject"); }}>
-                    Reject
-                  </Button>
-                </>
-              )}
-              {currentViewBill.status === "approved" && (
-                <Button
-                  type="primary"
-                  icon={<DollarOutlined />}
-                  style={{ background: "#3730a3", borderColor: "#3730a3" }}
-                  onClick={() => { setViewOpen(false); openInitiate(currentViewBill); }}
-                >
-                  Initiate Payment
-                </Button>
-              )}
-              {currentViewBill.status === "payment-initiated" && (
-                <Button
-                  type="primary"
-                  icon={<DollarOutlined />}
-                  style={{ background: "#7c3aed", borderColor: "#7c3aed" }}
-                  onClick={() => { setViewOpen(false); openPay(currentViewBill); }}
-                >
-                  Release Payment
-                </Button>
-              )}
-            </Space>
+              <div style={{ display: "flex", gap: 8 }}>
+                {!rejecting && canRejectAny && !["paid", "rejected"].includes(drawerBill.status) && (
+                  <Button danger icon={<CloseCircleOutlined />} onClick={() => setRejecting(true)}>Reject</Button>
+                )}
+                {!rejecting && primaryAction && (
+                  <Tooltip title={primaryAction.tooltip}>
+                    <Button
+                      type="primary"
+                      style={{ background: primaryAction.color, borderColor: primaryAction.color }}
+                      loading={primaryAction.loading}
+                      disabled={primaryAction.disabled}
+                      onClick={primaryAction.onClick}
+                    >
+                      {primaryAction.label}
+                    </Button>
+                  </Tooltip>
+                )}
+              </div>
+            </div>
           )
         }
       >
-        {currentViewBill && (
+        {drawerBill && (
           <>
-            <div style={{ border: "1px solid #e4e7ee", borderRadius: 10, padding: 16, marginBottom: 16, background: "#fafbff" }}>
-              <Row gutter={[16, 8]}>
-                <Col span={12}>
-                  <Descriptions column={1} size="small" colon={false}>
-                    <Descriptions.Item label={<span style={{ color: "#9ba3b8", fontSize: 12 }}>Project</span>}>
-                      <span style={{ fontWeight: 700 }}>{currentViewBill.projectName || "—"}</span>
-                    </Descriptions.Item>
-                    <Descriptions.Item label={<span style={{ color: "#9ba3b8", fontSize: 12 }}>Contractor</span>}>
-                      {currentViewBill.vendorName}
-                    </Descriptions.Item>
-                    <Descriptions.Item label={<span style={{ color: "#9ba3b8", fontSize: 12 }}>Vendor Code</span>}>
-                      <Tag color="blue" style={{ fontFamily: "monospace" }}>{currentViewBill.vendorCode || "—"}</Tag>
-                    </Descriptions.Item>
-                    {currentViewBill.workOrderNo && (
-                      <Descriptions.Item label={<span style={{ color: "#9ba3b8", fontSize: 12 }}>Work Order</span>}>
-                        <Tag color="orange" style={{ fontFamily: "monospace" }}>{currentViewBill.workOrderNo}</Tag>
-                      </Descriptions.Item>
-                    )}
-                  </Descriptions>
-                </Col>
-                <Col span={12}>
-                  <Descriptions column={1} size="small" colon={false}>
-                    <Descriptions.Item label={<span style={{ color: "#9ba3b8", fontSize: 12 }}>Bill Date</span>}>
-                      {dayjs(currentViewBill.billDate).format("DD MMM YYYY")}
-                    </Descriptions.Item>
-                    {currentViewBill.contractorRefNo && (
-                      <Descriptions.Item label={<span style={{ color: "#9ba3b8", fontSize: 12 }}>Ref No.</span>}>
-                        {currentViewBill.contractorRefNo}
-                      </Descriptions.Item>
-                    )}
-                    <Descriptions.Item label={<span style={{ color: "#9ba3b8", fontSize: 12 }}>Generated By</span>}>
-                      <strong>{currentViewBill.generatedBy || "—"}</strong>
-                    </Descriptions.Item>
-                  </Descriptions>
-                </Col>
-              </Row>
+            <Row gutter={16}>
+              <Col span={12}>
+                <InfoCard title="Bill" accent="#FF7A00">
+                  <InfoRow label="Bill No" value={drawerBill.billNo} mono />
+                  <InfoRow label="Vendor" value={drawerBill.vendorName || "—"} />
+                  <InfoRow label="Amount" value={fmt(netAfterAdvance(drawerBill))} mono bold />
+                  <InfoRow label="Bill Date" value={dayjs(drawerBill.billDate).format("DD MMM YYYY")} />
+                  <InfoRow label="Project" value={drawerBill.projectName || "—"} />
+                </InfoCard>
+              </Col>
+              <Col span={12}>
+                <InfoCard title="Work Order" accent="#2563EB">
+                  <InfoRow label="WO No" value={drawerBill.workOrderNo || "—"} mono />
+                  <InfoRow label="Category" value={drawerWOCategory || "—"} />
+                  {drawerBill.workOrderId && (
+                    <Button
+                      type="link"
+                      style={{ padding: 0, marginTop: 8, height: "auto" }}
+                      onClick={() => navigate(`/work-items/${drawerBill.workOrderId}`)}
+                    >
+                      View Work Order <ArrowRightOutlined />
+                    </Button>
+                  )}
+                </InfoCard>
+              </Col>
+            </Row>
+
+            <div className="ap-stepper" style={{ marginTop: 22, marginBottom: 6 }}>
+              <style>{`
+                .ap-stepper .ant-steps-item-title,
+                .ap-stepper .ant-steps-item-description {
+                  word-break: keep-all;
+                  overflow-wrap: normal;
+                  white-space: normal;
+                }
+              `}</style>
+              <Steps size="small" items={buildSteps(drawerBill)} />
             </div>
 
-            {/* Approval stage badges — who's signed off so far, live */}
-            {currentViewBill.status !== "rejected" && (
-              <div style={{ border: "1px solid #e4e7ee", borderRadius: 8, padding: "10px 14px", marginBottom: 16, background: "#fafbff" }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#5a6278", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Approval Stages</div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                  {[
-                    { label: "AGM",       done: !!currentViewBill.agmApprovedBy,       by: currentViewBill.agmApprovedBy?.name,       at: currentViewBill.agmApprovedAt },
-                    { label: "GM",        done: !!currentViewBill.verifiedBy,          by: currentViewBill.verifiedBy?.name,          at: currentViewBill.verifiedAt },
-                    { label: "Accounts",  done: !!currentViewBill.approvedBy,          by: currentViewBill.approvedBy?.name,          at: currentViewBill.approvedAt },
-                    { label: "Initiated", done: !!currentViewBill.paymentInitiatedBy,  by: currentViewBill.paymentInitiatedBy?.name,  at: currentViewBill.paymentInitiatedAt },
-                    { label: "Paid",      done: currentViewBill.status === "paid",     by: currentViewBill.paymentReleasedBy,          at: currentViewBill.paymentDate },
-                  ].map(s => (
-                    <div key={s.label} style={{
-                      minWidth: 100, padding: "6px 10px", borderRadius: 8,
-                      background: s.done ? "#f0fdf4" : "#f5f6f8",
-                      border: `1px solid ${s.done ? "#bbf7d0" : "#e4e7ee"}`,
-                    }}>
-                      <div style={{ fontSize: 10, fontWeight: 700, color: s.done ? "#16a85a" : "#9ba3b8", textTransform: "uppercase" }}>
-                        {s.done ? "✓ " : ""}{s.label}
-                      </div>
-                      {s.done && (
-                        <div style={{ fontSize: 11, color: "#5a6278", marginTop: 2 }}>
-                          {s.by || "—"}{s.at ? <><br />{dayjs(s.at).format("DD MMM YYYY")}</> : null}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
             {/* Bill Relationship Chain */}
-            {(currentViewBill.billType || currentViewBill.linkedBills?.length || currentViewBill.supersededBy) && (
-              <div style={{ border: "1px solid #e4e7ee", borderRadius: 8, padding: "10px 14px", marginBottom: 16, background: "#fafbff" }}>
+            {(drawerBill.billType || drawerBill.linkedBills?.length || drawerBill.supersededBy) && (
+              <div style={{ border: "1px solid #e4e7ee", borderRadius: 8, padding: "10px 14px", marginTop: 16, background: "#fafbff" }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: "#5a6278", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Billing Chain</div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
-                  {currentViewBill.billType && (
+                  {drawerBill.billType && (
                     <div>
                       <span style={{ fontSize: 11, color: "#9ba3b8" }}>Type: </span>
-                      <Tag style={{ fontSize: 11, color: BILL_TYPE_CFG[currentViewBill.billType]?.color || "#2563eb", borderColor: BILL_TYPE_CFG[currentViewBill.billType]?.color || "#2563eb", background: `${BILL_TYPE_CFG[currentViewBill.billType]?.color || "#2563eb"}10` }}>
-                        {BILL_TYPE_CFG[currentViewBill.billType]?.label || currentViewBill.billType}
+                      <Tag style={{ fontSize: 11, color: BILL_TYPE_CFG[drawerBill.billType]?.color || "#2563eb", borderColor: BILL_TYPE_CFG[drawerBill.billType]?.color || "#2563eb", background: `${BILL_TYPE_CFG[drawerBill.billType]?.color || "#2563eb"}10` }}>
+                        {BILL_TYPE_CFG[drawerBill.billType]?.label || drawerBill.billType}
                       </Tag>
                     </div>
                   )}
-                  {currentViewBill.billingCycle && (
-                    <div><span style={{ fontSize: 11, color: "#9ba3b8" }}>Cycle: </span><Tag>#{currentViewBill.billingCycle}</Tag></div>
+                  {drawerBill.billingCycle && (
+                    <div><span style={{ fontSize: 11, color: "#9ba3b8" }}>Cycle: </span><Tag>#{drawerBill.billingCycle}</Tag></div>
                   )}
-                  {currentViewBill.isActive === false && currentViewBill.supersededBy && (
+                  {drawerBill.isActive === false && drawerBill.supersededBy && (
                     <div style={{ color: "#7c3aed", fontSize: 12, fontWeight: 600 }}>
-                      ↩ Superseded by <span style={{ fontFamily: "monospace" }}>{currentViewBill.supersededBy.billNo}</span>
+                      ↩ Superseded by <span style={{ fontFamily: "monospace" }}>{drawerBill.supersededBy.billNo}</span>
                     </div>
                   )}
-                  {currentViewBill.linkedBills && currentViewBill.linkedBills.length > 0 && (
+                  {drawerBill.linkedBills && drawerBill.linkedBills.length > 0 && (
                     <div>
                       <span style={{ fontSize: 11, color: "#9ba3b8" }}>Links: </span>
-                      {currentViewBill.linkedBills.map((l, i) => (
+                      {drawerBill.linkedBills.map((l, i) => (
                         <span key={i} style={{ marginLeft: 4 }}>
                           <Tag color="blue" style={{ fontFamily: "monospace", fontSize: 11 }}>{l.billNo}</Tag>
                           <span style={{ fontSize: 10, color: "#7c3aed" }}>{l.relationshipType}</span>
@@ -1269,21 +1773,16 @@ export default function Bills() {
               </div>
             )}
 
-            {currentViewBill.status === "rejected" && currentViewBill.rejectReason && (
-              <Alert
-                type="error"
-                showIcon
-                message={<span><strong>Rejection Reason:</strong> {currentViewBill.rejectReason}</span>}
-                style={{ marginBottom: 16 }}
-              />
-            )}
+            {/* Action section — the only place any stage action happens */}
+            {renderActionSection(drawerBill)}
 
-            <div style={{ fontWeight: 700, fontSize: 13, color: "#1a1f2e", marginBottom: 10 }}>Work Items Billed</div>
+            {/* Line Items */}
+            <div style={{ fontWeight: 700, fontSize: 13, color: "#1a1f2e", marginTop: 22, marginBottom: 10 }}>Line Items</div>
             <div style={{ overflowX: "auto", marginBottom: 16 }}>
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
                 <thead>
                   <tr style={{ background: "#f5f6f8" }}>
-                    {["Work Item", "Unit", "Qty", "Rate (₹)", "Amount"].map((h) => (
+                    {["Description", "Unit", "Qty", "Rate (₹)", "Amount"].map((h) => (
                       <th key={h} style={{ padding: "8px 10px", fontWeight: 700, color: "#5a6278", textAlign: "right", whiteSpace: "nowrap" }}>
                         {h}
                       </th>
@@ -1291,14 +1790,14 @@ export default function Bills() {
                   </tr>
                 </thead>
                 <tbody>
-                  {(currentViewBill.lineItems || []).map((li, i) => (
+                  {(drawerBill.lineItems || []).map((li, i) => (
                     <tr key={i} style={{ borderBottom: "1px solid #f5f6f8" }}>
                       <td style={{ padding: "8px 10px", fontWeight: 600, color: "#1a1f2e" }}>
                         {li.description}
                         {li.remarks && <div style={{ fontSize: 11, fontWeight: 400, color: "#d97706", marginTop: 2 }}>📌 {li.remarks}</div>}
                       </td>
                       <td style={{ padding: "8px 10px", textAlign: "right", color: "#9ba3b8" }}>{li.unit || "—"}</td>
-                      <td style={{ padding: "8px 10px", textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: "#f37916" }}>
+                      <td style={{ padding: "8px 10px", textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: "#FF7A00" }}>
                         {(li.billedQty || 0).toLocaleString("en-IN")}
                       </td>
                       <td style={{ padding: "8px 10px", textAlign: "right", fontFamily: "monospace" }}>
@@ -1311,8 +1810,8 @@ export default function Bills() {
                   ))}
                   <tr style={{ background: "#f5f6f8", fontWeight: 700 }}>
                     <td colSpan={4} style={{ padding: "8px 10px", textAlign: "right", color: "#5a6278" }}>Total Billed Amount</td>
-                    <td style={{ padding: "8px 10px", textAlign: "right", fontFamily: "monospace", color: "#f37916", fontSize: 14 }}>
-                      {fmt(currentViewBill.amount)}
+                    <td style={{ padding: "8px 10px", textAlign: "right", fontFamily: "monospace", color: "#FF7A00", fontSize: 14 }}>
+                      {fmt(drawerBill.amount)}
                     </td>
                   </tr>
                 </tbody>
@@ -1321,29 +1820,29 @@ export default function Bills() {
 
             {/* Financial summary */}
             {(() => {
-              const gross    = currentViewBill.amount || 0;
-              const gstPct   = currentViewBill.gstPercent ?? 0;
+              const bill = drawerBill;
+              const gross    = bill.amount || 0;
+              const gstPct   = bill.gstPercent ?? 0;
               const gstAmt   = Math.round(gross * gstPct / 100);
-              const retAmt   = currentViewBill.retentionAmount ?? 0;
-              const retPct   = currentViewBill.retentionPercent ?? 0;
-              const advRec   = currentViewBill.advanceRecovery ?? 0;
+              const retAmt   = bill.retentionAmount ?? 0;
+              const retPct   = bill.retentionPercent ?? 0;
+              const advRec   = bill.advanceRecovery ?? 0;
               const netPay   = gross + gstAmt - retAmt;
-              const paid     = currentViewBill.paidAmount;
-              const retRel   = currentViewBill.retentionReleased ?? 0;
-              // TDS = only on the current bill portion (exclude hold release)
+              const paid     = bill.paidAmount;
+              const retRel   = bill.retentionReleased ?? 0;
               const billPortion = paid != null ? Math.max(0, paid - retRel) : null;
               const tdsAmt = billPortion != null ? Math.max(0, Math.round(netPay - advRec - billPortion)) : 0;
 
-              type Row = { label: string; value: string; color: string; bold?: boolean; borderTop?: boolean; bg?: string };
-              const rows: Row[] = [
+              type SummaryRow = { label: string; value: string; color: string; bold?: boolean; borderTop?: boolean; bg?: string };
+              const rows: SummaryRow[] = [
                 { label: "Gross Amount", value: fmt(gross), color: "#1a1f2e" },
               ];
               if (gstAmt > 0) rows.push({ label: `GST @ ${gstPct}%`, value: `+ ${fmt(gstAmt)}`, color: "#16a85a" });
               if (retAmt > 0) rows.push({ label: `Hold / Retention${retPct > 0 ? ` @ ${retPct}%` : ""}`, value: `− ${fmt(retAmt)}`, color: "#e03b3b" });
               rows.push({ label: "NET PAYABLE", value: fmt(netPay), color: "#7c3aed", bold: true, borderTop: true });
               if (advRec > 0) rows.push({ label: "Less: Advance Recovery", value: `− ${fmt(advRec)}`, color: "#d97706" });
-              if (tdsAmt > 0) rows.push({ label: `Less: TDS Deducted${currentViewBill.tdsPercent ? ` (${currentViewBill.tdsPercent}%)` : ""}`, value: `− ${fmt(tdsAmt)}`, color: "#dc2626" });
-              if (retRel > 0) rows.push({ label: `Hold Released${currentViewBill.retentionReleaseRemark ? ` (${currentViewBill.retentionReleaseRemark})` : ""}`, value: `+ ${fmt(retRel)}`, color: "#0369a1", bold: false });
+              if (tdsAmt > 0) rows.push({ label: `Less: TDS Deducted${bill.tdsPercent ? ` (${bill.tdsPercent}%)` : ""}`, value: `− ${fmt(tdsAmt)}`, color: "#dc2626" });
+              if (retRel > 0) rows.push({ label: `Hold Released${bill.retentionReleaseRemark ? ` (${bill.retentionReleaseRemark})` : ""}`, value: `+ ${fmt(retRel)}`, color: "#0369a1", bold: false });
               if (paid != null) rows.push({ label: "ACTUALLY PAID", value: fmt(paid), color: "#16a85a", bold: true, borderTop: true, bg: "#f0fdf4" });
               return (
                 <div style={{ border: "1px solid #e4e7ee", borderRadius: 8, overflow: "hidden", fontFamily: "monospace", fontSize: 13, marginBottom: 16 }}>
@@ -1361,67 +1860,10 @@ export default function Bills() {
               );
             })()}
 
-            {currentViewBill.remarks && (
+            {drawerBill.remarks && (
               <>
                 <Divider />
-                <div style={{ color: "#5a6278", fontSize: 13 }}><strong>Remarks:</strong> {currentViewBill.remarks}</div>
-              </>
-            )}
-
-            {currentViewBill.approvedBy && (
-              <div style={{ marginTop: 12, padding: "10px 14px", background: "#f0faf4", borderRadius: 8, border: "1px solid #b7e8c8" }}>
-                <div style={{ fontSize: 12, color: "#16a85a", fontWeight: 700 }}>
-                  Approved by {(currentViewBill.approvedBy as { name: string })?.name || "—"}
-                  {currentViewBill.approvedAt && (
-                    <span style={{ fontWeight: 400, color: "#9ba3b8", marginLeft: 8 }}>
-                      {dayjs(currentViewBill.approvedAt).format("DD MMM YYYY")}
-                    </span>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {currentViewBill.status === "paid" && (
-              <>
-                <Divider />
-                <div style={{ background: "#f5f0ff", border: "1px solid #c4b5fd", borderRadius: 8, padding: "14px 16px" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                    <div style={{ fontWeight: 700, fontSize: 13, color: "#7c3aed" }}>Payment Released</div>
-                    <Button
-                      size="small"
-                      onClick={() => {
-                        setDedBillId(currentViewBill.id);
-                        dedForm.setFieldsValue({
-                          advanceRecovery: currentViewBill.advanceRecovery ?? 0,
-                          retentionAmount: currentViewBill.retentionAmount ?? 0,
-                        });
-                        setDedOpen(true);
-                      }}
-                      style={{ fontSize: 11 }}
-                    >
-                      Edit Deductions
-                    </Button>
-                  </div>
-                  <Descriptions column={2} size="small" colon={false}>
-                    <Descriptions.Item label={<span style={{ color: "#9ba3b8" }}>Payment Date</span>}>
-                      {currentViewBill.paymentDate ? dayjs(currentViewBill.paymentDate).format("DD MMM YYYY") : "—"}
-                    </Descriptions.Item>
-                    <Descriptions.Item label={<span style={{ color: "#9ba3b8" }}>Mode</span>}>
-                      <Tag color="purple">
-                        {({ neft: "NEFT", rtgs: "RTGS", imps: "IMPS", internet_banking: "Internet Banking", upi: "UPI", cheque: "Cheque", dd: "DD", cash: "Cash" } as Record<string, string>)[currentViewBill.paymentMode || ""] || currentViewBill.paymentMode?.toUpperCase() || "—"}
-                      </Tag>
-                    </Descriptions.Item>
-                    <Descriptions.Item label={<span style={{ color: "#9ba3b8" }}>UTR / Ref</span>}>
-                      <span style={{ fontFamily: "monospace", fontWeight: 700 }}>{currentViewBill.paymentUTR || "—"}</span>
-                    </Descriptions.Item>
-                    <Descriptions.Item label={<span style={{ color: "#9ba3b8" }}>Bank</span>}>
-                      {currentViewBill.paymentBank || "—"}
-                    </Descriptions.Item>
-                    <Descriptions.Item label={<span style={{ color: "#9ba3b8" }}>Released By</span>}>
-                      {currentViewBill.paymentReleasedBy || "—"}
-                    </Descriptions.Item>
-                  </Descriptions>
-                </div>
+                <div style={{ color: "#5a6278", fontSize: 13 }}><strong>Remarks:</strong> {drawerBill.remarks}</div>
               </>
             )}
           </>
@@ -1439,7 +1881,7 @@ export default function Bills() {
             <div>
               <div style={{ fontWeight: 700, fontSize: 16 }}>New Bill</div>
               <div style={{ fontSize: 12, color: "#6B7280", fontWeight: 400 }}>
-                Select project → contractor → add work items → submit
+                Select project → contractor → add work items → submit — lands in Draft, awaiting maker confirmation
               </div>
             </div>
           </Space>
@@ -1454,7 +1896,7 @@ export default function Bills() {
               onClick={handleSubmitBill}
               style={{ background: "#FF7A00", borderColor: "#FF7A00" }}
             >
-              Submit Bill for Approval
+              Save as Draft
             </Button>
           </div>
         }
@@ -1500,14 +1942,13 @@ export default function Bills() {
                   <Input
                     value={selectedContractor?.vendorCode || ""}
                     disabled
-                    style={{ background: "var(--nx-white)", color: "#f37916", fontWeight: 700, fontFamily: "monospace" }}
+                    style={{ background: "var(--nx-white)", color: "#FF7A00", fontWeight: 700, fontFamily: "monospace" }}
                     placeholder="Auto-filled"
                   />
                 </Form.Item>
               </Col>
             </Row>
 
-            {/* Contractor auto-fill preview */}
             {selectedContractor && (
               <div style={{ background: "var(--nx-white)", borderRadius: 6, border: "1px solid #e4e7ee", padding: "10px 12px", marginBottom: 12, fontSize: 12 }}>
                 <Row gutter={16}>
@@ -1632,15 +2073,13 @@ export default function Bills() {
                             opacity: isSuperseded ? 0.5 : 1, fontSize: 12, userSelect: "none",
                           }}
                         >
-                          <span style={{ fontFamily: "monospace", fontWeight: 700, color: isSelected ? "#2563eb" : "#f37916" }}>
+                          <span style={{ fontFamily: "monospace", fontWeight: 700, color: isSelected ? "#2563eb" : "#FF7A00" }}>
                             {b.billNo}
                           </span>
                           <span style={{ color: "#9ba3b8", marginLeft: 6 }}>
                             ₹{Math.round(b.amount).toLocaleString("en-IN")}
                           </span>
-                          <Tag color={STATUS_CFG[b.status]?.antColor} style={{ marginLeft: 6, fontSize: 10, lineHeight: "18px" }}>
-                            {STATUS_CFG[b.status]?.label}
-                          </Tag>
+                          <span style={{ marginLeft: 6 }}><StatusTag status={b.status} /></span>
                           {isSuperseded && <Tag color="default" style={{ fontSize: 10 }}>Superseded</Tag>}
                           {isSelected && <span style={{ color: "#2563eb", marginLeft: 4 }}>✓</span>}
                         </div>
@@ -1782,7 +2221,6 @@ export default function Bills() {
             Add Work Item
           </Button>
 
-          {/* Dynamic financial summary */}
           {(() => {
             const gross  = totalLineAmount;
             const gstAmt = Math.round(gross * newGstPercent / 100);
@@ -1804,7 +2242,7 @@ export default function Bills() {
                     <span>{fmt(net)}</span>
                   </div>
                   <div style={{ padding: "6px 14px", fontSize: 11, color: "#9ba3b8", borderTop: "1px solid #f5f6f8" }}>
-                    TDS deduction is recorded at payment time by Finance
+                    TDS deduction is recorded at payment initiation time
                   </div>
                 </div>
               </div>
@@ -1812,280 +2250,12 @@ export default function Bills() {
           })()}
         </div>
 
-        {/* Remarks */}
         <Form form={newForm} layout="vertical">
           <Form.Item label="Remarks" name="remarks">
             <Input.TextArea rows={2} placeholder="Describe the scope of work covered in this bill…" />
           </Form.Item>
         </Form>
       </Drawer>
-
-      {/* ── Approve / Reject Drawer ───────────────────────────────── */}
-      <Drawer
-        open={actionOpen}
-        onClose={() => setActionOpen(false)}
-        placement="right"
-        width={480}
-        title={
-          <Space>
-            <div>
-              <div style={{ fontWeight: 700, fontSize: 16 }}>
-                {actionType === "approve" ? "Approve" : "Reject"} Bill
-                {actionTarget ? ` — ${actionTarget.billNo}` : ""}
-              </div>
-              <div style={{ fontSize: 12, color: "#6B7280", fontWeight: 400 }}>
-                {actionTarget && `${actionTarget.vendorName}${actionTarget.workOrderNo ? " · " + actionTarget.workOrderNo : ""}`}
-              </div>
-            </div>
-          </Space>
-        }
-        footer={
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-            <Button size="large" onClick={() => setActionOpen(false)}>Cancel</Button>
-            <Button
-              size="large"
-              type="primary"
-              loading={actionSaving}
-              onClick={handleAction}
-              style={{
-                background: actionType === "approve" ? "#16a85a" : "#e03b3b",
-                borderColor: actionType === "approve" ? "#16a85a" : "#e03b3b",
-              }}
-            >
-              {actionType === "approve" ? "Approve" : "Reject"}
-            </Button>
-          </div>
-        }
-        destroyOnClose
-      >
-        {actionTarget && (
-          <>
-            <div style={{ background: "#f5f6f8", borderRadius: 8, padding: "12px 14px", marginBottom: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div>
-                <div style={{ fontSize: 11, color: "#9ba3b8", fontWeight: 700, textTransform: "uppercase" }}>Bill Amount</div>
-                <div style={{ fontFamily: "monospace", fontWeight: 800, fontSize: 20, color: "#f37916" }}>{fmt(actionTarget.amount)}</div>
-              </div>
-              <div style={{ textAlign: "right" }}>
-                <div style={{ fontSize: 11, color: "#9ba3b8" }}>{actionTarget.vendorName}</div>
-                {actionTarget.workOrderNo && (
-                  <Tag color="orange" style={{ fontFamily: "monospace", marginTop: 4 }}>{actionTarget.workOrderNo}</Tag>
-                )}
-              </div>
-            </div>
-            <Form form={actionForm} layout="vertical">
-              {actionType === "reject" ? (
-                <Form.Item label="Reason for Rejection" name="reason" rules={[{ required: true, message: "Please provide a reason" }]}>
-                  <Input.TextArea rows={4} placeholder="Explain why this bill is being rejected…" />
-                </Form.Item>
-              ) : (
-                <Form.Item label="Remarks (optional)" name="remarks">
-                  <Input.TextArea rows={3} placeholder="Any approval conditions or notes…" />
-                </Form.Item>
-              )}
-            </Form>
-          </>
-        )}
-      </Drawer>
-
-      {/* ── Initiate Payment Modal — Accounts enters TDS, bill goes on hold ─────── */}
-      <Modal
-        open={initiateOpen}
-        onCancel={() => { setInitiateOpen(false); setInitiateBillId(null); }}
-        onOk={handleInitiate}
-        title="Initiate Payment"
-        okText="Initiate — Put on Hold"
-        okButtonProps={{ loading: initiateSaving, style: { background: "#3730a3", borderColor: "#3730a3" } }}
-        destroyOnClose
-      >
-        <Form form={initiateForm} layout="vertical">
-          <Form.Item label="TDS Amount to Deduct (₹)" name="tdsAmount">
-            <InputNumber style={{ width: "100%" }} min={0} placeholder="0" />
-          </Form.Item>
-          <Form.Item label="Remarks (optional)" name="remarks">
-            <Input.TextArea rows={2} />
-          </Form.Item>
-        </Form>
-        <div style={{ fontSize: 12, color: "#9ba3b8" }}>
-          The bill will show as "Hold — Payment Initiated" until Accounts releases the payment.
-        </div>
-      </Modal>
-
-      {/* ── Pay Drawer ────────────────────────────────────────────── */}
-      <Drawer
-        open={payOpen}
-        onClose={() => { setPayOpen(false); setPayBillId(null); }}
-        placement="right"
-        width={520}
-        title={
-          <div>
-            <div style={{ fontWeight: 700, fontSize: 16 }}>
-              Record Payment{payTarget ? ` — ${payTarget.billNo}` : ""}
-            </div>
-            <div style={{ fontSize: 12, color: "#6B7280", fontWeight: 400 }}>Enter UTR / cheque details to release payment</div>
-          </div>
-        }
-        footer={
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-            <Button size="large" onClick={() => { setPayOpen(false); setPayBillId(null); }}>Cancel</Button>
-            <Button size="large" type="primary" loading={paySaving} onClick={handlePay} style={{ background: "#7c3aed", borderColor: "#7c3aed" }}>
-              Record Payment
-            </Button>
-          </div>
-        }
-        destroyOnClose
-      >
-        {payTarget && (
-          <>
-            <div style={{ background: "#f5f0ff", border: "1px solid #c4b5fd", borderRadius: 8, padding: "12px 14px", marginBottom: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div>
-                <div style={{ fontSize: 11, color: "#9ba3b8", fontWeight: 700, textTransform: "uppercase" }}>Net Payable to Contractor</div>
-                <div style={{ fontFamily: "monospace", fontWeight: 800, fontSize: 22, color: "#7c3aed" }}>{fmt(netAfterAdvance(payTarget))}</div>
-                <div style={{ fontSize: 10, color: "#9ba3b8" }}>
-                  {fmt(payTarget.amount)} gross
-                  {(payTarget.retentionAmount ?? 0) > 0 ? ` − ${fmt(payTarget.retentionAmount ?? 0)} hold` : ""}
-                  {(payTarget.advanceRecovery ?? 0) > 0 ? ` − ${fmt(payTarget.advanceRecovery ?? 0)} advance` : ""}
-                  {(payTarget.tdsAmount ?? 0) > 0 ? ` (before ${fmt(payTarget.tdsAmount ?? 0)} TDS below)` : ""}
-                </div>
-              </div>
-              <div style={{ textAlign: "right" }}>
-                <div style={{ fontSize: 12, fontWeight: 700 }}>{payTarget.vendorName}</div>
-                {payTarget.workOrderNo && <div style={{ fontSize: 11, color: "#9ba3b8" }}>{payTarget.workOrderNo}</div>}
-              </div>
-            </div>
-            <Form form={payForm} layout="vertical">
-              <Row gutter={16}>
-                <Col span={12}>
-                  <Form.Item label="Payment Date" name="paymentDate" rules={[{ required: true }]}>
-                    <DatePicker style={{ width: "100%" }} format="DD/MM/YYYY" />
-                  </Form.Item>
-                </Col>
-                <Col span={12}>
-                  <Form.Item label="Payment Mode" name="paymentMode" rules={[{ required: true }]}>
-                    <Select options={[
-                      { label: "NEFT", value: "neft" },
-                      { label: "RTGS", value: "rtgs" },
-                      { label: "IMPS", value: "imps" },
-                      { label: "Internet Banking", value: "internet_banking" },
-                      { label: "UPI", value: "upi" },
-                      { label: "Cheque", value: "cheque" },
-                      { label: "Demand Draft (DD)", value: "dd" },
-                      { label: "Cash", value: "cash" },
-                    ]} />
-                  </Form.Item>
-                </Col>
-              </Row>
-              <Form.Item label="UTR / Transaction Reference" name="paymentUTR">
-                <Input placeholder="e.g. HDFC202606270001234" style={{ fontFamily: "monospace" }} />
-              </Form.Item>
-              <Row gutter={16}>
-                <Col span={12}>
-                  <Form.Item label="Bank" name="paymentBank">
-                    <Input placeholder="e.g. HDFC Bank" />
-                  </Form.Item>
-                </Col>
-                <Col span={12}>
-                  <Form.Item label="Released By" name="paymentReleasedBy" rules={[{ required: true }]}>
-                    <Input placeholder="Finance officer name" />
-                  </Form.Item>
-                </Col>
-              </Row>
-              {/* Hold / Retention Release (optional) */}
-              <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, padding: "12px 14px", marginBottom: 16 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: "#1d4ed8", marginBottom: 10 }}>
-                  🔓 Hold / Retention Release (optional)
-                </div>
-                <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 10 }}>
-                  If this payment also includes releasing previously withheld retention, enter the hold amount below. It will appear as a separate line in the receipt with no TDS.
-                </div>
-                <Row gutter={12}>
-                  <Col span={12}>
-                    <Form.Item label="Hold Amount Released (₹)" name="retentionReleased" initialValue={0} style={{ marginBottom: 0 }}>
-                      <InputNumber<number>
-                        style={{ width: "100%", fontFamily: "monospace" }}
-                        min={0} precision={0}
-                        formatter={(v) => `₹ ${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ",")}
-                        parser={(v) => Number((v || "").replace(/[₹\s,]/g, ""))}
-                      />
-                    </Form.Item>
-                  </Col>
-                  <Col span={12}>
-                    <Form.Item label="Remark (e.g. RA-0010 DLP)" name="retentionReleaseRemark" style={{ marginBottom: 0 }}>
-                      <Input placeholder="Which bill / period" />
-                    </Form.Item>
-                  </Col>
-                </Row>
-              </div>
-
-              <Form.Item
-                label="Total Amount Paid (₹)"
-                name="paidAmount"
-                rules={[{ required: true, message: "Enter the total amount actually paid" }]}
-                extra={
-                  <Form.Item noStyle shouldUpdate={(prev, cur) => prev.paidAmount !== cur.paidAmount || prev.retentionReleased !== cur.retentionReleased}>
-                    {({ getFieldValue }) => {
-                      const paid    = getFieldValue("paidAmount") as number | undefined;
-                      const retRel  = (getFieldValue("retentionReleased") as number) || 0;
-                      if (!paid || !payTarget) return null;
-                      const billPart = paid - retRel;
-                      // Compare against the net-of-hold/advance figure, not the raw gross
-                      // amount, so this reads as "TDS only" instead of bundling in the
-                      // AGM's retention hold as if it were a deduction happening now.
-                      const diff     = Math.round(netAfterAdvance(payTarget) - billPart);
-                      if (diff === 0 && retRel === 0) return null;
-                      return (
-                        <span style={{ color: "#6b7280", fontSize: 12 }}>
-                          Bill portion ₹{billPart.toLocaleString("en-IN")}
-                          {retRel > 0 ? ` + Hold release ₹${retRel.toLocaleString("en-IN")}` : ""}
-                          {diff !== 0 ? ` · ₹${Math.abs(diff).toLocaleString("en-IN")} ${diff > 0 ? "TDS/deduction" : "extra"} on bill` : ""}
-                        </span>
-                      );
-                    }}
-                  </Form.Item>
-                }
-              >
-                <InputNumber<number>
-                  style={{ width: "100%", fontFamily: "monospace", fontWeight: 700 }}
-                  min={0}
-                  precision={0}
-                  formatter={(v) => `₹ ${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ",")}
-                  parser={(v) => Number((v || "").replace(/[₹\s,]/g, ""))}
-                />
-              </Form.Item>
-            </Form>
-          </>
-        )}
-      </Drawer>
-
-      {/* ── Edit Deductions Modal ─────────────────────────────────── */}
-      <Modal
-        open={dedOpen}
-        onCancel={() => { setDedOpen(false); setDedBillId(null); }}
-        onOk={handlePatchDeductions}
-        title="Edit Deductions"
-        okText="Save"
-        okButtonProps={{ loading: dedSaving, style: { background: "#7c3aed", borderColor: "#7c3aed" } }}
-        destroyOnClose
-      >
-        <div style={{ marginTop: 8, fontSize: 13, color: "#6B7280", marginBottom: 16 }}>
-          Correct the advance recovery and hold/retention amounts for this paid bill. TDS will be computed automatically as the remaining difference.
-        </div>
-        <Form form={dedForm} layout="vertical">
-          <Form.Item label="Hold / Retention Amount (₹)" name="retentionAmount">
-            <InputNumber<number>
-              style={{ width: "100%", fontFamily: "monospace" }}
-              min={0} precision={0} prefix="₹"
-              placeholder="0"
-            />
-          </Form.Item>
-          <Form.Item label="Advance Recovery (₹)" name="advanceRecovery">
-            <InputNumber<number>
-              style={{ width: "100%", fontFamily: "monospace" }}
-              min={0} precision={0} prefix="₹"
-              placeholder="0"
-            />
-          </Form.Item>
-        </Form>
-      </Modal>
     </PageShell>
   );
 }

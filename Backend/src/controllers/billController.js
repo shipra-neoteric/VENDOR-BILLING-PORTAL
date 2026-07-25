@@ -10,6 +10,8 @@ const { advanceInstance, cancelInstance } = require('../utils/slaEngine');
 const { logAudit, diffFields } = require('../utils/auditLog');
 const { hasUnapprovedVariance } = require('../utils/varianceCheck');
 
+const MODULE = 'accounts-payment';
+
 // Advances the SLA tracker for whichever BillRequest generated this RunningBill —
 // no-ops silently if there's no linked request or no in-progress instance, so it's
 // safe to call unconditionally from every stage-transition action below.
@@ -18,6 +20,8 @@ async function advanceBillRequestInstance(bill, actorUserId, remarks) {
   if (!br) return;
   await advanceInstance('BillRequest', br._id, actorUserId, remarks);
 }
+
+const POPULATE_FIELDS = ['agmApprovedBy', 'makerBy', 'verifiedBy', 'checkerBy', 'approvedBy', 'paymentInitiatedBy', 'rejectedBy'];
 
 exports.listBills = asyncHandler(async (req, res) => {
   const { workOrderId, vendorCode, projectId, status, search, archived } = req.query;
@@ -38,30 +42,26 @@ exports.listBills = asyncHandler(async (req, res) => {
     ];
   }
 
-  const bills = await RunningBill.find(filter)
-    .populate('agmApprovedBy', 'name role')
-    .populate('verifiedBy', 'name role')
-    .populate('approvedBy', 'name role')
-    .populate('paymentInitiatedBy', 'name role')
-    .populate('rejectedBy', 'name role')
-    .sort({ createdAt: -1 })
-    .lean();
+  let query = RunningBill.find(filter);
+  for (const f of POPULATE_FIELDS) query = query.populate(f, 'name role');
+  const bills = await query.sort({ createdAt: -1 }).lean();
 
   success(res, { bills });
 });
 
 exports.getBill = asyncHandler(async (req, res) => {
-  const bill = await RunningBill.findById(req.params.id)
-    .populate('agmApprovedBy', 'name role')
-    .populate('verifiedBy', 'name role')
-    .populate('approvedBy', 'name role')
-    .populate('paymentInitiatedBy', 'name role')
-    .populate('rejectedBy', 'name role')
-    .lean();
+  let query = RunningBill.findById(req.params.id);
+  for (const f of POPULATE_FIELDS) query = query.populate(f, 'name role');
+  const bill = await query.lean();
   if (!bill) return notFound(res, 'Bill not found');
   success(res, { bill });
 });
 
+// Manual bill entry — no BillRequest needed. Lands at 'draft' just like an
+// AGM-approved bill request does, so it still needs an L1 maker confirm before
+// entering the checker/approver chain — a manually-typed bill has no BillRequest/
+// AGM sign-off upstream, so it's the case that most needs that first checkpoint,
+// not least.
 exports.createBill = asyncHandler(async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
@@ -117,8 +117,7 @@ exports.createBill = asyncHandler(async (req, res) => {
       vendorCode:  workOrder.vendorCode,
       vendorName:  workOrder.vendorName,
     } : {}),
-    status:      'submitted',
-    submittedAt: new Date(),
+    status:      'draft',
     createdBy:   req.user._id,
   });
 
@@ -152,53 +151,42 @@ exports.createBill = asyncHandler(async (req, res) => {
     }
   }
 
-  created(res, { bill }, 'Bill submitted successfully');
+  created(res, { bill }, 'Bill created — awaiting maker confirmation');
 });
 
 exports.updateBill = asyncHandler(async (req, res) => {
   const bill = await RunningBill.findById(req.params.id);
   if (!bill) return notFound(res, 'Bill not found');
-  if (['approved', 'paid'].includes(bill.status)) {
-    return badRequest(res, 'Approved or paid bills cannot be edited');
+  if (['approved', 'payment-initiated', 'paid'].includes(bill.status)) {
+    return badRequest(res, 'Approved, payment-initiated or paid bills cannot be edited');
   }
   Object.assign(bill, req.body);
   await bill.save();
   success(res, { bill }, 'Bill updated successfully');
 });
 
-// Stage 2 — GM approval.
-exports.verifyBill = asyncHandler(async (req, res) => {
+// Stage 1 — L1 maker confirms the bill is ready and forwards it to the checker.
+exports.makerConfirm = asyncHandler(async (req, res) => {
   const bill = await RunningBill.findById(req.params.id);
   if (!bill) return notFound(res, 'Bill not found');
-  if (bill.status !== 'submitted') {
-    return badRequest(res, `Cannot verify a bill with status '${bill.status}'`);
+  if (bill.status !== 'draft') {
+    return badRequest(res, `Cannot confirm a bill with status '${bill.status}'`);
   }
-
-  // GM can see AGM's hold/advance figures and choose to overwrite them here —
-  // diffed into the audit log so there's a clear record of who changed what.
-  const before = { retentionAmount: bill.retentionAmount, advanceRecovery: bill.advanceRecovery };
-  if (req.body.retentionAmount != null) bill.retentionAmount = Number(req.body.retentionAmount);
-  if (req.body.advanceRecovery != null) bill.advanceRecovery = Number(req.body.advanceRecovery);
-  const amountChanges = diffFields(before, { retentionAmount: bill.retentionAmount, advanceRecovery: bill.advanceRecovery }, ['retentionAmount', 'advanceRecovery']);
-
-  bill.status     = 'verified';
-  bill.verifiedBy = req.user._id;
-  bill.verifiedAt = new Date();
+  bill.status      = 'submitted';
+  bill.submittedAt = new Date();
+  bill.makerBy     = req.user._id;
+  bill.makerAt     = new Date();
   if (req.body.remarks) bill.remarks = req.body.remarks;
   await bill.save();
-  await bill.populate('verifiedBy', 'name role');
-  await advanceBillRequestInstance(bill, req.user._id, 'GM approved');
+  await bill.populate('makerBy', 'name role');
 
   await logAudit({
-    action: 'APPROVE', module: 'billing-payments', user: req.user,
-    description: amountChanges
-      ? `GM approved bill ${bill.billNo} and adjusted AGM's hold/advance figures`
-      : `GM approved bill ${bill.billNo}`,
+    action: 'UPDATE', module: MODULE, user: req.user,
+    description: `Maker confirmed bill ${bill.billNo} — forwarded to checker`,
     entityType: 'RunningBill', entityId: bill._id, entityLabel: bill.billNo,
-    ...(amountChanges ? { changes: amountChanges } : {}),
   });
 
-  emitEvent('RUNNING_BILL_VERIFIED', {
+  emitEvent('RUNNING_BILL_MAKER_CONFIRMED', {
     projectId:    bill.projectId,
     workOrderId:  bill.workOrderId,
     workOrderNo:  bill.workOrderNo,
@@ -209,51 +197,70 @@ exports.verifyBill = asyncHandler(async (req, res) => {
     metadata:     { billNo: bill.billNo, amount: bill.amount },
   });
 
-  success(res, { bill }, 'GM approved — forwarded to Accounts for verification');
+  success(res, { bill }, 'Confirmed — forwarded to checker');
 });
 
-// Stage 3 — Accounts verifies the work order/bill match and approves.
-exports.approveBill = asyncHandler(async (req, res) => {
+// Stage 2 — L2 checker verifies the bill against its work order, sets hold/
+// retention and advance recovery, and approves. Accepts legacy 'verified' bills
+// (from before this stage existed) as valid input too, so nothing in flight
+// under the old flow gets stuck.
+exports.checkerApprove = asyncHandler(async (req, res) => {
   const bill = await RunningBill.findById(req.params.id);
   if (!bill) return notFound(res, 'Bill not found');
   if (!['submitted', 'verified'].includes(bill.status)) {
-    return badRequest(res, `Cannot approve a bill with status '${bill.status}'`);
+    return badRequest(res, `Cannot check a bill with status '${bill.status}'`);
   }
+  if (bill.makerBy && bill.makerBy.toString() === req.user._id.toString() && req.user.role !== 'owner') {
+    return badRequest(res, 'The maker cannot also check their own bill — segregation of duties requires a different checker.');
+  }
+
+  const before = { retentionAmount: bill.retentionAmount, advanceRecovery: bill.advanceRecovery };
+  if (req.body.retentionAmount != null) bill.retentionAmount = Number(req.body.retentionAmount);
+  if (req.body.advanceRecovery != null) bill.advanceRecovery = Number(req.body.advanceRecovery);
+  const amountChanges = diffFields(before, { retentionAmount: bill.retentionAmount, advanceRecovery: bill.advanceRecovery }, ['retentionAmount', 'advanceRecovery']);
+
   bill.status     = 'approved';
+  bill.checkerBy  = req.user._id;
+  bill.checkerAt  = new Date();
   bill.approvedBy = req.user._id;
   bill.approvedAt = new Date();
   if (req.body.remarks) bill.remarks = req.body.remarks;
   await bill.save();
-  await bill.populate('approvedBy', 'name role');
-  await advanceBillRequestInstance(bill, req.user._id, 'Accounts verified & approved');
+  await bill.populate('checkerBy', 'name role');
+  await advanceBillRequestInstance(bill, req.user._id, 'Checker approved');
 
   await logAudit({
-    action: 'APPROVE', module: 'billing-payments', user: req.user,
-    description: `Accounts verified & approved bill ${bill.billNo}`,
+    action: 'APPROVE', module: MODULE, user: req.user,
+    description: amountChanges
+      ? `Checker verified bill ${bill.billNo} against its work order and adjusted hold/advance figures`
+      : `Checker verified bill ${bill.billNo} against its work order`,
     entityType: 'RunningBill', entityId: bill._id, entityLabel: bill.billNo,
+    ...(amountChanges ? { changes: amountChanges } : {}),
   });
 
   emitEvent('RUNNING_BILL_APPROVED', {
-    projectId:     bill.projectId,
-    workOrderId:   bill.workOrderId,
-    workOrderNo:   bill.workOrderNo,
+    projectId:    bill.projectId,
+    workOrderId:  bill.workOrderId,
+    workOrderNo:  bill.workOrderNo,
     runningBillId: bill._id,
-    vendorCode:    bill.vendorCode,
-    vendorName:    bill.vendorName,
-    user:          req.user,
-    metadata:      { billNo: bill.billNo, amount: bill.amount },
+    vendorCode:   bill.vendorCode,
+    vendorName:   bill.vendorName,
+    user:         req.user,
+    metadata:     { billNo: bill.billNo, amount: bill.amount },
   });
 
-  success(res, { bill }, 'Accounts verified & approved — ready for payment initiation');
+  success(res, { bill }, 'Checker approved — ready for final sign-off');
 });
 
-// Stage 4 — Accounts initiates payment: enters TDS to deduct, bill goes on hold
-// pending release.
-exports.initiatePayment = asyncHandler(async (req, res) => {
+// Stage 3 — L3 approver gives final sign-off and enters TDS, initiating payment.
+exports.approverInitiate = asyncHandler(async (req, res) => {
   const bill = await RunningBill.findById(req.params.id);
   if (!bill) return notFound(res, 'Bill not found');
   if (bill.status !== 'approved') {
     return badRequest(res, `Cannot initiate payment for a bill with status '${bill.status}'`);
+  }
+  if (bill.checkerBy && bill.checkerBy.toString() === req.user._id.toString() && req.user.role !== 'owner') {
+    return badRequest(res, 'The checker cannot also give final approval on the same bill — segregation of duties requires a different approver.');
   }
   bill.status = 'payment-initiated';
   bill.paymentInitiatedBy = req.user._id;
@@ -263,11 +270,11 @@ exports.initiatePayment = asyncHandler(async (req, res) => {
   if (req.body.remarks) bill.remarks = req.body.remarks;
   await bill.save();
   await bill.populate('paymentInitiatedBy', 'name role');
-  await advanceBillRequestInstance(bill, req.user._id, 'Payment initiated');
+  await advanceBillRequestInstance(bill, req.user._id, 'Approver initiated payment');
 
   await logAudit({
-    action: 'UPDATE', module: 'billing-payments', user: req.user,
-    description: `Payment initiated for bill ${bill.billNo} — TDS ₹${(bill.tdsAmount || 0).toLocaleString('en-IN')}`,
+    action: 'APPROVE', module: MODULE, user: req.user,
+    description: `Approver signed off on bill ${bill.billNo} — payment initiated, TDS ₹${(bill.tdsAmount || 0).toLocaleString('en-IN')}`,
     entityType: 'RunningBill', entityId: bill._id, entityLabel: bill.billNo,
   });
 
@@ -282,7 +289,34 @@ exports.initiatePayment = asyncHandler(async (req, res) => {
     metadata:      { billNo: bill.billNo, amount: bill.amount, tdsAmount: bill.tdsAmount },
   });
 
-  success(res, { bill }, 'Payment initiated — on hold pending release');
+  success(res, { bill }, 'Payment initiated — pending physical verification and release');
+});
+
+// Physical-world checkpoint before release: bill printed, work order attachments
+// pulled in, physically (wet-signature) signed off in the accounts section. A
+// hard gate on release, not a soft warning — see releasePayment below.
+exports.physicalVerify = asyncHandler(async (req, res) => {
+  const bill = await RunningBill.findById(req.params.id);
+  if (!bill) return notFound(res, 'Bill not found');
+  if (bill.status !== 'payment-initiated') {
+    return badRequest(res, `Physical verification only applies once payment has been initiated (current status '${bill.status}')`);
+  }
+  bill.physicalVerification = {
+    done:   true,
+    by:     req.user._id,
+    at:     new Date(),
+    remark: req.body.remark || '',
+  };
+  await bill.save();
+  await bill.populate('physicalVerification.by', 'name role');
+
+  await logAudit({
+    action: 'UPDATE', module: MODULE, user: req.user,
+    description: `Physical verification completed for bill ${bill.billNo}`,
+    entityType: 'RunningBill', entityId: bill._id, entityLabel: bill.billNo,
+  });
+
+  success(res, { bill }, 'Physical verification recorded — ready for release');
 });
 
 exports.rejectBill = asyncHandler(async (req, res) => {
@@ -301,7 +335,7 @@ exports.rejectBill = asyncHandler(async (req, res) => {
   const br = await BillRequest.findOne({ billId: bill._id });
   if (br) {
     br.status = 'rejected';
-    br.rejectReason = req.body.reason || 'Bill rejected in Billing & Payments';
+    br.rejectReason = req.body.reason || 'Bill rejected in Accounts Payment';
     await br.save();
     await cancelInstance('BillRequest', br._id, `Rejected: ${br.rejectReason}`);
 
@@ -323,7 +357,7 @@ exports.rejectBill = asyncHandler(async (req, res) => {
   }
 
   await logAudit({
-    action: 'REJECT', module: 'billing-payments', user: req.user,
+    action: 'REJECT', module: MODULE, user: req.user,
     description: `Rejected bill ${bill.billNo}${bill.rejectReason ? ` — ${bill.rejectReason}` : ''}`,
     entityType: 'RunningBill', entityId: bill._id, entityLabel: bill.billNo,
   });
@@ -331,13 +365,20 @@ exports.rejectBill = asyncHandler(async (req, res) => {
   success(res, { bill }, 'Bill rejected');
 });
 
-// Stage 5 — Accounts releases payment (final).
-exports.payBill = asyncHandler(async (req, res) => {
+// Stage 4 — final release, after physical verification. Also the single place
+// AdvanceSlip recoveries get processed (ported in from the old, now-removed
+// billRequestController.markMilestone, which used to be the only path that did
+// this — releasing via this endpoint alone used to leave advance slips stale).
+exports.releasePayment = asyncHandler(async (req, res) => {
   const bill = await RunningBill.findById(req.params.id);
   if (!bill) return notFound(res, 'Bill not found');
   if (bill.status !== 'payment-initiated') {
     return badRequest(res, 'Payment must be initiated (TDS entered) before it can be released');
   }
+  if (!bill.physicalVerification?.done && req.user.role !== 'owner') {
+    return badRequest(res, 'Complete physical verification (printed bill + work order attachments + physical sign-off) before releasing payment');
+  }
+
   bill.status = 'paid';
   if (req.body.paymentUTR)        bill.paymentUTR        = req.body.paymentUTR;
   if (req.body.paymentChequeNo)   bill.paymentChequeNo   = req.body.paymentChequeNo;
@@ -351,10 +392,7 @@ exports.payBill = asyncHandler(async (req, res) => {
   await bill.save();
   await advanceBillRequestInstance(bill, req.user._id, 'Payment released');
 
-  // Keep the originating BillRequest's own "done" flag in sync — payment can be
-  // released from here (Billing & Payments) or from the BillRequests page's own
-  // "Release Payment" action; whichever one runs first must mark both as complete
-  // so the other page doesn't keep showing a stale, already-actioned button.
+  // Keep the originating BillRequest's own "done" flag in sync.
   const br = await BillRequest.findOne({ billId: bill._id });
   if (br && !br.milestoneAchieved) {
     br.milestoneAchieved = true;
@@ -362,8 +400,30 @@ exports.payBill = asyncHandler(async (req, res) => {
     await br.save();
   }
 
+  // Process advance recoveries against outstanding AdvanceSlips, if any were
+  // allocated as part of this release.
+  const recoveries = Array.isArray(req.body.advanceRecoveries) ? req.body.advanceRecoveries : [];
+  if (recoveries.length) {
+    const AdvanceSlip = require('../models/AdvanceSlip');
+    for (const rec of recoveries) {
+      if (!rec.slipId || !rec.amount || rec.amount <= 0) continue;
+      const slip = await AdvanceSlip.findById(rec.slipId);
+      if (!slip) continue;
+      slip.amountRecovered += rec.amount;
+      slip.recoveries.push({
+        amount:     rec.amount,
+        date:       new Date(),
+        releasedBy: req.user.name,
+      });
+      slip.status = slip.amountRecovered >= slip.amount
+        ? 'recovered'
+        : slip.amountRecovered > 0 ? 'partial' : 'outstanding';
+      await slip.save();
+    }
+  }
+
   await logAudit({
-    action: 'APPROVE', module: 'billing-payments', user: req.user,
+    action: 'APPROVE', module: MODULE, user: req.user,
     description: `Payment released for bill ${bill.billNo}${bill.paidAmount != null ? ` — ₹${Math.round(bill.paidAmount).toLocaleString('en-IN')} paid` : ''}${bill.paymentUTR ? ` (UTR ${bill.paymentUTR})` : ''}`,
     entityType: 'RunningBill', entityId: bill._id, entityLabel: bill.billNo,
   });
@@ -388,6 +448,8 @@ exports.getBillingChain = asyncHandler(async (req, res) => {
   const bills = await RunningBill.find({ workOrderId })
     .populate('supersededBy', 'billNo billType')
     .populate('agmApprovedBy', 'name role')
+    .populate('makerBy',   'name role')
+    .populate('checkerBy', 'name role')
     .populate('verifiedBy',   'name role')
     .populate('approvedBy',   'name role')
     .populate('paymentInitiatedBy', 'name role')
@@ -408,7 +470,7 @@ exports.patchDeductions = asyncHandler(async (req, res) => {
 
   const changes = diffFields(before, bill.toObject(), ['advanceRecovery', 'retentionAmount']);
   await logAudit({
-    action: 'UPDATE', module: 'billing-payments', user: req.user,
+    action: 'UPDATE', module: MODULE, user: req.user,
     description: `Adjusted deductions on paid bill ${bill.billNo}`,
     entityType: 'RunningBill', entityId: bill._id, entityLabel: bill.billNo,
     changes,

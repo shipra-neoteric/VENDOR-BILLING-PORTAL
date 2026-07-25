@@ -43,4 +43,16 @@ const authorizeOr = (module, action, ...roles) => (req, res, next) => {
   });
 };
 
-module.exports = { authenticate, authorize, authorizeOr };
+// Like authorizeOr, but passes if the user holds ANY of the listed actions on the
+// module — for gates like "reject" where whoever's turn it currently is (maker,
+// checker, approver, or release) should be allowed, not just one specific action.
+const authorizeAnyOr = (module, actions, ...roles) => (req, res, next) => {
+  if (roles.includes(req.user.role)) return next();
+  const perm = (req.user.permissions || []).find(p => p.module === module);
+  if (perm && actions.some(a => perm.actions.includes(a))) return next();
+  return res.status(403).json({
+    message: `Role '${req.user.role}' does not have access to this action`,
+  });
+};
+
+module.exports = { authenticate, authorize, authorizeOr, authorizeAnyOr };

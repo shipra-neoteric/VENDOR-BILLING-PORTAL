@@ -3,7 +3,7 @@ import { NavLink } from "react-router-dom";
 import {
   LayoutOutlined, BankOutlined, ApartmentOutlined, TeamOutlined, TagsOutlined,
   FileTextOutlined, LineChartOutlined, ProfileOutlined, WalletOutlined,
-  CheckSquareOutlined, AccountBookOutlined, UsergroupAddOutlined, MonitorOutlined,
+  AccountBookOutlined, UsergroupAddOutlined, MonitorOutlined,
   ShareAltOutlined, SettingOutlined, ClockCircleOutlined, HistoryOutlined,
   FileSearchOutlined,
 } from "@ant-design/icons";
@@ -45,7 +45,7 @@ const ADMIN_GROUPS: NavGroup[] = [
     items: [
       { name: "Bill Review",        path: "/bill-review",      icon: <FileSearchOutlined />,   moduleId: "bill-review" },
       { name: "Bill Requests",      path: "/bill-requests",    icon: <ProfileOutlined />,     moduleId: "bill-requests" },
-      { name: "Billing & Payments", path: "/bills",            icon: <WalletOutlined />,       moduleId: "billing-payments" },
+      { name: "Accounts Payment",   path: "/accounts-payment", icon: <WalletOutlined />,       moduleId: "accounts-payment" },
       { name: "Ledger",             path: "/ledger",           icon: <AccountBookOutlined />,  moduleId: "ledger" },
       { name: "Advance Payments",   path: "/advance-payments", icon: <BankOutlined />,         moduleId: "advance-payments" },
     ],
@@ -53,7 +53,6 @@ const ADMIN_GROUPS: NavGroup[] = [
   {
     label: "Admin",
     items: [
-      { name: "Approvals",          path: "/approvals",     icon: <CheckSquareOutlined />,   moduleId: "approvals" },
       { name: "Companies",          path: "/companies",     icon: <BankOutlined />,           moduleId: "companies" },
       { name: "Categories",         path: "/categories",    icon: <TagsOutlined />,           moduleId: "categories" },
       { name: "DRI Work Dashboard", path: "/dri-dashboard", icon: <MonitorOutlined />,        moduleId: "dri-dashboard" },
@@ -70,7 +69,12 @@ const DRI_OWN_ITEMS: NavItem[] = [
 ];
 
 // ── Permission helpers ─────────────────────────────────────────────────────────
-function canView(moduleId: string, perms: PermEntry[] | undefined): boolean {
+// Owner always sees every module regardless of what's in their stored permissions
+// array — otherwise a newly-added module (like Accounts Payment) stays invisible to
+// existing Owner accounts until someone remembers to backfill their permissions,
+// even though the backend already lets Owner bypass every authorizeOr check.
+function canView(moduleId: string, perms: PermEntry[] | undefined, role?: string): boolean {
+  if (role === "owner") return true;
   if (!perms || perms.length === 0) return true;
   const entry = perms.find(p => p.module === moduleId);
   return entry ? entry.actions.includes("view") : false;
@@ -80,10 +84,10 @@ function canView(moduleId: string, perms: PermEntry[] | undefined): boolean {
 // the post-login landing route instead of hardcoding /dashboard for everyone, since a
 // user without explicit dashboard access would otherwise land on a page not in their
 // own sidebar.
-export function getDefaultPath(perms: PermEntry[] | undefined): string {
+export function getDefaultPath(perms: PermEntry[] | undefined, role?: string): string {
   for (const group of ADMIN_GROUPS) {
     for (const item of group.items) {
-      if (canView(item.moduleId, perms)) return item.path;
+      if (canView(item.moduleId, perms, role)) return item.path;
     }
   }
   return "/dashboard";
@@ -131,7 +135,7 @@ export default function Sidebar() {
   const rawGroups = isDRI
     ? buildDRIGroups(perms)
     : ADMIN_GROUPS
-        .map(g => ({ ...g, items: g.items.filter(item => canView(item.moduleId, perms)) }))
+        .map(g => ({ ...g, items: g.items.filter(item => canView(item.moduleId, perms, user?.role)) }))
         .filter(g => g.items.length > 0);
 
   return (

@@ -80,35 +80,12 @@ export default function BillRequests() {
   const [approveRetention, setApproveRetention] = useState<number | null>(null);
   const [approveAdvance,   setApproveAdvance]   = useState<number | null>(null);
 
-  const [milestoneTarget, setMilestoneTarget] = useState<string | null>(null);
-  const [paymentUTR,      setPaymentUTR]      = useState("");
-  const [utrModal,        setUTRModal]        = useState(false);
-
-  const [paymentAmount,   setPaymentAmount]   = useState<number | null>(null);
-  const [milestoneReq,    setMilestoneReq]    = useState<BillRequest | null>(null);
-
   const [search,            setSearch]            = useState("");
   const [projectFilter,     setProjectFilter]     = useState<string | undefined>(undefined);
   const [projectOptions,    setProjectOptions]    = useState<{ label: string; value: string }[]>([]);
   const [showArchived,      setShowArchived]      = useState(false);
   const [selectedRowKeys,   setSelectedRowKeys]   = useState<string[]>([]);
   const [archiving,         setArchiving]         = useState(false);
-
-  const [pendingAdvances,   setPendingAdvances]   = useState<{ _id: string; slipNo: string; amount: number; amountRecovered: number; balance: number; reference?: string }[]>([]);
-  const [advanceRecovery,   setAdvanceRecovery]   = useState<number | null>(null);
-  const [advancesLoading,   setAdvancesLoading]   = useState(false);
-  const [holdAmount,        setHoldAmount]        = useState<number | null>(null);
-
-  const fetchPendingAdvances = async (projectId: string, vendorCode: string) => {
-    setAdvancesLoading(true);
-    setPendingAdvances([]);
-    setAdvanceRecovery(null);
-    try {
-      const res = await apiClient.get(`/advance-slips/pending?projectId=${projectId}&vendorCode=${vendorCode}`);
-      setPendingAdvances(res.data.advanceSlips ?? []);
-    } catch { /* silent */ }
-    finally { setAdvancesLoading(false); }
-  };
 
   const load = async (status?: string, archived?: boolean) => {
     setLoading(true);
@@ -180,46 +157,6 @@ export default function BillRequests() {
       if (viewReq?._id === rejectTarget) setViewReq(null);
     } catch { message.error("Failed to reject"); }
     finally { setSaving(false); }
-  };
-
-  const handleMilestone = async () => {
-    if (!milestoneTarget) return;
-    setSaving(true);
-    try {
-      const billAmt = milestoneReq?.billId?.amount ?? null;
-      const body: Record<string, unknown> = {};
-      if (paymentUTR) body.paymentUTR = paymentUTR;
-      if (paymentAmount != null && paymentAmount !== billAmt) body.paidAmount = paymentAmount;
-      if (holdAmount != null && holdAmount > 0) body.holdAmount = holdAmount;
-      if (advanceRecovery && advanceRecovery > 0) {
-        body.advanceRecoveryAmount = advanceRecovery; // always store the amount on the bill
-        if (pendingAdvances.length > 0) {
-          // Also distribute across advance slip records (oldest first)
-          let remaining = advanceRecovery;
-          const recoveries: { slipId: string; amount: number }[] = [];
-          for (const slip of pendingAdvances) {
-            if (remaining <= 0) break;
-            const recoverThis = Math.min(remaining, slip.balance);
-            recoveries.push({ slipId: slip._id, amount: recoverThis });
-            remaining -= recoverThis;
-          }
-          if (recoveries.length > 0) body.advanceRecoveries = recoveries;
-        }
-      }
-      const res = await apiClient.put(`/bill-requests/${milestoneTarget}/milestone`, body);
-      message.success(res.data?.message || "Milestone marked!");
-      setUTRModal(false);
-      setMilestoneTarget(null);
-      setPaymentUTR("");
-      setPaymentAmount(null);
-      setMilestoneReq(null);
-      setAdvanceRecovery(null);
-      setHoldAmount(null);
-      setPendingAdvances([]);
-      load(tab === "all" ? undefined : tab, showArchived);
-    } catch (e: any) {
-      message.error(e?.response?.data?.message || "Failed to mark milestone");
-    } finally { setSaving(false); }
   };
 
   async function archiveOne(r: BillRequest) {
@@ -336,26 +273,6 @@ export default function BillRequests() {
                 Reject
               </Button>
             </>
-          )}
-          {r.status === "approved" && !r.milestoneAchieved && (
-            <Button
-              size="small"
-              icon={<TrophyOutlined />}
-              style={{ color: "#FF7A00", borderColor: "#FF7A00" }}
-              onClick={() => {
-                setMilestoneTarget(r._id);
-                setMilestoneReq(r);
-                setPaymentUTR("");
-                setHoldAmount(r.billId?.retentionAmount ?? 0);
-                setAdvanceRecovery(null);
-                setPendingAdvances([]);
-                setUTRModal(true);
-                setPaymentAmount(null);
-                if (r.projectId && r.vendorCode) fetchPendingAdvances(r.projectId, r.vendorCode);
-              }}
-            >
-              Release Payment
-            </Button>
           )}
           <Popconfirm
             title={showArchived ? `Unarchive ${r.reqNo}?` : `Archive ${r.reqNo}?`}
@@ -491,20 +408,9 @@ export default function BillRequests() {
                 type="primary"
                 icon={<TrophyOutlined />}
                 style={{ background: "#FF7A00", borderColor: "#FF7A00" }}
-                onClick={() => {
-                  setMilestoneTarget(viewReq._id);
-                  setMilestoneReq(viewReq);
-                  setPaymentUTR("");
-                  setHoldAmount(viewReq.billId?.retentionAmount ?? 0);
-                  setAdvanceRecovery(null);
-                  setPendingAdvances([]);
-                  setUTRModal(true);
-                  setPaymentAmount(null);
-                  setViewReq(null);
-                  if (viewReq.projectId && viewReq.vendorCode) fetchPendingAdvances(viewReq.projectId, viewReq.vendorCode);
-                }}
+                onClick={() => { setViewReq(null); navigate("/accounts-payment"); }}
               >
-                Release Payment — Mark Milestone
+                Manage in Accounts Payment →
               </Button>
             </div>
           ) : (
@@ -724,147 +630,6 @@ export default function BillRequests() {
         />
       </Modal>
 
-      {/* Release Payment / Milestone Modal */}
-      <Modal
-        open={utrModal}
-        onCancel={() => { setUTRModal(false); setMilestoneTarget(null); setPaymentUTR(""); setPaymentAmount(null); setMilestoneReq(null); setPendingAdvances([]); setAdvanceRecovery(null); setHoldAmount(null); }}
-        onOk={handleMilestone}
-        title="Release Payment — Mark Milestone"
-        okText="Confirm Payment Released"
-        okButtonProps={{ loading: saving, style: { background: "#FF7A00", borderColor: "#FF7A00" } }}
-        destroyOnClose
-      >
-        {(() => {
-          const billedAmt    = milestoneReq?.billId?.amount ?? 0;
-          const hold         = holdAmount ?? 0;
-          const advance      = advanceRecovery ?? 0;
-          const tds          = milestoneReq?.billId?.tdsAmount ?? 0;
-          const netToPay     = Math.max(0, billedAmt - hold - advance - tds);
-          const actualPaid   = paymentAmount ?? netToPay;
-          const diff         = actualPaid - netToPay;
-          return (
-            <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 14 }}>
-              <div style={{ padding: 12, background: "#FFF4E8", border: "1px solid #FED7AA", borderRadius: 8, fontSize: 13, color: "#92400e" }}>
-                This will mark the stage as <strong>Milestone Achieved</strong> and update the bill status to <strong>Paid</strong>.
-              </div>
-
-              {/* Billed Amount */}
-              <div style={{ background: "#f9fafb", border: "1px solid #E5E7EB", borderRadius: 8, padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <div style={{ fontSize: 11, color: "#6B7280", fontWeight: 600, textTransform: "uppercase" }}>Billed Amount</div>
-                <div style={{ fontFamily: "monospace", fontWeight: 700, fontSize: 16, color: "#374151" }}>{fmt(billedAmt)}</div>
-              </div>
-
-              {/* Hold / Retention */}
-              <div style={{ border: "1px solid #fca5a5", borderRadius: 8, padding: "12px 14px", background: "#fff5f5" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                  <div style={{ fontWeight: 700, fontSize: 13, color: "#b91c1c" }}>
-                    Hold / Retention Amount
-                  </div>
-                  {milestoneReq?.billId?.retentionPercent != null && milestoneReq.billId.retentionPercent > 0 && (
-                    <span style={{ fontSize: 11, background: "#fca5a5", color: "#7f1d1d", padding: "2px 8px", borderRadius: 99, fontWeight: 600 }}>
-                      {milestoneReq.billId.retentionPercent}% on WO
-                    </span>
-                  )}
-                </div>
-                <InputNumber<number>
-                  style={{ width: "100%" }}
-                  prefix="− ₹"
-                  value={holdAmount}
-                  onChange={v => setHoldAmount(v)}
-                  min={0}
-                  precision={0}
-                  placeholder="0 — enter hold/retention amount to deduct"
-                />
-                {hold > 0 && (
-                  <div style={{ fontSize: 11, color: "#b91c1c", marginTop: 5 }}>
-                    ₹{Math.round(hold).toLocaleString("en-IN")} will be held back
-                  </div>
-                )}
-              </div>
-
-              {/* Advance Recovery */}
-              <div style={{ border: "1px solid #fde68a", borderRadius: 8, padding: "12px 14px", background: "#fefce8" }}>
-                <div style={{ fontWeight: 700, fontSize: 13, color: "#92400e", marginBottom: 8 }}>
-                  Advance Recovery
-                </div>
-                {advancesLoading && <div style={{ fontSize: 12, color: "#9CA3AF", marginBottom: 8 }}>Checking pending advances…</div>}
-                {!advancesLoading && pendingAdvances.length > 0 && (
-                  <div style={{ marginBottom: 10 }}>
-                    {pendingAdvances.map(slip => (
-                      <div key={slip._id} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, padding: "3px 0", borderBottom: "1px solid #fde68a" }}>
-                        <span style={{ color: "#78350f" }}>{slip.slipNo}{slip.reference ? ` — ${slip.reference}` : ""}</span>
-                        <span style={{ fontFamily: "monospace", fontWeight: 600, color: "#b45309" }}>Balance: ₹{Math.round(slip.balance).toLocaleString("en-IN")}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                <InputNumber<number>
-                  style={{ width: "100%" }}
-                  prefix="− ₹"
-                  value={advanceRecovery}
-                  onChange={v => setAdvanceRecovery(v)}
-                  min={0}
-                  max={pendingAdvances.length > 0 ? pendingAdvances.reduce((s, sl) => s + sl.balance, 0) : undefined}
-                  precision={0}
-                  placeholder="0 — leave blank to skip recovery"
-                />
-                {advance > 0 && (
-                  <div style={{ fontSize: 11, color: "#b45309", marginTop: 5 }}>
-                    ₹{Math.round(advance).toLocaleString("en-IN")} will be recovered from advance
-                  </div>
-                )}
-              </div>
-
-              {tds > 0 && (
-                <div style={{ background: "#f9fafb", border: "1px solid #E5E7EB", borderRadius: 8, padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <div style={{ fontSize: 11, color: "#6B7280", fontWeight: 600, textTransform: "uppercase" }}>TDS Deducted <span style={{ fontWeight: 400, textTransform: "none" }}>(entered at payment initiation)</span></div>
-                  <div style={{ fontFamily: "monospace", fontWeight: 700, fontSize: 14, color: "#dc2626" }}>− {fmt(tds)}</div>
-                </div>
-              )}
-
-              {/* Net to Pay summary */}
-              <div style={{ background: "#f0fdf4", border: "2px solid #86efac", borderRadius: 8, padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <div>
-                  <div style={{ fontSize: 11, color: "#166534", fontWeight: 700, textTransform: "uppercase" }}>Net Amount to Pay</div>
-                  <div style={{ fontSize: 11, color: "#6B7280", marginTop: 2 }}>
-                    {fmt(billedAmt)}{hold > 0 ? ` − ${fmt(hold)} hold` : ""}{advance > 0 ? ` − ${fmt(advance)} advance` : ""}{tds > 0 ? ` − ${fmt(tds)} TDS` : ""}
-                  </div>
-                </div>
-                <div style={{ fontFamily: "monospace", fontWeight: 800, fontSize: 20, color: "#16a34a" }}>{fmt(netToPay)}</div>
-              </div>
-
-              {/* Actual Amount Released */}
-              <div>
-                <div style={{ fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 6 }}>
-                  Actual Amount Released
-                  <span style={{ fontSize: 11, color: "#9CA3AF", fontWeight: 400, marginLeft: 6 }}>(override if different)</span>
-                </div>
-                <InputNumber<number>
-                  style={{ width: "100%" }}
-                  prefix="₹"
-                  value={paymentAmount}
-                  onChange={v => setPaymentAmount(v)}
-                  min={0}
-                  step={1}
-                  precision={0}
-                  placeholder={`${Math.round(netToPay).toLocaleString("en-IN")} (auto from net)`}
-                />
-                {paymentAmount != null && Math.abs(diff) > 0 && (
-                  <div style={{ fontSize: 12, color: "#d97706", marginTop: 6 }}>
-                    {diff < 0 ? `−${fmt(Math.abs(diff))} less than net (TDS or other deduction)` : `+${fmt(diff)} more than net`}
-                  </div>
-                )}
-              </div>
-
-              {/* UTR */}
-              <div>
-                <div style={{ fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 6 }}>Payment UTR / Reference (optional)</div>
-                <Input placeholder="e.g. UTR123456789" value={paymentUTR} onChange={e => setPaymentUTR(e.target.value)} />
-              </div>
-            </div>
-          );
-        })()}
-      </Modal>
     </PageShell>
   );
 }
