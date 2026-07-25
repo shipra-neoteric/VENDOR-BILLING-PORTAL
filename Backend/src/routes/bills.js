@@ -1,5 +1,5 @@
 const router = require('express').Router();
-const { authenticate, authorize, authorizeOr, authorizeAnyOr } = require('../middleware/auth');
+const { authenticate, authorizeOr, authorizeAnyOr } = require('../middleware/auth');
 const { createBillRules } = require('../validators/bill.validator');
 const {
   listBills, getBill, createBill, updateBill,
@@ -26,7 +26,7 @@ router.patch('/:id/approver-initiate', authorizeOr('accounts-payment', 'approver
 router.patch('/:id/physical-verify',   authorizeOr('accounts-payment', 'release',  'owner'), physicalVerify);
 // Stage 4 (final release).
 router.patch('/:id/release',           authorizeOr('accounts-payment', 'release',  'owner'), releasePayment);
-router.patch('/:id/deductions', authorize('owner'),  patchDeductions);
+router.patch('/:id/deductions', authorizeOr('accounts-payment', 'edit', 'owner'), patchDeductions);
 router.patch('/archive-bulk',   authorizeOr('accounts-payment', 'edit', 'owner'), archiveBillsBulk);
 router.patch('/unarchive-bulk', authorizeOr('accounts-payment', 'edit', 'owner'), unarchiveBillsBulk);
 router.patch('/:id/archive',    authorizeOr('accounts-payment', 'edit', 'owner'), archiveBill);

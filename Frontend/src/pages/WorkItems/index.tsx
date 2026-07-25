@@ -1686,33 +1686,33 @@ export default function WorkItems() {
   const editGstPercent   = (Form.useWatch("gstPercent", editForm)   as number | undefined) ?? 18;
 
   // ── Load all data ─────────────────────────────────────────────
+  // Each fetch settles independently — one endpoint failing (e.g. a role
+  // lacking some unrelated permission) must not blank out data the other
+  // calls already fetched successfully.
   useEffect(() => {
-    const isDRI = user?.role === "site-dri";
-    Promise.all([
-      apiClient.get<{ workOrders: any[] }>("/work-orders"),
-      apiClient.get<{ contractors: any[] }>("/contractors"),
-      apiClient.get<{ projects: any[] }>("/projects"),
-      apiClient.get<{ bills: any[] }>("/bills"),
-      apiClient.get<{ companies: any[] }>("/companies"),
-      // DRI users can't access the users list endpoint — skip it
-      isDRI ? Promise.resolve({ data: { users: [] } }) : apiClient.get<{ users: any[] }>("/auth/users?role=site-dri"),
-    ])
-      .then(([woRes, cRes, pRes, billRes, coRes, driRes]) => {
-        setWorkOrders(woRes.data.workOrders.map(normalizeWO));
-        setContractors(cRes.data.contractors.map(normalizeId));
-        setProjects(pRes.data.projects.map(normalizeId));
-        setCompanies(coRes.data.companies ?? []);
-        setDriList((driRes as any).data.users ?? []);
-        const billMap: Record<string, { status: string; amount: number }[]> = {};
-        (billRes.data.bills ?? []).forEach((b: any) => {
-          const wid = b.workOrderId;
-          if (!wid) return;
-          (billMap[wid] ||= []).push({ status: b.status, amount: b.amount });
-        });
-        setWoBillsMap(billMap);
-      })
-      .catch(() => {})
-      .finally(() => setLoadingData(false));
+    const calls = [
+      apiClient.get<{ workOrders: any[] }>("/work-orders")
+        .then(r => setWorkOrders(r.data.workOrders.map(normalizeWO))),
+      apiClient.get<{ contractors: any[] }>("/contractors")
+        .then(r => setContractors(r.data.contractors.map(normalizeId))),
+      apiClient.get<{ projects: any[] }>("/projects")
+        .then(r => setProjects(r.data.projects.map(normalizeId))),
+      apiClient.get<{ companies: any[] }>("/companies")
+        .then(r => setCompanies(r.data.companies ?? [])),
+      apiClient.get<{ users: any[] }>("/auth/users?role=site-dri")
+        .then(r => setDriList(r.data.users ?? [])),
+      apiClient.get<{ bills: any[] }>("/bills")
+        .then(r => {
+          const billMap: Record<string, { status: string; amount: number }[]> = {};
+          (r.data.bills ?? []).forEach((b: any) => {
+            const wid = b.workOrderId;
+            if (!wid) return;
+            (billMap[wid] ||= []).push({ status: b.status, amount: b.amount });
+          });
+          setWoBillsMap(billMap);
+        }),
+    ];
+    Promise.allSettled(calls).finally(() => setLoadingData(false));
   }, []);
 
   // ── Derived ──────────────────────────────────────────────────
