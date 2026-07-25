@@ -1,15 +1,16 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
-  Button, Spin, Empty, message, Modal, Input,
+  Button, Spin, Empty, message,
 } from "antd";
 import { ArrowLeftOutlined, TrophyFilled } from "@ant-design/icons";
 import dayjs from "dayjs";
 import apiClient from "../../services/apiClient";
 import { useAuth } from "../../context/AuthContext";
 import BillDetailModal, { type BillDetailRequest } from "../../components/BillDetailModal";
-import WorkflowInstanceStepper from "../../components/WorkflowInstanceStepper";
-import type { WorkflowInstance } from "../../types/Workflow";
+import WorkOrderApprovalWorkflow, {
+  type ActorRef, type ApprovalStatus, type ApprovalHistoryEntry,
+} from "../../components/WorkOrderApprovalWorkflow";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface ProgressEntry { _id: string; date: string; qtyAdded: number; remarks?: string; }
@@ -29,6 +30,13 @@ interface WODetail {
   cancelReason?: string; cancelledAt?: string;
   isLocked?: boolean;
   scopeItems: ScopeItem[];
+  // 4-level approval workflow
+  approvalStatus?: ApprovalStatus;
+  makerBy?: ActorRef; makerAt?: string;
+  checkerBy?: ActorRef; checkerAt?: string; checkerRemarks?: string;
+  approverBy?: ActorRef; approverAt?: string; approverRemarks?: string;
+  finalApprovedBy?: ActorRef; finalApprovedAt?: string; finalRemarks?: string;
+  approvalHistory?: ApprovalHistoryEntry[];
 }
 
 interface BillItem { description: string; unit: string; billedQty: number; rate?: number; amount?: number; }
@@ -57,13 +65,13 @@ const netPayable = (b: NonNullable<BillRequestStage["billId"]>) =>
 // Same "Hold — <stage>" convention used across Bills/Approvals/Ledger so a bill's
 // status reads the same way everywhere in the system.
 const RB_STATUS_CFG: Record<string, { label: string; color: string }> = {
-  draft:              { label: "Draft",                    color: "#6B7280" },
-  submitted:          { label: "Hold — AGM Approved",       color: "#2563eb" },
-  verified:           { label: "Hold — GM Approved",        color: "#2563eb" },
-  approved:           { label: "Hold — Accounts Verified",  color: "#d97706" },
-  "payment-initiated":{ label: "Hold — Payment Initiated",  color: "#d97706" },
-  rejected:           { label: "Rejected",                  color: "#dc2626" },
-  paid:               { label: "Paid",                      color: "#16a34a" },
+  draft:              { label: "Awaiting Maker",            color: "#6B7280" },
+  submitted:          { label: "Awaiting Checker",           color: "#2563eb" },
+  verified:           { label: "Awaiting Checker (legacy)",  color: "#2563eb" },
+  approved:           { label: "Awaiting Approver",          color: "#d97706" },
+  "payment-initiated":{ label: "Payment Initiated — Hold",   color: "#d97706" },
+  rejected:           { label: "Rejected",                   color: "#dc2626" },
+  paid:               { label: "Paid",                       color: "#16a34a" },
 };
 
 // ── Stage Lifecycle Stepper ───────────────────────────────────────────────────
@@ -79,7 +87,7 @@ const STEP_COLORS: Record<StepStatus, { ring: string; bg: string; text: string }
 function StageStepper({ stage }: { stage: BillRequestStage }) {
   const billStatus = stage.billId?.status ?? "";
   const billExists = !!stage.billId;
-  const billPaid   = ["verified", "approved", "paid"].includes(billStatus);
+  const billPaid   = ["verified", "approved", "payment-initiated", "paid"].includes(billStatus);
 
   const steps: { label: string; sub: string; status: StepStatus }[] = [
     {
@@ -176,12 +184,7 @@ export default function WorkOrderDashboard() {
   const [wo,      setWO]      = useState<WODetail | null>(null);
   const [stages,  setStages]  = useState<BillRequestStage[]>([]);
   const [loading, setLoading] = useState(true);
-  const [saving,  setSaving]  = useState(false);
-  const [slaInstance, setSlaInstance] = useState<WorkflowInstance | null>(null);
 
-  const [milestoneTarget, setMilestoneTarget] = useState<string | null>(null);
-  const [paymentUTR,      setPaymentUTR]      = useState("");
-  const [utrModal,        setUTRModal]        = useState(false);
   const [activeTab,       setActiveTab]       = useState<"items" | "milestones" | "bills" | "progress">("items");
   const [viewBill,        setViewBill]        = useState<BillDetailRequest | null>(null);
 
@@ -199,31 +202,9 @@ export default function WorkOrderDashboard() {
     } finally {
       setLoading(false);
     }
-    apiClient.get("/workflows/instances", { params: { entityType: "WorkOrder", entityId: id } })
-      .then(res => setSlaInstance(res.data.instances?.[0] ?? null))
-      .catch(() => {});
   };
 
   useEffect(() => { load(); }, [id]);
-
-  const handleMilestone = async () => {
-    if (!milestoneTarget) return;
-    setSaving(true);
-    try {
-      const res = await apiClient.put(`/bill-requests/${milestoneTarget}/milestone`, {
-        ...(paymentUTR ? { paymentUTR } : {}),
-      });
-      message.success(res.data?.message || "Milestone marked!");
-      setUTRModal(false);
-      setMilestoneTarget(null);
-      setPaymentUTR("");
-      await load();
-    } catch (e: any) {
-      message.error(e?.response?.data?.message || "Failed to mark milestone");
-    } finally {
-      setSaving(false);
-    }
-  };
 
   if (loading) return <div style={{ display: "flex", justifyContent: "center", padding: 80 }}><Spin size="large" /></div>;
   if (!wo) return <Empty description="Work order not found." style={{ padding: 80 }} />;
@@ -292,6 +273,11 @@ export default function WorkOrderDashboard() {
         )}
       </div>
 
+      {/* Live Workflow Screen — always-visible approval status, timeline & inline actions */}
+      <div style={{ marginBottom: 24 }}>
+        <WorkOrderApprovalWorkflow workOrder={wo} onUpdated={setWO} />
+      </div>
+
       {/* Stats Cards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 24 }}>
         {/* Contract Value card — shows base + GST-inclusive */}
@@ -321,16 +307,6 @@ export default function WorkOrderDashboard() {
           </div>
         ))}
       </div>
-
-      {/* SLA Workflow */}
-      {slaInstance && (
-        <WorkflowInstanceStepper
-          instance={slaInstance}
-          userRole={user?.role}
-          userId={user?.id}
-          onChanged={load}
-        />
-      )}
 
       {/* Tab switcher */}
       <div style={{ display: "flex", gap: 4, background: "#F3F4F6", padding: 4, borderRadius: 12, marginBottom: 20, flexWrap: "wrap" }}>
@@ -603,15 +579,14 @@ export default function WorkOrderDashboard() {
                     <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 8 }}>Remarks: {stage.remarks}</div>
                   )}
 
-                  {/* Actions */}
+                  {/* Payment release now happens entirely from the Accounts Payment page. */}
                   {canManage && stage.status === "approved" && !stage.milestoneAchieved && (
                     <Button
-                      size="small" type="primary"
+                      size="small"
                       icon={<TrophyFilled />}
-                      style={{ background: "#FF7A00", borderColor: "#FF7A00" }}
-                      onClick={() => { setMilestoneTarget(stage._id); setPaymentUTR(""); setUTRModal(true); }}
+                      onClick={() => navigate("/accounts-payment")}
                     >
-                      Release Payment — Mark Milestone
+                      Manage in Accounts Payment →
                     </Button>
                   )}
                 </div>
@@ -659,31 +634,6 @@ export default function WorkOrderDashboard() {
       )}
       </>
       )}
-
-      {/* Release Payment Modal */}
-      <Modal
-        open={utrModal}
-        onCancel={() => { setUTRModal(false); setMilestoneTarget(null); setPaymentUTR(""); }}
-        title="Release Payment — Mark Milestone"
-        onOk={handleMilestone}
-        okText="Confirm Payment Released"
-        okButtonProps={{ loading: saving, style: { background: "#FF7A00", borderColor: "#FF7A00" } }}
-        destroyOnClose
-      >
-        <div style={{ marginTop: 12 }}>
-          <div style={{ padding: 12, background: "#FFF4E8", border: "1px solid #FED7AA", borderRadius: 8, marginBottom: 16, fontSize: 13, color: "#92400e" }}>
-            Confirming this will mark the stage as <strong>Milestone Achieved</strong> and update the bill status to <strong>Paid</strong>.
-          </div>
-          <div style={{ fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 6 }}>
-            Payment UTR / Reference (optional)
-          </div>
-          <Input
-            placeholder="e.g. UTR123456789"
-            value={paymentUTR}
-            onChange={e => setPaymentUTR(e.target.value)}
-          />
-        </div>
-      </Modal>
 
       <BillDetailModal billRequest={viewBill} open={!!viewBill} onClose={() => setViewBill(null)} />
     </div>

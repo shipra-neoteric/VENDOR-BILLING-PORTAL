@@ -138,12 +138,48 @@ const workOrderSchema = new mongoose.Schema(
     cancelledAt:  { type: Date },
     // Once locked, rates/scope/milestones/contract value can no longer be edited
     // (updateWorkOrder rejects the request) — used once a deal's final rates are
-    // decided so no one can quietly renegotiate the terms afterwards.
+    // decided so no one can quietly renegotiate the terms afterwards. Set manually
+    // by Owner via lock/unlock, and also automatically the moment finalApprove
+    // completes the 4-level approval chain below.
     isLocked:   { type: Boolean, default: false },
     lockedBy:   { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     lockedAt:   { type: Date },
     assignedDRI: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+
+    // ── 4-level approval workflow (maker → checker → approver → final) ──
+    // Existing work orders predating this feature default to 'approved' (grand-
+    // fathered — see the one-off migration script) so ongoing progress/billing on
+    // them is never disrupted; only work orders created from here on start at
+    // 'draft' and must actually travel through the chain.
+    approvalStatus: {
+      type: String,
+      enum: ['draft', 'pending-checker', 'pending-approver', 'pending-final', 'approved', 'sent-back'],
+      default: 'approved',
+    },
+    makerBy:          { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    makerAt:          { type: Date },
+    checkerBy:        { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    checkerAt:        { type: Date },
+    checkerRemarks:   { type: String, default: '' },
+    approverBy:       { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    approverAt:       { type: Date },
+    approverRemarks:  { type: String, default: '' },
+    finalApprovedBy:  { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    finalApprovedAt:  { type: Date },
+    finalRemarks:     { type: String, default: '' },
+    // Append-only — every submit/approve/send-back event, oldest first. This is
+    // what the Live Workflow Screen's timeline renders directly, so repeated
+    // send-back → resubmit cycles are never lost the way a single "last action"
+    // field would lose them.
+    approvalHistory: [{
+      stage:   { type: String, required: true }, // 'maker' | 'checker' | 'approver' | 'final'
+      action:  { type: String, required: true }, // 'submitted' | 'approved' | 'sent-back'
+      by:      { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      at:      { type: Date, default: Date.now },
+      remarks: { type: String, default: '' },
+      _id: false,
+    }],
   },
   { timestamps: true }
 );

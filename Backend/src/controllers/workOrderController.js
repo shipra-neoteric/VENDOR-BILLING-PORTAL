@@ -147,6 +147,10 @@ exports.createWorkOrder = asyncHandler(async (req, res) => {
     preparedByName:    req.user.name,
     preparedByContact: req.user.email,
     createdBy:   req.user._id,
+    // Every newly-created WO must travel the 4-level approval chain — existing
+    // WOs predating this feature default to 'approved' at the schema level
+    // (grandfathered), so only new documents ever start here.
+    approvalStatus: 'draft',
   });
 
   emitEvent('WORK_ORDER_CREATED', {
@@ -180,10 +184,28 @@ exports.updateWorkOrder = asyncHandler(async (req, res) => {
   const before = await WorkOrder.findById(req.params.id).lean();
   if (!before) return notFound(res, 'Work order not found');
   if (before.isLocked) return badRequest(res, 'This work order is locked and cannot be edited. Unlock it first.');
+  if (!['draft', 'sent-back', 'approved'].includes(before.approvalStatus)) {
+    return badRequest(res, `This work order is awaiting review (${before.approvalStatus}) and cannot be edited until it's approved or sent back.`);
+  }
+
+  // Editing a work order that had already cleared the full approval chain
+  // (only possible once Owner has unlocked it) must send it back through the
+  // chain from scratch — otherwise newly-added/changed scope items would sit
+  // on a WO still flagged "Approved · Locked · Ready for Work Progress" without
+  // anyone ever actually reviewing what changed.
+  const reopening = before.approvalStatus === 'approved';
+  if (reopening) updateData.approvalStatus = 'draft';
+
+  const mongoUpdate = reopening
+    ? { $set: updateData, $push: { approvalHistory: {
+        stage: 'maker', action: 'reopened', by: req.user._id,
+        remarks: 'Work order edited after approval — sent back through the full approval chain.',
+      } } }
+    : { $set: updateData };
 
   const workOrder = await WorkOrder.findByIdAndUpdate(
     req.params.id,
-    { $set: updateData },
+    mongoUpdate,
     { new: true, runValidators: true }
   );
   if (!workOrder) return notFound(res, 'Work order not found');
@@ -226,7 +248,170 @@ exports.updateWorkOrder = asyncHandler(async (req, res) => {
     }
   }
 
-  success(res, { workOrder }, 'Work order updated successfully');
+  if (reopening) {
+    await logAudit({
+      action: 'UPDATE', module: 'work-orders', user: req.user,
+      description: `Reopened work order ${workOrder.workOrderNo} for editing — sent back through the full approval chain`,
+      entityType: 'WorkOrder', entityId: workOrder._id, entityLabel: workOrder.workOrderNo,
+      changes: { approvalStatus: { from: 'approved', to: 'draft' } },
+    });
+  }
+
+  success(res, { workOrder }, reopening
+    ? 'Work order updated — approval chain reset, must be resubmitted for review'
+    : 'Work order updated successfully');
+});
+
+// ── 4-level approval workflow ────────────────────────────────────────────
+// Stage 1 — Maker submits a draft (or a work order sent back to them) for the
+// checker to review. "Send Back" always returns here regardless of which
+// later stage rejected it, so this is also the re-submit entry point.
+exports.submitWorkOrder = asyncHandler(async (req, res) => {
+  const workOrder = await WorkOrder.findById(req.params.id);
+  if (!workOrder) return notFound(res, 'Work order not found');
+  if (!['draft', 'sent-back'].includes(workOrder.approvalStatus)) {
+    return badRequest(res, `Cannot submit a work order with approval status '${workOrder.approvalStatus}'`);
+  }
+  workOrder.approvalStatus = 'pending-checker';
+  workOrder.makerBy = req.user._id;
+  workOrder.makerAt = new Date();
+  workOrder.approvalHistory.push({ stage: 'maker', action: 'submitted', by: req.user._id, remarks: req.body.remarks || '' });
+  await workOrder.save();
+
+  await logAudit({
+    action: 'UPDATE', module: 'work-orders', user: req.user,
+    description: `Submitted work order ${workOrder.workOrderNo} for checker review`,
+    entityType: 'WorkOrder', entityId: workOrder._id, entityLabel: workOrder.workOrderNo,
+  });
+
+  emitEvent('WORK_ORDER_SUBMITTED', {
+    projectId: workOrder.projectId, workOrderId: workOrder._id, workOrderNo: workOrder.workOrderNo,
+    vendorCode: workOrder.vendorCode, vendorName: workOrder.vendorName, user: req.user,
+  });
+
+  success(res, { workOrder }, 'Submitted — awaiting checker review');
+});
+
+// Stage 2 — Checker verifies the full work order (scope, BOQ, rates, contractor,
+// documents) matches what was agreed, then approves it forward to the approver.
+exports.checkerApprove = asyncHandler(async (req, res) => {
+  const workOrder = await WorkOrder.findById(req.params.id);
+  if (!workOrder) return notFound(res, 'Work order not found');
+  if (workOrder.approvalStatus !== 'pending-checker') {
+    return badRequest(res, `Cannot check a work order with approval status '${workOrder.approvalStatus}'`);
+  }
+  workOrder.approvalStatus = 'pending-approver';
+  workOrder.checkerBy = req.user._id;
+  workOrder.checkerAt = new Date();
+  workOrder.checkerRemarks = req.body.remarks || '';
+  workOrder.approvalHistory.push({ stage: 'checker', action: 'approved', by: req.user._id, remarks: workOrder.checkerRemarks });
+  await workOrder.save();
+
+  await logAudit({
+    action: 'APPROVE', module: 'work-orders', user: req.user,
+    description: `Checker verified & approved work order ${workOrder.workOrderNo}`,
+    entityType: 'WorkOrder', entityId: workOrder._id, entityLabel: workOrder.workOrderNo,
+  });
+
+  emitEvent('WORK_ORDER_CHECKER_APPROVED', {
+    projectId: workOrder.projectId, workOrderId: workOrder._id, workOrderNo: workOrder.workOrderNo,
+    vendorCode: workOrder.vendorCode, vendorName: workOrder.vendorName, user: req.user,
+  });
+
+  success(res, { workOrder }, 'Verified & approved — forwarded to approver');
+});
+
+// Stage 3 — Approver reviews the full document plus the checker's remarks, then
+// approves it forward to the final (CEO/Owner) sign-off.
+exports.approverApprove = asyncHandler(async (req, res) => {
+  const workOrder = await WorkOrder.findById(req.params.id);
+  if (!workOrder) return notFound(res, 'Work order not found');
+  if (workOrder.approvalStatus !== 'pending-approver') {
+    return badRequest(res, `Cannot approve a work order with approval status '${workOrder.approvalStatus}'`);
+  }
+  workOrder.approvalStatus = 'pending-final';
+  workOrder.approverBy = req.user._id;
+  workOrder.approverAt = new Date();
+  workOrder.approverRemarks = req.body.remarks || '';
+  workOrder.approvalHistory.push({ stage: 'approver', action: 'approved', by: req.user._id, remarks: workOrder.approverRemarks });
+  await workOrder.save();
+
+  await logAudit({
+    action: 'APPROVE', module: 'work-orders', user: req.user,
+    description: `Approver verified & approved work order ${workOrder.workOrderNo}`,
+    entityType: 'WorkOrder', entityId: workOrder._id, entityLabel: workOrder.workOrderNo,
+  });
+
+  emitEvent('WORK_ORDER_APPROVER_APPROVED', {
+    projectId: workOrder.projectId, workOrderId: workOrder._id, workOrderNo: workOrder.workOrderNo,
+    vendorCode: workOrder.vendorCode, vendorName: workOrder.vendorName, user: req.user,
+  });
+
+  success(res, { workOrder }, 'Approved — forwarded for final approval');
+});
+
+// Stage 4 — Final (CEO/Owner) approval completes the chain. Also locks the work
+// order via the existing isLocked mechanism — same fields, same owner-only
+// unlock endpoint that already existed before this workflow was built.
+exports.finalApprove = asyncHandler(async (req, res) => {
+  const workOrder = await WorkOrder.findById(req.params.id);
+  if (!workOrder) return notFound(res, 'Work order not found');
+  if (workOrder.approvalStatus !== 'pending-final') {
+    return badRequest(res, `Cannot give final approval to a work order with approval status '${workOrder.approvalStatus}'`);
+  }
+  workOrder.approvalStatus = 'approved';
+  workOrder.finalApprovedBy = req.user._id;
+  workOrder.finalApprovedAt = new Date();
+  workOrder.finalRemarks = req.body.remarks || '';
+  workOrder.approvalHistory.push({ stage: 'final', action: 'approved', by: req.user._id, remarks: workOrder.finalRemarks });
+  workOrder.isLocked = true;
+  workOrder.lockedBy = req.user._id;
+  workOrder.lockedAt = new Date();
+  await workOrder.save();
+
+  await logAudit({
+    action: 'APPROVE', module: 'work-orders', user: req.user,
+    description: `Final approval granted for work order ${workOrder.workOrderNo} — locked, ready for Work Progress`,
+    entityType: 'WorkOrder', entityId: workOrder._id, entityLabel: workOrder.workOrderNo,
+  });
+
+  emitEvent('WORK_ORDER_FINAL_APPROVED', {
+    projectId: workOrder.projectId, workOrderId: workOrder._id, workOrderNo: workOrder.workOrderNo,
+    vendorCode: workOrder.vendorCode, vendorName: workOrder.vendorName, user: req.user,
+  });
+
+  success(res, { workOrder }, 'Final approval granted — work order locked and ready for Work Progress');
+});
+
+// Available at any of the 3 review stages — always returns to the maker (L1),
+// never just "one level back", per how this system's segregation is designed.
+exports.sendBack = asyncHandler(async (req, res) => {
+  const { reason } = req.body;
+  if (!reason || !reason.trim()) return badRequest(res, 'A reason is required to send a work order back');
+
+  const workOrder = await WorkOrder.findById(req.params.id);
+  if (!workOrder) return notFound(res, 'Work order not found');
+  const stageAtRejection = { 'pending-checker': 'checker', 'pending-approver': 'approver', 'pending-final': 'final' }[workOrder.approvalStatus];
+  if (!stageAtRejection) {
+    return badRequest(res, `Cannot send back a work order with approval status '${workOrder.approvalStatus}'`);
+  }
+  workOrder.approvalStatus = 'sent-back';
+  workOrder.approvalHistory.push({ stage: stageAtRejection, action: 'sent-back', by: req.user._id, remarks: reason.trim() });
+  await workOrder.save();
+
+  await logAudit({
+    action: 'REJECT', module: 'work-orders', user: req.user,
+    description: `Sent work order ${workOrder.workOrderNo} back to maker — ${reason.trim()}`,
+    entityType: 'WorkOrder', entityId: workOrder._id, entityLabel: workOrder.workOrderNo,
+  });
+
+  emitEvent('WORK_ORDER_SENT_BACK', {
+    projectId: workOrder.projectId, workOrderId: workOrder._id, workOrderNo: workOrder.workOrderNo,
+    vendorCode: workOrder.vendorCode, vendorName: workOrder.vendorName, user: req.user,
+    metadata: { reason: reason.trim() },
+  });
+
+  success(res, { workOrder }, 'Sent back to maker');
 });
 
 exports.cancelWorkOrder = asyncHandler(async (req, res) => {

@@ -8,7 +8,6 @@ import {
   Select,
   DatePicker,
   Drawer,
-  Descriptions,
   Space,
   message,
   Row,
@@ -19,12 +18,14 @@ import {
   Spin,
   Dropdown,
   Modal,
+  Descriptions,
 } from "antd";
 import type { FormInstance, MenuProps } from "antd";
 import { useNavigate } from "react-router-dom";
 import {
   PlusOutlined,
   EditOutlined,
+  EyeOutlined,
   LinkOutlined,
   DeleteOutlined,
   DownOutlined,
@@ -43,6 +44,7 @@ import type { Dayjs } from "dayjs";
 import PageShell from "../../components/PageShell";
 import apiClient from "../../services/apiClient";
 import { useAuth } from "../../context/AuthContext";
+import type { AuthUser } from "../../context/AuthContext";
 import { useCategories } from "../../hooks/useCategories";
 import { createCategory } from "../../features/categories/api";
 import DateRangeFilter, { inDateRange } from "../../components/DateRangeFilter";
@@ -55,11 +57,13 @@ import type { MilestoneDraft } from "../../components/PaymentMilestonesBuilder";
 import GstSelect from "../../components/GstSelect";
 import DocumentsUpload, { getWorkOrderDocuments } from "../../components/DocumentsUpload";
 import WarrantyTermsBuilder from "../../components/WarrantyTermsBuilder";
+import WorkOrderApprovalWorkflow from "../../components/WorkOrderApprovalWorkflow";
 import type {
   Contractor,
   Project,
   WorkOrder,
   WorkOrderStatus,
+  WorkOrderApprovalStatus,
   ScopeItem,
   ScopeItemStatus,
   PaymentMilestone,
@@ -81,6 +85,130 @@ const STATUS_OPTIONS = [
   { label: "In Progress", value: "in-progress" },
   { label: "Completed",   value: "completed" },
 ];
+
+// A grant for module 'work-orders' with the given action name — Owner always
+// bypasses, matching the identical pattern used on AccountsPayment's hasPerm.
+function hasPerm(user: AuthUser | null, action: string): boolean {
+  if (!user) return false;
+  if (user.role === "owner") return true;
+  return !!user.permissions?.find(p => p.module === "work-orders")?.actions.includes(action);
+}
+
+// ── Approval workflow status pill ─────────────────────────────
+// Existing (pre-workflow) work orders were grandfathered to approvalStatus
+// 'approved' on the backend, so an undefined/missing value here is treated
+// the same way — as fully approved.
+const APPROVAL_STATUS_CFG: Record<WorkOrderApprovalStatus, { label: string; color: string; level?: string }> = {
+  draft:              { label: "Draft",                  color: "#6B7280", level: "L1" },
+  "pending-checker":  { label: "Awaiting Checker",        color: "#0891b2", level: "L2" },
+  "pending-approver": { label: "Awaiting Approver",       color: "#d97706", level: "L3" },
+  "pending-final":    { label: "Awaiting Final Approval", color: "#7c3aed", level: "L4" },
+  approved:           { label: "Approved",                color: "#16a34a" },
+  "sent-back":        { label: "Sent Back",               color: "#dc2626" },
+};
+
+const approvalStatusOf = (wo: WorkOrder): WorkOrderApprovalStatus => wo.approvalStatus || "approved";
+
+// makerBy/checkerBy/approverBy come back as raw ObjectId strings from
+// listWorkOrders/getWorkOrder today (those fields aren't populated there) —
+// only show a name when the backend happens to have populated it as an object.
+function nameOfActor(v?: { _id: string; name: string; email?: string } | string): string | undefined {
+  return v && typeof v === "object" ? v.name : undefined;
+}
+
+// Small muted sub-line under the approval pill: who acted last (which tells
+// you who/what it's now waiting behind), shown only when that name is known.
+function approvalSubline(wo: WorkOrder): string | undefined {
+  const st = approvalStatusOf(wo);
+  if (st === "pending-checker") {
+    const n = nameOfActor(wo.makerBy);
+    return n ? `Submitted by ${n}` : undefined;
+  }
+  if (st === "pending-approver") {
+    const n = nameOfActor(wo.checkerBy);
+    return n ? `Checked by ${n}` : undefined;
+  }
+  if (st === "pending-final") {
+    const n = nameOfActor(wo.approverBy);
+    return n ? `Approved by ${n}` : undefined;
+  }
+  if (st === "sent-back") {
+    const last = [...(wo.approvalHistory || [])].reverse().find(h => h.action === "sent-back");
+    if (!last) return undefined;
+    const n = nameOfActor(last.by);
+    return n ? `By ${n}${last.remarks ? " — " + last.remarks : ""}` : last.remarks;
+  }
+  return undefined;
+}
+
+function ApprovalStatusPill({ wo }: { wo: WorkOrder }) {
+  const st = approvalStatusOf(wo);
+  const cfg = APPROVAL_STATUS_CFG[st];
+  const sub = approvalSubline(wo);
+  return (
+    <div>
+      <Tag
+        style={{
+          background: "#F9FAFB",
+          border: `1px solid ${cfg.color}`,
+          color: cfg.color,
+          fontWeight: 600,
+          fontSize: 11,
+          borderRadius: 6,
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 5,
+        }}
+      >
+        {cfg.level && (
+          <span style={{ background: cfg.color, color: "#fff", borderRadius: 4, padding: "0 4px", fontSize: 9, fontWeight: 700, lineHeight: "14px" }}>
+            {cfg.level}
+          </span>
+        )}
+        {cfg.label}
+      </Tag>
+      {sub && <div style={{ fontSize: 11, color: "#9CA3AF", marginTop: 3 }}>{sub}</div>}
+    </div>
+  );
+}
+
+// ── Pill tab bar ───────────────────────────────────────────────
+// Same visual pattern as AccountsPayment's tab bar (pill buttons, soft green
+// count badge) — kept local here since that component isn't exported.
+interface WOTabDef { key: "all" | "pending"; label: string; count: number; }
+
+function PillTabs({ tabs, active, onChange }: { tabs: WOTabDef[]; active: string; onChange: (k: "all" | "pending") => void }) {
+  return (
+    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
+      {tabs.map(t => {
+        const isActive = t.key === active;
+        return (
+          <button
+            key={t.key}
+            type="button"
+            onClick={() => onChange(t.key)}
+            style={{
+              display: "flex", alignItems: "center", gap: 7,
+              padding: "7px 15px", borderRadius: 20,
+              border: isActive ? "1.5px solid #1a1f2e" : "1px solid transparent",
+              background: isActive ? "var(--nx-white)" : "transparent",
+              fontWeight: isActive ? 700 : 500,
+              color: isActive ? "#1a1f2e" : "#6B7280",
+              fontSize: 13, cursor: "pointer", outline: "none",
+            }}
+          >
+            {t.label}
+            {t.count > 0 && (
+              <span style={{ background: "#DCFCE7", color: "#15803D", borderRadius: 10, padding: "1px 7px", fontSize: 11, fontWeight: 700 }}>
+                {t.count}
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 const SCOPE_STATUS_CFG: Record<ScopeItemStatus, { color: string; bg: string; label: string }> = {
   pending:   { color: "#9ba3b8", bg: "#f5f6f8", label: "Pending" },
@@ -282,6 +410,11 @@ const mergeWithExisting = (
   existing: ScopeItem | undefined
 ): ScopeItem => ({
   id: d.id,
+  // Without this, the backend has no way to tell "same item, edited" from
+  // "brand new item" and mints a fresh _id every time — which silently
+  // orphans any bill/progress record that already references the old one
+  // (rates/quantities on already-billed items would start reading as 0).
+  ...(existing ? { _id: existing.id } : {}),
   description: d.description,
   remarks: d.remarks,
   unit: resolveUnit(d.unit, d.customUnit),
@@ -301,6 +434,7 @@ const mergeWithExisting = (
     const existingSub = existing?.subItems.find(es => es.id === si.id);
     return {
       id: si.id,
+      ...(existingSub ? { _id: existingSub.id } : {}),
       description: si.description,
       remarks: si.remarks || "",
       unit: resolveUnit(si.unit, si.customUnit),
@@ -1465,6 +1599,11 @@ export default function WorkItems() {
   const { user } = useAuth();
   const navigate  = useNavigate();
   const isOwner = user?.role === "owner";
+  const canMaker    = hasPerm(user, "maker");
+  const canChecker  = hasPerm(user, "checker");
+  const canApprover = hasPerm(user, "approver");
+  const canFinal    = hasPerm(user, "ceo-approve");
+  const [activeTab, setActiveTab] = useState<"all" | "pending">("all");
 
   const { categories: apiCategories, lighten, setCategories: setApiCategories } = useCategories();
   const handleCategoryCreated = (cat: CatOption) => setApiCategories(prev => [...prev, cat as any]);
@@ -1503,11 +1642,12 @@ export default function WorkItems() {
   const [projectFilter,       setProjectFilter]       = useState<string>("all");
   const [dateFrom,            setDateFrom]            = useState<Dayjs | null>(null);
   const [dateTo,              setDateTo]              = useState<Dayjs | null>(null);
-  // bills keyed by workOrderId for billing tape in view drawer
-  const [woBillsMap, setWoBillsMap] = useState<Record<string, { amount: number; status: string }[]>>({});
 
+  // Last-clicked work order — feeds both the progress-recording flow below and
+  // the View Drawer.
   const [selectedWOId, setSelectedWOId] = useState<string | null>(null);
   const [drawerOpen,   setDrawerOpen]   = useState(false);
+  const [woBillsMap,   setWoBillsMap]   = useState<Record<string, { status: string; amount: number }[]>>({});
   const [docsRecord,   setDocsRecord]   = useState<WorkOrder | null>(null);
   const [cancelRecord,    setCancelRecord]    = useState<WorkOrder | null>(null);
   const [cancelRemark,    setCancelRemark]    = useState("");
@@ -1563,15 +1703,13 @@ export default function WorkItems() {
         setProjects(pRes.data.projects.map(normalizeId));
         setCompanies(coRes.data.companies ?? []);
         setDriList((driRes as any).data.users ?? []);
-        // Build map: workOrderId → [{amount, status}]
-        const map: Record<string, { amount: number; status: string }[]> = {};
-        for (const b of (billRes.data.bills || [])) {
-          const wid = b.workOrderId?.toString();
-          if (!wid) continue;
-          if (!map[wid]) map[wid] = [];
-          map[wid].push({ amount: b.amount || 0, status: b.status });
-        }
-        setWoBillsMap(map);
+        const billMap: Record<string, { status: string; amount: number }[]> = {};
+        (billRes.data.bills ?? []).forEach((b: any) => {
+          const wid = b.workOrderId;
+          if (!wid) return;
+          (billMap[wid] ||= []).push({ status: b.status, amount: b.amount });
+        });
+        setWoBillsMap(billMap);
       })
       .catch(() => {})
       .finally(() => setLoadingData(false));
@@ -1596,6 +1734,21 @@ export default function WorkItems() {
     const parent = topLevelCats.find(c => c.name === categoryFilter);
     return parent ? allSubCats.filter(c => c.parentId === parent._id) : [];
   }, [categoryFilter, topLevelCats, allSubCats]);
+
+  // Can this user act on wo's current approval stage? (Owner bypasses via hasPerm.)
+  function canActOnWO(wo: WorkOrder): boolean {
+    const st = wo.approvalStatus || "approved";
+    if (st === "draft" || st === "sent-back") return canMaker;
+    if (st === "pending-checker") return canChecker;
+    if (st === "pending-approver") return canApprover;
+    if (st === "pending-final") return canFinal;
+    return false;
+  }
+
+  const pendingApprovals = useMemo(
+    () => workOrders.filter(canActOnWO),
+    [workOrders, canMaker, canChecker, canApprover, canFinal]
+  );
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
@@ -1638,13 +1791,14 @@ export default function WorkItems() {
 
       const matchDate    = inDateRange(wo.issueDate, dateFrom, dateTo);
       const matchProject = projectFilter === "all" || getWorkOrderProjectId(wo.projectId) === projectFilter;
-      return matchSearch && matchStatus && matchCategory && matchProgress && matchDate && matchProject;
+      const matchTab      = activeTab === "all" || canActOnWO(wo);
+      return matchSearch && matchStatus && matchCategory && matchProgress && matchDate && matchProject && matchTab;
     }).sort((a, b) => {
       const numA = parseInt(a.workOrderNo.replace(/\D/g, ""), 10) || 0;
       const numB = parseInt(b.workOrderNo.replace(/\D/g, ""), 10) || 0;
       return numB - numA;
     });
-  }, [workOrders, search, statusFilter, categoryFilter, subCategoryFilter, progressFilter, projectFilter, subCatsOfSelected, dateFrom, dateTo]);
+  }, [workOrders, search, statusFilter, categoryFilter, subCategoryFilter, progressFilter, projectFilter, subCatsOfSelected, dateFrom, dateTo, activeTab, canMaker, canChecker, canApprover, canFinal]);
 
   const nextWONo = useMemo(() => {
     const max = workOrders.reduce((m, wo) => {
@@ -1927,7 +2081,7 @@ export default function WorkItems() {
       width: 120,
       render: (t: string, record: WorkOrder) => (
         <span
-          onClick={() => navigate(`/work-items/${record.id}`)}
+          onClick={e => { e.stopPropagation(); navigate(`/work-items/${record.id}`); }}
           style={{ fontFamily: "monospace", fontWeight: 700, color: "#f37916", cursor: "pointer" }}
         >
           {t}
@@ -2003,28 +2157,29 @@ export default function WorkItems() {
     {
       title: "Status",
       dataIndex: "status",
-      width: 130,
+      width: 170,
       render: (s: WorkOrderStatus, record: WorkOrder) => {
         const delays = countDelays(record);
         return (
           <div>
-            <Tag color={STATUS_CFG[s]?.color}>{STATUS_CFG[s]?.label ?? s}</Tag>
-            {record.isLocked && (
-              <Tooltip title="Rates, scope items, milestones, and contract value are locked">
-                <Tag color="gold" icon={<LockOutlined />} style={{ fontSize: 11, cursor: "default", marginTop: 3 }}>
-                  Locked
-                </Tag>
-              </Tooltip>
-            )}
-            {delays > 0 && (
-              <div style={{ marginTop: 3 }}>
+            <ApprovalStatusPill wo={record} />
+            <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 5 }}>
+              <Tag color={STATUS_CFG[s]?.color} style={{ fontSize: 11 }}>{STATUS_CFG[s]?.label ?? s}</Tag>
+              {record.isLocked && (
+                <Tooltip title="Rates, scope items, milestones, and contract value are locked">
+                  <Tag color="gold" icon={<LockOutlined />} style={{ fontSize: 11, cursor: "default" }}>
+                    Locked
+                  </Tag>
+                </Tooltip>
+              )}
+              {delays > 0 && (
                 <Tooltip title={`${delays} scope item${delays > 1 ? "s" : ""} past their planned end date`}>
                   <Tag color="red" icon={<ExclamationCircleOutlined />} style={{ fontSize: 11, cursor: "default" }}>
                     {delays} overdue
                   </Tag>
                 </Tooltip>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         );
       },
@@ -2087,34 +2242,34 @@ export default function WorkItems() {
           }
         };
         return (
-          <Space size={4}>
-            <Tooltip title="View">
-              <Button
-                type="text"
-                size="small"
-                onClick={() => { ensureFullWorkOrder(record); setSelectedWOId(record.id); setDrawerOpen(true); }}
-                style={{ fontSize: 16 }}
-              >
-                👁️
-              </Button>
-            </Tooltip>
-            <Tooltip title="Download PDF">
-              <Button
-                type="text"
-                size="small"
-                loading={pdfLoading}
-                onClick={() => handleDownloadPDF(record)}
-                style={{ fontSize: 16 }}
-              >
-                📄
-              </Button>
-            </Tooltip>
-            {menuItems.length > 0 && (
-              <Dropdown menu={{ items: menuItems, onClick: onMenuClick }} trigger={["click"]}>
-                <Button type="text" size="small" icon={<MoreOutlined />} />
-              </Dropdown>
-            )}
-          </Space>
+          <div onClick={e => e.stopPropagation()}>
+            <Space size={4}>
+              <Tooltip title="View">
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<EyeOutlined />}
+                  onClick={() => { setSelectedWOId(record.id); setDrawerOpen(true); }}
+                />
+              </Tooltip>
+              <Tooltip title="Download PDF">
+                <Button
+                  type="text"
+                  size="small"
+                  loading={pdfLoading}
+                  onClick={() => handleDownloadPDF(record)}
+                  style={{ fontSize: 16 }}
+                >
+                  📄
+                </Button>
+              </Tooltip>
+              {menuItems.length > 0 && (
+                <Dropdown menu={{ items: menuItems, onClick: onMenuClick }} trigger={["click"]}>
+                  <Button type="text" size="small" icon={<MoreOutlined />} />
+                </Dropdown>
+              )}
+            </Space>
+          </div>
         );
       },
     },
@@ -2155,6 +2310,16 @@ export default function WorkItems() {
         </Button>
       }
     >
+      {/* ── Tabs ────────────────────────────────────────────── */}
+      <PillTabs
+        active={activeTab}
+        onChange={setActiveTab}
+        tabs={[
+          { key: "all",     label: "All Work Orders",    count: 0 },
+          { key: "pending", label: "Pending Approvals",  count: pendingApprovals.length },
+        ]}
+      />
+
       {/* ── Filters ─────────────────────────────────────────── */}
       <div
         style={{
@@ -2307,6 +2472,10 @@ export default function WorkItems() {
             rowKey="id"
             dataSource={filtered}
             columns={columns}
+            onRow={record => ({
+              onClick: () => { setSelectedWOId(record.id); setDrawerOpen(true); },
+              style: { cursor: "pointer" },
+            })}
             pagination={{ pageSize: 10, showSizeChanger: false }}
             scroll={{ x: 1300 }}
             locale={{
@@ -2323,78 +2492,6 @@ export default function WorkItems() {
           />
         </Spin>
       </div>
-
-      {/* ── Create Drawer ────────────────────────────────────── */}
-      <Drawer
-        open={createDrawerOpen}
-        onClose={() => setCreateDrawerOpen(false)}
-        placement="right"
-        width={900}
-        title={
-          <Space>
-            <span style={{ fontSize: 20 }}>📋</span>
-            <div>
-              <div style={{ fontWeight: 700, fontSize: 16 }}>New Work Order</div>
-              <div style={{ fontSize: 12, color: "#6B7280", fontWeight: 400 }}>
-                Select project & vendor, then define the scope of work
-              </div>
-            </div>
-          </Space>
-        }
-        footer={
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-            <Button size="large" onClick={() => { createForm.resetFields(); setCreateScopeItems([]); setCreateMilestones([]); setCreateDiscount(null); setCreateWarranty([]); setCreateDrawerOpen(false); }}>
-              Cancel
-            </Button>
-            <Button
-              size="large"
-              type="primary"
-              loading={saving}
-              onClick={handleCreate}
-              style={{ background: "#FF7A00", borderColor: "#FF7A00" }}
-            >
-              Save Work Order
-            </Button>
-          </div>
-        }
-        destroyOnClose
-      >
-        <Form form={createForm} layout="vertical" initialValues={{ status: "draft" }}>
-          <WOFormFields
-            form={createForm}
-            nextWONo={nextWONo}
-            contractorsList={contractors}
-            projectsList={projects}
-            categoriesList={apiCategories}
-            companiesList={companies}
-            driList={driList}
-            preparedByName={user?.name}
-            preparedByContact={user?.email}
-          />
-        </Form>
-        <div style={{ borderTop: "1px solid #E5E7EB", marginTop: 16, paddingTop: 16 }}>
-          <ScopeItemsBuilder
-            items={createScopeItems}
-            onChange={setCreateScopeItems}
-            allCategories={apiCategories}
-            topCatId={createTopCatId}
-            onCategoryCreated={handleCategoryCreated}
-            gstPercent={createGstPercent}
-          />
-        </div>
-        <div style={{ borderTop: "1px solid #E5E7EB", marginTop: 16, paddingTop: 16 }}>
-          <PaymentMilestonesBuilder
-            items={createMilestones}
-            onChange={setCreateMilestones}
-            contractValueInclGst={calcTotalInclGst(createScopeItems)}
-            discount={createDiscount}
-            onDiscountChange={setCreateDiscount}
-          />
-        </div>
-        <div style={{ borderTop: "1px solid #E5E7EB", marginTop: 16, paddingTop: 16 }}>
-          <WarrantyTermsBuilder items={createWarranty} onChange={setCreateWarranty} />
-        </div>
-      </Drawer>
 
       {/* ── View Drawer ──────────────────────────────────────── */}
       <Drawer
@@ -2418,7 +2515,7 @@ export default function WorkItems() {
             </div>
           </Space>
         }
-        width={780}
+        width={820}
         footer={
           <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
             <div style={{ display: "flex", gap: 8 }}>
@@ -2441,6 +2538,11 @@ export default function WorkItems() {
             </div>
             <div style={{ display: "flex", gap: 8 }}>
               {currentSelectedWO && (
+                <Button onClick={() => { setDrawerOpen(false); navigate(`/work-items/${currentSelectedWO.id}`); }}>
+                  Open Full Page →
+                </Button>
+              )}
+              {currentSelectedWO && (
                 <Button
                   icon={<EditOutlined />}
                   onClick={() => { setDrawerOpen(false); openEdit(currentSelectedWO); }}
@@ -2455,6 +2557,17 @@ export default function WorkItems() {
       >
         {currentSelectedWO && (
           <>
+            {/* ── Live Workflow — the same 4-level approval chain as the full page ── */}
+            <div style={{ marginBottom: 20 }}>
+              <WorkOrderApprovalWorkflow
+                workOrder={{ ...currentSelectedWO, _id: currentSelectedWO.id }}
+                onUpdated={(updated) => {
+                  const normalized = normalizeWO(updated as any);
+                  setWorkOrders(prev => prev.map(w => w.id === currentSelectedWO.id ? normalized : w));
+                }}
+              />
+            </div>
+
             <Descriptions bordered column={2} size="small" style={{ marginBottom: 20 }}>
               <Descriptions.Item label="Work Order No">
                 <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#FF7A00" }}>
@@ -2632,9 +2745,80 @@ export default function WorkItems() {
                 ))}
               </div>
             )}
-
           </>
         )}
+      </Drawer>
+
+      {/* ── Create Drawer ────────────────────────────────────── */}
+      <Drawer
+        open={createDrawerOpen}
+        onClose={() => setCreateDrawerOpen(false)}
+        placement="right"
+        width={900}
+        title={
+          <Space>
+            <span style={{ fontSize: 20 }}>📋</span>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 16 }}>New Work Order</div>
+              <div style={{ fontSize: 12, color: "#6B7280", fontWeight: 400 }}>
+                Select project & vendor, then define the scope of work
+              </div>
+            </div>
+          </Space>
+        }
+        footer={
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+            <Button size="large" onClick={() => { createForm.resetFields(); setCreateScopeItems([]); setCreateMilestones([]); setCreateDiscount(null); setCreateWarranty([]); setCreateDrawerOpen(false); }}>
+              Cancel
+            </Button>
+            <Button
+              size="large"
+              type="primary"
+              loading={saving}
+              onClick={handleCreate}
+              style={{ background: "#FF7A00", borderColor: "#FF7A00" }}
+            >
+              Save Work Order
+            </Button>
+          </div>
+        }
+        destroyOnClose
+      >
+        <Form form={createForm} layout="vertical" initialValues={{ status: "draft" }}>
+          <WOFormFields
+            form={createForm}
+            nextWONo={nextWONo}
+            contractorsList={contractors}
+            projectsList={projects}
+            categoriesList={apiCategories}
+            companiesList={companies}
+            driList={driList}
+            preparedByName={user?.name}
+            preparedByContact={user?.email}
+          />
+        </Form>
+        <div style={{ borderTop: "1px solid #E5E7EB", marginTop: 16, paddingTop: 16 }}>
+          <ScopeItemsBuilder
+            items={createScopeItems}
+            onChange={setCreateScopeItems}
+            allCategories={apiCategories}
+            topCatId={createTopCatId}
+            onCategoryCreated={handleCategoryCreated}
+            gstPercent={createGstPercent}
+          />
+        </div>
+        <div style={{ borderTop: "1px solid #E5E7EB", marginTop: 16, paddingTop: 16 }}>
+          <PaymentMilestonesBuilder
+            items={createMilestones}
+            onChange={setCreateMilestones}
+            contractValueInclGst={calcTotalInclGst(createScopeItems)}
+            discount={createDiscount}
+            onDiscountChange={setCreateDiscount}
+          />
+        </div>
+        <div style={{ borderTop: "1px solid #E5E7EB", marginTop: 16, paddingTop: 16 }}>
+          <WarrantyTermsBuilder items={createWarranty} onChange={setCreateWarranty} />
+        </div>
       </Drawer>
 
       {/* ── Edit Drawer ───────────────────────────────────────── */}

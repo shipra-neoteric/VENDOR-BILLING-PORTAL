@@ -88,6 +88,11 @@ export interface WorkProgressEntry {
 
 export interface ScopeSubItem {
   id: string;
+  // Set only when submitting an edit for an item that already exists in the
+  // database — tells the backend to keep this item's real Mongo _id instead
+  // of minting a new one, which would silently orphan any bill/progress
+  // record that already references it by id.
+  _id?: string;
   description: string;
   remarks?: string;
   unit: string;
@@ -104,6 +109,10 @@ export type ScopeItemStatus = "pending" | "running" | "completed";
 
 export interface ScopeItem {
   id: string;
+  // Same purpose as ScopeSubItem._id — preserves the real Mongo _id across
+  // an edit-and-save round trip so existing bill/progress references don't
+  // silently break.
+  _id?: string;
   description: string;
   remarks?: string;
   unit: string;
@@ -180,6 +189,38 @@ export interface WorkOrder {
   lockedAt?: string;
   createdAt?: string;
   createdBy?: { _id: string; name: string; email?: string } | string;
+  // 4-level approval workflow — existing (pre-workflow) work orders were
+  // grandfathered to 'approved' so they display as fully approved; only WOs
+  // created after the workflow shipped actually travel through the chain.
+  approvalStatus?: WorkOrderApprovalStatus;
+  makerBy?: { _id: string; name: string; email?: string } | string;
+  makerAt?: string;
+  checkerBy?: { _id: string; name: string; email?: string } | string;
+  checkerAt?: string;
+  checkerRemarks?: string;
+  approverBy?: { _id: string; name: string; email?: string } | string;
+  approverAt?: string;
+  approverRemarks?: string;
+  finalApprovedBy?: { _id: string; name: string; email?: string } | string;
+  finalApprovedAt?: string;
+  finalRemarks?: string;
+  approvalHistory?: WorkOrderApprovalHistoryEntry[];
+}
+
+export type WorkOrderApprovalStatus =
+  | "draft"
+  | "pending-checker"
+  | "pending-approver"
+  | "pending-final"
+  | "approved"
+  | "sent-back";
+
+export interface WorkOrderApprovalHistoryEntry {
+  stage: "maker" | "checker" | "approver" | "final";
+  action: "submitted" | "approved" | "sent-back";
+  by?: { _id: string; name: string; email?: string } | string;
+  at?: string;
+  remarks?: string;
 }
 
 export interface Bill {
