@@ -36,6 +36,7 @@ const MODULE_LABELS: Record<string, string> = {
   "work-orders": "Work Orders",
   "bill-requests": "Bill Requests",
   "billing-payments": "Billing & Payments",
+  "accounts-payment": "Accounts Payment",
   "user-management": "Users",
   "advance-payments": "Advance Payments",
 };

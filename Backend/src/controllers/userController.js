@@ -3,7 +3,7 @@ const asyncHandler = require('../utils/asyncHandler');
 const { success, created, notFound, badRequest } = require('../utils/responseFormatter');
 const { logAudit, diffFields } = require('../utils/auditLog');
 
-const ROLE_HIERARCHY = ['owner', 'gm', 'agm', 'accounts', 'site-dri'];
+const ROLE_HIERARCHY = ['owner', 'gm', 'agm', 'accounts', 'process-coordinator', 'site-dri'];
 
 // GET /api/users
 exports.listUsers = asyncHandler(async (req, res) => {

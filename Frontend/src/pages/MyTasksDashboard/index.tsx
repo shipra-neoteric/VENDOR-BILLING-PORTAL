@@ -123,8 +123,8 @@ export default function MyTasksDashboard() {
   });
   const openWO = (id: string) => navigate(`/work-items/${id}`);
 
-  // ── GM: bills at 'submitted', waiting on GM approval ──
-  const gmBills = bills.filter(b => b.status === "submitted");
+  // ── GM: bills at 'submitted'/'verified', waiting on the checker stage ──
+  const gmBills = bills.filter(b => b.status === "submitted" || b.status === "verified");
   const gmBillRows = gmBills.map(b => ({
     key: b._id, label: b.billNo,
     sub: [b.vendorName, b.projectName, b.workOrderNo].filter(Boolean).join(" · "),
@@ -139,9 +139,10 @@ export default function MyTasksDashboard() {
     when: `${daysAgo(r.createdAt)}d pending`,
   }));
 
-  // ── Accounts: three stages of bills ──
-  const acctVerify   = bills.filter(b => b.status === "verified");
-  const acctInitiate = bills.filter(b => b.status === "approved");
+  // ── Accounts: four stages of the Accounts Payment chain ──
+  const acctMaker    = bills.filter(b => b.status === "draft");
+  const acctCheck    = bills.filter(b => b.status === "submitted" || b.status === "verified");
+  const acctApprove  = bills.filter(b => b.status === "approved");
   const acctRelease  = bills.filter(b => b.status === "payment-initiated");
   const toRows = (list: BillRow[]) => list.map(b => ({
     key: b._id, label: b.billNo,
@@ -178,9 +179,9 @@ export default function MyTasksDashboard() {
             onOpen={openWO}
           />
           <QueueSection
-            title="Bills Awaiting Your GM Approval" color="#16a85a"
-            rows={gmBillRows} emptyText="No bills waiting on your approval" buttonLabel="Approve →"
-            onOpen={() => navigate("/approvals")}
+            title="Bills Awaiting Your Check" color="#16a85a"
+            rows={gmBillRows} emptyText="No bills waiting on your check" buttonLabel="Check →"
+            onOpen={() => navigate("/accounts-payment")}
           />
         </>
       )}
@@ -203,19 +204,24 @@ export default function MyTasksDashboard() {
       {role === "accounts" && (
         <>
           <QueueSection
-            title="Bills Awaiting Verification" color="#0d9488"
-            rows={toRows(acctVerify)} emptyText="Nothing pending verification" buttonLabel="Verify →"
-            onOpen={() => navigate("/approvals")}
+            title="Awaiting Maker Confirm" color="#0891b2"
+            rows={toRows(acctMaker)} emptyText="Nothing waiting on the maker step" buttonLabel="Confirm →"
+            onOpen={() => navigate("/accounts-payment")}
           />
           <QueueSection
-            title="Ready to Initiate Payment" color="#3730a3"
-            rows={toRows(acctInitiate)} emptyText="Nothing ready for payment initiation" buttonLabel="Initiate →"
-            onOpen={() => navigate("/approvals")}
+            title="Awaiting Checker" color="#0d9488"
+            rows={toRows(acctCheck)} emptyText="Nothing pending checking" buttonLabel="Check →"
+            onOpen={() => navigate("/accounts-payment")}
           />
           <QueueSection
-            title="Ready to Release Payment" color="#7c3aed"
+            title="Awaiting Approver" color="#3730a3"
+            rows={toRows(acctApprove)} emptyText="Nothing ready for final approval" buttonLabel="Approve →"
+            onOpen={() => navigate("/accounts-payment")}
+          />
+          <QueueSection
+            title="Awaiting Physical Verification / Release" color="#7c3aed"
             rows={toRows(acctRelease)} emptyText="Nothing ready for release" buttonLabel="Release →"
-            onOpen={() => navigate("/bills")}
+            onOpen={() => navigate("/accounts-payment")}
           />
         </>
       )}

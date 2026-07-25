@@ -9,12 +9,12 @@ export function calcKPIs(workOrders: WORow[], bills: BillRow[]) {
     return s + Math.round(base * (1 + gst / 100));
   }, 0);
   const certifiedAmt         = bills.filter(b => b.status === "approved" || b.status === "paid").reduce((s, b) => s + (b.amount ?? 0), 0);
-  const pendingAmt           = bills.filter(b => b.status === "submitted" || b.status === "verified").reduce((s, b) => s + (b.amount ?? 0), 0);
+  const pendingAmt           = bills.filter(b => b.status === "draft" || b.status === "submitted" || b.status === "verified").reduce((s, b) => s + (b.amount ?? 0), 0);
   const paidAmt              = bills.filter(b => b.status === "paid").reduce((s, b) => s + (b.amount ?? 0), 0);
   const actuallyPaid         = bills.filter(b => b.status === "paid").reduce((s, b) => s + (b.paidAmount ?? 0), 0);
   const approvedNotPaid      = bills.filter(b => b.status === "approved").reduce((s, b) => s + (b.amount ?? 0), 0);
   const approvedNotPaidCount = bills.filter(b => b.status === "approved").length;
-  const pendingCount         = bills.filter(b => b.status === "submitted" || b.status === "verified").length;
+  const pendingCount         = bills.filter(b => b.status === "draft" || b.status === "submitted" || b.status === "verified").length;
   const remaining            = Math.max(0, totalContractValueWithGST - certifiedAmt - pendingAmt);
   return { totalContractValue, totalContractValueWithGST, certifiedAmt, pendingAmt, paidAmt, actuallyPaid, approvedNotPaid, approvedNotPaidCount, pendingCount, remaining };
 }
@@ -43,7 +43,7 @@ export function getMonthlyBillingTrend(bills: BillRow[]): { month: string; submi
     const label = d.toLocaleString("default", { month: "short", year: "2-digit" });
     if (!months[key]) months[key] = { month: label, submitted: 0, approved: 0, paid: 0 };
     const amt = b.amount ?? 0;
-    if (b.status === "submitted" || b.status === "verified") months[key].submitted += amt;
+    if (b.status === "draft" || b.status === "submitted" || b.status === "verified") months[key].submitted += amt;
     if (b.status === "approved") months[key].approved += amt;
     if (b.status === "paid")     months[key].paid     += amt;
   }
