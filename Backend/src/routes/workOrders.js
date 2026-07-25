@@ -5,8 +5,8 @@ const {
   listWorkOrders, getWorkOrder, createWorkOrder, updateWorkOrder, deleteWorkOrder, cancelWorkOrder,
   lockWorkOrder, unlockWorkOrder,
   submitWorkOrder, checkerApprove, approverApprove, finalApprove, sendBack,
-  addScopeProgress, editProgressEntry, deleteProgressEntry,
-  addSubItemProgress, editSubItemProgressEntry, deleteSubItemProgressEntry,
+  addScopeProgress, editProgressEntry, deleteProgressEntry, invalidateProgressEntry,
+  addSubItemProgress, editSubItemProgressEntry, deleteSubItemProgressEntry, invalidateSubItemProgressEntry,
   approveScopeItemVariance, approveSubItemVariance,
 } = require('../controllers/workOrderController');
 
@@ -33,9 +33,11 @@ router.patch('/:id/send-back',       authorizeAnyOr('work-orders', ['checker', '
 router.post('/:id/scope-items/:itemId/progress',              addScopeProgress);
 router.patch('/:id/scope-items/:itemId/progress/:progressId', editProgressEntry);
 router.delete('/:id/scope-items/:itemId/progress/:progressId', deleteProgressEntry);
+router.patch('/:id/scope-items/:itemId/progress/:progressId/invalidate', invalidateProgressEntry);
 router.post('/:id/scope-items/:itemId/sub-items/:subItemId/progress',              addSubItemProgress);
 router.patch('/:id/scope-items/:itemId/sub-items/:subItemId/progress/:progressId', editSubItemProgressEntry);
 router.delete('/:id/scope-items/:itemId/sub-items/:subItemId/progress/:progressId', deleteSubItemProgressEntry);
+router.patch('/:id/scope-items/:itemId/sub-items/:subItemId/progress/:progressId/invalidate', invalidateSubItemProgressEntry);
 router.patch('/:id/scope-items/:itemId/approve-variance', authorizeOr('bill-review', 'approve', 'owner', 'gm', 'agm'), approveScopeItemVariance);
 router.patch('/:id/scope-items/:itemId/sub-items/:subItemId/approve-variance', authorizeOr('bill-review', 'approve', 'owner', 'gm', 'agm'), approveSubItemVariance);
 

@@ -9,6 +9,7 @@ const emitEvent    = require('../utils/emitEvent');
 const { advanceInstance, cancelInstance } = require('../utils/slaEngine');
 const { logAudit, diffFields } = require('../utils/auditLog');
 const { hasUnapprovedVariance } = require('../utils/varianceCheck');
+const { recomputeAfterInvalidate } = require('../utils/progressHelpers');
 
 const MODULE = 'accounts-payment';
 
@@ -348,6 +349,21 @@ exports.rejectBill = asyncHandler(async (req, res) => {
           const si = wo.scopeItems.id(li.scopeItemId);
           if (si) {
             si.lastBilledQty = Math.max(0, (si.lastBilledQty || 0) - Number(li.billedQty));
+            // A rejected bill means the progress it was made from was wrong —
+            // auto-invalidate those entries (reason = the rejection reason)
+            // rather than just freeing them, so they stay visible as history
+            // but never count toward progress/billing again. The DRI logs
+            // fresh, correct progress from scratch.
+            const sources = (si.subItems && si.subItems.length > 0) ? si.subItems : [si];
+            for (const src of sources) {
+              for (const entry of src.progressEntries) {
+                if (entry.billedInRequestId && String(entry.billedInRequestId) === String(br._id) && !entry.invalidated?.done) {
+                  entry.invalidated = { done: true, by: req.user._id, at: new Date(), reason: bill.rejectReason };
+                  entry.billedInRequestId = null;
+                }
+              }
+            }
+            recomputeAfterInvalidate(si);
             changed = true;
           }
         }

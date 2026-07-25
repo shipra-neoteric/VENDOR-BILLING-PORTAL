@@ -13,8 +13,21 @@ const progressEntrySchema = new mongoose.Schema(
     // Set once this entry's remarks have been carried into a BillRequest, so a
     // later (possibly partial) billing cycle knows exactly which entries are
     // still "new" — cumulative qty alone can't tell that apart once billing
-    // becomes selective per item.
+    // becomes selective per item. Cleared automatically if that bill is later
+    // rejected, so the entry becomes billable again.
     billedInRequestId: { type: mongoose.Schema.Types.ObjectId, ref: 'BillRequest', default: null },
+    // Who actually logged this entry — there was previously no way to answer
+    // "who entered this" at all.
+    enteredBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    // Set when the entry itself turns out to be wrong (e.g. a bill made from it
+    // was rejected for bad data, not just bad bundling). Never deleted — kept
+    // visible for audit — but excluded from completedQty and future billing.
+    invalidated: {
+      done:   { type: Boolean, default: false },
+      by:     { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      at:     { type: Date },
+      reason: { type: String, default: '' },
+    },
   },
   { _id: true, timestamps: false }
 );

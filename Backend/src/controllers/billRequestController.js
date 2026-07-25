@@ -10,6 +10,7 @@ const { logAudit } = require('../utils/auditLog');
 const { hasUnapprovedVariance } = require('../utils/varianceCheck');
 const { nextCode } = require('../utils/sequence');
 const { nextBillNo } = require('../utils/codeGen');
+const { recomputeAfterInvalidate } = require('../utils/progressHelpers');
 
 // Gathers the DRI's day-to-day notes for whichever progress entries haven't
 // been carried into a bill yet (marks them as consumed on the way out), so
@@ -20,7 +21,7 @@ function collectAndMarkProgressRemarks(si, billRequestId) {
   const notes = [];
   for (const src of sources) {
     for (const entry of src.progressEntries) {
-      if (entry.billedInRequestId) continue;
+      if (entry.billedInRequestId || entry.invalidated?.done) continue;
       if (entry.remarks && entry.remarks.trim()) notes.push(entry.remarks.trim());
       entry.billedInRequestId = billRequestId;
     }
@@ -283,20 +284,38 @@ exports.rejectBillRequest = asyncHandler(async (req, res) => {
   if (!br) return notFound(res, 'Bill request not found');
   if (br.status !== 'pending') return badRequest(res, `Request is already ${br.status}`);
 
-  // Roll back lastBilledQty so DRI can re-bill after fixing their progress
+  const rejectReason = req.body.rejectReason || 'No reason provided';
+
+  // Roll back lastBilledQty so DRI can re-bill after fixing their progress. A
+  // rejected request means the progress it was made from was wrong — auto-
+  // invalidate those entries (reason = the rejection reason) rather than just
+  // freeing them, so they stay visible as history but never count toward
+  // progress/billing again. The DRI logs fresh, correct progress from scratch.
   const wo = await WorkOrder.findById(br.workOrderId);
   if (wo) {
     for (const item of br.items) {
       if (item.scopeItemId) {
         const si = wo.scopeItems.id(item.scopeItemId);
-        if (si) si.lastBilledQty = Math.max(0, (si.lastBilledQty || 0) - item.billedQty);
+        if (si) {
+          si.lastBilledQty = Math.max(0, (si.lastBilledQty || 0) - item.billedQty);
+          const sources = (si.subItems && si.subItems.length > 0) ? si.subItems : [si];
+          for (const src of sources) {
+            for (const entry of src.progressEntries) {
+              if (entry.billedInRequestId && String(entry.billedInRequestId) === String(br._id) && !entry.invalidated?.done) {
+                entry.invalidated = { done: true, by: req.user._id, at: new Date(), reason: rejectReason };
+                entry.billedInRequestId = null;
+              }
+            }
+          }
+          recomputeAfterInvalidate(si);
+        }
       }
     }
     await wo.save();
   }
 
   br.status       = 'rejected';
-  br.rejectReason = req.body.rejectReason || '';
+  br.rejectReason = rejectReason;
   br.processedBy  = req.user._id;
   br.processedAt  = new Date();
   await br.save();

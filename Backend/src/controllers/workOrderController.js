@@ -13,6 +13,7 @@ const { startInstance } = require('../utils/slaEngine');
 const { milestonesExceedContract } = require('../utils/validateMilestones');
 const { documentsExceedLimit } = require('../utils/validateDocuments');
 const { logAudit, diffFields } = require('../utils/auditLog');
+const { sumActiveQty, applyVarianceGate, recomputeParentFromSubItems } = require('../utils/progressHelpers');
 
 // Per-scope-item rate/plannedQty diff, keyed by scope item _id — this is what actually
 // matters for an audit trail: did someone change the rate or planned qty on a line
@@ -29,33 +30,9 @@ function diffScopeItems(before, after) {
   return Object.keys(changes).length ? changes : null;
 }
 
-// When an item has particulars, its own status/completedQty are derived from
-// them rather than tracked directly — called after any particular's progress
-// changes so the parent automatically flips to "completed" once every
-// particular is fully done.
-function recomputeParentFromSubItems(item) {
-  if (!item.subItems || item.subItems.length === 0) return;
-  item.completedQty = item.subItems.reduce((s, si) => s + (si.completedQty || 0), 0);
-  const allCompleted = item.subItems.every(si =>
-    si.plannedQty > 0 ? si.completedQty >= si.plannedQty : si.status === 'completed'
-  );
-  const anyStarted = item.subItems.some(si => (si.completedQty || 0) > 0);
-  item.status = allCompleted ? 'completed' : anyStarted ? 'running' : 'pending';
-}
-
-// Progress is never hard-blocked at plannedQty — AGM/GM see an over-logged item
-// flagged (yellow ≤10% over, red beyond that, computed client-side) and must
-// explicitly sign off before it can be billed. A prior sign-off only gets
-// invalidated if completedQty actually changed since it was approved — not by
-// an unrelated edit (e.g. fixing a remarks/location typo) that nets out to the
-// same quantity.
-function applyVarianceGate(target) {
-  if (target.plannedQty > 0 && target.completedQty > target.plannedQty) {
-    if (target.varianceApproved && target.completedQty !== target.varianceApprovedAtQty) {
-      target.varianceApproved = false;
-    }
-  }
-}
+// recomputeParentFromSubItems / applyVarianceGate / sumActiveQty now live in
+// ../utils/progressHelpers — shared with billController.js/billRequestController.js,
+// which need the same recompute when auto-invalidating entries on bill rejection.
 
 exports.listWorkOrders = asyncHandler(async (req, res) => {
   const { projectId, vendorCode, status, search, assignedToMe } = req.query;
@@ -92,6 +69,10 @@ exports.getWorkOrder = asyncHandler(async (req, res) => {
   const workOrder = await WorkOrder.findById(req.params.id)
     .populate('projectId', 'code name projectType')
     .populate('createdBy', 'name email')
+    .populate('scopeItems.progressEntries.enteredBy', 'name')
+    .populate('scopeItems.progressEntries.invalidated.by', 'name')
+    .populate('scopeItems.subItems.progressEntries.enteredBy', 'name')
+    .populate('scopeItems.subItems.progressEntries.invalidated.by', 'name')
     .lean();
   if (!workOrder) return notFound(res, 'Work order not found');
   success(res, { workOrder });
@@ -515,8 +496,8 @@ exports.addScopeProgress = asyncHandler(async (req, res) => {
   // Progress is allowed to exceed plannedQty — never hard-blocked here. AGM/GM
   // see the overage flagged (yellow/red) on the Bill Review page and must sign
   // off on it before that item is billable.
-  item.progressEntries.push({ date: date || new Date(), qtyAdded, remarks, tower, floor, flatNo, plotNo, locationNote });
-  item.completedQty = item.progressEntries.reduce((s, e) => s + e.qtyAdded, 0);
+  item.progressEntries.push({ date: date || new Date(), qtyAdded, remarks, tower, floor, flatNo, plotNo, locationNote, enteredBy: req.user._id });
+  item.completedQty = sumActiveQty(item.progressEntries);
   item.status =
     item.plannedQty > 0 && item.completedQty >= item.plannedQty ? 'completed'
     : item.completedQty > 0                                      ? 'running'
@@ -555,6 +536,8 @@ exports.editProgressEntry = asyncHandler(async (req, res) => {
   const entry = item.progressEntries.id(progressId);
   if (!entry) return notFound(res, 'Progress entry not found');
 
+  if (entry.invalidated?.done) return badRequest(res, 'This entry has been invalidated and is read-only.');
+  if (entry.billedInRequestId) return badRequest(res, 'This entry is attached to a bill and cannot be edited — invalidate it instead (once that bill is rejected) or ask admin to reject the bill first.');
   if (!qtyAdded || qtyAdded <= 0) return badRequest(res, 'qtyAdded must be greater than 0');
 
   // Total of all OTHER entries (excluding the one being edited)
@@ -578,7 +561,7 @@ exports.editProgressEntry = asyncHandler(async (req, res) => {
   if (plotNo       !== undefined) entry.plotNo       = plotNo;
   if (locationNote !== undefined) entry.locationNote = locationNote;
 
-  item.completedQty = item.progressEntries.reduce((s, e) => s + e.qtyAdded, 0);
+  item.completedQty = sumActiveQty(item.progressEntries);
   item.status = item.plannedQty > 0 && item.completedQty >= item.plannedQty ? 'completed'
     : item.completedQty > 0 ? 'running' : 'pending';
   applyVarianceGate(item);
@@ -599,6 +582,9 @@ exports.deleteProgressEntry = asyncHandler(async (req, res) => {
   const entry = item.progressEntries.id(progressId);
   if (!entry) return notFound(res, 'Progress entry not found');
 
+  if (entry.invalidated?.done) return badRequest(res, 'This entry has been invalidated and is read-only.');
+  if (entry.billedInRequestId) return badRequest(res, 'This entry is attached to a bill and cannot be deleted — invalidate it instead (once that bill is rejected) or ask admin to reject the bill first.');
+
   // Prevent deleting an entry if doing so would reduce completedQty below lastBilledQty
   const newCompletedQty = item.progressEntries
     .filter(e => String(e._id) !== String(progressId))
@@ -609,13 +595,49 @@ exports.deleteProgressEntry = asyncHandler(async (req, res) => {
   }
 
   item.progressEntries.pull(progressId);
-  item.completedQty = item.progressEntries.reduce((s, e) => s + e.qtyAdded, 0);
+  item.completedQty = sumActiveQty(item.progressEntries);
   item.status = item.plannedQty > 0 && item.completedQty >= item.plannedQty ? 'completed'
     : item.completedQty > 0 ? 'running' : 'pending';
   applyVarianceGate(item);
 
   await workOrder.save();
   success(res, { workOrder }, 'Progress entry deleted');
+});
+
+// Marks a progress entry as wrong data (kept visible for audit, but excluded
+// from completedQty and future billing) — the recourse when a bill made from
+// it gets rejected for bad data (not just bad bundling), since the entry
+// can't simply be edited/deleted once a bill has touched it.
+exports.invalidateProgressEntry = asyncHandler(async (req, res) => {
+  const { id, itemId, progressId } = req.params;
+  const { reason } = req.body;
+  if (!reason || !reason.trim()) return badRequest(res, 'A reason is required to invalidate a progress entry');
+
+  const workOrder = await WorkOrder.findById(id);
+  if (!workOrder) return notFound(res, 'Work order not found');
+  const item = workOrder.scopeItems.id(itemId);
+  if (!item) return notFound(res, 'Scope item not found');
+  const entry = item.progressEntries.id(progressId);
+  if (!entry) return notFound(res, 'Progress entry not found');
+  if (entry.invalidated?.done) return badRequest(res, 'This entry is already invalidated');
+
+  entry.invalidated = { done: true, by: req.user._id, at: new Date(), reason: reason.trim() };
+  entry.billedInRequestId = null;
+
+  item.completedQty = sumActiveQty(item.progressEntries);
+  item.status = item.plannedQty > 0 && item.completedQty >= item.plannedQty ? 'completed'
+    : item.completedQty > 0 ? 'running' : 'pending';
+  applyVarianceGate(item);
+
+  await workOrder.save();
+
+  await logAudit({
+    action: 'UPDATE', module: 'work-orders', user: req.user,
+    description: `Invalidated a progress entry on "${item.description}" (${workOrder.workOrderNo}) — ${reason.trim()}`,
+    entityType: 'WorkOrder', entityId: workOrder._id, entityLabel: workOrder.workOrderNo,
+  });
+
+  success(res, { workOrder }, 'Progress entry invalidated');
 });
 
 // ── Particular (sub-item) progress — same rules as a scope item's own progress,
@@ -638,8 +660,8 @@ exports.addSubItemProgress = asyncHandler(async (req, res) => {
     subItem.plannedQty = Number(plannedQty);
   }
 
-  subItem.progressEntries.push({ date: date || new Date(), qtyAdded, remarks, tower, floor, flatNo, plotNo, locationNote });
-  subItem.completedQty = subItem.progressEntries.reduce((s, e) => s + e.qtyAdded, 0);
+  subItem.progressEntries.push({ date: date || new Date(), qtyAdded, remarks, tower, floor, flatNo, plotNo, locationNote, enteredBy: req.user._id });
+  subItem.completedQty = sumActiveQty(subItem.progressEntries);
   subItem.status =
     subItem.plannedQty > 0 && subItem.completedQty >= subItem.plannedQty ? 'completed'
     : subItem.completedQty > 0                                            ? 'running'
@@ -681,6 +703,8 @@ exports.editSubItemProgressEntry = asyncHandler(async (req, res) => {
   const entry = subItem.progressEntries.id(progressId);
   if (!entry) return notFound(res, 'Progress entry not found');
 
+  if (entry.invalidated?.done) return badRequest(res, 'This entry has been invalidated and is read-only.');
+  if (entry.billedInRequestId) return badRequest(res, 'This entry is attached to a bill and cannot be edited — invalidate it instead (once that bill is rejected) or ask admin to reject the bill first.');
   if (!qtyAdded || qtyAdded <= 0) return badRequest(res, 'qtyAdded must be greater than 0');
 
   const otherTotal = subItem.progressEntries
@@ -701,7 +725,7 @@ exports.editSubItemProgressEntry = asyncHandler(async (req, res) => {
   if (plotNo       !== undefined) entry.plotNo       = plotNo;
   if (locationNote !== undefined) entry.locationNote = locationNote;
 
-  subItem.completedQty = subItem.progressEntries.reduce((s, e) => s + e.qtyAdded, 0);
+  subItem.completedQty = sumActiveQty(subItem.progressEntries);
   subItem.status = subItem.plannedQty > 0 && subItem.completedQty >= subItem.plannedQty ? 'completed'
     : subItem.completedQty > 0 ? 'running' : 'pending';
   applyVarianceGate(subItem);
@@ -725,6 +749,9 @@ exports.deleteSubItemProgressEntry = asyncHandler(async (req, res) => {
   const entry = subItem.progressEntries.id(progressId);
   if (!entry) return notFound(res, 'Progress entry not found');
 
+  if (entry.invalidated?.done) return badRequest(res, 'This entry has been invalidated and is read-only.');
+  if (entry.billedInRequestId) return badRequest(res, 'This entry is attached to a bill and cannot be deleted — invalidate it instead (once that bill is rejected) or ask admin to reject the bill first.');
+
   const newCompletedQty = subItem.progressEntries
     .filter(e => String(e._id) !== String(progressId))
     .reduce((s, e) => s + e.qtyAdded, 0);
@@ -734,7 +761,7 @@ exports.deleteSubItemProgressEntry = asyncHandler(async (req, res) => {
   }
 
   subItem.progressEntries.pull(progressId);
-  subItem.completedQty = subItem.progressEntries.reduce((s, e) => s + e.qtyAdded, 0);
+  subItem.completedQty = sumActiveQty(subItem.progressEntries);
   subItem.status = subItem.plannedQty > 0 && subItem.completedQty >= subItem.plannedQty ? 'completed'
     : subItem.completedQty > 0 ? 'running' : 'pending';
   applyVarianceGate(subItem);
@@ -742,6 +769,42 @@ exports.deleteSubItemProgressEntry = asyncHandler(async (req, res) => {
   recomputeParentFromSubItems(item);
   await workOrder.save();
   success(res, { workOrder }, 'Progress entry deleted');
+});
+
+// Sub-item equivalent of invalidateProgressEntry — see that function for rationale.
+exports.invalidateSubItemProgressEntry = asyncHandler(async (req, res) => {
+  const { id, itemId, subItemId, progressId } = req.params;
+  const { reason } = req.body;
+  if (!reason || !reason.trim()) return badRequest(res, 'A reason is required to invalidate a progress entry');
+
+  const workOrder = await WorkOrder.findById(id);
+  if (!workOrder) return notFound(res, 'Work order not found');
+  const item = workOrder.scopeItems.id(itemId);
+  if (!item) return notFound(res, 'Scope item not found');
+  const subItem = item.subItems.id(subItemId);
+  if (!subItem) return notFound(res, 'Particular not found');
+  const entry = subItem.progressEntries.id(progressId);
+  if (!entry) return notFound(res, 'Progress entry not found');
+  if (entry.invalidated?.done) return badRequest(res, 'This entry is already invalidated');
+
+  entry.invalidated = { done: true, by: req.user._id, at: new Date(), reason: reason.trim() };
+  entry.billedInRequestId = null;
+
+  subItem.completedQty = sumActiveQty(subItem.progressEntries);
+  subItem.status = subItem.plannedQty > 0 && subItem.completedQty >= subItem.plannedQty ? 'completed'
+    : subItem.completedQty > 0 ? 'running' : 'pending';
+  applyVarianceGate(subItem);
+
+  recomputeParentFromSubItems(item);
+  await workOrder.save();
+
+  await logAudit({
+    action: 'UPDATE', module: 'work-orders', user: req.user,
+    description: `Invalidated a progress entry on "${item.description} — ${subItem.description}" (${workOrder.workOrderNo}) — ${reason.trim()}`,
+    entityType: 'WorkOrder', entityId: workOrder._id, entityLabel: workOrder.workOrderNo,
+  });
+
+  success(res, { workOrder }, 'Progress entry invalidated');
 });
 
 // AGM/GM sign off on a scope item's (or particular's) progress currently

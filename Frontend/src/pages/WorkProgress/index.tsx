@@ -19,6 +19,9 @@ interface WorkOrder { _id: string; workOrderNo: string; vendorName: string; cont
 interface ProgressEntry {
   _id: string; date: string; qtyAdded: number; remarks?: string;
   tower?: string; floor?: string; flatNo?: string; plotNo?: string; locationNote?: string;
+  billedInRequestId?: string | null;
+  enteredBy?: { _id: string; name: string } | string | null;
+  invalidated?: { done: boolean; by?: { _id: string; name: string } | string; at?: string; reason?: string };
 }
 interface SubItemR {
   _id: string; description: string; remarks?: string; unit: string;
@@ -81,6 +84,55 @@ function formatLocation(e: EntryRow, pt: string): string {
   }
   if (e.plotNo) return `Plot ${e.plotNo}`;
   return e.locationNote || "—";
+}
+
+function personName(p?: { _id: string; name: string } | string | null): string {
+  if (!p) return "";
+  return typeof p === "string" ? "" : p.name;
+}
+
+// Renders Edit/Del/Invalidate for one entry: invalidated entries become
+// read-only history (reason shown on hover); entries attached to a bill can
+// only be invalidated (not edited/deleted) until that bill is rejected —
+// invalidating clears the attachment and excludes the entry from progress.
+function EntryActions({
+  e, deleting, onEdit, onDelete, onInvalidate,
+}: {
+  e: EntryRow; deleting: boolean;
+  onEdit: () => void; onDelete: () => void; onInvalidate: () => void;
+}) {
+  if (e.invalidated?.done) {
+    const who = personName(e.invalidated.by);
+    return (
+      <Tooltip title={`Invalidated${who ? ` by ${who}` : ""}${e.invalidated.at ? ` on ${dayjs(e.invalidated.at).format("DD MMM YYYY")}` : ""}${e.invalidated.reason ? ` — ${e.invalidated.reason}` : ""}`}>
+        <span style={{ fontSize: 10, fontWeight: 700, color: "#dc2626", background: "#fef2f2", padding: "2px 8px", borderRadius: 10, border: "1px solid #fecaca", whiteSpace: "nowrap" }}>
+          Invalidated
+        </span>
+      </Tooltip>
+    );
+  }
+  if (e.billedInRequestId) {
+    return (
+      <Button size="small" type="link" style={{ fontSize: 11, padding: "0 4px", color: "#9333ea" }} onClick={onInvalidate}>
+        Invalidate
+      </Button>
+    );
+  }
+  return (
+    <div style={{ display: "flex", gap: 2 }}>
+      <Button size="small" type="link" style={{ fontSize: 11, padding: "0 4px" }} onClick={onEdit}>Edit</Button>
+      <Popconfirm
+        title="Delete entry?"
+        description={e.scopeCompleted - e.qtyAdded >= e.scopeLastBilled ? "This will be deleted permanently." : "Entry is billed and cannot be deleted."}
+        okText={e.scopeCompleted - e.qtyAdded >= e.scopeLastBilled ? "Delete" : undefined}
+        okType="danger" cancelText="Cancel"
+        onConfirm={e.scopeCompleted - e.qtyAdded >= e.scopeLastBilled ? onDelete : undefined}
+        okButtonProps={e.scopeCompleted - e.qtyAdded < e.scopeLastBilled ? { style: { display: "none" } } : {}}
+      >
+        <Button size="small" type="link" danger loading={deleting} style={{ fontSize: 11, padding: "0 4px" }}>Del</Button>
+      </Popconfirm>
+    </div>
+  );
 }
 
 // ── Admin: Construction Progress ──────────────────────────────────────────────
@@ -403,6 +455,13 @@ function DRIDashboard() {
   const [editForm]                = Form.useForm();
   const [deleting,  setDeleting]  = useState<string | null>(null);
 
+  // Invalidate entry modal — for entries a rejected bill was made from
+  const [invalidateModal, setInvalidateModal] = useState(false);
+  const [invalidateEntry, setInvalidateEntry] = useState<EntryRow | null>(null);
+  const [invalidateWOId,  setInvalidateWOId]  = useState<string | null>(null);
+  const [invalidateForm]                      = Form.useForm();
+  const [invalidating,    setInvalidating]    = useState(false);
+
   // View all entries modal
   const [allEntriesWOId, setAllEntriesWOId] = useState<string | null>(null);
 
@@ -564,6 +623,24 @@ function DRIDashboard() {
       await reloadWODetail(woId);
     } catch { }
     finally { setDeleting(null); }
+  };
+
+  const handleInvalidateEntry = async () => {
+    if (!invalidateEntry || !invalidateWOId) return;
+    const vals = await invalidateForm.validateFields();
+    setInvalidating(true);
+    try {
+      await apiClient.patch(
+        `/work-orders/${invalidateWOId}/scope-items/${invalidateEntry.scopeId.split("||")[0]}/progress/${invalidateEntry._id}/invalidate`,
+        { reason: vals.reason }
+      );
+      message.success("Entry invalidated — log correct progress separately");
+      setInvalidateModal(false); invalidateForm.resetFields();
+      await reloadWODetail(invalidateWOId);
+    } catch (e: any) {
+      message.error(e?.response?.data?.message || "Failed to invalidate entry");
+    }
+    finally { setInvalidating(false); }
   };
 
   const progProjectType: "apartment" | "plot" = useMemo(() => {
@@ -942,35 +1019,37 @@ function DRIDashboard() {
                           </div>
                           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                             {entries.map((e, i) => (
-                              <div key={e._id + i} style={{ display: "flex", gap: 12, alignItems: "center", fontSize: 12 }}>
+                              <div key={e._id + i} style={{ display: "flex", gap: 12, alignItems: "center", fontSize: 12, opacity: e.invalidated?.done ? 0.55 : 1 }}>
                                 <span style={{ color: "var(--nx-text-muted)", minWidth: 90, whiteSpace: "nowrap" }}>
                                   {dayjs(e.date).format("DD MMM")}
                                   {dayjs(e.date).format("YYYY-MM-DD") === todayStr && (
                                     <Badge count="Today" style={{ background: "#3b82f6", marginLeft: 4, fontSize: 9, height: 16, lineHeight: "16px" }} />
                                   )}
                                 </span>
-                                <span style={{ fontWeight: 600, color: "var(--nx-text)", flex: 1 }}>{e.description}</span>
+                                <span style={{ fontWeight: 600, color: "var(--nx-text)", flex: 1, textDecoration: e.invalidated?.done ? "line-through" : "none" }}>
+                                  {e.description}
+                                  {personName(e.enteredBy) && (
+                                    <span style={{ fontWeight: 400, color: "var(--nx-text-muted)", fontSize: 11 }}> · {personName(e.enteredBy)}</span>
+                                  )}
+                                </span>
                                 <span style={{ color: "var(--nx-text-2)", minWidth: 80 }}>{formatLocation(e, selProjectType)}</span>
                                 <span style={{ color: "#16a34a", fontWeight: 700, fontFamily: "monospace", minWidth: 60 }}>+{fmtN(e.qtyAdded)} {e.unit}</span>
-                                <div style={{ display: "flex", gap: 2 }}>
-                                  <Button size="small" type="link" style={{ fontSize: 11, padding: "0 4px" }}
-                                    onClick={() => {
-                                      setEditEntry(e);
-                                      editForm.setFieldsValue({ qtyAdded: e.qtyAdded, date: dayjs(e.date), remarks: e.remarks, tower: e.tower, floor: e.floor, flatNo: e.flatNo, plotNo: e.plotNo, locationNote: e.locationNote });
-                                      setProgWOId(detail._id);
-                                      setEditModal(true);
-                                    }}>Edit</Button>
-                                  <Popconfirm
-                                    title="Delete entry?"
-                                    description={e.scopeCompleted - e.qtyAdded >= e.scopeLastBilled ? "This will be deleted permanently." : "Entry is billed and cannot be deleted."}
-                                    okText={e.scopeCompleted - e.qtyAdded >= e.scopeLastBilled ? "Delete" : undefined}
-                                    okType="danger" cancelText="Cancel"
-                                    onConfirm={e.scopeCompleted - e.qtyAdded >= e.scopeLastBilled ? () => handleDeleteEntry(e, detail._id) : undefined}
-                                    okButtonProps={e.scopeCompleted - e.qtyAdded < e.scopeLastBilled ? { style: { display: "none" } } : {}}
-                                  >
-                                    <Button size="small" type="link" danger loading={deleting === e._id} style={{ fontSize: 11, padding: "0 4px" }}>Del</Button>
-                                  </Popconfirm>
-                                </div>
+                                <EntryActions
+                                  e={e} deleting={deleting === e._id}
+                                  onEdit={() => {
+                                    setEditEntry(e);
+                                    editForm.setFieldsValue({ qtyAdded: e.qtyAdded, date: dayjs(e.date), remarks: e.remarks, tower: e.tower, floor: e.floor, flatNo: e.flatNo, plotNo: e.plotNo, locationNote: e.locationNote });
+                                    setProgWOId(detail._id);
+                                    setEditModal(true);
+                                  }}
+                                  onDelete={() => handleDeleteEntry(e, detail._id)}
+                                  onInvalidate={() => {
+                                    setInvalidateEntry(e);
+                                    setInvalidateWOId(detail._id);
+                                    invalidateForm.resetFields();
+                                    setInvalidateModal(true);
+                                  }}
+                                />
                               </div>
                             ))}
                           </div>
@@ -1161,6 +1240,29 @@ function DRIDashboard() {
         </Form>
       </Modal>
 
+      {/* ── Invalidate Entry Modal ─────────────────────────────────────────── */}
+      <Modal
+        open={invalidateModal} onCancel={() => { setInvalidateModal(false); invalidateForm.resetFields(); }}
+        title="Invalidate Progress Entry" onOk={handleInvalidateEntry} okText="Invalidate"
+        okButtonProps={{ loading: invalidating, danger: true }}
+        destroyOnClose
+      >
+        <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, padding: "10px 14px", marginBottom: 14, fontSize: 12, color: "#991b1b" }}>
+          This entry stays visible in history (who logged it, when, why it was invalidated) but no longer
+          counts toward progress or future billing. Log the correct progress as a fresh entry afterwards.
+        </div>
+        {invalidateEntry && (
+          <div style={{ fontSize: 12, color: "var(--nx-text-2)", marginBottom: 14 }}>
+            <strong>{invalidateEntry.description}</strong> · +{fmtN(invalidateEntry.qtyAdded)} {invalidateEntry.unit} · {dayjs(invalidateEntry.date).format("DD MMM YYYY")}
+          </div>
+        )}
+        <Form form={invalidateForm} layout="vertical">
+          <Form.Item label="Reason" name="reason" rules={[{ required: true, message: "Explain why this entry is wrong" }]}>
+            <Input.TextArea rows={3} placeholder="e.g. Measurement was wrong, double-counted, wrong item…" />
+          </Form.Item>
+        </Form>
+      </Modal>
+
       {/* ── View All Entries Modal ───────────────────────────────────────────── */}
       <Modal
         open={!!allEntriesWOId} onCancel={() => setAllEntriesWOId(null)}
@@ -1182,35 +1284,37 @@ function DRIDashboard() {
             return (
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 {allEntriesWO.map((e, i) => (
-                  <div key={e._id + i} style={{ display: "flex", gap: 12, alignItems: "center", fontSize: 12, padding: "8px 0", borderBottom: "1px solid var(--nx-border)" }}>
+                  <div key={e._id + i} style={{ display: "flex", gap: 12, alignItems: "center", fontSize: 12, padding: "8px 0", borderBottom: "1px solid var(--nx-border)", opacity: e.invalidated?.done ? 0.55 : 1 }}>
                     <span style={{ color: "var(--nx-text-muted)", minWidth: 90, whiteSpace: "nowrap" }}>
                       {dayjs(e.date).format("DD MMM")}
                       {dayjs(e.date).format("YYYY-MM-DD") === todayStr && (
                         <Badge count="Today" style={{ background: "#3b82f6", marginLeft: 4, fontSize: 9, height: 16, lineHeight: "16px" }} />
                       )}
                     </span>
-                    <span style={{ fontWeight: 600, color: "var(--nx-text)", flex: 1 }}>{e.description}</span>
+                    <span style={{ fontWeight: 600, color: "var(--nx-text)", flex: 1, textDecoration: e.invalidated?.done ? "line-through" : "none" }}>
+                      {e.description}
+                      {personName(e.enteredBy) && (
+                        <span style={{ fontWeight: 400, color: "var(--nx-text-muted)", fontSize: 11 }}> · {personName(e.enteredBy)}</span>
+                      )}
+                    </span>
                     <span style={{ color: "var(--nx-text-2)", minWidth: 80 }}>{formatLocation(e, selProjectType)}</span>
                     <span style={{ color: "#16a34a", fontWeight: 700, fontFamily: "monospace", minWidth: 60 }}>+{fmtN(e.qtyAdded)} {e.unit}</span>
-                    <div style={{ display: "flex", gap: 2 }}>
-                      <Button size="small" type="link" style={{ fontSize: 11, padding: "0 4px" }}
-                        onClick={() => {
-                          setEditEntry(e);
-                          editForm.setFieldsValue({ qtyAdded: e.qtyAdded, date: dayjs(e.date), remarks: e.remarks, tower: e.tower, floor: e.floor, flatNo: e.flatNo, plotNo: e.plotNo, locationNote: e.locationNote });
-                          setProgWOId(detail._id);
-                          setEditModal(true);
-                        }}>Edit</Button>
-                      <Popconfirm
-                        title="Delete entry?"
-                        description={e.scopeCompleted - e.qtyAdded >= e.scopeLastBilled ? "This will be deleted permanently." : "Entry is billed and cannot be deleted."}
-                        okText={e.scopeCompleted - e.qtyAdded >= e.scopeLastBilled ? "Delete" : undefined}
-                        okType="danger" cancelText="Cancel"
-                        onConfirm={e.scopeCompleted - e.qtyAdded >= e.scopeLastBilled ? () => handleDeleteEntry(e, detail._id) : undefined}
-                        okButtonProps={e.scopeCompleted - e.qtyAdded < e.scopeLastBilled ? { style: { display: "none" } } : {}}
-                      >
-                        <Button size="small" type="link" danger loading={deleting === e._id} style={{ fontSize: 11, padding: "0 4px" }}>Del</Button>
-                      </Popconfirm>
-                    </div>
+                    <EntryActions
+                      e={e} deleting={deleting === e._id}
+                      onEdit={() => {
+                        setEditEntry(e);
+                        editForm.setFieldsValue({ qtyAdded: e.qtyAdded, date: dayjs(e.date), remarks: e.remarks, tower: e.tower, floor: e.floor, flatNo: e.flatNo, plotNo: e.plotNo, locationNote: e.locationNote });
+                        setProgWOId(detail._id);
+                        setEditModal(true);
+                      }}
+                      onDelete={() => handleDeleteEntry(e, detail._id)}
+                      onInvalidate={() => {
+                        setInvalidateEntry(e);
+                        setInvalidateWOId(detail._id);
+                        invalidateForm.resetFields();
+                        setInvalidateModal(true);
+                      }}
+                    />
                   </div>
                 ))}
               </div>
