@@ -9,7 +9,7 @@ import { selectableProjects, getWorkOrderProjectId } from "../../utils/projectOp
 import { vendorLabel } from "../../utils/vendorLabel";
 
 // ── Types ─────────────────────────────────────────────────────
-type BillStatus = "draft" | "submitted" | "verified" | "approved" | "payment-initiated" | "rejected" | "paid";
+type BillStatus = "draft" | "submitted" | "verified" | "approved" | "payment-initiated" | "hold" | "rejected" | "paid";
 
 interface WO {
   _id: string; workOrderNo: string;
@@ -55,6 +55,7 @@ const STATUS_CFG: Record<BillStatus, { color: string; label: string }> = {
   verified:           { color: "blue",     label: "Hold — GM Approved" },
   approved:           { color: "gold",     label: "Hold — Accounts Verified" },
   "payment-initiated":{ color: "gold",     label: "Hold — Payment Initiated" },
+  hold:               { color: "purple",   label: "On Hold" },
   rejected:           { color: "red",      label: "Rejected" },
   paid:               { color: "purple",   label: "Paid" },
 };
@@ -180,7 +181,7 @@ export default function Ledger() {
     for (const b of activeBills) {
       const { gross, net } = calcBill(b);
       totalGross += gross;
-      if (b.status === "approved" || b.status === "payment-initiated" || b.status === "paid") certifiedNet += net;
+      if (b.status === "approved" || b.status === "payment-initiated" || b.status === "hold" || b.status === "paid") certifiedNet += net;
       if (b.status === "submitted" || b.status === "verified") pendingGross += gross;
     }
     const supersededCount = woBills.length - activeBills.length;
@@ -204,7 +205,7 @@ export default function Ledger() {
       const { gst, gross, tds, retention, advance, net } = calcBill(b);
       // Only active bills contribute to the certified running balance
       const isSuperseded = b.isActive === false;
-      const isCert = !isSuperseded && (b.status === "approved" || b.status === "payment-initiated" || b.status === "paid");
+      const isCert = !isSuperseded && (b.status === "approved" || b.status === "payment-initiated" || b.status === "hold" || b.status === "paid");
       if (isCert) { runningBalance -= net; cumCertifiedNet += net; }
       return { b, gst, gross, tds, retention, advance, net, isCert, isSuperseded, balanceAfter: isCert ? runningBalance : null, seq: i + 1 };
     });

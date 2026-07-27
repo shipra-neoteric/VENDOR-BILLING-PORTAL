@@ -30,7 +30,7 @@ exports.getSummary = asyncHandler(async (req, res) => {
     for (const b of bills) {
       const { gross, net } = calcBill(b);
       totalGross += gross;
-      if (b.status === 'approved')                           certifiedNet  += net;
+      if (['approved', 'hold'].includes(b.status))           certifiedNet  += net;
       if (['draft', 'submitted', 'verified'].includes(b.status)) pendingGross  += gross;
     }
 
@@ -69,7 +69,7 @@ exports.getWorkOrderLedger = asyncHandler(async (req, res) => {
 
   const ledgerRows = bills.map((b, i) => {
     const { gst, gross, tds, net } = calcBill(b);
-    const isApproved = b.status === 'approved';
+    const isApproved = ['approved', 'hold'].includes(b.status);
     if (isApproved) {
       runningBalance  -= net;
       cumCertifiedNet += net;

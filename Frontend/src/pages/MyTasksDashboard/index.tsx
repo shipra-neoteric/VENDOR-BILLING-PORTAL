@@ -143,6 +143,7 @@ export default function MyTasksDashboard() {
   const acctMaker    = bills.filter(b => b.status === "draft");
   const acctCheck    = bills.filter(b => b.status === "submitted" || b.status === "verified");
   const acctApprove  = bills.filter(b => b.status === "approved");
+  const acctHold     = bills.filter(b => b.status === "hold");
   const acctRelease  = bills.filter(b => b.status === "payment-initiated");
   const toRows = (list: BillRow[]) => list.map(b => ({
     key: b._id, label: b.billNo,
@@ -216,6 +217,11 @@ export default function MyTasksDashboard() {
           <QueueSection
             title="Awaiting Approver" color="#3730a3"
             rows={toRows(acctApprove)} emptyText="Nothing ready for final approval" buttonLabel="Approve →"
+            onOpen={() => navigate("/accounts-payment")}
+          />
+          <QueueSection
+            title="On Hold — Needs Release" color="#9333ea"
+            rows={toRows(acctHold)} emptyText="Nothing on hold" buttonLabel="Release →"
             onOpen={() => navigate("/accounts-payment")}
           />
           <QueueSection

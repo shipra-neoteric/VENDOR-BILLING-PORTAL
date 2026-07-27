@@ -164,10 +164,15 @@ function ApprovalTimeline({ history, actorLabel }: { history: ApprovalHistoryEnt
 // WorkOrderDashboard's full page and WorkItems' quick View drawer, so the two
 // never drift out of sync with each other.
 export default function WorkOrderApprovalWorkflow<T extends ApprovalWorkOrder>({
-  workOrder, onUpdated,
+  workOrder, onUpdated, readOnly = false,
 }: {
   workOrder: T;
   onUpdated: (updated: T) => void;
+  // Renders the stage banner/stepper/timeline exactly as usual, but omits the
+  // inline action panel entirely — for viewers (e.g. Accounts Payment's WO
+  // quick-view) who should see the work order's approval state without being
+  // able to act on it, regardless of what work-orders permissions they hold.
+  readOnly?: boolean;
 }) {
   const { user } = useAuth();
   const wo = workOrder;
@@ -478,7 +483,7 @@ export default function WorkOrderApprovalWorkflow<T extends ApprovalWorkOrder>({
         <ApprovalTimeline history={wo.approvalHistory || []} actorLabel={actorLabel} />
       </div>
 
-      {renderWorkflowAction()}
+      {!readOnly && renderWorkflowAction()}
     </div>
   );
 }

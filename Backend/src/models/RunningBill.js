@@ -39,6 +39,13 @@ const runningBillSchema = new mongoose.Schema(
     tdsPercent:  { type: Number, default: 1 },
     remarks:     { type: String },
 
+    // L1 maker's confirmation that the bill was actually keyed into Tally —
+    // both required server-side before makerConfirm succeeds.
+    makerChecklist: {
+      tallyEntryDone:       { type: Boolean, default: false },
+      newItemsAddedInTally: { type: Boolean, default: false },
+    },
+
     // ── Bill Relationship Engine ──────────────────────────────
     billType: {
       type: String,
@@ -87,11 +94,17 @@ const runningBillSchema = new mongoose.Schema(
     // draft = awaiting L1 maker confirm · submitted = L1 maker confirmed (or, for
     // legacy bills predating the maker stage, AGM approved) · verified = legacy-only,
     // GM approved (no longer set on new bills) · approved = L2 checker verified
-    // WO/bill match + set hold/advance · payment-initiated = L3 approver entered
-    // TDS, on hold pending physical verification · paid = released.
+    // WO/bill match + set hold/advance/TDS · payment-initiated = L3 approver
+    // signed off, now moving through payment-preparation → physical-verify →
+    // release (all gated by sub-object flags within this one status, same
+    // pattern physicalVerification already used before payment-preparation
+    // existed) · hold = L3 approver paused the payment (see holdBy/At/Reason) —
+    // reachable only from 'approved', returns there via releaseHold · paid =
+    // physically released — the actual payment detail fields are filled in
+    // afterward (see paymentDetails below), not required at this point.
     status: {
       type: String,
-      enum: ['draft', 'submitted', 'verified', 'approved', 'payment-initiated', 'rejected', 'paid'],
+      enum: ['draft', 'submitted', 'verified', 'approved', 'payment-initiated', 'hold', 'rejected', 'paid'],
       default: 'submitted',
     },
     submittedAt: { type: Date },
@@ -116,6 +129,59 @@ const runningBillSchema = new mongoose.Schema(
     },
     rejectedBy:  { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     rejectReason:{ type: String },
+
+    // Set by the Approver's Hold action (only from 'approved') and left
+    // in place — not cleared — by releaseHold, so "was this ever held" stays
+    // visible from the document alone without hydrating approvalHistory.
+    holdBy:         { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    holdAt:         { type: Date },
+    holdReason:     { type: String },
+    holdReleasedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    holdReleasedAt: { type: Date },
+
+    // "Payment Maker" stage — Accounts picks the real payment mode and
+    // confirms a readiness checklist before Physical Verification is allowed.
+    paymentPreparation: {
+      done:        { type: Boolean, default: false },
+      by:          { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      at:          { type: Date },
+      paymentMode: { type: String, enum: ['neft', 'rtgs', 'imps', 'internet_banking', 'upi', 'cheque', 'dd', 'cash', ''] },
+      checklist: {
+        bankDetailsVerified: { type: Boolean, default: false },
+        fundsAvailable:      { type: Boolean, default: false },
+        voucherPrepared:     { type: Boolean, default: false },
+      },
+      remark: { type: String, default: '' },
+    },
+
+    // "Mark as Paid" (releasePayment) only flips status — the actual payment
+    // fields below (paymentUTR/paymentDate/paymentMode/paymentBank/
+    // paymentReleasedBy/paidAmount) are filled in afterward by this stage,
+    // once the paperwork/bank statement catches up with what already
+    // physically happened. Same {done,by,at,remark} completion-marker shape
+    // as physicalVerification/paymentPreparation — no duplicate fields,
+    // submitPaymentDetails just sets the existing flat fields directly.
+    paymentDetails: {
+      done:   { type: Boolean, default: false },
+      by:     { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      at:     { type: Date },
+      remark: { type: String, default: '' },
+    },
+
+    // Append-only record of every stage transition (submit/approve/send-back/
+    // hold/release-hold/payment-prep/physical-verify/release/reconcile) —
+    // mirrors WorkOrder.approvalHistory exactly, kept separate from the
+    // system-wide audit log (logAudit calls already made at every transition)
+    // since this one drives just this drawer's timeline UI.
+    approvalHistory: [{
+      stage:   { type: String, enum: ['maker', 'checker', 'approver', 'hold', 'payment-maker', 'physical-verify', 'release', 'payment-details'], required: true },
+      action:  { type: String, enum: ['submitted', 'approved', 'sent-back', 'held', 'released-hold', 'done'], required: true },
+      by:      { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      at:      { type: Date, default: Date.now },
+      remarks: { type: String, default: '' },
+      _id: false,
+    }],
+
     paymentUTR:              { type: String },
     paymentChequeNo:         { type: String },
     paymentDate:             { type: Date },

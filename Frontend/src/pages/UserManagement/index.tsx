@@ -25,7 +25,7 @@ interface AppUser {
   permissions?: { module: string; actions: string[] }[];
 }
 
-type PermAction = "view" | "create" | "edit" | "delete" | "approve" | "request" | "maker" | "checker" | "approver" | "release" | "reject" | "ceo-approve" | "send-back";
+type PermAction = "view" | "create" | "edit" | "delete" | "approve" | "request" | "maker" | "checker" | "approver" | "payment-maker" | "physical-verify" | "release" | "payment-details" | "reject" | "ceo-approve" | "send-back";
 
 interface ModuleDef {
   id: string;
@@ -45,7 +45,10 @@ const ACTION_CFG: Record<PermAction, { label: string; bg: string }> = {
   maker:    { label: "L1 Maker",    bg: "#0891b2" },
   checker:  { label: "L2 Checker",  bg: "#2563eb" },
   approver: { label: "L3 Approver", bg: "#d97706" },
+  "payment-maker": { label: "Payment Maker", bg: "#0d9488" },
+  "physical-verify": { label: "Physical Verify", bg: "#d97706" },
   release:  { label: "Release",     bg: "#16a34a" },
+  "payment-details": { label: "Payment Details", bg: "#1d4ed8" },
   reject:   { label: "Reject",      bg: "#dc2626" },
   "ceo-approve": { label: "L4 Final Approval", bg: "#7c3aed" },
   "send-back":   { label: "Send Back",         bg: "#dc2626" },
@@ -60,7 +63,7 @@ const MODULE_DEFS: ModuleDef[] = [
   { id: "work-orders",      name: "Work Orders",        icon: "📋", group: "Execution",     actions: ["view","create","edit","delete","maker","checker","approver","ceo-approve","send-back"] },
   { id: "work-progress",    name: "Work Progress",      icon: "📊", group: "Execution",     actions: ["view","create","edit","delete"] },
   { id: "bill-requests",    name: "Bill Requests",      icon: "📨", group: "Billing",       actions: ["view","create","request","approve"] },
-  { id: "accounts-payment", name: "Accounts Payment",   icon: "💰", group: "Billing",       actions: ["view","create","edit","maker","checker","approver","release","reject"] },
+  { id: "accounts-payment", name: "Accounts Payment",   icon: "💰", group: "Billing",       actions: ["view","create","edit","maker","checker","approver","payment-maker","physical-verify","release","payment-details","reject"] },
   { id: "advance-payments", name: "Advance Payments",   icon: "🏦", group: "Billing",       actions: ["view","create","edit","delete"] },
   { id: "bill-review",      name: "Bill Review",        icon: "🧾", group: "Billing",       actions: ["view","approve"] },
   { id: "ledger",           name: "Ledger",             icon: "📒", group: "Billing",       actions: ["view"] },

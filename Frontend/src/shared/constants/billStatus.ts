@@ -4,6 +4,7 @@ export const BILL_STATUS = {
   VERIFIED:           'verified',
   APPROVED:           'approved',
   PAYMENT_INITIATED:  'payment-initiated',
+  HOLD:               'hold',
   PAID:               'paid',
   REJECTED:           'rejected',
 } as const;
@@ -16,6 +17,7 @@ export const BILL_STATUS_COLOR: Record<string, string> = {
   verified:            '#3b82f6',
   approved:            '#2563eb',
   'payment-initiated': '#d97706',
+  hold:                '#9333ea',
   paid:                '#16a34a',
   rejected:            '#ef4444',
 };
@@ -26,6 +28,7 @@ export const BILL_STATUS_LABEL: Record<string, string> = {
   verified:            'Awaiting Checker (legacy)',
   approved:            'Awaiting Approver',
   'payment-initiated': 'Payment Initiated',
+  hold:                'On Hold',
   paid:                'Paid',
   rejected:            'Rejected',
 };

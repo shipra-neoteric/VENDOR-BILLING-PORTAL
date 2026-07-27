@@ -15,6 +15,8 @@ export type BillStatus =
   | "submitted"
   | "verified"
   | "approved"
+  | "payment-initiated"
+  | "hold"
   | "rejected"
   | "paid";
 
@@ -124,6 +126,7 @@ export interface ScopeItem {
   plannedEnd: string;
   status: ScopeItemStatus;
   completedQty: number;
+  lastBilledQty?: number;
   progressEntries: WorkProgressEntry[];
   subItems: ScopeSubItem[];
 }

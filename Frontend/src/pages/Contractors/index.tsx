@@ -4,7 +4,6 @@ import {
   Button,
   Checkbox,
   Col,
-  Descriptions,
   Drawer,
   Form,
   Input,
@@ -31,6 +30,7 @@ import {
 import * as XLSX from "xlsx";
 
 import PageShell from "../../components/PageShell";
+import ContractorDetailView from "../../components/ContractorDetailView";
 import apiClient from "../../services/apiClient";
 import type { Contractor } from "../../types/VendorBilling";
 import { vendorLabel } from "../../utils/vendorLabel";
@@ -58,14 +58,6 @@ const WORK_OPTIONS = [
   "Painting",
   "Masonry",
   "Landscaping",
-];
-
-const DOCUMENT_FIELD_LABELS: { key: string; label: string }[] = [
-  { key: "gstCertificate",  label: "GST Certificate" },
-  { key: "panCard",         label: "PAN Card" },
-  { key: "cancelledCheque", label: "Cancelled Cheque" },
-  { key: "businessCard",    label: "Business Card" },
-  { key: "aadhaarCard",     label: "Aadhaar Card" },
 ];
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
@@ -677,88 +669,7 @@ export default function Contractors() {
           </div>
         }
       >
-        {selected && (
-          <>
-            <SectionHeading>Firm Details</SectionHeading>
-            <Descriptions column={2} size="small">
-              <Descriptions.Item label="Vendor Code" span={2}>
-                <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#FF7A00" }}>
-                  {selected.vendorCode}
-                </span>
-              </Descriptions.Item>
-              <Descriptions.Item label="Company">{vendorLabel(selected.companyName, selected.shortCode)}</Descriptions.Item>
-              <Descriptions.Item label="Owner">{selected.ownerName}</Descriptions.Item>
-              <Descriptions.Item label="Mobile">{selected.mobile}</Descriptions.Item>
-              <Descriptions.Item label="Alt. Mobile">{selected.alternateMobile || "—"}</Descriptions.Item>
-              <Descriptions.Item label="Email" span={2}>{selected.email || "—"}</Descriptions.Item>
-              <Descriptions.Item label="Address" span={2}>{selected.address}</Descriptions.Item>
-            </Descriptions>
-
-            <SectionHeading>Bank Details</SectionHeading>
-            <Descriptions column={2} size="small">
-              <Descriptions.Item label="Account Holder">{selected.accountHolderName}</Descriptions.Item>
-              <Descriptions.Item label="Bank">{selected.bankName}</Descriptions.Item>
-              <Descriptions.Item label="Account No.">{selected.accountNumber}</Descriptions.Item>
-              <Descriptions.Item label="IFSC">{selected.ifscCode}</Descriptions.Item>
-              <Descriptions.Item label="Branch">{selected.branchName}</Descriptions.Item>
-            </Descriptions>
-
-            <SectionHeading>Tax Details</SectionHeading>
-            <Descriptions column={2} size="small">
-              <Descriptions.Item label="GST">{selected.gstNumber || "—"}</Descriptions.Item>
-              <Descriptions.Item label="PAN">{selected.panNumber || "—"}</Descriptions.Item>
-              <Descriptions.Item label="Aadhaar">{selected.aadhaarNumber || "—"}</Descriptions.Item>
-            </Descriptions>
-
-            <SectionHeading>Work Types</SectionHeading>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-              {(selected.workTypes || []).map((t) => (
-                <Tag key={t} color="orange">{t}</Tag>
-              ))}
-            </div>
-
-            {(selected.reference1 || selected.reference2 || selected.averageTurnover) && (
-              <>
-                <SectionHeading>References</SectionHeading>
-                <Descriptions column={1} size="small">
-                  {selected.reference1 && (
-                    <Descriptions.Item label="Reference 1">{selected.reference1}</Descriptions.Item>
-                  )}
-                  {selected.reference2 && (
-                    <Descriptions.Item label="Reference 2">{selected.reference2}</Descriptions.Item>
-                  )}
-                  {selected.averageTurnover && (
-                    <Descriptions.Item label="Avg. Turnover">
-                      ₹{selected.averageTurnover} Lakhs
-                    </Descriptions.Item>
-                  )}
-                </Descriptions>
-              </>
-            )}
-
-            {selected.documents && Object.values(selected.documents).some(d => d?.dataUrl) && (
-              <>
-                <SectionHeading>Documents</SectionHeading>
-                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  {DOCUMENT_FIELD_LABELS.filter(({ key }) => selected.documents?.[key]?.dataUrl).map(({ key, label }) => (
-                    <a
-                      key={key}
-                      href={selected.documents![key]!.dataUrl}
-                      download={selected.documents![key]!.fileName || label}
-                      style={{
-                        display: "flex", alignItems: "center", gap: 8, fontSize: 13,
-                        color: "#FF7A00", textDecoration: "none",
-                      }}
-                    >
-                      📎 {label}
-                      <span style={{ color: "#9CA3AF", fontSize: 12 }}>({selected.documents![key]!.fileName || "download"})</span>
-                    </a>
-                  ))}
-                </div>
-              </>
-            )}
-          </>
-        )}
+        {selected && <ContractorDetailView contractor={selected} />}
       </Drawer>
 
       {/* ── Import Modal (3-step) ──────────────────────────────── */}

@@ -18,7 +18,6 @@ import {
   Spin,
   Dropdown,
   Modal,
-  Descriptions,
 } from "antd";
 import type { FormInstance, MenuProps } from "antd";
 import { useNavigate } from "react-router-dom";
@@ -57,7 +56,7 @@ import type { MilestoneDraft } from "../../components/PaymentMilestonesBuilder";
 import GstSelect from "../../components/GstSelect";
 import DocumentsUpload, { getWorkOrderDocuments } from "../../components/DocumentsUpload";
 import WarrantyTermsBuilder from "../../components/WarrantyTermsBuilder";
-import WorkOrderApprovalWorkflow from "../../components/WorkOrderApprovalWorkflow";
+import WorkOrderDetailView from "../../components/WorkOrderDetailView";
 import type {
   Contractor,
   Project,
@@ -430,6 +429,11 @@ const mergeWithExisting = (
   plannedEnd: d.plannedEnd,
   status: existing?.status || "pending",
   completedQty: existing?.completedQty || 0,
+  // Without this, saving ANY edit to an already-approved work order silently
+  // resets "how much of this item has already been billed" back to zero —
+  // even though nothing about its actual billing changed — which then lets
+  // already-paid progress look unbilled again and get re-requested for billing.
+  lastBilledQty: existing?.lastBilledQty || 0,
   progressEntries: existing?.progressEntries || [],
   // Preserve each particular's own recorded progress by id — otherwise saving
   // an edit (even just changing the rate) would silently wipe out completed
@@ -2560,196 +2564,14 @@ export default function WorkItems() {
         }
       >
         {currentSelectedWO && (
-          <>
-            {/* ── Live Workflow — the same 4-level approval chain as the full page ── */}
-            <div style={{ marginBottom: 20 }}>
-              <WorkOrderApprovalWorkflow
-                workOrder={{ ...currentSelectedWO, _id: currentSelectedWO.id }}
-                onUpdated={(updated) => {
-                  const normalized = normalizeWO(updated as any);
-                  setWorkOrders(prev => prev.map(w => w.id === currentSelectedWO.id ? normalized : w));
-                }}
-              />
-            </div>
-
-            <Descriptions bordered column={2} size="small" style={{ marginBottom: 20 }}>
-              <Descriptions.Item label="Work Order No">
-                <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#FF7A00" }}>
-                  {currentSelectedWO.workOrderNo}
-                </span>
-              </Descriptions.Item>
-              <Descriptions.Item label="Issue Date">
-                {dayjs(currentSelectedWO.issueDate).format("DD MMM YYYY")}
-              </Descriptions.Item>
-              <Descriptions.Item label="Project">{currentSelectedWO.projectName}</Descriptions.Item>
-              {currentSelectedWO.projectLocation && (
-                <Descriptions.Item label="Location">{currentSelectedWO.projectLocation}</Descriptions.Item>
-              )}
-              <Descriptions.Item label="Status">
-                <Tag color={STATUS_CFG[currentSelectedWO.status]?.color}>
-                  {STATUS_CFG[currentSelectedWO.status]?.label}
-                </Tag>
-                {currentSelectedWO.isLocked && (
-                  <Tag color="gold" icon={<LockOutlined />} style={{ marginLeft: 6 }}>Locked</Tag>
-                )}
-              </Descriptions.Item>
-              {currentSelectedWO.isLocked && (
-                <Descriptions.Item label="Locked" span={2}>
-                  <span style={{ color: "#9ba3b8", fontSize: 12 }}>
-                    Rates, scope items, milestones, and contract value cannot be edited until unlocked.
-                    {currentSelectedWO.lockedAt && ` (${dayjs(currentSelectedWO.lockedAt).format("DD MMM YYYY, hh:mm a")})`}
-                  </span>
-                </Descriptions.Item>
-              )}
-              {currentSelectedWO.status === "cancelled" && (
-                <Descriptions.Item label="Cancellation Remark" span={2}>
-                  <span style={{ color: "#cf1322" }}>{currentSelectedWO.cancelReason || "—"}</span>
-                  {currentSelectedWO.cancelledAt && (
-                    <span style={{ color: "#9ba3b8", marginLeft: 8, fontSize: 12 }}>
-                      ({dayjs(currentSelectedWO.cancelledAt).format("DD MMM YYYY, hh:mm a")})
-                    </span>
-                  )}
-                </Descriptions.Item>
-              )}
-              <Descriptions.Item label="Vendor Code">
-                <span style={{ fontFamily: "monospace", background: "#eff4ff", color: "#2563eb", padding: "2px 7px", borderRadius: 4, fontWeight: 600 }}>
-                  {currentSelectedWO.vendorCode}
-                </span>
-              </Descriptions.Item>
-              <Descriptions.Item label="Company">{currentSelectedWO.vendorName}</Descriptions.Item>
-              <Descriptions.Item label="Owner">{currentSelectedWO.ownerName}</Descriptions.Item>
-              <Descriptions.Item label="Mobile">{currentSelectedWO.mobile}</Descriptions.Item>
-              <Descriptions.Item label="Contract Value" span={2}>
-                <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#FF7A00", fontSize: 15 }}>
-                  {fmt(currentSelectedWO.contractValue)}
-                </span>
-              </Descriptions.Item>
-              {getWorkOrderDocuments(currentSelectedWO).length > 0 && (
-                <Descriptions.Item label="Documents" span={2}>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                    {getWorkOrderDocuments(currentSelectedWO).map((d, i) => (
-                      <a key={i} href={d.url} target="_blank" rel="noreferrer" download={d.name} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                        <LinkOutlined /> {d.name}
-                      </a>
-                    ))}
-                  </div>
-                </Descriptions.Item>
-              )}
-            </Descriptions>
-
-            {/* ── Billing Tape ─────────────────────────────── */}
-            {(() => {
-              const bills = woBillsMap[currentSelectedWO.id] ?? [];
-              const contractVal = currentSelectedWO.contractValue ?? 0;
-              const certifiedAmt = bills.filter(b => b.status === "approved" || b.status === "paid").reduce((s, b) => s + b.amount, 0);
-              const pendingAmt = bills.filter(b => b.status === "submitted" || b.status === "verified").reduce((s, b) => s + b.amount, 0);
-              const remaining = Math.max(0, contractVal - certifiedAmt - pendingAmt);
-              const certPct = contractVal > 0 ? (certifiedAmt / contractVal) * 100 : 0;
-              const pendPct = contractVal > 0 ? (pendingAmt / contractVal) * 100 : 0;
-              return (
-                <div style={{ background: "#F9FAFB", border: "1px solid #E5E7EB", borderRadius: 10, padding: "16px 20px", marginBottom: 20 }}>
-                  <div style={{ fontWeight: 600, fontSize: 13, color: "#374151", marginBottom: 12 }}>Billing Summary</div>
-                  <div style={{ display: "flex", height: 12, borderRadius: 6, overflow: "hidden", background: "#E5E7EB", marginBottom: 14 }}>
-                    {certPct > 0 && <div style={{ width: `${certPct}%`, background: "#16a34a" }} title={`Certified: ${fmt(certifiedAmt)}`} />}
-                    {pendPct > 0 && <div style={{ width: `${pendPct}%`, background: "#f59e0b" }} title={`Pending: ${fmt(pendingAmt)}`} />}
-                  </div>
-                  <div style={{ display: "flex", gap: 0, borderTop: "1px solid #E5E7EB", paddingTop: 12 }}>
-                    {[
-                      { label: "Contract Value", value: fmt(contractVal), color: "#374151", dot: "#6B7280" },
-                      { label: "Certified ✓", value: fmt(certifiedAmt), color: "#16a34a", dot: "#16a34a" },
-                      { label: "Pending ⏳", value: fmt(pendingAmt), color: "#d97706", dot: "#f59e0b" },
-                      { label: "Remaining", value: fmt(remaining), color: "#6B7280", dot: "#D1D5DB" },
-                    ].map((s, i) => (
-                      <div key={i} style={{ flex: 1, textAlign: i === 0 ? "left" : "center", borderRight: i < 3 ? "1px solid #E5E7EB" : "none", paddingRight: 12, paddingLeft: i > 0 ? 12 : 0 }}>
-                        <div style={{ fontSize: 11, color: "#9CA3AF", marginBottom: 3, display: "flex", alignItems: "center", gap: 5, justifyContent: i === 0 ? "flex-start" : "center" }}>
-                          <span style={{ width: 8, height: 8, borderRadius: "50%", background: s.dot, display: "inline-block" }} />
-                          {s.label}
-                        </div>
-                        <div style={{ fontWeight: 700, fontFamily: "monospace", fontSize: 13, color: s.color }}>{s.value}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              );
-            })()}
-
-            {/* ── Scope of Work ────────────────────────────── */}
-            <div style={{ background: "var(--nx-white)", border: "1px solid #E5E7EB", borderRadius: 10, overflow: "hidden" }}>
-              <div style={{ padding: "12px 16px", borderBottom: "1px solid #E5E7EB", fontWeight: 600, fontSize: 13, color: "#374151" }}>
-                Scope of Work
-              </div>
-              {currentSelectedWO.scopeItems.length === 0 ? (
-                <div style={{ padding: 24, textAlign: "center", color: "#9CA3AF", fontSize: 13 }}>No scope items defined</div>
-              ) : (
-                <div style={{ overflowX: "auto" }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                    <thead>
-                      <tr style={{ background: "#F9FAFB" }}>
-                        {["Description", "Unit", "Planned Qty", "Rate", "Amount"].map(h => (
-                          <th key={h} style={{ padding: "8px 16px", fontSize: 11, fontWeight: 700, color: "#6B7280", textAlign: "left", textTransform: "uppercase", letterSpacing: "0.05em", borderBottom: "1px solid #E5E7EB", whiteSpace: "nowrap" }}>{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {currentSelectedWO.scopeItems.map((si, i) => (
-                        <tr key={si.id} style={{ borderBottom: "1px solid #F3F4F6", background: i % 2 === 0 ? "#fff" : "#FAFAFA" }}>
-                          <td style={{ padding: "9px 16px", fontSize: 13, fontWeight: 600, color: "#111827" }}>{si.description}</td>
-                          <td style={{ padding: "9px 16px", fontSize: 12, color: "#6B7280" }}>{si.unit}</td>
-                          <td style={{ padding: "9px 16px", fontFamily: "monospace", fontSize: 13, color: "#374151" }}>{si.plannedQty.toLocaleString("en-IN")}</td>
-                          <td style={{ padding: "9px 16px", fontFamily: "monospace", fontSize: 13, color: "#374151" }}>{fmt(si.rate || 0)}</td>
-                          <td style={{ padding: "9px 16px", fontFamily: "monospace", fontSize: 13, fontWeight: 700, color: "#FF7A00" }}>{fmt(si.amount || 0)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-
-            {/* ── Payment Milestones ──────────────────────── */}
-            {(currentSelectedWO.paymentMilestones?.length ?? 0) > 0 && (
-              <div style={{ background: "var(--nx-white)", border: "1px solid #E5E7EB", borderRadius: 10, overflow: "hidden", marginTop: 16 }}>
-                <div style={{ padding: "12px 16px", borderBottom: "1px solid #E5E7EB", fontWeight: 600, fontSize: 13, color: "#374151" }}>
-                  Payment Milestones
-                </div>
-                <div style={{ overflowX: "auto" }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                    <thead>
-                      <tr style={{ background: "#F9FAFB" }}>
-                        {["Type", "Date", "Mode", "Amount", "GST", "Payable"].map(h => (
-                          <th key={h} style={{ padding: "8px 16px", fontSize: 11, fontWeight: 700, color: "#6B7280", textAlign: "left", textTransform: "uppercase", letterSpacing: "0.05em", borderBottom: "1px solid #E5E7EB", whiteSpace: "nowrap" }}>{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {currentSelectedWO.paymentMilestones!.map((m, i) => (
-                        <tr key={m.id} style={{ borderBottom: "1px solid #F3F4F6", background: i % 2 === 0 ? "#fff" : "#FAFAFA" }}>
-                          <td style={{ padding: "9px 16px", fontSize: 13, color: "#111827" }}>{m.type}</td>
-                          <td style={{ padding: "9px 16px", fontSize: 12, color: "#6B7280" }}>{m.date ? dayjs(m.date).format("DD MMM YYYY") : "—"}</td>
-                          <td style={{ padding: "9px 16px", fontSize: 12, color: "#6B7280" }}>{m.mode}</td>
-                          <td style={{ padding: "9px 16px", fontFamily: "monospace", fontSize: 13, color: "#374151" }}>{fmt(m.amount || 0)}</td>
-                          <td style={{ padding: "9px 16px", fontSize: 12, color: "#6B7280" }}>{m.gstPercent}%</td>
-                          <td style={{ padding: "9px 16px", fontFamily: "monospace", fontSize: 13, fontWeight: 700, color: "#FF7A00" }}>{fmt(m.payable || 0)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-
-            {/* ── Warranty Terms ──────────────────────────── */}
-            {(currentSelectedWO.warrantyTerms?.length ?? 0) > 0 && (
-              <div style={{ background: "var(--nx-white)", border: "1px solid #E5E7EB", borderRadius: 10, padding: "12px 16px", marginTop: 16 }}>
-                <div style={{ fontWeight: 600, fontSize: 13, color: "#374151", marginBottom: 8 }}>Special Terms and Conditions</div>
-                {currentSelectedWO.warrantyTerms!.map((t, i) => (
-                  <div key={i} style={{ fontSize: 13, color: "#374151", marginBottom: 4, display: "flex", gap: 6 }}>
-                    <span style={{ color: "#9CA3AF" }}>{i + 1}.</span> {t}
-                  </div>
-                ))}
-              </div>
-            )}
-          </>
+          <WorkOrderDetailView
+            workOrder={currentSelectedWO}
+            bills={woBillsMap[currentSelectedWO.id] ?? []}
+            onUpdated={(updated) => {
+              const normalized = normalizeWO(updated as any);
+              setWorkOrders(prev => prev.map(w => w.id === currentSelectedWO.id ? normalized : w));
+            }}
+          />
         )}
       </Drawer>
 

@@ -70,6 +70,7 @@ const RB_STATUS_CFG: Record<string, { label: string; color: string }> = {
   verified:           { label: "Awaiting Checker (legacy)",  color: "#2563eb" },
   approved:           { label: "Awaiting Approver",          color: "#d97706" },
   "payment-initiated":{ label: "Payment Initiated — Hold",   color: "#d97706" },
+  hold:               { label: "On Hold",                    color: "#9333ea" },
   rejected:           { label: "Rejected",                   color: "#dc2626" },
   paid:               { label: "Paid",                       color: "#16a34a" },
 };
@@ -87,7 +88,7 @@ const STEP_COLORS: Record<StepStatus, { ring: string; bg: string; text: string }
 function StageStepper({ stage }: { stage: BillRequestStage }) {
   const billStatus = stage.billId?.status ?? "";
   const billExists = !!stage.billId;
-  const billPaid   = ["verified", "approved", "payment-initiated", "paid"].includes(billStatus);
+  const billPaid   = ["verified", "approved", "payment-initiated", "hold", "paid"].includes(billStatus);
 
   const steps: { label: string; sub: string; status: StepStatus }[] = [
     {

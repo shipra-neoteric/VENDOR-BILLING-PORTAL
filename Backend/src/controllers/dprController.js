@@ -260,7 +260,7 @@ exports.getDPR = asyncHandler(async (req, res) => {
     if (!b.projectId) continue;
     const p = ensureProj(b.projectId, b.projectName);
     if (b.status === 'paid') { p.paidCount++; p.releasedAmount += netReleased(b); }
-    else if (['draft', 'submitted', 'verified', 'approved', 'payment-initiated'].includes(b.status)) { p.pendingAmount += b.amount || 0; }
+    else if (['draft', 'submitted', 'verified', 'approved', 'payment-initiated', 'hold'].includes(b.status)) { p.pendingAmount += b.amount || 0; }
   }
   const projectPerformance = [...projPerf.values()].map(p => ({
     ...p, progressPct: p.plannedQty ? Math.min(100, Math.round((p.completedQty / p.plannedQty) * 100)) : 0,
@@ -292,9 +292,9 @@ exports.getDPR = asyncHandler(async (req, res) => {
   const billsRaisedToday = runningBills.filter(b => inRange(b.billDate, dayStart, dayEnd));
   const billsRaisedValueToday = sum(billsRaisedToday, b => b.amount);
   const approvedValueToday = sum(rbApprovedToday, b => b.amount);
-  const unpaidBills = runningBills.filter(b => ['draft', 'submitted', 'verified', 'approved', 'payment-initiated'].includes(b.status));
-  const pendingValueToday = sum(unpaidBills.filter(b => !['approved', 'payment-initiated'].includes(b.status)), b => b.amount);
-  const outstandingLiability = sum(unpaidBills.filter(b => ['approved', 'payment-initiated'].includes(b.status)), b => b.amount);
+  const unpaidBills = runningBills.filter(b => ['draft', 'submitted', 'verified', 'approved', 'payment-initiated', 'hold'].includes(b.status));
+  const pendingValueToday = sum(unpaidBills.filter(b => !['approved', 'payment-initiated', 'hold'].includes(b.status)), b => b.amount);
+  const outstandingLiability = sum(unpaidBills.filter(b => ['approved', 'payment-initiated', 'hold'].includes(b.status)), b => b.amount);
   const advanceAmountToday = sum(advanceToday, a => a.amount);
 
   const financialDetails = {
@@ -302,8 +302,8 @@ exports.getDPR = asyncHandler(async (req, res) => {
     billsRaisedValueToday: billsRaisedToday.map(b => ({ id: b._id, label: b.billNo, project: b.projectName, vendor: b.vendorName, value: b.amount || 0 })),
     approvedValueToday: rbApprovedToday.map(b => ({ id: b._id, label: b.billNo, project: b.projectName, vendor: b.vendorName, value: b.amount || 0 })),
     advanceAmountToday: advanceToday.map(a => ({ id: a._id, label: a.slipNo, project: a.projectName, vendor: a.contractorName, value: a.amount || 0 })),
-    pendingValueToday: unpaidBills.filter(b => !['approved', 'payment-initiated'].includes(b.status)).map(b => ({ id: b._id, label: b.billNo, project: b.projectName, vendor: b.vendorName, value: b.amount || 0 })),
-    outstandingLiability: unpaidBills.filter(b => ['approved', 'payment-initiated'].includes(b.status)).map(b => ({ id: b._id, label: b.billNo, project: b.projectName, vendor: b.vendorName, value: b.amount || 0 })),
+    pendingValueToday: unpaidBills.filter(b => !['approved', 'payment-initiated', 'hold'].includes(b.status)).map(b => ({ id: b._id, label: b.billNo, project: b.projectName, vendor: b.vendorName, value: b.amount || 0 })),
+    outstandingLiability: unpaidBills.filter(b => ['approved', 'payment-initiated', 'hold'].includes(b.status)).map(b => ({ id: b._id, label: b.billNo, project: b.projectName, vendor: b.vendorName, value: b.amount || 0 })),
   };
 
   const paidBills = runningBills.filter(b => b.status === 'paid');
@@ -359,6 +359,7 @@ exports.getDPR = asyncHandler(async (req, res) => {
       billNo: b.billNo,
       amount: b.amount || 0, daysPending: days,
       status: b.status === 'payment-initiated' ? 'Awaiting Release'
+        : b.status === 'hold' ? 'On Hold'
         : b.status === 'approved' ? 'Payment Pending'
         : b.status === 'verified' ? 'Approval Pending'
         : 'Verification Pending',
