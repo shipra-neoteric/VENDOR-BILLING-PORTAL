@@ -40,6 +40,11 @@ export function newMilestone(): MilestoneDraft {
 
 export function calcPayable(m: MilestoneDraft): number {
   const amt = m.amount || 0;
+  // Percent-mode amounts are resolved as a % of the contract value INCLUDING
+  // GST (see the sync effect below) — they're already GST-inclusive, so
+  // adding GST again on top would double-count it. Only a manually-entered
+  // fixed amount is pre-GST and needs GST added to get the payable figure.
+  if (m.amountMode === "percent") return Math.round(amt);
   return Math.round(amt * (1 + (m.gstPercent || 0) / 100));
 }
 
@@ -80,7 +85,10 @@ export default function PaymentMilestonesBuilder({
   }, [contractValueInclGst]);
 
   const grandTotal = calcGrandTotal(items);
-  const exceeds = contractValueInclGst !== undefined && contractValueInclGst > 0 && grandTotal > contractValueInclGst;
+  // ₹1 tolerance (matches the backend's own check in validateMilestones.js) —
+  // each milestone rounds its payable independently, so a 100%-split total can
+  // land a few paise above an unrounded contract value without truly exceeding it.
+  const exceeds = contractValueInclGst !== undefined && contractValueInclGst > 0 && grandTotal > contractValueInclGst + 1;
 
   return (
     <div>
@@ -161,7 +169,13 @@ export default function PaymentMilestonesBuilder({
             </Col>
             <Col xs={12} sm={5}>
               <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>GST</div>
-              <GstSelect value={m.gstPercent} onChange={v => upd(m.id, { gstPercent: v })} style={{ width: "100%" }} />
+              {m.amountMode === "percent" ? (
+                <div style={{ padding: "5px 11px", border: "1px solid #f0f0f0", borderRadius: 6, color: "#9ba3b8", fontSize: 12.5, background: "#fafafa" }}>
+                  Included in %
+                </div>
+              ) : (
+                <GstSelect value={m.gstPercent} onChange={v => upd(m.id, { gstPercent: v })} style={{ width: "100%" }} />
+              )}
             </Col>
           </Row>
           <Row gutter={[10, 0]} style={{ marginTop: 8 }}>

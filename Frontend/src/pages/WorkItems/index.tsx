@@ -338,6 +338,10 @@ const milestoneDraftToPayload = (m: MilestoneDraft) => ({
   stage: m.stage, date: m.date, type: m.type, mode: m.mode,
   amount: m.amount || 0, amountMode: m.amountMode, amountPercent: m.amountPercent,
   gstPercent: m.gstPercent,
+  // Percent-mode amounts are already GST-inclusive (a % of the GST-inclusive
+  // contract value) — tells the backend's own recompute (validateMilestones.js)
+  // not to add GST again on top, matching calcPayable's frontend logic.
+  gstType: m.amountMode === "percent" ? "inclusive" : "exclusive",
   payable: calcPayable(m),
 });
 

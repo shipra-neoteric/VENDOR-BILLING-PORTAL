@@ -443,6 +443,9 @@ export default function PublicWorkOrderForm() {
           stage: m.stage, date: m.date, type: m.type, mode: m.mode,
           amount: m.amount || 0, amountMode: m.amountMode, amountPercent: m.amountPercent,
           gstPercent: m.gstPercent,
+          // Percent-mode amounts are already GST-inclusive — tells the backend's
+          // own recompute (validateMilestones.js) not to add GST again on top.
+          gstType: m.amountMode === "percent" ? "inclusive" : "exclusive",
           payable: calcPayable(m),
         })),
         warrantyTerms: warrantyTerms.filter(t => t.trim()),
