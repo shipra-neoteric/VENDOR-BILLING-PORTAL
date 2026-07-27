@@ -23,12 +23,12 @@ const WORK_OPTIONS = [
   "Finish Carpentry", "Painting", "Masonry", "Landscaping",
 ];
 
-const DOCUMENT_FIELDS: { key: string; label: string }[] = [
-  { key: "gstCertificate",  label: "GST Certificate" },
-  { key: "panCard",         label: "PAN Card" },
-  { key: "cancelledCheque", label: "Cancelled Cheque" },
+const DOCUMENT_FIELDS: { key: string; label: string; required?: boolean }[] = [
+  { key: "gstCertificate",  label: "GST Certificate", required: true },
+  { key: "panCard",         label: "PAN Card", required: true },
+  { key: "cancelledCheque", label: "Cancelled Cheque", required: true },
   { key: "businessCard",    label: "Business Card" },
-  { key: "aadhaarCard",     label: "Aadhaar Card" },
+  { key: "aadhaarCard",     label: "Aadhaar Card", required: true },
 ];
 
 const MAX_FILE_MB = 5;
@@ -63,6 +63,11 @@ export default function PublicContractorForm() {
   };
 
   async function onFinish(values: Record<string, unknown>) {
+    const missingDocs = DOCUMENT_FIELDS.filter(f => f.required && !documents[f.key]);
+    if (missingDocs.length) {
+      message.error(`Please attach: ${missingDocs.map(f => f.label).join(", ")}`);
+      return;
+    }
     setSubmitting(true);
     try {
       const res = await pub.post("/contractors", { ...values, documents });
@@ -180,19 +185,19 @@ export default function PublicContractorForm() {
             style={{ borderRadius: 12, marginBottom: 20, boxShadow: "0 2px 12px rgba(0,0,0,0.05)" }}
           >
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "0 24px" }}>
-              <Form.Item name="accountHolderName" label="Account Holder Name">
+              <Form.Item name="accountHolderName" label="Account Holder Name" rules={[{ required: true, message: "Required" }]}>
                 <Input placeholder="As per bank records" />
               </Form.Item>
-              <Form.Item name="bankName" label="Bank Name">
+              <Form.Item name="bankName" label="Bank Name" rules={[{ required: true, message: "Required" }]}>
                 <Input placeholder="e.g. SBI" />
               </Form.Item>
-              <Form.Item name="accountNumber" label="Account Number">
+              <Form.Item name="accountNumber" label="Account Number" rules={[{ required: true, message: "Required" }]}>
                 <Input placeholder="Bank account number" />
               </Form.Item>
-              <Form.Item name="ifscCode" label="IFSC Code">
+              <Form.Item name="ifscCode" label="IFSC Code" rules={[{ required: true, message: "Required" }]}>
                 <Input placeholder="e.g. SBIN0001234" />
               </Form.Item>
-              <Form.Item name="branchName" label="Branch">
+              <Form.Item name="branchName" label="Branch" rules={[{ required: true, message: "Required" }]}>
                 <Input placeholder="Branch name" />
               </Form.Item>
             </div>
@@ -203,13 +208,13 @@ export default function PublicContractorForm() {
             style={{ borderRadius: 12, marginBottom: 20, boxShadow: "0 2px 12px rgba(0,0,0,0.05)" }}
           >
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "0 24px" }}>
-              <Form.Item name="gstNumber" label="GST Number">
+              <Form.Item name="gstNumber" label="GST Number" rules={[{ required: true, message: "Required" }]}>
                 <Input placeholder="15-char GST" />
               </Form.Item>
-              <Form.Item name="panNumber" label="PAN Number">
+              <Form.Item name="panNumber" label="PAN Number" rules={[{ required: true, message: "Required" }]}>
                 <Input placeholder="10-char PAN" />
               </Form.Item>
-              <Form.Item name="aadhaarNumber" label="Aadhaar Number">
+              <Form.Item name="aadhaarNumber" label="Aadhaar Number" rules={[{ required: true, message: "Required" }]}>
                 <Input placeholder="12-digit Aadhaar" />
               </Form.Item>
               <Form.Item name="reference1" label="Reference Company 1">
@@ -238,9 +243,12 @@ export default function PublicContractorForm() {
             style={{ borderRadius: 12, marginBottom: 20, boxShadow: "0 2px 12px rgba(0,0,0,0.05)" }}
           >
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "16px 24px" }}>
-              {DOCUMENT_FIELDS.map(({ key, label }) => (
+              {DOCUMENT_FIELDS.map(({ key, label, required }) => (
                 <div key={key}>
-                  <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 6, color: "#1a1f2e" }}>{label}</div>
+                  <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 6, color: "#1a1f2e" }}>
+                    {required && <span style={{ color: "#ff4d4f", marginRight: 4 }}>*</span>}
+                    {label}
+                  </div>
                   <Upload
                     beforeUpload={handleDocSelect(key)}
                     maxCount={1}
