@@ -88,7 +88,9 @@ const S = StyleSheet.create({
   sigBlock:  { flexDirection: "row", marginTop: 14, borderWidth: 1, borderColor: BORDER, borderRadius: 3 },
   sigCell:   { flex: 1, padding: "10px 10px", borderRightWidth: 1, borderRightColor: BORDER },
   sigCellL:  { flex: 1, padding: "10px 10px" },
-  sigRole:   { fontSize: 8.5, fontWeight: "bold", color: MID, marginBottom: 22, letterSpacing: 0.3 },
+  sigRole:   { fontSize: 8.5, fontWeight: "bold", color: MID, marginBottom: 4, letterSpacing: 0.3 },
+  sigSlot:   { height: 18, justifyContent: "flex-end", alignItems: "center" },
+  sigApprovedText: { fontSize: 9, fontWeight: "bold", color: "#16A34A", letterSpacing: 0.5 },
   sigLine:   { borderTopWidth: 1, borderTopColor: BORDER, width: "100%" },
   sigName:   { fontSize: 7.5, color: GRAY, marginTop: 3 },
   sigDate:   { fontSize: 7.5, color: GRAY, marginTop: 2 },
@@ -142,6 +144,12 @@ interface WOData {
   documents?: { name: string; url: string }[];
   documentName?: string;
   documentUrl?: string;
+  approvals?: {
+    maker?: { name?: string; at?: string } | null;
+    checker?: { name?: string; at?: string } | null;
+    approver?: { name?: string; at?: string } | null;
+    final?: { name?: string; at?: string } | null;
+  };
 }
 
 interface CompanyData {
@@ -406,12 +414,19 @@ export function WorkOrderDocumentHindi({ wo, company, contractor }: Props) {
 
         {/* ── Signature block ── */}
         <View style={S.sigBlock} wrap={false}>
-          {(["ठेकेदार", "एजीएम – प्रोजेक्ट", "जीएम – प्रोजेक्ट"] as const).map((role, i, arr) => (
+          {([
+            ["ठेकेदार", wo.approvals?.maker],
+            ["एजीएम – प्रोजेक्ट", wo.approvals?.checker],
+            ["जीएम – प्रोजेक्ट", wo.approvals?.approver],
+          ] as const).map(([role, approval], i, arr) => (
             <View key={role} style={i === arr.length - 1 ? S.sigCellL : S.sigCell}>
               <Text style={S.sigRole}>{role}</Text>
+              <View style={S.sigSlot}>
+                {approval?.name ? <Text style={S.sigApprovedText}>स्वीकृत</Text> : null}
+              </View>
               <View style={S.sigLine} />
-              <Text style={S.sigName}>नाम:</Text>
-              <Text style={S.sigDate}>दिनांक:</Text>
+              <Text style={S.sigName}>नाम: {approval?.name || ""}</Text>
+              <Text style={S.sigDate}>दिनांक: {approval?.at ? fmtDate(approval.at) : ""}</Text>
             </View>
           ))}
         </View>
@@ -420,9 +435,12 @@ export function WorkOrderDocumentHindi({ wo, company, contractor }: Props) {
         <View style={[S.sigBlock, { marginTop: 8, width: "33%" }]} wrap={false}>
           <View style={S.sigCellL}>
             <Text style={S.sigRole}>अंतिम स्वीकृति</Text>
+            <View style={S.sigSlot}>
+              {wo.approvals?.final?.name ? <Text style={S.sigApprovedText}>स्वीकृत</Text> : null}
+            </View>
             <View style={S.sigLine} />
-            <Text style={S.sigName}>नाम:</Text>
-            <Text style={S.sigDate}>दिनांक:</Text>
+            <Text style={S.sigName}>नाम: {wo.approvals?.final?.name || ""}</Text>
+            <Text style={S.sigDate}>दिनांक: {wo.approvals?.final?.at ? fmtDate(wo.approvals.final.at) : ""}</Text>
           </View>
         </View>
 

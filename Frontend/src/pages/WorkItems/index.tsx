@@ -326,6 +326,24 @@ const normalizeWO = (wo: any): WorkOrder => ({
   paymentMilestones: (wo.paymentMilestones || []).map(normalizeId),
 });
 
+// `xBy` fields only ever come back as a raw ObjectId string from the workflow
+// endpoints (matches WorkOrderApprovalWorkflow's own note on this) — resolves
+// against a fresh id->name map so the PDF can print the real approver's name.
+function actorName(by: WorkOrder["makerBy"], userMap: Record<string, string>): string | undefined {
+  if (!by) return undefined;
+  if (typeof by === "string") return userMap[by];
+  return by.name;
+}
+
+function buildApprovals(wo: WorkOrder, userMap: Record<string, string>) {
+  return {
+    maker:    wo.makerBy         ? { name: actorName(wo.makerBy, userMap),         at: wo.makerAt }         : null,
+    checker:  wo.checkerBy       ? { name: actorName(wo.checkerBy, userMap),       at: wo.checkerAt }       : null,
+    approver: wo.approverBy      ? { name: actorName(wo.approverBy, userMap),      at: wo.approverAt }      : null,
+    final:    wo.finalApprovedBy ? { name: actorName(wo.finalApprovedBy, userMap), at: wo.finalApprovedAt } : null,
+  };
+}
+
 const toMilestoneDraft = (pm: PaymentMilestone): MilestoneDraft => ({
   id: pm.id, stage: pm.stage, date: pm.date, type: pm.type,
   mode: pm.mode, amount: pm.amount,
@@ -1997,12 +2015,26 @@ export default function WorkItems() {
     return full;
   };
 
+  // Fetched fresh per download rather than kept in page-level state — the PDF
+  // is an occasional action, and this keeps the approver name always current.
+  async function fetchUserMap(): Promise<Record<string, string>> {
+    try {
+      const r = await apiClient.get<{ users: { _id?: string; id?: string; name?: string }[] }>("/auth/users");
+      const map: Record<string, string> = {};
+      (r.data.users || []).forEach(u => { const uid = u._id || u.id; if (uid && u.name) map[uid] = u.name; });
+      return map;
+    } catch {
+      return {};
+    }
+  }
+
   const handleDownloadPDF = async (wo: WorkOrder) => {
     setPdfLoading(true);
     try {
       const company    = companies.find((c: any) => c._id === (wo as any).companyId) ?? null;
       const contractor = contractors.find(c => c.vendorCode === wo.vendorCode) ?? null;
-      await downloadWorkOrderPDF(wo as any, company, contractor as any);
+      const userMap    = await fetchUserMap();
+      await downloadWorkOrderPDF({ ...wo, approvals: buildApprovals(wo, userMap) } as any, company, contractor as any);
     } catch {
       message.error("Failed to generate PDF");
     } finally {
@@ -2016,7 +2048,8 @@ export default function WorkItems() {
     try {
       const company    = companies.find((c: any) => c._id === (wo as any).companyId) ?? null;
       const contractor = contractors.find(c => c.vendorCode === wo.vendorCode) ?? null;
-      await downloadWorkOrderPDFHindi(wo as any, company, contractor as any);
+      const userMap    = await fetchUserMap();
+      await downloadWorkOrderPDFHindi({ ...wo, approvals: buildApprovals(wo, userMap) } as any, company, contractor as any);
     } catch {
       message.error("Failed to generate Hindi PDF");
     } finally {

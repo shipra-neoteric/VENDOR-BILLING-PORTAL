@@ -95,7 +95,12 @@ const S = StyleSheet.create({
   sigBlock:  { flexDirection: "row", marginTop: 14, borderWidth: 1, borderColor: BORDER, borderRadius: 3 },
   sigCell:   { flex: 1, padding: "10px 10px", borderRightWidth: 1, borderRightColor: BORDER },
   sigCellL:  { flex: 1, padding: "10px 10px" },
-  sigRole:   { fontSize: 8.5, fontFamily: "Helvetica-Bold", color: MID, marginBottom: 22, letterSpacing: 0.3 },
+  sigRole:   { fontSize: 8.5, fontFamily: "Helvetica-Bold", color: MID, marginBottom: 4, letterSpacing: 0.3 },
+  // Fixed-height slot so the line below always lands in the same place whether
+  // this stage is already approved in-system (shows "Approved") or still needs
+  // a physical wet signature (stays blank).
+  sigSlot:   { height: 18, justifyContent: "flex-end", alignItems: "center" },
+  sigApprovedText: { fontSize: 9, fontFamily: "Helvetica-Bold", color: "#16A34A", letterSpacing: 0.5 },
   sigLine:   { borderTopWidth: 1, borderTopColor: BORDER, width: "100%" },
   sigName:   { fontSize: 7.5, color: GRAY, marginTop: 3 },
   sigDate:   { fontSize: 7.5, color: GRAY, marginTop: 2 },
@@ -151,6 +156,16 @@ interface WOData {
   documents?: { name: string; url: string }[];
   documentName?: string;
   documentUrl?: string;
+  // Real in-system approval state — resolved (id -> name) by the caller before
+  // handing this off to the PDF, since this component does no fetching of its
+  // own. A stage stays undefined/null until it's actually been done; the
+  // signature block below falls back to a blank physical-signature line for it.
+  approvals?: {
+    maker?: { name?: string; at?: string } | null;
+    checker?: { name?: string; at?: string } | null;
+    approver?: { name?: string; at?: string } | null;
+    final?: { name?: string; at?: string } | null;
+  };
 }
 
 interface CompanyData {
@@ -449,14 +464,24 @@ export function WorkOrderDocument({ wo, company, contractor }: Props) {
           ))}
         </View>
 
-        {/* ── Signature block ── */}
+        {/* ── Signature block — "Contractor"/"AGM"/"GM" map to the in-system
+            Maker/Checker/Approver stages; each shows "Approved" + the real
+            name/date of whoever actually did it once that stage is done,
+            otherwise stays a blank line for a physical signature. ── */}
         <View style={S.sigBlock} wrap={false}>
-          {(["Contractor", "AGM – Project", "GM – Project"] as const).map((role, i, arr) => (
+          {([
+            ["Contractor", wo.approvals?.maker],
+            ["AGM – Project", wo.approvals?.checker],
+            ["GM – Project", wo.approvals?.approver],
+          ] as const).map(([role, approval], i, arr) => (
             <View key={role} style={i === arr.length - 1 ? S.sigCellL : S.sigCell}>
               <Text style={S.sigRole}>{role}</Text>
+              <View style={S.sigSlot}>
+                {approval?.name ? <Text style={S.sigApprovedText}>Approved</Text> : null}
+              </View>
               <View style={S.sigLine} />
-              <Text style={S.sigName}>Name:</Text>
-              <Text style={S.sigDate}>Date:</Text>
+              <Text style={S.sigName}>Name: {approval?.name || ""}</Text>
+              <Text style={S.sigDate}>Date: {approval?.at ? fmtDate(approval.at) : ""}</Text>
             </View>
           ))}
         </View>
@@ -465,9 +490,12 @@ export function WorkOrderDocument({ wo, company, contractor }: Props) {
         <View style={[S.sigBlock, { marginTop: 8, width: "33%" }]} wrap={false}>
           <View style={S.sigCellL}>
             <Text style={S.sigRole}>Final Approval</Text>
+            <View style={S.sigSlot}>
+              {wo.approvals?.final?.name ? <Text style={S.sigApprovedText}>Approved</Text> : null}
+            </View>
             <View style={S.sigLine} />
-            <Text style={S.sigName}>Name:</Text>
-            <Text style={S.sigDate}>Date:</Text>
+            <Text style={S.sigName}>Name: {wo.approvals?.final?.name || ""}</Text>
+            <Text style={S.sigDate}>Date: {wo.approvals?.final?.at ? fmtDate(wo.approvals.final.at) : ""}</Text>
           </View>
         </View>
 
