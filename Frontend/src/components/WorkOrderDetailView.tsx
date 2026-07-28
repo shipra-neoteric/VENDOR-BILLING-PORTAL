@@ -60,6 +60,7 @@ export default function WorkOrderDetailView({
         {wo.projectLocation && (
           <Descriptions.Item label="Location">{wo.projectLocation}</Descriptions.Item>
         )}
+        <Descriptions.Item label="Issuing Company">{wo.companyName || "—"}</Descriptions.Item>
         <Descriptions.Item label="Status">
           <Tag color={STATUS_CFG[wo.status]?.color}>
             {STATUS_CFG[wo.status]?.label}
@@ -91,7 +92,7 @@ export default function WorkOrderDetailView({
             {wo.vendorCode}
           </span>
         </Descriptions.Item>
-        <Descriptions.Item label="Company">{wo.vendorName}</Descriptions.Item>
+        <Descriptions.Item label="Contractor Company">{wo.vendorName}</Descriptions.Item>
         <Descriptions.Item label="Owner">{wo.ownerName}</Descriptions.Item>
         <Descriptions.Item label="Mobile">{wo.mobile}</Descriptions.Item>
         <Descriptions.Item label="Contract Value" span={2}>

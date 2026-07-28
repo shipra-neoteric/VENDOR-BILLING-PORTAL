@@ -24,6 +24,9 @@ const runningBillSchema = new mongoose.Schema(
     projectLocation: { type: String, default: '' },
     vendorCode:  { type: String },
     vendorName:  { type: String },
+    // Denormalized from WorkOrder.companyName — the issuing entity this bill
+    // was raised under (this system spans multiple legal companies).
+    companyName: { type: String, default: '' },
     billDate:    { type: Date, required: true },
     billingPeriodFrom: { type: Date },
     billingPeriodTo:   { type: Date },

@@ -141,6 +141,7 @@ exports.createBillRequest = asyncHandler(async (req, res) => {
     projectLocation: wo.projectLocation,
     vendorCode:  wo.vendorCode,
     vendorName:  wo.vendorName,
+    companyName: wo.companyName,
     category:    wo.category    || '',
     subCategory: wo.subCategory || '',
     periodFrom,
@@ -290,6 +291,7 @@ exports.gmApprove = asyncHandler(async (req, res) => {
     projectLocation: wo.projectLocation,
     vendorCode:  wo.vendorCode,
     vendorName:  wo.vendorName,
+    companyName: wo.companyName,
     billDate:    new Date(),
     lineItems,
     amount:           totalAmount,
@@ -302,6 +304,13 @@ exports.gmApprove = asyncHandler(async (req, res) => {
     status:      'draft',
     agmApprovedBy: br.agmApprovedBy,
     agmApprovedAt: br.agmApprovedAt,
+    // The GM who just approved this at L2 (gmApprove) — carried onto the bill
+    // itself exactly like the AGM's L1 sign-off above, so the bill's own
+    // AGM/GM pills reflect the pre-Accounts gate that already happened
+    // rather than staying permanently blank until some later, unrelated
+    // Accounts-side checker action (a separate stage — see checkerBy).
+    verifiedBy:  req.user._id,
+    verifiedAt:  new Date(),
     createdBy:   req.user._id,
   });
 
@@ -479,6 +488,7 @@ exports.createBatchBillRequest = asyncHandler(async (req, res) => {
       projectLocation: wo.projectLocation,
       vendorCode:  wo.vendorCode,
       vendorName:  wo.vendorName,
+      companyName: wo.companyName,
       category:    wo.category    || '',
       subCategory: wo.subCategory || '',
       periodFrom, periodTo,

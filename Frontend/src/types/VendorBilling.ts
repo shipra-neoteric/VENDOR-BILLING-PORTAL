@@ -163,6 +163,8 @@ export interface WorkOrder {
   issueDate: string;
   preparedByName?: string;
   preparedByContact?: string;
+  companyId?: string;
+  companyName?: string;
   projectId: string;
   projectName: string;
   projectLocation?: string;

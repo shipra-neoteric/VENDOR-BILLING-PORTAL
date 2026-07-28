@@ -24,6 +24,11 @@ const billRequestSchema = new Schema(
     projectLocation: { type: String, default: '' },
     vendorCode:  { type: String },
     vendorName:  { type: String },
+    // Denormalized from WorkOrder.companyName — the issuing entity (this system
+    // spans multiple legal companies, not just "Neoteric Properties"), needed
+    // on the request itself since a print can happen before any RunningBill
+    // (which normally carries this) exists.
+    companyName: { type: String, default: '' },
     category:    { type: String, default: '' },
     subCategory: { type: String, default: '' },
     items:       { type: [itemSchema], default: [] },

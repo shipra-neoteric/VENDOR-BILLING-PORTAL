@@ -21,6 +21,9 @@ import DateRangeFilter, { inDateRange } from "../../components/DateRangeFilter";
 import StatCard from "../../shared/components/StatCard";
 import WorkflowInstanceStepper from "../../components/WorkflowInstanceStepper";
 import type { WorkflowInstance } from "../../types/Workflow";
+import { printBill } from "../../shared/utils/printBill";
+import type { PrintableBill } from "../../shared/utils/printBill";
+import type { Contractor } from "../../types/VendorBilling";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface ProgressEntryDetail {
@@ -74,7 +77,7 @@ interface BillRequestRow {
   _id: string; reqNo: string; stageNo?: number;
   workOrderId?: string; workOrderNo: string;
   projectId?: string; projectName: string; projectLocation?: string;
-  vendorCode?: string; vendorName: string; category?: string; subCategory?: string;
+  vendorCode?: string; vendorName: string; companyName?: string; category?: string; subCategory?: string;
   items: BillItem[]; remarks?: string;
   periodFrom?: string; periodTo?: string;
   status: "pending" | "pending-gm" | "approved" | "rejected";
@@ -85,7 +88,7 @@ interface BillRequestRow {
   advanceRecovery?: number;
   rejectReason?: string;
   approvalHistory?: ApprovalHistoryEntry[];
-  billId?: { billNo: string; status: string; amount: number; paidAmount?: number; retentionPercent?: number; retentionAmount?: number; advanceRecovery?: number; gstPercent?: number; tdsAmount?: number; paymentDate?: string; paymentMode?: string; paymentUTR?: string; paymentBank?: string; paymentReleasedBy?: string };
+  billId?: { _id: string; billNo: string; status: string; amount: number; paidAmount?: number; retentionPercent?: number; retentionAmount?: number; advanceRecovery?: number; gstPercent?: number; tdsAmount?: number; paymentDate?: string; paymentMode?: string; paymentUTR?: string; paymentBank?: string; paymentReleasedBy?: string };
   milestoneAchieved?: boolean;
   milestoneDate?: string;
   createdAt: string;
@@ -210,132 +213,56 @@ function ApprovalHistoryTimeline({ history }: { history?: ApprovalHistoryEntry[]
   );
 }
 
-// Opens a print-ready HTML view of a bill request in a new window and
-// triggers window.print() — mirrors printBill() in AccountsPayment/index.tsx.
-function printBillRequest(br: BillRequestRow) {
-  const total = br.items.reduce((s, it) => s + (it.rate ?? 0) * it.billedQty, 0);
-  const statusCfg = STATUS_CFG[br.status] ?? { color: "default", label: br.status };
+// Prints a bill request through the exact same template Accounts Payment uses
+// for a real RunningBill (printBill), so the two look identical. Once a
+// RunningBill exists (br.billId) we fetch and print that directly — its own
+// AGM/GM/Accounts/Initiated/Paid ticks are already point-in-time accurate.
+// Before that (still pending/pending-gm/rejected pre-GM), there's no
+// RunningBill yet, so we build an equivalent pseudo-bill from the request
+// itself — only the AGM tick can ever be true at that point, which is what
+// br.agmApprovedBy already, correctly, reflects.
+async function printBillRequest(br: BillRequestRow) {
+  try {
+    let contractor: Contractor | null = null;
+    if (br.vendorCode) {
+      const cRes = await apiClient.get<{ contractors: Contractor[] }>("/contractors", { params: { search: br.vendorCode } });
+      contractor = cRes.data.contractors.find(c => c.vendorCode === br.vendorCode) ?? null;
+    }
 
-  const itemRows = br.items.map((it, i) => {
-    const amt = (it.rate ?? 0) * it.billedQty;
-    return `
-      <tr style="background:${i % 2 === 0 ? "#fff" : "#F9FAFB"};">
-        <td style="padding:6px 10px;border-bottom:1px solid #E5E7EB;">${it.description}</td>
-        <td style="padding:6px 10px;border-bottom:1px solid #E5E7EB;">${it.unit}</td>
-        <td style="padding:6px 10px;border-bottom:1px solid #E5E7EB;text-align:right;font-family:monospace;">${it.billedQty.toLocaleString("en-IN")}</td>
-        <td style="padding:6px 10px;border-bottom:1px solid #E5E7EB;text-align:right;">${it.rate ? fmt(it.rate) : "—"}</td>
-        <td style="padding:6px 10px;border-bottom:1px solid #E5E7EB;text-align:right;font-weight:600;">${it.rate ? fmt(amt) : "—"}</td>
-      </tr>`;
-  }).join("");
+    if (br.billId?._id) {
+      const bRes = await apiClient.get<{ bill: PrintableBill }>(`/bills/${br.billId._id}`);
+      const bill = bRes.data.bill;
+      printBill(bill, contractor, bill.status === "paid" ? "post" : "pre");
+      return;
+    }
 
-  const historyRows = (br.approvalHistory ?? []).map(h => {
-    const isReject = h.action === "rejected";
-    const stageLabel = h.stage === "agm" ? "AGM" : "GM";
-    return `
-      <tr>
-        <td style="padding:5px 10px;border-bottom:1px solid #E5E7EB;">${stageLabel} ${isReject ? "Rejected" : "Approved"}</td>
-        <td style="padding:5px 10px;border-bottom:1px solid #E5E7EB;">${actorName(h.by) || "—"}</td>
-        <td style="padding:5px 10px;border-bottom:1px solid #E5E7EB;">${h.at ? dayjs(h.at).format("DD MMM YYYY, hh:mm a") : "—"}</td>
-        <td style="padding:5px 10px;border-bottom:1px solid #E5E7EB;">${h.remarks || "—"}</td>
-      </tr>`;
-  }).join("");
-
-  const infoRows: [string, string][] = [
-    ["Work Order", br.workOrderNo],
-    ["Project", br.projectLocation ? `${br.projectName} — ${br.projectLocation}` : br.projectName],
-    ["Contractor", br.vendorName],
-    ["Requested By", br.requestedBy?.name || "—"],
-    ["Date", dayjs(br.createdAt).format("DD MMM YYYY")],
-    ...(br.periodFrom ? [["Period", `${dayjs(br.periodFrom).format("DD MMM YYYY")} → ${dayjs(br.periodTo ?? br.createdAt).format("DD MMM YYYY")}`] as [string, string]] : []),
-    ...(br.billId ? [["Bill No.", `${br.billId.billNo} — ${fmt(br.billId.amount)}`] as [string, string]] : []),
-  ];
-  const infoHtml = infoRows.map(([label, val]) => `
-    <div>
-      <div style="font-size:10px;color:#6B7280;text-transform:uppercase;letter-spacing:0.06em;">${label}</div>
-      <div style="font-weight:600;color:#111827;font-size:13px;">${val}</div>
-    </div>`).join("");
-
-  const html = `<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8" />
-<title>Bill Request ${br.reqNo}</title>
-<style>
-  @media print { .no-print { display: none !important; } }
-  body { font-family: Arial, Helvetica, sans-serif; color: #111827; margin: 0; padding: 24px; }
-</style>
-</head>
-<body>
-  <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #FF7A00;padding-bottom:12px;margin-bottom:16px;">
-    <div>
-      <div style="font-size:20px;font-weight:700;">Neoteric Properties</div>
-      <div style="font-size:11px;color:#6B7280;">Bill Request</div>
-    </div>
-    <div style="text-align:right;">
-      <div style="font-size:16px;font-weight:700;">${br.reqNo}</div>
-      <span style="display:inline-block;margin-top:4px;padding:2px 10px;border-radius:10px;font-size:11px;font-weight:600;background:#F3F4F6;color:#374151;">${statusCfg.label}</span>
-    </div>
-  </div>
-
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;background:#f9fafb;padding:14px;border-radius:8px;margin-bottom:16px;">
-    ${infoHtml}
-  </div>
-
-  <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px;">
-    <thead>
-      <tr style="background:#1F2937;color:#fff;">
-        <th style="padding:6px 10px;text-align:left;font-size:11px;">Description</th>
-        <th style="padding:6px 10px;text-align:left;font-size:11px;">Unit</th>
-        <th style="padding:6px 10px;text-align:right;font-size:11px;">Qty Billed</th>
-        <th style="padding:6px 10px;text-align:right;font-size:11px;">Rate</th>
-        <th style="padding:6px 10px;text-align:right;font-size:11px;">Amount</th>
-      </tr>
-    </thead>
-    <tbody>${itemRows}</tbody>
-    <tfoot>
-      <tr style="border-top:2px solid #FF7A00;background:#FFF8F3;">
-        <td colspan="4" style="padding:8px 10px;font-weight:700;text-align:right;color:#FF7A00;">Gross Total</td>
-        <td style="padding:8px 10px;font-weight:700;text-align:right;">${fmt(total)}</td>
-      </tr>
-    </tfoot>
-  </table>
-
-  ${(br.retentionAmount || br.advanceRecovery) ? `
-  <div style="display:flex;gap:24px;margin-bottom:16px;font-size:13px;">
-    <div><span style="color:#6B7280;">Hold / Retention:</span> <strong>${fmt(br.retentionAmount ?? 0)}</strong></div>
-    <div><span style="color:#6B7280;">Advance Recovery:</span> <strong>${fmt(br.advanceRecovery ?? 0)}</strong></div>
-  </div>` : ""}
-
-  ${br.remarks ? `<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:10px;font-size:13px;margin-bottom:12px;"><strong>Remarks:</strong> ${br.remarks}</div>` : ""}
-
-  ${br.rejectReason ? `<div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:6px;padding:10px;font-size:13px;margin-bottom:12px;"><strong>Reject Reason:</strong> ${br.rejectReason}</div>` : ""}
-
-  ${historyRows ? `
-  <div style="margin-bottom:16px;">
-    <div style="font-weight:700;font-size:11px;color:#6B7280;text-transform:uppercase;margin-bottom:6px;">Approval History</div>
-    <table style="width:100%;border-collapse:collapse;font-size:12.5px;">
-      <thead>
-        <tr style="background:#F3F4F6;">
-          <th style="padding:5px 10px;text-align:left;font-size:10px;color:#6B7280;text-transform:uppercase;">Stage</th>
-          <th style="padding:5px 10px;text-align:left;font-size:10px;color:#6B7280;text-transform:uppercase;">By</th>
-          <th style="padding:5px 10px;text-align:left;font-size:10px;color:#6B7280;text-transform:uppercase;">Date</th>
-          <th style="padding:5px 10px;text-align:left;font-size:10px;color:#6B7280;text-transform:uppercase;">Remarks</th>
-        </tr>
-      </thead>
-      <tbody>${historyRows}</tbody>
-    </table>
-  </div>` : ""}
-
-  <button class="no-print" onclick="window.print()" style="margin-top:12px;padding:8px 18px;background:#FF7A00;color:#fff;border:none;border-radius:6px;font-size:13px;cursor:pointer;">Print / Save as PDF</button>
-</body>
-</html>`;
-
-  const win = window.open("", "_blank", "width=900,height=950");
-  if (win) {
-    win.document.write(html);
-    win.document.close();
-    win.addEventListener("load", () => { win.focus(); win.print(); });
-    if (win.document.readyState === "complete") { win.focus(); win.print(); }
+    const agmDone = !!br.agmApprovedBy;
+    const pseudoBill: PrintableBill = {
+      billNo: br.reqNo,
+      workOrderNo: br.workOrderNo,
+      projectName: br.projectName,
+      projectLocation: br.projectLocation,
+      vendorCode: br.vendorCode,
+      vendorName: br.vendorName,
+      companyName: br.companyName,
+      generatedBy: br.requestedBy?.name,
+      billDate: br.createdAt,
+      lineItems: br.items.map(it => ({ description: it.description, unit: it.unit, billedQty: it.billedQty, rate: it.rate ?? 0, amount: (it.rate ?? 0) * it.billedQty })),
+      amount: br.items.reduce((s, it) => s + (it.rate ?? 0) * it.billedQty, 0),
+      retentionAmount: br.retentionAmount ?? 0,
+      advanceRecovery: br.advanceRecovery ?? 0,
+      remarks: br.rejectReason ? `${br.remarks ? br.remarks + " — " : ""}Rejected: ${br.rejectReason}` : br.remarks,
+      status: br.status,
+      agmApprovedBy: agmDone ? { name: actorName(br.agmApprovedBy) || "AGM" } : null,
+      agmApprovedAt: br.agmApprovedAt,
+      verifiedBy: null,
+      approvedBy: null,
+      paymentInitiatedBy: null,
+    };
+    const statusLabel = br.status === "rejected" ? "Rejected" : br.status === "pending-gm" ? "Awaiting GM Approval" : "Awaiting AGM Approval";
+    printBill(pseudoBill, contractor, "pre", statusLabel);
+  } catch {
+    message.error("Failed to prepare print view");
   }
 }
 
@@ -509,6 +436,12 @@ export default function SiteProgress() {
 
   // ── Bill request view / approve / reject ────────────────────────────────────
   const [viewReq, setViewReq] = useState<BillRequestRow | null>(null);
+  const [printingReqId, setPrintingReqId] = useState<string | null>(null);
+
+  async function handlePrintReq(r: BillRequestRow) {
+    setPrintingReqId(r._id);
+    try { await printBillRequest(r); } finally { setPrintingReqId(null); }
+  }
   const [approveModal,     setApproveModal]     = useState(false); // AGM (L1)
   const [approveTarget,    setApproveTarget]    = useState<string | null>(null);
   const [approveRetention, setApproveRetention] = useState<number | null>(null);
@@ -686,6 +619,7 @@ export default function SiteProgress() {
       render: (_, r) => (
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           <Button size="small" icon={<EyeOutlined />} onClick={() => setViewReq(r)}>View</Button>
+          <Button size="small" icon={<PrinterOutlined />} loading={printingReqId === r._id} onClick={() => handlePrintReq(r)}>Print</Button>
           {r.status === "pending" && canAgmApprove && (
             <Button size="small" type="primary" icon={<CheckCircleOutlined />} onClick={() => openApprove(r._id)}>AGM Approve</Button>
           )}
@@ -1067,7 +1001,15 @@ export default function SiteProgress() {
         footer={
           <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
             <Button onClick={() => setViewReq(null)}>Close</Button>
-            {viewReq && <Button icon={<PrinterOutlined />} onClick={() => printBillRequest(viewReq)}>Print</Button>}
+            {viewReq && (
+              <Button
+                icon={<PrinterOutlined />}
+                loading={printingReqId === viewReq._id}
+                onClick={() => handlePrintReq(viewReq)}
+              >
+                Print
+              </Button>
+            )}
             {viewReq?.status === "pending" && (
               <>
                 {canRejectAny && <Button danger onClick={() => { setRejectTarget(viewReq._id); setRejectModal(true); setViewReq(null); }}>Reject</Button>}
