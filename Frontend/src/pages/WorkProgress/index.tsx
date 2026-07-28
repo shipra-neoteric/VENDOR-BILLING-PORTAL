@@ -921,7 +921,7 @@ function DRIDashboard() {
                                   <td style={{ padding: "9px 12px" }}>
                                     {!hasSubItems && (
                                       <Button
-                                        size="small" disabled={isDone}
+                                        size="small"
                                         onClick={() => {
                                           setProgWOId(woSum._id);
                                           setProgItem(si);
@@ -930,9 +930,9 @@ function DRIDashboard() {
                                           progForm.setFieldsValue({ date: dayjs() });
                                           setProgModal(true);
                                         }}
-                                        style={!isDone ? { background: "#FF7A00", borderColor: "#FF7A00", color: "#fff", fontWeight: 600, fontSize: 12 } : { fontSize: 12 }}
+                                        style={{ background: "#FF7A00", borderColor: "#FF7A00", color: "#fff", fontWeight: 600, fontSize: 12 }}
                                       >
-                                        {isDone ? "Done" : "+ Progress"}
+                                        + Progress
                                       </Button>
                                     )}
                                   </td>
@@ -968,7 +968,7 @@ function DRIDashboard() {
                                       </td>
                                       <td style={{ padding: "6px 12px" }}>
                                         <Button
-                                          size="small" disabled={subDone}
+                                          size="small"
                                           onClick={() => {
                                             setProgWOId(woSum._id);
                                             setProgItem(si);
@@ -977,9 +977,9 @@ function DRIDashboard() {
                                             progForm.setFieldsValue({ date: dayjs() });
                                             setProgModal(true);
                                           }}
-                                          style={!subDone ? { background: "#FF7A00", borderColor: "#FF7A00", color: "#fff", fontWeight: 600, fontSize: 11 } : { fontSize: 11 }}
+                                          style={{ background: "#FF7A00", borderColor: "#FF7A00", color: "#fff", fontWeight: 600, fontSize: 11 }}
                                         >
-                                          {subDone ? "Done" : "+ Progress"}
+                                          + Progress
                                         </Button>
                                       </td>
                                     </tr>
@@ -1177,25 +1177,14 @@ function DRIDashboard() {
 
           <Form.Item
             label={`Quantity Added (${(progSubItem ?? progItem)?.unit})`} name="qtyAdded"
-            extra={(progSubItem ?? progItem)?.unit === "per-hr" ? "Tip: enter decimals for minutes — e.g. 13.67 = 13 hr 40 min" : undefined}
+            extra={(progSubItem ?? progItem)?.unit === "per-hr" ? "Tip: enter decimals for minutes — e.g. 13.67 = 13 hr 40 min" : "Progress can exceed the planned qty (e.g. a correction, or ground reality running over) — AGM/GM sign off on the overage before it's billed."}
             rules={[
               { required: true, type: "number", min: 0.01, message: "Enter a valid quantity (e.g. 13.67)" },
-              {
-                validator: (_: unknown, value: number) => {
-                  const t = progSubItem ?? progItem;
-                  if (!value || !t) return Promise.resolve();
-                  if (!t.plannedQty) return Promise.resolve();
-                  const max = Math.max(0, t.plannedQty - t.completedQty);
-                  if (value > max) return Promise.reject(new Error(`Max remaining: ${fmtN(max)} ${t.unit}`));
-                  return Promise.resolve();
-                },
-              },
             ]}
           >
             <InputNumber
               style={{ width: "100%" }}
               min={0.00001} step={0.00001} precision={5}
-              max={(progSubItem ?? progItem)?.plannedQty ? Math.max(0, (progSubItem ?? progItem)!.plannedQty - (progSubItem ?? progItem)!.completedQty) : undefined}
               placeholder={(progSubItem ?? progItem)?.unit === "per-hr" ? "e.g. 13.6667" : "e.g. 500"}
             />
           </Form.Item>
