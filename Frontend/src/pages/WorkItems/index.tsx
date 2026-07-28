@@ -335,9 +335,12 @@ function actorName(by: WorkOrder["makerBy"], userMap: Record<string, string>): s
   return by.name;
 }
 
+// No "maker" here, deliberately — the Maker is Neoteric staff entering the
+// work order on the contractor's behalf, not the contractor themselves, so
+// it's never bound to the PDF's Contractor signature slot (that stays a
+// blank line for the contractor's own physical signature).
 function buildApprovals(wo: WorkOrder, userMap: Record<string, string>) {
   return {
-    maker:    wo.makerBy         ? { name: actorName(wo.makerBy, userMap),         at: wo.makerAt }         : null,
     checker:  wo.checkerBy       ? { name: actorName(wo.checkerBy, userMap),       at: wo.checkerAt }       : null,
     approver: wo.approverBy      ? { name: actorName(wo.approverBy, userMap),      at: wo.approverAt }      : null,
     final:    wo.finalApprovedBy ? { name: actorName(wo.finalApprovedBy, userMap), at: wo.finalApprovedAt } : null,

@@ -89,7 +89,9 @@ const S = StyleSheet.create({
   sigCell:   { flex: 1, padding: "10px 10px", borderRightWidth: 1, borderRightColor: BORDER },
   sigCellL:  { flex: 1, padding: "10px 10px" },
   sigRole:   { fontSize: 8.5, fontWeight: "bold", color: MID, marginBottom: 4, letterSpacing: 0.3 },
-  sigSlot:   { height: 18, justifyContent: "flex-end", alignItems: "center" },
+  // Left-aligned rather than centered — leaves the right side of the line
+  // clear in case someone still wants to physically sign it too.
+  sigSlot:   { height: 18, justifyContent: "flex-end", alignItems: "flex-start" },
   sigApprovedText: { fontSize: 9, fontWeight: "bold", color: "#16A34A", letterSpacing: 0.5 },
   sigLine:   { borderTopWidth: 1, borderTopColor: BORDER, width: "100%" },
   sigName:   { fontSize: 7.5, color: GRAY, marginTop: 3 },
@@ -145,7 +147,6 @@ interface WOData {
   documentName?: string;
   documentUrl?: string;
   approvals?: {
-    maker?: { name?: string; at?: string } | null;
     checker?: { name?: string; at?: string } | null;
     approver?: { name?: string; at?: string } | null;
     final?: { name?: string; at?: string } | null;
@@ -412,10 +413,13 @@ export function WorkOrderDocumentHindi({ wo, company, contractor }: Props) {
           ))}
         </View>
 
-        {/* ── Signature block ── */}
+        {/* ── Signature block — "ठेकेदार" (Contractor) is never linked to any
+            in-system stage, since the Maker who enters the work order is
+            Neoteric staff acting for the contractor, not the contractor
+            themselves — stays a blank line for their own physical signature. ── */}
         <View style={S.sigBlock} wrap={false}>
           {([
-            ["ठेकेदार", wo.approvals?.maker],
+            ["ठेकेदार", null],
             ["एजीएम – प्रोजेक्ट", wo.approvals?.checker],
             ["जीएम – प्रोजेक्ट", wo.approvals?.approver],
           ] as const).map(([role, approval], i, arr) => (

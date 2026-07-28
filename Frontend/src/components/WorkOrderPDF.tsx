@@ -99,7 +99,9 @@ const S = StyleSheet.create({
   // Fixed-height slot so the line below always lands in the same place whether
   // this stage is already approved in-system (shows "Approved") or still needs
   // a physical wet signature (stays blank).
-  sigSlot:   { height: 18, justifyContent: "flex-end", alignItems: "center" },
+  // Left-aligned rather than centered — leaves the right side of the line
+  // clear in case someone still wants to physically sign it too.
+  sigSlot:   { height: 18, justifyContent: "flex-end", alignItems: "flex-start" },
   sigApprovedText: { fontSize: 9, fontFamily: "Helvetica-Bold", color: "#16A34A", letterSpacing: 0.5 },
   sigLine:   { borderTopWidth: 1, borderTopColor: BORDER, width: "100%" },
   sigName:   { fontSize: 7.5, color: GRAY, marginTop: 3 },
@@ -159,9 +161,10 @@ interface WOData {
   // Real in-system approval state — resolved (id -> name) by the caller before
   // handing this off to the PDF, since this component does no fetching of its
   // own. A stage stays undefined/null until it's actually been done; the
-  // signature block below falls back to a blank physical-signature line for it.
+  // signature block below falls back to a blank physical-signature line for
+  // it. No "maker" here — that's Neoteric staff acting for the contractor,
+  // never bound to the Contractor signature slot (see the signature block).
   approvals?: {
-    maker?: { name?: string; at?: string } | null;
     checker?: { name?: string; at?: string } | null;
     approver?: { name?: string; at?: string } | null;
     final?: { name?: string; at?: string } | null;
@@ -464,13 +467,16 @@ export function WorkOrderDocument({ wo, company, contractor }: Props) {
           ))}
         </View>
 
-        {/* ── Signature block — "Contractor"/"AGM"/"GM" map to the in-system
-            Maker/Checker/Approver stages; each shows "Approved" + the real
-            name/date of whoever actually did it once that stage is done,
-            otherwise stays a blank line for a physical signature. ── */}
+        {/* ── Signature block — "AGM"/"GM" map to the in-system Checker/Approver
+            stages, each showing "Approved" + the real name/date of whoever
+            actually did it once that stage is done. "Contractor" is
+            deliberately never linked to any in-system stage — the Maker who
+            enters the work order is Neoteric staff acting on the contractor's
+            behalf, not the contractor themselves, so this stays a blank line
+            for their own physical signature. ── */}
         <View style={S.sigBlock} wrap={false}>
           {([
-            ["Contractor", wo.approvals?.maker],
+            ["Contractor", null],
             ["AGM – Project", wo.approvals?.checker],
             ["GM – Project", wo.approvals?.approver],
           ] as const).map(([role, approval], i, arr) => (
