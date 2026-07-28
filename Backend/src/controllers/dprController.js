@@ -168,8 +168,11 @@ exports.getDPR = asyncHandler(async (req, res) => {
     ...rbPaidToday.map(b => b.vendorCode),
   ].filter(Boolean));
 
-  // Drill-down detail rows — the actual records behind each operational KPI
-  const pendingApprovalsList = billRequests.filter(b => b.status === 'pending');
+  // Drill-down detail rows — the actual records behind each operational KPI.
+  // Counts everything still in flight (L1 AGM + L2 GM), not just L1 — a
+  // request sitting at pending-gm is just as much "pending" from this KPI's
+  // point of view as one still waiting on AGM.
+  const pendingApprovalsList = billRequests.filter(b => ['pending', 'pending-gm'].includes(b.status));
   const operationalDetails = {
     woCreatedToday: woToday.map(w => ({ id: w._id, label: w.workOrderNo, project: w.projectName, vendor: w.vendorName, value: w.contractValue || 0 })),
     billRequestsToday: brToday.map(b => ({ id: b._id, label: b.reqNo, project: b.projectName, vendor: b.vendorName, value: sum(b.items || [], it => (it.rate || 0) * it.billedQty) })),
@@ -182,11 +185,15 @@ exports.getDPR = asyncHandler(async (req, res) => {
   // Progress entries logged today, across every scope item of every work order
   let progressEntriesToday = 0;
   const siteProgressToday = [];
+  const driActiveToday = new Set();
+  const projectsActiveToday = new Set();
   for (const wo of workOrders) {
     for (const item of wo.scopeItems || []) {
       const todayEntries = (item.progressEntries || []).filter(e => inRange(e.date, dayStart, dayEnd));
       if (todayEntries.length === 0) continue;
       progressEntriesToday += todayEntries.length;
+      todayEntries.forEach(e => { if (e.enteredBy) driActiveToday.add(String(e.enteredBy)); });
+      projectsActiveToday.add(String(wo.projectId));
       const todayQty = sum(todayEntries, e => e.qtyAdded);
       siteProgressToday.push({
         projectId: String(wo.projectId), projectName: wo.projectName,
@@ -276,6 +283,8 @@ exports.getDPR = asyncHandler(async (req, res) => {
       progressEntriesToday,
       pendingApprovals: pendingApprovalsList.length,
       contractorsActiveToday: activeContractors.size,
+      drisActiveToday: driActiveToday.size,
+      projectsActiveToday: projectsActiveToday.size,
     },
     comparisons: operationalComparisons,
     details: operationalDetails,

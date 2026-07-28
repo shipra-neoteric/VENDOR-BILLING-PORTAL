@@ -132,7 +132,7 @@ exports.getProjectStats = asyncHandler(async (req, res) => {
   const paidBills      = runningBills.filter(b => b.status === 'paid');
   const paidAmount     = paidBills.reduce((s, b) => s + netPaidOut(b), 0);
 
-  const pendingBillReqs = billReqs.filter(b => b.status === 'pending').length;
+  const pendingBillReqs = billReqs.filter(b => ['pending', 'pending-gm'].includes(b.status)).length;
   const openBills       = runningBills.filter(b => !['approved', 'paid', 'rejected'].includes(b.status)).length;
   const activeVendors   = new Set(wos.map(w => w.vendorCode).filter(Boolean)).size;
   const progress        = totalPlannedQty > 0

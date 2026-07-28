@@ -67,8 +67,8 @@ exports.createBillRequest = asyncHandler(async (req, res) => {
     if (!isAssigned) return forbidden(res, 'You are not assigned to this work order');
   }
 
-  // Check no pending request already exists
-  const existing = await BillRequest.findOne({ workOrderId: wo._id, status: 'pending' });
+  // Check no request already in flight (either stage) exists
+  const existing = await BillRequest.findOne({ workOrderId: wo._id, status: { $in: ['pending', 'pending-gm'] } });
   if (existing) {
     return badRequest(res, `Stage ${existing.stageNo} (${existing.reqNo}) is already pending approval. Wait for admin review before submitting a new request.`);
   }
@@ -83,7 +83,11 @@ exports.createBillRequest = asyncHandler(async (req, res) => {
     ? wo.scopeItems.filter(si => selectedIds.has(String(si._id)))
     : wo.scopeItems;
 
-  // Auto-calculate pending qty per scope item
+  // Auto-calculate pending qty per scope item. Rate is snapshotted here too
+  // (not just at gmApprove) purely so it's visible to whoever reviews the
+  // request at L1/L2 — gmApprove still re-reads the WO's current rate fresh
+  // when it actually builds the RunningBill, so a rate edited on the WO
+  // in between never goes stale in what's actually billed.
   const pendingItems = candidateItems
     .map(si => ({
       scopeItemId:  si._id,
@@ -92,6 +96,7 @@ exports.createBillRequest = asyncHandler(async (req, res) => {
       completedQty: si.completedQty || 0,
       lastBilledQty:si.lastBilledQty || 0,
       billedQty:    Math.max(0, (si.completedQty || 0) - (si.lastBilledQty || 0)),
+      rate:         si.rate || 0,
     }))
     .filter(it => it.billedQty > 0);
 
@@ -145,6 +150,8 @@ exports.createBillRequest = asyncHandler(async (req, res) => {
       description: it.description,
       unit:        it.unit,
       billedQty:   it.billedQty,
+      rate:        it.rate,
+      amount:      it.rate * it.billedQty,
       progressRemarks: progressRemarksByItem.get(String(it.scopeItemId)) || '',
     })),
     remarks:     remarks || '',
@@ -178,11 +185,71 @@ exports.createBillRequest = asyncHandler(async (req, res) => {
   created(res, { billRequest }, `Stage ${stageNo} bill request ${reqNo} submitted successfully`);
 });
 
-// PUT /api/bill-requests/:id/approve
-exports.approveBillRequest = asyncHandler(async (req, res) => {
+// PUT /api/bill-requests/:id/agm-approve — Stage 1 (L1). Decides the actual
+// hold/advance figures, but doesn't create the RunningBill yet — that only
+// happens once GM signs off too (see gmApprove below).
+exports.agmApprove = asyncHandler(async (req, res) => {
   const br = await BillRequest.findById(req.params.id);
   if (!br) return notFound(res, 'Bill request not found');
   if (br.status !== 'pending') return badRequest(res, `Request is already ${br.status}`);
+
+  const wo = await WorkOrder.findById(br.workOrderId);
+  if (!wo) return notFound(res, 'Associated work order not found');
+
+  const totalAmount = br.items.reduce((s, item) => {
+    const scopeItem = item.scopeItemId ? wo.scopeItems.id(item.scopeItemId) : wo.scopeItems.find(si => si.description === item.description);
+    return s + (scopeItem?.rate ?? 0) * item.billedQty;
+  }, 0);
+  const retentionPercent = wo.retentionPercent ?? 0;
+  const defaultRetention = Math.round(totalAmount * retentionPercent / 100);
+  // AGM sets the actual hold/advance figures as part of L1 approval — falls back
+  // to the work order's automatic retention calc if AGM doesn't override it.
+  // Persisted here (not just used once) since gmApprove reads them back later.
+  const retentionAmount  = req.body.retentionAmount != null ? Number(req.body.retentionAmount) : defaultRetention;
+  const advanceRecovery  = req.body.advanceRecovery != null ? Number(req.body.advanceRecovery) : 0;
+
+  br.retentionAmount = retentionAmount;
+  br.advanceRecovery = advanceRecovery;
+  br.agmApprovedBy   = req.user._id;
+  br.agmApprovedAt   = new Date();
+  br.status          = 'pending-gm';
+  br.approvalHistory.push({ stage: 'agm', action: 'approved', by: req.user._id, remarks: req.body.remarks || '' });
+  await br.save();
+
+  emitEvent('BILL_REQUEST_AGM_APPROVED', {
+    projectId:     wo.projectId,
+    workOrderId:   wo._id,
+    workOrderNo:   wo.workOrderNo,
+    billRequestId: br._id,
+    vendorCode:    wo.vendorCode,
+    vendorName:    wo.vendorName,
+    stageNo:       br.stageNo,
+    user:          req.user,
+    metadata:      { reqNo: br.reqNo, totalAmount },
+  });
+
+  await advanceInstance('BillRequest', br._id, req.user._id, 'AGM approved');
+
+  await logAudit({
+    action: 'APPROVE', module: 'bill-requests', user: req.user,
+    description: `AGM approved ${br.reqNo} — forwarded to GM`,
+    entityType: 'BillRequest', entityId: br._id, entityLabel: br.reqNo,
+    changes: { retentionAmount: { from: null, to: retentionAmount }, advanceRecovery: { from: null, to: advanceRecovery } },
+  });
+
+  success(res, { billRequest: br }, `AGM approved — Stage ${br.stageNo} forwarded to GM`);
+});
+
+// PUT /api/bill-requests/:id/gm-approve — Stage 2 (L2), final. This is where
+// the RunningBill actually gets created, using the retention/advance figures
+// AGM already set at L1.
+exports.gmApprove = asyncHandler(async (req, res) => {
+  const br = await BillRequest.findById(req.params.id);
+  if (!br) return notFound(res, 'Bill request not found');
+  if (br.status !== 'pending-gm') return badRequest(res, `Request is already ${br.status}`);
+  if (br.agmApprovedBy && br.agmApprovedBy.toString() === req.user._id.toString() && req.user.role !== 'owner') {
+    return badRequest(res, 'The AGM who approved this cannot also give GM sign-off — segregation of duties requires a different approver.');
+  }
 
   const wo = await WorkOrder.findById(br.workOrderId);
   if (!wo) return notFound(res, 'Associated work order not found');
@@ -209,13 +276,9 @@ exports.approveBillRequest = asyncHandler(async (req, res) => {
     };
   });
 
-  const totalAmount      = lineItems.reduce((s, l) => s + l.amount, 0);
-  const retentionPercent = wo.retentionPercent ?? 0;
-  const defaultRetention = Math.round(totalAmount * retentionPercent / 100);
-  // AGM sets the actual hold/advance figures as part of approval — falls back to the
-  // work order's automatic retention calc if AGM doesn't override it.
-  const retentionAmount  = req.body.retentionAmount != null ? Number(req.body.retentionAmount) : defaultRetention;
-  const advanceRecovery  = req.body.advanceRecovery != null ? Number(req.body.advanceRecovery) : 0;
+  const totalAmount     = lineItems.reduce((s, l) => s + l.amount, 0);
+  const retentionAmount = br.retentionAmount || 0;
+  const advanceRecovery = br.advanceRecovery || 0;
   const billNo = await nextBillNo();
 
   const runningBill = await RunningBill.create({
@@ -230,15 +293,15 @@ exports.approveBillRequest = asyncHandler(async (req, res) => {
     billDate:    new Date(),
     lineItems,
     amount:           totalAmount,
-    retentionPercent,
+    retentionPercent: wo.retentionPercent ?? 0,
     retentionAmount,
     advanceRecovery,
     gstPercent:  wo.gstPercent ?? 18,
     tdsPercent:  0,
     generatedBy: req.user.name,
     status:      'draft',
-    agmApprovedBy: req.user._id,
-    agmApprovedAt: new Date(),
+    agmApprovedBy: br.agmApprovedBy,
+    agmApprovedAt: br.agmApprovedAt,
     createdBy:   req.user._id,
   });
 
@@ -251,6 +314,7 @@ exports.approveBillRequest = asyncHandler(async (req, res) => {
   br.billId      = runningBill._id;
   br.processedBy = req.user._id;
   br.processedAt = new Date();
+  br.approvalHistory.push({ stage: 'gm', action: 'approved', by: req.user._id, remarks: req.body.remarks || '' });
   await br.save();
 
   emitEvent('BILL_REQUEST_APPROVED', {
@@ -266,23 +330,23 @@ exports.approveBillRequest = asyncHandler(async (req, res) => {
     metadata:      { reqNo: br.reqNo, billNo, totalAmount },
   });
 
-  await advanceInstance('BillRequest', br._id, req.user._id, 'Approved');
+  await advanceInstance('BillRequest', br._id, req.user._id, 'GM approved');
 
   await logAudit({
     action: 'APPROVE', module: 'bill-requests', user: req.user,
-    description: `Approved ${br.reqNo} — generated bill ${billNo} (₹${totalAmount.toLocaleString('en-IN')})`,
+    description: `GM approved ${br.reqNo} — generated bill ${billNo} (₹${totalAmount.toLocaleString('en-IN')})`,
     entityType: 'BillRequest', entityId: br._id, entityLabel: br.reqNo,
-    changes: { retentionAmount: { from: null, to: retentionAmount }, advanceRecovery: { from: null, to: advanceRecovery } },
   });
 
   success(res, { billRequest: br, bill: runningBill }, `Approved — Bill ${billNo} generated for Stage ${br.stageNo}`);
 });
 
-// PUT /api/bill-requests/:id/reject
+// PUT /api/bill-requests/:id/reject — from either L1 (pending) or L2 (pending-gm).
 exports.rejectBillRequest = asyncHandler(async (req, res) => {
   const br = await BillRequest.findById(req.params.id);
   if (!br) return notFound(res, 'Bill request not found');
-  if (br.status !== 'pending') return badRequest(res, `Request is already ${br.status}`);
+  if (!['pending', 'pending-gm'].includes(br.status)) return badRequest(res, `Request is already ${br.status}`);
+  const rejectedStage = br.status === 'pending-gm' ? 'gm' : 'agm';
 
   const rejectReason = req.body.rejectReason || 'No reason provided';
 
@@ -318,6 +382,7 @@ exports.rejectBillRequest = asyncHandler(async (req, res) => {
   br.rejectReason = rejectReason;
   br.processedBy  = req.user._id;
   br.processedAt  = new Date();
+  br.approvalHistory.push({ stage: rejectedStage, action: 'rejected', by: req.user._id, remarks: rejectReason });
   await br.save();
 
   emitEvent('BILL_REQUEST_REJECTED', {
@@ -372,7 +437,7 @@ exports.createBatchBillRequest = asyncHandler(async (req, res) => {
       if (!isAssigned) { skipped.push({ workOrderId, reason: 'Not assigned' }); continue; }
     }
 
-    const existing = await BillRequest.findOne({ workOrderId: wo._id, status: 'pending' });
+    const existing = await BillRequest.findOne({ workOrderId: wo._id, status: { $in: ['pending', 'pending-gm'] } });
     if (existing) { skipped.push({ workOrderId, reason: `Stage ${existing.stageNo} already pending` }); continue; }
 
     const pendingItems = wo.scopeItems
@@ -383,6 +448,7 @@ exports.createBatchBillRequest = asyncHandler(async (req, res) => {
         completedQty:  si.completedQty  || 0,
         lastBilledQty: si.lastBilledQty || 0,
         billedQty:     Math.max(0, (si.completedQty || 0) - (si.lastBilledQty || 0)),
+        rate:          si.rate || 0,
       }))
       .filter(it => it.billedQty > 0);
 
@@ -421,6 +487,8 @@ exports.createBatchBillRequest = asyncHandler(async (req, res) => {
         description: it.description,
         unit:        it.unit,
         billedQty:   it.billedQty,
+        rate:        it.rate,
+        amount:      it.rate * it.billedQty,
         progressRemarks: progressRemarksByItem.get(String(it.scopeItemId)) || '',
       })),
       remarks:     remarks || '',

@@ -30,16 +30,37 @@ const billRequestSchema = new Schema(
     remarks:     { type: String, default: '' },
     periodFrom:  { type: Date },
     periodTo:    { type: Date },
+    // pending = awaiting L1 (AGM) · pending-gm = AGM approved, awaiting L2 (GM)
+    // · approved = GM approved, RunningBill created · rejected = terminal, a
+    // fresh request must be raised from new progress (this one never revives).
     status: {
       type:    String,
-      enum:    ['pending', 'approved', 'rejected'],
+      enum:    ['pending', 'pending-gm', 'approved', 'rejected'],
       default: 'pending',
     },
+    // Set by agmApprove (L1) — retention/advance are decided here but not
+    // acted on until gmApprove (L2) actually builds the RunningBill, so they
+    // have to be persisted rather than staying a one-time req.body value.
+    agmApprovedBy:    { type: Schema.Types.ObjectId, ref: 'User' },
+    agmApprovedAt:    { type: Date },
+    retentionAmount:  { type: Number, default: 0 },
+    advanceRecovery:  { type: Number, default: 0 },
     billId:           { type: Schema.Types.ObjectId, ref: 'RunningBill' },
     requestedBy:      { type: Schema.Types.ObjectId, ref: 'User' },
+    // Whoever did the LAST terminal action — gmApprove or a reject at either stage.
     processedBy:      { type: Schema.Types.ObjectId, ref: 'User' },
     processedAt:      { type: Date },
     rejectReason:     { type: String, default: '' },
+    // Append-only, mirrors WorkOrder.approvalHistory/RunningBill.approvalHistory —
+    // 'rejected' (not 'sent-back': this is terminal, the document never revives).
+    approvalHistory: [{
+      stage:   { type: String, enum: ['agm', 'gm'], required: true },
+      action:  { type: String, enum: ['approved', 'rejected'], required: true },
+      by:      { type: Schema.Types.ObjectId, ref: 'User' },
+      at:      { type: Date, default: Date.now },
+      remarks: { type: String, default: '' },
+      _id: false,
+    }],
     milestoneAchieved:{ type: Boolean, default: false },
     milestoneDate:    { type: Date },
     batchId:          { type: String, default: null },

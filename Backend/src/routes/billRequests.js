@@ -1,10 +1,11 @@
 const router     = require('express').Router();
-const { authenticate, authorizeOr } = require('../middleware/auth');
+const { authenticate, authorizeOr, authorizeAnyOr } = require('../middleware/auth');
 const {
   listBillRequests,
   createBillRequest,
   createBatchBillRequest,
-  approveBillRequest,
+  agmApprove,
+  gmApprove,
   rejectBillRequest,
   archiveBillRequest,
   unarchiveBillRequest,
@@ -20,9 +21,13 @@ router.get('/',                listBillRequests);
 // permission grant works too, not just the hardcoded role list.
 router.post('/batch',          authorizeOr('bill-requests', 'create', 'owner', 'gm', 'agm'), createBatchBillRequest);
 router.post('/',               authorizeOr('bill-requests', 'create', 'owner', 'gm', 'agm'), createBillRequest);
-// Stage 1 (AGM sets hold/advance and approves) — restricted to AGM/owner only.
-router.put('/:id/approve',   authorizeOr('bill-requests', 'approve', 'owner', 'agm'), approveBillRequest);
-router.put('/:id/reject',    authorizeOr('bill-requests', 'approve', 'owner', 'agm', 'gm', 'accounts'), rejectBillRequest);
+// Stage 1 (AGM sets hold/advance, forwards to GM) — AGM/owner only.
+router.put('/:id/agm-approve', authorizeOr('bill-requests', 'agm-approve', 'owner', 'agm'), agmApprove);
+// Stage 2 (GM signs off — this is what actually creates the RunningBill) — GM/owner only.
+router.put('/:id/gm-approve',  authorizeOr('bill-requests', 'gm-approve', 'owner', 'gm'), gmApprove);
+// Reject's target status depends on which stage it's at (pending vs pending-gm) —
+// authorizeAnyOr since either an AGM or a GM action-holder can reject at their stage.
+router.put('/:id/reject',    authorizeAnyOr('bill-requests', ['agm-approve', 'gm-approve'], 'owner', 'agm', 'gm', 'accounts'), rejectBillRequest);
 // Payment release lives entirely in the Accounts Payment module now (see
 // billController.releasePayment) — no milestone route here anymore.
 router.patch('/archive-bulk',   authorizeOr('bill-requests', 'edit', 'owner', 'gm', 'accounts'), archiveBillRequestsBulk);
