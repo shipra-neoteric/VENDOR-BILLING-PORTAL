@@ -124,6 +124,7 @@ interface PaymentMilestoneData {
 interface WOData {
   workOrderNo: string;
   issueDate: string;
+  createdAt?: string;
   preparedByName?: string;
   preparedByContact?: string;
   projectName: string;
@@ -290,7 +291,7 @@ export function WorkOrderDocument({ wo, company, contractor }: Props) {
           <View style={S.docTitle}>
             <Text style={S.docMain}>WORK ORDER</Text>
             <Text style={S.docSub}>{wo.workOrderNo}</Text>
-            <Text style={S.docBadge}>Generated: {new Date().toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</Text>
+            <Text style={S.docBadge}>Created: {(wo.createdAt ? new Date(wo.createdAt) : new Date(wo.issueDate)).toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</Text>
           </View>
         </View>
 

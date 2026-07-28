@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { NavLink } from "react-router-dom";
 import {
   LayoutOutlined, BankOutlined, ApartmentOutlined, TeamOutlined, TagsOutlined,
-  FileTextOutlined, LineChartOutlined, ProfileOutlined, WalletOutlined,
+  FileTextOutlined, LineChartOutlined, WalletOutlined,
   AccountBookOutlined, UsergroupAddOutlined, MonitorOutlined,
   ShareAltOutlined, SettingOutlined, ClockCircleOutlined, HistoryOutlined,
   FileSearchOutlined,
@@ -43,8 +43,7 @@ const ADMIN_GROUPS: NavGroup[] = [
   {
     label: "Billing",
     items: [
-      { name: "Bill Review",        path: "/bill-review",      icon: <FileSearchOutlined />,   moduleId: "bill-review" },
-      { name: "Bill Requests",      path: "/bill-requests",    icon: <ProfileOutlined />,     moduleId: "bill-requests" },
+      { name: "Site Progress",      path: "/site-progress",    icon: <FileSearchOutlined />,   moduleId: "bill-review" },
       { name: "Accounts Payment",   path: "/accounts-payment", icon: <WalletOutlined />,       moduleId: "accounts-payment" },
       { name: "Ledger",             path: "/ledger",           icon: <AccountBookOutlined />,  moduleId: "ledger" },
       { name: "Advance Payments",   path: "/advance-payments", icon: <BankOutlined />,         moduleId: "advance-payments" },

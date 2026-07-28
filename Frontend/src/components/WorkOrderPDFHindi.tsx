@@ -114,6 +114,7 @@ interface PaymentMilestoneData {
 interface WOData {
   workOrderNo: string;
   issueDate: string;
+  createdAt?: string;
   preparedByName?: string;
   preparedByContact?: string;
   projectName: string;
@@ -267,7 +268,7 @@ export function WorkOrderDocumentHindi({ wo, company, contractor }: Props) {
           <View style={S.docTitle}>
             <Text style={S.docMain}>कार्य आदेश</Text>
             <Text style={S.docSub}>{wo.workOrderNo}</Text>
-            <Text style={S.docBadge}>जनरेट किया गया: {new Date().toLocaleString("hi-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</Text>
+            <Text style={S.docBadge}>बनाया गया: {(wo.createdAt ? new Date(wo.createdAt) : new Date(wo.issueDate)).toLocaleString("hi-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</Text>
           </View>
         </View>
 

@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button, Empty, Spin } from "antd";
+import { FileTextOutlined, TeamOutlined, ClusterOutlined, ClockCircleOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import PageShell from "../../components/PageShell";
 import apiClient from "../../services/apiClient";
 import { useAuth } from "../../context/AuthContext";
+import StatCard from "../../shared/components/StatCard";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface BillRow {
@@ -79,20 +81,31 @@ export default function MyTasksDashboard() {
 
   const [loading, setLoading]   = useState(true);
   const [bills, setBills]       = useState<BillRow[]>([]);
-  const [billReqs, setBillReqs] = useState<BillRequestRow[]>([]);
+  const [billReqs, setBillReqs] = useState<BillRequestRow[]>([]);       // status: pending (L1, AGM)
+  const [billReqsGm, setBillReqsGm] = useState<BillRequestRow[]>([]);   // status: pending-gm (L2, GM)
   const [woInstances, setWoInstances] = useState<WFInstance[]>([]);
+  const [kpis, setKpis] = useState({ progressEntriesToday: 0, drisActiveToday: 0, projectsActiveToday: 0 });
 
   useEffect(() => {
     setLoading(true);
     Promise.all([
       apiClient.get("/bills"),
       apiClient.get("/bill-requests", { params: { status: "pending" } }),
+      apiClient.get("/bill-requests", { params: { status: "pending-gm" } }),
       apiClient.get("/workflows/instances", { params: { entityType: "WorkOrder", status: "in-progress" } }),
+      apiClient.get("/dpr"),
     ])
-      .then(([billsR, brR, wfR]) => {
+      .then(([billsR, brR, brGmR, wfR, dprR]) => {
         setBills(billsR.data.bills ?? []);
         setBillReqs(brR.data.billRequests ?? []);
+        setBillReqsGm(brGmR.data.billRequests ?? []);
         setWoInstances(wfR.data.instances ?? []);
+        const k = dprR.data?.operational?.kpis || {};
+        setKpis({
+          progressEntriesToday: k.progressEntriesToday || 0,
+          drisActiveToday:      k.drisActiveToday || 0,
+          projectsActiveToday:  k.projectsActiveToday || 0,
+        });
       })
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -123,16 +136,16 @@ export default function MyTasksDashboard() {
   });
   const openWO = (id: string) => navigate(`/work-items/${id}`);
 
-  // ── GM: bills at 'submitted'/'verified', waiting on the checker stage ──
-  const gmBills = bills.filter(b => b.status === "submitted" || b.status === "verified");
-  const gmBillRows = gmBills.map(b => ({
-    key: b._id, label: b.billNo,
-    sub: [b.vendorName, b.projectName, b.workOrderNo].filter(Boolean).join(" · "),
-    amount: b.amount, when: `${daysAgo(b.billDate)}d pending`,
+  // ── AGM: bill requests at 'pending' (L1), waiting on AGM approval ──
+  const agmReqRows = billReqs.map(r => ({
+    key: r._id, label: r.reqNo,
+    sub: [r.vendorName, r.projectName, r.workOrderNo].filter(Boolean).join(" · "),
+    amount: r.items.reduce((s, it) => s + (it.amount || 0), 0) || undefined,
+    when: `${daysAgo(r.createdAt)}d pending`,
   }));
 
-  // ── AGM: bill requests at 'pending', waiting on AGM approval ──
-  const agmReqRows = billReqs.map(r => ({
+  // ── GM: bill requests at 'pending-gm' (L2), waiting on GM approval ──
+  const gmReqRows = billReqsGm.map(r => ({
     key: r._id, label: r.reqNo,
     sub: [r.vendorName, r.projectName, r.workOrderNo].filter(Boolean).join(" · "),
     amount: r.items.reduce((s, it) => s + (it.amount || 0), 0) || undefined,
@@ -159,17 +172,27 @@ export default function MyTasksDashboard() {
       description={`Here's what's waiting on your approval right now.`}
     >
       {(role === "gm" || role === "agm") && (
-        <div style={{ background: "var(--nx-white)", border: "1px solid #e4e7ee", borderRadius: 12, padding: "16px 18px", marginBottom: 20, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
-          <div>
-            <div style={{ fontWeight: 700, fontSize: 14, color: "var(--nx-text)" }}>Bill Review</div>
-            <div style={{ fontSize: 12, color: "var(--nx-text-2)", marginTop: 2 }}>
-              See what DRI has been logging project-by-project, approve any over-plan progress, and pick what goes into a bill.
-            </div>
+        <>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(178px, 1fr))", gap: 14, marginBottom: 20 }}>
+            <StatCard label="Pending L1 (AGM)" value={billReqs.length} icon={<ClockCircleOutlined />} accent="#d97706" />
+            <StatCard label="Pending L2 (GM)" value={billReqsGm.length} icon={<ClockCircleOutlined />} accent="#2563eb" />
+            <StatCard label="Today's Progress Entries" value={kpis.progressEntriesToday} icon={<FileTextOutlined />} accent="#16a34a" />
+            <StatCard label="Active DRIs Today" value={kpis.drisActiveToday} icon={<TeamOutlined />} accent="#7c3aed" />
+            <StatCard label="Active Projects Today" value={kpis.projectsActiveToday} icon={<ClusterOutlined />} accent="#0d9488" />
           </div>
-          <Button type="primary" style={{ background: "#FF7A00", borderColor: "#FF7A00" }} onClick={() => navigate("/bill-review")}>
-            Open Bill Review →
-          </Button>
-        </div>
+
+          <div style={{ background: "var(--nx-white)", border: "1px solid #e4e7ee", borderRadius: 12, padding: "16px 18px", marginBottom: 20, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 14, color: "var(--nx-text)" }}>Site Progress</div>
+              <div style={{ fontSize: 12, color: "var(--nx-text-2)", marginTop: 2 }}>
+                See what DRI has been logging project-by-project, approve any over-plan progress, and carry a bill through AGM (L1) and GM (L2) approval.
+              </div>
+            </div>
+            <Button type="primary" style={{ background: "#FF7A00", borderColor: "#FF7A00" }} onClick={() => navigate("/site-progress")}>
+              Open Site Progress →
+            </Button>
+          </div>
+        </>
       )}
 
       {role === "gm" && (
@@ -180,9 +203,9 @@ export default function MyTasksDashboard() {
             onOpen={openWO}
           />
           <QueueSection
-            title="Bills Awaiting Your Check" color="#16a85a"
-            rows={gmBillRows} emptyText="No bills waiting on your check" buttonLabel="Check →"
-            onOpen={() => navigate("/accounts-payment")}
+            title="Bill Requests Awaiting Your L2 Approval" color="#2563eb"
+            rows={gmReqRows} emptyText="No bill requests waiting on your approval" buttonLabel="Approve →"
+            onOpen={() => navigate("/site-progress")}
           />
         </>
       )}
@@ -195,9 +218,9 @@ export default function MyTasksDashboard() {
             onOpen={openWO}
           />
           <QueueSection
-            title="Bill Requests Awaiting Your Approval" color="#d97706"
+            title="Bill Requests Awaiting Your L1 Approval" color="#d97706"
             rows={agmReqRows} emptyText="No bill requests waiting on your approval" buttonLabel="Approve →"
-            onOpen={() => navigate("/bill-review")}
+            onOpen={() => navigate("/site-progress")}
           />
         </>
       )}

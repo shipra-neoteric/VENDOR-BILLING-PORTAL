@@ -18,9 +18,10 @@ import type { WorkflowInstance } from "../../types/Workflow";
 const fmt = (n: number) => "₹" + Math.round(n).toLocaleString("en-IN");
 
 const STATUS_CFG: Record<string, { color: string; label: string }> = {
-  pending:  { color: "orange", label: "Pending"  },
-  approved: { color: "green",  label: "Approved" },
-  rejected: { color: "red",    label: "Rejected" },
+  pending:      { color: "orange", label: "Pending (L1 — AGM)"  },
+  "pending-gm": { color: "blue",   label: "Pending (L2 — GM)"   },
+  approved:     { color: "green",  label: "Approved" },
+  rejected:     { color: "red",    label: "Rejected" },
 };
 
 interface BillItem {
@@ -49,7 +50,7 @@ interface BillRequest {
   remarks: string;
   periodFrom?: string;
   periodTo?: string;
-  status: "pending" | "approved" | "rejected";
+  status: "pending" | "pending-gm" | "approved" | "rejected";
   rejectReason?: string;
   requestedBy?: { name: string; email: string };
   billId?: { billNo: string; status: string; amount: number; paidAmount?: number; retentionPercent?: number; retentionAmount?: number; advanceRecovery?: number; gstPercent?: number; tdsAmount?: number; paymentDate?: string; paymentMode?: string; paymentUTR?: string; paymentBank?: string; paymentReleasedBy?: string };
@@ -133,7 +134,7 @@ export default function BillRequests() {
       const body: Record<string, number> = {};
       if (approveRetention != null) body.retentionAmount = approveRetention;
       if (approveAdvance   != null) body.advanceRecovery = approveAdvance;
-      const res = await apiClient.put(`/bill-requests/${approveTarget}/approve`, body);
+      const res = await apiClient.put(`/bill-requests/${approveTarget}/agm-approve`, body);
       message.success(res.data.message || "Approved & bill generated");
       setApproveModal(false);
       setApproveTarget(null);
