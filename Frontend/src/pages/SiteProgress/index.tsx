@@ -583,7 +583,7 @@ export default function SiteProgress() {
         r.projectName.toLowerCase().includes(q)
       );
     }
-    return list;
+    return [...list].sort((a, b) => parseInt(b.reqNo.replace(/\D/g, ""), 10) - parseInt(a.reqNo.replace(/\D/g, ""), 10));
   }, [billReqs, reqTab, reqProjectFilter, reqSearch, showArchived]);
 
   const reqColumns: ColumnsType<BillRequestRow> = [
