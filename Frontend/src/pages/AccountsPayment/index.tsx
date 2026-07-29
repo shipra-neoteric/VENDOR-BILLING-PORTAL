@@ -101,6 +101,9 @@ interface LineItem {
   scopeItemId?: string;
   description: string;
   remarks?: string;
+  // The DRI's own notes from the day-to-day progress entries billed here —
+  // distinct from `remarks`, which is the scope item's static instruction note.
+  progressRemarks?: string;
   unit: string;
   plannedQty: number;
   billedQty: number;
@@ -2013,6 +2016,7 @@ export default function AccountsPayment() {
                       <td style={{ padding: "8px 10px", fontWeight: 600, color: "#1a1f2e" }}>
                         {li.description}
                         {li.remarks && <div style={{ fontSize: 11, fontWeight: 400, color: "#d97706", marginTop: 2 }}>📌 {li.remarks}</div>}
+                        {li.progressRemarks && <div style={{ fontSize: 11, fontWeight: 400, color: "#2563eb", marginTop: 2 }}>👷 {li.progressRemarks}</div>}
                       </td>
                       <td style={{ padding: "8px 10px", textAlign: "right", color: "#9ba3b8" }}>{li.unit || "—"}</td>
                       <td style={{ padding: "8px 10px", textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: "#FF7A00" }}>

@@ -6,6 +6,9 @@ const fmt = (n: number) => "₹" + Math.round(n).toLocaleString("en-IN");
 export interface BillDetailItem {
   scopeItemId?: string;
   description: string;
+  // The DRI's own notes from the day-to-day progress entries billed here —
+  // distinct from the scope item's static instruction note.
+  progressRemarks?: string;
   unit: string;
   billedQty: number;
   rate?: number;
@@ -114,7 +117,10 @@ export default function BillDetailModal({
                   const amt = (it.rate ?? 0) * it.billedQty;
                   return (
                     <tr key={i} style={{ borderBottom: "1px solid #E5E7EB", background: i % 2 === 0 ? "#fff" : "#F9FAFB" }}>
-                      <td style={{ padding: "6px 10px" }}>{it.description}</td>
+                      <td style={{ padding: "6px 10px" }}>
+                        {it.description}
+                        {it.progressRemarks && <div style={{ fontSize: 11, color: "#2563eb", marginTop: 2 }}>👷 {it.progressRemarks}</div>}
+                      </td>
                       <td style={{ padding: "6px 10px" }}>{it.unit}</td>
                       <td style={{ padding: "6px 10px", textAlign: "right", fontFamily: "monospace" }}>{it.billedQty.toLocaleString("en-IN")}</td>
                       <td style={{ padding: "6px 10px", textAlign: "right" }}>

@@ -39,7 +39,7 @@ interface WODetail {
   approvalHistory?: ApprovalHistoryEntry[];
 }
 
-interface BillItem { description: string; unit: string; billedQty: number; rate?: number; amount?: number; }
+interface BillItem { description: string; progressRemarks?: string; unit: string; billedQty: number; rate?: number; amount?: number; }
 interface BillRequestStage {
   _id: string; reqNo: string; stageNo: number;
   status: "pending" | "approved" | "rejected";

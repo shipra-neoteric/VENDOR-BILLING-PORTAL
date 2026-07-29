@@ -12,6 +12,9 @@ export interface PrintableBillUser {
 export interface PrintableLineItem {
   description: string;
   remarks?: string;
+  // The DRI's own notes from the day-to-day progress entries billed here —
+  // distinct from `remarks`, which is the scope item's static instruction note.
+  progressRemarks?: string;
   unit?: string;
   billedQty: number;
   rate: number;
@@ -78,7 +81,7 @@ export function printBill(
       (li, i) => `
       <tr>
         <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:center">${i + 1}</td>
-        <td style="padding:8px 12px;border-bottom:1px solid #eee">${li.description}${li.remarks ? `<div style="font-size:10px;color:#d97706;margin-top:3px">📌 ${li.remarks}</div>` : ""}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #eee">${li.description}${li.remarks ? `<div style="font-size:10px;color:#d97706;margin-top:3px">📌 ${li.remarks}</div>` : ""}${li.progressRemarks ? `<div style="font-size:10px;color:#2563eb;margin-top:3px">👷 ${li.progressRemarks}</div>` : ""}</td>
         <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:center">${li.unit || "-"}</td>
         <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:right">${(li.billedQty || 0).toLocaleString("en-IN")}</td>
         <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:right">${(li.rate || 0).toLocaleString("en-IN")}</td>

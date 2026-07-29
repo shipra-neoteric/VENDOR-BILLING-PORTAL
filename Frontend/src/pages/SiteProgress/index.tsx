@@ -247,7 +247,7 @@ async function printBillRequest(br: BillRequestRow) {
       companyName: br.companyName,
       generatedBy: br.requestedBy?.name,
       billDate: br.createdAt,
-      lineItems: br.items.map(it => ({ description: it.description, unit: it.unit, billedQty: it.billedQty, rate: it.rate ?? 0, amount: (it.rate ?? 0) * it.billedQty })),
+      lineItems: br.items.map(it => ({ description: it.description, progressRemarks: it.progressRemarks, unit: it.unit, billedQty: it.billedQty, rate: it.rate ?? 0, amount: (it.rate ?? 0) * it.billedQty })),
       amount: br.items.reduce((s, it) => s + (it.rate ?? 0) * it.billedQty, 0),
       retentionAmount: br.retentionAmount ?? 0,
       advanceRecovery: br.advanceRecovery ?? 0,
@@ -1076,7 +1076,10 @@ export default function SiteProgress() {
                   const amt = (it.rate ?? 0) * it.billedQty;
                   return (
                     <tr key={i} style={{ borderBottom: "1px solid #E5E7EB", background: i % 2 === 0 ? "#fff" : "#F9FAFB" }}>
-                      <td style={{ padding: "6px 10px" }}>{it.description}</td>
+                      <td style={{ padding: "6px 10px" }}>
+                        {it.description}
+                        {it.progressRemarks && <div style={{ fontSize: 11, color: "#2563eb", marginTop: 2 }}>👷 {it.progressRemarks}</div>}
+                      </td>
                       <td style={{ padding: "6px 10px" }}>{it.unit}</td>
                       <td style={{ padding: "6px 10px", textAlign: "right", fontFamily: "monospace" }}>{it.billedQty.toLocaleString("en-IN")}</td>
                       <td style={{ padding: "6px 10px", textAlign: "right" }}>{it.rate ? fmt(it.rate) : <span style={{ color: "#9CA3AF" }}>pending</span>}</td>
