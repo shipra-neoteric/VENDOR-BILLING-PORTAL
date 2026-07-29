@@ -76,8 +76,8 @@ const STATUS_LABEL: Record<string, string> = {
 const BR_COLOR: Record<string, string> = {
   pending: "#f59e0b", approved: "#16a34a", rejected: "#ef4444",
 };
-const fmtN = (n: number) => n.toLocaleString("en-IN");
-const pctOf = (c: number, p: number) => p > 0 ? Math.min(100, Math.round((c / p) * 100)) : 0;
+const fmtN = (n: number) => (n ?? 0).toLocaleString("en-IN");
+const pctOf = (c: number, p: number) => p > 0 ? Math.min(100, Math.round(((c ?? 0) / p) * 100)) : 0;
 
 function getProjId(wo: WORow): string | undefined {
   if (!wo.projectId) return undefined;
