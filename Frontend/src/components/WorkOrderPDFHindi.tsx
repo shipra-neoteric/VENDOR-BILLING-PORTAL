@@ -115,6 +115,7 @@ interface WOData {
   workOrderNo: string;
   issueDate: string;
   createdAt?: string;
+  updatedAt?: string;
   preparedByName?: string;
   preparedByContact?: string;
   projectName: string;
@@ -270,6 +271,9 @@ export function WorkOrderDocumentHindi({ wo, company, contractor }: Props) {
             <Text style={S.docMain}>कार्य आदेश</Text>
             <Text style={S.docSub}>{wo.workOrderNo}</Text>
             <Text style={S.docBadge}>बनाया गया: {(wo.createdAt ? new Date(wo.createdAt) : new Date(wo.issueDate)).toLocaleString("hi-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</Text>
+            {wo.updatedAt && wo.createdAt && new Date(wo.updatedAt).getTime() - new Date(wo.createdAt).getTime() > 60000 && (
+              <Text style={S.docBadge}>अंतिम संपादन: {new Date(wo.updatedAt).toLocaleString("hi-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</Text>
+            )}
           </View>
         </View>
 

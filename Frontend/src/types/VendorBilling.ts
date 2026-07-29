@@ -195,6 +195,7 @@ export interface WorkOrder {
   lockedBy?: { _id: string; name: string; email?: string } | string;
   lockedAt?: string;
   createdAt?: string;
+  updatedAt?: string;
   createdBy?: { _id: string; name: string; email?: string } | string;
   // 4-level approval workflow — existing (pre-workflow) work orders were
   // grandfathered to 'approved' so they display as fully approved; only WOs
