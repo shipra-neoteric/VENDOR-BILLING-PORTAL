@@ -321,11 +321,6 @@ export function WorkOrderDocument({ wo, company, contractor }: Props) {
               <InfoRow label="Email"          value={company?.email} />
               <InfoRow label="Phone"          value={company?.phone} last />
             </SectionBox>
-            <SectionBox title="Project DRI Information">
-              <InfoRow label="Name"    value={(wo.assignedDRI ?? []).map(d => typeof d === "string" ? d : d.name).filter(Boolean).join(", ")} />
-              <InfoRow label="Email"   value={(wo.assignedDRI ?? []).map(d => typeof d === "string" ? "" : d.email).filter(Boolean).join(", ")} />
-              <InfoRow label="Contact" value={(wo.assignedDRI ?? []).map(d => typeof d === "string" ? "" : d.mobile).filter(Boolean).join(", ")} last />
-            </SectionBox>
           </View>
         </View>
 
