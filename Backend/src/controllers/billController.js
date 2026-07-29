@@ -183,10 +183,12 @@ exports.makerConfirm = asyncHandler(async (req, res) => {
     return badRequest(res, `Cannot confirm a bill with status '${bill.status}'`);
   }
   const checklist = req.body.makerChecklist || {};
-  if (!checklist.tallyEntryDone || !checklist.newItemsAddedInTally) {
-    return badRequest(res, 'Confirm both checklist items (Tally entry done, new items added in Tally) before forwarding to the checker.');
+  if (!checklist.tallyEntryDone) {
+    return badRequest(res, 'Confirm the Tally entry is done before forwarding to the checker.');
   }
-  bill.makerChecklist = { tallyEntryDone: true, newItemsAddedInTally: true };
+  // "New items added in Tally" doesn't apply to every bill (only ones that
+  // actually introduced new items) — informational only, never blocks confirming.
+  bill.makerChecklist = { tallyEntryDone: true, newItemsAddedInTally: !!checklist.newItemsAddedInTally };
   bill.status      = 'submitted';
   bill.submittedAt = new Date();
   bill.makerBy     = req.user._id;

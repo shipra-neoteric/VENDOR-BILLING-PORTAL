@@ -1528,15 +1528,14 @@ export default function AccountsPayment() {
     switch (bill.status) {
       case "draft": {
         if (!canMaker) return <MutedNote text="Awaiting a maker to confirm this bill." />;
-        const bothChecked = makerTallyDone && makerNewItemsDone;
         return (
           <div style={sectionPanelStyle}>
             <div style={{ fontWeight: 700, fontSize: 13, color: "#FF7A00", marginBottom: 8 }}>Confirm as Maker</div>
             <Space direction="vertical" size={8} style={{ width: "100%", marginBottom: 10 }}>
               <Checkbox checked={makerTallyDone} onChange={(e) => setMakerTallyDone(e.target.checked)}>Tally Entry Done</Checkbox>
-              <Checkbox checked={makerNewItemsDone} onChange={(e) => setMakerNewItemsDone(e.target.checked)}>New Items Added in Tally</Checkbox>
+              <Checkbox checked={makerNewItemsDone} onChange={(e) => setMakerNewItemsDone(e.target.checked)}>New Items Added in Tally (optional — only if this bill introduced new items)</Checkbox>
             </Space>
-            {!bothChecked && <div style={{ fontSize: 11.5, color: "#d97706", marginBottom: 8 }}>Both boxes must be checked before confirming.</div>}
+            {!makerTallyDone && <div style={{ fontSize: 11.5, color: "#d97706", marginBottom: 8 }}>Tally Entry Done must be checked before confirming.</div>}
             <Input.TextArea rows={2} placeholder="Remarks (optional)" value={makerRemarks} onChange={(e) => setMakerRemarks(e.target.value)} />
           </div>
         );
@@ -1563,11 +1562,26 @@ export default function AccountsPayment() {
             <Row gutter={12} style={{ marginTop: 10 }}>
               <Col span={12}>
                 <div style={{ fontSize: 11, color: "#9CA3AF", marginBottom: 4 }}>TDS %</div>
-                <InputNumber style={{ width: "100%" }} min={0} max={100} value={checkerTdsPercent} onChange={(v) => setCheckerTdsPercent(Number(v) || 0)} />
+                <InputNumber
+                  style={{ width: "100%" }} min={0} max={100} value={checkerTdsPercent}
+                  onChange={(v) => {
+                    const pct = Number(v) || 0;
+                    setCheckerTdsPercent(pct);
+                    setCheckerTdsAmount(Math.round((bill.amount || 0) * pct / 100));
+                  }}
+                />
               </Col>
               <Col span={12}>
                 <div style={{ fontSize: 11, color: "#9CA3AF", marginBottom: 4 }}>TDS Amount to Deduct (₹)</div>
-                <InputNumber style={{ width: "100%" }} min={0} value={checkerTdsAmount} onChange={(v) => setCheckerTdsAmount(Number(v) || 0)} />
+                <InputNumber
+                  style={{ width: "100%" }} min={0} value={checkerTdsAmount}
+                  onChange={(v) => {
+                    const amt = Number(v) || 0;
+                    setCheckerTdsAmount(amt);
+                    const gross = bill.amount || 0;
+                    setCheckerTdsPercent(gross > 0 ? Math.round((amt / gross) * 10000) / 100 : 0);
+                  }}
+                />
               </Col>
             </Row>
             <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, padding: "12px 14px", marginTop: 10 }}>
@@ -1703,7 +1717,7 @@ export default function AccountsPayment() {
   function footerPrimary(bill: Bill): { label: string; color: string; onClick: () => void; loading: boolean; disabled?: boolean; tooltip?: string } | null {
     switch (bill.status) {
       case "draft":
-        return canMaker ? { label: "Confirm", color: "#FF7A00", onClick: handleMakerConfirm, loading: makerSaving, disabled: !(makerTallyDone && makerNewItemsDone) } : null;
+        return canMaker ? { label: "Confirm", color: "#FF7A00", onClick: handleMakerConfirm, loading: makerSaving, disabled: !makerTallyDone } : null;
       case "submitted":
       case "verified": {
         if (!canChecker) return null;
@@ -2043,17 +2057,29 @@ export default function AccountsPayment() {
             {/* Financial summary */}
             {(() => {
               const bill = drawerBill;
+              // While the checker is actively reviewing (status submitted/verified),
+              // preview against what they're typing in Checker Review above — the
+              // saved bill record still has these at 0/unset until they submit, which
+              // is why the summary looked like it jumped straight from Gross to Net.
+              const isCheckerStage = bill.status === "submitted" || bill.status === "verified";
               const gross    = bill.amount || 0;
               const gstPct   = bill.gstPercent ?? 0;
               const gstAmt   = Math.round(gross * gstPct / 100);
-              const retAmt   = bill.retentionAmount ?? 0;
+              const retAmt   = isCheckerStage ? checkerRetention : (bill.retentionAmount ?? 0);
               const retPct   = bill.retentionPercent ?? 0;
-              const advRec   = bill.advanceRecovery ?? 0;
+              const advRec   = isCheckerStage ? checkerAdvance : (bill.advanceRecovery ?? 0);
               const netPay   = gross + gstAmt - retAmt;
               const paid     = bill.paidAmount;
-              const retRel   = bill.retentionReleased ?? 0;
+              const retRel   = isCheckerStage ? checkerRetentionReleased : (bill.retentionReleased ?? 0);
               const billPortion = paid != null ? Math.max(0, paid - retRel) : null;
-              const tdsAmt = billPortion != null ? Math.max(0, Math.round(netPay - advRec - billPortion)) : 0;
+              const tdsPctDisplay = isCheckerStage ? checkerTdsPercent : bill.tdsPercent;
+              const tdsAmt = isCheckerStage ? checkerTdsAmount
+                : (billPortion != null ? Math.max(0, Math.round(netPay - advRec - billPortion)) : 0);
+
+              // Net Payable is the true bottom line — Hold/Retention, Advance Recovery,
+              // and TDS all land above it now (in that order), not scattered after it.
+              const finalNetPayable = netPay - advRec - tdsAmt;
+              const retReleaseRemark = isCheckerStage ? checkerRetentionReleaseRemark : bill.retentionReleaseRemark;
 
               type SummaryRow = { label: string; value: string; color: string; bold?: boolean; borderTop?: boolean; bg?: string };
               const rows: SummaryRow[] = [
@@ -2061,10 +2087,10 @@ export default function AccountsPayment() {
               ];
               if (gstAmt > 0) rows.push({ label: `GST @ ${gstPct}%`, value: `+ ${fmt(gstAmt)}`, color: "#16a85a" });
               if (retAmt > 0) rows.push({ label: `Hold / Retention${retPct > 0 ? ` @ ${retPct}%` : ""}`, value: `− ${fmt(retAmt)}`, color: "#e03b3b" });
-              rows.push({ label: "NET PAYABLE", value: fmt(netPay), color: "#7c3aed", bold: true, borderTop: true });
               if (advRec > 0) rows.push({ label: "Less: Advance Recovery", value: `− ${fmt(advRec)}`, color: "#d97706" });
-              if (tdsAmt > 0) rows.push({ label: `Less: TDS Deducted${bill.tdsPercent ? ` (${bill.tdsPercent}%)` : ""}`, value: `− ${fmt(tdsAmt)}`, color: "#dc2626" });
-              if (retRel > 0) rows.push({ label: `Hold Released${bill.retentionReleaseRemark ? ` (${bill.retentionReleaseRemark})` : ""}`, value: `+ ${fmt(retRel)}`, color: "#0369a1", bold: false });
+              if (tdsAmt > 0) rows.push({ label: `Less: TDS Deducted${tdsPctDisplay ? ` (${tdsPctDisplay}%)` : ""}`, value: `− ${fmt(tdsAmt)}`, color: "#dc2626" });
+              rows.push({ label: "NET PAYABLE", value: fmt(finalNetPayable), color: "#7c3aed", bold: true, borderTop: true });
+              if (retRel > 0) rows.push({ label: `Hold Released${retReleaseRemark ? ` (${retReleaseRemark})` : ""}`, value: `+ ${fmt(retRel)}`, color: "#0369a1", bold: false });
               if (paid != null) rows.push({ label: "ACTUALLY PAID", value: fmt(paid), color: "#16a85a", bold: true, borderTop: true, bg: "#f0fdf4" });
               return (
                 <div style={{ border: "1px solid #e4e7ee", borderRadius: 8, overflow: "hidden", fontFamily: "monospace", fontSize: 13, marginBottom: 16 }}>
