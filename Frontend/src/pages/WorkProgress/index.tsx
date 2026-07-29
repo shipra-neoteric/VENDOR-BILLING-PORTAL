@@ -63,9 +63,9 @@ type EntryRow = ProgressEntry & {
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-const fmtN  = (n: number) => n.toLocaleString("en-IN");
-const fmt   = (n: number) => "₹" + n.toLocaleString("en-IN", { maximumFractionDigits: 0 });
-const pctOf = (c: number, p: number) => p > 0 ? Math.min(100, Math.round((c / p) * 100)) : 0;
+const fmtN  = (n: number) => (n ?? 0).toLocaleString("en-IN");
+const fmt   = (n: number) => "₹" + (n ?? 0).toLocaleString("en-IN", { maximumFractionDigits: 0 });
+const pctOf = (c: number, p: number) => p > 0 ? Math.min(100, Math.round(((c ?? 0) / p) * 100)) : 0;
 
 const BR_STATUS_COLOR: Record<string, string> = { pending: "#f59e0b", approved: "#16a34a", rejected: "#ef4444" };
 const BR_STATUS_LABEL: Record<string, string> = { pending: "Pending Review", approved: "Approved", rejected: "Rejected" };

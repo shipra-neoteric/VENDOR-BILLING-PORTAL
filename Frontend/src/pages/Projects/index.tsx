@@ -117,7 +117,7 @@ const WO_STATUS_LABEL: Record<string, string> = {
 };
 
 const normalizeId = (obj: any): Project => ({ ...obj, id: obj._id || obj.id });
-const fmt = (n: number) => "₹" + n.toLocaleString("en-IN", { maximumFractionDigits: 0 });
+const fmt = (n: number) => "₹" + (n ?? 0).toLocaleString("en-IN", { maximumFractionDigits: 0 });
 
 // ── Workflow Timeline helpers ──────────────────────────────────────────────────
 const WF_STEPS: { key: string; name: string; icon: string; types: string[] }[] = [

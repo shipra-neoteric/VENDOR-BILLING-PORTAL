@@ -50,10 +50,12 @@ export function getMonthlyBillingTrend(bills: BillRow[]): { month: string; submi
   return Object.keys(months).sort().slice(-6).map(k => months[k]);
 }
 
-export const fmtCr = (n: number) =>
-  n >= 10_000_000 ? `₹${(n / 10_000_000).toFixed(2)} Cr`
-  : n >= 1_00_000 ? `₹${(n / 1_00_000).toFixed(2)} L`
-  : "₹" + n.toLocaleString("en-IN", { maximumFractionDigits: 0 });
+export const fmtCr = (n: number) => {
+  const v = n ?? 0;
+  return v >= 10_000_000 ? `₹${(v / 10_000_000).toFixed(2)} Cr`
+    : v >= 1_00_000 ? `₹${(v / 1_00_000).toFixed(2)} L`
+    : "₹" + v.toLocaleString("en-IN", { maximumFractionDigits: 0 });
+};
 
 export const fmt = (n: number) =>
-  "₹" + n.toLocaleString("en-IN", { maximumFractionDigits: 0 });
+  "₹" + (n ?? 0).toLocaleString("en-IN", { maximumFractionDigits: 0 });

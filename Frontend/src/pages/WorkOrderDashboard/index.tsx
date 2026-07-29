@@ -165,8 +165,8 @@ function StageStepper({ stage }: { stage: BillRequestStage }) {
     </div>
   );
 }
-const fmtQty   = (n: number) => n.toLocaleString("en-IN");
-const pctOf    = (c: number, p: number) => p > 0 ? Math.min(100, Math.round((c / p) * 100)) : 0;
+const fmtQty   = (n: number) => (n ?? 0).toLocaleString("en-IN");
+const pctOf    = (c: number, p: number) => p > 0 ? Math.min(100, Math.round(((c ?? 0) / p) * 100)) : 0;
 const fmtDate  = (d?: string | null) => d ? dayjs(d).format("DD MMM YYYY") : "—";
 
 const STAGE_STATUS: Record<string, { icon: string; color: string; label: string; bg: string }> = {
