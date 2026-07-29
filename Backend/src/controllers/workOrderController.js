@@ -34,6 +34,31 @@ function diffScopeItems(before, after) {
 // ../utils/progressHelpers — shared with billController.js/billRequestController.js,
 // which need the same recompute when auto-invalidating entries on bill rejection.
 
+// Normalized signatures for the two things that actually define what an
+// already-approved work order was approved on — Scope of Work and Payment
+// Milestones. Only picking the contractual fields (never progressEntries/
+// completedQty/lastBilledQty/status/varianceApproved*, which change on their
+// own via day-to-day progress logging, not an edit) so those don't cause a
+// false "this needs re-approval" trigger.
+function scopeItemsSignature(items) {
+  return JSON.stringify((items || []).map(si => ({
+    description: si.description, remarks: si.remarks, unit: si.unit,
+    plannedQty: si.plannedQty, rate: si.rate, amount: si.amount, gstPercent: si.gstPercent,
+    plannedStart: si.plannedStart, plannedEnd: si.plannedEnd,
+    subItems: (si.subItems || []).map(sub => ({
+      description: sub.description, remarks: sub.remarks, unit: sub.unit,
+      plannedQty: sub.plannedQty, rate: sub.rate, amount: sub.amount,
+    })),
+  })));
+}
+function paymentMilestonesSignature(milestones) {
+  return JSON.stringify((milestones || []).map(m => ({
+    stage: m.stage, date: m.date, type: m.type, mode: m.mode, amount: m.amount,
+    amountMode: m.amountMode, amountPercent: m.amountPercent,
+    gstPercent: m.gstPercent, gstType: m.gstType, payable: m.payable,
+  })));
+}
+
 exports.listWorkOrders = asyncHandler(async (req, res) => {
   const { projectId, vendorCode, status, search, assignedToMe } = req.query;
   const filter = {};
@@ -171,17 +196,24 @@ exports.updateWorkOrder = asyncHandler(async (req, res) => {
   }
 
   // Editing a work order that had already cleared the full approval chain
-  // (only possible once Owner has unlocked it) must send it back through the
-  // chain from scratch — otherwise newly-added/changed scope items would sit
-  // on a WO still flagged "Approved · Locked · Ready for Work Progress" without
-  // anyone ever actually reviewing what changed.
-  const reopening = before.approvalStatus === 'approved';
+  // (only possible once Owner has unlocked it) sends it back through the chain
+  // from scratch — but only when the edit actually touches Scope of Work or
+  // Payment Milestones, the two things the approval was actually granted on.
+  // Everything else (vendor/company details, GST/retention %, dates, remarks,
+  // documents) can be corrected on an approved WO without re-triggering review.
+  const newScopeItems = updateData.scopeItems !== undefined ? updateData.scopeItems : before.scopeItems;
+  const newMilestones = updateData.paymentMilestones !== undefined ? updateData.paymentMilestones : before.paymentMilestones;
+  const approvalCriticalChanged =
+    scopeItemsSignature(before.scopeItems) !== scopeItemsSignature(newScopeItems) ||
+    paymentMilestonesSignature(before.paymentMilestones) !== paymentMilestonesSignature(newMilestones);
+
+  const reopening = before.approvalStatus === 'approved' && approvalCriticalChanged;
   if (reopening) updateData.approvalStatus = 'draft';
 
   const mongoUpdate = reopening
     ? { $set: updateData, $push: { approvalHistory: {
         stage: 'maker', action: 'reopened', by: req.user._id,
-        remarks: 'Work order edited after approval — sent back through the full approval chain.',
+        remarks: 'Scope of Work / Payment Milestones edited after approval — sent back through the full approval chain.',
       } } }
     : { $set: updateData };
 
