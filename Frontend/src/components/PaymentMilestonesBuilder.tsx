@@ -39,12 +39,11 @@ export function newMilestone(): MilestoneDraft {
 }
 
 export function calcPayable(m: MilestoneDraft): number {
+  // `amount` is always the pre-GST base figure regardless of mode — a
+  // percent-mode amount is resolved as % of the pre-GST contract value (see
+  // the sync effect below), same as a manually-typed fixed amount — so GST
+  // is added the same way in both cases to get the payable figure.
   const amt = m.amount || 0;
-  // Percent-mode amounts are resolved as a % of the contract value INCLUDING
-  // GST (see the sync effect below) — they're already GST-inclusive, so
-  // adding GST again on top would double-count it. Only a manually-entered
-  // fixed amount is pre-GST and needs GST added to get the payable figure.
-  if (m.amountMode === "percent") return Math.round(amt);
   return Math.round(amt * (1 + (m.gstPercent || 0) / 100));
 }
 
@@ -55,11 +54,16 @@ export function calcGrandTotal(items: MilestoneDraft[]): number {
 const fmt = (n: number) => "₹" + Math.round(n).toLocaleString("en-IN");
 
 export default function PaymentMilestonesBuilder({
-  items, onChange, contractValueInclGst,
+  items, onChange, contractValue, contractValueInclGst,
   discount = null, onDiscountChange,
 }: {
   items: MilestoneDraft[];
   onChange: (items: MilestoneDraft[]) => void;
+  // Pre-GST base contract value — what a percent-mode milestone's % is taken
+  // of (GST is then added on top separately, same as fixed-mode milestones).
+  contractValue?: number;
+  // GST-inclusive contract value — only used as the ceiling the grand total
+  // of all (GST-inclusive) milestone payables is checked against.
   contractValueInclGst?: number;
   // Flat rupee discount off the overall contract value — only meaningful (and
   // shown) once payment milestones exist, not a per-milestone figure.
@@ -72,17 +76,17 @@ export default function PaymentMilestonesBuilder({
   // Keep percent-based milestones' resolved rupee amount in sync if the
   // contract value changes later (e.g. scope items edited after a % was set).
   useEffect(() => {
-    if (!contractValueInclGst) return;
+    if (!contractValue) return;
     const stale = items.some(m => {
       if (m.amountMode !== "percent" || m.amountPercent == null) return false;
-      return m.amount !== Math.round((m.amountPercent / 100) * contractValueInclGst);
+      return m.amount !== Math.round((m.amountPercent / 100) * contractValue);
     });
     if (!stale) return;
     onChange(items.map(m => (m.amountMode === "percent" && m.amountPercent != null)
-      ? { ...m, amount: Math.round((m.amountPercent / 100) * contractValueInclGst) }
+      ? { ...m, amount: Math.round((m.amountPercent / 100) * contractValue) }
       : m));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [contractValueInclGst]);
+  }, [contractValue]);
 
   const grandTotal = calcGrandTotal(items);
   // ₹1 tolerance (matches the backend's own check in validateMilestones.js) —
@@ -154,12 +158,12 @@ export default function PaymentMilestonesBuilder({
                     parser={v => Number(String(v ?? "").replace("%", "")) as unknown as number}
                     onChange={v => {
                       const pct = typeof v === "number" ? v : 0;
-                      const resolved = contractValueInclGst ? Math.round((pct / 100) * contractValueInclGst) : 0;
+                      const resolved = contractValue ? Math.round((pct / 100) * contractValue) : 0;
                       upd(m.id, { amountPercent: pct, amount: resolved });
                     }}
                   />
                   <div style={{ fontSize: 10.5, color: "#9ba3b8", marginTop: 2 }}>
-                    {contractValueInclGst ? `= ${fmt(m.amount || 0)}` : "Add scope of work items first"}
+                    {contractValue ? `= ${fmt(m.amount || 0)} + GST` : "Add scope of work items first"}
                   </div>
                 </>
               ) : (
@@ -169,13 +173,7 @@ export default function PaymentMilestonesBuilder({
             </Col>
             <Col xs={12} sm={5}>
               <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>GST</div>
-              {m.amountMode === "percent" ? (
-                <div style={{ padding: "5px 11px", border: "1px solid #f0f0f0", borderRadius: 6, color: "#9ba3b8", fontSize: 12.5, background: "#fafafa" }}>
-                  Included in %
-                </div>
-              ) : (
-                <GstSelect value={m.gstPercent} onChange={v => upd(m.id, { gstPercent: v })} style={{ width: "100%" }} />
-              )}
+              <GstSelect value={m.gstPercent} onChange={v => upd(m.id, { gstPercent: v })} style={{ width: "100%" }} />
             </Col>
           </Row>
           <Row gutter={[10, 0]} style={{ marginTop: 8 }}>

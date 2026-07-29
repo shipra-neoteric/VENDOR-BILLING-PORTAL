@@ -443,9 +443,10 @@ export default function PublicWorkOrderForm() {
           stage: m.stage, date: m.date, type: m.type, mode: m.mode,
           amount: m.amount || 0, amountMode: m.amountMode, amountPercent: m.amountPercent,
           gstPercent: m.gstPercent,
-          // Percent-mode amounts are already GST-inclusive — tells the backend's
-          // own recompute (validateMilestones.js) not to add GST again on top.
-          gstType: m.amountMode === "percent" ? "inclusive" : "exclusive",
+          // `amount` is always the pre-GST base figure regardless of mode — GST
+          // is always added on top, so tells the backend's own recompute
+          // (validateMilestones.js) to do exactly that.
+          gstType: "exclusive",
           payable: calcPayable(m),
         })),
         warrantyTerms: warrantyTerms.filter(t => t.trim()),
@@ -715,7 +716,7 @@ export default function PublicWorkOrderForm() {
 
           {/* ── Payment Milestones ── */}
           <Card style={{ borderRadius: 12, marginBottom: 20, boxShadow: "0 2px 12px rgba(0,0,0,0.05)" }}>
-            <PaymentMilestonesBuilder items={milestones} onChange={setMilestones} contractValueInclGst={contractValueInclGst} />
+            <PaymentMilestonesBuilder items={milestones} onChange={setMilestones} contractValue={contractValue} contractValueInclGst={contractValueInclGst} />
           </Card>
 
           {/* ── Warranty / Guarantee Terms ── */}

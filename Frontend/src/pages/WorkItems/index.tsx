@@ -358,10 +358,11 @@ const milestoneDraftToPayload = (m: MilestoneDraft) => ({
   stage: m.stage, date: m.date, type: m.type, mode: m.mode,
   amount: m.amount || 0, amountMode: m.amountMode, amountPercent: m.amountPercent,
   gstPercent: m.gstPercent,
-  // Percent-mode amounts are already GST-inclusive (a % of the GST-inclusive
-  // contract value) — tells the backend's own recompute (validateMilestones.js)
-  // not to add GST again on top, matching calcPayable's frontend logic.
-  gstType: m.amountMode === "percent" ? "inclusive" : "exclusive",
+  // `amount` is always the pre-GST base figure regardless of mode (a percent-
+  // mode amount is resolved as % of the pre-GST contract value) — GST is
+  // always added on top, so this tells the backend's own recompute
+  // (validateMilestones.js) to do exactly that, matching calcPayable.
+  gstType: "exclusive",
   payable: calcPayable(m),
 });
 
@@ -2673,6 +2674,7 @@ export default function WorkItems() {
           <PaymentMilestonesBuilder
             items={createMilestones}
             onChange={setCreateMilestones}
+            contractValue={calcTotalAmt(createScopeItems)}
             contractValueInclGst={calcTotalInclGst(createScopeItems)}
             discount={createDiscount}
             onDiscountChange={setCreateDiscount}
@@ -2751,6 +2753,7 @@ export default function WorkItems() {
           <PaymentMilestonesBuilder
             items={editMilestones}
             onChange={setEditMilestones}
+            contractValue={calcTotalAmt(editScopeItems)}
             contractValueInclGst={calcTotalInclGst(editScopeItems)}
             discount={editDiscount}
             onDiscountChange={setEditDiscount}
