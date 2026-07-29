@@ -95,6 +95,11 @@ export default function WorkOrderDetailView({
         <Descriptions.Item label="Contractor Company">{wo.vendorName}</Descriptions.Item>
         <Descriptions.Item label="Owner">{wo.ownerName}</Descriptions.Item>
         <Descriptions.Item label="Mobile">{wo.mobile}</Descriptions.Item>
+        <Descriptions.Item label="Assigned DRI">
+          {(wo.assignedDRI ?? []).length > 0
+            ? (wo.assignedDRI ?? []).map(d => (typeof d === "string" ? d : d.name)).join(", ")
+            : <span style={{ color: "#9ba3b8" }}>Not assigned</span>}
+        </Descriptions.Item>
         <Descriptions.Item label="Contract Value" span={2}>
           <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#FF7A00", fontSize: 15 }}>
             {fmt(wo.contractValue)}

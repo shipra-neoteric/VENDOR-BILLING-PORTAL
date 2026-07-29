@@ -69,6 +69,7 @@ exports.getWorkOrder = asyncHandler(async (req, res) => {
   const workOrder = await WorkOrder.findById(req.params.id)
     .populate('projectId', 'code name projectType')
     .populate('createdBy', 'name email')
+    .populate('assignedDRI', 'name email')
     .populate('scopeItems.progressEntries.enteredBy', 'name')
     .populate('scopeItems.progressEntries.invalidated.by', 'name')
     .populate('scopeItems.subItems.progressEntries.enteredBy', 'name')
