@@ -13,7 +13,7 @@ exports.listUsers = asyncHandler(async (req, res) => {
 
 // POST /api/users
 exports.createUser = asyncHandler(async (req, res) => {
-  const { name, email, password, role, permissions } = req.body;
+  const { name, email, password, role, permissions, mobile } = req.body;
 
   if (!name || !email || !password || !role) {
     return badRequest(res, 'Name, email, password, and role are required');
@@ -25,7 +25,7 @@ exports.createUser = asyncHandler(async (req, res) => {
   const existing = await User.findOne({ email: email.toLowerCase().trim() });
   if (existing) return badRequest(res, 'A user with this email already exists');
 
-  const user = await User.create({ name, email, password, role, permissions: permissions || [] });
+  const user = await User.create({ name, email, password, role, permissions: permissions || [], mobile: mobile || '' });
   const safe = user.toObject();
   delete safe.password;
 
@@ -40,7 +40,7 @@ exports.createUser = asyncHandler(async (req, res) => {
 
 // PUT /api/users/:id
 exports.updateUser = asyncHandler(async (req, res) => {
-  const { name, email, role, isActive, permissions } = req.body;
+  const { name, email, role, isActive, permissions, mobile } = req.body;
   const user = await User.findById(req.params.id);
   if (!user) return notFound(res, 'User not found');
   const before = user.toObject();
@@ -62,12 +62,13 @@ exports.updateUser = asyncHandler(async (req, res) => {
   if (role)                    user.role        = role;
   if (isActive !== undefined)  user.isActive    = isActive;
   if (permissions !== undefined) user.permissions = permissions;
+  if (mobile !== undefined)    user.mobile      = mobile;
 
   await user.save();
   const safe = user.toObject();
   delete safe.password;
 
-  const changes = diffFields(before, safe, ['name', 'email', 'role', 'isActive', 'permissions']);
+  const changes = diffFields(before, safe, ['name', 'email', 'role', 'isActive', 'permissions', 'mobile']);
   if (changes) {
     await logAudit({
       action: 'UPDATE', module: 'user-management', user: req.user,

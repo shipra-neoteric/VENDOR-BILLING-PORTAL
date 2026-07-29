@@ -174,7 +174,7 @@ export interface WorkOrder {
   mobile: string;
   category?: WorkCategory;
   subCategory?: string;
-  assignedDRI?: ({ _id: string; name: string; email?: string } | string)[];
+  assignedDRI?: ({ _id: string; name: string; email?: string; mobile?: string } | string)[];
   scopeOfWork?: string;
   totalTenure?: string;
   scopeItems: ScopeItem[];

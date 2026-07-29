@@ -6,7 +6,7 @@ import {
 } from "antd";
 import {
   PlusOutlined, EditOutlined, KeyOutlined,
-  UserOutlined, CheckCircleOutlined, StopOutlined, TeamOutlined,
+  UserOutlined, CheckCircleOutlined, StopOutlined, TeamOutlined, PhoneOutlined,
 } from "@ant-design/icons";
 import PageShell from "../../components/PageShell";
 import apiClient from "../../services/apiClient";
@@ -19,6 +19,7 @@ interface AppUser {
   _id: string;
   name: string;
   email: string;
+  mobile?: string;
   role: UserRole;
   isActive: boolean;
   createdAt: string;
@@ -330,7 +331,7 @@ export default function UserManagement() {
 
   function openEdit(u: AppUser) {
     setEditUser(u);
-    form.setFieldsValue({ name: u.name, email: u.email, role: u.role, isActive: u.isActive });
+    form.setFieldsValue({ name: u.name, email: u.email, mobile: u.mobile, role: u.role, isActive: u.isActive });
     setPerms(u.permissions ? permsToMap(u.permissions) : {});
     setDrawerOpen(true);
   }
@@ -657,6 +658,18 @@ export default function UserManagement() {
             ]}
           >
             <Input placeholder="e.g. rahul@neotericgrp.in" size="large" />
+          </Form.Item>
+
+          <Form.Item
+            label="Mobile"
+            name="mobile"
+            rules={[{ pattern: /^[0-9+\-\s]{6,15}$/, message: "Enter a valid mobile number" }]}
+          >
+            <Input
+              placeholder="e.g. 9876543210"
+              size="large"
+              prefix={<PhoneOutlined style={{ color: "var(--nx-text-muted)" }} />}
+            />
           </Form.Item>
 
           {!editUser && (

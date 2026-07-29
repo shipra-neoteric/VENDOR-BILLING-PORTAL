@@ -12,6 +12,7 @@ const userSchema = new mongoose.Schema(
       default: 'site-dri',
     },
     vendorCode: { type: String, default: null },
+    mobile: { type: String, default: '' },
     isActive: { type: Boolean, default: true },
     permissions: [{
       module:  { type: String, required: true },

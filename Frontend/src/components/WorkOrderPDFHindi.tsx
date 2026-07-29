@@ -128,6 +128,7 @@ interface WOData {
   vendorCode?: string;
   ownerName?: string;
   mobile?: string;
+  assignedDRI?: ({ name: string; email?: string; mobile?: string } | string)[];
   contractValue?: number;
   gstPercent?: number;
   tdsPercent?: number;
@@ -292,6 +293,11 @@ export function WorkOrderDocumentHindi({ wo, company, contractor }: Props) {
               <InfoRow label="संपर्क व्यक्ति" value={company?.contactPerson} />
               <InfoRow label="ईमेल"          value={company?.email} />
               <InfoRow label="फ़ोन"          value={company?.phone} last />
+            </SectionBox>
+            <SectionBox title="प्रोजेक्ट डीआरआई जानकारी">
+              <InfoRow label="नाम"    value={(wo.assignedDRI ?? []).map(d => typeof d === "string" ? d : d.name).filter(Boolean).join(", ")} />
+              <InfoRow label="ईमेल"   value={(wo.assignedDRI ?? []).map(d => typeof d === "string" ? "" : d.email).filter(Boolean).join(", ")} />
+              <InfoRow label="संपर्क" value={(wo.assignedDRI ?? []).map(d => typeof d === "string" ? "" : d.mobile).filter(Boolean).join(", ")} last />
             </SectionBox>
           </View>
         </View>
