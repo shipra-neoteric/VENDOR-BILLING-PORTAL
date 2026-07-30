@@ -76,6 +76,10 @@ export function printBill(
   statusLabel?: string
 ) {
   const companyName = bill.companyName || "Neoteric Properties";
+  const contractorName = bill.vendorName || contractor?.companyName || "—";
+  // Contractor names often come in as ALL CAPS from older records — Title Case
+  // reads better for the masthead than shouting the whole thing.
+  const contractorNameTitleCase = contractorName.replace(/\w\S*/g, w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
   const rows = (bill.lineItems || [])
     .map(
       (li, i) => `
@@ -112,8 +116,7 @@ export function printBill(
 
 <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #f47b20;padding-bottom:16px;margin-bottom:20px">
   <div>
-    <div style="font-size:24px;font-weight:bold;color:#f47b20">Neoteric Properties</div>
-    <div style="color:#666;font-size:12px;margin-top:4px">Project Cost Center</div>
+    <div style="font-size:20px;font-weight:bold;color:#f47b20">${contractorNameTitleCase}</div>
   </div>
   <div style="text-align:right">
     <div style="font-size:22px;font-weight:bold;letter-spacing:2px;color:#333">${mode === 'pre' ? 'RUNNING BILL' : 'PAYMENT RECEIPT'}</div>
@@ -121,16 +124,6 @@ export function printBill(
     <div style="font-size:13px"><strong>Date:</strong> ${bill.billDate ? dayjs(bill.billDate).format("DD/MM/YYYY") : "-"}</div>
     <div style="font-size:13px"><strong>Status:</strong> <span style="background:${mode === 'pre' ? '#f47b20' : '#16a34a'};color:#fff;padding:2px 8px;border-radius:10px;font-size:11px">${mode === 'pre' ? (statusLabel ? statusLabel.toUpperCase() : (BILL_STATUS_LABEL[bill.status] || 'ON HOLD').toUpperCase()) : 'PAID'}</span></div>
   </div>
-</div>
-
-<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px">
-  ${[
-    { label: "AGM",       done: !!bill.agmApprovedBy },
-    { label: "GM",        done: !!bill.verifiedBy },
-    { label: "Accounts",  done: !!bill.approvedBy },
-    { label: "Initiated", done: !!bill.paymentInitiatedBy },
-    { label: "Paid",      done: bill.status === "paid" },
-  ].map(s => `<span style="font-size:10px;font-weight:700;padding:3px 9px;border-radius:10px;background:${s.done ? '#f0fdf4' : '#f5f6f8'};color:${s.done ? '#16a34a' : '#9ba3b8'};border:1px solid ${s.done ? '#bbf7d0' : '#e5e7eb'}">${s.done ? '✓ ' : ''}${s.label}</span>`).join("")}
 </div>
 
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px">
@@ -257,7 +250,12 @@ ${mode === 'post' && bill.paymentDate ? `
 
 ${bill.remarks ? `<div style="border:1px solid #e8e8e8;border-radius:6px;padding:12px;margin-bottom:24px"><strong>Remarks:</strong> ${bill.remarks}</div>` : ""}
 
-${mode === 'pre' ? `<div style="display:flex;justify-content:space-around;margin-top:50px;padding-top:16px;border-top:1px solid #eee">
+${mode === 'pre' ? `<div style="display:flex;justify-content:space-around;margin-top:40px;padding-top:48px;border-top:1px solid #eee">
+  <div style="text-align:center">
+    <div style="border-top:1px solid #333;width:180px;margin:0 auto 6px"></div>
+    <p style="font-size:12px;color:#666;font-weight:600">Contractor</p>
+    <p style="font-size:12px;color:#999">&nbsp;</p>
+  </div>
   <div style="text-align:center">
     <div style="border-top:1px solid #333;width:180px;margin:0 auto 6px"></div>
     <p style="font-size:12px;color:#666;font-weight:600">AGM${bill.agmApprovedBy ? ` — ${bill.agmApprovedBy.name}` : ""}</p>
@@ -270,9 +268,6 @@ ${mode === 'pre' ? `<div style="display:flex;justify-content:space-around;margin
   </div>
 </div>` : ""}
 
-<div style="text-align:center;margin-top:24px;font-size:11px;color:#bbb;border-top:1px solid #f0f0f0;padding-top:10px">
-  Computer-generated bill · Neoteric Properties — Project Cost Center
-</div>
 <div style="text-align:center;margin-top:14px">
   <button onclick="window.print()" style="background:#f47b20;color:#fff;border:none;padding:8px 24px;border-radius:4px;cursor:pointer;font-size:13px">
     Print / Save as PDF
