@@ -842,20 +842,10 @@ export default function DRIDashboard() {
             extra={progModalTarget?.unit === "per-hr" ? "Tip: enter decimals for minutes — e.g. 13.67 = 13 hr 40 min" : undefined}
             rules={[
               { required: true, type: "number", min: 0.01, message: "Enter a valid quantity (e.g. 13.67)" },
-              {
-                validator: (_, value) => {
-                  if (!value || !progModalTarget) return Promise.resolve();
-                  if (!progModalTarget.plannedQty) return Promise.resolve();
-                  const max = Math.max(0, progModalTarget.plannedQty - progModalTarget.completedQty);
-                  if (value > max) return Promise.reject(new Error(`Max remaining: ${fmtN(max)} ${progModalTarget.unit}`));
-                  return Promise.resolve();
-                },
-              },
             ]}
           >
             <InputNumber
               style={{ width: "100%" }} min={0.00001} step={0.00001} precision={5}
-              max={progModalTarget?.plannedQty ? Math.max(0, progModalTarget.plannedQty - progModalTarget.completedQty) : undefined}
               placeholder={progModalTarget?.unit === "per-hr" ? "e.g. 13.6667" : "e.g. 500"}
             />
           </Form.Item>
@@ -867,7 +857,7 @@ export default function DRIDashboard() {
               {[
                 { label: "Planned", value: progModalTarget.plannedQty > 0 ? `${fmtN(progModalTarget.plannedQty)} ${progModalTarget.unit}` : "Not set", color: progModalTarget.plannedQty > 0 ? "var(--nx-text)" : "#9ba3b8" },
                 { label: "Done", value: `${fmtN(progModalTarget.completedQty)} ${progModalTarget.unit}`, color: "#16a34a" },
-                { label: "Remaining", value: progModalTarget.plannedQty > 0 ? `${fmtN(Math.max(0, progModalTarget.plannedQty - progModalTarget.completedQty))} ${progModalTarget.unit}` : "Unlimited", color: "#FF7A00" },
+                { label: "Remaining", value: progModalTarget.plannedQty > 0 ? `${fmtN(Math.max(0, progModalTarget.plannedQty - (progModalTarget.completedQty ?? 0)))} ${progModalTarget.unit}` : "Unlimited", color: "#FF7A00" },
               ].map(r => (
                 <div key={r.label} style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
                   <span style={{ color: "var(--nx-text-2)" }}>{r.label}</span><strong style={{ color: r.color }}>{r.value}</strong>

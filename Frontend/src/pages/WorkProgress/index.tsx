@@ -884,8 +884,8 @@ function DRIDashboard() {
                           <tbody>
                             {detail.scopeItems.map((si, idx) => {
                               const p = pctOf(si.completedQty, si.plannedQty);
-                              const unbilled = Math.max(0, si.completedQty - (si.lastBilledQty || 0));
-                              const rem      = Math.max(0, si.plannedQty - si.completedQty);
+                              const unbilled = Math.max(0, (si.completedQty ?? 0) - (si.lastBilledQty || 0));
+                              const rem      = Math.max(0, si.plannedQty - (si.completedQty ?? 0));
                               const isDone   = p >= 100;
                               const hasSubItems = (si.subItems?.length ?? 0) > 0;
                               return (
@@ -939,7 +939,7 @@ function DRIDashboard() {
                                 </tr>
                                 {hasSubItems && si.subItems!.map((sub, subIdx) => {
                                   const sp = pctOf(sub.completedQty, sub.plannedQty);
-                                  const subRem = Math.max(0, sub.plannedQty - sub.completedQty);
+                                  const subRem = Math.max(0, sub.plannedQty - (sub.completedQty ?? 0));
                                   const subDone = sp >= 100;
                                   const isLastSub = subIdx === si.subItems!.length - 1;
                                   return (
@@ -1196,7 +1196,7 @@ function DRIDashboard() {
               {[
                 { label: "Planned",   value: (progSubItem ?? progItem)!.plannedQty > 0 ? `${fmtN((progSubItem ?? progItem)!.plannedQty)} ${(progSubItem ?? progItem)!.unit}` : "Not set",           color: (progSubItem ?? progItem)!.plannedQty > 0 ? "var(--nx-text)" : "#9ba3b8" },
                 { label: "Done",      value: `${fmtN((progSubItem ?? progItem)!.completedQty)} ${(progSubItem ?? progItem)!.unit}`,                                               color: "#16a34a" },
-                { label: "Remaining", value: (progSubItem ?? progItem)!.plannedQty > 0 ? `${fmtN(Math.max(0, (progSubItem ?? progItem)!.plannedQty - (progSubItem ?? progItem)!.completedQty))} ${(progSubItem ?? progItem)!.unit}` : "Unlimited", color: "#FF7A00" },
+                { label: "Remaining", value: (progSubItem ?? progItem)!.plannedQty > 0 ? `${fmtN(Math.max(0, (progSubItem ?? progItem)!.plannedQty - ((progSubItem ?? progItem)!.completedQty ?? 0)))} ${(progSubItem ?? progItem)!.unit}` : "Unlimited", color: "#FF7A00" },
               ].map(r => (
                 <div key={r.label} style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
                   <span style={{ color: "var(--nx-text-2)" }}>{r.label}</span>

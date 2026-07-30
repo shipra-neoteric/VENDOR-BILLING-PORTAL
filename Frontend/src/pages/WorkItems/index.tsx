@@ -1213,7 +1213,7 @@ function _ScopeItemsViewer_UNUSED({ scopeItems }: { scopeItems: ScopeItem[] }) {
                     <span style={{ color: "#5a6278" }}>
                       Remaining:{" "}
                       <strong>
-                        {Math.max(0, item.plannedQty - item.completedQty).toLocaleString("en-IN")} {item.unit}
+                        {Math.max(0, item.plannedQty - (item.completedQty ?? 0)).toLocaleString("en-IN")} {item.unit}
                       </strong>
                     </span>
                     <strong style={{ color: pct >= 100 ? "#16a85a" : delayed ? "#e03b3b" : "#f37916" }}>
@@ -2814,9 +2814,9 @@ export default function WorkItems() {
               }}
             >
               <div style={{ display: "flex", gap: 20, flexWrap: "wrap", marginBottom: 8 }}>
-                <span><span style={{ color: "#9ba3b8" }}>Planned: </span><strong>{progressItem.plannedQty.toLocaleString("en-IN")} {progressItem.unit}</strong></span>
-                <span><span style={{ color: "#9ba3b8" }}>Completed: </span><strong style={{ color: "#16a85a" }}>{progressItem.completedQty.toLocaleString("en-IN")} {progressItem.unit}</strong></span>
-                <span><span style={{ color: "#9ba3b8" }}>Remaining: </span><strong>{Math.max(0, progressItem.plannedQty - progressItem.completedQty).toLocaleString("en-IN")} {progressItem.unit}</strong></span>
+                <span><span style={{ color: "#9ba3b8" }}>Planned: </span><strong>{(progressItem.plannedQty ?? 0).toLocaleString("en-IN")} {progressItem.unit}</strong></span>
+                <span><span style={{ color: "#9ba3b8" }}>Completed: </span><strong style={{ color: "#16a85a" }}>{(progressItem.completedQty ?? 0).toLocaleString("en-IN")} {progressItem.unit}</strong></span>
+                <span><span style={{ color: "#9ba3b8" }}>Remaining: </span><strong>{Math.max(0, progressItem.plannedQty - (progressItem.completedQty ?? 0)).toLocaleString("en-IN")} {progressItem.unit}</strong></span>
               </div>
               <Progress
                 percent={getCompletionPct(progressItem)}
