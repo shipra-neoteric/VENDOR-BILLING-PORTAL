@@ -88,6 +88,11 @@ router.post('/work-orders', asyncHandler(async (req, res) => {
     status:      req.body.status || 'draft',
     gstPercent:  req.body.gstPercent ?? 18,
     assignedDRI: req.body.assignedDRI || [],
+    // Same as the authenticated create path — must actually travel the full
+    // approval chain. Without this it silently falls back to the schema's
+    // 'approved' default (there only to grandfather pre-workflow WOs), so
+    // every public-form submission was skipping approval entirely.
+    approvalStatus: 'draft',
   });
 
   await startInstance('WorkOrder', workOrder._id, workOrder.workOrderNo, null, {

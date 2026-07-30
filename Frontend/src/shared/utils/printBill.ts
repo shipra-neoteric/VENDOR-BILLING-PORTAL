@@ -259,12 +259,12 @@ ${mode === 'pre' ? `<div style="display:flex;justify-content:space-around;margin
   <div style="text-align:center">
     <div style="border-top:1px solid #333;width:180px;margin:0 auto 6px"></div>
     <p style="font-size:12px;color:#666;font-weight:600">AGM${bill.agmApprovedBy ? ` — ${bill.agmApprovedBy.name}` : ""}</p>
-    <p style="font-size:12px;color:#999">${bill.agmApprovedAt ? `Approved ${dayjs(bill.agmApprovedAt).format("DD/MM/YYYY")}` : companyName}</p>
+    <p style="font-size:12px;color:#999">${bill.agmApprovedAt ? `Approved ${dayjs(bill.agmApprovedAt).format("DD/MM/YYYY")}` : "&nbsp;"}</p>
   </div>
   <div style="text-align:center">
     <div style="border-top:1px solid #333;width:180px;margin:0 auto 6px"></div>
     <p style="font-size:12px;color:#666;font-weight:600">GM${bill.verifiedBy ? ` — ${bill.verifiedBy.name}` : ""}</p>
-    <p style="font-size:12px;color:#999">${bill.verifiedAt ? `Approved ${dayjs(bill.verifiedAt).format("DD/MM/YYYY")}` : companyName}</p>
+    <p style="font-size:12px;color:#999">${bill.verifiedAt ? `Approved ${dayjs(bill.verifiedAt).format("DD/MM/YYYY")}` : "&nbsp;"}</p>
   </div>
 </div>` : ""}
 
