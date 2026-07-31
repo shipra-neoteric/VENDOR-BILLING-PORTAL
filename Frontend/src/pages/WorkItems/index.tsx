@@ -2083,6 +2083,7 @@ export default function WorkItems() {
         mobile:       values.mobile       || currentEditWO.mobile,
         category:     values.category     ?? currentEditWO.category ?? "",
         subCategory:  values.subCategory  ?? currentEditWO.subCategory ?? "",
+        companyId:    values.companyId    ?? (currentEditWO as any).companyId ?? null,
         assignedDRI:  values.assignedDRI  ?? (currentEditWO as any).assignedDRI ?? [],
         issueDate:    values.issueDate ? dayjs(values.issueDate).format("YYYY-MM-DD") : currentEditWO.issueDate,
         description:  values.description?.trim() || "",

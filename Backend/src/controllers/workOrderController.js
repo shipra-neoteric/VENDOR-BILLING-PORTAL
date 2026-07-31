@@ -188,6 +188,19 @@ exports.updateWorkOrder = asyncHandler(async (req, res) => {
   const docCheck = documentsExceedLimit(updateData.documents);
   if (docCheck.exceeds) return badRequest(res, docCheck.reason);
 
+  // companyName is denormalized off companyId (same as createWorkOrder does) —
+  // without this, editing the Issuing Company dropdown saved the id but never
+  // refreshed the display name, so it kept showing blank everywhere the name
+  // is what's actually rendered (PDF, WO detail view).
+  if ('companyId' in updateData) {
+    if (updateData.companyId) {
+      const co = await Company.findById(updateData.companyId).select('name');
+      updateData.companyName = co ? co.name : '';
+    } else {
+      updateData.companyName = '';
+    }
+  }
+
   const before = await WorkOrder.findById(req.params.id).lean();
   if (!before) return notFound(res, 'Work order not found');
   if (before.isLocked) return badRequest(res, 'This work order is locked and cannot be edited. Unlock it first.');
