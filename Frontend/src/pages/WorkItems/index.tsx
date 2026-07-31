@@ -18,6 +18,7 @@ import {
   Spin,
   Dropdown,
   Modal,
+  Alert,
 } from "antd";
 import type { FormInstance, MenuProps } from "antd";
 import { useNavigate } from "react-router-dom";
@@ -36,6 +37,7 @@ import {
   StopOutlined,
   LockOutlined,
   UnlockOutlined,
+  ThunderboltOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 import type { Dayjs } from "dayjs";
@@ -51,10 +53,11 @@ import { downloadWorkOrderPDF } from "../../components/WorkOrderPDF";
 import { downloadWorkOrderPDFHindi } from "../../components/WorkOrderPDFHindi";
 import { selectableProjects, getWorkOrderProjectId } from "../../utils/projectOptions";
 import { vendorLabel } from "../../utils/vendorLabel";
-import PaymentMilestonesBuilder, { calcPayable, calcGrandTotal } from "../../components/PaymentMilestonesBuilder";
+import PaymentMilestonesBuilder, { calcPayable, calcGrandTotal, newMilestone } from "../../components/PaymentMilestonesBuilder";
 import type { MilestoneDraft } from "../../components/PaymentMilestonesBuilder";
 import GstSelect from "../../components/GstSelect";
 import DocumentsUpload, { getWorkOrderDocuments } from "../../components/DocumentsUpload";
+import type { WODocument } from "../../components/DocumentsUpload";
 import WarrantyTermsBuilder from "../../components/WarrantyTermsBuilder";
 import WorkOrderDetailView from "../../components/WorkOrderDetailView";
 import type {
@@ -238,6 +241,38 @@ const UNIT_OPTIONS = [
   { label: "Strip",                value: "strip" },
   { label: "Custom...",            value: "custom" },
 ];
+
+// ── AI Document Intelligence ────────────────────────────────────
+// Mirrors the extract_work_order tool schema in Backend/src/controllers/aiController.js.
+interface AiExtractedWorkOrder {
+  scopeOfWork: string;
+  totalTenure: string;
+  issueDate: string;
+  retentionPercent: number;
+  gstPercent: number;
+  warrantyTerms: string[];
+  specialConditions: string[];
+  scopeItems: { description: string; unit?: string; plannedQty?: number; rate?: number }[];
+  paymentMilestones: { stage: string; type?: string; amountPercent?: number; amount?: number }[];
+  extractionNotes: string;
+}
+
+// Best-effort match of an AI-extracted unit string (e.g. "Sq.Ft", "RMT") onto
+// this form's own dropdown values — falls back to "custom" with the raw text
+// preserved so nothing extracted is silently dropped.
+function matchUnit(raw?: string): { unit: string; customUnit: string } {
+  if (!raw || !raw.trim()) return { unit: "sq.ft", customUnit: "" };
+  const norm = raw.toLowerCase().replace(/[.\s]/g, "");
+  const direct = UNIT_OPTIONS.find(u => u.value !== "custom" && u.value.replace(/[.\s]/g, "") === norm);
+  if (direct) return { unit: direct.value, customUnit: "" };
+  const aliases: Record<string, string> = {
+    sqft: "sq.ft", sqm: "sq.m", cum: "cu.m", cuft: "cu.ft", rmt: "rmt", rft: "rft",
+    kg: "kg", mt: "mt", nos: "nos", no: "nos", numbers: "nos", each: "nos",
+    lumpsum: "lump-sum", ls: "lump-sum",
+  };
+  if (aliases[norm]) return { unit: aliases[norm], customUnit: "" };
+  return { unit: "custom", customUnit: raw.trim() };
+}
 
 // ── Draft types ───────────────────────────────────────────────
 
@@ -1357,6 +1392,7 @@ function WOFormFields({
   driList = [],
   preparedByName,
   preparedByContact,
+  onExtracted,
 }: {
   form: FormInstance;
   isEdit?: boolean;
@@ -1368,7 +1404,48 @@ function WOFormFields({
   driList?: { _id: string; name: string; email: string }[];
   preparedByName?: string;
   preparedByContact?: string;
+  // Scope items / milestones / warranty live in the parent's own state, not
+  // this form — extraction hands the full result up so the parent can apply
+  // those pieces itself, while this component applies the plain form fields.
+  onExtracted?: (data: AiExtractedWorkOrder) => void;
 }) {
+  const [extracting, setExtracting] = useState(false);
+  const [extractNote, setExtractNote] = useState("");
+
+  const handleExtract = async () => {
+    const docs: WODocument[] = form.getFieldValue("documents") || [];
+    const target = [...docs].reverse().find(d => /\.(pdf|jpe?g|png)$/i.test(d.name));
+    if (!target) {
+      message.warning("Upload a PDF or image document above first");
+      return;
+    }
+    setExtracting(true);
+    setExtractNote("");
+    try {
+      const res = await apiClient.post<{ extracted: AiExtractedWorkOrder }>("/ai/extract-work-order", {
+        documentBase64: target.url,
+        fileName: target.name,
+      });
+      const data = res.data.extracted;
+      form.setFieldsValue({
+        description:      data.scopeOfWork || undefined,
+        totalTenure:       data.totalTenure || undefined,
+        issueDate:         data.issueDate ? dayjs(data.issueDate) : undefined,
+        retentionPercent: data.retentionPercent ?? undefined,
+        gstPercent:        data.gstPercent ?? undefined,
+      });
+      onExtracted?.(data);
+      if (data.extractionNotes) setExtractNote(data.extractionNotes);
+      message.success(
+        `Extracted ${data.scopeItems?.length ?? 0} scope item(s) and ${data.paymentMilestones?.length ?? 0} payment milestone(s) — review before saving`
+      );
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { message?: string } } };
+      message.error(e?.response?.data?.message || "AI extraction failed");
+    } finally {
+      setExtracting(false);
+    }
+  };
 
   const fillVendor = (vendorCode: string) => {
     const c = contractorsList.find(x => x.vendorCode === vendorCode);
@@ -1619,6 +1696,33 @@ function WOFormFields({
       <Form.Item label="Upload Work Order Documents" name="documents">
         <DocumentsUpload />
       </Form.Item>
+
+      {!isEdit && (
+        <div style={{ marginBottom: 20 }}>
+          <Button
+            icon={<ThunderboltOutlined />}
+            loading={extracting}
+            onClick={handleExtract}
+            style={{ borderColor: "#f37916", color: "#f37916" }}
+          >
+            Extract with AI
+          </Button>
+          <span style={{ marginLeft: 10, fontSize: 11.5, color: "#9ba3b8" }}>
+            Reads an uploaded PDF/image and auto-fills scope, dates, BOQ items &amp; payment milestones below — always review before saving.
+          </span>
+          {extractNote && (
+            <Alert
+              style={{ marginTop: 10 }}
+              type="warning"
+              showIcon
+              message="AI extraction notes — please verify"
+              description={extractNote}
+              closable
+              onClose={() => setExtractNote("")}
+            />
+          )}
+        </div>
+      )}
     </>
   );
 }
@@ -1755,6 +1859,36 @@ export default function WorkItems() {
     () => apiCategories.find(c => !c.parentId && c.name === editCatName)?._id ?? null,
     [editCatName, apiCategories]
   );
+
+  // AI Document Intelligence — applies the parts of an extraction result that
+  // live outside the antd Form (scope items / milestones / warranty terms are
+  // their own component state, unlike description/dates/etc. which WOFormFields
+  // already writes straight onto the form).
+  function applyAiExtraction(data: AiExtractedWorkOrder) {
+    if (data.scopeItems?.length) {
+      setCreateScopeItems(data.scopeItems.map(item => {
+        const { unit, customUnit } = matchUnit(item.unit);
+        return {
+          ...newItemDraft(createGstPercent),
+          description: item.description || "",
+          unit, customUnit,
+          plannedQty: item.plannedQty ?? null,
+          rate: item.rate ?? null,
+        };
+      }));
+    }
+    if (data.paymentMilestones?.length) {
+      setCreateMilestones(data.paymentMilestones.map(m => ({
+        ...newMilestone(),
+        stage: m.stage || "",
+        type: m.type || m.stage || "",
+        amountMode: m.amountPercent != null ? "percent" : "fixed",
+        amountPercent: m.amountPercent ?? null,
+        amount: m.amount ?? null,
+      })));
+    }
+    if (data.warrantyTerms?.length) setCreateWarranty(data.warrantyTerms.filter(Boolean));
+  }
 
   // Derive category tree for filter logic
   const topLevelCats = useMemo(() => apiCategories.filter(c => !c.parentId), [apiCategories]);
@@ -2658,6 +2792,7 @@ export default function WorkItems() {
             driList={driList}
             preparedByName={user?.name}
             preparedByContact={user?.email}
+            onExtracted={applyAiExtraction}
           />
         </Form>
         <div style={{ borderTop: "1px solid #E5E7EB", marginTop: 16, paddingTop: 16 }}>

@@ -59,6 +59,9 @@ app.use('/api/workflows',    require('./routes/workflows'));
 app.use('/api/dpr',          require('./routes/dpr'));
 app.use('/api/report-schedules', require('./routes/reportSchedules'));
 app.use('/api/audit-logs',   require('./routes/auditLogs'));
+app.use('/api/ai',           require('./routes/ai'));
+app.use('/api/daily-reports', require('./routes/dailyProjectReports'));
+app.use('/api/daily-labour-reports', require('./routes/dailyLabourReports'));
 
 app.get('/api/health', (_req, res) =>
   res.json({ success: true, status: 'ok', timestamp: new Date().toISOString() })
