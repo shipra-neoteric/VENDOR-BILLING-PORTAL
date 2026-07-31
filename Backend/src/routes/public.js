@@ -11,6 +11,8 @@ const { nextWorkOrderNo, nextVendorCode } = require('../utils/codeGen');
 const { startInstance } = require('../utils/slaEngine');
 const { milestonesExceedContract } = require('../utils/validateMilestones');
 const { documentsExceedLimit } = require('../utils/validateDocuments');
+const { createPublicReport } = require('../controllers/dailyProjectReportController');
+const { createPublicReport: createPublicLabourReport } = require('../controllers/dailyLabourReportController');
 
 // ── Lookup lists (read-only, no auth) ──────────────────────────
 router.get('/projects', asyncHandler(async (_req, res) => {
@@ -102,6 +104,12 @@ router.post('/work-orders', asyncHandler(async (req, res) => {
 
   created(res, { workOrder }, 'Work order submitted successfully');
 }));
+
+// ── Submit Daily Project Report (no auth) ───────────────────────
+router.post('/daily-reports', createPublicReport);
+
+// ── Submit Daily Contractor / Labour Report (no auth) ────────────
+router.post('/daily-labour-reports', createPublicLabourReport);
 
 // ── Submit new contractor (no auth) ─────────────────────────────
 router.post('/contractors', asyncHandler(async (req, res) => {

@@ -5,7 +5,7 @@ import {
   FileTextOutlined, LineChartOutlined, WalletOutlined,
   AccountBookOutlined, UsergroupAddOutlined, MonitorOutlined,
   ShareAltOutlined, SettingOutlined, ClockCircleOutlined, HistoryOutlined,
-  FileSearchOutlined,
+  FileSearchOutlined, ScheduleOutlined, SolutionOutlined,
 } from "@ant-design/icons";
 import { useAuth } from "../../context/AuthContext";
 import type { PermEntry } from "../../context/AuthContext";
@@ -38,6 +38,8 @@ const ADMIN_GROUPS: NavGroup[] = [
     items: [
       { name: "Work Orders",   path: "/work-items",    icon: <FileTextOutlined />, moduleId: "work-orders" },
       { name: "Work Progress", path: "/work-progress", icon: <LineChartOutlined />, moduleId: "work-progress" },
+      { name: "Daily Project Report", path: "/daily-project-report", icon: <ScheduleOutlined />, moduleId: "daily-project-report" },
+      { name: "Daily Labour Report", path: "/daily-labour-report", icon: <SolutionOutlined />, moduleId: "daily-labour-report" },
     ],
   },
   {
@@ -65,6 +67,8 @@ const ADMIN_GROUPS: NavGroup[] = [
 
 const DRI_OWN_ITEMS: NavItem[] = [
   { name: "Project Wise Progress", path: "/work-progress", icon: <LineChartOutlined />, moduleId: "work-progress" },
+  { name: "Daily Project Report", path: "/daily-project-report", icon: <ScheduleOutlined />, moduleId: "daily-project-report" },
+  { name: "Daily Labour Report", path: "/daily-labour-report", icon: <SolutionOutlined />, moduleId: "daily-labour-report" },
 ];
 
 // ── Permission helpers ─────────────────────────────────────────────────────────
@@ -102,11 +106,13 @@ function canViewExplicit(moduleId: string, perms: PermEntry[]): boolean {
 function buildDRIGroups(perms: PermEntry[] | undefined): NavGroup[] {
   const hasExplicit = perms && perms.length > 0;
 
-  // My Work items — always use standard canView logic
-  const myWorkItems = DRI_OWN_ITEMS.filter(item => canView(item.moduleId, perms));
-
-  const groups: NavGroup[] = [];
-  if (myWorkItems.length > 0) groups.push({ label: "My Work", items: myWorkItems });
+  // My Work items are baseline DRI capabilities — always shown, never gated
+  // behind the permission checklist. (canView's fallback only defaults to
+  // "visible" when a user has *zero* permission entries at all — the moment
+  // any unrelated module gets explicitly granted to them, that same fallback
+  // starts requiring an explicit "view" entry for every module, which would
+  // silently hide these core items too if they went through canView.)
+  const groups: NavGroup[] = [{ label: "My Work", items: DRI_OWN_ITEMS }];
 
   // Admin modules where admin has explicitly granted DRI "view" access
   if (hasExplicit) {
@@ -115,6 +121,8 @@ function buildDRIGroups(perms: PermEntry[] | undefined): NavGroup[] {
       const extras = group.items.filter(item =>
         item.moduleId !== "dashboard" &&
         item.moduleId !== "work-progress" &&
+        item.moduleId !== "daily-project-report" &&
+        item.moduleId !== "daily-labour-report" &&
         item.moduleId !== "dri-dashboard" &&
         canViewExplicit(item.moduleId, perms!)
       );

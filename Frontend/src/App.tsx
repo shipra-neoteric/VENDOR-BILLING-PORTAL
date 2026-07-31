@@ -5,6 +5,8 @@ import { useLocation } from "react-router-dom";
 import AppRoutes from "./routes/AppRoutes";
 import PublicWorkOrderForm from "./pages/PublicWorkOrderForm";
 import PublicContractorForm from "./pages/PublicContractorForm";
+import PublicDailyReportForm from "./pages/PublicDailyReportForm";
+import PublicLabourReportForm from "./pages/PublicLabourReportForm";
 import { AuthProvider } from "./context/AuthContext";
 import { ThemeProvider, useTheme } from "./context/ThemeContext";
 import baseTheme from "./theme/theme";
@@ -36,6 +38,24 @@ function ThemedApp() {
     return (
       <ConfigProvider theme={{ ...baseTheme, algorithm: antTheme.defaultAlgorithm }}>
         <PublicContractorForm />
+        <Toaster position="top-right" />
+      </ConfigProvider>
+    );
+  }
+
+  if (pathname === "/public/daily-report") {
+    return (
+      <ConfigProvider theme={{ ...baseTheme, algorithm: antTheme.defaultAlgorithm }}>
+        <PublicDailyReportForm />
+        <Toaster position="top-right" />
+      </ConfigProvider>
+    );
+  }
+
+  if (pathname === "/public/labour-report") {
+    return (
+      <ConfigProvider theme={{ ...baseTheme, algorithm: antTheme.defaultAlgorithm }}>
+        <PublicLabourReportForm />
         <Toaster position="top-right" />
       </ConfigProvider>
     );

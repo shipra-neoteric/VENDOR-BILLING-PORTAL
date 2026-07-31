@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { Button, message } from "antd";
-import { CopyOutlined, ExportOutlined, FileTextOutlined, TeamOutlined } from "@ant-design/icons";
+import { CopyOutlined, ExportOutlined, FileTextOutlined, TeamOutlined, ScheduleOutlined, SolutionOutlined } from "@ant-design/icons";
 import PageShell from "../../components/PageShell";
 
 interface PublicFormDef {
@@ -28,6 +28,22 @@ const FORMS: PublicFormDef[] = [
     path: "/public/contractor",
     icon: <TeamOutlined />,
     color: "#16a34a",
+  },
+  {
+    key: "daily-report",
+    name: "Daily Project Report",
+    description: "End-of-day site report — work progress, labour/material/drawing alerts, and escalations. No login required; DRIs can also submit this from their own dashboard.",
+    path: "/public/daily-report",
+    icon: <ScheduleOutlined />,
+    color: "#4f46e5",
+  },
+  {
+    key: "labour-report",
+    name: "Daily Contractor / Labour Report",
+    description: "Log today's on-site labour count per contractor, work type, and shift, across all sites. No login required; DRIs can also submit this from their own dashboard.",
+    path: "/public/labour-report",
+    icon: <SolutionOutlined />,
+    color: "#0d9488",
   },
 ];
 

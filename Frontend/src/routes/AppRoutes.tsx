@@ -31,6 +31,8 @@ const SlaSettings       = lazy(() => import("../pages/SlaSettings"));
 const SlaSettingsDetail = lazy(() => import("../pages/SlaSettings/Detail"));
 const SlaDashboard      = lazy(() => import("../pages/SlaDashboard"));
 const AuditLogs         = lazy(() => import("../pages/AuditLogs"));
+const DailyProjectReport = lazy(() => import("../pages/DailyProjectReport"));
+const DailyLabourReport  = lazy(() => import("../pages/DailyLabourReport"));
 
 import MainLayout     from "../layouts/MainLayout/MainLayout";
 import ProtectedRoute from "../components/ProtectedRoute";
@@ -55,6 +57,8 @@ function DriRoutes() {
             <Route index                    element={<Navigate to="/work-progress" replace />} />
             {/* Core DRI routes */}
             <Route path="/work-progress"    element={<WorkProgress />} />
+            <Route path="/daily-project-report" element={<DailyProjectReport />} />
+            <Route path="/daily-labour-report"  element={<DailyLabourReport />} />
             {/* Admin module routes — visible when admin grants DRI explicit view permission */}
             <Route path="/projects"         element={<Projects />} />
             <Route path="/companies"        element={<Companies />} />
@@ -111,6 +115,8 @@ function AdminRoutes() {
             <Route path="/sla-settings/:id" element={<SlaSettingsDetail />} />
             <Route path="/sla-dashboard"   element={<SlaDashboard />} />
             <Route path="/audit-logs"      element={<AuditLogs />} />
+            <Route path="/daily-project-report" element={<DailyProjectReport />} />
+            <Route path="/daily-labour-report"  element={<DailyLabourReport />} />
             <Route path="*"                element={<Navigate to={defaultPath} replace />} />
           </Route>
         </Route>
