@@ -191,29 +191,31 @@ exports.updateWorkOrder = asyncHandler(async (req, res) => {
   const before = await WorkOrder.findById(req.params.id).lean();
   if (!before) return notFound(res, 'Work order not found');
   if (before.isLocked) return badRequest(res, 'This work order is locked and cannot be edited. Unlock it first.');
-  if (!['draft', 'sent-back', 'approved'].includes(before.approvalStatus)) {
-    return badRequest(res, `This work order is awaiting review (${before.approvalStatus}) and cannot be edited until it's approved or sent back.`);
-  }
 
-  // Editing a work order that had already cleared the full approval chain
-  // (only possible once Owner has unlocked it) sends it back through the chain
-  // from scratch — but only when the edit actually touches Scope of Work or
-  // Payment Milestones, the two things the approval was actually granted on.
-  // Everything else (vendor/company details, GST/retention %, dates, remarks,
-  // documents) can be corrected on an approved WO without re-triggering review.
+  // Editing a work order mid-chain (pending-checker/approver/final) or after
+  // it already cleared the full chain (only possible once Owner has unlocked
+  // it) sends it back through the chain from scratch — but only when the edit
+  // actually touches Scope of Work or Payment Milestones, the two things the
+  // approval was actually granted on. Everything else (vendor/company details,
+  // GST/retention %, dates, remarks, documents) can be corrected at any stage,
+  // mid-review included, without disrupting whoever's currently reviewing it.
+  const MID_CYCLE_STATUSES = ['pending-checker', 'pending-approver', 'pending-final'];
   const newScopeItems = updateData.scopeItems !== undefined ? updateData.scopeItems : before.scopeItems;
   const newMilestones = updateData.paymentMilestones !== undefined ? updateData.paymentMilestones : before.paymentMilestones;
   const approvalCriticalChanged =
     scopeItemsSignature(before.scopeItems) !== scopeItemsSignature(newScopeItems) ||
     paymentMilestonesSignature(before.paymentMilestones) !== paymentMilestonesSignature(newMilestones);
 
-  const reopening = before.approvalStatus === 'approved' && approvalCriticalChanged;
+  const wasMidCycle = MID_CYCLE_STATUSES.includes(before.approvalStatus);
+  const reopening = (before.approvalStatus === 'approved' || wasMidCycle) && approvalCriticalChanged;
   if (reopening) updateData.approvalStatus = 'draft';
 
   const mongoUpdate = reopening
     ? { $set: updateData, $push: { approvalHistory: {
         stage: 'maker', action: 'reopened', by: req.user._id,
-        remarks: 'Scope of Work / Payment Milestones edited after approval — sent back through the full approval chain.',
+        remarks: wasMidCycle
+          ? `Scope of Work / Payment Milestones edited while ${before.approvalStatus.replace('pending-', 'pending ')} — sent back through the full approval chain.`
+          : 'Scope of Work / Payment Milestones edited after approval — sent back through the full approval chain.',
       } } }
     : { $set: updateData };
 
