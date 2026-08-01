@@ -357,10 +357,8 @@ export function WorkOrderDocument({ wo, company, contractor }: Props) {
             {(() => { let groupIdx = -1; return lineItems.map((item, i) => {
               if (!item.isChild) groupIdx += 1;
               const rowStyle = item.isChild ? S.scopeChild : (groupIdx % 2 === 0 ? S.scopeRow : S.scopeAlt);
-              const isFirstParticular = item.isChild && (i === 0 || !lineItems[i - 1].isChild);
               return (
                 <View key={i}>
-                  {isFirstParticular && <Text style={S.particularsLbl}>Particulars (reference only — not included in contract value)</Text>}
                   <View style={rowStyle} wrap={false}>
                     {item.isChild && <View style={S.scopeChildRule} />}
                     <View style={S.colDesc}>

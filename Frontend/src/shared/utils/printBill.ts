@@ -99,6 +99,7 @@ export function printBill(
       ? `<div style="border:1px solid #e8e8e8;border-radius:6px;padding:14px;margin-bottom:24px">
           <h4 style="font-size:10px;text-transform:uppercase;color:#f47b20;letter-spacing:1px;margin:0 0 10px">Bank Details</h4>
           <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
+            <div><span style="font-size:10px;color:#999;display:block">Account Holder Name</span><strong>${contractor.accountHolderName || "-"}</strong></div>
             <div><span style="font-size:10px;color:#999;display:block">Bank Name</span><strong>${contractor.bankName}</strong></div>
             <div><span style="font-size:10px;color:#999;display:block">Account No.</span><strong>${contractor.accountNumber || "-"}</strong></div>
             <div><span style="font-size:10px;color:#999;display:block">IFSC Code</span><strong>${contractor.ifscCode || "-"}</strong></div>
