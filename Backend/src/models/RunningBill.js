@@ -2,6 +2,10 @@ const mongoose = require('mongoose');
 
 const lineItemSchema = new mongoose.Schema({
   scopeItemId: { type: mongoose.Schema.Types.ObjectId },
+  // Set only when this line bills a specific particular within scopeItemId,
+  // rather than the scope item as a whole — lets billing (and the remaining-
+  // qty guard) target the particular's own plannedQty/lastBilledQty.
+  subItemId:   { type: mongoose.Schema.Types.ObjectId },
   description: { type: String, required: true },
   remarks:     { type: String, default: '' },
   // Notes from the actual progress entries billed here — distinct from

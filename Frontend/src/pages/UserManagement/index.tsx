@@ -67,6 +67,7 @@ const MODULE_DEFS: ModuleDef[] = [
   { id: "work-progress",    name: "Work Progress",      icon: "📊", group: "Execution",     actions: ["view","create","edit","delete"] },
   { id: "bill-requests",    name: "Bill Requests",      icon: "📨", group: "Billing",       actions: ["view","create","agm-approve","gm-approve","reject"] },
   { id: "accounts-payment", name: "Accounts Payment",   icon: "💰", group: "Billing",       actions: ["view","create","edit","maker","checker","approver","payment-maker","physical-verify","release","payment-details","reject"] },
+  { id: "billing",          name: "Billing",            icon: "🧮", group: "Billing",       actions: ["view","create"] },
   { id: "advance-payments", name: "Advance Payments",   icon: "🏦", group: "Billing",       actions: ["view","create","edit","delete"] },
   { id: "bill-review",      name: "Site Progress",      icon: "🧾", group: "Billing",       actions: ["view","approve"] },
   { id: "ledger",           name: "Ledger",             icon: "📒", group: "Billing",       actions: ["view"] },

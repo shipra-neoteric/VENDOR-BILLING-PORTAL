@@ -14,7 +14,7 @@ router.use(authenticate);
 router.get('/',                    listBills);
 router.get('/chain/:workOrderId',  getBillingChain);
 router.get('/:id',                 getBill);
-router.post('/',             authorizeOr('accounts-payment', 'create',  'owner'), createBillRules, createBill);
+router.post('/',             authorizeOr('billing', 'create',  'owner'), createBillRules, createBill);
 router.put('/:id',           authorizeOr('accounts-payment', 'edit',    'owner'), updateBill);
 // Stage 1 (L1 maker confirms — checklist required).
 router.patch('/:id/maker-confirm',   authorizeOr('accounts-payment', 'maker',   'owner'), makerConfirm);

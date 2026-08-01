@@ -8,8 +8,9 @@ const { nextBillNo } = require('../utils/codeGen');
 const emitEvent    = require('../utils/emitEvent');
 const { advanceInstance, cancelInstance } = require('../utils/slaEngine');
 const { logAudit, diffFields } = require('../utils/auditLog');
-const { hasUnapprovedVariance } = require('../utils/varianceCheck');
-const { recomputeAfterInvalidate } = require('../utils/progressHelpers');
+const { hasUnapprovedVarianceForLineItem, resolveBillableItem, findOverbilledLineItem } = require('../utils/varianceCheck');
+const { recomputeAfterInvalidate, recomputeParentFromSubItems, deriveStatus } = require('../utils/progressHelpers');
+const { applyAdvanceRecoveries } = require('../utils/advanceRecovery');
 
 const MODULE = 'accounts-payment';
 
@@ -94,9 +95,32 @@ exports.createBill = asyncHandler(async (req, res) => {
     for (const li of lineItems) {
       if (!li.scopeItemId) continue;
       const si = workOrder.scopeItems.id(li.scopeItemId);
-      if (si && hasUnapprovedVariance(si)) {
+      if (si && hasUnapprovedVarianceForLineItem(si, li.subItemId)) {
         return badRequest(res, `"${si.description}" has unapproved progress variance — approve it on the Bill Review page before billing.`);
       }
+    }
+
+    // Hard-reject overbilling past a scope item's remaining unbilled qty —
+    // cumulative across every bill ever raised against it, from either
+    // billing path — instead of the old silent Math.min clamp further below.
+    const overbilled = findOverbilledLineItem(workOrder, lineItems);
+    if (overbilled) {
+      const { si, remaining } = overbilled;
+      return badRequest(res, `"${si.description}" — only ${remaining} ${si.unit || ''} remaining to bill (already billed ${si.lastBilledQty || 0} of ${si.plannedQty}).`);
+    }
+  }
+
+  // Advance recovery decided at creation time — validate slip ownership up
+  // front (before creating anything) so a mismatch fails cleanly with no
+  // side effects, rather than after a bill/WO update has already landed.
+  const recoveries = Array.isArray(req.body.advanceRecoveries) ? req.body.advanceRecoveries : [];
+  const recoveryVendorCode = workOrder ? workOrder.vendorCode : req.body.vendorCode;
+  if (recoveries.length) {
+    const AdvanceSlip = require('../models/AdvanceSlip');
+    const slips = await AdvanceSlip.find({ _id: { $in: recoveries.map(r => r.slipId).filter(Boolean) } }).select('contractorCode');
+    const mismatch = slips.find(s => s.contractorCode !== recoveryVendorCode);
+    if (mismatch) {
+      return badRequest(res, `Advance slip ${mismatch._id} does not belong to this bill's contractor.`);
     }
   }
 
@@ -142,23 +166,50 @@ exports.createBill = asyncHandler(async (req, res) => {
     }
   }
 
-  // Update work order scope item progress (non-fatal)
+  // Update work order scope item progress (non-fatal) — the overbilling
+  // check above already guarantees this addition stays within plannedQty
+  // wherever one is set, so no clamp is needed here anymore.
   if (workOrder && lineItems.length > 0) {
     try {
       let changed = false;
+      const touchedParents = new Set();
       for (const li of lineItems) {
         if (!li.scopeItemId || !li.billedQty) continue;
         const si = workOrder.scopeItems.id(li.scopeItemId);
-        if (si) {
-          const cap = si.plannedQty || 999999;
-          si.lastBilledQty = Math.min(cap, (si.lastBilledQty || 0) + Number(li.billedQty));
+        if (!si) continue;
+        const target = resolveBillableItem(si, li.subItemId);
+        if (target) {
+          target.lastBilledQty = (target.lastBilledQty || 0) + Number(li.billedQty);
+          // A bill created directly here (bypassing DRI progress logging)
+          // implies the billed work is actually done on site — otherwise it
+          // wouldn't be billed — so billed qty is a floor on completed qty,
+          // never lowering it if DRI progress already logged more.
+          target.completedQty = Math.max(target.completedQty || 0, target.lastBilledQty);
+          target.status = deriveStatus(target);
+          if (li.subItemId) touchedParents.add(li.scopeItemId);
           changed = true;
         }
+      }
+      // Particulars drive their parent's own completedQty/status as a rollup —
+      // recompute it for every scope item that had a particular billed here.
+      for (const scopeItemId of touchedParents) {
+        const si = workOrder.scopeItems.id(scopeItemId);
+        if (si) recomputeParentFromSubItems(si);
       }
       if (changed) await workOrder.save();
     } catch (woErr) {
       console.error('Warning: could not update work order progress from bill:', woErr.message);
     }
+  }
+
+  // Apply the (already-validated) advance recoveries now that the bill
+  // exists, real-time reducing the AdvanceSlip's own balance immediately —
+  // same shape/helper as the late-stage submitPaymentDetails recovery, just
+  // applied at creation instead of waiting for the bill to reach 'paid'.
+  if (recoveries.length) {
+    const applied = await applyAdvanceRecoveries(recoveries, { billNo: bill.billNo, releasedBy: req.user.name });
+    bill.advanceRecovery = (bill.advanceRecovery || 0) + applied.reduce((sum, a) => sum + a.amount, 0);
+    if (applied.length) await bill.save();
   }
 
   created(res, { bill }, 'Bill created — awaiting maker confirmation');
@@ -170,6 +221,38 @@ exports.updateBill = asyncHandler(async (req, res) => {
   if (['approved', 'payment-initiated', 'paid'].includes(bill.status)) {
     return badRequest(res, 'Approved, payment-initiated or paid bills cannot be edited');
   }
+
+  // Guard against overbilling being reintroduced through an edit — this
+  // route updates lineItems.billedQty without touching the WorkOrder's own
+  // lastBilledQty (unlike createBill), so "remaining" here must be computed
+  // net of whatever this same bill already contributed, not just plannedQty
+  // minus the WO's current lastBilledQty.
+  if (Array.isArray(req.body.lineItems) && bill.workOrderId) {
+    const workOrder = await WorkOrder.findById(bill.workOrderId);
+    if (workOrder) {
+      const itemKey = (scopeItemId, subItemId) => `${scopeItemId}:${subItemId || ''}`;
+      const priorQtyByItem = {};
+      for (const li of bill.lineItems) {
+        if (li.scopeItemId) {
+          const k = itemKey(li.scopeItemId, li.subItemId);
+          priorQtyByItem[k] = (priorQtyByItem[k] || 0) + (Number(li.billedQty) || 0);
+        }
+      }
+      for (const li of req.body.lineItems) {
+        if (!li.scopeItemId || !li.billedQty) continue;
+        const si = workOrder.scopeItems.id(li.scopeItemId);
+        if (!si) continue;
+        const target = resolveBillableItem(si, li.subItemId);
+        if (!target || !(target.plannedQty > 0)) continue;
+        const prior = priorQtyByItem[itemKey(li.scopeItemId, li.subItemId)] || 0;
+        const remaining = target.plannedQty - (target.lastBilledQty || 0) + prior;
+        if (Number(li.billedQty) > remaining + 0.001) {
+          return badRequest(res, `"${target.description}" — only ${remaining} ${target.unit || ''} remaining to bill (already billed ${(target.lastBilledQty || 0) - prior} of ${target.plannedQty} by other bills).`);
+        }
+      }
+    }
+  }
+
   Object.assign(bill, req.body);
   await bill.save();
   success(res, { bill }, 'Bill updated successfully');
@@ -641,25 +724,7 @@ exports.submitPaymentDetails = asyncHandler(async (req, res) => {
 
   // Process advance recoveries against outstanding AdvanceSlips, if any were
   // allocated as part of recording these payment details.
-  const recoveries = Array.isArray(req.body.advanceRecoveries) ? req.body.advanceRecoveries : [];
-  if (recoveries.length) {
-    const AdvanceSlip = require('../models/AdvanceSlip');
-    for (const rec of recoveries) {
-      if (!rec.slipId || !rec.amount || rec.amount <= 0) continue;
-      const slip = await AdvanceSlip.findById(rec.slipId);
-      if (!slip) continue;
-      slip.amountRecovered += rec.amount;
-      slip.recoveries.push({
-        amount:     rec.amount,
-        date:       new Date(),
-        releasedBy: req.user.name,
-      });
-      slip.status = slip.amountRecovered >= slip.amount
-        ? 'recovered'
-        : slip.amountRecovered > 0 ? 'partial' : 'outstanding';
-      await slip.save();
-    }
-  }
+  await applyAdvanceRecoveries(req.body.advanceRecoveries, { billNo: bill.billNo, releasedBy: req.user.name });
 
   await logAudit({
     action: 'UPDATE', module: MODULE, user: req.user,

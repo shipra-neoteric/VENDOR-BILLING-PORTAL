@@ -32,14 +32,12 @@ import {
   ClockCircleOutlined,
   CloseCircleFilled,
   CloseCircleOutlined,
-  DeleteOutlined,
   DollarOutlined,
   ExclamationCircleFilled,
   FileAddOutlined,
   FileTextOutlined,
   InboxOutlined,
   PauseCircleOutlined,
-  PlusOutlined,
   PrinterOutlined,
   SafetyCertificateOutlined,
   SearchOutlined,
@@ -58,6 +56,7 @@ import WorkOrderDetailView from "../../components/WorkOrderDetailView";
 import ContractorDetailView from "../../components/ContractorDetailView";
 import type { WorkOrder, Contractor } from "../../types/VendorBilling";
 import { printBill } from "../../shared/utils/printBill";
+import { BILL_TYPE_CFG, PAYMENT_MODE_OPTIONS } from "../../shared/constants/billOptions";
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -184,8 +183,6 @@ interface Bill {
 }
 
 interface ProjectOpt { id: string; name: string; code: string; parentId?: string | null; }
-interface ScopeItemOpt { id: string; description: string; unit: string; plannedQty: number; completedQty: number; rate?: number; }
-interface WorkOrderOpt { id: string; workOrderNo: string; projectId: string; projectName: string; vendorCode: string; vendorName: string; scopeItems: ScopeItemOpt[]; }
 interface AdvanceSlipOpt { _id: string; slipNo: string; amount: number; amountRecovered: number; balance: number; date?: string; reference?: string; }
 
 // ── Helpers ──────────────────────────────────────────────────────
@@ -197,13 +194,8 @@ const netAfterAdvance = (b: Bill) => {
   return Math.round(netPay - (b.advanceRecovery ?? 0));
 };
 const normalizeId = (obj: Record<string, unknown>) => ({ ...obj, id: (obj._id || obj.id)?.toString() || "" });
-const normalizeWO = (wo: Record<string, unknown>): WorkOrderOpt => ({
-  ...normalizeId(wo),
-  scopeItems: ((wo.scopeItems as Record<string, unknown>[]) || []).map(normalizeId),
-} as unknown as WorkOrderOpt);
 
-// Full-fidelity normalize (unlike the WorkOrderOpt-shaped one above, used only
-// for the New Bill drawer's WO picker) — for the WO quick-view drawer, which
+// Full-fidelity normalize — for the WO quick-view drawer, which
 // needs the exact same shape WorkOrderDetailView already renders elsewhere.
 const normalizeFullWO = (wo: Record<string, unknown>): WorkOrder => ({
   ...normalizeId(wo),
@@ -214,11 +206,6 @@ const normalizeFullWO = (wo: Record<string, unknown>): WorkOrder => ({
   })),
   paymentMilestones: ((wo.paymentMilestones as Record<string, unknown>[]) || []).map(normalizeId),
 } as unknown as WorkOrder);
-
-let _key = 0;
-const nextKey = () => ++_key;
-
-const blankRow = (): LineItem => ({ key: nextKey(), description: "", unit: "", plannedQty: 0, billedQty: 0, rate: 0, amount: 0 });
 
 // A grant for module 'accounts-payment' with the given action name — Owner always
 // bypasses, matching every other permission check in this codebase.
@@ -253,44 +240,6 @@ function paymentSubStage(bill: Bill): "prepare" | "verify" | "release" {
   if (!bill.physicalVerification?.done) return "verify";
   return "release";
 }
-
-const BILL_TYPE_CFG: Record<string, { label: string; color: string }> = {
-  running:              { label: "Running Bill",     color: "#2563eb" },
-  final:                { label: "Final Bill",       color: "#16a85a" },
-  advance_mobilization: { label: "Mob. Advance",     color: "#7c3aed" },
-  advance_secured:      { label: "Secured Advance",  color: "#7c3aed" },
-  advance_material:     { label: "Material Advance", color: "#7c3aed" },
-  recovery:             { label: "Recovery",         color: "#d97706" },
-  credit_note:          { label: "Credit Note",      color: "#dc2626" },
-  debit_note:           { label: "Debit Note",       color: "#d97706" },
-  revision:             { label: "Revision",         color: "#0d9488" },
-  correction:           { label: "Correction",       color: "#0d9488" },
-  retention_release:    { label: "Retention Release",color: "#0369a1" },
-};
-
-const RELATIONSHIP_OPTIONS = [
-  { value: "NONE",                label: "None — standalone bill" },
-  { value: "CONTINUES",           label: "CONTINUES — next running bill in sequence" },
-  { value: "SUPERSEDES",          label: "SUPERSEDES — final bill replacing running bills" },
-  { value: "ADJUSTMENT",          label: "ADJUSTMENT — credit/debit note on a bill" },
-  { value: "REVISION_OF",         label: "REVISION_OF — replaces an earlier bill" },
-  { value: "ADVANCE_FOR",         label: "ADVANCE_FOR — advance for future billing" },
-  { value: "RECOVERY_OF",         label: "RECOVERY_OF — recovering a prior advance" },
-  { value: "SETTLEMENT_OF",       label: "SETTLEMENT_OF — settling outstanding balance" },
-  { value: "CORRECTION_OF",       label: "CORRECTION_OF — correcting a previous bill" },
-  { value: "RETENTION_RELEASE_OF",label: "RETENTION_RELEASE_OF — releasing held retention" },
-];
-
-const PAYMENT_MODE_OPTIONS = [
-  { label: "NEFT", value: "neft" },
-  { label: "RTGS", value: "rtgs" },
-  { label: "IMPS", value: "imps" },
-  { label: "Internet Banking", value: "internet_banking" },
-  { label: "UPI", value: "upi" },
-  { label: "Cheque", value: "cheque" },
-  { label: "Demand Draft (DD)", value: "dd" },
-  { label: "Cash", value: "cash" },
-];
 
 // ── Small visual building blocks ──────────────────────────────────
 
@@ -785,7 +734,6 @@ function PaymentDetailsPanel({ bill, canRelease, onUpdated }: { bill: Bill; canR
 export default function AccountsPayment() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const canCreate  = hasPerm(user, "create");
   const canMaker   = hasPerm(user, "maker");
   const canChecker = hasPerm(user, "checker");
   const canApprover = hasPerm(user, "approver");
@@ -810,22 +758,6 @@ export default function AccountsPayment() {
   const [dateFrom, setDateFrom]         = useState<Dayjs | null>(null);
   const [dateTo, setDateTo]             = useState<Dayjs | null>(null);
   const [showArchived, setShowArchived] = useState(false);
-
-  // New Bill drawer
-  const [newOpen, setNewOpen]           = useState(false);
-  const [newSaving, setNewSaving]       = useState(false);
-  const [newForm]                       = Form.useForm();
-  const [newProjectId, setNewProjectId] = useState<string>("");
-  const [newContractorId, setNewContractorId] = useState<string>("");
-  const [woList, setWoList]             = useState<WorkOrderOpt[]>([]);
-  const [lineItems, setLineItems]       = useState<LineItem[]>([blankRow()]);
-  const [newGstPercent, setNewGstPercent] = useState<number>(18);
-  const [isCustomGst, setIsCustomGst]     = useState(false);
-  const [newBillType, setNewBillType]         = useState<string>("running");
-  const [newRelType, setNewRelType]           = useState<string>("NONE");
-  const [newLinkedBillIds, setNewLinkedBillIds] = useState<string[]>([]);
-  const [newSelectedWOId, setNewSelectedWOId] = useState<string>("");
-  const [woExistingBills, setWoExistingBills] = useState<Bill[]>([]);
 
   // ── The one shared bill detail Drawer ─────────────────────────
   const [drawerBillId, setDrawerBillId] = useState<string | null>(null);
@@ -914,24 +846,7 @@ export default function AccountsPayment() {
       .catch(() => {});
   }, []);
 
-  useEffect(() => {
-    if (!newProjectId || !newContractorId) { setWoList([]); return; }
-    const c = contractors.find((x) => x.id === newContractorId);
-    if (!c) return;
-    apiClient.get<{ workOrders: Record<string, unknown>[] }>(`/work-orders?projectId=${newProjectId}`)
-      .then((r) => {
-        const all = (r.data.workOrders || []).map(normalizeWO);
-        setWoList(all.filter((wo) => wo.vendorCode === c.vendorCode));
-      })
-      .catch(() => setWoList([]));
-  }, [newProjectId, newContractorId, contractors]);
-
   // ── Derived ──────────────────────────────────────────────────
-
-  const selectedContractor = useMemo(
-    () => contractors.find((c) => c.id === newContractorId) || null,
-    [contractors, newContractorId]
-  );
 
   const draftBills             = useMemo(() => bills.filter((b) => b.status === "draft"), [bills]);
   const submittedBills         = useMemo(() => bills.filter((b) => b.status === "submitted" || b.status === "verified"), [bills]);
@@ -997,11 +912,6 @@ export default function AccountsPayment() {
     { key: "rejected",       label: "Rejected",        count: rejectedBills.length },
   ];
 
-  const totalLineAmount = useMemo(
-    () => lineItems.reduce((s, li) => s + (li.amount || 0), 0),
-    [lineItems]
-  );
-
   const drawerBill = useMemo(
     () => (drawerBillId ? bills.find((b) => b.id === drawerBillId) || null : null),
     [bills, drawerBillId]
@@ -1049,126 +959,6 @@ export default function AccountsPayment() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [drawerOpen, drawerBillId, drawerBill?.status, drawerBill?.physicalVerification?.done, drawerBill?.paymentPreparation?.done]);
-
-  // ── Line item helpers ────────────────────────────────────────
-
-  function updateLineItem(key: number, field: keyof LineItem, val: unknown) {
-    setLineItems((prev) =>
-      prev.map((li) => {
-        if (li.key !== key) return li;
-        const updated = { ...li, [field]: val };
-        if (field === "billedQty" || field === "rate") {
-          updated.amount = Math.round((Number(updated.billedQty) || 0) * (Number(updated.rate) || 0));
-        }
-        return updated;
-      })
-    );
-  }
-
-  function removeLineItem(key: number) {
-    setLineItems((prev) => prev.filter((li) => li.key !== key));
-  }
-
-  function importFromWO(woId: string) {
-    const wo = woList.find((w) => w.id === woId);
-    if (!wo) return;
-    const imported: LineItem[] = wo.scopeItems.map((si) => ({
-      key: nextKey(),
-      scopeItemId: si.id,
-      description: si.description,
-      unit: si.unit || "",
-      plannedQty: si.plannedQty || 0,
-      billedQty: 0,
-      rate: si.rate || 0,
-      amount: 0,
-    }));
-    setLineItems((prev) => [...prev.filter((li) => li.description.trim()), ...imported]);
-    message.success(`${imported.length} scope items imported — enter quantities`);
-  }
-
-  // ── New Bill ─────────────────────────────────────────────────
-
-  function openNewBill() {
-    newForm.resetFields();
-    setNewProjectId("");
-    setNewContractorId("");
-    setWoList([]);
-    setLineItems([blankRow()]);
-    setNewGstPercent(18);
-    setIsCustomGst(false);
-    setNewBillType("running");
-    setNewRelType("NONE");
-    setNewLinkedBillIds([]);
-    setNewSelectedWOId("");
-    setWoExistingBills([]);
-    setNewOpen(true);
-  }
-
-  async function handleWOSelectForLinking(woId: string) {
-    setNewSelectedWOId(woId);
-    if (!woId) { setWoExistingBills([]); return; }
-    try {
-      const res = await apiClient.get<{ bills: Record<string, unknown>[] }>(`/bills/chain/${woId}`);
-      const existing = (res.data.bills || []).map(b => normalizeId(b) as unknown as Bill);
-      setWoExistingBills(existing.filter(b => b.status !== "rejected"));
-    } catch { setWoExistingBills([]); }
-  }
-
-  async function handleSubmitBill() {
-    const validItems = lineItems.filter((li) => li.description.trim() && li.billedQty > 0);
-    if (validItems.length === 0) {
-      message.error("Add at least one work item with a description and quantity > 0");
-      return;
-    }
-    let values: Record<string, unknown>;
-    try {
-      values = await newForm.validateFields();
-    } catch {
-      return;
-    }
-
-    const project = projects.find((p) => p.id === newProjectId);
-    const contractor = selectedContractor;
-
-    const linkedBills = newLinkedBillIds.map(id => {
-      const found = woExistingBills.find(b => b.id === id);
-      return { billId: id, billNo: found?.billNo ?? id, relationshipType: newRelType };
-    });
-
-    const payload = {
-      billDate:          dayjs(values.billDate as string).toISOString(),
-      projectId:         newProjectId || undefined,
-      projectName:       project?.name ?? "",
-      vendorCode:        contractor?.vendorCode ?? "",
-      vendorName:        contractor?.companyName ?? "",
-      generatedBy:       values.generatedBy ?? "",
-      contractorRefNo:   values.contractorRefNo ?? "",
-      remarks:           values.remarks ?? "",
-      gstPercent:        newGstPercent,
-      tdsPercent:        0,
-      billType:          newBillType,
-      relationshipType:  linkedBills.length > 0 ? newRelType : "NONE",
-      linkedBills:       linkedBills.length > 0 ? linkedBills : [],
-      workOrderId:       newSelectedWOId || undefined,
-      lineItems: validItems.map(({ key: _k, ...rest }) => ({
-        ...rest,
-        amount: rest.billedQty * rest.rate,
-      })),
-    };
-
-    setNewSaving(true);
-    try {
-      const res = await apiClient.post<{ bill: Record<string, unknown> }>("/bills", payload);
-      setBills((prev) => [normalizeId(res.data.bill) as unknown as Bill, ...prev]);
-      message.success(`Bill ${res.data.bill.billNo} created — awaiting maker confirmation`);
-      setNewOpen(false);
-    } catch (err: unknown) {
-      const e = err as { response?: { data?: { message?: string } } };
-      message.error(e?.response?.data?.message || "Failed to create bill");
-    } finally {
-      setNewSaving(false);
-    }
-  }
 
   // ── Download / Print ─────────────────────────────────────────
 
@@ -1756,20 +1546,7 @@ export default function AccountsPayment() {
   return (
     <PageShell
       title="Accounts Payment"
-      description="Verify bills and process vendor payments"
-      cta={
-        canCreate ? (
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            size="large"
-            onClick={openNewBill}
-            style={{ background: "#FF7A00", borderColor: "#FF7A00" }}
-          >
-            New Bill
-          </Button>
-        ) : undefined
-      }
+      description="Verify bills and process vendor payments — bill creation has moved to the Billing module"
     >
       <style>{`
         .ap-table .ant-table-thead > tr > th { background: #F9FAFB !important; font-weight: 600; color: #6B7280; border-bottom: 1px solid #E5E7EB !important; }
@@ -2116,405 +1893,6 @@ export default function AccountsPayment() {
             )}
           </>
         )}
-      </Drawer>
-
-      {/* ── New Bill Drawer ───────────────────────────────────────── */}
-      <Drawer
-        open={newOpen}
-        onClose={() => setNewOpen(false)}
-        placement="right"
-        width={860}
-        title={
-          <Space>
-            <div>
-              <div style={{ fontWeight: 700, fontSize: 16 }}>New Bill</div>
-              <div style={{ fontSize: 12, color: "#6B7280", fontWeight: 400 }}>
-                Select project → contractor → add work items → submit — lands in Draft, awaiting maker confirmation
-              </div>
-            </div>
-          </Space>
-        }
-        footer={
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-            <Button size="large" onClick={() => setNewOpen(false)}>Cancel</Button>
-            <Button
-              size="large"
-              type="primary"
-              loading={newSaving}
-              onClick={handleSubmitBill}
-              style={{ background: "#FF7A00", borderColor: "#FF7A00" }}
-            >
-              Save as Draft
-            </Button>
-          </div>
-        }
-        destroyOnClose
-      >
-        {/* Step 1 — Project, Contractor, Date */}
-        <div style={{ background: "#f5f6f8", borderRadius: 8, padding: "14px 16px", marginBottom: 20 }}>
-          <div style={{ fontWeight: 700, fontSize: 13, color: "#1a1f2e", marginBottom: 12 }}>
-            Bill Information
-          </div>
-          <Form form={newForm} layout="vertical">
-            <Row gutter={16}>
-              <Col span={8}>
-                <Form.Item label="Site / Project" name="projectId">
-                  <Select
-                    showSearch
-                    allowClear
-                    placeholder="Select project…"
-                    style={{ width: "100%" }}
-                    onChange={(v) => { setNewProjectId(v || ""); setWoList([]); }}
-                    filterOption={(input, opt) => String(opt?.label ?? "").toLowerCase().includes(input.toLowerCase())}
-                    options={selectableProjects(projects).map((p) => ({ value: p.id, label: `${p.code ? p.code + " — " : ""}${p.name}` }))}
-                  />
-                </Form.Item>
-              </Col>
-              <Col span={10}>
-                <Form.Item label="Contractor *" name="contractorId" rules={[{ required: true, message: "Select a contractor" }]}>
-                  <Select
-                    showSearch
-                    placeholder="Search by name or vendor code…"
-                    style={{ width: "100%" }}
-                    onChange={(v) => setNewContractorId(v || "")}
-                    filterOption={(input, opt) => String(opt?.label ?? "").toLowerCase().includes(input.toLowerCase())}
-                    options={contractors.map((c) => ({
-                      value: c.id,
-                      label: `${vendorLabel(c.companyName, c.shortCode)}  (${c.vendorCode})`,
-                    }))}
-                  />
-                </Form.Item>
-              </Col>
-              <Col span={6}>
-                <Form.Item label="Vendor Code">
-                  <Input
-                    value={selectedContractor?.vendorCode || ""}
-                    disabled
-                    style={{ background: "var(--nx-white)", color: "#FF7A00", fontWeight: 700, fontFamily: "monospace" }}
-                    placeholder="Auto-filled"
-                  />
-                </Form.Item>
-              </Col>
-            </Row>
-
-            {selectedContractor && (
-              <div style={{ background: "var(--nx-white)", borderRadius: 6, border: "1px solid #e4e7ee", padding: "10px 12px", marginBottom: 12, fontSize: 12 }}>
-                <Row gutter={16}>
-                  <Col span={6}>
-                    <div style={{ color: "#9ba3b8", fontWeight: 600, marginBottom: 2 }}>Owner</div>
-                    <div>{selectedContractor.ownerName || "—"}</div>
-                  </Col>
-                  <Col span={6}>
-                    <div style={{ color: "#9ba3b8", fontWeight: 600, marginBottom: 2 }}>Mobile</div>
-                    <div style={{ fontFamily: "monospace" }}>{selectedContractor.mobile || "—"}</div>
-                  </Col>
-                  <Col span={6}>
-                    <div style={{ color: "#9ba3b8", fontWeight: 600, marginBottom: 2 }}>GST</div>
-                    <div style={{ fontFamily: "monospace" }}>{selectedContractor.gstNumber || "—"}</div>
-                  </Col>
-                  <Col span={6}>
-                    <div style={{ color: "#9ba3b8", fontWeight: 600, marginBottom: 2 }}>PAN</div>
-                    <div style={{ fontFamily: "monospace" }}>{selectedContractor.panNumber || "—"}</div>
-                  </Col>
-                </Row>
-              </div>
-            )}
-
-            <Row gutter={16}>
-              <Col span={8}>
-                <Form.Item label="Bill Date *" name="billDate" rules={[{ required: true, message: "Required" }]}>
-                  <DatePicker style={{ width: "100%" }} format="DD/MM/YYYY" defaultValue={dayjs()} />
-                </Form.Item>
-              </Col>
-              <Col span={8}>
-                <Form.Item label="Generated By *" name="generatedBy" rules={[{ required: true, message: "Required" }]}>
-                  <Input placeholder="Full name of person generating bill" />
-                </Form.Item>
-              </Col>
-              <Col span={8}>
-                <Form.Item label="Contractor Ref. No." name="contractorRefNo">
-                  <Input placeholder="e.g. ABCI/2026/003" />
-                </Form.Item>
-              </Col>
-            </Row>
-
-            <Row gutter={16}>
-              <Col span={isCustomGst ? 4 : 8}>
-                <Form.Item label="GST Slab" name="gstPercent" initialValue={18} tooltip="GST % applicable on this bill. TDS deduction is handled at payment time.">
-                  <Select
-                    onChange={(v) => {
-                      if (v === -1) { setIsCustomGst(true); return; }
-                      setIsCustomGst(false);
-                      setNewGstPercent(Number(v));
-                    }}
-                    options={[
-                      { label: "0% — Exempt / Nil", value: 0 },
-                      { label: "5%", value: 5 },
-                      { label: "12%", value: 12 },
-                      { label: "18% (Standard)", value: 18 },
-                      { label: "Custom…", value: -1 },
-                    ]}
-                  />
-                </Form.Item>
-              </Col>
-              {isCustomGst && (
-                <Col span={4}>
-                  <Form.Item label="Custom %">
-                    <InputNumber style={{ width: "100%" }} min={0} max={100} value={newGstPercent} onChange={(v) => setNewGstPercent(Number(v) || 0)} />
-                  </Form.Item>
-                </Col>
-              )}
-              <Col span={8}>
-                <Form.Item label="Bill Type" tooltip="Categorise what kind of bill this is for the billing chain">
-                  <Select
-                    value={newBillType}
-                    onChange={v => setNewBillType(v)}
-                    options={Object.entries(BILL_TYPE_CFG).map(([k, v]) => ({ value: k, label: v.label }))}
-                  />
-                </Form.Item>
-              </Col>
-            </Row>
-
-            {/* Bill Relationship — link to existing bills on this WO */}
-            <div style={{ background: "#f0f6ff", border: "1px solid #bfdbfe", borderRadius: 8, padding: "12px 14px", marginBottom: 12 }}>
-              <div style={{ fontWeight: 700, fontSize: 12, color: "#1d4ed8", marginBottom: 10 }}>
-                Bill Relationship (optional)
-                <span style={{ fontWeight: 400, color: "#6b7280", marginLeft: 8 }}>Link this bill to existing bills in a Work Order</span>
-              </div>
-              <Row gutter={12}>
-                <Col span={10}>
-                  <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 4 }}>Select Work Order</div>
-                  <Select
-                    showSearch allowClear placeholder="Search work order…"
-                    style={{ width: "100%" }}
-                    value={newSelectedWOId || undefined}
-                    onChange={(v) => { handleWOSelectForLinking(v || ""); setNewLinkedBillIds([]); }}
-                    filterOption={(input, opt) => String(opt?.label ?? "").toLowerCase().includes(input.toLowerCase())}
-                    options={woList.map(wo => ({ value: wo.id, label: `${wo.workOrderNo}` }))}
-                  />
-                </Col>
-                <Col span={14}>
-                  <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 4 }}>Relationship Type</div>
-                  <Select
-                    value={newRelType}
-                    onChange={v => setNewRelType(v)}
-                    style={{ width: "100%" }}
-                    options={RELATIONSHIP_OPTIONS}
-                  />
-                </Col>
-              </Row>
-              {woExistingBills.length > 0 && (
-                <div style={{ marginTop: 10 }}>
-                  <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 6 }}>
-                    Select bills this new bill relates to:
-                    {["SUPERSEDES", "REVISION_OF", "CORRECTION_OF"].includes(newRelType) && (
-                      <span style={{ color: "#dc2626", marginLeft: 6, fontWeight: 600 }}>
-                        ⚠ Selected bills will be marked inactive (superseded)
-                      </span>
-                    )}
-                  </div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                    {woExistingBills.map(b => {
-                      const isSelected = newLinkedBillIds.includes(b.id);
-                      const isSuperseded = b.isActive === false;
-                      return (
-                        <div
-                          key={b.id}
-                          onClick={() => {
-                            if (isSuperseded) return;
-                            setNewLinkedBillIds(prev =>
-                              prev.includes(b.id) ? prev.filter(x => x !== b.id) : [...prev, b.id]
-                            );
-                          }}
-                          style={{
-                            border: `1.5px solid ${isSelected ? "#2563eb" : "#e4e7ee"}`,
-                            borderRadius: 6, padding: "6px 10px", cursor: isSuperseded ? "not-allowed" : "pointer",
-                            background: isSelected ? "#eff6ff" : isSuperseded ? "#f9fafb" : "#fff",
-                            opacity: isSuperseded ? 0.5 : 1, fontSize: 12, userSelect: "none",
-                          }}
-                        >
-                          <span style={{ fontFamily: "monospace", fontWeight: 700, color: isSelected ? "#2563eb" : "#FF7A00" }}>
-                            {b.billNo}
-                          </span>
-                          <span style={{ color: "#9ba3b8", marginLeft: 6 }}>
-                            ₹{Math.round(b.amount).toLocaleString("en-IN")}
-                          </span>
-                          <span style={{ marginLeft: 6 }}><StatusTag status={b.status} /></span>
-                          {isSuperseded && <Tag color="default" style={{ fontSize: 10 }}>Superseded</Tag>}
-                          {isSelected && <span style={{ color: "#2563eb", marginLeft: 4 }}>✓</span>}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Work order import (optional) */}
-            {woList.length > 0 && (
-              <div style={{ background: "#fff7ed", border: "1px solid #ffd591", borderRadius: 6, padding: "10px 14px", marginBottom: 4 }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: "#d4620c", marginBottom: 8 }}>
-                  Work orders found — import scope items (optional)
-                </div>
-                <Row gutter={12} align="middle">
-                  <Col flex="1">
-                    <Select
-                      placeholder="Select a work order to import its scope items…"
-                      style={{ width: "100%" }}
-                      onChange={(v) => { if (v) importFromWO(v as string); }}
-                      options={woList.map((wo) => ({
-                        value: wo.id,
-                        label: wo.workOrderNo + (wo.projectName ? " — " + wo.projectName : ""),
-                      }))}
-                    />
-                  </Col>
-                </Row>
-              </div>
-            )}
-          </Form>
-        </div>
-
-        {/* Step 2 — Work Items table */}
-        <div style={{ marginBottom: 20 }}>
-          <div style={{ fontWeight: 700, fontSize: 13, color: "#1a1f2e", marginBottom: 10 }}>
-            Work Items
-            <span style={{ fontWeight: 400, fontSize: 11, color: "#9ba3b8", marginLeft: 8 }}>
-              Enter description, quantity and rate for each item
-            </span>
-          </div>
-
-          <div style={{ border: "1px solid #e4e7ee", borderRadius: 8, overflow: "hidden" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
-              <thead>
-                <tr style={{ background: "#f5f6f8" }}>
-                  <th style={{ padding: "8px 10px", fontWeight: 700, fontSize: 11, color: "#5a6278", textAlign: "left" }}>
-                    Description of Work *
-                  </th>
-                  <th style={{ padding: "8px 10px", fontWeight: 700, fontSize: 11, color: "#5a6278", textAlign: "center", width: 80 }}>
-                    Unit
-                  </th>
-                  <th style={{ padding: "8px 10px", fontWeight: 700, fontSize: 11, color: "#5a6278", textAlign: "right", width: 100 }}>
-                    Quantity *
-                  </th>
-                  <th style={{ padding: "8px 10px", fontWeight: 700, fontSize: 11, color: "#5a6278", textAlign: "right", width: 120 }}>
-                    Rate (₹) *
-                  </th>
-                  <th style={{ padding: "8px 10px", fontWeight: 700, fontSize: 11, color: "#5a6278", textAlign: "right", width: 130 }}>
-                    Amount (₹)
-                  </th>
-                  <th style={{ width: 36 }}></th>
-                </tr>
-              </thead>
-              <tbody>
-                {lineItems.map((item, i) => (
-                  <tr key={item.key} style={{ background: i % 2 === 0 ? "#fff" : "#fafafa", borderBottom: "1px solid #f0f0f0" }}>
-                    <td style={{ padding: "6px 8px" }}>
-                      <Input
-                        value={item.description}
-                        placeholder="e.g. RCC work, Plastering, Tile fixing…"
-                        onChange={(e) => updateLineItem(item.key, "description", e.target.value)}
-                        bordered={false}
-                        style={{ padding: "2px 4px" }}
-                      />
-                    </td>
-                    <td style={{ padding: "6px 8px", textAlign: "center" }}>
-                      <Input
-                        value={item.unit}
-                        placeholder="sqft"
-                        onChange={(e) => updateLineItem(item.key, "unit", e.target.value)}
-                        bordered={false}
-                        style={{ padding: "2px 4px", textAlign: "center" }}
-                      />
-                    </td>
-                    <td style={{ padding: "6px 8px" }}>
-                      <InputNumber
-                        min={0}
-                        value={item.billedQty || undefined}
-                        placeholder="0"
-                        onChange={(v) => updateLineItem(item.key, "billedQty", Number(v) || 0)}
-                        style={{ width: "100%" }}
-                        bordered={false}
-                      />
-                    </td>
-                    <td style={{ padding: "6px 8px" }}>
-                      <InputNumber
-                        min={0}
-                        value={item.rate || undefined}
-                        placeholder="0.00"
-                        onChange={(v) => updateLineItem(item.key, "rate", Number(v) || 0)}
-                        style={{ width: "100%" }}
-                        bordered={false}
-                        formatter={(v) => `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ",")}
-                        parser={(v) => (v ?? "").replace(/,/g, "") as unknown as 0}
-                      />
-                    </td>
-                    <td style={{ padding: "6px 10px", textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: item.amount > 0 ? "#16a85a" : "#c0c4cc", whiteSpace: "nowrap" }}>
-                      {item.amount > 0 ? fmt(item.amount) : "—"}
-                    </td>
-                    <td style={{ padding: "6px 4px", textAlign: "center" }}>
-                      <Popconfirm
-                        title="Remove this row?"
-                        onConfirm={() => removeLineItem(item.key)}
-                        disabled={lineItems.length === 1}
-                      >
-                        <Button
-                          type="text"
-                          danger
-                          size="small"
-                          icon={<DeleteOutlined />}
-                          disabled={lineItems.length === 1}
-                        />
-                      </Popconfirm>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          <Button
-            type="dashed"
-            icon={<PlusOutlined />}
-            onClick={() => setLineItems((prev) => [...prev, blankRow()])}
-            style={{ width: "100%", marginTop: 8 }}
-          >
-            Add Work Item
-          </Button>
-
-          {(() => {
-            const gross  = totalLineAmount;
-            const gstAmt = Math.round(gross * newGstPercent / 100);
-            const net    = gross + gstAmt;
-            return (
-              <div style={{ border: "1px solid #e4e7ee", borderRadius: 8, overflow: "hidden", marginTop: 12 }}>
-                <div style={{ background: "#fff8f3", borderBottom: "1px solid #f8c9a0", padding: "8px 14px" }}>
-                  <span style={{ fontWeight: 700, fontSize: 12, color: "#d4620c", textTransform: "uppercase", letterSpacing: "0.06em" }}>Financial Summary</span>
-                </div>
-                <div style={{ fontFamily: "monospace", fontSize: 13 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", padding: "7px 14px", borderBottom: "1px solid #f5f6f8", color: "#1a1f2e" }}>
-                    <span>Gross Amount</span><span>{fmt(gross)}</span>
-                  </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", padding: "7px 14px", borderBottom: "1px solid #f5f6f8", color: "#16a85a" }}>
-                    <span>+ GST @ {newGstPercent}%</span><span>{fmt(gstAmt)}</span>
-                  </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 14px", background: "#fff8f3", fontWeight: 800, fontSize: 15, color: "#d4620c" }}>
-                    <span>Net Payable (incl. GST)</span>
-                    <span>{fmt(net)}</span>
-                  </div>
-                  <div style={{ padding: "6px 14px", fontSize: 11, color: "#9ba3b8", borderTop: "1px solid #f5f6f8" }}>
-                    TDS deduction is recorded at payment initiation time
-                  </div>
-                </div>
-              </div>
-            );
-          })()}
-        </div>
-
-        <Form form={newForm} layout="vertical">
-          <Form.Item label="Remarks" name="remarks">
-            <Input.TextArea rows={2} placeholder="Describe the scope of work covered in this bill…" />
-          </Form.Item>
-        </Form>
       </Drawer>
 
       {/* ── Work Order quick-view — opened from a bill row, no navigation away.

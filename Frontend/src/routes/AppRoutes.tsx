@@ -19,6 +19,7 @@ const Categories        = lazy(() => import("../features/categories"));
 const WorkItems         = lazy(() => import("../features/work-items"));
 const WorkProgress      = lazy(() => import("../features/work-progress"));
 const AccountsPayment   = lazy(() => import("../pages/AccountsPayment"));
+const Billing           = lazy(() => import("../pages/Billing"));
 const BillRequests      = lazy(() => import("../pages/BillRequests"));
 const SiteProgress      = lazy(() => import("../pages/SiteProgress"));
 const AdvancePayments   = lazy(() => import("../pages/AdvancePayments"));
@@ -105,6 +106,7 @@ function AdminRoutes() {
             <Route path="/work-items/:id"   element={<WorkOrderDashboard />} />
             <Route path="/work-progress"    element={<WorkProgress />} />
             <Route path="/accounts-payment"  element={<AccountsPayment />} />
+            <Route path="/billing"          element={<Billing />} />
             <Route path="/site-progress"    element={<SiteProgress />} />
             <Route path="/advance-payments" element={<AdvancePayments />} />
             <Route path="/ledger"           element={<Ledger />} />
