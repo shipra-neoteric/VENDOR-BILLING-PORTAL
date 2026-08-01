@@ -1909,9 +1909,22 @@ export default function WorkItems() {
     return false;
   }
 
+  // What the "Pending Approvals" tab should show for THIS user specifically —
+  // distinct from canActOnWO's raw "am I authorized to act here" check, which
+  // is universally true for owner at every stage (the intentional bypass).
+  // That bypass is correct for actually taking the action, but wrong for a
+  // personal queue: it would make an owner's queue show every WO stuck at
+  // someone else's stage too. Owner's own natural stage in the chain is L4
+  // (final approval) — a WO only genuinely needs the owner's attention once
+  // it actually reaches pending-final, not before.
+  function isPendingForMe(wo: WorkOrder): boolean {
+    if (user?.role === "owner") return (wo.approvalStatus || "approved") === "pending-final";
+    return canActOnWO(wo);
+  }
+
   const pendingApprovals = useMemo(
-    () => workOrders.filter(canActOnWO),
-    [workOrders, canMaker, canChecker, canApprover, canFinal]
+    () => workOrders.filter(isPendingForMe),
+    [workOrders, user?.role, canMaker, canChecker, canApprover, canFinal]
   );
 
   const filtered = useMemo(() => {
@@ -1955,14 +1968,14 @@ export default function WorkItems() {
 
       const matchDate    = inDateRange(wo.issueDate, dateFrom, dateTo);
       const matchProject = projectFilter === "all" || getWorkOrderProjectId(wo.projectId) === projectFilter;
-      const matchTab      = activeTab === "all" || canActOnWO(wo);
+      const matchTab      = activeTab === "all" || isPendingForMe(wo);
       return matchSearch && matchStatus && matchCategory && matchProgress && matchDate && matchProject && matchTab;
     }).sort((a, b) => {
       const numA = parseInt(a.workOrderNo.replace(/\D/g, ""), 10) || 0;
       const numB = parseInt(b.workOrderNo.replace(/\D/g, ""), 10) || 0;
       return numB - numA;
     });
-  }, [workOrders, search, statusFilter, categoryFilter, subCategoryFilter, progressFilter, projectFilter, subCatsOfSelected, dateFrom, dateTo, activeTab, canMaker, canChecker, canApprover, canFinal]);
+  }, [workOrders, search, statusFilter, categoryFilter, subCategoryFilter, progressFilter, projectFilter, subCatsOfSelected, dateFrom, dateTo, activeTab, user?.role, canMaker, canChecker, canApprover, canFinal]);
 
   const nextWONo = useMemo(() => {
     const max = workOrders.reduce((m, wo) => {
