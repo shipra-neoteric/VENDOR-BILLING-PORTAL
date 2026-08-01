@@ -304,6 +304,7 @@ export default function Ledger() {
                   <th style={{ padding: "8px 12px", textAlign: "right", fontSize: 11, fontWeight: 600, color: "#f37916" }}>Gross</th>
                   <th style={{ padding: "8px 12px", textAlign: "right", fontSize: 11, fontWeight: 600, color: "#dc2626" }}>TDS</th>
                   <th style={{ padding: "8px 12px", textAlign: "right", fontSize: 11, fontWeight: 600, color: "#7c3aed" }}>Retention</th>
+                  <th style={{ padding: "8px 12px", textAlign: "right", fontSize: 11, fontWeight: 600, color: "#b45309" }}>Advance Recovery</th>
                   <th style={{ padding: "8px 12px", textAlign: "right", fontSize: 11, fontWeight: 600, color: "#16a85a" }}>Net Payable</th>
                   <th style={{ padding: "8px 12px", textAlign: "center", fontSize: 11, fontWeight: 600, color: "#9ba3b8" }}>Status</th>
                   <th style={{ padding: "8px 12px", textAlign: "right", fontSize: 11, fontWeight: 600, color: "#5a6278" }}>Running Balance</th>
@@ -312,7 +313,7 @@ export default function Ledger() {
                 <tr style={{ background: "#eff4ff", borderBottom: "2px solid #e4e7ee" }}>
                   <td style={{ padding: "8px 12px", fontFamily: "monospace", color: "#9ba3b8", fontSize: 11 }}>OB</td>
                   <td style={{ padding: "8px 12px", fontWeight: 600, color: "#2563eb", fontSize: 12 }} colSpan={2}>Opening Balance — Contract Value</td>
-                  <td style={{ padding: "8px 12px", textAlign: "right", fontFamily: "monospace", color: "#2563eb", fontWeight: 700 }} colSpan={7}>{fmt(detail.contract)}</td>
+                  <td style={{ padding: "8px 12px", textAlign: "right", fontFamily: "monospace", color: "#2563eb", fontWeight: 700 }} colSpan={8}>{fmt(detail.contract)}</td>
                   <td style={{ padding: "8px 12px", textAlign: "right", fontFamily: "monospace", color: "#2563eb", fontWeight: 700 }}>{fmt(detail.contract)}</td>
                 </tr>
               </thead>
@@ -353,6 +354,7 @@ export default function Ledger() {
                     <td style={{ padding: "10px 12px", textAlign: "right", fontFamily: "monospace", color: r.isSuperseded ? "#9ba3b8" : "#f37916", fontWeight: 600 }}>{fmt(r.gross)}</td>
                     <td style={{ padding: "10px 12px", textAlign: "right", fontFamily: "monospace", color: "#dc2626" }}>({fmt(r.tds)})</td>
                     <td style={{ padding: "10px 12px", textAlign: "right", fontFamily: "monospace", color: "#7c3aed" }}>{r.retention > 0 ? `(${fmt(r.retention)})` : "—"}</td>
+                    <td style={{ padding: "10px 12px", textAlign: "right", fontFamily: "monospace", color: "#b45309" }}>{r.advance > 0 ? `(${fmt(r.advance)})` : "—"}</td>
                     <td style={{ padding: "10px 12px", textAlign: "right", fontFamily: "monospace", color: r.isSuperseded ? "#9ba3b8" : "#16a85a", fontWeight: 600 }}>{fmt(r.net)}</td>
                     <td style={{ padding: "10px 12px", textAlign: "center" }}>
                       {r.isSuperseded
@@ -375,6 +377,7 @@ export default function Ledger() {
                     <td style={{ padding: "10px 12px", textAlign: "right", fontFamily: "monospace", color: "#f37916", fontWeight: 700 }}>{fmt(detail.totalGross)}</td>
                     <td style={{ padding: "10px 12px", textAlign: "right", fontFamily: "monospace", color: "#dc2626" }}>({fmt(detail.rows.reduce((s, r) => s + r.tds, 0))})</td>
                     <td style={{ padding: "10px 12px", textAlign: "right", fontFamily: "monospace", color: "#7c3aed" }}>({fmt(detail.rows.reduce((s, r) => s + r.retention, 0))})</td>
+                    <td style={{ padding: "10px 12px", textAlign: "right", fontFamily: "monospace", color: "#b45309" }}>({fmt(detail.rows.reduce((s, r) => s + r.advance, 0))})</td>
                     <td style={{ padding: "10px 12px", textAlign: "right", fontFamily: "monospace", color: "#16a85a", fontWeight: 700 }}>{fmt(detail.totalNet)}</td>
                     <td />
                     <td style={{ padding: "10px 12px", textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: detail.balance < 0 ? "#e03b3b" : "#f37916" }}>
