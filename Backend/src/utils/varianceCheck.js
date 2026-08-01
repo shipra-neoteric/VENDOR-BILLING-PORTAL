@@ -48,4 +48,14 @@ function findOverbilledLineItem(workOrder, lineItems) {
   return null;
 }
 
-module.exports = { hasUnapprovedVariance, hasUnapprovedVarianceForLineItem, resolveBillableItem, findOverbilledLineItem };
+// A Work Order must have cleared its own L1(checker)->L2(approver)->L4(final)
+// approval chain before anything can be billed against it — otherwise a bill
+// could be raised (and paid) for a WO whose scope/value was never actually
+// signed off. Missing/undefined approvalStatus is treated as approved too,
+// matching the schema's own default (grandfathers pre-workflow WOs created
+// before this approval chain existed).
+function isWorkOrderApproved(wo) {
+  return !wo.approvalStatus || wo.approvalStatus === 'approved';
+}
+
+module.exports = { hasUnapprovedVariance, hasUnapprovedVarianceForLineItem, resolveBillableItem, findOverbilledLineItem, isWorkOrderApproved };

@@ -8,7 +8,7 @@ const { nextBillNo } = require('../utils/codeGen');
 const emitEvent    = require('../utils/emitEvent');
 const { advanceInstance, cancelInstance } = require('../utils/slaEngine');
 const { logAudit, diffFields } = require('../utils/auditLog');
-const { hasUnapprovedVarianceForLineItem, resolveBillableItem, findOverbilledLineItem } = require('../utils/varianceCheck');
+const { hasUnapprovedVarianceForLineItem, resolveBillableItem, findOverbilledLineItem, isWorkOrderApproved } = require('../utils/varianceCheck');
 const { recomputeAfterInvalidate, recomputeParentFromSubItems, deriveStatus } = require('../utils/progressHelpers');
 const { applyAdvanceRecoveries } = require('../utils/advanceRecovery');
 
@@ -81,6 +81,9 @@ exports.createBill = asyncHandler(async (req, res) => {
     : null;
   if (req.body.workOrderId && !workOrder) {
     return notFound(res, 'Work order not found');
+  }
+  if (workOrder && !isWorkOrderApproved(workOrder)) {
+    return badRequest(res, `"${workOrder.workOrderNo}" has not completed its own approval chain yet (currently ${workOrder.approvalStatus}) — no bill can be raised against it until Final Approval is given.`);
   }
 
   const lineItems = Array.isArray(req.body.lineItems) ? req.body.lineItems : [];

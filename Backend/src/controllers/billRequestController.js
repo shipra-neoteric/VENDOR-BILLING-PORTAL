@@ -7,7 +7,7 @@ const { success, created, notFound, badRequest, forbidden } = require('../utils/
 const emitEvent   = require('../utils/emitEvent');
 const { startInstance, advanceInstance, cancelInstance } = require('../utils/slaEngine');
 const { logAudit } = require('../utils/auditLog');
-const { hasUnapprovedVariance } = require('../utils/varianceCheck');
+const { hasUnapprovedVariance, isWorkOrderApproved } = require('../utils/varianceCheck');
 const { nextCode } = require('../utils/sequence');
 const { nextBillNo } = require('../utils/codeGen');
 const { recomputeAfterInvalidate } = require('../utils/progressHelpers');
@@ -65,6 +65,10 @@ exports.createBillRequest = asyncHandler(async (req, res) => {
       id => id.toString() === req.user._id.toString()
     );
     if (!isAssigned) return forbidden(res, 'You are not assigned to this work order');
+  }
+
+  if (!isWorkOrderApproved(wo)) {
+    return badRequest(res, `"${wo.workOrderNo}" has not completed its own approval chain yet (currently ${wo.approvalStatus}) — no bill request can be raised until Final Approval is given.`);
   }
 
   // Check no request already in flight (either stage) exists
@@ -255,6 +259,13 @@ exports.gmApprove = asyncHandler(async (req, res) => {
   const wo = await WorkOrder.findById(br.workOrderId);
   if (!wo) return notFound(res, 'Associated work order not found');
 
+  // Re-check at the actual bill-creation moment, not just when the request
+  // was first raised — an edit to Scope of Work/Payment Milestones between
+  // then and now can reset the WO back into its own approval chain.
+  if (!isWorkOrderApproved(wo)) {
+    return badRequest(res, `"${wo.workOrderNo}" is no longer fully approved (currently ${wo.approvalStatus}) — it must clear its own approval chain again before this request can become a bill.`);
+  }
+
   // Build line items with rates from WO
   const lineItems = br.items.map(item => {
     const scopeItem = item.scopeItemId
@@ -444,6 +455,11 @@ exports.createBatchBillRequest = asyncHandler(async (req, res) => {
         id => id.toString() === req.user._id.toString()
       );
       if (!isAssigned) { skipped.push({ workOrderId, reason: 'Not assigned' }); continue; }
+    }
+
+    if (!isWorkOrderApproved(wo)) {
+      skipped.push({ workOrderId, reason: `Not yet fully approved (currently ${wo.approvalStatus})` });
+      continue;
     }
 
     const existing = await BillRequest.findOne({ workOrderId: wo._id, status: { $in: ['pending', 'pending-gm'] } });

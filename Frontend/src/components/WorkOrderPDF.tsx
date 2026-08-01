@@ -208,6 +208,18 @@ const fmtDate = (d?: string) => {
   } catch { return d; }
 };
 
+// Same as fmtDate but with the time of day too — used on approval signatures,
+// where knowing exactly when someone signed off (not just the date) matters.
+const fmtDateTime = (d?: string) => {
+  if (!d) return "—";
+  try {
+    const date = new Date(d);
+    const day = date.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+    const time = date.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
+    return `${day}, ${time}`;
+  } catch { return d; }
+};
+
 const fmtAmt = (n?: number) =>
   n ? "₹ " + Math.round(n).toLocaleString("en-IN") : "—";
 
@@ -491,7 +503,7 @@ export function WorkOrderDocument({ wo, company, contractor }: Props) {
               </View>
               <View style={S.sigLine} />
               <Text style={S.sigName}>Name: {approval?.name || ""}</Text>
-              <Text style={S.sigDate}>Date: {approval?.at ? fmtDate(approval.at) : ""}</Text>
+              <Text style={S.sigDate}>Date: {approval?.at ? fmtDateTime(approval.at) : ""}</Text>
             </View>
           ))}
         </View>
@@ -505,7 +517,7 @@ export function WorkOrderDocument({ wo, company, contractor }: Props) {
             </View>
             <View style={S.sigLine} />
             <Text style={S.sigName}>Name: {wo.approvals?.final?.name || ""}</Text>
-            <Text style={S.sigDate}>Date: {wo.approvals?.final?.at ? fmtDate(wo.approvals.final.at) : ""}</Text>
+            <Text style={S.sigDate}>Date: {wo.approvals?.final?.at ? fmtDateTime(wo.approvals.final.at) : ""}</Text>
           </View>
         </View>
 
