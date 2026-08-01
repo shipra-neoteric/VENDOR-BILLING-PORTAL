@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useState, useMemo } from "react";
-import { Select, Spin, Tag, Button, Modal, Form, InputNumber, DatePicker, Input, Checkbox, Empty, message } from "antd";
+import { Select, Spin, Tag, Button, Modal, Form, InputNumber, DatePicker, Input, Checkbox, Empty, message, Tooltip, Popconfirm, Badge } from "antd";
 import apiClient from "../../services/apiClient";
 import { useAuth } from "../../context/AuthContext";
 import dayjs from "dayjs";
@@ -21,6 +21,14 @@ interface WORow {
   scopeItems?: { description: string; completedQty: number; plannedQty: number }[];
 }
 
+interface ProgressEntry {
+  _id: string; date: string; qtyAdded: number; remarks?: string;
+  tower?: string; floor?: string; flatNo?: string; plotNo?: string; locationNote?: string;
+  billedInRequestId?: string | null;
+  enteredBy?: { _id: string; name: string } | string | null;
+  invalidated?: { done: boolean; by?: { _id: string; name: string } | string; at?: string; reason?: string };
+}
+
 interface SubItemDetail {
   _id: string;
   description: string;
@@ -30,6 +38,7 @@ interface SubItemDetail {
   completedQty: number;
   lastBilledQty: number;
   status: string;
+  progressEntries?: ProgressEntry[];
 }
 
 interface ScopeItemDetail {
@@ -42,7 +51,17 @@ interface ScopeItemDetail {
   lastBilledQty: number;
   status?: string;
   subItems?: SubItemDetail[];
+  progressEntries?: ProgressEntry[];
 }
+
+// Entries flattened across an item's (or its particulars') progressEntries,
+// enriched with just enough context to render/edit/invalidate/delete them —
+// scopeId packs both the scope item id and its parent WO id (needed since
+// the edit/delete/invalidate endpoints are nested under both).
+type EntryRow = ProgressEntry & {
+  unit: string; description: string; scopeId: string;
+  scopePlanned: number; scopeCompleted: number; scopeLastBilled: number;
+};
 
 interface WODetail {
   _id: string;
@@ -78,6 +97,65 @@ const BR_COLOR: Record<string, string> = {
 };
 const fmtN = (n: number) => (n ?? 0).toLocaleString("en-IN");
 const pctOf = (c: number, p: number) => p > 0 ? Math.min(100, Math.round(((c ?? 0) / p) * 100)) : 0;
+
+function personName(p?: { _id: string; name: string } | string | null): string {
+  if (!p) return "";
+  return typeof p === "string" ? "" : p.name;
+}
+
+function formatLocation(e: EntryRow, pt: string): string {
+  if (pt === "apartment") {
+    const parts = [e.tower && `T-${e.tower}`, e.floor && `F-${e.floor}`, e.flatNo && `#${e.flatNo}`].filter(Boolean) as string[];
+    if (parts.length) return parts.join(" ");
+    return e.locationNote || "—";
+  }
+  if (e.plotNo) return `Plot ${e.plotNo}`;
+  return e.locationNote || "—";
+}
+
+// Renders Edit/Del/Invalidate for one entry — same rules as Work Progress:
+// invalidated entries become read-only history (reason shown on hover);
+// entries attached to a bill can only be invalidated (not edited/deleted)
+// until that bill is rejected.
+function EntryActions({
+  e, deleting, onEdit, onDelete, onInvalidate,
+}: {
+  e: EntryRow; deleting: boolean;
+  onEdit: () => void; onDelete: () => void; onInvalidate: () => void;
+}) {
+  if (e.invalidated?.done) {
+    const who = personName(e.invalidated.by);
+    return (
+      <Tooltip title={`Invalidated${who ? ` by ${who}` : ""}${e.invalidated.at ? ` on ${dayjs(e.invalidated.at).format("DD MMM YYYY")}` : ""}${e.invalidated.reason ? ` — ${e.invalidated.reason}` : ""}`}>
+        <span style={{ fontSize: 10, fontWeight: 700, color: "#dc2626", background: "#fef2f2", padding: "2px 8px", borderRadius: 10, border: "1px solid #fecaca", whiteSpace: "nowrap" }}>
+          Invalidated
+        </span>
+      </Tooltip>
+    );
+  }
+  if (e.billedInRequestId) {
+    return (
+      <Button size="small" type="link" style={{ fontSize: 11, padding: "0 4px", color: "#9333ea" }} onClick={onInvalidate}>
+        Invalidate
+      </Button>
+    );
+  }
+  return (
+    <div style={{ display: "flex", gap: 2 }}>
+      <Button size="small" type="link" style={{ fontSize: 11, padding: "0 4px" }} onClick={onEdit}>Edit</Button>
+      <Popconfirm
+        title="Delete entry?"
+        description={e.scopeCompleted - e.qtyAdded >= e.scopeLastBilled ? "This will be deleted permanently." : "Entry is billed and cannot be deleted."}
+        okText={e.scopeCompleted - e.qtyAdded >= e.scopeLastBilled ? "Delete" : undefined}
+        okType="danger" cancelText="Cancel"
+        onConfirm={e.scopeCompleted - e.qtyAdded >= e.scopeLastBilled ? onDelete : undefined}
+        okButtonProps={e.scopeCompleted - e.qtyAdded < e.scopeLastBilled ? { style: { display: "none" } } : {}}
+      >
+        <Button size="small" type="link" danger loading={deleting} style={{ fontSize: 11, padding: "0 4px" }}>Del</Button>
+      </Popconfirm>
+    </div>
+  );
+}
 
 function getProjId(wo: WORow): string | undefined {
   if (!wo.projectId) return undefined;
@@ -156,6 +234,26 @@ export default function DRIDashboard() {
   const [progTarget, setProgTarget] = useState<{ woId: string; item: ScopeItemDetail; subItem?: SubItemDetail } | null>(null);
   const [progForm]   = Form.useForm();
   const [progSaving,  setProgSaving]  = useState(false);
+
+  // Edit entry modal (owner/edit-permission only) — same parity as Work Progress.
+  // editProjectType is tracked separately from progProjectType (which follows
+  // the Add-Progress target) so the location-field layout always matches the
+  // entry actually being edited, not whatever WO Add Progress was last opened for.
+  const [editModal, setEditModal] = useState(false);
+  const [editEntry, setEditEntry] = useState<EntryRow | null>(null);
+  const [editProjectType, setEditProjectType] = useState<"apartment" | "plot">("apartment");
+  const [editForm]                = Form.useForm();
+  const [deleting,  setDeleting]  = useState<string | null>(null);
+
+  // Invalidate entry modal — for entries a rejected bill was made from
+  const [invalidateModal, setInvalidateModal] = useState(false);
+  const [invalidateEntry, setInvalidateEntry] = useState<EntryRow | null>(null);
+  const [invalidateWOId,  setInvalidateWOId]  = useState<string | null>(null);
+  const [invalidateForm]                      = Form.useForm();
+  const [invalidating,    setInvalidating]    = useState(false);
+
+  // View all entries modal
+  const [allEntriesWOId, setAllEntriesWOId] = useState<string | null>(null);
 
   // Generate-bill modal (owner/edit-permission only)
   const [billModal,     setBillModal]     = useState(false);
@@ -284,6 +382,58 @@ export default function DRIDashboard() {
       message.error(e?.response?.data?.message || "Failed to add progress");
     } finally {
       setProgSaving(false);
+    }
+  };
+
+  const handleEditEntry = async () => {
+    if (!editEntry) return;
+    const vals = await editForm.validateFields();
+    const [scopeItemId, woId] = editEntry.scopeId.split("||");
+    setProgSaving(true);
+    try {
+      await apiClient.patch(
+        `/work-orders/${woId}/scope-items/${scopeItemId}/progress/${editEntry._id}`,
+        { qtyAdded: vals.qtyAdded, date: vals.date ? dayjs(vals.date).format("YYYY-MM-DD") : undefined, remarks: vals.remarks || "", tower: vals.tower || "", floor: vals.floor || "", flatNo: vals.flatNo || "", plotNo: vals.plotNo || "", locationNote: vals.locationNote || "" }
+      );
+      message.success("Entry updated");
+      setEditModal(false); editForm.resetFields();
+      await reloadWODetail(woId);
+    } catch (e: any) {
+      message.error(e?.response?.data?.message || "Failed to update entry");
+    } finally {
+      setProgSaving(false);
+    }
+  };
+
+  const handleDeleteEntry = async (entry: EntryRow, woId: string) => {
+    setDeleting(entry._id);
+    try {
+      await apiClient.delete(`/work-orders/${woId}/scope-items/${entry.scopeId.split("||")[0]}/progress/${entry._id}`);
+      message.success("Entry deleted");
+      await reloadWODetail(woId);
+    } catch (e: any) {
+      message.error(e?.response?.data?.message || "Failed to delete entry");
+    } finally {
+      setDeleting(null);
+    }
+  };
+
+  const handleInvalidateEntry = async () => {
+    if (!invalidateEntry || !invalidateWOId) return;
+    const vals = await invalidateForm.validateFields();
+    setInvalidating(true);
+    try {
+      await apiClient.patch(
+        `/work-orders/${invalidateWOId}/scope-items/${invalidateEntry.scopeId.split("||")[0]}/progress/${invalidateEntry._id}/invalidate`,
+        { reason: vals.reason }
+      );
+      message.success("Entry invalidated — log correct progress separately");
+      setInvalidateModal(false); invalidateForm.resetFields();
+      await reloadWODetail(invalidateWOId);
+    } catch (e: any) {
+      message.error(e?.response?.data?.message || "Failed to invalidate entry");
+    } finally {
+      setInvalidating(false);
     }
   };
 
@@ -694,6 +844,7 @@ export default function DRIDashboard() {
                                           {si.status === "completed" ? "✓ Complete" : `${si.subItems!.length} particulars`}
                                         </span>
                                       )}
+                                      {si.remarks && <div style={{ fontSize: 11, fontWeight: 400, color: "#d97706", marginTop: 2 }}>📌 {si.remarks}</div>}
                                     </td>
                                     <td style={{ padding: "9px 12px", color: "var(--nx-text-2)", fontSize: 12 }}>{si.unit}</td>
                                     <td style={{ padding: "9px 12px", fontFamily: "monospace", fontSize: 12, color: "var(--nx-text)" }}>{fmtN(si.plannedQty)}</td>
@@ -732,6 +883,7 @@ export default function DRIDashboard() {
                                         <td style={{ padding: "6px 12px", fontWeight: 500, color: "var(--nx-text-2)", fontSize: 12 }}>
                                           {sub.description}
                                           {sub.status === "completed" && <span style={{ marginLeft: 6, color: "#16a34a", fontSize: 10, fontWeight: 700 }}>✓</span>}
+                                          {sub.remarks && <div style={{ fontSize: 11, fontWeight: 400, color: "#d97706", marginTop: 2 }}>📌 {sub.remarks}</div>}
                                         </td>
                                         <td style={{ padding: "6px 12px", color: "var(--nx-text-2)", fontSize: 11 }}>{sub.unit}</td>
                                         <td style={{ padding: "6px 12px", fontFamily: "monospace", fontSize: 11, color: "var(--nx-text)" }}>{fmtN(sub.plannedQty)}</td>
@@ -765,6 +917,74 @@ export default function DRIDashboard() {
                         </table>
                       </div>
                     )}
+
+                    {/* Recent entries for this WO — same parity as Work Progress */}
+                    {detail && (() => {
+                      const wpt = detail.projectId?.projectType === "plot" ? "plot" : "apartment";
+                      const allEntriesWO: EntryRow[] = detail.scopeItems.flatMap(si =>
+                        (si.progressEntries ?? []).map(pe => ({
+                          ...pe, unit: si.unit, description: si.description,
+                          scopeId: `${si._id}||${detail._id}`,
+                          scopePlanned: si.plannedQty, scopeCompleted: si.completedQty, scopeLastBilled: si.lastBilledQty || 0,
+                        }))
+                      ).sort((a, b) => dayjs(b.date).valueOf() - dayjs(a.date).valueOf());
+                      const recentEntries = allEntriesWO.slice(0, 5);
+                      const todayStr = dayjs().format("YYYY-MM-DD");
+
+                      if (!recentEntries.length) return null;
+                      return (
+                        <div style={{ padding: "10px 20px 14px", borderTop: "1px solid var(--nx-border)" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: "var(--nx-text-muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                              Recent Entries (last 5)
+                            </div>
+                            {allEntriesWO.length > 5 && (
+                              <Button type="link" size="small" style={{ fontSize: 11, padding: 0, height: "auto" }} onClick={() => setAllEntriesWOId(detail._id)}>
+                                View All ({allEntriesWO.length})
+                              </Button>
+                            )}
+                          </div>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                            {recentEntries.map((e, i) => (
+                              <div key={e._id + i} style={{ display: "flex", gap: 12, alignItems: "center", fontSize: 12, opacity: e.invalidated?.done ? 0.55 : 1 }}>
+                                <span style={{ color: "var(--nx-text-muted)", minWidth: 90, whiteSpace: "nowrap" }}>
+                                  {dayjs(e.date).format("DD MMM")}
+                                  {dayjs(e.date).format("YYYY-MM-DD") === todayStr && (
+                                    <Badge count="Today" style={{ background: "#3b82f6", marginLeft: 4, fontSize: 9, height: 16, lineHeight: "16px" }} />
+                                  )}
+                                </span>
+                                <span style={{ fontWeight: 600, color: "var(--nx-text)", flex: 1, textDecoration: e.invalidated?.done ? "line-through" : "none" }}>
+                                  {e.description}
+                                  {personName(e.enteredBy) && (
+                                    <span style={{ fontWeight: 400, color: "var(--nx-text-muted)", fontSize: 11 }}> · {personName(e.enteredBy)}</span>
+                                  )}
+                                </span>
+                                <span style={{ color: "var(--nx-text-2)", minWidth: 80 }}>{formatLocation(e, wpt)}</span>
+                                <span style={{ color: "#16a34a", fontWeight: 700, fontFamily: "monospace", minWidth: 60 }}>+{fmtN(e.qtyAdded)} {e.unit}</span>
+                                {canEdit && (
+                                  <EntryActions
+                                    e={e} deleting={deleting === e._id}
+                                    onEdit={() => {
+                                      setEditEntry(e);
+                                      setEditProjectType(wpt);
+                                      editForm.setFieldsValue({ qtyAdded: e.qtyAdded, date: dayjs(e.date), remarks: e.remarks, tower: e.tower, floor: e.floor, flatNo: e.flatNo, plotNo: e.plotNo, locationNote: e.locationNote });
+                                      setEditModal(true);
+                                    }}
+                                    onDelete={() => handleDeleteEntry(e, detail._id)}
+                                    onInvalidate={() => {
+                                      setInvalidateEntry(e);
+                                      setInvalidateWOId(detail._id);
+                                      invalidateForm.resetFields();
+                                      setInvalidateModal(true);
+                                    }}
+                                  />
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
                 );
               })}
@@ -866,6 +1086,114 @@ export default function DRIDashboard() {
             </div>
           )}
         </Form>
+      </Modal>
+
+      {/* ── Edit Entry Modal ───────────────────────────────────────────────── */}
+      <Modal
+        open={editModal} onCancel={() => { setEditModal(false); editForm.resetFields(); }}
+        title="Edit Progress Entry" onOk={handleEditEntry} okText="Save Changes"
+        okButtonProps={{ loading: progSaving, style: { background: "#FF7A00", borderColor: "#FF7A00" } }}
+        destroyOnClose
+      >
+        <Form form={editForm} layout="vertical" style={{ marginTop: 8 }}>
+          <Form.Item label="Date" name="date">
+            <DatePicker style={{ width: "100%" }} format="DD/MM/YYYY" disabledDate={d => d.isAfter(dayjs(), "day")} />
+          </Form.Item>
+          <LocationFields pt={editProjectType} />
+          <Form.Item label="Quantity Added" name="qtyAdded" rules={[{ required: true, type: "number", min: 0.01, message: "Required" }]}>
+            <InputNumber style={{ width: "100%" }} min={0.00001} step={0.00001} precision={5} placeholder="e.g. 13.6667" />
+          </Form.Item>
+          <Form.Item label="Remarks (optional)" name="remarks">
+            <Input.TextArea rows={2} />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* ── Invalidate Entry Modal ─────────────────────────────────────────── */}
+      <Modal
+        open={invalidateModal} onCancel={() => { setInvalidateModal(false); invalidateForm.resetFields(); }}
+        title="Invalidate Progress Entry" onOk={handleInvalidateEntry} okText="Invalidate"
+        okButtonProps={{ loading: invalidating, danger: true }}
+        destroyOnClose
+      >
+        <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, padding: "10px 14px", marginBottom: 14, fontSize: 12, color: "#991b1b" }}>
+          This entry stays visible in history (who logged it, when, why it was invalidated) but no longer
+          counts toward progress or future billing. Log the correct progress as a fresh entry afterwards.
+        </div>
+        {invalidateEntry && (
+          <div style={{ fontSize: 12, color: "var(--nx-text-2)", marginBottom: 14 }}>
+            <strong>{invalidateEntry.description}</strong> · +{fmtN(invalidateEntry.qtyAdded)} {invalidateEntry.unit} · {dayjs(invalidateEntry.date).format("DD MMM YYYY")}
+          </div>
+        )}
+        <Form form={invalidateForm} layout="vertical">
+          <Form.Item label="Reason" name="reason" rules={[{ required: true, message: "Explain why this entry is wrong" }]}>
+            <Input.TextArea rows={3} placeholder="e.g. Measurement was wrong, double-counted, wrong item…" />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* ── View All Entries Modal ───────────────────────────────────────────── */}
+      <Modal
+        open={!!allEntriesWOId} onCancel={() => setAllEntriesWOId(null)}
+        title="All Progress Entries"
+        footer={null} width={700}
+      >
+        <div style={{ maxHeight: "60vh", overflowY: "auto", paddingRight: 8 }}>
+          {(() => {
+            const detail = allEntriesWOId ? woDetails.get(allEntriesWOId) : null;
+            if (!detail) return <Empty />;
+            const wpt = detail.projectId?.projectType === "plot" ? "plot" : "apartment";
+            const todayStr = dayjs().format("YYYY-MM-DD");
+            const allEntriesWO: EntryRow[] = detail.scopeItems.flatMap(si =>
+              (si.progressEntries ?? []).map(pe => ({
+                ...pe, unit: si.unit, description: si.description,
+                scopeId: `${si._id}||${detail._id}`,
+                scopePlanned: si.plannedQty, scopeCompleted: si.completedQty, scopeLastBilled: si.lastBilledQty || 0,
+              }))
+            ).sort((a, b) => dayjs(b.date).valueOf() - dayjs(a.date).valueOf());
+
+            return (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {allEntriesWO.map((e, i) => (
+                  <div key={e._id + i} style={{ display: "flex", gap: 12, alignItems: "center", fontSize: 12, padding: "8px 0", borderBottom: "1px solid var(--nx-border)", opacity: e.invalidated?.done ? 0.55 : 1 }}>
+                    <span style={{ color: "var(--nx-text-muted)", minWidth: 90, whiteSpace: "nowrap" }}>
+                      {dayjs(e.date).format("DD MMM")}
+                      {dayjs(e.date).format("YYYY-MM-DD") === todayStr && (
+                        <Badge count="Today" style={{ background: "#3b82f6", marginLeft: 4, fontSize: 9, height: 16, lineHeight: "16px" }} />
+                      )}
+                    </span>
+                    <span style={{ fontWeight: 600, color: "var(--nx-text)", flex: 1, textDecoration: e.invalidated?.done ? "line-through" : "none" }}>
+                      {e.description}
+                      {personName(e.enteredBy) && (
+                        <span style={{ fontWeight: 400, color: "var(--nx-text-muted)", fontSize: 11 }}> · {personName(e.enteredBy)}</span>
+                      )}
+                    </span>
+                    <span style={{ color: "var(--nx-text-2)", minWidth: 80 }}>{formatLocation(e, wpt)}</span>
+                    <span style={{ color: "#16a34a", fontWeight: 700, fontFamily: "monospace", minWidth: 60 }}>+{fmtN(e.qtyAdded)} {e.unit}</span>
+                    {canEdit && (
+                      <EntryActions
+                        e={e} deleting={deleting === e._id}
+                        onEdit={() => {
+                          setEditEntry(e);
+                          setEditProjectType(wpt);
+                          editForm.setFieldsValue({ qtyAdded: e.qtyAdded, date: dayjs(e.date), remarks: e.remarks, tower: e.tower, floor: e.floor, flatNo: e.flatNo, plotNo: e.plotNo, locationNote: e.locationNote });
+                          setEditModal(true);
+                        }}
+                        onDelete={() => handleDeleteEntry(e, detail._id)}
+                        onInvalidate={() => {
+                          setInvalidateEntry(e);
+                          setInvalidateWOId(detail._id);
+                          invalidateForm.resetFields();
+                          setInvalidateModal(true);
+                        }}
+                      />
+                    )}
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+        </div>
       </Modal>
 
       {/* ── Generate Bill Request Modal (owner/edit-permission only) ──────────── */}
