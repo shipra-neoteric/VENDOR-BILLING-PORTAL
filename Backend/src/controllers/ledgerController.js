@@ -30,8 +30,8 @@ exports.getSummary = asyncHandler(async (req, res) => {
     for (const b of bills) {
       const { gross, net } = calcBill(b);
       totalGross += gross;
-      if (['approved', 'hold'].includes(b.status))           certifiedNet  += net;
-      if (['draft', 'submitted', 'verified'].includes(b.status)) pendingGross  += gross;
+      if (['approved', 'hold'].includes(b.status))                   certifiedNet  += net;
+      if (['draft', 'verify-done', 'l1-approved'].includes(b.status)) pendingGross  += gross;
     }
 
     return {
@@ -91,7 +91,7 @@ exports.getWorkOrderLedger = asyncHandler(async (req, res) => {
     totalNet:     ledgerRows.reduce((s, r) => s + r.net, 0),
     certifiedNet: cumCertifiedNet,
     pendingGross: ledgerRows
-      .filter((r) => ['draft', 'submitted', 'verified'].includes(r.bill.status))
+      .filter((r) => ['draft', 'verify-done', 'l1-approved'].includes(r.bill.status))
       .reduce((s, r) => s + r.gross, 0),
     balance: contract - cumCertifiedNet,
   };

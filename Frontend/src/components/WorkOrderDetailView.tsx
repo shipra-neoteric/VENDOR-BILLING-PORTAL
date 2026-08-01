@@ -30,8 +30,8 @@ export default function WorkOrderDetailView({
 }) {
   const wo = workOrder;
   const contractVal = wo.contractValue ?? 0;
-  const certifiedAmt = bills.filter(b => b.status === "approved" || b.status === "paid").reduce((s, b) => s + b.amount, 0);
-  const pendingAmt   = bills.filter(b => b.status === "submitted" || b.status === "verified").reduce((s, b) => s + b.amount, 0);
+  const certifiedAmt = bills.filter(b => b.status === "approved" || b.status === "sent-to-tms" || b.status === "paid").reduce((s, b) => s + b.amount, 0);
+  const pendingAmt   = bills.filter(b => b.status === "draft" || b.status === "verify-done" || b.status === "l1-approved").reduce((s, b) => s + b.amount, 0);
   const remaining    = Math.max(0, contractVal - certifiedAmt - pendingAmt);
   const certPct = contractVal > 0 ? (certifiedAmt / contractVal) * 100 : 0;
   const pendPct = contractVal > 0 ? (pendingAmt / contractVal) * 100 : 0;

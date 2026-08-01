@@ -9,7 +9,7 @@ import { selectableProjects, getWorkOrderProjectId } from "../../utils/projectOp
 import { vendorLabel } from "../../utils/vendorLabel";
 
 // ── Types ─────────────────────────────────────────────────────
-type BillStatus = "draft" | "submitted" | "verified" | "approved" | "payment-initiated" | "hold" | "rejected" | "paid";
+type BillStatus = "draft" | "verify-done" | "l1-approved" | "approved" | "sent-to-tms" | "hold" | "rejected" | "paid";
 
 interface WO {
   _id: string; workOrderNo: string;
@@ -50,14 +50,14 @@ function calcBill(b: Bill) {
 }
 
 const STATUS_CFG: Record<BillStatus, { color: string; label: string }> = {
-  draft:              { color: "default",  label: "Draft" },
-  submitted:          { color: "blue",     label: "Hold — AGM Approved" },
-  verified:           { color: "blue",     label: "Hold — GM Approved" },
-  approved:           { color: "gold",     label: "Hold — Accounts Verified" },
-  "payment-initiated":{ color: "gold",     label: "Hold — Payment Initiated" },
-  hold:               { color: "purple",   label: "On Hold" },
-  rejected:           { color: "red",      label: "Rejected" },
-  paid:               { color: "purple",   label: "Paid" },
+  draft:         { color: "default",  label: "Draft" },
+  "verify-done": { color: "blue",     label: "Awaiting L1 AGM" },
+  "l1-approved": { color: "blue",     label: "Awaiting L2 Director" },
+  approved:      { color: "gold",     label: "Ready for TMS" },
+  "sent-to-tms": { color: "gold",     label: "Sent to TMS" },
+  hold:          { color: "purple",   label: "On Hold" },
+  rejected:      { color: "red",      label: "Rejected" },
+  paid:          { color: "purple",   label: "Paid" },
 };
 
 const BILL_TYPE_LABEL: Record<string, string> = {
@@ -181,8 +181,8 @@ export default function Ledger() {
     for (const b of activeBills) {
       const { gross, net } = calcBill(b);
       totalGross += gross;
-      if (b.status === "approved" || b.status === "payment-initiated" || b.status === "hold" || b.status === "paid") certifiedNet += net;
-      if (b.status === "submitted" || b.status === "verified") pendingGross += gross;
+      if (b.status === "approved" || b.status === "sent-to-tms" || b.status === "hold" || b.status === "paid") certifiedNet += net;
+      if (b.status === "draft" || b.status === "verify-done" || b.status === "l1-approved") pendingGross += gross;
     }
     const supersededCount = woBills.length - activeBills.length;
     const balance      = contract - certifiedNet;
@@ -205,14 +205,14 @@ export default function Ledger() {
       const { gst, gross, tds, retention, advance, net } = calcBill(b);
       // Only active bills contribute to the certified running balance
       const isSuperseded = b.isActive === false;
-      const isCert = !isSuperseded && (b.status === "approved" || b.status === "payment-initiated" || b.status === "hold" || b.status === "paid");
+      const isCert = !isSuperseded && (b.status === "approved" || b.status === "sent-to-tms" || b.status === "hold" || b.status === "paid");
       if (isCert) { runningBalance -= net; cumCertifiedNet += net; }
       return { b, gst, gross, tds, retention, advance, net, isCert, isSuperseded, balanceAfter: isCert ? runningBalance : null, seq: i + 1 };
     });
     const activeRows   = rows.filter(r => !r.isSuperseded);
     const totalGross   = activeRows.reduce((s, r) => s + r.gross, 0);
     const totalNet     = activeRows.reduce((s, r) => s + r.net, 0);
-    const pendingGross = activeRows.filter(r => r.b.status === "submitted" || r.b.status === "verified").reduce((s, r) => s + r.gross, 0);
+    const pendingGross = activeRows.filter(r => r.b.status === "draft" || r.b.status === "verify-done" || r.b.status === "l1-approved").reduce((s, r) => s + r.gross, 0);
     const balance      = contract - cumCertifiedNet;
     const supersededCount = rows.filter(r => r.isSuperseded).length;
     return { wo, rows, contract, totalGross, totalNet, certifiedNet: cumCertifiedNet, pendingGross, balance, supersededCount };

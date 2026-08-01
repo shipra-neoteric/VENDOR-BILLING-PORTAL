@@ -107,8 +107,7 @@ exports.updateProgress = asyncHandler(async (req, res) => {
             rate:        milestone.paymentAmount,
             amount:      milestone.paymentAmount,
           }],
-          status:      'submitted',
-          submittedAt: new Date(),
+          status:      'draft',
           remarks:     `Auto-generated — milestone achieved: ${milestone.name}`,
           createdBy:   req.user._id,
         });

@@ -65,14 +65,14 @@ const netPayable = (b: NonNullable<BillRequestStage["billId"]>) =>
 // Same "Hold — <stage>" convention used across Bills/Approvals/Ledger so a bill's
 // status reads the same way everywhere in the system.
 const RB_STATUS_CFG: Record<string, { label: string; color: string }> = {
-  draft:              { label: "Awaiting Maker",            color: "#6B7280" },
-  submitted:          { label: "Awaiting Checker",           color: "#2563eb" },
-  verified:           { label: "Awaiting Checker (legacy)",  color: "#2563eb" },
-  approved:           { label: "Awaiting Approver",          color: "#d97706" },
-  "payment-initiated":{ label: "Payment Initiated — Hold",   color: "#d97706" },
-  hold:               { label: "On Hold",                    color: "#9333ea" },
-  rejected:           { label: "Rejected",                   color: "#dc2626" },
-  paid:               { label: "Paid",                       color: "#16a34a" },
+  draft:         { label: "Awaiting Verification",  color: "#6B7280" },
+  "verify-done": { label: "Awaiting L1 AGM",         color: "#2563eb" },
+  "l1-approved": { label: "Awaiting L2 Director",    color: "#d97706" },
+  approved:      { label: "Ready for TMS",           color: "#d97706" },
+  "sent-to-tms": { label: "Sent to TMS",             color: "#7c3aed" },
+  hold:          { label: "On Hold",                 color: "#9333ea" },
+  rejected:      { label: "Rejected",                color: "#dc2626" },
+  paid:          { label: "Paid",                    color: "#16a34a" },
 };
 
 // ── Stage Lifecycle Stepper ───────────────────────────────────────────────────
@@ -88,7 +88,7 @@ const STEP_COLORS: Record<StepStatus, { ring: string; bg: string; text: string }
 function StageStepper({ stage }: { stage: BillRequestStage }) {
   const billStatus = stage.billId?.status ?? "";
   const billExists = !!stage.billId;
-  const billPaid   = ["verified", "approved", "payment-initiated", "hold", "paid"].includes(billStatus);
+  const billPaid   = ["l1-approved", "approved", "sent-to-tms", "hold", "paid"].includes(billStatus);
 
   const steps: { label: string; sub: string; status: StepStatus }[] = [
     {

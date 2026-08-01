@@ -1,34 +1,34 @@
 export const BILL_STATUS = {
-  DRAFT:              'draft',
-  SUBMITTED:          'submitted',
-  VERIFIED:           'verified',
-  APPROVED:           'approved',
-  PAYMENT_INITIATED:  'payment-initiated',
-  HOLD:               'hold',
-  PAID:               'paid',
-  REJECTED:           'rejected',
+  DRAFT:         'draft',
+  VERIFY_DONE:   'verify-done',
+  L1_APPROVED:   'l1-approved',
+  APPROVED:      'approved',
+  SENT_TO_TMS:   'sent-to-tms',
+  HOLD:          'hold',
+  PAID:          'paid',
+  REJECTED:      'rejected',
 } as const;
 
 export type BillStatus = (typeof BILL_STATUS)[keyof typeof BILL_STATUS];
 
 export const BILL_STATUS_COLOR: Record<string, string> = {
-  draft:               '#9CA3AF',
-  submitted:           '#f59e0b',
-  verified:            '#3b82f6',
-  approved:            '#2563eb',
-  'payment-initiated': '#d97706',
-  hold:                '#9333ea',
-  paid:                '#16a34a',
-  rejected:            '#ef4444',
+  draft:         '#9CA3AF',
+  'verify-done': '#f59e0b',
+  'l1-approved': '#0891b2',
+  approved:      '#2563eb',
+  'sent-to-tms': '#7c3aed',
+  hold:          '#9333ea',
+  paid:          '#16a34a',
+  rejected:      '#ef4444',
 };
 
 export const BILL_STATUS_LABEL: Record<string, string> = {
-  draft:               'Awaiting Maker',
-  submitted:           'Awaiting Checker',
-  verified:            'Awaiting Checker (legacy)',
-  approved:            'Awaiting Approver',
-  'payment-initiated': 'Payment Initiated',
-  hold:                'On Hold',
-  paid:                'Paid',
-  rejected:            'Rejected',
+  draft:         'Awaiting Verification',
+  'verify-done': 'Awaiting L1 AGM',
+  'l1-approved': 'Awaiting L2 Director',
+  approved:      'L2 Approved — Ready for TMS',
+  'sent-to-tms': 'Sent to TMS',
+  hold:          'On Hold',
+  paid:          'Paid',
+  rejected:      'Rejected',
 };

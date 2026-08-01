@@ -36,8 +36,8 @@ const BILL_TYPE_CFG: Record<string, { label: string; color: string }> = {
 };
 
 const STATUS_COLORS: Record<string, string> = {
-  draft: "default", submitted: "processing", verified: "warning",
-  approved: "success", "payment-initiated": "gold", hold: "purple",
+  draft: "default", "verify-done": "processing", "l1-approved": "warning",
+  approved: "success", "sent-to-tms": "gold", hold: "purple",
   rejected: "error", paid: "purple",
 };
 

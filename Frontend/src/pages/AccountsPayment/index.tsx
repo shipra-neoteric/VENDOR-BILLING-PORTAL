@@ -4,13 +4,10 @@ import { useNavigate } from "react-router-dom";
 import {
   Alert,
   Button,
-  Checkbox,
   Col,
-  DatePicker,
   Descriptions,
   Divider,
   Drawer,
-  Form,
   Input,
   InputNumber,
   Popconfirm,
@@ -35,12 +32,12 @@ import {
   DollarOutlined,
   ExclamationCircleFilled,
   FileAddOutlined,
-  FileTextOutlined,
   InboxOutlined,
   PauseCircleOutlined,
   PrinterOutlined,
   SafetyCertificateOutlined,
   SearchOutlined,
+  SendOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 import type { Dayjs } from "dayjs";
@@ -56,40 +53,17 @@ import WorkOrderDetailView from "../../components/WorkOrderDetailView";
 import ContractorDetailView from "../../components/ContractorDetailView";
 import type { WorkOrder, Contractor } from "../../types/VendorBilling";
 import { printBill } from "../../shared/utils/printBill";
-import { BILL_TYPE_CFG, PAYMENT_MODE_OPTIONS } from "../../shared/constants/billOptions";
+import { BILL_TYPE_CFG } from "../../shared/constants/billOptions";
 
 // ── Types ────────────────────────────────────────────────────────
 
-type BillStatus = "draft" | "submitted" | "verified" | "approved" | "payment-initiated" | "hold" | "rejected" | "paid";
+type BillStatus = "draft" | "verify-done" | "l1-approved" | "approved" | "sent-to-tms" | "hold" | "rejected" | "paid";
 
 interface BillUser { _id?: string; name?: string; role?: string; }
 
-interface PhysicalVerification {
-  done: boolean;
-  by?: BillUser | string | null;
-  at?: string;
-  remark?: string;
-}
-
-interface PaymentPreparation {
-  done: boolean;
-  by?: BillUser | string | null;
-  at?: string;
-  paymentMode?: string;
-  checklist?: { bankDetailsVerified?: boolean; fundsAvailable?: boolean; voucherPrepared?: boolean };
-  remark?: string;
-}
-
-interface PaymentDetailsStage {
-  done: boolean;
-  by?: BillUser | string | null;
-  at?: string;
-  remark?: string;
-}
-
 interface ApprovalHistoryEntry {
-  stage: "maker" | "checker" | "approver" | "hold" | "payment-maker" | "physical-verify" | "release" | "payment-details";
-  action: "submitted" | "approved" | "sent-back" | "held" | "released-hold" | "done";
+  stage: string;
+  action: string;
   by?: BillUser | string | null;
   at?: string;
   remarks?: string;
@@ -135,24 +109,15 @@ interface Bill {
   tdsPercent: number;
   remarks?: string;
   status: BillStatus;
-  submittedAt?: string;
   agmApprovedBy?: BillUser | null;
   agmApprovedAt?: string;
-  makerBy?: BillUser | null;
-  makerAt?: string;
-  verifiedBy?: BillUser | null;
-  verifiedAt?: string;
-  checkerBy?: BillUser | null;
-  checkerAt?: string;
-  approvedBy?: BillUser | null;
-  approvedAt?: string;
-  paymentInitiatedBy?: BillUser | null;
-  paymentInitiatedAt?: string;
+  verificationBy?: BillUser | null;
+  verificationAt?: string;
+  l1ApprovedBy?: BillUser | null;
+  l1ApprovedAt?: string;
+  l2ApprovedBy?: BillUser | null;
+  l2ApprovedAt?: string;
   tdsAmount?: number;
-  makerChecklist?: { tallyEntryDone?: boolean; newItemsAddedInTally?: boolean };
-  physicalVerification?: PhysicalVerification;
-  paymentPreparation?: PaymentPreparation;
-  paymentDetails?: PaymentDetailsStage;
   approvalHistory?: ApprovalHistoryEntry[];
   holdBy?: BillUser | null;
   holdAt?: string;
@@ -161,6 +126,11 @@ interface Bill {
   holdReleasedAt?: string;
   rejectedBy?: BillUser | null;
   rejectReason?: string;
+  tmsSentAt?: string;
+  tmsSendAttempts?: number;
+  tmsLastAttemptAt?: string;
+  tmsLastError?: string;
+  tmsCallbackReceivedAt?: string;
   paymentDate?: string;
   paymentUTR?: string;
   paymentChequeNo?: string;
@@ -183,7 +153,6 @@ interface Bill {
 }
 
 interface ProjectOpt { id: string; name: string; code: string; parentId?: string | null; }
-interface AdvanceSlipOpt { _id: string; slipNo: string; amount: number; amountRecovered: number; balance: number; date?: string; reference?: string; }
 
 // ── Helpers ──────────────────────────────────────────────────────
 
@@ -220,25 +189,6 @@ function hasPerm(user: AuthUser | null, action: string): boolean {
 function sameActor(user: AuthUser | null, actor?: BillUser | null): boolean {
   if (!user || !actor?._id || user.role === "owner") return false;
   return actor._id === user.id;
-}
-
-// physicalVerification.by only comes back populated on the mutation response that set
-// it — list/detail GETs don't populate that sub-field — so this stays defensive against
-// either shape (populated object or a raw id string) rather than assuming one.
-function physByName(by?: BillUser | string | null): string | undefined {
-  if (!by || typeof by === "string") return undefined;
-  return by.name;
-}
-
-// A 'payment-initiated' bill moves through three sequential sub-panels gated
-// by sub-object flags (same pattern physicalVerification already used before
-// paymentPreparation existed) rather than separate status values — this is
-// the single source of truth both renderActionSection and footerPrimary key
-// off, so the branching logic lives in exactly one place.
-function paymentSubStage(bill: Bill): "prepare" | "verify" | "release" {
-  if (!bill.paymentPreparation?.done) return "prepare";
-  if (!bill.physicalVerification?.done) return "verify";
-  return "release";
 }
 
 // ── Small visual building blocks ──────────────────────────────────
@@ -342,31 +292,27 @@ const sectionPanelStyle: React.CSSProperties = {
   border: "1px solid #E5E7EB", borderRadius: 10, padding: "14px 16px", marginTop: 16, background: "#F9FAFB",
 };
 
-// Maker → Checker → Approver → Payment Maker → Physical Verify → Paid stepper,
-// driven from the real fields on the bill rather than any separately-tracked
-// UI state. A bill on Hold still shows its progress up to the point it was
+// Verification → L1 AGM → L2 Director → Sent to TMS → Paid stepper, driven
+// from the real fields on the bill rather than any separately-tracked UI
+// state. A bill on Hold still shows its progress up to the point it was
 // paused (see the Hold banner rendered alongside this in the drawer).
 function buildSteps(bill: Bill): { title: string; content: string; icon: ReactNode; status: "wait" | "process" | "finish" | "error" }[] {
   const doneFlags = [
-    !!bill.makerBy,
-    !!bill.checkerBy,
-    !!bill.paymentInitiatedBy,
-    !!bill.paymentPreparation?.done,
-    !!bill.physicalVerification?.done,
+    !!bill.verificationBy,
+    !!bill.l1ApprovedBy,
+    !!bill.l2ApprovedBy,
+    !!bill.tmsSentAt,
     bill.status === "paid",
-    !!bill.paymentDetails?.done,
   ];
   let currentIdx = doneFlags.findIndex((d) => !d);
   if (currentIdx === -1) currentIdx = doneFlags.length;
 
   const meta = [
-    { title: "Maker",            by: bill.makerBy?.name,                          at: bill.makerAt },
-    { title: "Checker",          by: bill.checkerBy?.name,                        at: bill.checkerAt },
-    { title: "Approver",         by: bill.paymentInitiatedBy?.name,               at: bill.paymentInitiatedAt },
-    { title: "Payment Maker",    by: physByName(bill.paymentPreparation?.by),     at: bill.paymentPreparation?.at },
-    { title: "Physical Verify",  by: physByName(bill.physicalVerification?.by),   at: bill.physicalVerification?.at },
-    { title: "Paid",             by: undefined,                                   at: undefined },
-    { title: "Payment Details",  by: physByName(bill.paymentDetails?.by),         at: bill.paymentDetails?.at },
+    { title: "Verification",   by: bill.verificationBy?.name, at: bill.verificationAt },
+    { title: "L1 AGM",         by: bill.l1ApprovedBy?.name,   at: bill.l1ApprovedAt },
+    { title: "L2 Director",    by: bill.l2ApprovedBy?.name,   at: bill.l2ApprovedAt },
+    { title: "Sent to TMS",    by: undefined,                 at: bill.tmsSentAt },
+    { title: "Paid",           by: undefined,                 at: bill.tmsCallbackReceivedAt },
   ];
 
   return meta.map((m, idx) => {
@@ -393,10 +339,9 @@ function buildSteps(bill: Bill): { title: string; content: string; icon: ReactNo
   });
 }
 
-const HISTORY_STAGE_LABEL: Record<ApprovalHistoryEntry["stage"], string> = {
-  maker: "Maker", checker: "Checker", approver: "Approver", hold: "Hold",
-  "payment-maker": "Payment Maker", "physical-verify": "Physical Verify",
-  release: "Release", "payment-details": "Payment Details",
+const HISTORY_STAGE_LABEL: Record<string, string> = {
+  verify: "Verification", "l1-agm": "L1 AGM", "l2-director": "L2 Director", hold: "Hold",
+  "tms-handoff": "Send to TMS", "tms-callback": "TMS Callback",
 };
 
 // Append-only timeline built directly from approvalHistory — mirrors
@@ -414,27 +359,28 @@ function BillHistoryTimeline({ history }: { history: ApprovalHistoryEntry[] }) {
         const isSentBack = h.action === "sent-back";
         const isHeld = h.action === "held";
         const isReleased = h.action === "released-hold";
-        const color = isSentBack ? "#DC2626" : isHeld ? "#9333ea" : isReleased ? "#0369a1" : "#16A34A";
-        const bg    = isSentBack ? "#FEF2F2" : isHeld ? "#F5F3FF" : isReleased ? "#EFF6FF" : "#F0FDF4";
-        const verb  = isSentBack ? "sent back" : isHeld ? "held" : isReleased ? "released the hold" : h.action === "submitted" ? "submitted" : "completed";
+        const isSendFailed = h.action === "send-failed";
+        const color = isSentBack || isSendFailed ? "#DC2626" : isHeld ? "#9333ea" : isReleased ? "#0369a1" : "#16A34A";
+        const bg    = isSentBack || isSendFailed ? "#FEF2F2" : isHeld ? "#F5F3FF" : isReleased ? "#EFF6FF" : "#F0FDF4";
+        const verb  = isSentBack ? "sent back" : isHeld ? "held" : isReleased ? "released the hold" : isSendFailed ? "send to TMS failed" : h.action === "sent" ? "sent to TMS" : h.action === "paid" ? "confirmed paid by TMS" : "completed";
         const actorName = typeof h.by === "object" && h.by ? h.by.name : undefined;
         return (
           <div key={i} style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
             <div style={{ flexShrink: 0, textAlign: "center" }}>
               <div style={{ width: 24, height: 24, borderRadius: "50%", background: bg, border: `2px solid ${color}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color }}>
-                {isSentBack ? "✕" : isHeld ? "⏸" : isReleased ? "▶" : "✓"}
+                {isSentBack || isSendFailed ? "✕" : isHeld ? "⏸" : isReleased ? "▶" : "✓"}
               </div>
               {i < history.length - 1 && <div style={{ width: 2, height: 26, background: "#E5E7EB", margin: "2px auto" }} />}
             </div>
             <div style={{ flex: 1, minWidth: 0, paddingBottom: 12 }}>
               <div style={{ fontSize: 12.5, fontWeight: 700, color: "#111827" }}>
-                {HISTORY_STAGE_LABEL[h.stage]} {verb}
+                {HISTORY_STAGE_LABEL[h.stage] || h.stage} {verb}
                 <span style={{ fontWeight: 400, color: "#9CA3AF", marginLeft: 8, fontSize: 11.5 }}>
-                  {actorName || "—"}{h.at ? ` · ${dayjs(h.at).format("DD MMM YYYY, hh:mm A")}` : ""}
+                  {actorName || (h.stage === "tms-callback" ? "TMS" : "—")}{h.at ? ` · ${dayjs(h.at).format("DD MMM YYYY, hh:mm A")}` : ""}
                 </span>
               </div>
               {h.remarks && (
-                <div style={{ fontSize: 12, color: isSentBack ? "#B91C1C" : "#6B7280", marginTop: 4, background: isSentBack ? "#FEF2F2" : "#F9FAFB", border: `1px solid ${isSentBack ? "#FCA5A5" : "#E5E7EB"}`, borderRadius: 6, padding: "5px 9px" }}>
+                <div style={{ fontSize: 12, color: isSentBack || isSendFailed ? "#B91C1C" : "#6B7280", marginTop: 4, background: isSentBack || isSendFailed ? "#FEF2F2" : "#F9FAFB", border: `1px solid ${isSentBack || isSendFailed ? "#FCA5A5" : "#E5E7EB"}`, borderRadius: 6, padding: "5px 9px" }}>
                   {h.remarks}
                 </div>
               )}
@@ -446,7 +392,9 @@ function BillHistoryTimeline({ history }: { history: ApprovalHistoryEntry[] }) {
   );
 }
 
-// Read-only "paid" summary + an owner-only inline (no popup) deductions editor.
+// Read-only "paid" summary — the payment fields (mode/UTR/bank/released-by/
+// amount) are now populated entirely by TMS's callback, not entered here.
+// Owner keeps an inline deductions editor for post-hoc corrections.
 function PaidPanel({ bill, isOwner, onUpdated }: { bill: Bill; isOwner: boolean; onUpdated: (b: Bill) => void }) {
   const [editing, setEditing] = useState(false);
   const [retention, setRetention] = useState(bill.retentionAmount ?? 0);
@@ -479,7 +427,7 @@ function PaidPanel({ bill, isOwner, onUpdated }: { bill: Bill; isOwner: boolean;
   return (
     <div style={{ marginTop: 16, background: "#F5F0FF", border: "1px solid #C4B5FD", borderRadius: 10, padding: "14px 16px" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-        <div style={{ fontWeight: 700, fontSize: 13, color: "#7C3AED" }}>Payment Released</div>
+        <div style={{ fontWeight: 700, fontSize: 13, color: "#7C3AED" }}>Paid — confirmed by TMS</div>
         {isOwner && !editing && (
           <Button size="small" onClick={() => setEditing(true)}>Edit Deductions</Button>
         )}
@@ -529,219 +477,18 @@ function PaidPanel({ bill, isOwner, onUpdated }: { bill: Bill; isOwner: boolean;
   );
 }
 
-// Mode/UTR/bank/released-by/exact amount routinely aren't known at "Mark as
-// Paid" time — the bank statement arrives ~a day later. This is the stage
-// that actually records that paperwork, plus any advance-slip recovery
-// allocated against this payment. Shown alongside PaidPanel until submitted.
-function PaymentDetailsPanel({ bill, canRelease, onUpdated }: { bill: Bill; canRelease: boolean; onUpdated: (b: Bill) => void }) {
-  const [form] = Form.useForm();
-  const [pendingAdvances, setPendingAdvances]   = useState<AdvanceSlipOpt[]>([]);
-  const [advancesLoading, setAdvancesLoading]   = useState(false);
-  const [advanceAmount, setAdvanceAmount]       = useState<number | null>(null);
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    if (bill.paymentDetails?.done) return;
-    form.setFieldsValue({
-      paymentDate: dayjs(),
-      paymentMode: bill.paymentPreparation?.paymentMode,
-      paidAmount: Math.max(0, netAfterAdvance(bill) - (bill.tdsAmount || 0) + (bill.retentionReleased ?? 0)),
-    });
-    setAdvanceAmount(bill.advanceRecovery || null);
-    setPendingAdvances([]);
-    if (bill.projectId && bill.vendorCode) {
-      setAdvancesLoading(true);
-      apiClient.get<{ advanceSlips: AdvanceSlipOpt[] }>(`/advance-slips/pending?projectId=${bill.projectId}&vendorCode=${bill.vendorCode}`)
-        .then((r) => {
-          const slips = (r.data.advanceSlips || []).slice().sort((a, b) => (a.date || "").localeCompare(b.date || ""));
-          setPendingAdvances(slips);
-        })
-        .catch(() => setPendingAdvances([]))
-        .finally(() => setAdvancesLoading(false));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bill.id, bill.paymentDetails?.done]);
-
-  if (bill.paymentDetails?.done) {
-    return (
-      <div style={{ marginTop: 16, background: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: 10, padding: "14px 16px" }}>
-        <div style={{ fontWeight: 700, fontSize: 13, color: "#1D4ED8", marginBottom: 10 }}>Payment Details</div>
-        <Descriptions column={2} size="small" colon={false}>
-          <Descriptions.Item label={<span style={{ color: "#9ba3b8" }}>Payment Date</span>}>
-            {bill.paymentDate ? dayjs(bill.paymentDate).format("DD MMM YYYY") : "—"}
-          </Descriptions.Item>
-          <Descriptions.Item label={<span style={{ color: "#9ba3b8" }}>Mode</span>}>
-            {PAYMENT_MODE_OPTIONS.find((o) => o.value === bill.paymentMode)?.label || bill.paymentMode || "—"}
-          </Descriptions.Item>
-          <Descriptions.Item label={<span style={{ color: "#9ba3b8" }}>UTR / Ref</span>}>
-            <span style={{ fontFamily: "monospace", fontWeight: 700 }}>{bill.paymentUTR || "—"}</span>
-          </Descriptions.Item>
-          <Descriptions.Item label={<span style={{ color: "#9ba3b8" }}>Bank</span>}>{bill.paymentBank || "—"}</Descriptions.Item>
-          <Descriptions.Item label={<span style={{ color: "#9ba3b8" }}>Released By</span>}>{bill.paymentReleasedBy || "—"}</Descriptions.Item>
-          <Descriptions.Item label={<span style={{ color: "#9ba3b8" }}>Total Amount Paid</span>}>{fmt(bill.paidAmount ?? 0)}</Descriptions.Item>
-        </Descriptions>
-      </div>
-    );
-  }
-
-  if (!canRelease) return null;
-
-  async function save() {
-    try {
-      const values = await form.validateFields();
-      setSaving(true);
-
-      // Distribute the entered recovery amount across outstanding slips oldest-first,
-      // capped at each slip's own balance, so a single number the user types becomes
-      // a concrete per-slip ledger update on the backend.
-      const recoveries: { slipId: string; amount: number }[] = [];
-      let remaining = advanceAmount || 0;
-      for (const slip of pendingAdvances) {
-        if (remaining <= 0) break;
-        const take = Math.min(remaining, slip.balance);
-        if (take > 0) recoveries.push({ slipId: slip._id, amount: take });
-        remaining -= take;
-      }
-
-      const res = await apiClient.patch<{ bill: Record<string, unknown> }>(`/bills/${bill.id}/payment-details`, {
-        paymentUTR:        values.paymentUTR,
-        paymentMode:       values.paymentMode,
-        paymentDate:       values.paymentDate ? dayjs(values.paymentDate as string).toISOString() : undefined,
-        paymentBank:       values.paymentBank,
-        paymentReleasedBy: values.paymentReleasedBy,
-        paidAmount:        values.paidAmount,
-        ...(recoveries.length ? { advanceRecoveries: recoveries } : {}),
-      });
-      onUpdated(normalizeId(res.data.bill) as unknown as Bill);
-      message.success("Payment details recorded");
-    } catch (err: unknown) {
-      const e = err as { errorFields?: unknown; response?: { data?: { message?: string } } };
-      if (e?.errorFields) return;
-      message.error(e?.response?.data?.message || "Failed to record payment details");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <div style={{ marginTop: 16, background: "#F9FAFB", border: "1px dashed #BFDBFE", borderRadius: 10, padding: "14px 16px" }}>
-      <div style={{ fontWeight: 700, fontSize: 13, color: "#1D4ED8", marginBottom: 4 }}>Payment Details — pending</div>
-      <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 10 }}>
-        Once the bank statement arrives, record the mode/UTR/bank/amount here.
-      </div>
-
-      <div style={{ border: "1px solid #fde68a", borderRadius: 8, padding: "12px 14px", marginBottom: 14, background: "#fefce8" }}>
-        <div style={{ fontWeight: 700, fontSize: 12.5, color: "#92400e", marginBottom: 8 }}>Advance Recovery</div>
-        {advancesLoading && <div style={{ fontSize: 12, color: "#9CA3AF", marginBottom: 8 }}>Checking pending advances…</div>}
-        {!advancesLoading && pendingAdvances.length > 0 && (
-          <div style={{ marginBottom: 10 }}>
-            {pendingAdvances.map(slip => (
-              <div key={slip._id} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, padding: "3px 0", borderBottom: "1px solid #fde68a" }}>
-                <span style={{ color: "#78350f" }}>{slip.slipNo}{slip.reference ? ` — ${slip.reference}` : ""}</span>
-                <span style={{ fontFamily: "monospace", fontWeight: 600, color: "#b45309" }}>Balance: ₹{Math.round(slip.balance).toLocaleString("en-IN")}</span>
-              </div>
-            ))}
-          </div>
-        )}
-        {!advancesLoading && pendingAdvances.length === 0 && (
-          <div style={{ fontSize: 12, color: "#9CA3AF", marginBottom: 8 }}>No outstanding advance slips for this vendor on this project.</div>
-        )}
-        <InputNumber<number>
-          style={{ width: "100%" }}
-          prefix="− ₹"
-          value={advanceAmount}
-          onChange={setAdvanceAmount}
-          min={0}
-          max={pendingAdvances.length > 0 ? pendingAdvances.reduce((s, sl) => s + sl.balance, 0) : undefined}
-          precision={0}
-          placeholder="0 — leave blank to skip recovery"
-        />
-        <div style={{ fontSize: 11, color: "#92400e", marginTop: 6 }}>
-          Allocated oldest-first across the slips above, capped at each slip's balance.
-        </div>
-      </div>
-
-      <Form form={form} layout="vertical">
-        <Row gutter={16}>
-          <Col span={12}>
-            <Form.Item label="Payment Date" name="paymentDate" rules={[{ required: true }]}>
-              <DatePicker style={{ width: "100%" }} format="DD/MM/YYYY" />
-            </Form.Item>
-          </Col>
-          <Col span={12}>
-            <Form.Item label="Payment Mode" name="paymentMode" rules={[{ required: true }]}>
-              <Select options={PAYMENT_MODE_OPTIONS} />
-            </Form.Item>
-          </Col>
-        </Row>
-        <Form.Item label="UTR / Transaction Reference" name="paymentUTR">
-          <Input placeholder="e.g. HDFC202606270001234" style={{ fontFamily: "monospace" }} />
-        </Form.Item>
-        <Row gutter={16}>
-          <Col span={12}>
-            <Form.Item label="Bank" name="paymentBank">
-              <Input placeholder="e.g. HDFC Bank" />
-            </Form.Item>
-          </Col>
-          <Col span={12}>
-            <Form.Item label="Released By" name="paymentReleasedBy" rules={[{ required: true }]}>
-              <Input placeholder="Finance officer name" />
-            </Form.Item>
-          </Col>
-        </Row>
-        <Form.Item
-          label="Total Amount Paid (₹)"
-          name="paidAmount"
-          rules={[{ required: true, message: "Enter the total amount actually paid" }]}
-          extra={
-            <Form.Item noStyle shouldUpdate={(prev, cur) => prev.paidAmount !== cur.paidAmount}>
-              {({ getFieldValue }) => {
-                const paid    = getFieldValue("paidAmount") as number | undefined;
-                const retRel  = bill.retentionReleased ?? 0;
-                if (!paid) return null;
-                const billPart = paid - retRel;
-                const diff     = Math.round(netAfterAdvance(bill) - billPart);
-                if (diff === 0 && retRel === 0) return null;
-                return (
-                  <span style={{ color: "#6b7280", fontSize: 12 }}>
-                    Bill portion ₹{billPart.toLocaleString("en-IN")}
-                    {retRel > 0 ? ` + Hold release ₹${retRel.toLocaleString("en-IN")}` : ""}
-                    {diff !== 0 ? ` · ₹${Math.abs(diff).toLocaleString("en-IN")} ${diff > 0 ? "TDS/deduction" : "extra"} on bill` : ""}
-                  </span>
-                );
-              }}
-            </Form.Item>
-          }
-        >
-          <InputNumber<number>
-            style={{ width: "100%", fontFamily: "monospace", fontWeight: 700 }}
-            min={0}
-            precision={0}
-            formatter={(v) => `₹ ${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ",")}
-            parser={(v) => Number((v || "").replace(/[₹\s,]/g, ""))}
-          />
-        </Form.Item>
-      </Form>
-      <Button type="primary" size="small" style={{ marginTop: 4, background: "#1D4ED8", borderColor: "#1D4ED8" }} loading={saving} onClick={save}>
-        Submit Payment Details
-      </Button>
-    </div>
-  );
-}
-
 // ── Main Component ───────────────────────────────────────────────
 
 export default function AccountsPayment() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const canMaker   = hasPerm(user, "maker");
-  const canChecker = hasPerm(user, "checker");
-  const canApprover = hasPerm(user, "approver");
-  const canPaymentMaker = hasPerm(user, "payment-maker");
-  const canPhysicalVerify = hasPerm(user, "physical-verify");
-  const canRelease = hasPerm(user, "release");
-  const canPaymentDetails = hasPerm(user, "payment-details");
-  const canRejectAny = canMaker || canChecker || canApprover || canPaymentMaker || canPhysicalVerify || canRelease || hasPerm(user, "reject");
+  const canVerify        = hasPerm(user, "verify");
+  const canL1Agm          = hasPerm(user, "l1-agm-approve");
+  const canL2Director     = hasPerm(user, "l2-director-approve");
+  const canHold           = hasPerm(user, "hold");
+  const canReleaseHold    = hasPerm(user, "release-hold");
+  const canRetryTms       = hasPerm(user, "retry-tms");
+  const canRejectAny = canVerify || canL1Agm || canL2Director || hasPerm(user, "reject");
   const isOwner = user?.role === "owner";
 
   const [bills, setBills]             = useState<Bill[]>([]);
@@ -769,52 +516,29 @@ export default function AccountsPayment() {
   const [rejectReason, setRejectReason] = useState("");
   const [rejectSaving, setRejectSaving] = useState(false);
 
-  // Maker confirm (Stage 1) — checklist required before Tally entry is
-  // considered done; both must be checked before Confirm is enabled.
-  const [makerTallyDone, setMakerTallyDone]         = useState(false);
-  const [makerNewItemsDone, setMakerNewItemsDone]   = useState(false);
-  const [makerRemarks, setMakerRemarks] = useState("");
-  const [makerSaving, setMakerSaving]   = useState(false);
+  // Verification (Stage 1 — merged Maker+Checker) — checks the bill against
+  // its WO/vendor details and sets TDS. Retention/advance are decided
+  // upstream now (bill-creation time, or AGM/GM's own Site Progress approval).
+  const [verifyTdsPercent, setVerifyTdsPercent] = useState(1);
+  const [verifyTdsAmount, setVerifyTdsAmount]   = useState(0);
+  const [verifyRemarks, setVerifyRemarks]       = useState("");
+  const [verifySaving, setVerifySaving]         = useState(false);
 
-  // Checker approve (Stage 2) — now also sets TDS (moved from Approver).
-  const [checkerRetention, setCheckerRetention] = useState(0);
-  const [checkerAdvance, setCheckerAdvance]     = useState(0);
-  const [checkerTdsPercent, setCheckerTdsPercent] = useState(1);
-  const [checkerTdsAmount, setCheckerTdsAmount]   = useState(0);
-  // Hold/retention release (settling a PRIOR bill's withheld retention) — moved
-  // here from final release since the checker already reviews retention/advance/TDS.
-  const [checkerRetentionReleased, setCheckerRetentionReleased]             = useState(0);
-  const [checkerRetentionReleaseRemark, setCheckerRetentionReleaseRemark]  = useState("");
-  const [checkerRemarks, setCheckerRemarks]     = useState("");
-  const [checkerSaving, setCheckerSaving]       = useState(false);
+  // L1 AGM / L2 Director — pure approve-and-forward.
+  const [l1Remarks, setL1Remarks] = useState("");
+  const [l1Saving, setL1Saving]   = useState(false);
+  const [l2Remarks, setL2Remarks] = useState("");
+  const [l2Saving, setL2Saving]   = useState(false);
 
-  // Approver (Stage 3) — pure read-only review + Approve / Reject / Hold.
-  const [approverRemarks, setApproverRemarks]       = useState("");
-  const [approverSaving, setApproverSaving]         = useState(false);
+  // Hold / release hold (only reachable from 'approved' — the last safety
+  // valve before the now-irreversible TMS handoff).
   const [holding, setHolding]               = useState(false);
   const [holdReason, setHoldReason]         = useState("");
   const [holdSaving, setHoldSaving]         = useState(false);
   const [releaseHoldSaving, setReleaseHoldSaving] = useState(false);
 
-  // Payment Maker (new stage, between Approver and Physical Verify)
-  const [prepMode, setPrepMode]             = useState<string | undefined>(undefined);
-  const [prepBankVerified, setPrepBankVerified]   = useState(false);
-  const [prepFundsAvailable, setPrepFundsAvailable] = useState(false);
-  const [prepVoucherReady, setPrepVoucherReady]   = useState(false);
-  const [prepRemark, setPrepRemark]         = useState("");
-  const [prepSaving, setPrepSaving]         = useState(false);
-
-  // Physical verification
-  const [physPrinted, setPhysPrinted]       = useState(false);
-  const [physAttachments, setPhysAttachments] = useState(false);
-  const [physSigned, setPhysSigned]         = useState(false);
-  const [physRemark, setPhysRemark]         = useState("");
-  const [physSaving, setPhysSaving]         = useState(false);
-
-  // Release (Stage 4 — "Mark as Paid", a bare status flip; the full payment
-  // paperwork is entered afterward via PaymentDetailsPanel once status is 'paid').
-  const [releaseRemark, setReleaseRemark]   = useState("");
-  const [releaseSaving, setReleaseSaving]   = useState(false);
+  // Send to TMS — serves both the first send and manual retries.
+  const [sendTmsSaving, setSendTmsSaving] = useState(false);
 
   // Work Order / Vendor quick-view drawers — opened from a table row click,
   // independent of the main bill drawer's lifecycle.
@@ -848,16 +572,14 @@ export default function AccountsPayment() {
 
   // ── Derived ──────────────────────────────────────────────────
 
-  const draftBills             = useMemo(() => bills.filter((b) => b.status === "draft"), [bills]);
-  const submittedBills         = useMemo(() => bills.filter((b) => b.status === "submitted" || b.status === "verified"), [bills]);
-  const approvedBills          = useMemo(() => bills.filter((b) => b.status === "approved"), [bills]);
-  const paymentInitiatedBills  = useMemo(() => bills.filter((b) => b.status === "payment-initiated"), [bills]);
-  const holdBills              = useMemo(() => bills.filter((b) => b.status === "hold"), [bills]);
-  const paidBills              = useMemo(() => bills.filter((b) => b.status === "paid"), [bills]);
-  // Paid, but the mode/UTR/bank/amount paperwork hasn't been recorded yet — easy
-  // to lose track of since it only surfaces once you open a specific bill.
-  const paymentDetailsPendingBills = useMemo(() => bills.filter((b) => b.status === "paid" && !b.paymentDetails?.done), [bills]);
-  const rejectedBills          = useMemo(() => bills.filter((b) => b.status === "rejected"), [bills]);
+  const draftBills       = useMemo(() => bills.filter((b) => b.status === "draft"), [bills]);
+  const verifyDoneBills   = useMemo(() => bills.filter((b) => b.status === "verify-done"), [bills]);
+  const l1ApprovedBills   = useMemo(() => bills.filter((b) => b.status === "l1-approved"), [bills]);
+  const approvedBills     = useMemo(() => bills.filter((b) => b.status === "approved"), [bills]);
+  const sentToTmsBills    = useMemo(() => bills.filter((b) => b.status === "sent-to-tms"), [bills]);
+  const holdBills         = useMemo(() => bills.filter((b) => b.status === "hold"), [bills]);
+  const paidBills         = useMemo(() => bills.filter((b) => b.status === "paid"), [bills]);
+  const rejectedBills     = useMemo(() => bills.filter((b) => b.status === "rejected"), [bills]);
 
   const stats = useMemo(() => {
     const now = dayjs();
@@ -870,15 +592,15 @@ export default function AccountsPayment() {
 
   function matchesTab(b: Bill, tab: string): boolean {
     switch (tab) {
-      case "draft":          return b.status === "draft";
-      case "toVerify":       return b.status === "submitted" || b.status === "verified";
-      case "toApprove":      return b.status === "approved";
-      case "paymentPending": return b.status === "payment-initiated";
-      case "hold":           return b.status === "hold";
-      case "paid":           return b.status === "paid";
-      case "paymentDetailsPending": return b.status === "paid" && !b.paymentDetails?.done;
-      case "rejected":       return b.status === "rejected";
-      default:               return true; // "all"
+      case "draft":       return b.status === "draft";
+      case "verifyDone":  return b.status === "verify-done";
+      case "l1Approved":  return b.status === "l1-approved";
+      case "approved":    return b.status === "approved";
+      case "sentToTms":   return b.status === "sent-to-tms";
+      case "hold":        return b.status === "hold";
+      case "paid":        return b.status === "paid";
+      case "rejected":    return b.status === "rejected";
+      default:            return true; // "all"
     }
   }
 
@@ -901,15 +623,15 @@ export default function AccountsPayment() {
   }, [bills, search, activeTab, projectFilter, vendorFilter, dateFrom, dateTo]);
 
   const tabs: TabDef[] = [
-    { key: "all",            label: "All",             count: 0 },
-    { key: "draft",          label: "Draft",           count: draftBills.length },
-    { key: "toVerify",       label: "To Verify",       count: submittedBills.length },
-    { key: "toApprove",      label: "To Approve",      count: approvedBills.length },
-    { key: "paymentPending", label: "Payment Pending", count: paymentInitiatedBills.length },
-    { key: "hold",           label: "Hold",            count: holdBills.length },
-    { key: "paid",           label: "Paid",            count: paidBills.length },
-    { key: "paymentDetailsPending", label: "Payment Details Pending", count: paymentDetailsPendingBills.length },
-    { key: "rejected",       label: "Rejected",        count: rejectedBills.length },
+    { key: "all",         label: "All",              count: 0 },
+    { key: "draft",       label: "Awaiting Verification", count: draftBills.length },
+    { key: "verifyDone",  label: "Awaiting L1 AGM",   count: verifyDoneBills.length },
+    { key: "l1Approved",  label: "Awaiting L2 Director", count: l1ApprovedBills.length },
+    { key: "approved",    label: "Ready for TMS",      count: approvedBills.length },
+    { key: "sentToTms",   label: "Sent to TMS",        count: sentToTmsBills.length },
+    { key: "hold",        label: "Hold",               count: holdBills.length },
+    { key: "paid",        label: "Paid",               count: paidBills.length },
+    { key: "rejected",    label: "Rejected",           count: rejectedBills.length },
   ];
 
   const drawerBill = useMemo(
@@ -919,35 +641,19 @@ export default function AccountsPayment() {
 
   // Reset every action section's local state whenever the drawer is opened for
   // a bill, or the open bill's own stage changes underneath it (e.g. right
-  // after a maker-confirm succeeds, so the checker section is ready to go
-  // without needing to close and reopen the drawer).
+  // after verifying succeeds, so the L1 AGM section is ready to go without
+  // needing to close and reopen the drawer).
   useEffect(() => {
     if (!drawerOpen || !drawerBill) return;
     setRejecting(false);
     setRejectReason("");
     setHolding(false);
     setHoldReason("");
-    setMakerTallyDone(!!drawerBill.makerChecklist?.tallyEntryDone);
-    setMakerNewItemsDone(!!drawerBill.makerChecklist?.newItemsAddedInTally);
-    setMakerRemarks("");
-    setCheckerRetention(drawerBill.retentionAmount ?? 0);
-    setCheckerAdvance(drawerBill.advanceRecovery ?? 0);
-    setCheckerTdsPercent(drawerBill.tdsPercent ?? 1);
-    setCheckerTdsAmount(drawerBill.tdsAmount ?? 0);
-    setCheckerRetentionReleased(drawerBill.retentionReleased ?? 0);
-    setCheckerRetentionReleaseRemark(drawerBill.retentionReleaseRemark || "");
-    setCheckerRemarks("");
-    setApproverRemarks("");
-    setPrepMode(drawerBill.paymentPreparation?.paymentMode || undefined);
-    setPrepBankVerified(!!drawerBill.paymentPreparation?.checklist?.bankDetailsVerified);
-    setPrepFundsAvailable(!!drawerBill.paymentPreparation?.checklist?.fundsAvailable);
-    setPrepVoucherReady(!!drawerBill.paymentPreparation?.checklist?.voucherPrepared);
-    setPrepRemark("");
-    setPhysPrinted(false);
-    setPhysAttachments(false);
-    setPhysSigned(false);
-    setPhysRemark("");
-    setReleaseRemark("");
+    setVerifyTdsPercent(drawerBill.tdsPercent ?? 1);
+    setVerifyTdsAmount(drawerBill.tdsAmount ?? 0);
+    setVerifyRemarks("");
+    setL1Remarks("");
+    setL2Remarks("");
 
     if (drawerBill.workOrderId) {
       setDrawerWOCategory(undefined);
@@ -958,7 +664,7 @@ export default function AccountsPayment() {
       setDrawerWOCategory(undefined);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [drawerOpen, drawerBillId, drawerBill?.status, drawerBill?.physicalVerification?.done, drawerBill?.paymentPreparation?.done]);
+  }, [drawerOpen, drawerBillId, drawerBill?.status]);
 
   // ── Download / Print ─────────────────────────────────────────
 
@@ -1016,61 +722,81 @@ export default function AccountsPayment() {
 
   // ── Stage actions (all fire from the single drawer) ───────────
 
-  async function handleMakerConfirm() {
+  async function handleVerify() {
     if (!drawerBillId) return;
-    setMakerSaving(true);
+    setVerifySaving(true);
     try {
-      const res = await apiClient.patch<{ bill: Record<string, unknown> }>(`/bills/${drawerBillId}/maker-confirm`, {
-        makerChecklist: { tallyEntryDone: makerTallyDone, newItemsAddedInTally: makerNewItemsDone },
-        remarks: makerRemarks || undefined,
+      const res = await apiClient.patch<{ bill: Record<string, unknown> }>(`/bills/${drawerBillId}/verify`, {
+        tdsPercent: verifyTdsPercent,
+        tdsAmount:  verifyTdsAmount,
+        remarks: verifyRemarks || undefined,
       });
       updateBillInList(normalizeId(res.data.bill) as unknown as Bill);
-      message.success("Confirmed — forwarded to checker");
+      message.success("Verified — ready for L1 AGM approval");
     } catch (err: unknown) {
       const e = err as { response?: { data?: { message?: string } } };
-      message.error(e?.response?.data?.message || "Failed to confirm");
+      message.error(e?.response?.data?.message || "Verification failed");
     } finally {
-      setMakerSaving(false);
+      setVerifySaving(false);
     }
   }
 
-  async function handleCheckerApprove() {
+  async function handleL1AgmApprove() {
     if (!drawerBillId) return;
-    setCheckerSaving(true);
+    setL1Saving(true);
     try {
-      const res = await apiClient.patch<{ bill: Record<string, unknown> }>(`/bills/${drawerBillId}/checker-approve`, {
-        retentionAmount: checkerRetention,
-        advanceRecovery: checkerAdvance,
-        tdsPercent: checkerTdsPercent,
-        tdsAmount:  checkerTdsAmount,
-        retentionReleased:      checkerRetentionReleased,
-        retentionReleaseRemark: checkerRetentionReleaseRemark || "",
-        remarks: checkerRemarks || undefined,
+      const res = await apiClient.patch<{ bill: Record<string, unknown> }>(`/bills/${drawerBillId}/l1-agm-approve`, {
+        remarks: l1Remarks || undefined,
       });
       updateBillInList(normalizeId(res.data.bill) as unknown as Bill);
-      message.success("Checker approved — ready for final sign-off");
+      message.success("L1 AGM approved — ready for L2 Director approval");
     } catch (err: unknown) {
       const e = err as { response?: { data?: { message?: string } } };
-      message.error(e?.response?.data?.message || "Check failed");
+      message.error(e?.response?.data?.message || "L1 AGM approval failed");
     } finally {
-      setCheckerSaving(false);
+      setL1Saving(false);
     }
   }
 
-  async function handleApproverInitiate() {
+  async function handleL2DirectorApprove() {
     if (!drawerBillId) return;
-    setApproverSaving(true);
+    setL2Saving(true);
     try {
-      const res = await apiClient.patch<{ bill: Record<string, unknown> }>(`/bills/${drawerBillId}/approver-initiate`, {
-        remarks: approverRemarks || undefined,
+      const res = await apiClient.patch<{ bill: Record<string, unknown> }>(`/bills/${drawerBillId}/l2-director-approve`, {
+        remarks: l2Remarks || undefined,
       });
       updateBillInList(normalizeId(res.data.bill) as unknown as Bill);
-      message.success("Payment initiated — pending payment preparation and physical verification");
+      message.success("L2 Director approved — sending to TMS…");
+      // Fires right after a successful L2 approval so it still feels like one
+      // click, while the two backend actions stay independently retryable.
+      await handleSendToTms(drawerBillId);
     } catch (err: unknown) {
       const e = err as { response?: { data?: { message?: string } } };
-      message.error(e?.response?.data?.message || "Failed to initiate payment");
+      message.error(e?.response?.data?.message || "L2 Director approval failed");
     } finally {
-      setApproverSaving(false);
+      setL2Saving(false);
+    }
+  }
+
+  async function handleSendToTms(billId?: string) {
+    const id = billId || drawerBillId;
+    if (!id) return;
+    setSendTmsSaving(true);
+    try {
+      const res = await apiClient.patch<{ bill: Record<string, unknown> }>(`/bills/${id}/send-to-tms`, {});
+      updateBillInList(normalizeId(res.data.bill) as unknown as Bill);
+      message.success("Sent to TMS — awaiting payment confirmation");
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { message?: string; data?: { bill?: Record<string, unknown> } } } };
+      message.error(e?.response?.data?.message || "Failed to send to TMS — you can retry from this bill");
+      // Even on failure, the bill's tmsLastError/tmsSendAttempts were updated
+      // server-side — refetch it so the drawer shows the retry state.
+      try {
+        const r = await apiClient.get<{ bill: Record<string, unknown> }>(`/bills/${id}`);
+        updateBillInList(normalizeId(r.data.bill) as unknown as Bill);
+      } catch { /* ignore */ }
+    } finally {
+      setSendTmsSaving(false);
     }
   }
 
@@ -1097,63 +823,12 @@ export default function AccountsPayment() {
     try {
       const res = await apiClient.patch<{ bill: Record<string, unknown> }>(`/bills/${drawerBillId}/release-hold`, {});
       updateBillInList(normalizeId(res.data.bill) as unknown as Bill);
-      message.success("Hold released — back with the approver");
+      message.success("Hold released — ready to send to TMS");
     } catch (err: unknown) {
       const e = err as { response?: { data?: { message?: string } } };
       message.error(e?.response?.data?.message || "Failed to release hold");
     } finally {
       setReleaseHoldSaving(false);
-    }
-  }
-
-  async function handlePreparePayment() {
-    if (!drawerBillId || !prepMode) return;
-    setPrepSaving(true);
-    try {
-      const res = await apiClient.patch<{ bill: Record<string, unknown> }>(`/bills/${drawerBillId}/prepare-payment`, {
-        paymentMode: prepMode,
-        checklist: { bankDetailsVerified: prepBankVerified, fundsAvailable: prepFundsAvailable, voucherPrepared: prepVoucherReady },
-        remark: prepRemark || undefined,
-      });
-      updateBillInList(normalizeId(res.data.bill) as unknown as Bill);
-      message.success("Payment preparation recorded — ready for physical verification");
-    } catch (err: unknown) {
-      const e = err as { response?: { data?: { message?: string } } };
-      message.error(e?.response?.data?.message || "Failed to record payment preparation");
-    } finally {
-      setPrepSaving(false);
-    }
-  }
-
-  async function handlePhysVerifyConfirm() {
-    if (!drawerBillId) return;
-    setPhysSaving(true);
-    try {
-      const res = await apiClient.patch<{ bill: Record<string, unknown> }>(`/bills/${drawerBillId}/physical-verify`, { remark: physRemark });
-      updateBillInList(normalizeId(res.data.bill) as unknown as Bill);
-      message.success("Physical verification recorded — ready for release");
-    } catch (err: unknown) {
-      const e = err as { response?: { data?: { message?: string } } };
-      message.error(e?.response?.data?.message || "Failed to record verification");
-    } finally {
-      setPhysSaving(false);
-    }
-  }
-
-  async function handleReleaseConfirm() {
-    if (!drawerBillId) return;
-    setReleaseSaving(true);
-    try {
-      const res = await apiClient.patch<{ bill: Record<string, unknown> }>(`/bills/${drawerBillId}/release`, {
-        remarks: releaseRemark || undefined,
-      });
-      updateBillInList(normalizeId(res.data.bill) as unknown as Bill);
-      message.success("Marked as paid — add payment details once the bank statement arrives");
-    } catch (err: unknown) {
-      const e = err as { response?: { data?: { message?: string } } };
-      message.error(e?.response?.data?.message || "Failed to mark as paid");
-    } finally {
-      setReleaseSaving(false);
     }
   }
 
@@ -1274,7 +949,7 @@ export default function AccountsPayment() {
 
   function renderActionSection(bill: Bill): ReactNode {
     if (rejecting) {
-      const sendBackTo = bill.status === "approved" ? "Checker" : bill.status === "submitted" || bill.status === "verified" ? "Maker" : bill.status === "payment-initiated" ? "Approver" : null;
+      const sendBackTo = bill.status === "approved" ? "L1 AGM" : bill.status === "l1-approved" ? "Verification" : bill.status === "verify-done" ? "Verification" : null;
       return (
         <div style={{ ...sectionPanelStyle, background: "#FEF2F2", border: "1px solid #FECACA" }}>
           <div style={{ fontWeight: 700, fontSize: 13, color: "#DC2626", marginBottom: 8 }}>
@@ -1317,82 +992,58 @@ export default function AccountsPayment() {
 
     switch (bill.status) {
       case "draft": {
-        if (!canMaker) return <MutedNote text="Awaiting a maker to confirm this bill." />;
+        if (!canVerify) return <MutedNote text="Awaiting Verification against its work order and vendor details." />;
         return (
           <div style={sectionPanelStyle}>
-            <div style={{ fontWeight: 700, fontSize: 13, color: "#FF7A00", marginBottom: 8 }}>Confirm as Maker</div>
-            <Space direction="vertical" size={8} style={{ width: "100%", marginBottom: 10 }}>
-              <Checkbox checked={makerTallyDone} onChange={(e) => setMakerTallyDone(e.target.checked)}>Tally Entry Done</Checkbox>
-              <Checkbox checked={makerNewItemsDone} onChange={(e) => setMakerNewItemsDone(e.target.checked)}>New Items Added in Tally (optional — only if this bill introduced new items)</Checkbox>
-            </Space>
-            {!makerTallyDone && <div style={{ fontSize: 11.5, color: "#d97706", marginBottom: 8 }}>Tally Entry Done must be checked before confirming.</div>}
-            <Input.TextArea rows={2} placeholder="Remarks (optional)" value={makerRemarks} onChange={(e) => setMakerRemarks(e.target.value)} />
-          </div>
-        );
-      }
-
-      case "submitted":
-      case "verified": {
-        if (!canChecker) return <MutedNote text="Awaiting a checker to review this bill." />;
-        const guard = sameActor(user, bill.makerBy) ? "You confirmed this bill as maker — a different user must check it." : undefined;
-        return (
-          <div style={sectionPanelStyle}>
-            <div style={{ fontWeight: 700, fontSize: 13, color: "#16a85a", marginBottom: 8 }}>Checker Review</div>
-            {guard && <div style={{ fontSize: 12, color: "#d97706", marginBottom: 8 }}>⚠ {guard}</div>}
+            <div style={{ fontWeight: 700, fontSize: 13, color: "#FF7A00", marginBottom: 8 }}>Verification</div>
+            <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 10 }}>
+              Confirm this bill matches its work order and vendor details, and set TDS. Hold/Retention and Advance
+              Recovery are already decided (at bill creation, or by AGM/GM's own Site Progress approval) — not entered here.
+            </div>
             <Row gutter={12}>
-              <Col span={12}>
-                <div style={{ fontSize: 11, color: "#9CA3AF", marginBottom: 4 }}>Hold / Retention (₹)</div>
-                <InputNumber style={{ width: "100%" }} min={0} value={checkerRetention} onChange={(v) => setCheckerRetention(Number(v) || 0)} />
-              </Col>
-              <Col span={12}>
-                <div style={{ fontSize: 11, color: "#9CA3AF", marginBottom: 4 }}>Advance Recovery (₹)</div>
-                <InputNumber style={{ width: "100%" }} min={0} value={checkerAdvance} onChange={(v) => setCheckerAdvance(Number(v) || 0)} />
-              </Col>
-            </Row>
-            <Row gutter={12} style={{ marginTop: 10 }}>
               <Col span={12}>
                 <div style={{ fontSize: 11, color: "#9CA3AF", marginBottom: 4 }}>TDS %</div>
                 <InputNumber
-                  style={{ width: "100%" }} min={0} max={100} value={checkerTdsPercent}
+                  style={{ width: "100%" }} min={0} max={100} value={verifyTdsPercent}
                   onChange={(v) => {
                     const pct = Number(v) || 0;
-                    setCheckerTdsPercent(pct);
-                    setCheckerTdsAmount(Math.round((bill.amount || 0) * pct / 100));
+                    setVerifyTdsPercent(pct);
+                    setVerifyTdsAmount(Math.round((bill.amount || 0) * pct / 100));
                   }}
                 />
               </Col>
               <Col span={12}>
                 <div style={{ fontSize: 11, color: "#9CA3AF", marginBottom: 4 }}>TDS Amount to Deduct (₹)</div>
                 <InputNumber
-                  style={{ width: "100%" }} min={0} value={checkerTdsAmount}
+                  style={{ width: "100%" }} min={0} value={verifyTdsAmount}
                   onChange={(v) => {
                     const amt = Number(v) || 0;
-                    setCheckerTdsAmount(amt);
+                    setVerifyTdsAmount(amt);
                     const gross = bill.amount || 0;
-                    setCheckerTdsPercent(gross > 0 ? Math.round((amt / gross) * 10000) / 100 : 0);
+                    setVerifyTdsPercent(gross > 0 ? Math.round((amt / gross) * 10000) / 100 : 0);
                   }}
                 />
               </Col>
             </Row>
-            <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, padding: "12px 14px", marginTop: 10 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: "#1d4ed8", marginBottom: 10 }}>
-                🔓 Hold / Retention Release (optional)
-              </div>
-              <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 10 }}>
-                If this bill also settles a previously withheld retention, enter the amount below.
-              </div>
-              <Row gutter={12}>
-                <Col span={12}>
-                  <div style={{ fontSize: 11, color: "#9CA3AF", marginBottom: 4 }}>Hold Amount Released (₹)</div>
-                  <InputNumber style={{ width: "100%" }} min={0} value={checkerRetentionReleased} onChange={(v) => setCheckerRetentionReleased(Number(v) || 0)} />
-                </Col>
-                <Col span={12}>
-                  <div style={{ fontSize: 11, color: "#9CA3AF", marginBottom: 4 }}>Remark (e.g. RA-0010 DLP)</div>
-                  <Input placeholder="Which bill / period" value={checkerRetentionReleaseRemark} onChange={(e) => setCheckerRetentionReleaseRemark(e.target.value)} />
-                </Col>
-              </Row>
-            </div>
-            <Input.TextArea rows={2} style={{ marginTop: 8 }} placeholder="Remarks (optional)" value={checkerRemarks} onChange={(e) => setCheckerRemarks(e.target.value)} />
+            <Input.TextArea rows={2} style={{ marginTop: 8 }} placeholder="Remarks (optional)" value={verifyRemarks} onChange={(e) => setVerifyRemarks(e.target.value)} />
+          </div>
+        );
+      }
+
+      case "verify-done": {
+        if (!canL1Agm) return <MutedNote text="Awaiting L1 AGM approval." />;
+        const guard = sameActor(user, bill.verificationBy) ? "You verified this bill — a different user must give L1 AGM approval." : undefined;
+        return (
+          <div style={sectionPanelStyle}>
+            <div style={{ fontWeight: 700, fontSize: 13, color: "#0891b2", marginBottom: 8 }}>L1 AGM Approval</div>
+            {guard && <div style={{ fontSize: 12, color: "#d97706", marginBottom: 8 }}>⚠ {guard}</div>}
+            <Descriptions column={2} size="small" colon={false} style={{ marginBottom: 8 }}>
+              <Descriptions.Item label={<span style={{ color: "#9ba3b8" }}>Hold / Retention</span>}>{fmt(bill.retentionAmount ?? 0)}</Descriptions.Item>
+              <Descriptions.Item label={<span style={{ color: "#9ba3b8" }}>Advance Recovery</span>}>{fmt(bill.advanceRecovery ?? 0)}</Descriptions.Item>
+              <Descriptions.Item label={<span style={{ color: "#9ba3b8" }}>TDS %</span>}>{bill.tdsPercent ?? 0}%</Descriptions.Item>
+              <Descriptions.Item label={<span style={{ color: "#9ba3b8" }}>TDS Amount</span>}>{fmt(bill.tdsAmount ?? 0)}</Descriptions.Item>
+            </Descriptions>
+            <Input.TextArea rows={2} placeholder="Remarks (optional)" value={l1Remarks} onChange={(e) => setL1Remarks(e.target.value)} />
           </div>
         );
       }
@@ -1405,89 +1056,55 @@ export default function AccountsPayment() {
               showIcon
               message={<span><strong>Payment held:</strong> {bill.holdReason}{bill.holdBy?.name ? ` — ${bill.holdBy.name}` : ""}{bill.holdAt ? ` · ${dayjs(bill.holdAt).format("DD MMM YYYY")}` : ""}</span>}
             />
-            {!canApprover && <MutedNote text="Only an approver can release this hold." />}
+            {!canReleaseHold && <MutedNote text="Only someone with Release Hold access can resume this bill." />}
           </div>
         );
+
+      case "l1-approved": {
+        if (!canL2Director) return <MutedNote text="Awaiting L2 Director approval." />;
+        const guard = sameActor(user, bill.l1ApprovedBy) ? "You gave L1 AGM approval — a different user must give L2 Director approval." : undefined;
+        return (
+          <div style={sectionPanelStyle}>
+            <div style={{ fontWeight: 700, fontSize: 13, color: "#3730a3", marginBottom: 8 }}>L2 Director Approval</div>
+            {guard && <div style={{ fontSize: 12, color: "#d97706", marginBottom: 8 }}>⚠ {guard}</div>}
+            <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 8 }}>
+              This is the last internal sign-off — approving sends this bill straight to TMS for payment.
+            </div>
+            <Input.TextArea rows={2} placeholder="Remarks (optional)" value={l2Remarks} onChange={(e) => setL2Remarks(e.target.value)} />
+          </div>
+        );
+      }
 
       case "approved": {
-        if (!canApprover) return <MutedNote text="Awaiting an approver to sign off on this bill." />;
-        const guard = sameActor(user, bill.checkerBy) ? "You checked this bill — a different user must give final approval." : undefined;
+        if (!canRetryTms) return <MutedNote text="L2 Director approved — awaiting handoff to TMS." />;
         return (
           <div style={sectionPanelStyle}>
-            <div style={{ fontWeight: 700, fontSize: 13, color: "#3730a3", marginBottom: 8 }}>Approver Review</div>
-            {guard && <div style={{ fontSize: 12, color: "#d97706", marginBottom: 8 }}>⚠ {guard}</div>}
-            <Descriptions column={2} size="small" colon={false} style={{ marginBottom: 8 }}>
-              <Descriptions.Item label={<span style={{ color: "#9ba3b8" }}>Hold / Retention</span>}>{fmt(bill.retentionAmount ?? 0)}</Descriptions.Item>
-              <Descriptions.Item label={<span style={{ color: "#9ba3b8" }}>Advance Recovery</span>}>{fmt(bill.advanceRecovery ?? 0)}</Descriptions.Item>
-              <Descriptions.Item label={<span style={{ color: "#9ba3b8" }}>TDS %</span>}>{bill.tdsPercent ?? 0}%</Descriptions.Item>
-              <Descriptions.Item label={<span style={{ color: "#9ba3b8" }}>TDS Amount</span>}>{fmt(bill.tdsAmount ?? 0)}</Descriptions.Item>
-              {(bill.retentionReleased ?? 0) > 0 && (
-                <Descriptions.Item label={<span style={{ color: "#9ba3b8" }}>Hold Released</span>} span={2}>
-                  {fmt(bill.retentionReleased ?? 0)}{bill.retentionReleaseRemark ? ` — ${bill.retentionReleaseRemark}` : ""}
-                </Descriptions.Item>
-              )}
-            </Descriptions>
-            <Input.TextArea rows={2} placeholder="Remarks (optional)" value={approverRemarks} onChange={(e) => setApproverRemarks(e.target.value)} />
+            <div style={{ fontWeight: 700, fontSize: 13, color: "#7c3aed", marginBottom: 8 }}>Ready for TMS</div>
+            <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 10 }}>
+              L2 Director approved this bill — send it to the Transaction Management System to process the payment.
+            </div>
+            {bill.tmsLastError && (
+              <Alert
+                type="error" showIcon style={{ marginBottom: 10 }}
+                message={<span><strong>Last attempt failed{bill.tmsSendAttempts ? ` (attempt ${bill.tmsSendAttempts})` : ""}:</strong> {bill.tmsLastError}</span>}
+              />
+            )}
           </div>
         );
       }
 
-      case "payment-initiated": {
-        const sub = paymentSubStage(bill);
-        if (sub === "prepare") {
-          if (!canPaymentMaker) return <MutedNote text="Awaiting payment preparation (mode + readiness checklist)." />;
-          const allChecked = prepMode && prepBankVerified && prepFundsAvailable && prepVoucherReady;
-          return (
-            <div style={sectionPanelStyle}>
-              <div style={{ fontWeight: 700, fontSize: 13, color: "#0d9488", marginBottom: 8 }}>Payment Maker</div>
-              <div style={{ fontSize: 11, color: "#9CA3AF", marginBottom: 4 }}>Payment Mode</div>
-              <Select style={{ width: "100%", marginBottom: 10 }} placeholder="Select payment mode" options={PAYMENT_MODE_OPTIONS} value={prepMode} onChange={setPrepMode} />
-              <Space direction="vertical" size={8} style={{ width: "100%", marginBottom: 10 }}>
-                <Checkbox checked={prepBankVerified} onChange={(e) => setPrepBankVerified(e.target.checked)}>Vendor bank details verified</Checkbox>
-                <Checkbox checked={prepFundsAvailable} onChange={(e) => setPrepFundsAvailable(e.target.checked)}>Funds available confirmed</Checkbox>
-                <Checkbox checked={prepVoucherReady} onChange={(e) => setPrepVoucherReady(e.target.checked)}>Payment voucher / instruction prepared</Checkbox>
-              </Space>
-              {!allChecked && <div style={{ fontSize: 11.5, color: "#d97706", marginBottom: 8 }}>Select a mode and check all three before proceeding.</div>}
-              <Input.TextArea rows={2} placeholder="Remark (optional)" value={prepRemark} onChange={(e) => setPrepRemark(e.target.value)} />
-            </div>
-          );
-        }
-        if (sub === "verify") {
-          if (!canPhysicalVerify) return <MutedNote text="Awaiting physical verification." />;
-          return (
-            <div style={sectionPanelStyle}>
-              <div style={{ fontWeight: 700, fontSize: 13, color: "#d97706", marginBottom: 8 }}>Physical Verification</div>
-              <div style={{ fontSize: 12, color: "#5a6278", marginBottom: 10 }}>
-                Confirm the physical checkpoint before this payment can be released:
-              </div>
-              <Space direction="vertical" size={8} style={{ width: "100%", marginBottom: 10 }}>
-                <Checkbox checked={physPrinted} onChange={(e) => setPhysPrinted(e.target.checked)}>Bill printed</Checkbox>
-                <Checkbox checked={physAttachments} onChange={(e) => setPhysAttachments(e.target.checked)}>Work order attachments reviewed</Checkbox>
-                <Checkbox checked={physSigned} onChange={(e) => setPhysSigned(e.target.checked)}>Physically (wet-signature) signed off</Checkbox>
-              </Space>
-              <Input.TextArea rows={2} placeholder="Remark (optional)" value={physRemark} onChange={(e) => setPhysRemark(e.target.value)} />
-            </div>
-          );
-        }
-        if (!canRelease) return <MutedNote text="Physically verified — awaiting payment release." />;
+      case "sent-to-tms":
         return (
-          <div style={sectionPanelStyle}>
-            <div style={{ fontWeight: 700, fontSize: 13, color: "#7c3aed", marginBottom: 8 }}>Mark as Paid</div>
-            <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 10 }}>
-              Confirms the payment has physically gone out. The mode/UTR/bank/amount paperwork gets recorded afterward, once the bank statement catches up — see Payment Details.
-            </div>
-            <Input.TextArea rows={2} placeholder="Remark (optional)" value={releaseRemark} onChange={(e) => setReleaseRemark(e.target.value)} />
+          <div style={{ marginTop: 16 }}>
+            <Alert
+              type="info" showIcon
+              message={<span><strong>Sent to TMS</strong>{bill.tmsSentAt ? ` on ${dayjs(bill.tmsSentAt).format("DD MMM YYYY, hh:mm A")}` : ""} — awaiting payment confirmation. TMS owns this bill from here; no action is available in this system until it reports back.</span>}
+            />
           </div>
         );
-      }
 
       case "paid":
-        return (
-          <>
-            <PaidPanel bill={bill} isOwner={isOwner} onUpdated={updateBillInList} />
-            <PaymentDetailsPanel bill={bill} canRelease={canPaymentDetails} onUpdated={updateBillInList} />
-          </>
-        );
+        return <PaidPanel bill={bill} isOwner={isOwner} onUpdated={updateBillInList} />;
 
       case "rejected":
         return bill.rejectReason ? (
@@ -1507,33 +1124,21 @@ export default function AccountsPayment() {
   function footerPrimary(bill: Bill): { label: string; color: string; onClick: () => void; loading: boolean; disabled?: boolean; tooltip?: string } | null {
     switch (bill.status) {
       case "draft":
-        return canMaker ? { label: "Confirm", color: "#FF7A00", onClick: handleMakerConfirm, loading: makerSaving, disabled: !makerTallyDone } : null;
-      case "submitted":
-      case "verified": {
-        if (!canChecker) return null;
-        const guard = sameActor(user, bill.makerBy) ? "You confirmed this bill as maker — a different user must check it." : undefined;
-        return { label: "Verify & Approve", color: "#16a85a", onClick: handleCheckerApprove, loading: checkerSaving, disabled: !!guard, tooltip: guard };
+        return canVerify ? { label: "Verify", color: "#FF7A00", onClick: handleVerify, loading: verifySaving } : null;
+      case "verify-done": {
+        if (!canL1Agm) return null;
+        const guard = sameActor(user, bill.verificationBy) ? "You verified this bill — a different user must give L1 AGM approval." : undefined;
+        return { label: "L1 AGM Approve", color: "#0891b2", onClick: handleL1AgmApprove, loading: l1Saving, disabled: !!guard, tooltip: guard };
       }
       case "hold":
-        return canApprover ? { label: "Release Hold", color: "#9333EA", onClick: handleReleaseHold, loading: releaseHoldSaving } : null;
-      case "approved": {
-        if (!canApprover) return null;
-        const guard = sameActor(user, bill.checkerBy) ? "You checked this bill — a different user must give final approval." : undefined;
-        return { label: "Approve & Forward", color: "#3730a3", onClick: handleApproverInitiate, loading: approverSaving, disabled: !!guard, tooltip: guard };
+        return canReleaseHold ? { label: "Release Hold", color: "#9333EA", onClick: handleReleaseHold, loading: releaseHoldSaving } : null;
+      case "l1-approved": {
+        if (!canL2Director) return null;
+        const guard = sameActor(user, bill.l1ApprovedBy) ? "You gave L1 AGM approval — a different user must give L2 Director approval." : undefined;
+        return { label: "L2 Director Approve & Send to TMS", color: "#3730a3", onClick: handleL2DirectorApprove, loading: l2Saving, disabled: !!guard, tooltip: guard };
       }
-      case "payment-initiated": {
-        const sub = paymentSubStage(bill);
-        if (sub === "prepare") {
-          if (!canPaymentMaker) return null;
-          return { label: "Confirm Payment Preparation", color: "#0d9488", onClick: handlePreparePayment, loading: prepSaving, disabled: !(prepMode && prepBankVerified && prepFundsAvailable && prepVoucherReady) };
-        }
-        if (sub === "verify") {
-          if (!canPhysicalVerify) return null;
-          return { label: "Mark Physically Verified", color: "#d97706", onClick: handlePhysVerifyConfirm, loading: physSaving, disabled: !(physPrinted && physAttachments && physSigned) };
-        }
-        if (!canRelease) return null;
-        return { label: "Mark as Paid", color: "#7c3aed", onClick: handleReleaseConfirm, loading: releaseSaving };
-      }
+      case "approved":
+        return canRetryTms ? { label: bill.tmsLastError ? "Retry Send to TMS" : "Send to TMS", color: "#7c3aed", onClick: () => handleSendToTms(), loading: sendTmsSaving } : null;
       default:
         return null;
     }
@@ -1546,7 +1151,13 @@ export default function AccountsPayment() {
   return (
     <PageShell
       title="Accounts Payment"
-      description="Verify bills and process vendor payments — bill creation has moved to the Billing module"
+      description="Verification → L1 AGM → L2 Director — then handed off to TMS for payment"
+      cta={
+        <Space>
+          <Button type="primary" style={{ background: "#FF7A00", borderColor: "#FF7A00" }}>Accounts Payment</Button>
+          <Button onClick={() => navigate("/procurement-tracker")}>Procurement Tracker</Button>
+        </Space>
+      }
     >
       <style>{`
         .ap-table .ant-table-thead > tr > th { background: #F9FAFB !important; font-weight: 600; color: #6B7280; border-bottom: 1px solid #E5E7EB !important; }
@@ -1557,32 +1168,25 @@ export default function AccountsPayment() {
       {/* Stat cards */}
       <Row gutter={[12, 12]} style={{ marginBottom: 22 }}>
         <Col xs={12} sm={8} md={3}>
-          <StatCard label="Draft" value={draftBills.length} sub="Awaiting maker" icon={<FileAddOutlined />} accent="#6B7280" />
+          <StatCard label="Awaiting Verification" value={draftBills.length} sub="Draft bills" icon={<FileAddOutlined />} accent="#6B7280" />
         </Col>
         <Col xs={12} sm={8} md={3}>
-          <StatCard label="To Verify" value={submittedBills.length} sub="Awaiting checker" icon={<SafetyCertificateOutlined />} accent="#2563EB" />
+          <StatCard label="Awaiting L1 AGM" value={verifyDoneBills.length} sub="Verified" icon={<SafetyCertificateOutlined />} accent="#0891b2" />
         </Col>
         <Col xs={12} sm={8} md={3}>
-          <StatCard label="To Approve" value={approvedBills.length} sub="Awaiting approver" icon={<CheckCircleOutlined />} accent="#7C3AED" />
+          <StatCard label="Awaiting L2 Director" value={l1ApprovedBills.length} sub="L1 AGM approved" icon={<CheckCircleOutlined />} accent="#7C3AED" />
         </Col>
         <Col xs={12} sm={8} md={3}>
-          <StatCard label="Payment Pending" value={paymentInitiatedBills.length} sub="Prep + verify + release" icon={<ClockCircleOutlined />} accent="#D97706" />
+          <StatCard label="Ready for TMS" value={approvedBills.length} sub="L2 Director approved" icon={<ClockCircleOutlined />} accent="#3730a3" />
         </Col>
         <Col xs={12} sm={8} md={3}>
-          <StatCard label="Hold" value={holdBills.length} sub="Paused by approver" icon={<PauseCircleOutlined />} accent="#9333EA" />
+          <StatCard label="Sent to TMS" value={sentToTmsBills.length} sub="Awaiting payment" icon={<SendOutlined />} accent="#1D4ED8" />
+        </Col>
+        <Col xs={12} sm={8} md={3}>
+          <StatCard label="Hold" value={holdBills.length} sub="Paused before TMS" icon={<PauseCircleOutlined />} accent="#9333EA" />
         </Col>
         <Col xs={12} sm={8} md={3}>
           <StatCard label="Paid" value={stats.paidThisMonthCount} sub={`${fmt(stats.paidThisMonthAmt)} this month`} icon={<DollarOutlined />} accent="#16A34A" />
-        </Col>
-        <Col xs={12} sm={8} md={3}>
-          <StatCard
-            label="Payment Details Pending"
-            value={paymentDetailsPendingBills.length}
-            sub="Paid, paperwork not logged"
-            icon={<FileTextOutlined />}
-            accent="#1D4ED8"
-            onClick={() => setActiveTab("paymentDetailsPending")}
-          />
         </Col>
         <Col xs={12} sm={8} md={3}>
           <StatCard label="Rejected" value={rejectedBills.length} sub="Bills rejected" icon={<CloseCircleOutlined />} accent="#DC2626" />
@@ -1645,7 +1249,7 @@ export default function AccountsPayment() {
                 <div style={{ padding: "48px", textAlign: "center", color: "#9ba3b8" }}>
                   <div style={{ fontSize: 32, marginBottom: 10 }}>🧾</div>
                   <div style={{ fontWeight: 700, color: "#5a6278", fontSize: 15 }}>No bills found</div>
-                  <div style={{ fontSize: 12, marginTop: 4 }}>Click "New Bill" to generate the first bill.</div>
+                  <div style={{ fontSize: 12, marginTop: 4 }}>New bills are created from the Billing module.</div>
                 </div>
               ),
             }}
@@ -1680,10 +1284,10 @@ export default function AccountsPayment() {
                 Print
               </Button>
               <div style={{ display: "flex", gap: 8 }}>
-                {!rejecting && !holding && drawerBill.status === "approved" && canApprover && (
+                {!rejecting && !holding && drawerBill.status === "approved" && canHold && (
                   <Button style={{ color: "#9333EA", borderColor: "#9333EA" }} onClick={() => setHolding(true)}>Hold Payment</Button>
                 )}
-                {!rejecting && !holding && canRejectAny && !["paid", "rejected", "hold"].includes(drawerBill.status) && (
+                {!rejecting && !holding && canRejectAny && !["paid", "rejected", "hold", "sent-to-tms"].includes(drawerBill.status) && (
                   <Button danger icon={<CloseCircleOutlined />} onClick={() => setRejecting(true)}>
                     {drawerBill.status === "draft" ? "Reject" : "Send Back"}
                   </Button>
@@ -1834,29 +1438,26 @@ export default function AccountsPayment() {
             {/* Financial summary */}
             {(() => {
               const bill = drawerBill;
-              // While the checker is actively reviewing (status submitted/verified),
-              // preview against what they're typing in Checker Review above — the
-              // saved bill record still has these at 0/unset until they submit, which
-              // is why the summary looked like it jumped straight from Gross to Net.
-              const isCheckerStage = bill.status === "submitted" || bill.status === "verified";
+              // While Verification is actively setting TDS (status draft),
+              // preview against what's being typed above — the saved bill
+              // record still has tdsAmount at 0/unset until they submit.
+              const isVerifyStage = bill.status === "draft";
               const gross    = bill.amount || 0;
               const gstPct   = bill.gstPercent ?? 0;
               const gstAmt   = Math.round(gross * gstPct / 100);
-              const retAmt   = isCheckerStage ? checkerRetention : (bill.retentionAmount ?? 0);
+              const retAmt   = bill.retentionAmount ?? 0;
               const retPct   = bill.retentionPercent ?? 0;
-              const advRec   = isCheckerStage ? checkerAdvance : (bill.advanceRecovery ?? 0);
+              const advRec   = bill.advanceRecovery ?? 0;
               const netPay   = gross + gstAmt - retAmt;
               const paid     = bill.paidAmount;
-              const retRel   = isCheckerStage ? checkerRetentionReleased : (bill.retentionReleased ?? 0);
-              const billPortion = paid != null ? Math.max(0, paid - retRel) : null;
-              const tdsPctDisplay = isCheckerStage ? checkerTdsPercent : bill.tdsPercent;
-              const tdsAmt = isCheckerStage ? checkerTdsAmount
-                : (billPortion != null ? Math.max(0, Math.round(netPay - advRec - billPortion)) : 0);
+              const retRel   = bill.retentionReleased ?? 0;
+              const tdsPctDisplay = isVerifyStage ? verifyTdsPercent : bill.tdsPercent;
+              const tdsAmt = isVerifyStage ? verifyTdsAmount : (bill.tdsAmount ?? 0);
 
               // Net Payable is the true bottom line — Hold/Retention, Advance Recovery,
               // and TDS all land above it now (in that order), not scattered after it.
               const finalNetPayable = netPay - advRec - tdsAmt;
-              const retReleaseRemark = isCheckerStage ? checkerRetentionReleaseRemark : bill.retentionReleaseRemark;
+              const retReleaseRemark = bill.retentionReleaseRemark;
 
               type SummaryRow = { label: string; value: string; color: string; bold?: boolean; borderTop?: boolean; bg?: string };
               const rows: SummaryRow[] = [

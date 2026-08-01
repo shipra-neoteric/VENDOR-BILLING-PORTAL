@@ -11,6 +11,7 @@ import { useAuth } from "../../context/AuthContext";
 import type { AuthUser } from "../../context/AuthContext";
 import StatusTag from "../../shared/components/StatusTag";
 import { BILL_TYPE_CFG } from "../../shared/constants/billOptions";
+import { BILL_STATUS, BILL_STATUS_LABEL } from "../../shared/constants/billStatus";
 import NewBillDrawer from "./NewBillDrawer";
 
 // ── Types — a read-only slice of what AccountsPayment's own Bill looks
@@ -220,7 +221,7 @@ export default function Billing() {
             style={{ width: 160 }}
             value={statusFilter}
             onChange={setStatusFilter}
-            options={["draft", "submitted", "verified", "approved", "payment-initiated", "hold", "paid", "rejected"].map((s) => ({ value: s, label: s }))}
+            options={Object.values(BILL_STATUS).map((s) => ({ value: s, label: BILL_STATUS_LABEL[s] || s }))}
           />
         </Col>
         <Col>

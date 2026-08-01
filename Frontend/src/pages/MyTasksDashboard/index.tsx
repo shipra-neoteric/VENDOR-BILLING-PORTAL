@@ -152,12 +152,12 @@ export default function MyTasksDashboard() {
     when: `${daysAgo(r.createdAt)}d pending`,
   }));
 
-  // ── Accounts: four stages of the Accounts Payment chain ──
-  const acctMaker    = bills.filter(b => b.status === "draft");
-  const acctCheck    = bills.filter(b => b.status === "submitted" || b.status === "verified");
-  const acctApprove  = bills.filter(b => b.status === "approved");
-  const acctHold     = bills.filter(b => b.status === "hold");
-  const acctRelease  = bills.filter(b => b.status === "payment-initiated");
+  // ── Accounts: stages of the Accounts Payment chain ──
+  const acctVerify     = bills.filter(b => b.status === "draft");
+  const acctL1Agm      = bills.filter(b => b.status === "verify-done");
+  const acctL2Director = bills.filter(b => b.status === "l1-approved");
+  const acctHold       = bills.filter(b => b.status === "hold");
+  const acctSendTms    = bills.filter(b => b.status === "approved");
   const toRows = (list: BillRow[]) => list.map(b => ({
     key: b._id, label: b.billNo,
     sub: [b.vendorName, b.projectName, b.workOrderNo].filter(Boolean).join(" · "),
@@ -228,18 +228,18 @@ export default function MyTasksDashboard() {
       {role === "accounts" && (
         <>
           <QueueSection
-            title="Awaiting Maker Confirm" color="#0891b2"
-            rows={toRows(acctMaker)} emptyText="Nothing waiting on the maker step" buttonLabel="Confirm →"
+            title="Awaiting Verification" color="#0891b2"
+            rows={toRows(acctVerify)} emptyText="Nothing waiting on verification" buttonLabel="Verify →"
             onOpen={() => navigate("/accounts-payment")}
           />
           <QueueSection
-            title="Awaiting Checker" color="#0d9488"
-            rows={toRows(acctCheck)} emptyText="Nothing pending checking" buttonLabel="Check →"
+            title="Awaiting L1 AGM Approval" color="#0d9488"
+            rows={toRows(acctL1Agm)} emptyText="Nothing pending L1 AGM approval" buttonLabel="Approve →"
             onOpen={() => navigate("/accounts-payment")}
           />
           <QueueSection
-            title="Awaiting Approver" color="#3730a3"
-            rows={toRows(acctApprove)} emptyText="Nothing ready for final approval" buttonLabel="Approve →"
+            title="Awaiting L2 Director Approval" color="#3730a3"
+            rows={toRows(acctL2Director)} emptyText="Nothing ready for L2 Director approval" buttonLabel="Approve →"
             onOpen={() => navigate("/accounts-payment")}
           />
           <QueueSection
@@ -248,8 +248,8 @@ export default function MyTasksDashboard() {
             onOpen={() => navigate("/accounts-payment")}
           />
           <QueueSection
-            title="Awaiting Physical Verification / Release" color="#7c3aed"
-            rows={toRows(acctRelease)} emptyText="Nothing ready for release" buttonLabel="Release →"
+            title="Ready to Send to TMS" color="#7c3aed"
+            rows={toRows(acctSendTms)} emptyText="Nothing waiting to be sent to TMS" buttonLabel="Send →"
             onOpen={() => navigate("/accounts-payment")}
           />
         </>

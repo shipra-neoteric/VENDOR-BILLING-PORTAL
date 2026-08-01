@@ -98,23 +98,31 @@ const runningBillSchema = new mongoose.Schema(
     supersededBy:  { type: mongoose.Schema.Types.ObjectId, ref: 'RunningBill', default: null },
     // ─────────────────────────────────────────────────────────
 
-    // draft = awaiting L1 maker confirm · submitted = L1 maker confirmed (or, for
-    // legacy bills predating the maker stage, AGM approved) · verified = legacy-only,
-    // GM approved (no longer set on new bills) · approved = L2 checker verified
-    // WO/bill match + set hold/advance/TDS · payment-initiated = L3 approver
-    // signed off, now moving through payment-preparation → physical-verify →
-    // release (all gated by sub-object flags within this one status, same
-    // pattern physicalVerification already used before payment-preparation
-    // existed) · hold = L3 approver paused the payment (see holdBy/At/Reason) —
-    // reachable only from 'approved', returns there via releaseHold · paid =
-    // physically released — the actual payment detail fields are filled in
-    // afterward (see paymentDetails below), not required at this point.
+    // draft = awaiting Verification · verify-done = the single Verification
+    // actor checked the bill against its Work Order + vendor details and set
+    // TDS · l1-approved = L1 AGM approved · approved = L2 Director approved —
+    // ready to hand off to the external Transaction Management System (TMS) ·
+    // sent-to-tms = the outbound API call to TMS succeeded, awaiting its
+    // payment callback (see tmsSentAt/tmsSendAttempts/tmsLastError below) ·
+    // paid = TMS's callback confirmed the payment, and populated the actual
+    // payment fields below (paymentUTR/paymentDate/paymentMode/paymentBank/
+    // paymentReleasedBy/paidAmount) — no manual entry anymore · hold = L2
+    // Director paused the payment before handoff (see holdBy/At/Reason) —
+    // reachable only from 'approved', returns there via releaseHold. Once a
+    // bill reaches 'sent-to-tms' this system has no recall/reject action —
+    // TMS owns it fully from that point.
     status: {
       type: String,
-      enum: ['draft', 'submitted', 'verified', 'approved', 'payment-initiated', 'hold', 'rejected', 'paid'],
-      default: 'submitted',
+      enum: ['draft', 'verify-done', 'l1-approved', 'approved', 'sent-to-tms', 'hold', 'rejected', 'paid'],
+      default: 'draft',
     },
-    submittedAt: { type: Date },
+    // Historical maker/checker/approver/GM stamps — no longer written by any
+    // current action, kept only so bills created before this redesign still
+    // display who did what. agmApprovedBy/At is a DIFFERENT concept, still
+    // actively written by billRequestController's gmApprove: the Site
+    // Progress AGM who approved the BillRequest this bill originated from
+    // (only set for progress-cycle bills) — distinct from this module's own
+    // new L1 AGM Approval stage below.
     agmApprovedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     agmApprovedAt: { type: Date },
     makerBy:  { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
@@ -127,17 +135,20 @@ const runningBillSchema = new mongoose.Schema(
     approvedAt:  { type: Date },
     paymentInitiatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     paymentInitiatedAt: { type: Date },
+
+    // Current flow's own stage stamps.
+    verificationBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    verificationAt: { type: Date },
+    l1ApprovedBy:   { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    l1ApprovedAt:   { type: Date },
+    l2ApprovedBy:   { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    l2ApprovedAt:   { type: Date },
+
     tdsAmount:   { type: Number, default: 0 },
-    physicalVerification: {
-      done:   { type: Boolean, default: false },
-      by:     { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-      at:     { type: Date },
-      remark: { type: String, default: '' },
-    },
     rejectedBy:  { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     rejectReason:{ type: String },
 
-    // Set by the Approver's Hold action (only from 'approved') and left
+    // Set by the L2 Director's Hold action (only from 'approved') and left
     // in place — not cleared — by releaseHold, so "was this ever held" stays
     // visible from the document alone without hydrating approvalHistory.
     holdBy:         { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
@@ -146,43 +157,26 @@ const runningBillSchema = new mongoose.Schema(
     holdReleasedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     holdReleasedAt: { type: Date },
 
-    // "Payment Maker" stage — Accounts picks the real payment mode and
-    // confirms a readiness checklist before Physical Verification is allowed.
-    paymentPreparation: {
-      done:        { type: Boolean, default: false },
-      by:          { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-      at:          { type: Date },
-      paymentMode: { type: String, enum: ['neft', 'rtgs', 'imps', 'internet_banking', 'upi', 'cheque', 'dd', 'cash', ''] },
-      checklist: {
-        bankDetailsVerified: { type: Boolean, default: false },
-        fundsAvailable:      { type: Boolean, default: false },
-        voucherPrepared:     { type: Boolean, default: false },
-      },
-      remark: { type: String, default: '' },
-    },
+    // Outbound handoff to the external Transaction Management System, fired
+    // by sendToTms once a bill is 'approved' — tracked here rather than only
+    // in approvalHistory since a failed send doesn't move status, so this is
+    // the only place "how many times, and why did it last fail" is visible.
+    tmsSentAt:            { type: Date },
+    tmsSendAttempts:      { type: Number, default: 0 },
+    tmsLastAttemptAt:     { type: Date },
+    tmsLastError:         { type: String, default: '' },
+    tmsCallbackReceivedAt:{ type: Date },
 
-    // "Mark as Paid" (releasePayment) only flips status — the actual payment
-    // fields below (paymentUTR/paymentDate/paymentMode/paymentBank/
-    // paymentReleasedBy/paidAmount) are filled in afterward by this stage,
-    // once the paperwork/bank statement catches up with what already
-    // physically happened. Same {done,by,at,remark} completion-marker shape
-    // as physicalVerification/paymentPreparation — no duplicate fields,
-    // submitPaymentDetails just sets the existing flat fields directly.
-    paymentDetails: {
-      done:   { type: Boolean, default: false },
-      by:     { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-      at:     { type: Date },
-      remark: { type: String, default: '' },
-    },
-
-    // Append-only record of every stage transition (submit/approve/send-back/
-    // hold/release-hold/payment-prep/physical-verify/release/reconcile) —
-    // mirrors WorkOrder.approvalHistory exactly, kept separate from the
-    // system-wide audit log (logAudit calls already made at every transition)
-    // since this one drives just this drawer's timeline UI.
+    // Append-only record of every stage transition — mirrors
+    // WorkOrder.approvalHistory exactly, kept separate from the system-wide
+    // audit log (logAudit calls already made at every transition) since this
+    // one drives just this drawer's timeline UI. Deliberately NOT a closed
+    // mongoose enum (unlike before this redesign) — a stage/action vocabulary
+    // change would otherwise fail validation on a document's next unrelated
+    // save() just because its historical entries use retired values.
     approvalHistory: [{
-      stage:   { type: String, enum: ['maker', 'checker', 'approver', 'hold', 'payment-maker', 'physical-verify', 'release', 'payment-details'], required: true },
-      action:  { type: String, enum: ['submitted', 'approved', 'sent-back', 'held', 'released-hold', 'done'], required: true },
+      stage:   { type: String, required: true },
+      action:  { type: String, required: true },
       by:      { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
       at:      { type: Date, default: Date.now },
       remarks: { type: String, default: '' },
