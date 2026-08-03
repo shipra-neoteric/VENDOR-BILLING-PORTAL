@@ -47,6 +47,7 @@ app.use('/api/projects',      require('./routes/projects'));
 app.use('/api/contractors',   require('./routes/contractors'));
 app.use('/api/categories',    require('./routes/categories'));
 app.use('/api/work-orders',   require('./routes/workOrders'));
+app.use('/api/quotations',    require('./routes/contractorQuotations'));
 app.use('/api/bills',         require('./routes/bills'));
 app.use('/api/ledger',        require('./routes/ledger'));
 app.use('/api/companies',     require('./routes/companies'));

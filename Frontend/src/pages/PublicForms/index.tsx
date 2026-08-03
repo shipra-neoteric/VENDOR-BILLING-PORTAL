@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { Button, message } from "antd";
-import { CopyOutlined, ExportOutlined, FileTextOutlined, TeamOutlined, ScheduleOutlined, SolutionOutlined } from "@ant-design/icons";
+import { CopyOutlined, ExportOutlined, FileTextOutlined, TeamOutlined, ScheduleOutlined, SolutionOutlined, DiffOutlined } from "@ant-design/icons";
 import PageShell from "../../components/PageShell";
 
 interface PublicFormDef {
@@ -10,6 +10,10 @@ interface PublicFormDef {
   path: string;
   icon: ReactNode;
   color: string;
+  // True for links scoped to one record (e.g. a single work order) rather than
+  // a single fixed generic URL — there's nothing to copy/open here, the actual
+  // link is generated per-record from its own page instead.
+  perRecord?: boolean;
 }
 
 const FORMS: PublicFormDef[] = [
@@ -44,6 +48,15 @@ const FORMS: PublicFormDef[] = [
     path: "/public/labour-report",
     icon: <SolutionOutlined />,
     color: "#0d9488",
+  },
+  {
+    key: "quotation",
+    name: "Contractor Quotation",
+    description: "Lets a contractor submit a competing quote against one specific draft work order — no login required. Each link is scoped to a single work order; generate one from Quotation Comparison.",
+    path: "/quotation-comparison",
+    icon: <DiffOutlined />,
+    color: "#7c3aed",
+    perRecord: true,
   },
 ];
 
@@ -120,27 +133,38 @@ export default function PublicForms() {
                 fontFamily: "monospace", fontSize: 12, color: "var(--nx-text-2)",
                 overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0,
               }}>
-                {origin}{f.path}
+                {f.perRecord ? `${origin}/public/quotation/<work order id>` : `${origin}${f.path}`}
               </span>
             </div>
 
-            <div style={{ display: "flex", gap: 8 }}>
+            {f.perRecord ? (
               <Button
                 type="primary"
-                icon={<CopyOutlined />}
-                onClick={() => copyLink(f.path)}
-                style={{ background: f.color, borderColor: f.color, flex: "2 1 auto" }}
-              >
-                Copy Link
-              </Button>
-              <Button
                 icon={<ExportOutlined />}
                 onClick={() => window.open(f.path, "_blank", "noopener,noreferrer")}
-                style={{ flex: "1 1 auto" }}
+                style={{ background: f.color, borderColor: f.color, width: "100%" }}
               >
-                Open
+                Go to Quotation Comparison
               </Button>
-            </div>
+            ) : (
+              <div style={{ display: "flex", gap: 8 }}>
+                <Button
+                  type="primary"
+                  icon={<CopyOutlined />}
+                  onClick={() => copyLink(f.path)}
+                  style={{ background: f.color, borderColor: f.color, flex: "2 1 auto" }}
+                >
+                  Copy Link
+                </Button>
+                <Button
+                  icon={<ExportOutlined />}
+                  onClick={() => window.open(f.path, "_blank", "noopener,noreferrer")}
+                  style={{ flex: "1 1 auto" }}
+                >
+                  Open
+                </Button>
+              </div>
+            )}
           </div>
         ))}
       </div>

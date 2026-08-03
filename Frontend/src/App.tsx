@@ -7,6 +7,7 @@ import PublicWorkOrderForm from "./pages/PublicWorkOrderForm";
 import PublicContractorForm from "./pages/PublicContractorForm";
 import PublicDailyReportForm from "./pages/PublicDailyReportForm";
 import PublicLabourReportForm from "./pages/PublicLabourReportForm";
+import PublicQuotationForm from "./pages/PublicQuotationForm";
 import { AuthProvider } from "./context/AuthContext";
 import { ThemeProvider, useTheme } from "./context/ThemeContext";
 import baseTheme from "./theme/theme";
@@ -50,6 +51,14 @@ function ThemedApp() {
         <Toaster position="top-right" />
       </ConfigProvider>
     );
+  }
+
+  // Per-work-order-scoped link (/public/quotation/<workOrderId>) — built
+  // entirely with the new Frontend/src/ui/ component library, so it renders
+  // standalone rather than joining the antd ConfigProvider the other public
+  // forms below still need.
+  if (pathname.startsWith("/public/quotation/")) {
+    return <PublicQuotationForm />;
   }
 
   if (pathname === "/public/labour-report") {

@@ -13,6 +13,7 @@ const { milestonesExceedContract } = require('../utils/validateMilestones');
 const { documentsExceedLimit } = require('../utils/validateDocuments');
 const { createPublicReport } = require('../controllers/dailyProjectReportController');
 const { createPublicReport: createPublicLabourReport } = require('../controllers/dailyLabourReportController');
+const { getWorkOrderQuotationContext, submitQuotation } = require('../controllers/contractorQuotationController');
 
 // ── Lookup lists (read-only, no auth) ──────────────────────────
 router.get('/projects', asyncHandler(async (_req, res) => {
@@ -110,6 +111,13 @@ router.post('/daily-reports', createPublicReport);
 
 // ── Submit Daily Contractor / Labour Report (no auth) ────────────
 router.post('/daily-labour-reports', createPublicLabourReport);
+
+// ── Quotation Comparison — per-work-order-scoped public link (no auth) ──
+// Unlike every other public route above, this one is scoped to a single
+// record (the WorkOrder's own _id in the URL) rather than a generic,
+// unscoped creation endpoint — the link itself is the access control.
+router.get('/quotations/work-order/:workOrderId/context', getWorkOrderQuotationContext);
+router.post('/quotations/work-order/:workOrderId', submitQuotation);
 
 // ── Submit new contractor (no auth) ─────────────────────────────
 router.post('/contractors', asyncHandler(async (req, res) => {

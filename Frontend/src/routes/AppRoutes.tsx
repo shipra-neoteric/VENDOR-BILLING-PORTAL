@@ -17,6 +17,7 @@ const Contractors       = lazy(() => import("../features/contractors"));
 const Companies         = lazy(() => import("../features/companies"));
 const Categories        = lazy(() => import("../features/categories"));
 const WorkItems         = lazy(() => import("../features/work-items"));
+const QuotationComparison = lazy(() => import("../pages/QuotationComparison"));
 const WorkProgress      = lazy(() => import("../features/work-progress"));
 const AccountsPayment   = lazy(() => import("../pages/AccountsPayment"));
 const Billing           = lazy(() => import("../pages/Billing"));
@@ -105,6 +106,7 @@ function AdminRoutes() {
             <Route path="/categories"       element={<Categories />} />
             <Route path="/work-items"         element={<WorkItems />} />
             <Route path="/work-items/:id"   element={<WorkOrderDashboard />} />
+            <Route path="/quotation-comparison" element={<QuotationComparison />} />
             <Route path="/work-progress"    element={<WorkProgress />} />
             <Route path="/accounts-payment"  element={<AccountsPayment />} />
             <Route path="/billing"          element={<Billing />} />

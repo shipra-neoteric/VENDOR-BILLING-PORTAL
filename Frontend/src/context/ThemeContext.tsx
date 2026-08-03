@@ -1,37 +1,17 @@
-import { createContext, useContext, useState, useEffect } from "react";
 import type { ReactNode } from "react";
+import { useThemeStore } from "../store/themeStore";
 
-interface ThemeContextType {
-  isDark: boolean;
-  toggleTheme: () => void;
-}
-
-const ThemeContext = createContext<ThemeContextType>({
-  isDark: false,
-  toggleTheme: () => {},
-});
-
+// Thin backward-compatible shim — the actual state now lives in
+// Frontend/src/store/themeStore.ts (Zustand, no Provider needed). Kept so
+// every existing `useTheme()`/`<ThemeProvider>` call site (App.tsx,
+// Header.tsx, BillingChart.tsx) needs zero changes during the design-system
+// migration.
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [isDark, setIsDark] = useState<boolean>(() => {
-    const saved = localStorage.getItem("nx-theme") === "dark";
-    document.documentElement.setAttribute("data-theme", saved ? "dark" : "light");
-    return saved;
-  });
-
-  useEffect(() => {
-    document.documentElement.setAttribute("data-theme", isDark ? "dark" : "light");
-    localStorage.setItem("nx-theme", isDark ? "dark" : "light");
-  }, [isDark]);
-
-  const toggleTheme = () => setIsDark(prev => !prev);
-
-  return (
-    <ThemeContext.Provider value={{ isDark, toggleTheme }}>
-      {children}
-    </ThemeContext.Provider>
-  );
+  return children;
 }
 
 export function useTheme() {
-  return useContext(ThemeContext);
+  const isDark = useThemeStore((s) => s.isDark);
+  const toggleTheme = useThemeStore((s) => s.toggleTheme);
+  return { isDark, toggleTheme };
 }

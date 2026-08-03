@@ -1,5 +1,20 @@
 @import "tailwindcss";
 
+/* Enables Tailwind's `dark:` variant off a `.dark` class on <html> (Frontend/src/store/themeStore.ts
+   toggles this alongside the legacy `data-theme` attribute every existing --nx-* rule still uses,
+   so both the old antd-era pages and the new Frontend/src/ui/ component library stay correct
+   throughout the migration). */
+@variant dark (&:where(.dark, .dark *));
+
+/* Registers `bg-primary`/`text-primary`/`border-primary`/`ring-primary` etc as
+   real Tailwind utilities (Tailwind v4's CSS-native @theme, no tailwind.config.js)
+   for the new Frontend/src/ui/ component library — same orange as the existing
+   --nx-orange token, kept as one literal value rather than referencing the CSS
+   variable here since @theme values must be static. */
+@theme {
+  --color-primary: #FF7A00;
+}
+
 :root {
   /* Brand */
   --nx-orange:        #FF7A00;

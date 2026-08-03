@@ -66,6 +66,7 @@ const MODULE_DEFS: ModuleDef[] = [
   { id: "contractors",      name: "Contractors",        icon: "👷", group: "Project Setup", actions: ["view","create","edit","delete"] },
   { id: "categories",       name: "Categories",         icon: "🏷️", group: "Project Setup", actions: ["view","create","edit","delete"] },
   { id: "work-orders",      name: "Work Orders",        icon: "📋", group: "Execution",     actions: ["view","create","edit","delete","maker","checker","approver","ceo-approve","send-back"] },
+  { id: "quotation-comparison", name: "Quotation Comparison", icon: "📑", group: "Execution", actions: ["view","create","approve"] },
   { id: "work-progress",    name: "Work Progress",      icon: "📊", group: "Execution",     actions: ["view","create","edit","delete"] },
   { id: "bill-requests",    name: "Bill Requests",      icon: "📨", group: "Billing",       actions: ["view","create","agm-approve","gm-approve","reject"] },
   { id: "accounts-payment", name: "Accounts Payment",   icon: "💰", group: "Billing",       actions: ["view","edit","verify","l1-agm-approve","l2-director-approve","hold","release-hold","retry-tms","reject"] },
