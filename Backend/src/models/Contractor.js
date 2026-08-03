@@ -28,6 +28,10 @@ const contractorSchema = new mongoose.Schema(
     reference2:          { type: String },
     averageTurnover:     { type: Number },
     status:              { type: String, enum: ['active', 'inactive'], default: 'active' },
+    // Internal-only — lets several vendor codes belonging to the same real
+    // business (e.g. one firm's individually-registered members) share bill
+    // payee routing. See VendorGroup.js.
+    groupId:             { type: mongoose.Schema.Types.ObjectId, ref: 'VendorGroup', default: null },
     documents: {
       gstCertificate:  docFieldSchema,
       panCard:         docFieldSchema,

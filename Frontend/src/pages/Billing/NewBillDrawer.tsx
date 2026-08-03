@@ -98,6 +98,11 @@ export default function NewBillDrawer({
   const [contractors, setContractors] = useState<Contractor[]>([]);
   const [projectId, setProjectId] = useState<string>("");
   const [contractorId, setContractorId] = useState<string>("");
+  // Who this bill's payment actually goes to — normally the same as the
+  // selected contractor, but a fellow Vendor Group member can be picked
+  // instead (e.g. "Ambika Construction" takes the work, this particular
+  // bill pays a different individually-registered member of that group).
+  const [payeeVendorCode, setPayeeVendorCode] = useState<string>("");
   const [woList, setWoList] = useState<WorkOrderOpt[]>([]);
   const [lineItems, setLineItems] = useState<LineItem[]>([blankRow()]);
   const [gstPercent, setGstPercent] = useState<number>(18);
@@ -132,6 +137,7 @@ export default function NewBillDrawer({
     form.resetFields();
     setProjectId("");
     setContractorId("");
+    setPayeeVendorCode("");
     setWoList([]);
     setLineItems([blankRow()]);
     setGstPercent(18);
@@ -162,6 +168,24 @@ export default function NewBillDrawer({
   const selectedContractor = useMemo(
     () => contractors.find((c) => c.id === contractorId) || null,
     [contractors, contractorId]
+  );
+
+  // Defaults the payee back to the selected contractor's own code whenever
+  // that selection changes — a previous group override shouldn't silently
+  // carry over onto an unrelated contractor.
+  useEffect(() => {
+    setPayeeVendorCode(selectedContractor?.vendorCode || "");
+  }, [selectedContractor?.vendorCode]);
+
+  const groupSiblings = useMemo(
+    () => selectedContractor?.groupId
+      ? contractors.filter((c) => c.groupId === selectedContractor.groupId)
+      : [],
+    [contractors, selectedContractor?.groupId]
+  );
+  const selectedPayee = useMemo(
+    () => contractors.find((c) => c.vendorCode === payeeVendorCode) || selectedContractor,
+    [contractors, payeeVendorCode, selectedContractor]
   );
 
   useEffect(() => {
@@ -320,8 +344,8 @@ export default function NewBillDrawer({
       billDate:          dayjs(values.billDate as string).toISOString(),
       projectId:         projectId || undefined,
       projectName:       project?.name ?? "",
-      vendorCode:        contractor?.vendorCode ?? "",
-      vendorName:        contractor?.companyName ?? "",
+      vendorCode:        selectedPayee?.vendorCode ?? contractor?.vendorCode ?? "",
+      vendorName:        selectedPayee?.companyName ?? contractor?.companyName ?? "",
       generatedBy:       values.generatedBy ?? "",
       contractorRefNo:   values.contractorRefNo ?? "",
       remarks:           values.remarks ?? "",
@@ -432,6 +456,27 @@ export default function NewBillDrawer({
               </Form.Item>
             </Col>
           </Row>
+
+          {groupSiblings.length > 1 && (
+            <Row gutter={16}>
+              <Col span={16}>
+                <Form.Item
+                  label="Pay To (Vendor Group)"
+                  tooltip={`${selectedContractor?.companyName} is part of a Vendor Group — this bill's payment can go to any member, not just the one whose Work Order this is.`}
+                >
+                  <Select
+                    style={{ width: "100%" }}
+                    value={payeeVendorCode}
+                    onChange={(v) => setPayeeVendorCode(v)}
+                    options={groupSiblings.map((c) => ({
+                      value: c.vendorCode,
+                      label: `${vendorLabel(c.companyName, c.shortCode)}  (${c.vendorCode})${c.vendorCode === selectedContractor?.vendorCode ? " — this work order's own vendor" : ""}`,
+                    }))}
+                  />
+                </Form.Item>
+              </Col>
+            </Row>
+          )}
 
           <Row gutter={16}>
             <Col span={8}>

@@ -11,6 +11,7 @@ const { hasUnapprovedVariance, isWorkOrderApproved } = require('../utils/varianc
 const { nextCode } = require('../utils/sequence');
 const { nextBillNo } = require('../utils/codeGen');
 const { recomputeAfterInvalidate } = require('../utils/progressHelpers');
+const { resolvePayee } = require('../utils/vendorGroupHelpers');
 
 // Gathers the DRI's day-to-day notes for whichever progress entries haven't
 // been carried into a bill yet (marks them as consumed on the way out), so
@@ -213,8 +214,15 @@ exports.agmApprove = asyncHandler(async (req, res) => {
   const retentionAmount  = req.body.retentionAmount != null ? Number(req.body.retentionAmount) : defaultRetention;
   const advanceRecovery  = req.body.advanceRecovery != null ? Number(req.body.advanceRecovery) : 0;
 
+  // Who this bill should actually pay — normally left unset (gmApprove then
+  // defaults to the work order's own vendor); only resolved here when AGM
+  // names a fellow Vendor Group member as the payee instead.
+  const payee = await resolvePayee(wo.vendorCode, wo.vendorName, req.body.payeeVendorCode);
+
   br.retentionAmount = retentionAmount;
   br.advanceRecovery = advanceRecovery;
+  br.payeeVendorCode = payee.overridden ? payee.vendorCode : '';
+  br.payeeVendorName = payee.overridden ? payee.vendorName : '';
   br.agmApprovedBy   = req.user._id;
   br.agmApprovedAt   = new Date();
   br.status          = 'pending-gm';
@@ -300,8 +308,8 @@ exports.gmApprove = asyncHandler(async (req, res) => {
     projectId:   wo.projectId,
     projectName: wo.projectName,
     projectLocation: wo.projectLocation,
-    vendorCode:  wo.vendorCode,
-    vendorName:  wo.vendorName,
+    vendorCode:  br.payeeVendorCode || wo.vendorCode,
+    vendorName:  br.payeeVendorName || wo.vendorName,
     companyName: wo.companyName,
     billDate:    new Date(),
     lineItems,

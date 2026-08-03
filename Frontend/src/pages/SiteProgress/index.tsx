@@ -446,6 +446,10 @@ export default function SiteProgress() {
   const [approveTarget,    setApproveTarget]    = useState<string | null>(null);
   const [approveRetention, setApproveRetention] = useState<number | null>(null);
   const [approveAdvance,   setApproveAdvance]   = useState<number | null>(null);
+  // Who this bill's payment actually goes to — normally the work order's own
+  // vendor, but a fellow Vendor Group member can be picked instead.
+  const [approvePayeeCode, setApprovePayeeCode] = useState<string>("");
+  const [approveGroupSiblings, setApproveGroupSiblings] = useState<{ vendorCode: string; companyName: string }[]>([]);
   const [gmModal,     setGmModal]     = useState(false); // GM (L2)
   const [gmTarget,    setGmTarget]    = useState<string | null>(null);
   const [gmRemarks,   setGmRemarks]   = useState("");
@@ -454,16 +458,28 @@ export default function SiteProgress() {
   const [rejectReason, setRejectReason] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const openApprove = (id: string) => {
+  const openApprove = async (id: string) => {
     setApproveTarget(id); setApproveRetention(null); setApproveAdvance(null); setApproveModal(true);
+    setApprovePayeeCode(""); setApproveGroupSiblings([]);
+    const br = billReqs.find(r => r._id === id);
+    if (!br?.vendorCode) return;
+    setApprovePayeeCode(br.vendorCode);
+    try {
+      const cRes = await apiClient.get<{ contractors: Contractor[] }>("/contractors", { params: { search: br.vendorCode } });
+      const contractor = cRes.data.contractors.find(c => c.vendorCode === br.vendorCode);
+      if (!contractor?.groupId) return;
+      const gRes = await apiClient.get<{ members: { vendorCode: string; companyName: string }[] }>(`/vendor-groups/${contractor.groupId}`);
+      setApproveGroupSiblings(gRes.data.members || []);
+    } catch { /* group lookup is best-effort — approval still works without it */ }
   };
   const handleAgmApprove = async () => {
     if (!approveTarget) return;
     setSaving(true);
     try {
-      const body: Record<string, number> = {};
+      const body: Record<string, number | string> = {};
       if (approveRetention != null) body.retentionAmount = approveRetention;
       if (approveAdvance   != null) body.advanceRecovery = approveAdvance;
+      if (approvePayeeCode) body.payeeVendorCode = approvePayeeCode;
       const res = await apiClient.put(`/bill-requests/${approveTarget}/agm-approve`, body);
       message.success(res.data.message || "AGM approved — forwarded to GM");
       setApproveModal(false); setApproveTarget(null); setViewReq(null);
@@ -1137,10 +1153,26 @@ export default function SiteProgress() {
           <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Hold / Retention Amount (₹, optional)</div>
           <InputNumber style={{ width: "100%" }} min={0} placeholder="Auto-calculated from work order retention %" value={approveRetention} onChange={setApproveRetention} />
         </div>
-        <div>
+        <div style={{ marginBottom: approveGroupSiblings.length > 1 ? 12 : 0 }}>
           <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Advance Recovery Amount (₹, optional)</div>
           <InputNumber style={{ width: "100%" }} min={0} placeholder="0" value={approveAdvance} onChange={setApproveAdvance} />
         </div>
+        {approveGroupSiblings.length > 1 && (
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>
+              Pay To (Vendor Group)
+            </div>
+            <Select
+              style={{ width: "100%" }}
+              value={approvePayeeCode}
+              onChange={setApprovePayeeCode}
+              options={approveGroupSiblings.map(c => ({
+                value: c.vendorCode,
+                label: `${c.companyName} (${c.vendorCode})`,
+              }))}
+            />
+          </div>
+        )}
       </Modal>
 
       {/* ── GM approve modal (L2) — final, creates the RunningBill ── */}

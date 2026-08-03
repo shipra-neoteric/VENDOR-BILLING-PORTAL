@@ -2,6 +2,7 @@ const { validationResult } = require('express-validator');
 const RunningBill  = require('../models/RunningBill');
 const BillRequest  = require('../models/BillRequest');
 const WorkOrder    = require('../models/WorkOrder');
+const { resolvePayee } = require('../utils/vendorGroupHelpers');
 const asyncHandler = require('../utils/asyncHandler');
 const { success, created, notFound, badRequest, conflict } = require('../utils/responseFormatter');
 const { nextBillNo } = require('../utils/codeGen');
@@ -138,6 +139,14 @@ exports.createBill = asyncHandler(async (req, res) => {
   // Build linkedBills with billNo enrichment
   const linkedBills = Array.isArray(req.body.linkedBills) ? req.body.linkedBills : [];
 
+  // Who this bill's payment actually goes to — normally the work order's own
+  // vendor, but a fellow Vendor Group member can be named instead (see
+  // resolvePayee). req.body.vendorCode here is the frontend's "Pay To"
+  // selection, not the WO's identity — that's always workOrder.vendorCode.
+  const payee = workOrder
+    ? await resolvePayee(workOrder.vendorCode, workOrder.vendorName, req.body.vendorCode)
+    : { vendorCode: req.body.vendorCode, vendorName: req.body.vendorName };
+
   const bill = await RunningBill.create({
     ...req.body,
     billNo,
@@ -150,10 +159,10 @@ exports.createBill = asyncHandler(async (req, res) => {
       projectId:   workOrder.projectId,
       projectName: workOrder.projectName,
       projectLocation: workOrder.projectLocation,
-      vendorCode:  workOrder.vendorCode,
-      vendorName:  workOrder.vendorName,
       companyName: workOrder.companyName,
     } : {}),
+    vendorCode:  payee.vendorCode,
+    vendorName:  payee.vendorName,
     status:      'draft',
     createdBy:   req.user._id,
   });

@@ -45,6 +45,8 @@ app.use('/api/webhooks',      require('./routes/webhooks')); // no auth — exte
 app.use('/api/auth',          require('./routes/auth'));
 app.use('/api/projects',      require('./routes/projects'));
 app.use('/api/contractors',   require('./routes/contractors'));
+app.use('/api/consultants',   require('./routes/consultants'));
+app.use('/api/vendor-groups', require('./routes/vendorGroups'));
 app.use('/api/categories',    require('./routes/categories'));
 app.use('/api/work-orders',   require('./routes/workOrders'));
 app.use('/api/quotations',    require('./routes/contractorQuotations'));

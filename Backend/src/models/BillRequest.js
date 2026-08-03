@@ -50,6 +50,11 @@ const billRequestSchema = new Schema(
     agmApprovedAt:    { type: Date },
     retentionAmount:  { type: Number, default: 0 },
     advanceRecovery:  { type: Number, default: 0 },
+    // Who this request's eventual bill should actually pay — normally left
+    // unset (defaults to the work order's own vendor at gmApprove); only
+    // set when AGM names a fellow Vendor Group member as the payee instead.
+    payeeVendorCode:  { type: String, default: '' },
+    payeeVendorName:  { type: String, default: '' },
     billId:           { type: Schema.Types.ObjectId, ref: 'RunningBill' },
     requestedBy:      { type: Schema.Types.ObjectId, ref: 'User' },
     // Whoever did the LAST terminal action — gmApprove or a reject at either stage.

@@ -32,7 +32,7 @@ import * as XLSX from "xlsx";
 import PageShell from "../../components/PageShell";
 import ContractorDetailView from "../../components/ContractorDetailView";
 import apiClient from "../../services/apiClient";
-import type { Contractor } from "../../types/VendorBilling";
+import type { Contractor, VendorGroup } from "../../types/VendorBilling";
 import { vendorLabel } from "../../utils/vendorLabel";
 
 const normalizeId = (obj: any) => ({ ...obj, id: obj._id || obj.id });
@@ -173,6 +173,71 @@ function downloadTemplate() {
   XLSX.writeFile(wb, "contractor_import_template.xlsx");
 }
 
+// ── Vendor Group select — pick an existing group or type a new name to
+// create one on the fly (POST /vendor-groups), same "type to add" pattern
+// used for Categories elsewhere in the app. Purely internal — lets several
+// vendor codes belonging to the same real business (e.g. "Ambika
+// Construction" has multiple individually-registered members) share bill
+// payee routing later on.
+function GroupCreatableSelect({
+  value, groups, onSelect, onClear, onCreated,
+}: {
+  value?: string | null;
+  groups: VendorGroup[];
+  onSelect: (groupId: string) => void;
+  onClear: () => void;
+  onCreated: (group: VendorGroup) => void;
+}) {
+  const [search, setSearch] = useState("");
+  const [creating, setCreating] = useState(false);
+
+  const trimmed = search.trim();
+  const exists = trimmed.length > 0 && groups.some(g => g.name.toLowerCase() === trimmed.toLowerCase());
+  const CREATE_VALUE = "__create_new__";
+  const options = [
+    ...groups.map(g => ({ label: `${g.name}${g.memberCount ? ` (${g.memberCount} members)` : ""}`, value: g.id })),
+    ...(trimmed.length > 0 && !exists ? [{ label: `+ Add "${trimmed}" as new vendor group`, value: CREATE_VALUE }] : []),
+  ];
+
+  async function handleChange(v: string) {
+    if (v !== CREATE_VALUE) {
+      onSelect(v);
+      setSearch("");
+      return;
+    }
+    setCreating(true);
+    try {
+      const res = await apiClient.post<{ group: VendorGroup }>("/vendor-groups", { name: trimmed });
+      const group = normalizeId(res.data.group) as unknown as VendorGroup;
+      onCreated(group);
+      onSelect(group.id);
+      message.success(`Vendor group "${group.name}" created`);
+    } catch (err: any) {
+      message.error(err?.response?.data?.message || "Failed to create vendor group");
+    } finally {
+      setCreating(false);
+      setSearch("");
+    }
+  }
+
+  return (
+    <Select
+      placeholder="No group — standalone vendor"
+      value={value || undefined}
+      options={options}
+      onChange={handleChange}
+      allowClear
+      onClear={() => { onClear(); setSearch(""); }}
+      showSearch
+      searchValue={search}
+      onSearch={setSearch}
+      filterOption={(inp, opt) => String(opt?.label ?? "").toLowerCase().includes(inp.toLowerCase())}
+      loading={creating}
+      notFoundContent={creating ? "Adding..." : "Type a name to add it"}
+    />
+  );
+}
+
 // ── Main Component ─────────────────────────────────────────────
 
 export default function Contractors() {
@@ -184,6 +249,8 @@ export default function Contractors() {
   const [editingContractor, setEditingContractor] = useState<Contractor | null>(null);
   const [viewOpen, setViewOpen]       = useState(false);
   const [selected, setSelected]       = useState<Contractor | null>(null);
+  const [vendorGroups, setVendorGroups] = useState<VendorGroup[]>([]);
+  const [groupId, setGroupId] = useState<string | null>(null);
   const [form] = Form.useForm();
 
   // ── Import state ──────────────────────────────────────────────
@@ -275,7 +342,13 @@ export default function Contractors() {
       .then((r) => setContractors(r.data.contractors.map(normalizeId)))
       .catch(() => {})
       .finally(() => setLoading(false));
+    apiClient
+      .get<{ groups: VendorGroup[] }>("/vendor-groups")
+      .then((r) => setVendorGroups(r.data.groups.map(normalizeId)))
+      .catch(() => {});
   }, []);
+
+  const groupById = (id?: string | null) => vendorGroups.find((g) => g.id === id);
 
   const filtered = contractors.filter(
     (c) =>
@@ -288,18 +361,20 @@ export default function Contractors() {
   const handleRegister = async () => {
     try {
       const values = await form.validateFields();
+      const payload = { ...values, groupId };
       setSaving(true);
       if (editingContractor) {
-        const res = await apiClient.put<{ contractor: Contractor }>(`/contractors/${editingContractor.id}`, values);
+        const res = await apiClient.put<{ contractor: Contractor }>(`/contractors/${editingContractor.id}`, payload);
         const updated = normalizeId(res.data.contractor);
         setContractors((prev) => prev.map((c) => (c.id === editingContractor.id ? updated : c)));
         message.success(`${res.data.contractor.companyName} updated`);
       } else {
-        const res = await apiClient.post<{ contractor: Contractor }>("/contractors", values);
+        const res = await apiClient.post<{ contractor: Contractor }>("/contractors", payload);
         setContractors((prev) => [normalizeId(res.data.contractor), ...prev]);
         message.success(`${res.data.contractor.companyName} registered as ${res.data.contractor.vendorCode}`);
       }
       form.resetFields();
+      setGroupId(null);
       setEditingContractor(null);
       setRegisterOpen(false);
     } catch (err: unknown) {
@@ -311,6 +386,7 @@ export default function Contractors() {
 
   const openEdit = (record: Contractor) => {
     form.setFieldsValue(record);
+    setGroupId(record.groupId || null);
     setEditingContractor(record);
     setRegisterOpen(true);
   };
@@ -333,6 +409,15 @@ export default function Contractors() {
     },
     { title: "Owner", dataIndex: "ownerName", width: 150 },
     { title: "Mobile", dataIndex: "mobile", width: 130 },
+    {
+      title: "Vendor Group",
+      dataIndex: "groupId",
+      width: 150,
+      render: (v: string | null | undefined) => {
+        const group = groupById(v);
+        return group ? <Tag color="purple">{group.name}</Tag> : <span style={{ color: "#9CA3AF" }}>—</span>;
+      },
+    },
     {
       title: "Work Types",
       dataIndex: "workTypes",
@@ -414,7 +499,7 @@ export default function Contractors() {
             type="primary"
             icon={<PlusOutlined />}
             size="large"
-            onClick={() => { form.resetFields(); setEditingContractor(null); setRegisterOpen(true); }}
+            onClick={() => { form.resetFields(); setGroupId(null); setEditingContractor(null); setRegisterOpen(true); }}
             style={{ background: "#FF7A00", borderColor: "#FF7A00" }}
           >
             Register Contractor
@@ -530,6 +615,20 @@ export default function Contractors() {
             <Col span={12}>
               <Form.Item label="Owner Name" name="ownerName" rules={[{ required: true }]}>
                 <Input placeholder="e.g. Rajesh Sharma" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item
+                label="Vendor Group (optional)"
+                tooltip="If this vendor code is one of several individually-registered members of the same real business (e.g. different people at 'Ambika Construction' each with their own vendor code), group them here — a bill against any member's work order can then be paid into any other member's account."
+              >
+                <GroupCreatableSelect
+                  value={groupId}
+                  groups={vendorGroups}
+                  onSelect={setGroupId}
+                  onClear={() => setGroupId(null)}
+                  onCreated={(group) => setVendorGroups((prev) => [...prev, group])}
+                />
               </Form.Item>
             </Col>
           </Row>
