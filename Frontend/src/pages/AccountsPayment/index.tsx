@@ -1011,7 +1011,11 @@ export default function AccountsPayment() {
                   onChange={(v) => {
                     const pct = Number(v) || 0;
                     setVerifyTdsPercent(pct);
-                    setVerifyTdsAmount(Math.round((bill.amount || 0) * pct / 100));
+                    // TDS applies to what's actually payable now — the gross minus what's
+                    // being held back, before GST (a pass-through tax, not the
+                    // contractor's income). Never on the GST-inclusive figure.
+                    const tdsBase = (bill.amount || 0) - (bill.retentionAmount ?? 0);
+                    setVerifyTdsAmount(Math.round(tdsBase * pct / 100));
                   }}
                 />
               </Col>
@@ -1022,8 +1026,8 @@ export default function AccountsPayment() {
                   onChange={(v) => {
                     const amt = Number(v) || 0;
                     setVerifyTdsAmount(amt);
-                    const gross = bill.amount || 0;
-                    setVerifyTdsPercent(gross > 0 ? Math.round((amt / gross) * 10000) / 100 : 0);
+                    const tdsBase = (bill.amount || 0) - (bill.retentionAmount ?? 0);
+                    setVerifyTdsPercent(tdsBase > 0 ? Math.round((amt / tdsBase) * 10000) / 100 : 0);
                   }}
                 />
               </Col>
