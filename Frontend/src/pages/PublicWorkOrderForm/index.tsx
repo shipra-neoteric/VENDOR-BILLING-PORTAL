@@ -298,14 +298,16 @@ function ScopeItemCard({
         {/* Row 3: Dates + Sub-Items toggle */}
         <Row gutter={[10, 10]} style={{ marginTop: 10 }}>
           <Col xs={12} sm={6}>
-            <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Start Date</div>
+            <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Start Date <span style={{ color: "#e03b3b" }}>*</span></div>
             <DatePicker format="DD/MM/YYYY" style={{ width: "100%" }}
+              status={!item.plannedStart ? "error" : undefined}
               value={item.plannedStart ? dayjs(item.plannedStart) : null}
               onChange={d => onChange({ plannedStart: d ? d.format("YYYY-MM-DD") : "" })} />
           </Col>
           <Col xs={12} sm={6}>
-            <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>End Date</div>
+            <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>End Date <span style={{ color: "#e03b3b" }}>*</span></div>
             <DatePicker format="DD/MM/YYYY" style={{ width: "100%" }}
+              status={!item.plannedEnd ? "error" : undefined}
               value={item.plannedEnd ? dayjs(item.plannedEnd) : null}
               onChange={d => onChange({ plannedEnd: d ? d.format("YYYY-MM-DD") : "" })} />
           </Col>
@@ -421,6 +423,10 @@ export default function PublicWorkOrderForm() {
     const milestonesTotal = calcGrandTotal(milestones);
     if (milestonesTotal > contractValueInclGst + 1) {
       message.error(`Payment milestones total (${fmt(milestonesTotal)}) exceeds the scope of work's contract value incl. GST (${fmt(contractValueInclGst)})`);
+      return;
+    }
+    if (scopeItems.some(i => (i.description.trim() || i.subCategoryId) && (!i.plannedStart || !i.plannedEnd))) {
+      message.error("Start Date and End Date are required for every work item");
       return;
     }
     setSubmitting(true);
