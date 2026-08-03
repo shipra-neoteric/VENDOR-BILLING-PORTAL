@@ -11,6 +11,7 @@ import BillDetailModal, { type BillDetailRequest } from "../../components/BillDe
 import WorkOrderApprovalWorkflow, {
   type ActorRef, type ApprovalStatus, type ApprovalHistoryEntry,
 } from "../../components/WorkOrderApprovalWorkflow";
+import { billFinancials } from "../../shared/utils/billMath";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface ProgressEntry { _id: string; date: string; qtyAdded: number; remarks?: string; }
@@ -60,7 +61,10 @@ const fmtMoney = (n: number) => "₹" + Math.round(n).toLocaleString("en-IN");
 // Net of GST, hold/retention and advance recovery — the amount actually due to the
 // contractor before TDS, not the raw gross bill figure. Matches Bills/Ledger/Approvals.
 const netPayable = (b: NonNullable<BillRequestStage["billId"]>) =>
-  Math.round(b.amount * (1 + (b.gstPercent ?? 0) / 100) - (b.retentionAmount ?? 0) - (b.advanceRecovery ?? 0));
+  billFinancials({
+    gross: b.amount, gstPercent: b.gstPercent ?? 0,
+    retentionAmount: b.retentionAmount ?? 0, advanceRecovery: b.advanceRecovery ?? 0,
+  }).netPayable;
 
 // Same "Hold — <stage>" convention used across Bills/Approvals/Ledger so a bill's
 // status reads the same way everywhere in the system.

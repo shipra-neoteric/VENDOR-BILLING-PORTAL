@@ -24,6 +24,7 @@ import { vendorLabel } from "../../utils/vendorLabel";
 import StatusTag from "../../shared/components/StatusTag";
 import type { Contractor } from "../../types/VendorBilling";
 import { BILL_TYPE_CFG, RELATIONSHIP_OPTIONS } from "../../shared/constants/billOptions";
+import { billFinancials, holdAmountFromPercent } from "../../shared/utils/billMath";
 
 // ── Types — a self-contained slice of what AccountsPayment's own Bill/LineItem
 // types look like, since this drawer fetches and posts independently ────────
@@ -273,12 +274,10 @@ export default function NewBillDrawer({
   );
 
   const gross = totalLineAmount;
-  const gstAmt = Math.round(gross * gstPercent / 100);
-  const netBeforeHold = gross + gstAmt;
   const holdAmount = holdMode === "percent"
-    ? Math.round(netBeforeHold * (holdPercent || 0) / 100)
+    ? holdAmountFromPercent(gross, holdPercent || 0)
     : Math.round(holdAmountInput || 0);
-  const netAfterHold = netBeforeHold - holdAmount;
+  const { gstAmount: gstAmt, netAfterHold } = billFinancials({ gross, gstPercent, retentionAmount: holdAmount });
   const maxRecovery = pendingAdvances.reduce((s, sl) => s + sl.balance, 0);
   const payableNow = Math.max(0, netAfterHold - (recoveryAmount || 0));
 
@@ -332,7 +331,7 @@ export default function NewBillDrawer({
       relationshipType:  linkedBills.length > 0 ? relType : "NONE",
       linkedBills:       linkedBills.length > 0 ? linkedBills : [],
       workOrderId:       linkedToScopeItems ? (importedFromWOId || selectedWOId || undefined) : (selectedWOId || undefined),
-      retentionPercent:  holdMode === "percent" ? (holdPercent || 0) : (netBeforeHold > 0 ? Math.round((holdAmount / netBeforeHold) * 10000) / 100 : 0),
+      retentionPercent:  holdMode === "percent" ? (holdPercent || 0) : (gross > 0 ? Math.round((holdAmount / gross) * 10000) / 100 : 0),
       retentionAmount:   holdAmount,
       ...(recoveries.length ? { advanceRecoveries: recoveries } : {}),
       lineItems: validItems.map(({ key: _k, lastBilledQty: _l, percentComplete: _p, groupLabel: _g, ...rest }) => ({
@@ -757,15 +756,11 @@ export default function NewBillDrawer({
             <div style={{ display: "flex", justifyContent: "space-between", padding: "7px 14px", borderBottom: "1px solid #f5f6f8", color: "#1a1f2e" }}>
               <span>Gross Amount</span><span>{fmt(gross)}</span>
             </div>
-            <div style={{ display: "flex", justifyContent: "space-between", padding: "7px 14px", borderBottom: "1px solid #f5f6f8", color: "#16a85a" }}>
-              <span>+ GST @ {gstPercent}%</span><span>{fmt(gstAmt)}</span>
-            </div>
-            <div style={{ display: "flex", justifyContent: "space-between", padding: "7px 14px", borderBottom: "1px solid #f5f6f8", color: "#1a1f2e" }}>
-              <span>Net Before Hold</span><span>{fmt(netBeforeHold)}</span>
-            </div>
           </div>
 
-          {/* Hold */}
+          {/* Hold — taken off the gross first, since it's a security deposit on the
+              contractor's own basic value, not on the GST they merely collect on
+              the government's behalf. GST below is calculated on what's left. */}
           <div style={{ padding: "10px 14px", borderBottom: "1px solid #f5f6f8", background: "#fefce8" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
               <span style={{ fontWeight: 700, fontSize: 12, color: "#92400e" }}>Hold (Retention)</span>
@@ -783,7 +778,7 @@ export default function NewBillDrawer({
               />
             ) : (
               <InputNumber<number>
-                style={{ width: "100%" }} min={0} max={netBeforeHold} prefix="₹"
+                style={{ width: "100%" }} min={0} max={gross} prefix="₹"
                 value={holdAmountInput}
                 onChange={(v) => setHoldAmountInput(Number(v) || 0)}
                 placeholder="0 — leave blank to skip"
@@ -791,6 +786,18 @@ export default function NewBillDrawer({
             )}
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginTop: 6, color: "#b45309", fontFamily: "monospace" }}>
               <span>Held this bill</span><span>− {fmt(holdAmount)}</span>
+            </div>
+          </div>
+
+          <div style={{ fontFamily: "monospace", fontSize: 13 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", padding: "7px 14px", borderBottom: "1px solid #f5f6f8", color: "#1a1f2e" }}>
+              <span>Net Before GST</span><span>{fmt(gross - holdAmount)}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", padding: "7px 14px", borderBottom: "1px solid #f5f6f8", color: "#16a85a" }}>
+              <span>+ GST @ {gstPercent}%</span><span>{fmt(gstAmt)}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", padding: "7px 14px", borderBottom: "1px solid #f5f6f8", color: "#1a1f2e" }}>
+              <span>Net After Hold</span><span>{fmt(netAfterHold)}</span>
             </div>
           </div>
 

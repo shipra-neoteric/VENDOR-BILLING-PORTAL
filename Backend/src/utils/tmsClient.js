@@ -7,11 +7,16 @@
 const TMS_TIMEOUT_MS = 15000;
 
 // netAfterAdvance-equivalent for what TMS should actually pay out — matches
-// the same GST/retention/advance/TDS breakdown already shown throughout the
-// rest of this system (e.g. AccountsPayment's netAfterAdvance()).
+// the same Gross -> Hold -> GST -> Net breakdown used throughout the rest of
+// this system (e.g. Frontend/src/shared/utils/billMath.ts's billFinancials).
+// Hold comes off the gross FIRST — it's a security deposit on the
+// contractor's own basic value, not on the GST they merely collect on the
+// government's behalf — and GST is then calculated on what's left.
 function netPayable(bill) {
-  const gross = (bill.amount || 0) * (1 + (bill.gstPercent ?? 0) / 100);
-  return Math.round(gross - (bill.retentionAmount || 0) - (bill.advanceRecovery || 0) - (bill.tdsAmount || 0));
+  const netBeforeGst = (bill.amount || 0) - (bill.retentionAmount || 0);
+  const gstAmount     = netBeforeGst * (bill.gstPercent ?? 0) / 100;
+  const netAfterHold  = netBeforeGst + gstAmount;
+  return Math.round(netAfterHold - (bill.advanceRecovery || 0) - (bill.tdsAmount || 0));
 }
 
 async function sendBill(bill, contractor) {

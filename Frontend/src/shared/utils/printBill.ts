@@ -2,6 +2,7 @@ import dayjs from "dayjs";
 import type { Contractor } from "../../types/VendorBilling";
 import { BILL_STATUS_LABEL } from "../constants/billStatus";
 import type { BillStatus } from "../constants/billStatus";
+import { billFinancials } from "./billMath";
 
 export interface PrintableBillUser {
   _id?: string;
@@ -187,18 +188,21 @@ export function printBill(
     <div style="display:flex;justify-content:space-between;padding:9px 14px;border-bottom:1px solid #eee">
       <span>Gross Amount</span><span>₹${(bill.amount || 0).toLocaleString("en-IN")}</span>
     </div>
-    ${(bill.gstPercent ?? 0) > 0 ? `
-    <div style="display:flex;justify-content:space-between;padding:9px 14px;border-bottom:1px solid #eee;color:#16a34a">
-      <span>GST @ ${bill.gstPercent}%</span><span>+ ₹${Math.round((bill.amount || 0) * (bill.gstPercent ?? 0) / 100).toLocaleString("en-IN")}</span>
-    </div>` : ""}
     ${(bill.retentionAmount ?? 0) > 0 ? `
     <div style="display:flex;justify-content:space-between;padding:9px 14px;border-bottom:1px solid #eee;color:#dc2626">
       <span>Hold / Retention${(bill.retentionPercent ?? 0) > 0 ? ` @ ${bill.retentionPercent}%` : ""}</span>
       <span>− ₹${Math.round(bill.retentionAmount ?? 0).toLocaleString("en-IN")}</span>
     </div>` : ""}
     ${(() => {
+      const { gstAmount } = billFinancials({ gross: bill.amount || 0, gstPercent: bill.gstPercent ?? 0, retentionAmount: bill.retentionAmount ?? 0 });
+      return gstAmount > 0 ? `
+    <div style="display:flex;justify-content:space-between;padding:9px 14px;border-bottom:1px solid #eee;color:#16a34a">
+      <span>GST @ ${bill.gstPercent}%</span><span>+ ₹${gstAmount.toLocaleString("en-IN")}</span>
+    </div>` : "";
+    })()}
+    ${(() => {
       const advRec = Math.round(bill.advanceRecovery ?? 0);
-      const netPay = Math.round((bill.amount || 0) * (1 + (bill.gstPercent ?? 0) / 100) - (bill.retentionAmount ?? 0));
+      const netPay = billFinancials({ gross: bill.amount || 0, gstPercent: bill.gstPercent ?? 0, retentionAmount: bill.retentionAmount ?? 0 }).netAfterHold;
       if (mode === 'pre') {
         // PRE-PAYMENT: show advance recovery, end at net payable (no TDS/payment)
         return `${advRec > 0 ? `

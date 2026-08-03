@@ -53,6 +53,7 @@ import WorkOrderDetailView from "../../components/WorkOrderDetailView";
 import ContractorDetailView from "../../components/ContractorDetailView";
 import type { WorkOrder, Contractor } from "../../types/VendorBilling";
 import { printBill } from "../../shared/utils/printBill";
+import { billFinancials } from "../../shared/utils/billMath";
 import { BILL_TYPE_CFG } from "../../shared/constants/billOptions";
 
 // ── Types ────────────────────────────────────────────────────────
@@ -157,11 +158,13 @@ interface ProjectOpt { id: string; name: string; code: string; parentId?: string
 // ── Helpers ──────────────────────────────────────────────────────
 
 const fmt = (n: number) => "₹" + Math.round(n || 0).toLocaleString("en-IN");
-// Net payable after GST + hold/retention, minus advance recovery — before TDS.
-const netAfterAdvance = (b: Bill) => {
-  const netPay = (b.amount || 0) * (1 + (b.gstPercent ?? 0) / 100) - (b.retentionAmount ?? 0);
-  return Math.round(netPay - (b.advanceRecovery ?? 0));
-};
+// Net payable after Hold/Retention (off the gross) + GST (on what's left of
+// the gross after Hold), minus advance recovery — before TDS.
+const netAfterAdvance = (b: Bill) =>
+  billFinancials({
+    gross: b.amount || 0, gstPercent: b.gstPercent ?? 0,
+    retentionAmount: b.retentionAmount ?? 0, advanceRecovery: b.advanceRecovery ?? 0,
+  }).netPayable;
 const normalizeId = (obj: Record<string, unknown>) => ({ ...obj, id: (obj._id || obj.id)?.toString() || "" });
 
 // Full-fidelity normalize — for the WO quick-view drawer, which
@@ -1444,19 +1447,21 @@ export default function AccountsPayment() {
               const isVerifyStage = bill.status === "draft";
               const gross    = bill.amount || 0;
               const gstPct   = bill.gstPercent ?? 0;
-              const gstAmt   = Math.round(gross * gstPct / 100);
               const retAmt   = bill.retentionAmount ?? 0;
               const retPct   = bill.retentionPercent ?? 0;
               const advRec   = bill.advanceRecovery ?? 0;
-              const netPay   = gross + gstAmt - retAmt;
               const paid     = bill.paidAmount;
               const retRel   = bill.retentionReleased ?? 0;
               const tdsPctDisplay = isVerifyStage ? verifyTdsPercent : bill.tdsPercent;
               const tdsAmt = isVerifyStage ? verifyTdsAmount : (bill.tdsAmount ?? 0);
 
-              // Net Payable is the true bottom line — Hold/Retention, Advance Recovery,
-              // and TDS all land above it now (in that order), not scattered after it.
-              const finalNetPayable = netPay - advRec - tdsAmt;
+              // Hold comes off the gross first (it's a deposit against the
+              // contractor's own basic value, not the GST); GST is then calculated
+              // on what's left. Net Payable is the true bottom line — Hold,
+              // Advance Recovery, and TDS all land above it now, not after it.
+              const { gstAmount: gstAmt, netPayable: finalNetPayable } = billFinancials({
+                gross, gstPercent: gstPct, retentionAmount: retAmt, advanceRecovery: advRec, tdsAmount: tdsAmt,
+              });
               const retReleaseRemark = bill.retentionReleaseRemark;
 
               type SummaryRow = { label: string; value: string; color: string; bold?: boolean; borderTop?: boolean; bg?: string };

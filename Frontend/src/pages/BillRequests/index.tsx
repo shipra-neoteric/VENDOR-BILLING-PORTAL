@@ -14,6 +14,7 @@ import { selectableProjects } from "../../utils/projectOptions";
 import { useAuth } from "../../context/AuthContext";
 import WorkflowInstanceStepper from "../../components/WorkflowInstanceStepper";
 import type { WorkflowInstance } from "../../types/Workflow";
+import { billFinancials } from "../../shared/utils/billMath";
 
 const fmt = (n: number) => "₹" + Math.round(n).toLocaleString("en-IN");
 
@@ -521,10 +522,9 @@ export default function BillRequests() {
             {viewReq.status === "approved" && viewReq.billId && (() => {
               const b = viewReq.billId;
               const gross   = b.amount || 0;
-              const gstAmt  = Math.round(gross * (b.gstPercent ?? 0) / 100);
               const retAmt  = b.retentionAmount ?? 0;
               const advRec  = b.advanceRecovery ?? 0;
-              const netPay  = gross + gstAmt - retAmt;
+              const { gstAmount: gstAmt, netAfterHold: netPay } = billFinancials({ gross, gstPercent: b.gstPercent ?? 0, retentionAmount: retAmt });
               const paid    = b.paidAmount;
               const tdsAmt  = paid != null ? Math.max(0, Math.round(netPay - advRec - paid)) : 0;
               return (
@@ -537,13 +537,13 @@ export default function BillRequests() {
                       <span style={{ color: "#6B7280" }}>Gross Billed</span>
                       <span style={{ fontWeight: 600 }}>{fmt(gross)}</span>
                     </div>
-                    {gstAmt > 0 && <div style={{ display: "flex", justifyContent: "space-between" }}>
-                      <span style={{ color: "#16a34a" }}>GST @ {b.gstPercent}%</span>
-                      <span style={{ color: "#16a34a" }}>+ {fmt(gstAmt)}</span>
-                    </div>}
                     {retAmt > 0 && <div style={{ display: "flex", justifyContent: "space-between" }}>
                       <span style={{ color: "#dc2626" }}>Hold / Retention{(b.retentionPercent ?? 0) > 0 ? ` @ ${b.retentionPercent}%` : ""}</span>
                       <span style={{ color: "#dc2626" }}>− {fmt(retAmt)}</span>
+                    </div>}
+                    {gstAmt > 0 && <div style={{ display: "flex", justifyContent: "space-between" }}>
+                      <span style={{ color: "#16a34a" }}>GST @ {b.gstPercent}%</span>
+                      <span style={{ color: "#16a34a" }}>+ {fmt(gstAmt)}</span>
                     </div>}
                     <div style={{ display: "flex", justifyContent: "space-between", borderTop: "1px solid #86efac", paddingTop: 4, marginTop: 2, fontWeight: 700 }}>
                       <span>Net Payable</span>

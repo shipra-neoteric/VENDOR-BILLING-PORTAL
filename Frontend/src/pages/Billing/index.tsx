@@ -12,6 +12,7 @@ import type { AuthUser } from "../../context/AuthContext";
 import StatusTag from "../../shared/components/StatusTag";
 import { BILL_TYPE_CFG } from "../../shared/constants/billOptions";
 import { BILL_STATUS, BILL_STATUS_LABEL } from "../../shared/constants/billStatus";
+import { billFinancials } from "../../shared/utils/billMath";
 import NewBillDrawer from "./NewBillDrawer";
 
 // ── Types — a read-only slice of what AccountsPayment's own Bill looks
@@ -55,10 +56,11 @@ interface Bill {
 interface ProjectOpt { id: string; name: string; code: string; parentId?: string | null; }
 
 const fmt = (n: number) => "₹" + Math.round(n || 0).toLocaleString("en-IN");
-const netAfterAdvance = (b: Bill) => {
-  const netPay = (b.amount || 0) * (1 + (b.gstPercent ?? 0) / 100) - (b.retentionAmount ?? 0);
-  return Math.round(netPay - (b.advanceRecovery ?? 0));
-};
+const netAfterAdvance = (b: Bill) =>
+  billFinancials({
+    gross: b.amount || 0, gstPercent: b.gstPercent ?? 0,
+    retentionAmount: b.retentionAmount ?? 0, advanceRecovery: b.advanceRecovery ?? 0,
+  }).netPayable;
 const normalizeId = (obj: Record<string, unknown>) => ({ ...obj, id: (obj._id || obj.id)?.toString() || "" });
 
 function hasPerm(user: AuthUser | null, action: string): boolean {
@@ -298,14 +300,14 @@ export default function Billing() {
               <div style={{ display: "flex", justifyContent: "space-between", padding: "7px 14px", borderBottom: "1px solid #f5f6f8" }}>
                 <span>Gross Amount</span><span>{fmt(viewBill.amount)}</span>
               </div>
-              <div style={{ display: "flex", justifyContent: "space-between", padding: "7px 14px", borderBottom: "1px solid #f5f6f8" }}>
-                <span>+ GST @ {viewBill.gstPercent}%</span><span>{fmt(viewBill.amount * (viewBill.gstPercent || 0) / 100)}</span>
-              </div>
               {(viewBill.retentionAmount ?? 0) > 0 && (
                 <div style={{ display: "flex", justifyContent: "space-between", padding: "7px 14px", borderBottom: "1px solid #f5f6f8", color: "#b45309" }}>
                   <span>− Hold / Retention{viewBill.retentionPercent ? ` (${viewBill.retentionPercent}%)` : ""}</span><span>{fmt(viewBill.retentionAmount || 0)}</span>
                 </div>
               )}
+              <div style={{ display: "flex", justifyContent: "space-between", padding: "7px 14px", borderBottom: "1px solid #f5f6f8" }}>
+                <span>+ GST @ {viewBill.gstPercent}%</span><span>{fmt(billFinancials({ gross: viewBill.amount, gstPercent: viewBill.gstPercent, retentionAmount: viewBill.retentionAmount ?? 0 }).gstAmount)}</span>
+              </div>
               {(viewBill.advanceRecovery ?? 0) > 0 && (
                 <div style={{ display: "flex", justifyContent: "space-between", padding: "7px 14px", borderBottom: "1px solid #f5f6f8", color: "#b45309" }}>
                   <span>− Advance Recovery</span><span>{fmt(viewBill.advanceRecovery || 0)}</span>
