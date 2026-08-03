@@ -71,6 +71,10 @@ const scopeItemSchema = new mongoose.Schema(
     gstPercent:      { type: Number, default: 18 },
     plannedStart:    { type: String },
     plannedEnd:      { type: String },
+    // Only meaningful for a professional-services WorkOrder's deliverables —
+    // e.g. "Concept", "Design Development", "Final Submission". Blank/unused
+    // for execution scope items.
+    stage:           { type: String, default: '' },
     status:          { type: String, enum: ['pending', 'running', 'completed'], default: 'pending' },
     completedQty:    { type: Number, default: 0 },
     lastBilledQty:   { type: Number, default: 0 },
@@ -112,6 +116,14 @@ const workOrderSchema = new mongoose.Schema(
     projectId:     { type: mongoose.Schema.Types.ObjectId, ref: 'Project', required: true },
     projectName:   { type: String },
     projectLocation: { type: String, default: '' },
+    // Execution (construction, the default — measured scope items, retention/
+    // DLP, qty-based progress) vs professional-services (design/consultancy —
+    // deliverables, stages, milestone fees, no measurement). Existing WOs
+    // predating this field are all execution, matching the default below.
+    contractType:  { type: String, enum: ['execution', 'professional-services'], default: 'execution' },
+    // For professional-services, this resolves against Consultant instead of
+    // Contractor (consultantCode/vendorCode prefixes CN-/VC- never collide,
+    // so the same field doubles as the lookup key into either collection).
     vendorCode:    { type: String, required: true },
     vendorName:    { type: String },
     ownerName:     { type: String },

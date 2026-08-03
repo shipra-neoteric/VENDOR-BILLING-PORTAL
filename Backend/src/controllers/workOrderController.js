@@ -1,13 +1,14 @@
 const { validationResult } = require('express-validator');
 const WorkOrder    = require('../models/WorkOrder');
 const Contractor   = require('../models/Contractor');
+const Consultant   = require('../models/Consultant');
 const Project      = require('../models/Project');
 const Company      = require('../models/Company');
 const BillRequest  = require('../models/BillRequest');
 const RunningBill  = require('../models/RunningBill');
 const asyncHandler = require('../utils/asyncHandler');
 const { success, created, notFound, badRequest, conflict } = require('../utils/responseFormatter');
-const { nextWorkOrderNo } = require('../utils/codeGen');
+const { nextWorkOrderNo, nextConsultancyOrderNo } = require('../utils/codeGen');
 const emitEvent    = require('../utils/emitEvent');
 const { startInstance } = require('../utils/slaEngine');
 const { milestonesExceedContract } = require('../utils/validateMilestones');
@@ -118,15 +119,25 @@ exports.createWorkOrder = asyncHandler(async (req, res) => {
   const project = await Project.findById(req.body.projectId);
   if (!project) return notFound(res, 'Project not found');
 
-  const contractor = await Contractor.findOne({ vendorCode: req.body.vendorCode });
-  if (!contractor) return notFound(res, 'Contractor not found for this vendor code');
+  // Professional-services WOs resolve their party against Consultant instead
+  // of Contractor — vendorCode doubles as the lookup key into either
+  // collection (CN-/VC- prefixes never collide).
+  const isProfessionalServices = req.body.contractType === 'professional-services';
+  const party = isProfessionalServices
+    ? await Consultant.findOne({ consultantCode: req.body.vendorCode })
+    : await Contractor.findOne({ vendorCode: req.body.vendorCode });
+  if (!party) {
+    return notFound(res, isProfessionalServices
+      ? 'Consultant not found for this consultant code'
+      : 'Contractor not found for this vendor code');
+  }
 
   let workOrderNo = (req.body.workOrderNo || '').trim();
   if (workOrderNo) {
     const duplicate = await WorkOrder.findOne({ workOrderNo });
     if (duplicate) return conflict(res, `Work order number ${workOrderNo} already exists`);
   } else {
-    workOrderNo = await nextWorkOrderNo();
+    workOrderNo = isProfessionalServices ? await nextConsultancyOrderNo() : await nextWorkOrderNo();
   }
 
   let companyName = '';
@@ -147,9 +158,9 @@ exports.createWorkOrder = asyncHandler(async (req, res) => {
     companyName,
     projectName: project.name,
     projectLocation: req.body.projectLocation || '',
-    vendorName:  contractor.companyName,
-    ownerName:   contractor.ownerName,
-    mobile:      contractor.mobile,
+    vendorName:  isProfessionalServices ? party.firmName : party.companyName,
+    ownerName:   isProfessionalServices ? party.principalName : party.ownerName,
+    mobile:      party.mobile,
     assignedDRI,
     preparedByName:    req.user.name,
     preparedByContact: req.user.email,

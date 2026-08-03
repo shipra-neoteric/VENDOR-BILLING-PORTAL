@@ -140,6 +140,7 @@ interface WOData {
   ownerName?: string;
   mobile?: string;
   issuedUnder?: "company" | "owner";
+  contractType?: "execution" | "professional-services";
   assignedDRI?: ({ name: string; email?: string; mobile?: string } | string)[];
   contractValue?: number;
   discount?: number;
@@ -155,6 +156,7 @@ interface WOData {
     gstPercent?: number;
     plannedStart?: string;
     plannedEnd?: string;
+    stage?: string;
     subItems?: Array<{ description: string; remarks?: string; unit?: string; plannedQty?: number; rate?: number; amount?: number }>;
   }>;
   paymentMilestones?: PaymentMilestoneData[];
@@ -267,6 +269,7 @@ export function WorkOrderDocument({ wo, company, contractor }: Props) {
   // personally rather than through their firm, for instance. Purely which
   // name leads the "Contractor Details" box; the other stays visible as the
   // secondary line.
+  const isProfessionalServices = wo.contractType === "professional-services";
   const issuedUnderOwner   = wo.issuedUnder === "owner";
   const primaryContractorName = issuedUnderOwner ? wo.ownerName : wo.vendorName;
   const secondaryLabel        = issuedUnderOwner ? "Company / Firm" : "Contact Person";
@@ -278,10 +281,10 @@ export function WorkOrderDocument({ wo, company, contractor }: Props) {
   // show their own qty/rate/amount too, but purely for reference; they're never
   // summed into any total, so there's no double-counting between an item and
   // its own particulars.
-  const lineItems: Array<{ desc: string; remarks?: string; unit?: string; qty?: number; rate?: number; amount?: number; gstPercent?: number; start?: string; end?: string; isChild?: boolean; isParent?: boolean }> = [];
+  const lineItems: Array<{ desc: string; remarks?: string; unit?: string; qty?: number; rate?: number; amount?: number; gstPercent?: number; start?: string; end?: string; stage?: string; isChild?: boolean; isParent?: boolean }> = [];
   for (const item of wo.scopeItems || []) {
     const amount = item.amount ?? (item.plannedQty ?? 0) * (item.rate ?? 0);
-    lineItems.push({ desc: item.description, remarks: item.remarks, unit: item.unit, qty: item.plannedQty, rate: item.rate, amount, gstPercent: item.gstPercent, start: item.plannedStart, end: item.plannedEnd, isParent: (item.subItems?.length ?? 0) > 0 });
+    lineItems.push({ desc: item.description, remarks: item.remarks, unit: item.unit, qty: item.plannedQty, rate: item.rate, amount, gstPercent: item.gstPercent, start: item.plannedStart, end: item.plannedEnd, stage: item.stage, isParent: (item.subItems?.length ?? 0) > 0 });
     for (const sub of item.subItems ?? []) {
       lineItems.push({ desc: sub.description, remarks: sub.remarks, unit: sub.unit, qty: sub.plannedQty, rate: sub.rate, amount: sub.amount ?? (sub.plannedQty ?? 0) * (sub.rate ?? 0), isChild: true });
     }
@@ -325,7 +328,7 @@ export function WorkOrderDocument({ wo, company, contractor }: Props) {
         {/* ── Contractor + Company Details (side by side) ── */}
         <View style={S.sideRow}>
           <View style={S.sideCol}>
-            <SectionBox title="Contractor Details">
+            <SectionBox title={isProfessionalServices ? "Consultant Details" : "Contractor Details"}>
               <InfoRow label="Contractor Name"  value={primaryContractorName} />
               <InfoRow label="Vendor Code"      value={wo.vendorCode || contractor?.vendorCode} mono />
               <InfoRow label={secondaryLabel}   value={secondaryValue} />
@@ -364,16 +367,16 @@ export function WorkOrderDocument({ wo, company, contractor }: Props) {
         {lineItems.length > 0 && (
           <View style={[S.table, S.sectionGap]}>
             <View style={S.secHeader}>
-              <Text style={S.secTitle}>Scope of Work</Text>
+              <Text style={S.secTitle}>{isProfessionalServices ? "Deliverables" : "Scope of Work"}</Text>
             </View>
             <View style={S.scopeHdr}>
-              <Text style={[S.colDesc, S.hdrText]}>Description</Text>
-              <Text style={[S.colUnit, S.hdrText]}>Unit</Text>
-              <Text style={[S.colQty, S.hdrText]}>Qty</Text>
-              <Text style={[S.colRate, S.hdrText]}>Rate</Text>
+              <Text style={[S.colDesc, S.hdrText]}>{isProfessionalServices ? "Deliverable" : "Description"}</Text>
+              <Text style={[S.colUnit, S.hdrText]}>{isProfessionalServices ? "Stage" : "Unit"}</Text>
+              <Text style={[S.colQty, S.hdrText]}>{isProfessionalServices ? "" : "Qty"}</Text>
+              <Text style={[S.colRate, S.hdrText]}>{isProfessionalServices ? "" : "Rate"}</Text>
               <Text style={[S.colGst, S.hdrText]}>GST</Text>
-              <Text style={[S.colDate, S.hdrText]}>Start</Text>
-              <Text style={[S.colDate, S.hdrText]}>End</Text>
+              <Text style={[S.colDate, S.hdrText]}>{isProfessionalServices ? "" : "Start"}</Text>
+              <Text style={[S.colDate, S.hdrText]}>{isProfessionalServices ? "Due Date" : "End"}</Text>
               <Text style={[S.colAmt, S.hdrText]}>Amount</Text>
             </View>
             {(() => { let groupIdx = -1; return lineItems.map((item, i) => {
@@ -389,11 +392,17 @@ export function WorkOrderDocument({ wo, company, contractor }: Props) {
                       </Text>
                       {item.remarks ? <Text style={S.colRemarks}>{item.remarks}</Text> : null}
                     </View>
-                    <Text style={[S.colUnit, item.isChild ? { color: GRAY } : {}]}>{item.unit || "—"}</Text>
-                    <Text style={[S.colQty, item.isChild ? { color: GRAY } : {}]}>{item.qty != null ? item.qty.toLocaleString("en-IN") : "—"}</Text>
-                    <Text style={[S.colRate, item.isChild ? { color: GRAY } : {}]}>{item.rate != null && item.rate > 0 ? item.rate.toLocaleString("en-IN") : "—"}</Text>
+                    <Text style={[S.colUnit, item.isChild ? { color: GRAY } : {}]}>
+                      {isProfessionalServices ? (item.stage || "—") : (item.unit || "—")}
+                    </Text>
+                    <Text style={[S.colQty, item.isChild ? { color: GRAY } : {}]}>
+                      {isProfessionalServices ? "" : (item.qty != null ? item.qty.toLocaleString("en-IN") : "—")}
+                    </Text>
+                    <Text style={[S.colRate, item.isChild ? { color: GRAY } : {}]}>
+                      {isProfessionalServices ? "" : (item.rate != null && item.rate > 0 ? item.rate.toLocaleString("en-IN") : "—")}
+                    </Text>
                     <Text style={S.colGst}>{item.gstPercent != null ? `${item.gstPercent}%` : "—"}</Text>
-                    <Text style={S.colDate}>{item.start ? fmtDate(item.start) : "—"}</Text>
+                    <Text style={S.colDate}>{isProfessionalServices ? "" : (item.start ? fmtDate(item.start) : "—")}</Text>
                     <Text style={S.colDate}>{item.end ? fmtDate(item.end) : "—"}</Text>
                     <Text style={[S.colAmt, item.isChild ? { color: GRAY, fontFamily: "Helvetica-Oblique" } : { fontFamily: item.amount ? "Helvetica-Bold" : "Helvetica" }]}>
                       {item.amount ? fmtAmt(item.amount) : "—"}

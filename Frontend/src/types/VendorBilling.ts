@@ -63,6 +63,57 @@ export interface Contractor {
 
   status: "active" | "inactive";
 
+  // Internal-only — several vendor codes belonging to the same real business
+  // can share a Vendor Group, so a bill against one member's Work Order can
+  // still be paid out into a different member's account. See VendorGroup.
+  groupId?: string | null;
+
+  documents?: Record<string, { fileName?: string; dataUrl?: string } | undefined>;
+}
+
+export interface VendorGroup {
+  id: string;
+  groupCode: string;
+  name: string;
+  memberCount?: number;
+}
+
+export type ConsultancyType =
+  | "Architect" | "Interior Designer" | "Structural Consultant" | "MEP Consultant"
+  | "Landscape Consultant" | "Facade Consultant" | "Quantity Surveyor"
+  | "Project Management Consultant" | "BIM Consultant" | "Environmental Consultant"
+  | "Lighting Consultant" | "Other";
+
+export interface Consultant {
+  id: string;
+  consultantCode: string;
+  firmName: string;
+  principalName: string;
+  consultancyType: ConsultancyType;
+
+  professionalRegistration?: string;
+  licenseNo?: string;
+  experience?: string;
+  designSoftware?: string[];
+  portfolioUrl?: string;
+
+  address?: string;
+  mobile: string;
+  alternateMobile?: string;
+  email?: string;
+
+  accountHolderName?: string;
+  bankName?: string;
+  accountNumber?: string;
+  ifscCode?: string;
+  branchName?: string;
+
+  gstNumber?: string;
+  panNumber?: string;
+  aadhaarNumber?: string;
+
+  status: "active" | "inactive";
+
   documents?: Record<string, { fileName?: string; dataUrl?: string } | undefined>;
 }
 
@@ -124,6 +175,9 @@ export interface ScopeItem {
   gstPercent?: number;
   plannedStart: string;
   plannedEnd: string;
+  // Only meaningful for a professional-services WorkOrder's deliverables
+  // (e.g. "Concept", "Design Development", "Final Submission").
+  stage?: string;
   status: ScopeItemStatus;
   completedQty: number;
   lastBilledQty?: number;
@@ -172,6 +226,10 @@ export interface WorkOrder {
   vendorName: string;
   ownerName: string;
   mobile: string;
+  // Execution (construction, default) vs professional-services (design/
+  // consultancy) — changes which master data vendorCode resolves against
+  // (Contractor vs Consultant) and how the form/detail views render.
+  contractType?: "execution" | "professional-services";
   // Which contractor identity this WO is drawn up in — affects only the
   // printed WO PDF's primary "Contractor Name" line.
   issuedUnder?: "company" | "owner";

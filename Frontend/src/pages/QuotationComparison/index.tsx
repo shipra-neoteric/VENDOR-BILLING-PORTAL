@@ -406,7 +406,7 @@ export default function QuotationComparison() {
                 {w.vendorName ? `Current: ${w.vendorName}` : "No contractor locked yet"} · Contract Value {fmt(w.contractValue)}
               </div>
               <div className="flex flex-wrap gap-2">
-                <Btn small label="Compare Quotes" onClick={() => setCompareFor(w)} />
+                <Btn small outline label="Compare Quotes" onClick={() => setCompareFor(w)} />
                 <Btn small color="primary" icon={Plus} label="New Quotation" onClick={() => setNewQuoteFor(w)} />
                 <Btn small outline icon={LinkIcon} label="Copy Public Link" onClick={() => copyPublicLink(w._id)} />
               </div>

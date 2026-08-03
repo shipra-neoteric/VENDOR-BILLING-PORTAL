@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { Button, message } from "antd";
-import { CopyOutlined, ExportOutlined, FileTextOutlined, TeamOutlined, ScheduleOutlined, SolutionOutlined, DiffOutlined } from "@ant-design/icons";
+import { CopyOutlined, ExportOutlined, FileTextOutlined, TeamOutlined, ScheduleOutlined, SolutionOutlined, DiffOutlined, ReadOutlined } from "@ant-design/icons";
 import PageShell from "../../components/PageShell";
 
 interface PublicFormDef {
@@ -32,6 +32,14 @@ const FORMS: PublicFormDef[] = [
     path: "/public/contractor",
     icon: <TeamOutlined />,
     color: "#16a34a",
+  },
+  {
+    key: "consultant",
+    name: "Consultant Registration",
+    description: "Lets a new architect, designer, or professional-services firm register themselves — no login required. Submissions land directly in Consultants with an auto-assigned consultant code.",
+    path: "/public/consultant",
+    icon: <ReadOutlined />,
+    color: "#7c3aed",
   },
   {
     key: "daily-report",

@@ -14,6 +14,8 @@ const Dashboard         = lazy(() => import("../features/dashboard"));
 const MyTasksDashboard  = lazy(() => import("../pages/MyTasksDashboard"));
 const Projects          = lazy(() => import("../features/projects"));
 const Contractors       = lazy(() => import("../features/contractors"));
+const Consultants       = lazy(() => import("../pages/Consultants"));
+const VendorGroups      = lazy(() => import("../pages/VendorGroups"));
 const Companies         = lazy(() => import("../features/companies"));
 const Categories        = lazy(() => import("../features/categories"));
 const WorkItems         = lazy(() => import("../features/work-items"));
@@ -66,6 +68,7 @@ function DriRoutes() {
             <Route path="/projects"         element={<Projects />} />
             <Route path="/companies"        element={<Companies />} />
             <Route path="/contractors"      element={<Contractors />} />
+            <Route path="/consultants"      element={<Consultants />} />
             <Route path="/categories"       element={<Categories />} />
             <Route path="/work-items"       element={<WorkItems />} />
             <Route path="/work-items/:id"   element={<WorkOrderDashboard />} />
@@ -102,6 +105,8 @@ function AdminRoutes() {
             <Route path="/dashboard"        element={isAccounts ? <AccountsPayment /> : showTaskQueue ? <MyTasksDashboard /> : <Dashboard />} />
             <Route path="/projects"         element={<Projects />} />
             <Route path="/contractors"      element={<Contractors />} />
+            <Route path="/consultants"      element={<Consultants />} />
+            <Route path="/vendor-groups"    element={<VendorGroups />} />
             <Route path="/companies"        element={<Companies />} />
             <Route path="/categories"       element={<Categories />} />
             <Route path="/work-items"         element={<WorkItems />} />

@@ -20,9 +20,10 @@ import {
   Modal,
   Alert,
   Radio,
+  Segmented,
 } from "antd";
 import type { FormInstance, MenuProps } from "antd";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   PlusOutlined,
   EditOutlined,
@@ -63,6 +64,7 @@ import WarrantyTermsBuilder from "../../components/WarrantyTermsBuilder";
 import WorkOrderDetailView from "../../components/WorkOrderDetailView";
 import type {
   Contractor,
+  Consultant,
   Project,
   WorkOrder,
   WorkOrderStatus,
@@ -300,6 +302,9 @@ interface ScopeItemDraft {
   gstPercent: number;
   plannedStart: string;
   plannedEnd: string;
+  // Only meaningful for a professional-services deliverable (e.g. "Concept",
+  // "Design Development", "Final Submission") — unused for execution items.
+  stage: string;
   showSubItems: boolean;
   subItems: ScopeSubItemDraft[];
 }
@@ -413,8 +418,17 @@ const newItemDraft = (gstPercent = 18): ScopeItemDraft => ({
   description: "", remarks: "", subCategoryId: "", subSubCategoryId: "",
   unit: "sq.ft", customUnit: "",
   plannedQty: null, rate: null, gstPercent,
-  plannedStart: "", plannedEnd: "",
+  plannedStart: "", plannedEnd: "", stage: "",
   showSubItems: false, subItems: [],
+});
+
+// A deliverable is a scope item with plannedQty pinned to 1 and unit fixed to
+// "lump-sum" — so `amount` (= plannedQty * rate) is just the fee entered
+// directly as "rate", and every existing downstream reader of `amount`
+// (billing, PDF, ledger) needs no change to handle it.
+const newDeliverableDraft = (gstPercent = 18): ScopeItemDraft => ({
+  ...newItemDraft(gstPercent),
+  plannedQty: 1, unit: "lump-sum",
 });
 
 const toDraft = (si: ScopeItem): ScopeItemDraft => ({
@@ -429,6 +443,7 @@ const toDraft = (si: ScopeItem): ScopeItemDraft => ({
   gstPercent: si.gstPercent ?? 18,
   plannedStart: si.plannedStart,
   plannedEnd: si.plannedEnd,
+  stage: si.stage ?? "",
   showSubItems: si.subItems.length > 0,
   subItems: si.subItems.map(sub => ({
     id: sub.id,
@@ -452,6 +467,7 @@ const draftToNewItem = (d: ScopeItemDraft): ScopeItem => ({
   gstPercent: d.gstPercent,
   plannedStart: d.plannedStart,
   plannedEnd: d.plannedEnd,
+  stage: d.stage,
   status: "pending",
   completedQty: 0,
   progressEntries: [],
@@ -485,6 +501,7 @@ const mergeWithExisting = (
   gstPercent: d.gstPercent,
   plannedStart: d.plannedStart,
   plannedEnd: d.plannedEnd,
+  stage: d.stage,
   status: existing?.status || "pending",
   completedQty: existing?.completedQty || 0,
   // Without this, saving ANY edit to an already-approved work order silently
@@ -911,19 +928,21 @@ function ScopeItemsBuilder({ items, onChange, allCategories = [], topCatId = nul
 
             <Row gutter={[10, 0]} style={{ marginTop: 10 }}>
               <Col span={6}>
-                <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Start Date</div>
+                <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Start Date <span style={{ color: "#e03b3b" }}>*</span></div>
                 <DatePicker
                   format="DD/MM/YYYY"
                   style={{ width: "100%" }}
+                  status={!item.plannedStart ? "error" : undefined}
                   value={item.plannedStart ? dayjs(item.plannedStart) : null}
                   onChange={d => upd(item.id, { plannedStart: d ? d.format("YYYY-MM-DD") : "" })}
                 />
               </Col>
               <Col span={6}>
-                <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>End Date</div>
+                <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>End Date <span style={{ color: "#e03b3b" }}>*</span></div>
                 <DatePicker
                   format="DD/MM/YYYY"
                   style={{ width: "100%" }}
+                  status={!item.plannedEnd ? "error" : undefined}
                   value={item.plannedEnd ? dayjs(item.plannedEnd) : null}
                   onChange={d => upd(item.id, { plannedEnd: d ? d.format("YYYY-MM-DD") : "" })}
                 />
@@ -1114,6 +1133,131 @@ function ScopeItemsBuilder({ items, onChange, allCategories = [], topCatId = nul
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10, paddingTop: 10, borderTop: "1px solid #f8c9a0" }}>
             <span style={{ fontWeight: 700, color: "#1a1f2e" }}>Total Contract Value — Incl. GST</span>
             <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#d4620c", fontSize: 16 }}>
+              {total > 0 ? fmt(totalInclGst) : "—"}
+            </span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── DeliverablesBuilder — the Professional Services equivalent of
+// ScopeItemsBuilder: Deliverable / Stage / Due Date / Amount, no qty/rate/
+// unit/sub-category tree. Each row is still a ScopeItemDraft under the hood
+// (plannedQty pinned to 1, unit "lump-sum", the fee entered directly as
+// "rate") so calcTotalAmt/calcTotalInclGst/draftToNewItem/mergeWithExisting
+// all keep working unchanged. ─────────────────────────────────
+
+const STAGE_SUGGESTIONS = ["Concept", "Design Development", "Design Review", "Client Approval", "Final Submission"];
+
+function DeliverablesBuilder({ items, onChange, gstPercent = 18 }: {
+  items: ScopeItemDraft[];
+  onChange: (items: ScopeItemDraft[]) => void;
+  gstPercent?: number;
+}) {
+  const upd = (id: string, patch: Partial<ScopeItemDraft>) =>
+    onChange(items.map(it => it.id === id ? { ...it, ...patch } : it));
+
+  const total = calcTotalAmt(items);
+  const totalInclGst = calcTotalInclGst(items);
+
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+        <div style={{ fontWeight: 700, fontSize: 14, color: "#1a1f2e" }}>Deliverables</div>
+        <Button
+          type="dashed"
+          icon={<PlusOutlined />}
+          size="small"
+          onClick={() => onChange([...items, newDeliverableDraft(gstPercent)])}
+          style={{ borderColor: "#f37916", color: "#f37916" }}
+        >
+          Add Deliverable
+        </Button>
+      </div>
+
+      {items.length === 0 && (
+        <div style={{ border: "2px dashed #e4e7ee", borderRadius: 8, padding: "32px 20px", textAlign: "center", color: "#9ba3b8", marginBottom: 12 }}>
+          <div style={{ fontSize: 28, marginBottom: 8 }}>📋</div>
+          <div style={{ fontWeight: 600, color: "#5a6278" }}>No deliverables yet</div>
+          <div style={{ fontSize: 12, marginTop: 4 }}>Click "Add Deliverable" to define the scope of this engagement.</div>
+        </div>
+      )}
+
+      {items.map((item, idx) => (
+        <div key={item.id} style={{ border: "1px solid #e4e7ee", borderRadius: 8, marginBottom: 10, padding: "12px 14px" }}>
+          <Row gutter={[10, 10]} align="middle">
+            <Col flex="0 0 24px">
+              <span style={{ background: "#7c3aed", color: "#fff", borderRadius: "50%", width: 22, height: 22, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700 }}>
+                {idx + 1}
+              </span>
+            </Col>
+            <Col flex="2 1 220px">
+              <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Deliverable *</div>
+              <Input
+                placeholder="e.g. Façade Concept Design"
+                value={item.description}
+                onChange={e => upd(item.id, { description: e.target.value })}
+              />
+            </Col>
+            <Col flex="1 1 160px">
+              <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Stage</div>
+              <Select
+                placeholder="Select or type a stage"
+                value={item.stage || undefined}
+                onChange={v => upd(item.id, { stage: v })}
+                options={STAGE_SUGGESTIONS.map(s => ({ label: s, value: s }))}
+                allowClear
+                showSearch
+                onSearch={(v) => { if (v && !STAGE_SUGGESTIONS.includes(v)) upd(item.id, { stage: v }); }}
+                filterOption={(inp, opt) => String(opt?.label ?? "").toLowerCase().includes(inp.toLowerCase())}
+                style={{ width: "100%" }}
+                placement="bottomLeft" getPopupContainer={(trigger) => trigger.parentElement || document.body}
+              />
+            </Col>
+            <Col flex="0 0 150px">
+              <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Due Date</div>
+              <DatePicker
+                format="DD/MM/YYYY"
+                style={{ width: "100%" }}
+                value={item.plannedEnd ? dayjs(item.plannedEnd) : null}
+                onChange={d => upd(item.id, { plannedEnd: d ? d.format("YYYY-MM-DD") : "" })}
+              />
+            </Col>
+            <Col flex="0 0 140px">
+              <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Amount (₹) *</div>
+              <InputNumber
+                placeholder="Fee"
+                value={item.rate}
+                onChange={v => upd(item.id, { rate: v })}
+                style={{ width: "100%" }}
+                min={0}
+              />
+            </Col>
+            <Col flex="0 0 32px">
+              <Button
+                type="link" size="small" danger icon={<DeleteOutlined />}
+                onClick={() => onChange(items.filter(it => it.id !== item.id))}
+              />
+            </Col>
+          </Row>
+        </div>
+      ))}
+
+      {items.length > 0 && (
+        <div style={{ background: "#f5f3ff", border: "1px solid #ddd6fe", borderRadius: 8, padding: "12px 16px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ fontWeight: 600, color: "#5a6278" }}>
+              Total Fee ({items.length} deliverable{items.length !== 1 ? "s" : ""}) — Excl. GST
+            </span>
+            <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#5a6278", fontSize: 14 }}>
+              {total > 0 ? fmt(total) : "—"}
+            </span>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10, paddingTop: 10, borderTop: "1px solid #ddd6fe" }}>
+            <span style={{ fontWeight: 700, color: "#1a1f2e" }}>Total Fee — Incl. GST</span>
+            <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#7c3aed", fontSize: 16 }}>
               {total > 0 ? fmt(totalInclGst) : "—"}
             </span>
           </div>
@@ -1386,7 +1530,9 @@ function WOFormFields({
   form,
   isEdit = false,
   nextWONo,
+  nextCWONo,
   contractorsList,
+  consultantsList,
   projectsList,
   categoriesList,
   companiesList = [],
@@ -1398,7 +1544,9 @@ function WOFormFields({
   form: FormInstance;
   isEdit?: boolean;
   nextWONo: string;
+  nextCWONo: string;
   contractorsList: Contractor[];
+  consultantsList: Consultant[];
   projectsList: Project[];
   categoriesList: { _id: string; name: string; isActive: boolean; parentId?: string | null }[];
   companiesList?: any[];
@@ -1414,6 +1562,8 @@ function WOFormFields({
   const [extractNote, setExtractNote] = useState("");
   const watchedVendorName = Form.useWatch("vendorName", form) as string | undefined;
   const watchedOwnerName  = Form.useWatch("ownerName", form) as string | undefined;
+  const contractType = (Form.useWatch("contractType", form) as string | undefined) ?? "execution";
+  const isProfessionalServices = contractType === "professional-services";
 
   const handleExtract = async () => {
     const docs: WODocument[] = form.getFieldValue("documents") || [];
@@ -1461,6 +1611,17 @@ function WOFormFields({
     }
   };
 
+  const fillConsultant = (consultantCode: string) => {
+    const c = consultantsList.find(x => x.consultantCode === consultantCode);
+    if (c) {
+      form.setFieldsValue({
+        vendorName: c.firmName,
+        ownerName:  c.principalName,
+        mobile:     c.mobile,
+      });
+    }
+  };
+
   const fillProject = (projectId: string) => {
     const p = projectsList.find(x => (x as any)._id === projectId || x.id === projectId);
     if (p) form.setFieldsValue({ projectName: p.name });
@@ -1474,15 +1635,31 @@ function WOFormFields({
           {preparedByContact && <span>Contact: <strong style={{ color: "#1a1f2e" }}>{preparedByContact}</strong></span>}
         </div>
       )}
+
+      <Form.Item label="Contract Type" name="contractType" initialValue="execution" style={{ marginBottom: 16 }}>
+        {isEdit ? (
+          <Tag color={isProfessionalServices ? "purple" : "blue"} style={{ fontSize: 12, padding: "4px 10px" }}>
+            {isProfessionalServices ? "Professional Services Contract" : "Execution Contract"}
+          </Tag>
+        ) : (
+          <Radio.Group
+            onChange={() => form.setFieldsValue({ vendorCode: undefined, vendorName: "", ownerName: "", mobile: "" })}
+          >
+            <Radio.Button value="execution">Execution Contract</Radio.Button>
+            <Radio.Button value="professional-services">Professional Services Contract</Radio.Button>
+          </Radio.Group>
+        )}
+      </Form.Item>
+
       <Row gutter={16} style={{ marginBottom: 4 }}>
         <Col span={12}>
           <Form.Item
-            label="Work Order Number"
+            label={isProfessionalServices ? "Consultancy Order Number" : "Work Order Number"}
             name="workOrderNo"
-            tooltip={!isEdit ? `Leave blank to auto-assign (${nextWONo})` : undefined}
+            tooltip={!isEdit ? `Leave blank to auto-assign (${isProfessionalServices ? nextCWONo : nextWONo})` : undefined}
           >
             <Input
-              placeholder={isEdit ? undefined : `Auto-assign: ${nextWONo}`}
+              placeholder={isEdit ? undefined : `Auto-assign: ${isProfessionalServices ? nextCWONo : nextWONo}`}
               disabled={isEdit}
               style={{ fontFamily: "monospace" }}
               maxLength={20}
@@ -1556,23 +1733,39 @@ function WOFormFields({
       <Row gutter={16}>
         <Col span={12}>
           <Form.Item
-            label="Vendor Code"
+            label={isProfessionalServices ? "Consultant" : "Vendor Code"}
             name="vendorCode"
-            rules={[{ required: true, message: "Select a vendor" }]}
+            rules={[{ required: true, message: isProfessionalServices ? "Select a consultant" : "Select a vendor" }]}
           >
-            <Select
-              placeholder="Select vendor"
-              showSearch
-              filterOption={(input, opt) =>
-                String(opt?.label ?? "").toLowerCase().includes(input.toLowerCase())
-              }
-              onChange={fillVendor}
-              options={contractorsList.map(c => ({
-                label: `${c.vendorCode} — ${vendorLabel(c.companyName, c.shortCode)}`,
-                value: c.vendorCode,
-              }))}
-              placement="bottomLeft" getPopupContainer={(trigger) => trigger.parentElement || document.body}
-            />
+            {isProfessionalServices ? (
+              <Select
+                placeholder="Select consultant"
+                showSearch
+                filterOption={(input, opt) =>
+                  String(opt?.label ?? "").toLowerCase().includes(input.toLowerCase())
+                }
+                onChange={fillConsultant}
+                options={consultantsList.map(c => ({
+                  label: `${c.consultantCode} — ${c.firmName}`,
+                  value: c.consultantCode,
+                }))}
+                placement="bottomLeft" getPopupContainer={(trigger) => trigger.parentElement || document.body}
+              />
+            ) : (
+              <Select
+                placeholder="Select vendor"
+                showSearch
+                filterOption={(input, opt) =>
+                  String(opt?.label ?? "").toLowerCase().includes(input.toLowerCase())
+                }
+                onChange={fillVendor}
+                options={contractorsList.map(c => ({
+                  label: `${c.vendorCode} — ${vendorLabel(c.companyName, c.shortCode)}`,
+                  value: c.vendorCode,
+                }))}
+                placement="bottomLeft" getPopupContainer={(trigger) => trigger.parentElement || document.body}
+              />
+            )}
           </Form.Item>
         </Col>
         <Col span={12}>
@@ -1601,12 +1794,15 @@ function WOFormFields({
       </Row>
 
       <Row gutter={16}>
-        <Col span={12}>
+        <Col span={isProfessionalServices ? 24 : 12}>
           <Form.Item label="GST Slab" name="gstPercent" initialValue={18} tooltip="GST % applicable on billing for this work order">
             <GstSelect />
           </Form.Item>
         </Col>
-        <Col span={12}>
+        {/* No retention/hold for a professional-services engagement — there's
+            no defect-liability-period measurement concept to hold security
+            against. Field stays registered (hidden) so it keeps saving 0. */}
+        <Col span={12} style={isProfessionalServices ? { display: "none" } : undefined}>
           <Form.Item label="Retention / Hold %" name="retentionPercent" initialValue={0} tooltip="% of each bill withheld until work completion (e.g. 5%)">
             <Select
               options={[
@@ -1658,16 +1854,16 @@ function WOFormFields({
             marginBottom: 12,
           }}
         >
-          Auto-filled from Contractor Master
+          {isProfessionalServices ? "Auto-filled from Consultant Master" : "Auto-filled from Contractor Master"}
         </div>
         <Row gutter={16}>
           <Col span={12}>
-            <Form.Item label="Company Name" name="vendorName" style={{ marginBottom: 10 }}>
+            <Form.Item label={isProfessionalServices ? "Firm Name" : "Company Name"} name="vendorName" style={{ marginBottom: 10 }}>
               <Input disabled />
             </Form.Item>
           </Col>
           <Col span={12}>
-            <Form.Item label="Owner Name" name="ownerName" style={{ marginBottom: 10 }}>
+            <Form.Item label={isProfessionalServices ? "Principal Name" : "Owner Name"} name="ownerName" style={{ marginBottom: 10 }}>
               <Input disabled />
             </Form.Item>
           </Col>
@@ -1753,6 +1949,12 @@ export default function WorkItems() {
   const canApprover = hasPerm(user, "approver");
   const canFinal    = hasPerm(user, "ceo-approve");
   const [activeTab, setActiveTab] = useState<"all" | "pending">("all");
+  const [searchParams] = useSearchParams();
+  // Two sidebar nav items ("Work Orders" / "Consultancy Orders") both land
+  // here, pre-filtered via ?type= — one shared list/table, not a second page.
+  const [contractTypeFilter, setContractTypeFilter] = useState<"all" | "execution" | "professional-services">(
+    (searchParams.get("type") as "execution" | "professional-services" | null) || "all"
+  );
 
   const { categories: apiCategories, lighten, setCategories: setApiCategories } = useCategories();
   const handleCategoryCreated = (cat: CatOption) => setApiCategories(prev => [...prev, cat as any]);
@@ -1775,6 +1977,7 @@ export default function WorkItems() {
 
   const [workOrders,   setWorkOrders]   = useState<WorkOrder[]>([]);
   const [contractors,  setContractors]  = useState<Contractor[]>([]);
+  const [consultants,  setConsultants]  = useState<Consultant[]>([]);
   const [projects,     setProjects]     = useState<Project[]>([]);
   const [companies,    setCompanies]    = useState<any[]>([]);
   const [driList,      setDriList]      = useState<{ _id: string; name: string; email: string }[]>([]);
@@ -1833,6 +2036,8 @@ export default function WorkItems() {
   const editCatName   = Form.useWatch("category", editForm)   as string | undefined;
   const createGstPercent = (Form.useWatch("gstPercent", createForm) as number | undefined) ?? 18;
   const editGstPercent   = (Form.useWatch("gstPercent", editForm)   as number | undefined) ?? 18;
+  const createContractType = (Form.useWatch("contractType", createForm) as string | undefined) ?? "execution";
+  const editContractType   = (Form.useWatch("contractType", editForm)   as string | undefined) ?? "execution";
 
   // ── Load all data ─────────────────────────────────────────────
   // Each fetch settles independently — one endpoint failing (e.g. a role
@@ -1844,6 +2049,8 @@ export default function WorkItems() {
         .then(r => setWorkOrders(r.data.workOrders.map(normalizeWO))),
       apiClient.get<{ contractors: any[] }>("/contractors")
         .then(r => setContractors(r.data.contractors.map(normalizeId))),
+      apiClient.get<{ consultants: any[] }>("/consultants")
+        .then(r => setConsultants(r.data.consultants.map(normalizeId))),
       apiClient.get<{ projects: any[] }>("/projects")
         .then(r => setProjects(r.data.projects.map(normalizeId))),
       apiClient.get<{ companies: any[] }>("/companies")
@@ -1984,20 +2191,29 @@ export default function WorkItems() {
       const matchDate    = inDateRange(wo.issueDate, dateFrom, dateTo);
       const matchProject = projectFilter === "all" || getWorkOrderProjectId(wo.projectId) === projectFilter;
       const matchTab      = activeTab === "all" || isPendingForMe(wo);
-      return matchSearch && matchStatus && matchCategory && matchProgress && matchDate && matchProject && matchTab;
+      const matchContractType = contractTypeFilter === "all" || (wo.contractType || "execution") === contractTypeFilter;
+      return matchSearch && matchStatus && matchCategory && matchProgress && matchDate && matchProject && matchTab && matchContractType;
     }).sort((a, b) => {
       const numA = parseInt(a.workOrderNo.replace(/\D/g, ""), 10) || 0;
       const numB = parseInt(b.workOrderNo.replace(/\D/g, ""), 10) || 0;
       return numB - numA;
     });
-  }, [workOrders, search, statusFilter, categoryFilter, subCategoryFilter, progressFilter, projectFilter, subCatsOfSelected, dateFrom, dateTo, activeTab, user?.role, canMaker, canChecker, canApprover, canFinal]);
+  }, [workOrders, search, statusFilter, categoryFilter, subCategoryFilter, progressFilter, projectFilter, subCatsOfSelected, dateFrom, dateTo, activeTab, contractTypeFilter, user?.role, canMaker, canChecker, canApprover, canFinal]);
 
   const nextWONo = useMemo(() => {
     const max = workOrders.reduce((m, wo) => {
-      const match = wo.workOrderNo.match(/WO-(\d+)/);
+      const match = wo.workOrderNo.match(/^WO-(\d+)/);
       return match ? Math.max(m, parseInt(match[1])) : m;
     }, 0);
     return `WO-${String(max + 1).padStart(4, "0")}`;
+  }, [workOrders]);
+
+  const nextCWONo = useMemo(() => {
+    const max = workOrders.reduce((m, wo) => {
+      const match = wo.workOrderNo.match(/^CWO-(\d+)/);
+      return match ? Math.max(m, parseInt(match[1])) : m;
+    }, 0);
+    return `CWO-${String(max + 1).padStart(4, "0")}`;
   }, [workOrders]);
 
   // Default DRI for new work orders — always pre-select dri1@neotericgrp.in
@@ -2018,10 +2234,15 @@ export default function WorkItems() {
         message.error(`Payment milestones total (${fmt(milestonesTotal)}) exceeds the scope of work's contract value incl. GST (${fmt(contractValueInclGst)})`);
         return;
       }
+      if (values.contractType !== "professional-services" && createScopeItems.some(it => it.description.trim() && (!it.plannedStart || !it.plannedEnd))) {
+        message.error("Start Date and End Date are required for every work item");
+        return;
+      }
       const scopeOfWork = values.description?.trim()
         || createScopeItems.map(it => it.description).filter(Boolean).join(", ");
 
       const body: Record<string, unknown> = {
+        contractType: values.contractType || "execution",
         issueDate:    values.issueDate ? dayjs(values.issueDate).format("YYYY-MM-DD") : dayjs().format("YYYY-MM-DD"),
         projectId:    values.projectId,
         projectName:  values.projectName || "",
@@ -2075,7 +2296,7 @@ export default function WorkItems() {
     // out the actual attached files on this work order.
     const wo = await ensureFullWorkOrder(woIn);
     setEditWOId(wo.id);
-    editForm.setFieldsValue({ ...wo, issueDate: dayjs(wo.issueDate), category: wo.category || "", subCategory: wo.subCategory || "", assignedDRI: ((wo as any).assignedDRI || []).map((d: any) => d._id || d), gstPercent: wo.gstPercent ?? 18, retentionPercent: (wo as any).retentionPercent ?? 0, issuedUnder: wo.issuedUnder || "company" });
+    editForm.setFieldsValue({ ...wo, issueDate: dayjs(wo.issueDate), category: wo.category || "", subCategory: wo.subCategory || "", assignedDRI: ((wo as any).assignedDRI || []).map((d: any) => d._id || d), gstPercent: wo.gstPercent ?? 18, retentionPercent: (wo as any).retentionPercent ?? 0, issuedUnder: wo.issuedUnder || "company", contractType: wo.contractType || "execution" });
     setEditScopeItems((wo.scopeItems || []).map(toDraft));
     setEditMilestones((wo.paymentMilestones || []).map(toMilestoneDraft));
     setEditDiscount(wo.discount || null);
@@ -2095,6 +2316,10 @@ export default function WorkItems() {
         message.error(`Payment milestones total (${fmt(milestonesTotal)}) exceeds the scope of work's contract value incl. GST (${fmt(contractValueInclGst)})`);
         return;
       }
+      if (values.contractType !== "professional-services" && editScopeItems.some(it => it.description.trim() && (!it.plannedStart || !it.plannedEnd))) {
+        message.error("Start Date and End Date are required for every work item");
+        return;
+      }
       const scopeOfWork = values.description?.trim()
         || editScopeItems.map(it => it.description).filter(Boolean).join(", ");
       const savedItems  = editScopeItems.map(d => {
@@ -2103,6 +2328,7 @@ export default function WorkItems() {
       });
 
       const body = {
+        contractType: values.contractType || currentEditWO.contractType || "execution",
         projectId:    values.projectId,
         projectName:  values.projectName  || currentEditWO.projectName,
         projectLocation: values.projectLocation ?? currentEditWO.projectLocation ?? "",
@@ -2507,7 +2733,12 @@ export default function WorkItems() {
           size="large"
           onClick={() => {
             createForm.resetFields();
-            createForm.setFieldsValue({ status: "draft", assignedDRI: defaultDRIIds });
+            createForm.setFieldsValue({
+              status: "draft", assignedDRI: defaultDRIIds,
+              // Default to whichever type the list is currently filtered to
+              // (e.g. clicking "New" while viewing Consultancy Orders).
+              contractType: contractTypeFilter === "professional-services" ? "professional-services" : "execution",
+            });
             setCreateScopeItems([]);
             setCreateMilestones([]);
             setCreateDiscount(null);
@@ -2516,19 +2747,30 @@ export default function WorkItems() {
           }}
           style={{ background: "#FF7A00", borderColor: "#FF7A00" }}
         >
-          New Work Order
+          {contractTypeFilter === "professional-services" ? "New Consultancy Order" : "New Work Order"}
         </Button>
       }
     >
       {/* ── Tabs ────────────────────────────────────────────── */}
-      <PillTabs
-        active={activeTab}
-        onChange={setActiveTab}
-        tabs={[
-          { key: "all",     label: "All Work Orders",    count: 0 },
-          { key: "pending", label: "Pending Approvals",  count: pendingApprovals.length },
-        ]}
-      />
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10, marginBottom: 12 }}>
+        <PillTabs
+          active={activeTab}
+          onChange={setActiveTab}
+          tabs={[
+            { key: "all",     label: "All Work Orders",    count: 0 },
+            { key: "pending", label: "Pending Approvals",  count: pendingApprovals.length },
+          ]}
+        />
+        <Segmented
+          value={contractTypeFilter}
+          onChange={(v) => setContractTypeFilter(v as typeof contractTypeFilter)}
+          options={[
+            { label: "All", value: "all" },
+            { label: "Execution", value: "execution" },
+            { label: "Professional Services", value: "professional-services" },
+          ]}
+        />
+      </div>
 
       {/* ── Filters ─────────────────────────────────────────── */}
       <div
@@ -2816,7 +3058,9 @@ export default function WorkItems() {
           <WOFormFields
             form={createForm}
             nextWONo={nextWONo}
+            nextCWONo={nextCWONo}
             contractorsList={contractors}
+            consultantsList={consultants}
             projectsList={projects}
             categoriesList={apiCategories}
             companiesList={companies}
@@ -2827,14 +3071,22 @@ export default function WorkItems() {
           />
         </Form>
         <div style={{ borderTop: "1px solid #E5E7EB", marginTop: 16, paddingTop: 16 }}>
-          <ScopeItemsBuilder
-            items={createScopeItems}
-            onChange={setCreateScopeItems}
-            allCategories={apiCategories}
-            topCatId={createTopCatId}
-            onCategoryCreated={handleCategoryCreated}
-            gstPercent={createGstPercent}
-          />
+          {createContractType === "professional-services" ? (
+            <DeliverablesBuilder
+              items={createScopeItems}
+              onChange={setCreateScopeItems}
+              gstPercent={createGstPercent}
+            />
+          ) : (
+            <ScopeItemsBuilder
+              items={createScopeItems}
+              onChange={setCreateScopeItems}
+              allCategories={apiCategories}
+              topCatId={createTopCatId}
+              onCategoryCreated={handleCategoryCreated}
+              gstPercent={createGstPercent}
+            />
+          )}
         </div>
         <div style={{ borderTop: "1px solid #E5E7EB", marginTop: 16, paddingTop: 16 }}>
           <PaymentMilestonesBuilder
@@ -2896,7 +3148,9 @@ export default function WorkItems() {
             form={editForm}
             isEdit
             nextWONo={nextWONo}
+            nextCWONo={nextCWONo}
             contractorsList={contractors}
+            consultantsList={consultants}
             projectsList={projects}
             categoriesList={apiCategories}
             companiesList={companies}
@@ -2906,14 +3160,22 @@ export default function WorkItems() {
           />
         </Form>
         <div style={{ borderTop: "1px solid #E5E7EB", marginTop: 16, paddingTop: 16 }}>
-          <ScopeItemsBuilder
-            items={editScopeItems}
-            onChange={setEditScopeItems}
-            allCategories={apiCategories}
-            topCatId={editTopCatId}
-            onCategoryCreated={handleCategoryCreated}
-            gstPercent={editGstPercent}
-          />
+          {editContractType === "professional-services" ? (
+            <DeliverablesBuilder
+              items={editScopeItems}
+              onChange={setEditScopeItems}
+              gstPercent={editGstPercent}
+            />
+          ) : (
+            <ScopeItemsBuilder
+              items={editScopeItems}
+              onChange={setEditScopeItems}
+              allCategories={apiCategories}
+              topCatId={editTopCatId}
+              onCategoryCreated={handleCategoryCreated}
+              gstPercent={editGstPercent}
+            />
+          )}
         </div>
         <div style={{ borderTop: "1px solid #E5E7EB", marginTop: 16, paddingTop: 16 }}>
           <PaymentMilestonesBuilder

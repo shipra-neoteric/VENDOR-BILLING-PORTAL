@@ -5,6 +5,7 @@ import { useLocation } from "react-router-dom";
 import AppRoutes from "./routes/AppRoutes";
 import PublicWorkOrderForm from "./pages/PublicWorkOrderForm";
 import PublicContractorForm from "./pages/PublicContractorForm";
+import PublicConsultantForm from "./pages/PublicConsultantForm";
 import PublicDailyReportForm from "./pages/PublicDailyReportForm";
 import PublicLabourReportForm from "./pages/PublicLabourReportForm";
 import PublicQuotationForm from "./pages/PublicQuotationForm";
@@ -39,6 +40,15 @@ function ThemedApp() {
     return (
       <ConfigProvider theme={{ ...baseTheme, algorithm: antTheme.defaultAlgorithm }}>
         <PublicContractorForm />
+        <Toaster position="top-right" />
+      </ConfigProvider>
+    );
+  }
+
+  if (pathname === "/public/consultant") {
+    return (
+      <ConfigProvider theme={{ ...baseTheme, algorithm: antTheme.defaultAlgorithm }}>
+        <PublicConsultantForm />
         <Toaster position="top-right" />
       </ConfigProvider>
     );

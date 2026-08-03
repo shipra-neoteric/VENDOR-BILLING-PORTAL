@@ -29,6 +29,7 @@ export default function WorkOrderDetailView({
   readOnly?: boolean;
 }) {
   const wo = workOrder;
+  const isProfessionalServices = wo.contractType === "professional-services";
   const contractVal = wo.contractValue ?? 0;
   const certifiedAmt = bills.filter(b => b.status === "approved" || b.status === "sent-to-tms" || b.status === "paid").reduce((s, b) => s + b.amount, 0);
   const pendingAmt   = bills.filter(b => b.status === "draft" || b.status === "verify-done" || b.status === "l1-approved").reduce((s, b) => s + b.amount, 0);
@@ -87,13 +88,13 @@ export default function WorkOrderDetailView({
             )}
           </Descriptions.Item>
         )}
-        <Descriptions.Item label="Vendor Code">
+        <Descriptions.Item label={isProfessionalServices ? "Consultant Code" : "Vendor Code"}>
           <span style={{ fontFamily: "monospace", background: "#eff4ff", color: "#2563eb", padding: "2px 7px", borderRadius: 4, fontWeight: 600 }}>
             {wo.vendorCode}
           </span>
         </Descriptions.Item>
-        <Descriptions.Item label="Contractor Company">{wo.vendorName}</Descriptions.Item>
-        <Descriptions.Item label="Owner">{wo.ownerName}</Descriptions.Item>
+        <Descriptions.Item label={isProfessionalServices ? "Firm" : "Contractor Company"}>{wo.vendorName}</Descriptions.Item>
+        <Descriptions.Item label={isProfessionalServices ? "Principal" : "Owner"}>{wo.ownerName}</Descriptions.Item>
         <Descriptions.Item label="Mobile">{wo.mobile}</Descriptions.Item>
         <Descriptions.Item label="Assigned DRI">
           {(wo.assignedDRI ?? []).length > 0
@@ -143,19 +144,24 @@ export default function WorkOrderDetailView({
         </div>
       </div>
 
-      {/* ── Scope of Work ────────────────────────────── */}
+      {/* ── Scope of Work / Deliverables ────────────────────────────── */}
       <div style={{ background: "var(--nx-white)", border: "1px solid #E5E7EB", borderRadius: 10, overflow: "hidden" }}>
         <div style={{ padding: "12px 16px", borderBottom: "1px solid #E5E7EB", fontWeight: 600, fontSize: 13, color: "#374151" }}>
-          Scope of Work
+          {isProfessionalServices ? "Deliverables" : "Scope of Work"}
         </div>
         {wo.scopeItems.length === 0 ? (
-          <div style={{ padding: 24, textAlign: "center", color: "#9CA3AF", fontSize: 13 }}>No scope items defined</div>
+          <div style={{ padding: 24, textAlign: "center", color: "#9CA3AF", fontSize: 13 }}>
+            {isProfessionalServices ? "No deliverables defined" : "No scope items defined"}
+          </div>
         ) : (
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ background: "#F9FAFB" }}>
-                  {["Description", "Unit", "Planned Qty", "Rate", "Amount"].map(h => (
+                  {(isProfessionalServices
+                    ? ["Deliverable", "Stage", "Due Date", "Status", "Amount"]
+                    : ["Description", "Unit", "Planned Qty", "Rate", "Amount"]
+                  ).map(h => (
                     <th key={h} style={{ padding: "8px 16px", fontSize: 11, fontWeight: 700, color: "#6B7280", textAlign: "left", textTransform: "uppercase", letterSpacing: "0.05em", borderBottom: "1px solid #E5E7EB", whiteSpace: "nowrap" }}>{h}</th>
                   ))}
                 </tr>
@@ -164,9 +170,23 @@ export default function WorkOrderDetailView({
                 {wo.scopeItems.map((si, i) => (
                   <tr key={si.id} style={{ borderBottom: "1px solid #F3F4F6", background: i % 2 === 0 ? "#fff" : "#FAFAFA" }}>
                     <td style={{ padding: "9px 16px", fontSize: 13, fontWeight: 600, color: "#111827" }}>{si.description}</td>
-                    <td style={{ padding: "9px 16px", fontSize: 12, color: "#6B7280" }}>{si.unit}</td>
-                    <td style={{ padding: "9px 16px", fontFamily: "monospace", fontSize: 13, color: "#374151" }}>{si.plannedQty.toLocaleString("en-IN")}</td>
-                    <td style={{ padding: "9px 16px", fontFamily: "monospace", fontSize: 13, color: "#374151" }}>{fmt(si.rate || 0)}</td>
+                    {isProfessionalServices ? (
+                      <>
+                        <td style={{ padding: "9px 16px", fontSize: 12, color: "#6B7280" }}>{si.stage || "—"}</td>
+                        <td style={{ padding: "9px 16px", fontSize: 12, color: "#6B7280" }}>{si.plannedEnd ? dayjs(si.plannedEnd).format("DD MMM YYYY") : "—"}</td>
+                        <td style={{ padding: "9px 16px" }}>
+                          <Tag color={si.status === "completed" ? "green" : si.status === "running" ? "orange" : "default"}>
+                            {si.status === "completed" ? "Completed" : si.status === "running" ? "In Progress" : "Pending"}
+                          </Tag>
+                        </td>
+                      </>
+                    ) : (
+                      <>
+                        <td style={{ padding: "9px 16px", fontSize: 12, color: "#6B7280" }}>{si.unit}</td>
+                        <td style={{ padding: "9px 16px", fontFamily: "monospace", fontSize: 13, color: "#374151" }}>{si.plannedQty.toLocaleString("en-IN")}</td>
+                        <td style={{ padding: "9px 16px", fontFamily: "monospace", fontSize: 13, color: "#374151" }}>{fmt(si.rate || 0)}</td>
+                      </>
+                    )}
                     <td style={{ padding: "9px 16px", fontFamily: "monospace", fontSize: 13, fontWeight: 700, color: "#FF7A00" }}>{fmt(si.amount || 0)}</td>
                   </tr>
                 ))}

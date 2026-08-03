@@ -21,12 +21,15 @@ interface ScopeItem {
   plannedQty: number; rate: number; amount: number;
   completedQty: number; lastBilledQty: number;
   status: string; progressEntries: ProgressEntry[];
+  // Only meaningful for a professional-services deliverable.
+  stage?: string; plannedEnd?: string;
 }
 
 interface WODetail {
   _id: string; workOrderNo: string; projectName: string; vendorName: string;
   category: string; subCategory?: string; contractValue: number;
   gstPercent?: number;
+  contractType?: "execution" | "professional-services";
   issueDate: string; status: string;
   cancelReason?: string; cancelledAt?: string;
   isLocked?: boolean;
@@ -214,6 +217,8 @@ export default function WorkOrderDashboard() {
   if (loading) return <div style={{ display: "flex", justifyContent: "center", padding: 80 }}><Spin size="large" /></div>;
   if (!wo) return <Empty description="Work order not found." style={{ padding: 80 }} />;
 
+  const isProfessionalServices = wo.contractType === "professional-services";
+
   // Compute stats
   const totalContract = wo.contractValue || 0;
   const avgPct = wo.scopeItems.length
@@ -341,16 +346,19 @@ export default function WorkOrderDashboard() {
       {activeTab === "items" && (
         <div style={{ background: "var(--nx-white)", border: "1px solid #E5E7EB", borderRadius: 12, overflow: "hidden", marginBottom: 24 }}>
           <div style={{ padding: "16px 20px", borderBottom: "1px solid #E5E7EB", fontWeight: 700, fontSize: 15, color: "#111827" }}>
-            Scope of Work
+            {isProfessionalServices ? "Deliverables" : "Scope of Work"}
           </div>
           {wo.scopeItems.length === 0 ? (
-            <div style={{ padding: 40 }}><Empty description="No scope items defined" /></div>
+            <div style={{ padding: 40 }}><Empty description={isProfessionalServices ? "No deliverables defined" : "No scope items defined"} /></div>
           ) : (
             <div style={{ overflowX: "auto" }}>
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead>
                   <tr style={{ background: "#F9FAFB" }}>
-                    {["Description", "Unit", "Planned Qty", "Rate", "Amount", "Status"].map(h => (
+                    {(isProfessionalServices
+                      ? ["Deliverable", "Stage", "Due Date", "Amount", "Status"]
+                      : ["Description", "Unit", "Planned Qty", "Rate", "Amount", "Status"]
+                    ).map(h => (
                       <th key={h} style={{ padding: "9px 16px", fontSize: 11, fontWeight: 700, color: "#6B7280", textAlign: "left", textTransform: "uppercase", letterSpacing: "0.05em", borderBottom: "1px solid #E5E7EB", whiteSpace: "nowrap" }}>{h}</th>
                     ))}
                   </tr>
@@ -359,9 +367,18 @@ export default function WorkOrderDashboard() {
                   {wo.scopeItems.map((si, i) => (
                     <tr key={si._id} style={{ borderBottom: "1px solid #F3F4F6", background: i % 2 === 0 ? "#fff" : "#FAFAFA" }}>
                       <td style={{ padding: "10px 16px", fontSize: 13, fontWeight: 600, color: "#111827" }}>{si.description}</td>
-                      <td style={{ padding: "10px 16px", fontSize: 12, color: "#6B7280" }}>{si.unit}</td>
-                      <td style={{ padding: "10px 16px", fontFamily: "monospace", fontSize: 13, color: "#374151" }}>{fmtQty(si.plannedQty)}</td>
-                      <td style={{ padding: "10px 16px", fontFamily: "monospace", fontSize: 13, color: "#374151" }}>{fmtMoney(si.rate || 0)}</td>
+                      {isProfessionalServices ? (
+                        <>
+                          <td style={{ padding: "10px 16px", fontSize: 12, color: "#6B7280" }}>{si.stage || "—"}</td>
+                          <td style={{ padding: "10px 16px", fontSize: 12, color: "#6B7280" }}>{fmtDate(si.plannedEnd)}</td>
+                        </>
+                      ) : (
+                        <>
+                          <td style={{ padding: "10px 16px", fontSize: 12, color: "#6B7280" }}>{si.unit}</td>
+                          <td style={{ padding: "10px 16px", fontFamily: "monospace", fontSize: 13, color: "#374151" }}>{fmtQty(si.plannedQty)}</td>
+                          <td style={{ padding: "10px 16px", fontFamily: "monospace", fontSize: 13, color: "#374151" }}>{fmtMoney(si.rate || 0)}</td>
+                        </>
+                      )}
                       <td style={{ padding: "10px 16px", fontFamily: "monospace", fontSize: 13, fontWeight: 700, color: "#FF7A00" }}>{fmtMoney(si.amount || 0)}</td>
                       <td style={{ padding: "10px 16px", fontSize: 12, color: "#6B7280", textTransform: "capitalize" }}>{si.status}</td>
                     </tr>
@@ -435,7 +452,41 @@ export default function WorkOrderDashboard() {
       })()}
 
       {/* Progress tab — per scope item progress breakdown */}
-      {activeTab === "progress" && (
+      {activeTab === "progress" && isProfessionalServices && (
+      <div style={{ background: "var(--nx-white)", border: "1px solid #E5E7EB", borderRadius: 12, overflow: "hidden", marginBottom: 24 }}>
+        <div style={{ padding: "16px 20px", borderBottom: "1px solid #E5E7EB", fontWeight: 700, fontSize: 15, color: "#111827" }}>
+          Deliverable Status
+        </div>
+        {wo.scopeItems.length === 0 ? (
+          <div style={{ padding: 40 }}><Empty description="No deliverables defined" /></div>
+        ) : (
+          wo.scopeItems.map((si, idx) => {
+            const STATUS_CFG = {
+              completed: { icon: "✔", label: "Completed",  color: "#16a34a", bg: "#F0FDF4" },
+              running:   { icon: "⏳", label: "In Progress", color: "#d97706", bg: "#FFFBEB" },
+              pending:   { icon: "○", label: "Pending",     color: "#9CA3AF", bg: "#F9FAFB" },
+            } as const;
+            const cfg = STATUS_CFG[si.status as keyof typeof STATUS_CFG] ?? STATUS_CFG.pending;
+            return (
+              <div key={si._id} style={{ padding: "16px 20px", borderBottom: "1px solid #F3F4F6", background: idx % 2 === 0 ? "#fff" : "#FAFAFA", display: "flex", alignItems: "center", gap: 14 }}>
+                <div style={{ width: 34, height: 34, borderRadius: "50%", background: cfg.bg, border: `2px solid ${cfg.color}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, color: cfg.color, flexShrink: 0 }}>
+                  {cfg.icon}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, fontSize: 14, color: "#111827" }}>{si.description}</div>
+                  <div style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }}>
+                    {si.stage ? `${si.stage} · ` : ""}{fmtMoney(si.amount || 0)}
+                    {si.plannedEnd && ` · Due ${fmtDate(si.plannedEnd)}`}
+                  </div>
+                </div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: cfg.color }}>{cfg.label}</div>
+              </div>
+            );
+          })
+        )}
+      </div>
+      )}
+      {activeTab === "progress" && !isProfessionalServices && (
       <div style={{ background: "var(--nx-white)", border: "1px solid #E5E7EB", borderRadius: 12, overflow: "hidden", marginBottom: 24 }}>
         <div style={{ padding: "16px 20px", borderBottom: "1px solid #E5E7EB", fontWeight: 700, fontSize: 15, color: "#111827" }}>
           Scope Items Progress

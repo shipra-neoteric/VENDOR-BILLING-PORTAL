@@ -6,7 +6,7 @@ import {
   AccountBookOutlined, UsergroupAddOutlined, MonitorOutlined,
   ShareAltOutlined, SettingOutlined, ClockCircleOutlined, HistoryOutlined,
   FileSearchOutlined, ScheduleOutlined, SolutionOutlined, CreditCardOutlined,
-  NodeIndexOutlined, DiffOutlined,
+  NodeIndexOutlined, DiffOutlined, ReadOutlined, ClusterOutlined,
 } from "@ant-design/icons";
 import { useAuth } from "../../context/AuthContext";
 import type { PermEntry } from "../../context/AuthContext";
@@ -31,12 +31,17 @@ const ADMIN_GROUPS: NavGroup[] = [
       { name: "Dashboard",     path: "/dashboard",     icon: <LayoutOutlined />,       moduleId: "dashboard" },
       { name: "MIS Dashboard", path: "/sla-dashboard",  icon: <ClockCircleOutlined />,  moduleId: "sla-dashboard" },
       { name: "Projects",      path: "/projects",      icon: <ApartmentOutlined />,    moduleId: "projects" },
-      { name: "Contractors",   path: "/contractors",   icon: <TeamOutlined />,         moduleId: "contractors" },
     ],
   },
   {
+    // Work Orders itself carries the Execution/Professional Services toggle
+    // (contractTypeFilter, on the page) — no separate nav item or group split
+    // for that distinction here.
     label: "Operations",
     items: [
+      { name: "Contractors",   path: "/contractors",   icon: <TeamOutlined />,         moduleId: "contractors" },
+      { name: "Vendor Groups", path: "/vendor-groups", icon: <ClusterOutlined />,      moduleId: "vendor-groups" },
+      { name: "Consultants",   path: "/consultants",   icon: <ReadOutlined />,         moduleId: "consultants" },
       { name: "Work Orders",   path: "/work-items",    icon: <FileTextOutlined />, moduleId: "work-orders" },
       { name: "Quotation Comparison", path: "/quotation-comparison", icon: <DiffOutlined />, moduleId: "quotation-comparison" },
       { name: "Work Progress", path: "/work-progress", icon: <LineChartOutlined />, moduleId: "work-progress" },

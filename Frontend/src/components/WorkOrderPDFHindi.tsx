@@ -130,6 +130,7 @@ interface WOData {
   ownerName?: string;
   mobile?: string;
   issuedUnder?: "company" | "owner";
+  contractType?: "execution" | "professional-services";
   assignedDRI?: ({ name: string; email?: string; mobile?: string } | string)[];
   contractValue?: number;
   gstPercent?: number;
@@ -140,6 +141,7 @@ interface WOData {
     plannedQty?: number;
     rate?: number;
     amount?: number;
+    stage?: string;
     gstPercent?: number;
     plannedStart?: string;
     plannedEnd?: string;
@@ -245,6 +247,7 @@ export function WorkOrderDocumentHindi({ wo, company, contractor }: Props) {
   const companyAddr = [company?.address, company?.city, company?.state].filter(Boolean).join(", ");
   const contractorAddr = contractor?.address || "—";
 
+  const isProfessionalServices = wo.contractType === "professional-services";
   const issuedUnderOwner   = wo.issuedUnder === "owner";
   const primaryContractorName = issuedUnderOwner ? wo.ownerName : wo.vendorName;
   const secondaryLabel        = issuedUnderOwner ? "कंपनी / फर्म" : "संपर्क व्यक्ति";
@@ -252,10 +255,10 @@ export function WorkOrderDocumentHindi({ wo, company, contractor }: Props) {
 
   // Sub-items ("Particulars") are a read-only descriptive breakdown — the main
   // item's own qty/rate/amount always drives the contract value.
-  const lineItems: Array<{ desc: string; unit?: string; qty?: number; rate?: number; amount?: number; gstPercent?: number; start?: string; end?: string; isChild?: boolean }> = [];
+  const lineItems: Array<{ desc: string; unit?: string; qty?: number; rate?: number; amount?: number; gstPercent?: number; start?: string; end?: string; stage?: string; isChild?: boolean }> = [];
   for (const item of wo.scopeItems || []) {
     const amount = item.amount ?? (item.plannedQty ?? 0) * (item.rate ?? 0);
-    lineItems.push({ desc: item.description, unit: item.unit, qty: item.plannedQty, rate: item.rate, amount, gstPercent: item.gstPercent, start: item.plannedStart, end: item.plannedEnd });
+    lineItems.push({ desc: item.description, unit: item.unit, qty: item.plannedQty, rate: item.rate, amount, gstPercent: item.gstPercent, start: item.plannedStart, end: item.plannedEnd, stage: item.stage });
     for (const sub of item.subItems ?? []) {
       lineItems.push({ desc: "  " + sub.description, unit: sub.unit, qty: sub.plannedQty, rate: sub.rate, amount: sub.amount ?? (sub.plannedQty ?? 0) * (sub.rate ?? 0), isChild: true });
     }
@@ -297,7 +300,7 @@ export function WorkOrderDocumentHindi({ wo, company, contractor }: Props) {
         {/* ── Contractor + Company Details (side by side) ── */}
         <View style={S.sideRow}>
           <View style={S.sideCol}>
-            <SectionBox title="ठेकेदार विवरण">
+            <SectionBox title={isProfessionalServices ? "सलाहकार विवरण" : "ठेकेदार विवरण"}>
               <InfoRow label="ठेकेदार का नाम"    value={primaryContractorName} />
               <InfoRow label="वेंडर कोड"         value={wo.vendorCode || contractor?.vendorCode} />
               <InfoRow label={secondaryLabel}     value={secondaryValue} />
@@ -332,16 +335,16 @@ export function WorkOrderDocumentHindi({ wo, company, contractor }: Props) {
         {lineItems.length > 0 && (
           <View style={[S.table, S.sectionGap]} wrap={false}>
             <View style={S.secHeader}>
-              <Text style={S.secTitle}>कार्य का विवरण</Text>
+              <Text style={S.secTitle}>{isProfessionalServices ? "डिलिवरेबल्स" : "कार्य का विवरण"}</Text>
             </View>
             <View style={S.scopeHdr}>
-              <Text style={[S.colDesc, S.hdrText]}>विवरण</Text>
-              <Text style={[S.colUnit, S.hdrText]}>इकाई</Text>
-              <Text style={[S.colQty, S.hdrText]}>मात्रा</Text>
-              <Text style={[S.colRate, S.hdrText]}>दर</Text>
+              <Text style={[S.colDesc, S.hdrText]}>{isProfessionalServices ? "डिलिवरेबल" : "विवरण"}</Text>
+              <Text style={[S.colUnit, S.hdrText]}>{isProfessionalServices ? "चरण" : "इकाई"}</Text>
+              <Text style={[S.colQty, S.hdrText]}>{isProfessionalServices ? "" : "मात्रा"}</Text>
+              <Text style={[S.colRate, S.hdrText]}>{isProfessionalServices ? "" : "दर"}</Text>
               <Text style={[S.colGst, S.hdrText]}>जीएसटी</Text>
-              <Text style={[S.colDate, S.hdrText]}>प्रारंभ</Text>
-              <Text style={[S.colDate, S.hdrText]}>समाप्ति</Text>
+              <Text style={[S.colDate, S.hdrText]}>{isProfessionalServices ? "" : "प्रारंभ"}</Text>
+              <Text style={[S.colDate, S.hdrText]}>{isProfessionalServices ? "देय तिथि" : "समाप्ति"}</Text>
               <Text style={[S.colAmt, S.hdrText]}>राशि</Text>
             </View>
             {lineItems.map((item, i) => (
@@ -349,11 +352,11 @@ export function WorkOrderDocumentHindi({ wo, company, contractor }: Props) {
                 <Text style={[S.colDesc, item.isChild ? { color: GRAY, paddingLeft: 8 } : { fontWeight: "bold", color: MID }]}>
                   {item.desc}
                 </Text>
-                <Text style={S.colUnit}>{item.unit || "—"}</Text>
-                <Text style={S.colQty}>{item.qty != null ? item.qty.toLocaleString("en-IN") : "—"}</Text>
-                <Text style={S.colRate}>{item.rate != null && item.rate > 0 ? item.rate.toLocaleString("en-IN") : "—"}</Text>
+                <Text style={S.colUnit}>{isProfessionalServices ? (item.stage || "—") : (item.unit || "—")}</Text>
+                <Text style={S.colQty}>{isProfessionalServices ? "" : (item.qty != null ? item.qty.toLocaleString("en-IN") : "—")}</Text>
+                <Text style={S.colRate}>{isProfessionalServices ? "" : (item.rate != null && item.rate > 0 ? item.rate.toLocaleString("en-IN") : "—")}</Text>
                 <Text style={S.colGst}>{item.gstPercent != null ? `${item.gstPercent}%` : "—"}</Text>
-                <Text style={S.colDate}>{item.start ? fmtDate(item.start) : "—"}</Text>
+                <Text style={S.colDate}>{isProfessionalServices ? "" : (item.start ? fmtDate(item.start) : "—")}</Text>
                 <Text style={S.colDate}>{item.end ? fmtDate(item.end) : "—"}</Text>
                 <Text style={[S.colAmt, { fontWeight: item.amount ? "bold" : "normal" }]}>
                   {item.amount ? fmtAmt(item.amount) : "—"}

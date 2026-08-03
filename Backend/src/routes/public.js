@@ -3,11 +3,12 @@ const asyncHandler = require('../utils/asyncHandler');
 const { success, created, notFound, badRequest } = require('../utils/responseFormatter');
 const Project    = require('../models/Project');
 const Contractor = require('../models/Contractor');
+const Consultant = require('../models/Consultant');
 const Category   = require('../models/Category');
 const Company    = require('../models/Company');
 const User       = require('../models/User');
 const WorkOrder  = require('../models/WorkOrder');
-const { nextWorkOrderNo, nextVendorCode } = require('../utils/codeGen');
+const { nextWorkOrderNo, nextVendorCode, nextConsultantCode } = require('../utils/codeGen');
 const { startInstance } = require('../utils/slaEngine');
 const { milestonesExceedContract } = require('../utils/validateMilestones');
 const { documentsExceedLimit } = require('../utils/validateDocuments');
@@ -26,6 +27,13 @@ router.get('/contractors', asyncHandler(async (_req, res) => {
     .select('vendorCode companyName ownerName mobile')
     .sort({ vendorCode: 1 }).lean();
   success(res, { contractors });
+}));
+
+router.get('/consultants', asyncHandler(async (_req, res) => {
+  const consultants = await Consultant.find()
+    .select('consultantCode firmName principalName mobile consultancyType')
+    .sort({ consultantCode: 1 }).lean();
+  success(res, { consultants });
 }));
 
 router.get('/categories', asyncHandler(async (_req, res) => {
@@ -142,6 +150,31 @@ router.post('/contractors', asyncHandler(async (req, res) => {
   });
 
   created(res, { contractor }, `Contractor registered as ${vendorCode}`);
+}));
+
+// ── Submit new consultant (no auth) ─────────────────────────────
+router.post('/consultants', asyncHandler(async (req, res) => {
+  const {
+    firmName, principalName, consultancyType, professionalRegistration, licenseNo,
+    experience, designSoftware, portfolioUrl, address, mobile, alternateMobile, email,
+    accountHolderName, bankName, accountNumber, ifscCode, branchName,
+    gstNumber, panNumber, aadhaarNumber, documents,
+  } = req.body;
+
+  if (!firmName)      return badRequest(res, 'Firm / consultant name is required');
+  if (!principalName) return badRequest(res, 'Principal consultant name is required');
+  if (!mobile)         return badRequest(res, 'Mobile is required');
+
+  const consultantCode = await nextConsultantCode();
+
+  const consultant = await Consultant.create({
+    consultantCode, firmName, principalName, consultancyType, professionalRegistration, licenseNo,
+    experience, designSoftware, portfolioUrl, address, mobile, alternateMobile, email,
+    accountHolderName, bankName, accountNumber, ifscCode, branchName,
+    gstNumber, panNumber, aadhaarNumber, documents,
+  });
+
+  created(res, { consultant }, `Consultant registered as ${consultantCode}`);
 }));
 
 module.exports = router;
