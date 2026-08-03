@@ -139,6 +139,7 @@ interface WOData {
   vendorCode?: string;
   ownerName?: string;
   mobile?: string;
+  issuedUnder?: "company" | "owner";
   assignedDRI?: ({ name: string; email?: string; mobile?: string } | string)[];
   contractValue?: number;
   discount?: number;
@@ -262,6 +263,15 @@ export function WorkOrderDocument({ wo, company, contractor }: Props) {
   const companyAddr = [company?.address, company?.city, company?.state].filter(Boolean).join(", ");
   const contractorAddr = contractor?.address || "—";
 
+  // Which contractor identity this WO is drawn up in — a consultant billed
+  // personally rather than through their firm, for instance. Purely which
+  // name leads the "Contractor Details" box; the other stays visible as the
+  // secondary line.
+  const issuedUnderOwner   = wo.issuedUnder === "owner";
+  const primaryContractorName = issuedUnderOwner ? wo.ownerName : wo.vendorName;
+  const secondaryLabel        = issuedUnderOwner ? "Company / Firm" : "Contact Person";
+  const secondaryValue        = issuedUnderOwner ? wo.vendorName : wo.ownerName;
+
   // Flatten scope items. Each main item's own qty/rate/amount is what drives the
   // contract value (totalAmt/totalInclGst below are computed straight from
   // wo.scopeItems, never from this flattened list) — sub-items ("Particulars")
@@ -316,9 +326,9 @@ export function WorkOrderDocument({ wo, company, contractor }: Props) {
         <View style={S.sideRow}>
           <View style={S.sideCol}>
             <SectionBox title="Contractor Details">
-              <InfoRow label="Contractor Name"  value={wo.vendorName} />
+              <InfoRow label="Contractor Name"  value={primaryContractorName} />
               <InfoRow label="Vendor Code"      value={wo.vendorCode || contractor?.vendorCode} mono />
-              <InfoRow label="Contact Person"   value={wo.ownerName} />
+              <InfoRow label={secondaryLabel}   value={secondaryValue} />
               <InfoRow label="Address"          value={contractorAddr} />
               <InfoRow label="PAN No."          value={contractor?.panNumber} mono />
               <InfoRow label="GST No."          value={contractor?.gstNumber} mono />

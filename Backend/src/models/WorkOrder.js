@@ -116,6 +116,11 @@ const workOrderSchema = new mongoose.Schema(
     vendorName:    { type: String },
     ownerName:     { type: String },
     mobile:        { type: String },
+    // Which of the two contractor identities above this work order is drawn
+    // up in — e.g. a consultant who wants the WO addressed to them personally
+    // rather than through their firm. Purely a display choice on the printed
+    // WO PDF; the contractor record itself (vendorCode) never changes.
+    issuedUnder:   { type: String, enum: ['company', 'owner'], default: 'company' },
     category: {
       type: String,
       default: '',

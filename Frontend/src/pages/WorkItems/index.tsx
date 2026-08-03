@@ -19,6 +19,7 @@ import {
   Dropdown,
   Modal,
   Alert,
+  Radio,
 } from "antd";
 import type { FormInstance, MenuProps } from "antd";
 import { useNavigate } from "react-router-dom";
@@ -1411,6 +1412,8 @@ function WOFormFields({
 }) {
   const [extracting, setExtracting] = useState(false);
   const [extractNote, setExtractNote] = useState("");
+  const watchedVendorName = Form.useWatch("vendorName", form) as string | undefined;
+  const watchedOwnerName  = Form.useWatch("ownerName", form) as string | undefined;
 
   const handleExtract = async () => {
     const docs: WODocument[] = form.getFieldValue("documents") || [];
@@ -1673,6 +1676,18 @@ function WOFormFields({
           <Input disabled />
         </Form.Item>
       </div>
+
+      <Form.Item
+        label="Work Order Issued Under"
+        name="issuedUnder"
+        initialValue="company"
+        tooltip="Whether this work order is drawn up in the contractor's company/firm name or their personal (owner) name — affects the printed WO PDF only, not the contractor record itself"
+      >
+        <Radio.Group>
+          <Radio value="company">Company Name{watchedVendorName ? ` (${watchedVendorName})` : ""}</Radio>
+          <Radio value="owner">Owner Name{watchedOwnerName ? ` (${watchedOwnerName})` : ""}</Radio>
+        </Radio.Group>
+      </Form.Item>
 
       <Form.Item
         label="Overall Description / Scope of Work"
@@ -2015,6 +2030,7 @@ export default function WorkItems() {
         vendorName:   values.vendorName  || "",
         ownerName:    values.ownerName   || "",
         mobile:       values.mobile      || "",
+        issuedUnder:  values.issuedUnder || "company",
         category:     values.category    || "",
         subCategory:  values.subCategory  || "",
         companyId:    values.companyId   || null,
@@ -2059,7 +2075,7 @@ export default function WorkItems() {
     // out the actual attached files on this work order.
     const wo = await ensureFullWorkOrder(woIn);
     setEditWOId(wo.id);
-    editForm.setFieldsValue({ ...wo, issueDate: dayjs(wo.issueDate), category: wo.category || "", subCategory: wo.subCategory || "", assignedDRI: ((wo as any).assignedDRI || []).map((d: any) => d._id || d), gstPercent: wo.gstPercent ?? 18, retentionPercent: (wo as any).retentionPercent ?? 0 });
+    editForm.setFieldsValue({ ...wo, issueDate: dayjs(wo.issueDate), category: wo.category || "", subCategory: wo.subCategory || "", assignedDRI: ((wo as any).assignedDRI || []).map((d: any) => d._id || d), gstPercent: wo.gstPercent ?? 18, retentionPercent: (wo as any).retentionPercent ?? 0, issuedUnder: wo.issuedUnder || "company" });
     setEditScopeItems((wo.scopeItems || []).map(toDraft));
     setEditMilestones((wo.paymentMilestones || []).map(toMilestoneDraft));
     setEditDiscount(wo.discount || null);
@@ -2094,6 +2110,7 @@ export default function WorkItems() {
         vendorName:   values.vendorName   || currentEditWO.vendorName,
         ownerName:    values.ownerName    || currentEditWO.ownerName,
         mobile:       values.mobile       || currentEditWO.mobile,
+        issuedUnder:  values.issuedUnder  || currentEditWO.issuedUnder || "company",
         category:     values.category     ?? currentEditWO.category ?? "",
         subCategory:  values.subCategory  ?? currentEditWO.subCategory ?? "",
         companyId:    values.companyId    ?? (currentEditWO as any).companyId ?? null,

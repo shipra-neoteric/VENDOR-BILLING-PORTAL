@@ -129,6 +129,7 @@ interface WOData {
   vendorCode?: string;
   ownerName?: string;
   mobile?: string;
+  issuedUnder?: "company" | "owner";
   assignedDRI?: ({ name: string; email?: string; mobile?: string } | string)[];
   contractValue?: number;
   gstPercent?: number;
@@ -244,6 +245,11 @@ export function WorkOrderDocumentHindi({ wo, company, contractor }: Props) {
   const companyAddr = [company?.address, company?.city, company?.state].filter(Boolean).join(", ");
   const contractorAddr = contractor?.address || "—";
 
+  const issuedUnderOwner   = wo.issuedUnder === "owner";
+  const primaryContractorName = issuedUnderOwner ? wo.ownerName : wo.vendorName;
+  const secondaryLabel        = issuedUnderOwner ? "कंपनी / फर्म" : "संपर्क व्यक्ति";
+  const secondaryValue        = issuedUnderOwner ? wo.vendorName : wo.ownerName;
+
   // Sub-items ("Particulars") are a read-only descriptive breakdown — the main
   // item's own qty/rate/amount always drives the contract value.
   const lineItems: Array<{ desc: string; unit?: string; qty?: number; rate?: number; amount?: number; gstPercent?: number; start?: string; end?: string; isChild?: boolean }> = [];
@@ -292,9 +298,9 @@ export function WorkOrderDocumentHindi({ wo, company, contractor }: Props) {
         <View style={S.sideRow}>
           <View style={S.sideCol}>
             <SectionBox title="ठेकेदार विवरण">
-              <InfoRow label="ठेकेदार का नाम"    value={wo.vendorName} />
+              <InfoRow label="ठेकेदार का नाम"    value={primaryContractorName} />
               <InfoRow label="वेंडर कोड"         value={wo.vendorCode || contractor?.vendorCode} />
-              <InfoRow label="संपर्क व्यक्ति"     value={wo.ownerName} />
+              <InfoRow label={secondaryLabel}     value={secondaryValue} />
               <InfoRow label="पता"               value={contractorAddr} />
               <InfoRow label="पैन नंबर"          value={contractor?.panNumber} />
               <InfoRow label="जीएसटी नंबर"       value={contractor?.gstNumber} />

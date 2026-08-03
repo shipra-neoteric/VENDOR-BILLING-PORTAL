@@ -172,6 +172,9 @@ export interface WorkOrder {
   vendorName: string;
   ownerName: string;
   mobile: string;
+  // Which contractor identity this WO is drawn up in — affects only the
+  // printed WO PDF's primary "Contractor Name" line.
+  issuedUnder?: "company" | "owner";
   category?: WorkCategory;
   subCategory?: string;
   assignedDRI?: ({ _id: string; name: string; email?: string; mobile?: string } | string)[];
