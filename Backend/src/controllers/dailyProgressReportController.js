@@ -1,0 +1,93 @@
+const asyncHandler = require('../utils/asyncHandler');
+const { success, created, notFound, badRequest } = require('../utils/responseFormatter');
+const DailyProgressReport = require('../models/DailyProgressReport');
+const Project = require('../models/Project');
+const Contractor = require('../models/Contractor');
+const { workEntriesInvalidReason } = require('../utils/validateWorkEntries');
+
+const REQUIRED_FIELDS = ['projectId', 'driName', 'date', 'vendorCode', 'shiftType', 'labourCount'];
+
+async function buildReportDoc(body) {
+  for (const f of REQUIRED_FIELDS) {
+    if (body[f] === undefined || body[f] === null || body[f] === '') return { error: `"${f}" is required` };
+  }
+  const entriesError = workEntriesInvalidReason(body.workEntries);
+  if (entriesError) return { error: entriesError };
+
+  const project = await Project.findById(body.projectId).select('name');
+  if (!project) return { error: 'Project not found' };
+
+  const contractor = await Contractor.findOne({ vendorCode: body.vendorCode }).select('companyName');
+  if (!contractor) return { error: 'Contractor not found for this vendor code' };
+
+  return {
+    doc: {
+      projectId: body.projectId,
+      projectName: project.name,
+      driName: body.driName,
+      date: body.date,
+      vendorCode: body.vendorCode,
+      vendorName: contractor.companyName,
+      shiftType: body.shiftType,
+      labourCount: Number(body.labourCount),
+      workEntries: body.workEntries,
+    },
+  };
+}
+
+// POST /api/daily-progress-reports — authenticated (DRI dashboard, or anyone logged in)
+exports.createReport = asyncHandler(async (req, res) => {
+  const { doc, error } = await buildReportDoc(req.body);
+  if (error) return badRequest(res, error);
+
+  const report = await DailyProgressReport.create({
+    ...doc,
+    driUserId: req.user._id,
+    driName: req.body.driName || req.user.name,
+    submittedBy: req.user._id,
+    isPublicSubmission: false,
+  });
+
+  created(res, { report }, 'Daily Progress Report submitted');
+});
+
+// POST /api/public/daily-progress-reports — no auth
+exports.createPublicReport = asyncHandler(async (req, res) => {
+  const { doc, error } = await buildReportDoc(req.body);
+  if (error) return badRequest(res, error);
+
+  const report = await DailyProgressReport.create({
+    ...doc,
+    submittedBy: null,
+    isPublicSubmission: true,
+  });
+
+  created(res, { report }, 'Daily Progress Report submitted');
+});
+
+// GET /api/daily-progress-reports — site-dri sees only their own; everyone else sees all
+exports.listReports = asyncHandler(async (req, res) => {
+  const { projectId, vendorCode } = req.query;
+  const filter = {};
+  if (req.user.role === 'site-dri') filter.driUserId = req.user._id;
+  if (projectId)  filter.projectId  = projectId;
+  if (vendorCode) filter.vendorCode = vendorCode;
+
+  const reports = await DailyProgressReport.find(filter)
+    .populate('submittedBy', 'name email')
+    .sort({ date: -1, createdAt: -1 })
+    .limit(200)
+    .lean();
+
+  success(res, { reports });
+});
+
+// GET /api/daily-progress-reports/:id
+exports.getReport = asyncHandler(async (req, res) => {
+  const report = await DailyProgressReport.findById(req.params.id).populate('submittedBy', 'name email').lean();
+  if (!report) return notFound(res, 'Report not found');
+  if (req.user.role === 'site-dri' && String(report.driUserId) !== String(req.user._id)) {
+    return notFound(res, 'Report not found');
+  }
+  success(res, { report });
+});

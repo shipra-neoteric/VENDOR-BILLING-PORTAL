@@ -5,7 +5,7 @@ import {
   FileTextOutlined, LineChartOutlined, WalletOutlined,
   AccountBookOutlined, UsergroupAddOutlined, MonitorOutlined,
   ShareAltOutlined, SettingOutlined, ClockCircleOutlined, HistoryOutlined,
-  FileSearchOutlined, ScheduleOutlined, SolutionOutlined, CreditCardOutlined,
+  FileSearchOutlined, ScheduleOutlined, CreditCardOutlined,
   NodeIndexOutlined, DiffOutlined, ReadOutlined, ClusterOutlined,
 } from "@ant-design/icons";
 import { useAuth } from "../../context/AuthContext";
@@ -45,8 +45,7 @@ const ADMIN_GROUPS: NavGroup[] = [
       { name: "Work Orders",   path: "/work-items",    icon: <FileTextOutlined />, moduleId: "work-orders" },
       { name: "Quotation Comparison", path: "/quotation-comparison", icon: <DiffOutlined />, moduleId: "quotation-comparison" },
       { name: "Work Progress", path: "/work-progress", icon: <LineChartOutlined />, moduleId: "work-progress" },
-      { name: "Daily Project Report", path: "/daily-project-report", icon: <ScheduleOutlined />, moduleId: "daily-project-report" },
-      { name: "Daily Labour Report", path: "/daily-labour-report", icon: <SolutionOutlined />, moduleId: "daily-labour-report" },
+      { name: "Daily Progress Report", path: "/daily-progress-report", icon: <ScheduleOutlined />, moduleId: "daily-progress-report" },
     ],
   },
   {
@@ -76,8 +75,7 @@ const ADMIN_GROUPS: NavGroup[] = [
 
 const DRI_OWN_ITEMS: NavItem[] = [
   { name: "Project Wise Progress", path: "/work-progress", icon: <LineChartOutlined />, moduleId: "work-progress" },
-  { name: "Daily Project Report", path: "/daily-project-report", icon: <ScheduleOutlined />, moduleId: "daily-project-report" },
-  { name: "Daily Labour Report", path: "/daily-labour-report", icon: <SolutionOutlined />, moduleId: "daily-labour-report" },
+  { name: "Daily Progress Report", path: "/daily-progress-report", icon: <ScheduleOutlined />, moduleId: "daily-progress-report" },
 ];
 
 // ── Permission helpers ─────────────────────────────────────────────────────────
@@ -130,8 +128,7 @@ function buildDRIGroups(perms: PermEntry[] | undefined): NavGroup[] {
       const extras = group.items.filter(item =>
         item.moduleId !== "dashboard" &&
         item.moduleId !== "work-progress" &&
-        item.moduleId !== "daily-project-report" &&
-        item.moduleId !== "daily-labour-report" &&
+        item.moduleId !== "daily-progress-report" &&
         item.moduleId !== "dri-dashboard" &&
         canViewExplicit(item.moduleId, perms!)
       );

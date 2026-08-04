@@ -12,8 +12,9 @@ const { nextWorkOrderNo, nextVendorCode, nextConsultantCode } = require('../util
 const { startInstance } = require('../utils/slaEngine');
 const { milestonesExceedContract } = require('../utils/validateMilestones');
 const { documentsExceedLimit } = require('../utils/validateDocuments');
-const { createPublicReport } = require('../controllers/dailyProjectReportController');
-const { createPublicReport: createPublicLabourReport } = require('../controllers/dailyLabourReportController');
+const { createPublicReport: createLegacyProjectReport } = require('../controllers/dailyProjectReportController');
+const { createPublicReport: createLegacyLabourReport } = require('../controllers/dailyLabourReportController');
+const { createPublicReport: createProgressReport } = require('../controllers/dailyProgressReportController');
 const { getWorkOrderQuotationContext, submitQuotation } = require('../controllers/contractorQuotationController');
 
 // ── Lookup lists (read-only, no auth) ──────────────────────────
@@ -114,11 +115,13 @@ router.post('/work-orders', asyncHandler(async (req, res) => {
   created(res, { workOrder }, 'Work order submitted successfully');
 }));
 
-// ── Submit Daily Project Report (no auth) ───────────────────────
-router.post('/daily-reports', createPublicReport);
+// ── Submit Daily Progress Report — the merged form (no auth) ─────
+router.post('/daily-progress-reports', createProgressReport);
 
-// ── Submit Daily Contractor / Labour Report (no auth) ────────────
-router.post('/daily-labour-reports', createPublicLabourReport);
+// ── Legacy — superseded by /daily-progress-reports above, kept mounted
+// under a renamed path so old links/integrations don't 404 (no auth) ──
+router.post('/legacy-daily-project-reports', createLegacyProjectReport);
+router.post('/legacy-daily-labour-reports', createLegacyLabourReport);
 
 // ── Quotation Comparison — per-work-order-scoped public link (no auth) ──
 // Unlike every other public route above, this one is scoped to a single

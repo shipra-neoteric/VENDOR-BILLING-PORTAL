@@ -1,6 +1,6 @@
 import { lazy, Suspense } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
-import { Spin } from "antd";
+import Spinner from "../ui/Spinner";
 
 // Every page below is route-loaded on demand instead of shipping in the
 // initial bundle — previously all ~19 page modules (several of them large:
@@ -36,8 +36,7 @@ const SlaSettings       = lazy(() => import("../pages/SlaSettings"));
 const SlaSettingsDetail = lazy(() => import("../pages/SlaSettings/Detail"));
 const SlaDashboard      = lazy(() => import("../pages/SlaDashboard"));
 const AuditLogs         = lazy(() => import("../pages/AuditLogs"));
-const DailyProjectReport = lazy(() => import("../pages/DailyProjectReport"));
-const DailyLabourReport  = lazy(() => import("../pages/DailyLabourReport"));
+const DailyProgressReport = lazy(() => import("../pages/DailyProgressReport"));
 
 import MainLayout     from "../layouts/MainLayout/MainLayout";
 import ProtectedRoute from "../components/ProtectedRoute";
@@ -47,7 +46,7 @@ import { getDefaultPath } from "../layouts/Sidebar/Sidebar";
 function RouteFallback() {
   return (
     <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "60vh" }}>
-      <Spin size="large" />
+      <Spinner />
     </div>
   );
 }
@@ -62,8 +61,7 @@ function DriRoutes() {
             <Route index                    element={<Navigate to="/work-progress" replace />} />
             {/* Core DRI routes */}
             <Route path="/work-progress"    element={<WorkProgress />} />
-            <Route path="/daily-project-report" element={<DailyProjectReport />} />
-            <Route path="/daily-labour-report"  element={<DailyLabourReport />} />
+            <Route path="/daily-progress-report" element={<DailyProgressReport />} />
             {/* Admin module routes — visible when admin grants DRI explicit view permission */}
             <Route path="/projects"         element={<Projects />} />
             <Route path="/companies"        element={<Companies />} />
@@ -126,8 +124,7 @@ function AdminRoutes() {
             <Route path="/sla-settings/:id" element={<SlaSettingsDetail />} />
             <Route path="/sla-dashboard"   element={<SlaDashboard />} />
             <Route path="/audit-logs"      element={<AuditLogs />} />
-            <Route path="/daily-project-report" element={<DailyProjectReport />} />
-            <Route path="/daily-labour-report"  element={<DailyLabourReport />} />
+            <Route path="/daily-progress-report" element={<DailyProgressReport />} />
             <Route path="*"                element={<Navigate to={defaultPath} replace />} />
           </Route>
         </Route>

@@ -64,8 +64,13 @@ app.use('/api/dpr',          require('./routes/dpr'));
 app.use('/api/report-schedules', require('./routes/reportSchedules'));
 app.use('/api/audit-logs',   require('./routes/auditLogs'));
 app.use('/api/ai',           require('./routes/ai'));
-app.use('/api/daily-reports', require('./routes/dailyProjectReports'));
-app.use('/api/daily-labour-reports', require('./routes/dailyLabourReports'));
+// Legacy — superseded by /api/daily-progress-reports (the merged form). Kept
+// mounted, under a renamed path, so historical submissions stay reachable
+// without exposing the old separate forms anywhere in the frontend.
+app.use('/api/legacy-daily-project-reports', require('./routes/dailyProjectReports'));
+app.use('/api/legacy-daily-labour-reports', require('./routes/dailyLabourReports'));
+app.use('/api/daily-progress-reports', require('./routes/dailyProgressReports'));
+app.use('/api/drawing-requests', require('./routes/drawingRequests'));
 
 app.get('/api/health', (_req, res) =>
   res.json({ success: true, status: 'ok', timestamp: new Date().toISOString() })
