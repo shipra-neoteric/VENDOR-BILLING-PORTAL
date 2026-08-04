@@ -379,7 +379,7 @@ export default function DRIDashboard() {
       progForm.resetFields();
       await reloadWODetail(progTarget.woId);
     } catch (e: any) {
-      message.error(e?.response?.data?.message || "Failed to add progress");
+      message.error(e?.response?.data?.message || "Failed to add measurement");
     } finally {
       setProgSaving(false);
     }
@@ -427,7 +427,7 @@ export default function DRIDashboard() {
         `/work-orders/${invalidateWOId}/scope-items/${invalidateEntry.scopeId.split("||")[0]}/progress/${invalidateEntry._id}/invalidate`,
         { reason: vals.reason }
       );
-      message.success("Entry invalidated — log correct progress separately");
+      message.success("Entry invalidated — log correct measurement separately");
       setInvalidateModal(false); invalidateForm.resetFields();
       await reloadWODetail(invalidateWOId);
     } catch (e: any) {
@@ -821,7 +821,7 @@ export default function DRIDashboard() {
                         <table style={{ width: "100%", borderCollapse: "collapse" }}>
                           <thead>
                             <tr style={{ background: "var(--nx-fill-2)" }}>
-                              {["#", "Description", "Unit", "Planned", "Done", "Billed", "Unbilled", "Progress", ...(canEdit ? ["Action"] : [])].map(h => (
+                              {["#", "Description", "Unit", "Planned", "Done", "Billed", "Unbilled", "Measurement", ...(canEdit ? ["Action"] : [])].map(h => (
                                 <th key={h} style={{ padding: "9px 12px", fontSize: 10, fontWeight: 700, color: "var(--nx-table-header-color)", textAlign: "left", textTransform: "uppercase", letterSpacing: "0.05em", whiteSpace: "nowrap", borderBottom: "1px solid var(--nx-border)" }}>{h}</th>
                               ))}
                             </tr>
@@ -868,7 +868,7 @@ export default function DRIDashboard() {
                                       <td style={{ padding: "9px 12px" }}>
                                         {!hasSubItems && (
                                           <Button size="small" onClick={() => openAddProgress(wo._id, si)}>
-                                            + Progress
+                                            + Measurement
                                           </Button>
                                         )}
                                       </td>
@@ -903,7 +903,7 @@ export default function DRIDashboard() {
                                         {canEdit && (
                                           <td style={{ padding: "6px 12px" }}>
                                             <Button size="small" onClick={() => openAddProgress(wo._id, si, sub)}>
-                                              + Progress
+                                              + Measurement
                                             </Button>
                                           </td>
                                         )}
@@ -1023,17 +1023,17 @@ export default function DRIDashboard() {
         </>
       )}
 
-      {/* ── Add Progress Modal (owner/edit-permission only) ──────────────────── */}
+      {/* ── Add Measurement Modal (owner/edit-permission only) ──────────────────── */}
       <Modal
         open={progModal}
         onCancel={() => { setProgModal(false); progForm.resetFields(); }}
         title={
           progTarget?.subItem
-            ? `Add Progress — ${progTarget.item.description} › ${progTarget.subItem.description}`
-            : `Add Progress — ${progTarget?.item.description ?? ""}`
+            ? `Add Measurement — ${progTarget.item.description} › ${progTarget.subItem.description}`
+            : `Add Measurement — ${progTarget?.item.description ?? ""}`
         }
         onOk={handleAddProgress}
-        okText="Save Progress"
+        okText="Save Measurement"
         okButtonProps={{ loading: progSaving, style: { background: "#FF7A00", borderColor: "#FF7A00" } }}
         destroyOnClose
       >
@@ -1050,7 +1050,7 @@ export default function DRIDashboard() {
           {progModalTarget && !progModalTarget.plannedQty && (
             <div style={{ background: "#FFF8F0", border: "1px solid #FDDCB5", borderRadius: 8, padding: "10px 14px", marginBottom: 14 }}>
               <div style={{ fontSize: 12, fontWeight: 600, color: "#FF7A00", marginBottom: 6 }}>Planned quantity not set for this item</div>
-              <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 10 }}>You can set the total planned quantity now, or leave blank to log progress without a cap.</div>
+              <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 10 }}>You can set the total planned quantity now, or leave blank to log measurement without a cap.</div>
               <Form.Item label={`Total Planned Qty (${progModalTarget.unit})`} name="plannedQty" style={{ marginBottom: 0 }}>
                 <InputNumber style={{ width: "100%" }} min={0.00001} step={0.00001} precision={5} placeholder={progModalTarget.unit === "per-hr" ? "e.g. 200.0000" : "e.g. 5000"} />
               </Form.Item>
@@ -1091,7 +1091,7 @@ export default function DRIDashboard() {
       {/* ── Edit Entry Modal ───────────────────────────────────────────────── */}
       <Modal
         open={editModal} onCancel={() => { setEditModal(false); editForm.resetFields(); }}
-        title="Edit Progress Entry" onOk={handleEditEntry} okText="Save Changes"
+        title="Edit Measurement Entry" onOk={handleEditEntry} okText="Save Changes"
         okButtonProps={{ loading: progSaving, style: { background: "#FF7A00", borderColor: "#FF7A00" } }}
         destroyOnClose
       >
@@ -1112,13 +1112,13 @@ export default function DRIDashboard() {
       {/* ── Invalidate Entry Modal ─────────────────────────────────────────── */}
       <Modal
         open={invalidateModal} onCancel={() => { setInvalidateModal(false); invalidateForm.resetFields(); }}
-        title="Invalidate Progress Entry" onOk={handleInvalidateEntry} okText="Invalidate"
+        title="Invalidate Measurement Entry" onOk={handleInvalidateEntry} okText="Invalidate"
         okButtonProps={{ loading: invalidating, danger: true }}
         destroyOnClose
       >
         <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, padding: "10px 14px", marginBottom: 14, fontSize: 12, color: "#991b1b" }}>
           This entry stays visible in history (who logged it, when, why it was invalidated) but no longer
-          counts toward progress or future billing. Log the correct progress as a fresh entry afterwards.
+          counts toward measurement or future billing. Log the correct measurement as a fresh entry afterwards.
         </div>
         {invalidateEntry && (
           <div style={{ fontSize: 12, color: "var(--nx-text-2)", marginBottom: 14 }}>
@@ -1135,7 +1135,7 @@ export default function DRIDashboard() {
       {/* ── View All Entries Modal ───────────────────────────────────────────── */}
       <Modal
         open={!!allEntriesWOId} onCancel={() => setAllEntriesWOId(null)}
-        title="All Progress Entries"
+        title="All Measurement Entries"
         footer={null} width={700}
       >
         <div style={{ maxHeight: "60vh", overflowY: "auto", paddingRight: 8 }}>
@@ -1210,11 +1210,11 @@ export default function DRIDashboard() {
       >
         <div style={{ marginTop: 8 }}>
           <div style={{ padding: 12, background: "#FFF4E8", border: "1px solid #FED7AA", borderRadius: 8, marginBottom: 16, fontSize: 12, color: "#92400e" }}>
-            <strong>Project bill request</strong> — select work orders to include. Quantities are auto-calculated from recorded progress since last billing.
+            <strong>Project bill request</strong> — select work orders to include. Quantities are auto-calculated from recorded measurement since last billing.
           </div>
 
           {billableWODetails.length === 0 ? (
-            <Empty description="No pending progress to bill. Record daily progress first." />
+            <Empty description="No pending measurement to bill. Record daily measurement first." />
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {vendorGroups.map(vg => {
