@@ -16,11 +16,13 @@ import SField from "../../ui/SField";
 import { DatePicker } from "../../ui/DatePicker";
 import Field from "../../ui/Field";
 import Modal from "../../ui/Modal";
+import { SectionHeading } from "../../ui/Descriptions";
 import { Table, Thead, Tbody, Tr, Th, Td, TdText } from "../../ui/Table";
 import { SkeletonTable } from "../../ui/Skeleton";
 
 interface ProjectOption { _id: string; name: string; }
 interface ContractorOption { vendorCode: string; companyName: string; }
+interface DriOption { _id: string; name: string; }
 
 interface ProgressReportRow extends DailyProgressReportFormValues {
   _id: string;
@@ -37,6 +39,7 @@ export default function DailyProgressReport() {
 
   const [projects, setProjects]       = useState<ProjectOption[]>([]);
   const [contractors, setContractors] = useState<ContractorOption[]>([]);
+  const [driUsers, setDriUsers]       = useState<DriOption[]>([]);
   const [reports, setReports]         = useState<ProgressReportRow[]>([]);
   const [loading, setLoading]         = useState(true);
   const [submitting, setSubmitting]   = useState(false);
@@ -49,10 +52,12 @@ export default function DailyProgressReport() {
     Promise.all([
       apiClient.get("/projects"),
       apiClient.get("/contractors"),
+      apiClient.get("/auth/users", { params: { role: "site-dri" } }),
       apiClient.get("/daily-progress-reports"),
-    ]).then(([p, c, r]) => {
+    ]).then(([p, c, u, r]) => {
       setProjects(p.data.projects || []);
       setContractors(c.data.contractors || []);
+      setDriUsers(u.data.users || []);
       setReports(r.data.reports || []);
     }).catch(() => {}).finally(() => setLoading(false));
   };
@@ -60,7 +65,11 @@ export default function DailyProgressReport() {
   useEffect(load, []);
 
   function openNew() {
-    setForm({ ...emptyForm, driName: user?.name || "" });
+    // If the logged-in user is themselves a registered DRI, default to their
+    // own name — still changeable, since an admin filling this in on behalf
+    // of a site DRI needs to pick a different one from the dropdown.
+    const ownName = driUsers.some(d => d.name === user?.name) ? user?.name ?? "" : "";
+    setForm({ ...emptyForm, driName: ownName });
     setShowForm(true);
   }
 
@@ -77,7 +86,7 @@ export default function DailyProgressReport() {
 
     setSubmitting(true);
     try {
-      await apiClient.post("/daily-progress-reports", { ...form, driName: user?.name || form.driName });
+      await apiClient.post("/daily-progress-reports", form);
       toast.success("Daily Progress Report submitted");
       setForm(emptyForm);
       setShowForm(false);
@@ -146,44 +155,56 @@ export default function DailyProgressReport() {
 
       {showForm && (
         <Modal
-          title="New Daily Progress Report" wide onClose={() => setShowForm(false)}
+          title="New Daily Progress Report"
+          subtitle="Fill in today's site details, then check off what work happened."
+          icon={ClipboardList}
+          extraWide
+          onClose={() => setShowForm(false)}
           footer={<Btn label="Submit Report" color="primary" className="w-full" loading={submitting} onClick={onSubmit} />}
         >
-          <Card className="mb-5 flex flex-col gap-4">
-            <SField
-              label="Project" required placeholder="Choose"
-              value={form.projectId || null}
-              onChange={v => setForm(f => ({ ...f, projectId: v }))}
-              options={projectOptions}
-            />
-            <Field label="DRI Name" required value={form.driName} disabled />
-            <DatePicker
-              label="Date" value={form.date}
-              onChange={v => setForm(f => ({ ...f, date: v }))}
-              max={dayjs().format("YYYY-MM-DD")}
-            />
-            <SField
-              label="Contractor Name" required placeholder="Choose"
-              value={form.vendorCode || null}
-              onChange={v => setForm(f => ({ ...f, vendorCode: v }))}
-              options={contractors.map(c => ({ label: c.companyName, value: c.vendorCode }))}
-            />
-            <SField
-              label="Shift Type" required placeholder="Choose"
-              value={form.shiftType || null}
-              onChange={v => setForm(f => ({ ...f, shiftType: v }))}
-              options={[{ label: "Day", value: "Day" }, { label: "Night", value: "Night" }]}
-            />
-            <Field
-              label="Number of Labourers" required type="number" min={0}
-              placeholder="e.g. 12"
-              value={form.labourCount}
-              onChange={e => setForm(f => ({ ...f, labourCount: e.target.value === "" ? "" : Number(e.target.value) }))}
-            />
+          <Card className="mb-5">
+            <SectionHeading>Report Details</SectionHeading>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <SField
+                label="Project" required placeholder="Choose"
+                value={form.projectId || null}
+                onChange={v => setForm(f => ({ ...f, projectId: v }))}
+                options={projectOptions}
+              />
+              <SField
+                label="Contractor Name" required placeholder="Choose"
+                value={form.vendorCode || null}
+                onChange={v => setForm(f => ({ ...f, vendorCode: v }))}
+                options={contractors.map(c => ({ label: c.companyName, value: c.vendorCode }))}
+              />
+              <SField
+                label="DRI Name" required placeholder="Choose"
+                value={form.driName || null}
+                onChange={v => setForm(f => ({ ...f, driName: v }))}
+                options={driUsers.map(d => ({ label: d.name, value: d.name }))}
+              />
+              <DatePicker
+                label="Date" value={form.date}
+                onChange={v => setForm(f => ({ ...f, date: v }))}
+                max={dayjs().format("YYYY-MM-DD")}
+              />
+              <SField
+                label="Shift Type" required placeholder="Choose"
+                value={form.shiftType || null}
+                onChange={v => setForm(f => ({ ...f, shiftType: v }))}
+                options={[{ label: "Day", value: "Day" }, { label: "Night", value: "Night" }]}
+              />
+              <Field
+                label="Number of Labourers" required type="number" min={0}
+                placeholder="e.g. 12"
+                value={form.labourCount}
+                onChange={e => setForm(f => ({ ...f, labourCount: e.target.value === "" ? "" : Number(e.target.value) }))}
+              />
+            </div>
           </Card>
 
           <Card>
-            <div className="font-bold text-sm text-[#1A1A2E] dark:text-[#F1F5F9] mb-3">Work Type — check what happened today</div>
+            <SectionHeading>Work Type — check what happened today</SectionHeading>
             <WorkCategoryChecklist entries={form.workEntries} onChange={setEntries} />
           </Card>
         </Modal>

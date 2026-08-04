@@ -30,7 +30,6 @@ const emptyForm: DailyProgressReportFormValues = {
 
 export default function PublicDailyProgressReportForm() {
   const [projects, setProjects] = useState<Lookup[]>([]);
-  const [driUsers, setDriUsers] = useState<Lookup[]>([]);
   const [contractors, setContractors] = useState<ContractorLookup[]>([]);
   const [loading, setLoading]   = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -38,10 +37,9 @@ export default function PublicDailyProgressReportForm() {
   const [form, setForm] = useState(emptyForm);
 
   useEffect(() => {
-    Promise.all([pub.get("/projects"), pub.get("/dri-users"), pub.get("/contractors")])
-      .then(([p, u, c]) => {
+    Promise.all([pub.get("/projects"), pub.get("/contractors")])
+      .then(([p, c]) => {
         setProjects(p.data.projects || []);
-        setDriUsers(u.data.users || []);
         setContractors(c.data.contractors || []);
       })
       .catch(() => {})
@@ -116,42 +114,43 @@ export default function PublicDailyProgressReportForm() {
           <p className="text-gray-500">Fill this in at the end of each site day — work progress by category with photo evidence.</p>
         </div>
 
-        <Card className="mb-5 flex flex-col gap-4">
-          <SField
-            label="Project Name" required placeholder="Choose"
-            value={form.projectId || null}
-            onChange={v => setForm(f => ({ ...f, projectId: v }))}
-            options={projects.map(p => ({ label: p.name, value: p._id }))}
-          />
-          <SField
-            label="DRI Name" required placeholder="Choose"
-            value={form.driName || null}
-            onChange={v => setForm(f => ({ ...f, driName: v }))}
-            options={driUsers.map(d => ({ label: d.name, value: d.name }))}
-          />
-          <DatePicker
-            label="Date" value={form.date}
-            onChange={v => setForm(f => ({ ...f, date: v }))}
-            max={dayjs().format("YYYY-MM-DD")}
-          />
-          <SField
-            label="Contractor Name" required placeholder="Choose"
-            value={form.vendorCode || null}
-            onChange={v => setForm(f => ({ ...f, vendorCode: v }))}
-            options={contractors.map(c => ({ label: c.companyName, value: c.vendorCode }))}
-          />
-          <SField
-            label="Shift Type" required placeholder="Choose"
-            value={form.shiftType || null}
-            onChange={v => setForm(f => ({ ...f, shiftType: v }))}
-            options={[{ label: "Day", value: "Day" }, { label: "Night", value: "Night" }]}
-          />
-          <Field
-            label="Number of Labourers" required type="number" min={0}
-            placeholder="e.g. 12"
-            value={form.labourCount}
-            onChange={e => setForm(f => ({ ...f, labourCount: e.target.value === "" ? "" : Number(e.target.value) }))}
-          />
+        <Card className="mb-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <SField
+              label="Project Name" required placeholder="Choose"
+              value={form.projectId || null}
+              onChange={v => setForm(f => ({ ...f, projectId: v }))}
+              options={projects.map(p => ({ label: p.name, value: p._id }))}
+            />
+            <SField
+              label="Contractor Name" required placeholder="Choose"
+              value={form.vendorCode || null}
+              onChange={v => setForm(f => ({ ...f, vendorCode: v }))}
+              options={contractors.map(c => ({ label: c.companyName, value: c.vendorCode }))}
+            />
+            <Field
+              label="DRI Name" required placeholder="Type your name"
+              value={form.driName}
+              onChange={e => setForm(f => ({ ...f, driName: e.target.value }))}
+            />
+            <DatePicker
+              label="Date" value={form.date}
+              onChange={v => setForm(f => ({ ...f, date: v }))}
+              max={dayjs().format("YYYY-MM-DD")}
+            />
+            <SField
+              label="Shift Type" required placeholder="Choose"
+              value={form.shiftType || null}
+              onChange={v => setForm(f => ({ ...f, shiftType: v }))}
+              options={[{ label: "Day", value: "Day" }, { label: "Night", value: "Night" }]}
+            />
+            <Field
+              label="Number of Labourers" required type="number" min={0}
+              placeholder="e.g. 12"
+              value={form.labourCount}
+              onChange={e => setForm(f => ({ ...f, labourCount: e.target.value === "" ? "" : Number(e.target.value) }))}
+            />
+          </div>
         </Card>
 
         <Card className="mb-5">

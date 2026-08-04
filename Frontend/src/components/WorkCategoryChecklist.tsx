@@ -1,7 +1,6 @@
 import { useRef, useState } from "react";
 import toast from "react-hot-toast";
-import { Camera, Loader2, X } from "lucide-react";
-import Checkbox from "../ui/Checkbox";
+import { Camera, Check, Loader2, X } from "lucide-react";
 import { WORK_TYPE_OPTIONS, MIN_IMAGES_PER_CATEGORY } from "../shared/constants/dailyProgressReportOptions";
 import type { WorkEntry } from "../shared/constants/dailyProgressReportOptions";
 
@@ -90,14 +89,38 @@ export default function WorkCategoryChecklist({ entries, onChange }: Props) {
 
   return (
     <div>
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-        {WORK_TYPE_OPTIONS.map(wt => (
-          <Checkbox key={wt} checked={entries.some(e => e.workType === wt)} onChange={() => toggle(wt)} label={wt} />
-        ))}
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5">
+        {WORK_TYPE_OPTIONS.map(wt => {
+          const checked = entries.some(e => e.workType === wt);
+          return (
+            <button
+              key={wt}
+              type="button"
+              onClick={() => toggle(wt)}
+              className={`flex items-center gap-2 rounded-lg border px-3 py-2.5 text-left transition-colors ${
+                checked
+                  ? "border-primary bg-primary/5"
+                  : "border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600"
+              }`}
+            >
+              <span
+                className={`w-[18px] h-[18px] rounded-md border flex items-center justify-center shrink-0 ${
+                  checked ? "bg-primary border-primary" : "bg-white dark:bg-transparent border-gray-300 dark:border-gray-600"
+                }`}
+              >
+                {checked && <Check className="w-3 h-3 text-white" strokeWidth={3} />}
+              </span>
+              <span className={`text-sm font-medium ${checked ? "text-primary" : "text-gray-600 dark:text-gray-300"}`}>{wt}</span>
+            </button>
+          );
+        })}
       </div>
 
       {entries.length > 0 && (
-        <div className="flex flex-col gap-3 mt-4">
+        <div className="flex flex-col gap-3 mt-5">
+          <div className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide border-t border-gray-100 dark:border-gray-700/40 pt-4">
+            {entries.length} categor{entries.length === 1 ? "y" : "ies"} selected — add at least {MIN_IMAGES_PER_CATEGORY} photos to each
+          </div>
           {entries.map(entry => {
             const short = entry.images.length < MIN_IMAGES_PER_CATEGORY;
             return (
