@@ -84,7 +84,7 @@ export default function MultiSelect({ label, placeholder = "Select…", values, 
                   key={o.value}
                   type="button"
                   onClick={() => toggle(o.value)}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left text-[#1A1A2E] dark:text-[#F1F5F9] hover:bg-gray-50 dark:hover:bg-gray-700/40"
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left text-[#1A1A2E]! dark:text-[#F1F5F9]! hover:bg-gray-50 dark:hover:bg-gray-700/40"
                 >
                   <span
                     className={[

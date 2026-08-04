@@ -19,7 +19,7 @@ export default function Pagination({ page, totalPages, onChange }: PaginationPro
         type="button"
         disabled={page <= 1}
         onClick={() => onChange(page - 1)}
-        className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700/50 disabled:opacity-30 disabled:pointer-events-none"
+        className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-500! dark:text-gray-400! hover:bg-gray-100 dark:hover:bg-gray-700/50 disabled:opacity-30 disabled:pointer-events-none"
       >
         <ChevronLeft className="w-4 h-4" />
       </button>
@@ -32,9 +32,10 @@ export default function Pagination({ page, totalPages, onChange }: PaginationPro
             onClick={() => onChange(p)}
             className={[
               "w-8 h-8 rounded-lg text-sm font-semibold transition-colors",
+              // Trailing `!` forces !important — see Btn.tsx for why.
               p === page
-                ? "bg-primary text-white"
-                : "text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700/50",
+                ? "bg-primary text-white!"
+                : "text-gray-600! dark:text-gray-300! hover:bg-gray-100 dark:hover:bg-gray-700/50",
             ].join(" ")}
           >
             {p}
@@ -46,7 +47,7 @@ export default function Pagination({ page, totalPages, onChange }: PaginationPro
         type="button"
         disabled={page >= totalPages}
         onClick={() => onChange(page + 1)}
-        className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700/50 disabled:opacity-30 disabled:pointer-events-none"
+        className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-500! dark:text-gray-400! hover:bg-gray-100 dark:hover:bg-gray-700/50 disabled:opacity-30 disabled:pointer-events-none"
       >
         <ChevronRight className="w-4 h-4" />
       </button>

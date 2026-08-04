@@ -84,7 +84,7 @@ export default function SField({ label, required, placeholder = "Select…", hin
                   setOpen(false);
                   setQuery("");
                 }}
-                className="w-full flex items-center justify-between gap-2 px-3 py-2 text-sm text-left text-[#1A1A2E] dark:text-[#F1F5F9] hover:bg-gray-50 dark:hover:bg-gray-700/40"
+                className="w-full flex items-center justify-between gap-2 px-3 py-2 text-sm text-left text-[#1A1A2E]! dark:text-[#F1F5F9]! hover:bg-gray-50 dark:hover:bg-gray-700/40"
               >
                 {o.label}
                 {o.value === value && <Check className="w-3.5 h-3.5 text-primary shrink-0" />}
