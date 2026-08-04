@@ -25,6 +25,9 @@ import { Table, Thead, Tbody, Tr, Th, Td, TdText } from "../../ui/Table";
 import Pagination from "../../ui/Pagination";
 
 const fmt = (n: number) => "₹" + Math.round(n).toLocaleString("en-IN");
+// Per-unit rates are fractional far more often than totals are — rounding
+// them for display (as fmt() does) silently turns 130.5 into 131.
+const fmtRate = (n: number) => "₹" + (n || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 });
 
 const STATUS_CFG: Record<string, { color: "orange" | "blue" | "green" | "red"; label: string }> = {
   pending:      { color: "orange", label: "Pending (L1 — AGM)"  },
@@ -426,7 +429,7 @@ export default function BillRequests() {
                         <Td>{it.description}</Td>
                         <Td>{it.unit}</Td>
                         <Td className="text-right font-mono">{it.billedQty.toLocaleString("en-IN")}</Td>
-                        <Td className="text-right">{it.rate ? fmt(it.rate) : <span className="text-gray-400">pending</span>}</Td>
+                        <Td className="text-right">{it.rate ? fmtRate(it.rate) : <span className="text-gray-400">pending</span>}</Td>
                         <Td className="text-right font-semibold">{it.rate ? fmt(amt) : <span className="text-gray-400">—</span>}</Td>
                       </Tr>
                     );

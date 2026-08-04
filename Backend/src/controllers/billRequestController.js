@@ -7,25 +7,23 @@ const { success, created, notFound, badRequest, forbidden } = require('../utils/
 const emitEvent   = require('../utils/emitEvent');
 const { startInstance, advanceInstance, cancelInstance } = require('../utils/slaEngine');
 const { logAudit } = require('../utils/auditLog');
-const { hasUnapprovedVariance, isWorkOrderApproved } = require('../utils/varianceCheck');
+const { hasUnapprovedVarianceForLineItem, resolveBillableItem, isWorkOrderApproved } = require('../utils/varianceCheck');
 const { nextCode } = require('../utils/sequence');
 const { nextBillNo } = require('../utils/codeGen');
-const { recomputeAfterInvalidate } = require('../utils/progressHelpers');
+const { recomputeAfterInvalidate, expandBillableCandidates, recomputeParentFromSubItems } = require('../utils/progressHelpers');
 const { resolvePayee } = require('../utils/vendorGroupHelpers');
 
-// Gathers the DRI's day-to-day notes for whichever progress entries haven't
-// been carried into a bill yet (marks them as consumed on the way out), so
-// they ride along into the BillRequest/RunningBill line item instead of
-// staying trapped on the WorkOrder document.
-function collectAndMarkProgressRemarks(si, billRequestId) {
-  const sources = (si.subItems && si.subItems.length > 0) ? si.subItems : [si];
+// Gathers the DRI's day-to-day notes for whichever progress entries on this
+// exact billable target (a particular, or a plain scope item with none)
+// haven't been carried into a bill yet — marks them as consumed on the way
+// out, so they ride along into the BillRequest/RunningBill line item instead
+// of staying trapped on the WorkOrder document.
+function collectAndMarkProgressRemarks(target, billRequestId) {
   const notes = [];
-  for (const src of sources) {
-    for (const entry of src.progressEntries) {
-      if (entry.billedInRequestId || entry.invalidated?.done) continue;
-      if (entry.remarks && entry.remarks.trim()) notes.push(entry.remarks.trim());
-      entry.billedInRequestId = billRequestId;
-    }
+  for (const entry of target.progressEntries) {
+    if (entry.billedInRequestId || entry.invalidated?.done) continue;
+    if (entry.remarks && entry.remarks.trim()) notes.push(entry.remarks.trim());
+    entry.billedInRequestId = billRequestId;
   }
   return notes.join('; ');
 }
@@ -84,24 +82,18 @@ exports.createBillRequest = asyncHandler(async (req, res) => {
   const selectedIds = Array.isArray(scopeItemIds) && scopeItemIds.length > 0
     ? new Set(scopeItemIds.map(String))
     : null;
-  const candidateItems = selectedIds
-    ? wo.scopeItems.filter(si => selectedIds.has(String(si._id)))
-    : wo.scopeItems;
 
-  // Auto-calculate pending qty per scope item. Rate is snapshotted here too
-  // (not just at gmApprove) purely so it's visible to whoever reviews the
-  // request at L1/L2 — gmApprove still re-reads the WO's current rate fresh
-  // when it actually builds the RunningBill, so a rate edited on the WO
-  // in between never goes stale in what's actually billed.
-  const pendingItems = candidateItems
-    .map(si => ({
-      scopeItemId:  si._id,
-      description:  si.description,
-      unit:         si.unit,
-      completedQty: si.completedQty || 0,
-      lastBilledQty:si.lastBilledQty || 0,
-      billedQty:    Math.max(0, (si.completedQty || 0) - (si.lastBilledQty || 0)),
-      rate:         si.rate || 0,
+  // Billing operates per particular when an item has them — never against
+  // the parent's own rolled-up completedQty, which is a display average, not
+  // a billable quantity (see recomputeParentFromSubItems). Rate is
+  // snapshotted here too (not just at gmApprove) purely so it's visible to
+  // whoever reviews the request at L1/L2 — gmApprove still re-reads the WO's
+  // current rate fresh when it actually builds the RunningBill, so a rate
+  // edited on the WO in between never goes stale in what's actually billed.
+  const pendingItems = expandBillableCandidates(wo.scopeItems, selectedIds)
+    .map(c => ({
+      ...c,
+      billedQty: Math.max(0, c.completedQty - c.lastBilledQty),
     }))
     .filter(it => it.billedQty > 0);
 
@@ -109,12 +101,12 @@ exports.createBillRequest = asyncHandler(async (req, res) => {
     return badRequest(res, 'No new progress to bill. Record daily progress first before generating a bill request.');
   }
 
-  // Any item still over its planned qty (or one of its particulars) must be
-  // explicitly signed off by AGM/GM before it can go into a bill.
+  // Any item still over its planned qty (or the specific particular being
+  // billed) must be explicitly signed off by AGM/GM before it can go into a bill.
   for (const pi of pendingItems) {
     const si = wo.scopeItems.id(pi.scopeItemId);
-    if (hasUnapprovedVariance(si)) {
-      return badRequest(res, `"${si.description}" has unapproved progress variance — approve it before billing.`);
+    if (hasUnapprovedVarianceForLineItem(si, pi.subItemId)) {
+      return badRequest(res, `"${pi.description}" has unapproved progress variance — approve it before billing.`);
     }
   }
 
@@ -132,7 +124,8 @@ exports.createBillRequest = asyncHandler(async (req, res) => {
   const progressRemarksByItem = new Map();
   for (const pi of pendingItems) {
     const si = wo.scopeItems.id(pi.scopeItemId);
-    progressRemarksByItem.set(String(pi.scopeItemId), collectAndMarkProgressRemarks(si, billRequestId));
+    const target = resolveBillableItem(si, pi.subItemId);
+    progressRemarksByItem.set(String(pi.subItemId || pi.scopeItemId), collectAndMarkProgressRemarks(target, billRequestId));
   }
 
   const billRequest = await BillRequest.create({
@@ -153,21 +146,30 @@ exports.createBillRequest = asyncHandler(async (req, res) => {
     periodTo,
     items: pendingItems.map(it => ({
       scopeItemId: it.scopeItemId,
+      subItemId:   it.subItemId,
       description: it.description,
       unit:        it.unit,
       billedQty:   it.billedQty,
       rate:        it.rate,
       amount:      it.rate * it.billedQty,
-      progressRemarks: progressRemarksByItem.get(String(it.scopeItemId)) || '',
+      progressRemarks: progressRemarksByItem.get(String(it.subItemId || it.scopeItemId)) || '',
     })),
     remarks:     remarks || '',
     requestedBy: req.user._id,
   });
 
-  // Lock in lastBilledQty on each scope item so it can't be double-billed
+  // Lock in lastBilledQty on each billed particular (or plain scope item) so
+  // it can't be double-billed.
+  const touchedParents = new Set();
   for (const pi of pendingItems) {
     const si = wo.scopeItems.id(pi.scopeItemId);
-    if (si) si.lastBilledQty = pi.completedQty;
+    const target = resolveBillableItem(si, pi.subItemId);
+    if (target) target.lastBilledQty = pi.completedQty;
+    if (pi.subItemId) touchedParents.add(String(pi.scopeItemId));
+  }
+  for (const scopeItemId of touchedParents) {
+    const si = wo.scopeItems.id(scopeItemId);
+    if (si) recomputeParentFromSubItems(si);
   }
   await wo.save();
 
@@ -183,7 +185,7 @@ exports.createBillRequest = asyncHandler(async (req, res) => {
     metadata:      { reqNo },
   });
 
-  const estimatedAmount = pendingItems.reduce((s, it) => s + it.billedQty * (wo.scopeItems.id(it.scopeItemId)?.rate || 0), 0);
+  const estimatedAmount = pendingItems.reduce((s, it) => s + it.billedQty * (it.rate || 0), 0);
   await startInstance('BillRequest', billRequest._id, billRequest.reqNo, req.user._id, {
     projectId: wo.projectId, projectName: wo.projectName, vendorName: wo.vendorName, amount: estimatedAmount,
   });
@@ -204,7 +206,8 @@ exports.agmApprove = asyncHandler(async (req, res) => {
 
   const totalAmount = br.items.reduce((s, item) => {
     const scopeItem = item.scopeItemId ? wo.scopeItems.id(item.scopeItemId) : wo.scopeItems.find(si => si.description === item.description);
-    return s + (scopeItem?.rate ?? 0) * item.billedQty;
+    const target = resolveBillableItem(scopeItem, item.subItemId);
+    return s + (target?.rate ?? 0) * item.billedQty;
   }, 0);
   const retentionPercent = wo.retentionPercent ?? 0;
   const defaultRetention = Math.round(totalAmount * retentionPercent / 100);
@@ -279,17 +282,19 @@ exports.gmApprove = asyncHandler(async (req, res) => {
     const scopeItem = item.scopeItemId
       ? wo.scopeItems.id(item.scopeItemId)
       : wo.scopeItems.find(si => si.description === item.description);
+    const target = resolveBillableItem(scopeItem, item.subItemId);
 
-    const rate   = scopeItem?.rate   ?? 0;
+    const rate   = target?.rate   ?? 0;
     const amount = rate * item.billedQty;
 
     return {
       scopeItemId: item.scopeItemId,
+      subItemId:   item.subItemId,
       description: item.description,
-      remarks:     scopeItem?.remarks   || '',
+      remarks:     target?.remarks   || '',
       progressRemarks: item.progressRemarks || '',
       unit:        item.unit,
-      plannedQty:  scopeItem?.plannedQty ?? 0,
+      plannedQty:  target?.plannedQty ?? 0,
       billedQty:   item.billedQty,
       rate,
       amount,
@@ -386,22 +391,19 @@ exports.rejectBillRequest = asyncHandler(async (req, res) => {
   const wo = await WorkOrder.findById(br.workOrderId);
   if (wo) {
     for (const item of br.items) {
-      if (item.scopeItemId) {
-        const si = wo.scopeItems.id(item.scopeItemId);
-        if (si) {
-          si.lastBilledQty = Math.max(0, (si.lastBilledQty || 0) - item.billedQty);
-          const sources = (si.subItems && si.subItems.length > 0) ? si.subItems : [si];
-          for (const src of sources) {
-            for (const entry of src.progressEntries) {
-              if (entry.billedInRequestId && String(entry.billedInRequestId) === String(br._id) && !entry.invalidated?.done) {
-                entry.invalidated = { done: true, by: req.user._id, at: new Date(), reason: rejectReason };
-                entry.billedInRequestId = null;
-              }
-            }
-          }
-          recomputeAfterInvalidate(si);
+      if (!item.scopeItemId) continue;
+      const si = wo.scopeItems.id(item.scopeItemId);
+      if (!si) continue;
+      const target = resolveBillableItem(si, item.subItemId);
+      if (!target) continue;
+      target.lastBilledQty = Math.max(0, (target.lastBilledQty || 0) - item.billedQty);
+      for (const entry of target.progressEntries) {
+        if (entry.billedInRequestId && String(entry.billedInRequestId) === String(br._id) && !entry.invalidated?.done) {
+          entry.invalidated = { done: true, by: req.user._id, at: new Date(), reason: rejectReason };
+          entry.billedInRequestId = null;
         }
       }
+      recomputeAfterInvalidate(si);
     }
     await wo.save();
   }
@@ -473,15 +475,10 @@ exports.createBatchBillRequest = asyncHandler(async (req, res) => {
     const existing = await BillRequest.findOne({ workOrderId: wo._id, status: { $in: ['pending', 'pending-gm'] } });
     if (existing) { skipped.push({ workOrderId, reason: `Stage ${existing.stageNo} already pending` }); continue; }
 
-    const pendingItems = wo.scopeItems
-      .map(si => ({
-        scopeItemId:   si._id,
-        description:   si.description,
-        unit:          si.unit,
-        completedQty:  si.completedQty  || 0,
-        lastBilledQty: si.lastBilledQty || 0,
-        billedQty:     Math.max(0, (si.completedQty || 0) - (si.lastBilledQty || 0)),
-        rate:          si.rate || 0,
+    const pendingItems = expandBillableCandidates(wo.scopeItems)
+      .map(c => ({
+        ...c,
+        billedQty: Math.max(0, c.completedQty - c.lastBilledQty),
       }))
       .filter(it => it.billedQty > 0);
 
@@ -499,7 +496,8 @@ exports.createBatchBillRequest = asyncHandler(async (req, res) => {
     const progressRemarksByItem = new Map();
     for (const pi of pendingItems) {
       const si = wo.scopeItems.id(pi.scopeItemId);
-      progressRemarksByItem.set(String(pi.scopeItemId), collectAndMarkProgressRemarks(si, billRequestId));
+      const target = resolveBillableItem(si, pi.subItemId);
+      progressRemarksByItem.set(String(pi.subItemId || pi.scopeItemId), collectAndMarkProgressRemarks(target, billRequestId));
     }
 
     const br = await BillRequest.create({
@@ -518,21 +516,29 @@ exports.createBatchBillRequest = asyncHandler(async (req, res) => {
       periodFrom, periodTo,
       items: pendingItems.map(it => ({
         scopeItemId: it.scopeItemId,
+        subItemId:   it.subItemId,
         description: it.description,
         unit:        it.unit,
         billedQty:   it.billedQty,
         rate:        it.rate,
         amount:      it.rate * it.billedQty,
-        progressRemarks: progressRemarksByItem.get(String(it.scopeItemId)) || '',
+        progressRemarks: progressRemarksByItem.get(String(it.subItemId || it.scopeItemId)) || '',
       })),
       remarks:     remarks || '',
       requestedBy: req.user._id,
       batchId,
     });
 
+    const touchedParents = new Set();
     for (const pi of pendingItems) {
       const si = wo.scopeItems.id(pi.scopeItemId);
-      if (si) si.lastBilledQty = pi.completedQty;
+      const target = resolveBillableItem(si, pi.subItemId);
+      if (target) target.lastBilledQty = pi.completedQty;
+      if (pi.subItemId) touchedParents.add(String(pi.scopeItemId));
+    }
+    for (const scopeItemId of touchedParents) {
+      const si = wo.scopeItems.id(scopeItemId);
+      if (si) recomputeParentFromSubItems(si);
     }
     await wo.save();
 
@@ -548,7 +554,7 @@ exports.createBatchBillRequest = asyncHandler(async (req, res) => {
       metadata:      { reqNo, batchId },
     });
 
-    const batchEstimatedAmount = pendingItems.reduce((s, it) => s + it.billedQty * (wo.scopeItems.id(it.scopeItemId)?.rate || 0), 0);
+    const batchEstimatedAmount = pendingItems.reduce((s, it) => s + it.billedQty * (it.rate || 0), 0);
     await startInstance('BillRequest', br._id, br.reqNo, req.user._id, {
       projectId: wo.projectId, projectName: wo.projectName, vendorName: wo.vendorName, amount: batchEstimatedAmount,
     });

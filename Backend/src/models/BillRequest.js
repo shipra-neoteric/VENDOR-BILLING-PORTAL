@@ -3,6 +3,10 @@ const { Schema } = mongoose;
 
 const itemSchema = new Schema({
   scopeItemId:  { type: Schema.Types.ObjectId },
+  // Set only when this line bills a specific particular within scopeItemId
+  // rather than the scope item as a whole — same convention as
+  // RunningBill.lineItemSchema's subItemId.
+  subItemId:    { type: Schema.Types.ObjectId },
   description:  { type: String, required: true },
   unit:         { type: String, default: '' },
   billedQty:    { type: Number, required: true, min: 0 },

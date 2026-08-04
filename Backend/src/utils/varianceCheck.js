@@ -23,6 +23,7 @@ function hasUnapprovedVarianceForLineItem(si, subItemId) {
 // Resolves the actual billable target for a line item — the particular
 // (subItem) it references, if any, otherwise the scope item itself.
 function resolveBillableItem(si, subItemId) {
+  if (!si) return null;
   if (!subItemId) return si;
   return si.subItems && si.subItems.id ? si.subItems.id(subItemId) : null;
 }

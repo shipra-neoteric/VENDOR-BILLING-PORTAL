@@ -60,6 +60,9 @@ interface BillRequestStage {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const fmtMoney = (n: number) => "₹" + Math.round(n).toLocaleString("en-IN");
+// Per-unit rates are fractional far more often than totals are — rounding
+// them for display (as fmtMoney() does) silently turns 130.5 into 131.
+const fmtRate  = (n: number) => "₹" + (n || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 });
 
 // Net of GST, hold/retention and advance recovery — the amount actually due to the
 // contractor before TDS, not the raw gross bill figure. Matches Bills/Ledger/Approvals.
@@ -527,7 +530,7 @@ export default function WorkOrderDashboard() {
                     { label: "Billed",    value: `${fmtQty(si.lastBilledQty || 0)} ${si.unit}`,                 color: "#16a34a" },
                     { label: "Unbilled",  value: pending > 0 ? `${fmtQty(pending)} ${si.unit}` : "—",           color: pending > 0 ? "#FF7A00" : "#9CA3AF" },
                     { label: "Remaining", value: remaining > 0 ? `${fmtQty(remaining)} ${si.unit}` : "Done ✓",  color: remaining > 0 ? "#374151" : "#16a34a" },
-                    { label: "Rate",      value: fmtMoney(si.rate || 0),                                        color: "#374151" },
+                    { label: "Rate",      value: fmtRate(si.rate || 0),                                          color: "#374151" },
                   ].map(({ label, value, color }) => (
                     <div key={label}>
                       <div style={{ fontSize: 10, color: "#9CA3AF", textTransform: "uppercase", letterSpacing: "0.06em" }}>{label}</div>

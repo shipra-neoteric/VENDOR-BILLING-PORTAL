@@ -56,6 +56,9 @@ interface Bill {
 interface ProjectOpt { id: string; name: string; code: string; parentId?: string | null; }
 
 const fmt = (n: number) => "₹" + Math.round(n || 0).toLocaleString("en-IN");
+// Per-unit rates are fractional far more often than totals are — rounding
+// them for display (as fmt() does) silently turns 130.5 into 131.
+const fmtRate = (n: number) => "₹" + (n || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 });
 const netAfterAdvance = (b: Bill) =>
   billFinancials({
     gross: b.amount || 0, gstPercent: b.gstPercent ?? 0,
@@ -287,7 +290,7 @@ export default function Billing() {
                     <tr key={i} style={{ borderTop: "1px solid #f0f0f0" }}>
                       <td style={{ padding: "6px 8px" }}>{li.description}</td>
                       <td style={{ padding: "6px 8px", textAlign: "right", fontFamily: "monospace" }}>{li.billedQty} {li.unit}</td>
-                      <td style={{ padding: "6px 8px", textAlign: "right", fontFamily: "monospace" }}>{fmt(li.rate)}</td>
+                      <td style={{ padding: "6px 8px", textAlign: "right", fontFamily: "monospace" }}>{fmtRate(li.rate)}</td>
                       <td style={{ padding: "6px 8px", textAlign: "right", fontFamily: "monospace", fontWeight: 700 }}>{fmt(li.amount)}</td>
                     </tr>
                   ))}

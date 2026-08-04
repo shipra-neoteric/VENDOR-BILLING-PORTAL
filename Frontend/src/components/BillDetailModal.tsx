@@ -7,6 +7,9 @@ import Badge from "../ui/Badge";
 import { Table, Thead, Tbody, Tfoot, Tr, Th, Td } from "../ui/Table";
 
 const fmt = (n: number) => "₹" + Math.round(n).toLocaleString("en-IN");
+// Per-unit rates are fractional far more often than totals are — rounding
+// them for display (as fmt() does) silently turns 130.5 into 131.
+const fmtRate = (n: number) => "₹" + (n || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 });
 
 export interface BillDetailItem {
   scopeItemId?: string;
@@ -132,7 +135,7 @@ export default function BillDetailModal({
                     </Td>
                     <Td>{it.unit}</Td>
                     <Td className="text-right font-mono">{it.billedQty.toLocaleString("en-IN")}</Td>
-                    <Td className="text-right">{it.rate ? fmt(it.rate) : <span className="text-gray-400">pending</span>}</Td>
+                    <Td className="text-right">{it.rate ? fmtRate(it.rate) : <span className="text-gray-400">pending</span>}</Td>
                     <Td className="text-right font-semibold">{it.rate ? fmt(amt) : <span className="text-gray-400">—</span>}</Td>
                   </Tr>
                 );

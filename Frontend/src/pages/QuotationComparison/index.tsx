@@ -54,6 +54,9 @@ interface ScopeItemContext {
 }
 
 const fmt = (n: number) => "₹" + Math.round(n || 0).toLocaleString("en-IN");
+// Per-unit rates are fractional far more often than totals are — rounding
+// them for display (as fmt() does) silently turns 130.5 into 131.
+const fmtRate = (n: number) => "₹" + (n || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 });
 
 function statusColor(status: Quotation["status"]) {
   if (status === "approved") return "green" as const;
@@ -227,7 +230,7 @@ function QuotationRow({ q, onApprove, onReject }: { q: Quotation; onApprove: () 
                       <Td><TdText>{item.description}</TdText></Td>
                       <Td><TdText>{item.unit}</TdText></Td>
                       <Td><TdText>{item.plannedQty}</TdText></Td>
-                      <Td><TdText>{fmt(item.rate)}</TdText></Td>
+                      <Td><TdText>{fmtRate(item.rate)}</TdText></Td>
                       <Td><TdText>{fmt(item.amount)}</TdText></Td>
                     </Tr>
                   ))}

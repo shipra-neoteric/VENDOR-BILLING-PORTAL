@@ -97,6 +97,9 @@ interface BillRequestRow {
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 const fmt  = (n: number) => "₹" + Math.round(n || 0).toLocaleString("en-IN");
+// Per-unit rates are fractional far more often than totals are — rounding
+// them for display (as fmt() does) silently turns 130.5 into 131.
+const fmtRate = (n: number) => "₹" + (n || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 });
 const fmtN = (n: number) => (n ?? 0).toLocaleString("en-IN");
 const pctOf = (c: number, p: number) => p > 0 ? Math.min(100, Math.round((c / p) * 100)) : 0;
 
@@ -1098,7 +1101,7 @@ export default function SiteProgress() {
                       </td>
                       <td style={{ padding: "6px 10px" }}>{it.unit}</td>
                       <td style={{ padding: "6px 10px", textAlign: "right", fontFamily: "monospace" }}>{it.billedQty.toLocaleString("en-IN")}</td>
-                      <td style={{ padding: "6px 10px", textAlign: "right" }}>{it.rate ? fmt(it.rate) : <span style={{ color: "#9CA3AF" }}>pending</span>}</td>
+                      <td style={{ padding: "6px 10px", textAlign: "right" }}>{it.rate ? fmtRate(it.rate) : <span style={{ color: "#9CA3AF" }}>pending</span>}</td>
                       <td style={{ padding: "6px 10px", textAlign: "right", fontWeight: 600 }}>{it.rate ? fmt(amt) : <span style={{ color: "#9CA3AF" }}>—</span>}</td>
                     </tr>
                   );
