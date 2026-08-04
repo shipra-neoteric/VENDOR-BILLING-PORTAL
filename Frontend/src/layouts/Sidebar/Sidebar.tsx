@@ -6,7 +6,7 @@ import {
   AccountBookOutlined, UsergroupAddOutlined, MonitorOutlined,
   ShareAltOutlined, SettingOutlined, ClockCircleOutlined, HistoryOutlined,
   FileSearchOutlined, ScheduleOutlined, CreditCardOutlined,
-  NodeIndexOutlined, DiffOutlined, ReadOutlined, ClusterOutlined,
+  NodeIndexOutlined, DiffOutlined, ReadOutlined, ClusterOutlined, EditOutlined,
 } from "@ant-design/icons";
 import { useAuth } from "../../context/AuthContext";
 import type { PermEntry } from "../../context/AuthContext";
@@ -46,6 +46,7 @@ const ADMIN_GROUPS: NavGroup[] = [
       { name: "Quotation Comparison", path: "/quotation-comparison", icon: <DiffOutlined />, moduleId: "quotation-comparison" },
       { name: "Work Progress", path: "/work-progress", icon: <LineChartOutlined />, moduleId: "work-progress" },
       { name: "Daily Progress Report", path: "/daily-progress-report", icon: <ScheduleOutlined />, moduleId: "daily-progress-report" },
+      { name: "Drawing Requests", path: "/drawing-requests", icon: <EditOutlined />, moduleId: "drawing-requests" },
     ],
   },
   {

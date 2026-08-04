@@ -15,6 +15,7 @@ const { documentsExceedLimit } = require('../utils/validateDocuments');
 const { createPublicReport: createLegacyProjectReport } = require('../controllers/dailyProjectReportController');
 const { createPublicReport: createLegacyLabourReport } = require('../controllers/dailyLabourReportController');
 const { createPublicReport: createProgressReport } = require('../controllers/dailyProgressReportController');
+const { createPublicRequest: createDrawingRequest } = require('../controllers/drawingRequestController');
 const { getWorkOrderQuotationContext, submitQuotation } = require('../controllers/contractorQuotationController');
 
 // ── Lookup lists (read-only, no auth) ──────────────────────────
@@ -117,6 +118,9 @@ router.post('/work-orders', asyncHandler(async (req, res) => {
 
 // ── Submit Daily Progress Report — the merged form (no auth) ─────
 router.post('/daily-progress-reports', createProgressReport);
+
+// ── Submit a Drawing Request (no auth) ────────────────────────────
+router.post('/drawing-requests', createDrawingRequest);
 
 // ── Legacy — superseded by /daily-progress-reports above, kept mounted
 // under a renamed path so old links/integrations don't 404 (no auth) ──

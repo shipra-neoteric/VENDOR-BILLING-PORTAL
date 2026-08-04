@@ -2,6 +2,7 @@ import { useState } from "react";
 import toast from "react-hot-toast";
 import { PenTool } from "lucide-react";
 import apiClient from "../services/apiClient";
+import { DRAWING_TYPE_OPTIONS, SOURCE_OPTIONS } from "../shared/constants/drawingRequestOptions";
 import Btn from "../ui/Btn";
 import Modal from "../ui/Modal";
 import Field from "../ui/Field";
@@ -10,25 +11,29 @@ import SField from "../ui/SField";
 // Authenticated-only — raised from the Daily Progress Report page so a DRI
 // (or admin) can ask Planning/Design for a drawing without leaving the form.
 // Never rendered on the public no-login form (see DailyProgressReport vs.
-// PublicDailyProgressReportForm) since there's no requester identity to route it to.
+// PublicDailyProgressReportForm) — that flow instead gets its own standalone
+// public form (PublicDrawingRequestForm) since there's no in-page context to prefill from there.
 export default function DrawingRequestButton({
-  projectId, projectOptions,
+  projectId, projectOptions, driName: driNameDefault,
 }: {
   projectId?: string;
   projectOptions: { label: string; value: string }[];
+  driName?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({ projectId: projectId || "", description: "", priority: "normal" as "normal" | "urgent" });
+  const [form, setForm] = useState({ projectId: projectId || "", description: "", drawingType: "", source: "", driName: driNameDefault || "" });
 
   function openModal() {
-    setForm({ projectId: projectId || "", description: "", priority: "normal" });
+    setForm({ projectId: projectId || "", description: "", drawingType: "", source: "", driName: driNameDefault || "" });
     setOpen(true);
   }
 
   async function submit() {
     if (!form.projectId) return toast.error("Select a project");
     if (!form.description.trim()) return toast.error("Describe what drawing is needed");
+    if (!form.drawingType) return toast.error("Select a drawing type");
+    if (!form.driName.trim()) return toast.error("Enter the requester's name");
     setSaving(true);
     try {
       await apiClient.post("/drawing-requests", form);
@@ -59,27 +64,28 @@ export default function DrawingRequestButton({
               options={projectOptions}
             />
             <Field
-              textarea label="What drawing do you need?" required rows={3}
+              textarea label="Drawing Description" required rows={3}
               placeholder="e.g. Structural drawing for 2nd floor slab, Tower B"
               value={form.description}
               onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
             />
-            <div>
-              <span className="block text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wide mb-1.5">Priority</span>
-              <div className="flex gap-2.5">
-                {[{ label: "Normal", value: "normal" as const, color: "#6B7280" }, { label: "Urgent", value: "urgent" as const, color: "#DC2626" }].map(opt => (
-                  <button key={opt.value} type="button" onClick={() => setForm(f => ({ ...f, priority: opt.value }))}
-                    className="px-4 py-1.5 rounded-lg border font-semibold text-xs cursor-pointer"
-                    style={{
-                      borderColor: form.priority === opt.value ? opt.color : "#E5E7EB",
-                      background: form.priority === opt.value ? `${opt.color}18` : "transparent",
-                      color: form.priority === opt.value ? opt.color : "#6B7280",
-                    }}>
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            </div>
+            <SField
+              label="Drawing Type" required placeholder="Choose type"
+              value={form.drawingType || null}
+              onChange={v => setForm(f => ({ ...f, drawingType: v }))}
+              options={DRAWING_TYPE_OPTIONS.map(t => ({ label: t, value: t }))}
+            />
+            <SField
+              label="Source (optional)" placeholder="Choose source"
+              value={form.source || null}
+              onChange={v => setForm(f => ({ ...f, source: v }))}
+              options={SOURCE_OPTIONS.map(s => ({ label: s, value: s }))}
+            />
+            <Field
+              label="Requested By (DRI)" required placeholder="Requester's name"
+              value={form.driName}
+              onChange={e => setForm(f => ({ ...f, driName: e.target.value }))}
+            />
           </div>
         </Modal>
       )}

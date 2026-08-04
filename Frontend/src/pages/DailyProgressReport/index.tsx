@@ -109,7 +109,7 @@ export default function DailyProgressReport() {
         icon={ClipboardList}
         actions={
           <>
-            <DrawingRequestButton projectId={form.projectId} projectOptions={projectOptions} />
+            <DrawingRequestButton projectId={form.projectId} projectOptions={projectOptions} driName={form.driName} />
             <Btn label="New Report" icon={Plus} color="primary" onClick={openNew} />
           </>
         }

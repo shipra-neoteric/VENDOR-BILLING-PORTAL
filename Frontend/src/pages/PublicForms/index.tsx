@@ -1,5 +1,5 @@
 import toast from "react-hot-toast";
-import { Copy, ExternalLink, FileText, Users, ClipboardList, GitCompare, BookOpen, Link2, Share2 } from "lucide-react";
+import { Copy, ExternalLink, FileText, Users, ClipboardList, GitCompare, BookOpen, PenTool, Link2, Share2 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import PageHeader from "../../ui/PageHeader";
 import Btn from "../../ui/Btn";
@@ -51,6 +51,14 @@ const FORMS: PublicFormDef[] = [
     path: "/public/daily-progress-report",
     icon: ClipboardList,
     color: "#4f46e5",
+  },
+  {
+    key: "drawing-request",
+    name: "Drawing Request",
+    description: "Lets anyone on site ask Planning/Design for a drawing — no login required. Submissions land directly in Drawing Requests with an auto-assigned ticket number.",
+    path: "/public/drawing-request",
+    icon: PenTool,
+    color: "#7c3aed",
   },
   {
     key: "quotation",

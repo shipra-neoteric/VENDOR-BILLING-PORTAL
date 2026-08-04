@@ -8,8 +8,9 @@ const nextQuotationNo = () => nextCode('quotationNo', 'QT-', 4);
 const nextConsultantCode     = () => nextCode('consultantCode', 'CN-', 4);
 const nextConsultancyOrderNo = () => nextCode('consultancyOrderNo', 'CWO-', 4);
 const nextVendorGroupCode    = () => nextCode('vendorGroupCode', 'VG-', 4);
+const nextDrawingRequestTicketNo = () => nextCode('drawingRequestTicketNo', 'DR-', 4);
 
 module.exports = {
   nextVendorCode, nextProjectCode, nextWorkOrderNo, nextBillNo, nextQuotationNo,
-  nextConsultantCode, nextConsultancyOrderNo, nextVendorGroupCode,
+  nextConsultantCode, nextConsultancyOrderNo, nextVendorGroupCode, nextDrawingRequestTicketNo,
 };

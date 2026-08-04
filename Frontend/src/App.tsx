@@ -7,6 +7,7 @@ import PublicWorkOrderForm from "./pages/PublicWorkOrderForm";
 import PublicContractorForm from "./pages/PublicContractorForm";
 import PublicConsultantForm from "./pages/PublicConsultantForm";
 import PublicDailyProgressReportForm from "./pages/PublicDailyProgressReportForm";
+import PublicDrawingRequestForm from "./pages/PublicDrawingRequestForm";
 import PublicQuotationForm from "./pages/PublicQuotationForm";
 import { AuthProvider } from "./context/AuthContext";
 import { ThemeProvider, useTheme } from "./context/ThemeContext";
@@ -65,6 +66,15 @@ function ThemedApp() {
     return (
       <>
         <PublicDailyProgressReportForm />
+        <Toaster position="top-right" />
+      </>
+    );
+  }
+
+  if (pathname === "/public/drawing-request") {
+    return (
+      <>
+        <PublicDrawingRequestForm />
         <Toaster position="top-right" />
       </>
     );

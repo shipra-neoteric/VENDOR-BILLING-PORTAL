@@ -37,6 +37,7 @@ const SlaSettingsDetail = lazy(() => import("../pages/SlaSettings/Detail"));
 const SlaDashboard      = lazy(() => import("../pages/SlaDashboard"));
 const AuditLogs         = lazy(() => import("../pages/AuditLogs"));
 const DailyProgressReport = lazy(() => import("../pages/DailyProgressReport"));
+const DrawingRequests    = lazy(() => import("../pages/DrawingRequests"));
 
 import MainLayout     from "../layouts/MainLayout/MainLayout";
 import ProtectedRoute from "../components/ProtectedRoute";
@@ -125,6 +126,7 @@ function AdminRoutes() {
             <Route path="/sla-dashboard"   element={<SlaDashboard />} />
             <Route path="/audit-logs"      element={<AuditLogs />} />
             <Route path="/daily-progress-report" element={<DailyProgressReport />} />
+            <Route path="/drawing-requests" element={<DrawingRequests />} />
             <Route path="*"                element={<Navigate to={defaultPath} replace />} />
           </Route>
         </Route>
