@@ -323,6 +323,30 @@ export default function DRIDashboard() {
       .finally(() => setDetailLoading(false));
   }, [projectWOs]);
 
+  // Mirrors the backend's expandBillableCandidates — billing (and this
+  // preview of it) operates per particular when an item has them, never
+  // against the parent's own rolled-up completedQty, which is only ever a
+  // display average, not a billable quantity (see recomputeParentFromSubItems).
+  const getPendingBillableRows = (scopeItems: ScopeItemDetail[]) => {
+    const rows: { key: string; description: string; unit: string; lastBilledQty: number; billedQty: number }[] = [];
+    for (const si of scopeItems) {
+      if (si.subItems && si.subItems.length > 0) {
+        for (const sub of si.subItems) {
+          const billedQty = Math.max(0, (sub.completedQty || 0) - (sub.lastBilledQty || 0));
+          if (billedQty > 0) {
+            rows.push({ key: sub._id, description: `${si.description} — ${sub.description}`, unit: sub.unit || si.unit, lastBilledQty: sub.lastBilledQty || 0, billedQty });
+          }
+        }
+      } else {
+        const billedQty = Math.max(0, (si.completedQty || 0) - (si.lastBilledQty || 0));
+        if (billedQty > 0) {
+          rows.push({ key: si._id, description: si.description, unit: si.unit, lastBilledQty: si.lastBilledQty || 0, billedQty });
+        }
+      }
+    }
+    return rows;
+  };
+
   const reloadWODetail = async (woId: string) => {
     const r = await apiClient.get(`/work-orders/${woId}`);
     setWoDetails(prev => new Map(prev).set(woId, r.data.workOrder));
@@ -332,7 +356,7 @@ export default function DRIDashboard() {
   // request already pending against them — eligible for a new bill request.
   const billableWODetails = useMemo(
     () => Array.from(woDetails.values()).filter(d =>
-      d.scopeItems.some(si => Math.max(0, (si.completedQty || 0) - (si.lastBilledQty || 0)) > 0) &&
+      getPendingBillableRows(d.scopeItems).length > 0 &&
       !projectBills.some(br => br.workOrderId === d._id && br.status === "pending")
     ),
     [woDetails, projectBills]
@@ -1229,7 +1253,7 @@ export default function DRIDashboard() {
                       👷 {vg.vendorName} <span style={{ fontFamily: "monospace", color: "#FF7A00", fontSize: 11, fontWeight: 400 }}>({vg.vendorCode})</span>
                     </div>
                     {vgBillableWOs.map(detail => {
-                      const pendingItems = detail.scopeItems.filter(si => Math.max(0, (si.completedQty || 0) - (si.lastBilledQty || 0)) > 0);
+                      const pendingItems = getPendingBillableRows(detail.scopeItems);
                       const isChecked = billWOIds.has(detail._id);
                       return (
                         <div key={detail._id} style={{ padding: "12px 14px", borderBottom: "1px solid var(--nx-border)", background: isChecked ? "var(--nx-fill-2)" : "var(--nx-white)" }}>
@@ -1247,17 +1271,14 @@ export default function DRIDashboard() {
                               {detail.category && <div style={{ fontSize: 11, color: "var(--nx-text-muted)", marginBottom: 8 }}>{detail.category}</div>}
                               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
                                 <tbody>
-                                  {pendingItems.map(si => {
-                                    const billedQty = Math.max(0, si.completedQty - (si.lastBilledQty || 0));
-                                    return (
-                                      <tr key={si._id}>
-                                        <td style={{ padding: "3px 0", color: "var(--nx-text)", fontWeight: 500 }}>{si.description}</td>
-                                        <td style={{ padding: "3px 8px", color: "var(--nx-text-2)" }}>{si.unit}</td>
-                                        <td style={{ padding: "3px 0", color: "var(--nx-text-2)" }}>Prev billed: {fmtN(si.lastBilledQty || 0)}</td>
-                                        <td style={{ padding: "3px 0", textAlign: "right", color: "#FF7A00", fontWeight: 700, fontFamily: "monospace" }}>+{fmtN(billedQty)}</td>
-                                      </tr>
-                                    );
-                                  })}
+                                  {pendingItems.map(row => (
+                                    <tr key={row.key}>
+                                      <td style={{ padding: "3px 0", color: "var(--nx-text)", fontWeight: 500 }}>{row.description}</td>
+                                      <td style={{ padding: "3px 8px", color: "var(--nx-text-2)" }}>{row.unit}</td>
+                                      <td style={{ padding: "3px 0", color: "var(--nx-text-2)" }}>Prev billed: {fmtN(row.lastBilledQty)}</td>
+                                      <td style={{ padding: "3px 0", textAlign: "right", color: "#FF7A00", fontWeight: 700, fontFamily: "monospace" }}>+{fmtN(row.billedQty)}</td>
+                                    </tr>
+                                  ))}
                                 </tbody>
                               </table>
                             </div>

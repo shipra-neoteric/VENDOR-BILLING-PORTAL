@@ -890,11 +890,17 @@ export default function SiteProgress() {
                 </thead>
                 <tbody>
                   {viewWO.scopeItems.map((si, idx) => {
-                    const unbilled = Math.max(0, si.completedQty - (si.lastBilledQty || 0));
+                    const hasSubItems = (si.subItems?.length ?? 0) > 0;
+                    // A parent's own completedQty/lastBilledQty are a display
+                    // rollup, not a billable quantity (see
+                    // recomputeParentFromSubItems) — the real unbilled total
+                    // is the sum of what's actually unbilled on each particular.
+                    const unbilled = hasSubItems
+                      ? si.subItems!.reduce((s, sub) => s + Math.max(0, (sub.completedQty || 0) - (sub.lastBilledQty || 0)), 0)
+                      : Math.max(0, si.completedQty - (si.lastBilledQty || 0));
                     const level = varianceLevel(si.plannedQty, si.completedQty);
                     const blocked = itemHasUnapprovedVariance(si);
                     const canBill = unbilled > 0 && !blocked;
-                    const hasSubItems = (si.subItems?.length ?? 0) > 0;
                     const entryCount = si.progressEntries?.length ?? 0;
                     const isExpanded = expandedEntries.has(si._id);
                     return (
@@ -945,6 +951,7 @@ export default function SiteProgress() {
                           </tr>
                         )}
                         {hasSubItems && si.subItems!.map(sub => {
+                          const subUnbilled = Math.max(0, (sub.completedQty || 0) - (sub.lastBilledQty || 0));
                           const subLevel = varianceLevel(sub.plannedQty, sub.completedQty);
                           const subEntryCount = sub.progressEntries?.length ?? 0;
                           const subExpanded = expandedEntries.has(sub._id);
@@ -964,7 +971,7 @@ export default function SiteProgress() {
                                 <td style={{ padding: "5px 10px", fontSize: 12 }}>{sub.unit}</td>
                                 <td style={{ padding: "5px 10px", fontFamily: "monospace", fontSize: 12 }}>{fmtN(sub.plannedQty)}</td>
                                 <td style={{ padding: "5px 10px", fontFamily: "monospace", fontSize: 12 }}>{fmtN(sub.completedQty)}</td>
-                                <td />
+                                <td style={{ padding: "5px 10px", fontFamily: "monospace", fontSize: 12, color: subUnbilled > 0 ? "#FF7A00" : "#9CA3AF", fontWeight: subUnbilled > 0 ? 700 : 400 }}>{fmtN(subUnbilled)}</td>
                                 <td style={{ padding: "5px 10px" }}>
                                   {subLevel !== "none" && (
                                     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
