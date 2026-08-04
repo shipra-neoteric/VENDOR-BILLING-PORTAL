@@ -10,6 +10,7 @@ interface SFieldProps {
   label?: string;
   required?: boolean;
   placeholder?: string;
+  hint?: string;
   value: string | null;
   onChange: (value: string) => void;
   options: SFieldOption[];
@@ -17,7 +18,7 @@ interface SFieldProps {
 }
 
 // Searchable single-select — click to open, type to filter, click an option to pick.
-export default function SField({ label, required, placeholder = "Select…", value, onChange, options, disabled }: SFieldProps) {
+export default function SField({ label, required, placeholder = "Select…", hint, value, onChange, options, disabled }: SFieldProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const rootRef = useRef<HTMLDivElement>(null);
@@ -92,6 +93,7 @@ export default function SField({ label, required, placeholder = "Select…", val
           </div>
         </div>
       )}
+      {hint && <span className="block text-xs text-gray-400 dark:text-gray-500 mt-1">{hint}</span>}
     </div>
   );
 }

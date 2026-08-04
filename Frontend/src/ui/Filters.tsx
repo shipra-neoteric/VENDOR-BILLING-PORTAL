@@ -31,16 +31,18 @@ interface SelectFilterProps {
   onChange: (value: string) => void;
   options: SFieldOption[];
   placeholder?: string;
+  disabled?: boolean;
 }
 
 // Plain native <select> — lighter than SField for simple filter-bar dropdowns
 // (no search needed, few options, no in-form label).
-export function SelectFilter({ value, onChange, options, placeholder = "All" }: SelectFilterProps) {
+export function SelectFilter({ value, onChange, options, placeholder = "All", disabled }: SelectFilterProps) {
   return (
     <select
       value={value}
+      disabled={disabled}
       onChange={(e) => onChange(e.target.value)}
-      className="h-10 px-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0F172A] text-sm text-[#1A1A2E] dark:text-[#F1F5F9] focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+      className="h-10 px-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0F172A] text-sm text-[#1A1A2E] dark:text-[#F1F5F9] focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary disabled:opacity-50"
     >
       <option value="">{placeholder}</option>
       {options.map((o) => (

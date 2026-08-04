@@ -1,21 +1,29 @@
 import { useEffect, useState } from "react";
-import {
-  Button, Table, Modal, Form, Select, DatePicker, Input, InputNumber,
-  Tag, message, Spin, Empty, Popconfirm, Switch,
-} from "antd";
-import type { ColumnsType } from "antd/es/table";
-import { PlusOutlined, DeleteOutlined, InboxOutlined } from "@ant-design/icons";
+import toast from "react-hot-toast";
+import { Plus, Trash2, Archive, ArchiveRestore, Wallet } from "lucide-react";
 import dayjs from "dayjs";
-import PageShell from "../../components/PageShell";
 import apiClient from "../../services/apiClient";
 import { selectableProjects } from "../../utils/projectOptions";
 import { vendorLabel } from "../../utils/vendorLabel";
+import PageHeader from "../../ui/PageHeader";
+import Btn from "../../ui/Btn";
+import Card from "../../ui/Card";
+import Badge from "../../ui/Badge";
+import Checkbox from "../../ui/Checkbox";
+import Switch from "../../ui/Switch";
+import Field from "../../ui/Field";
+import SField from "../../ui/SField";
+import { DatePicker } from "../../ui/DatePicker";
+import Modal from "../../ui/Modal";
+import ConfirmModal from "../../ui/ConfirmModal";
+import Spinner from "../../ui/Spinner";
+import { Table, Thead, Tbody, Tr, Th, Td, TdText } from "../../ui/Table";
 
 const fmt = (n: number) => "₹" + Math.round(n).toLocaleString("en-IN");
 
-const STATUS_CFG: Record<string, { color: string; label: string }> = {
+const STATUS_CFG: Record<string, { color: "orange" | "amber" | "green"; label: string }> = {
   outstanding: { color: "orange", label: "Outstanding" },
-  partial:     { color: "gold",   label: "Partial"     },
+  partial:     { color: "amber",  label: "Partial"     },
   recovered:   { color: "green",  label: "Recovered"   },
 };
 
@@ -38,25 +46,30 @@ interface AdvanceSlip {
   archivedAt?: string;
 }
 
+const emptyForm = { projectId: "", contractorCode: "", amount: "", date: dayjs().format("YYYY-MM-DD"), reference: "", notes: "" };
+
 export default function AdvancePayments() {
   const [slips,    setSlips]    = useState<AdvanceSlip[]>([]);
   const [loading,  setLoading]  = useState(false);
   const [modal,    setModal]    = useState(false);
   const [saving,   setSaving]   = useState(false);
+  const [form, setForm] = useState(emptyForm);
   const [projects,     setProjects]     = useState<{ _id: string; name: string; parentId?: string | null }[]>([]);
   const [contractors,  setContractors]  = useState<{ vendorCode: string; companyName: string; shortCode?: string }[]>([]);
   const [showArchived, setShowArchived] = useState(false);
-  const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([]);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [archiving,   setArchiving]     = useState(false);
-  const [form] = Form.useForm();
+  const [deleteTarget, setDeleteTarget] = useState<AdvanceSlip | null>(null);
+  const [archiveTarget, setArchiveTarget] = useState<AdvanceSlip | null>(null);
+  const [bulkArchiveConfirm, setBulkArchiveConfirm] = useState(false);
 
   const load = async (archived: boolean) => {
     setLoading(true);
-    setSelectedRowKeys([]);
+    setSelectedIds([]);
     try {
       const res = await apiClient.get(`/advance-slips${archived ? "?archived=true" : ""}`);
       setSlips(res.data.advanceSlips ?? []);
-    } catch { message.error("Failed to load advance slips"); }
+    } catch { toast.error("Failed to load advance slips"); }
     finally { setLoading(false); }
   };
 
@@ -70,215 +83,229 @@ export default function AdvancePayments() {
   }, []);
 
   const handleCreate = async () => {
+    if (!form.projectId) return toast.error("Select a project");
+    if (!form.contractorCode) return toast.error("Select a contractor");
+    if (!form.amount || Number(form.amount) <= 0) return toast.error("Enter a valid advance amount");
+    if (!form.date) return toast.error("Select a date");
+    setSaving(true);
     try {
-      const vals = await form.validateFields();
-      setSaving(true);
-      const project    = projects.find(p => p._id === vals.projectId);
-      const contractor = contractors.find(c => c.vendorCode === vals.contractorCode);
+      const project    = projects.find(p => p._id === form.projectId);
+      const contractor = contractors.find(c => c.vendorCode === form.contractorCode);
       await apiClient.post("/advance-slips", {
-        ...vals,
-        date:            dayjs(vals.date).format("YYYY-MM-DD"),
+        projectId:       form.projectId,
+        contractorCode:  form.contractorCode,
+        amount:          Number(form.amount),
+        date:            form.date,
+        reference:       form.reference,
+        notes:           form.notes,
         projectName:     project?.name     ?? "",
         contractorName:  contractor?.companyName ?? "",
       });
-      message.success("Advance slip created");
-      form.resetFields();
+      toast.success("Advance slip created");
+      setForm(emptyForm);
       setModal(false);
       load(showArchived);
-    } catch (e: any) {
-      if (e?.errorFields) return;
-      message.error(e?.response?.data?.message || "Failed to create");
+    } catch (e: unknown) {
+      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message || "Failed to create";
+      toast.error(msg);
     } finally { setSaving(false); }
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
     try {
-      await apiClient.delete(`/advance-slips/${id}`);
-      message.success("Deleted");
+      await apiClient.delete(`/advance-slips/${deleteTarget._id}`);
+      toast.success("Deleted");
+      setDeleteTarget(null);
       load(showArchived);
-    } catch (e: any) {
-      message.error(e?.response?.data?.message || "Cannot delete");
+    } catch (e: unknown) {
+      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message || "Cannot delete";
+      toast.error(msg);
     }
   };
 
-  const archiveOne = async (slip: AdvanceSlip) => {
+  const archiveOne = async () => {
+    if (!archiveTarget) return;
     try {
-      await apiClient.patch(`/advance-slips/${slip._id}/${showArchived ? "unarchive" : "archive"}`);
-      message.success(showArchived ? `${slip.slipNo} unarchived` : `${slip.slipNo} archived`);
+      await apiClient.patch(`/advance-slips/${archiveTarget._id}/${showArchived ? "unarchive" : "archive"}`);
+      toast.success(showArchived ? `${archiveTarget.slipNo} unarchived` : `${archiveTarget.slipNo} archived`);
+      setArchiveTarget(null);
       load(showArchived);
-    } catch (e: any) {
-      message.error(e?.response?.data?.message || "Action failed");
+    } catch (e: unknown) {
+      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message || "Action failed";
+      toast.error(msg);
     }
   };
 
   const archiveSelected = async () => {
-    if (selectedRowKeys.length === 0) return;
+    if (selectedIds.length === 0) return;
     setArchiving(true);
     try {
-      await apiClient.patch(`/advance-slips/${showArchived ? "unarchive-bulk" : "archive-bulk"}`, { ids: selectedRowKeys });
-      message.success(`${selectedRowKeys.length} slip(s) ${showArchived ? "unarchived" : "archived"}`);
+      await apiClient.patch(`/advance-slips/${showArchived ? "unarchive-bulk" : "archive-bulk"}`, { ids: selectedIds });
+      toast.success(`${selectedIds.length} slip(s) ${showArchived ? "unarchived" : "archived"}`);
+      setBulkArchiveConfirm(false);
       load(showArchived);
-    } catch (e: any) {
-      message.error(e?.response?.data?.message || "Action failed");
+    } catch (e: unknown) {
+      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message || "Action failed";
+      toast.error(msg);
     } finally {
       setArchiving(false);
     }
   };
 
-  const columns: ColumnsType<AdvanceSlip> = [
-    {
-      title: "Slip No",
-      dataIndex: "slipNo",
-      render: v => <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#FF7A00" }}>{v}</span>,
-    },
-    { title: "Date",       dataIndex: "date",        render: d => dayjs(d).format("DD MMM YYYY") },
-    { title: "Project",    dataIndex: "projectName"  },
-    {
-      title: "Contractor",
-      dataIndex: "contractorName",
-      render: (v, r) => {
-        const live = contractors.find(c => c.vendorCode === r.contractorCode);
-        return (
-          <div>
-            <div>{live ? vendorLabel(live.companyName, live.shortCode) : v}</div>
-            <div style={{ fontSize: 11, color: "#9CA3AF", fontFamily: "monospace" }}>{r.contractorCode}</div>
-          </div>
-        );
-      },
-    },
-    {
-      title: "Advance Given",
-      dataIndex: "amount",
-      render: v => <span style={{ fontFamily: "monospace", fontWeight: 600, color: "#1a1f2e" }}>{fmt(v)}</span>,
-    },
-    {
-      title: "Recovered",
-      dataIndex: "amountRecovered",
-      render: v => <span style={{ fontFamily: "monospace", color: "#16a34a" }}>{fmt(v)}</span>,
-    },
-    {
-      title: "Balance",
-      dataIndex: "balance",
-      render: v => <span style={{ fontFamily: "monospace", fontWeight: 700, color: v > 0 ? "#e03b3b" : "#16a34a" }}>{fmt(v)}</span>,
-    },
-    {
-      title: "Reference",
-      dataIndex: "reference",
-      render: v => v || <span style={{ color: "#9CA3AF" }}>—</span>,
-    },
-    {
-      title: "Status",
-      dataIndex: "status",
-      render: (s: string) => {
-        const cfg = STATUS_CFG[s] ?? { color: "default", label: s };
-        return <Tag color={cfg.color}>{cfg.label}</Tag>;
-      },
-    },
-    {
-      title: "Actions",
-      render: (_, r) => (
-        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-          {r.amountRecovered === 0 ? (
-            <Popconfirm title="Delete this advance slip?" onConfirm={() => handleDelete(r._id)} okText="Delete" okType="danger">
-              <Button size="small" danger icon={<DeleteOutlined />} />
-            </Popconfirm>
-          ) : (
-            <span style={{ fontSize: 12, color: "#9CA3AF" }}>Has recoveries</span>
-          )}
-          <Popconfirm
-            title={showArchived ? `Unarchive ${r.slipNo}?` : `Archive ${r.slipNo}?`}
-            description={showArchived ? "It will reappear in the normal list." : "It will be hidden from the normal list, but not deleted."}
-            onConfirm={() => archiveOne(r)}
-          >
-            <Button size="small" icon={<InboxOutlined />} style={{ color: "#6B7280" }}>
-              {showArchived ? "Unarchive" : "Archive"}
-            </Button>
-          </Popconfirm>
-        </div>
-      ),
-    },
-  ];
+  const allSelected = slips.length > 0 && selectedIds.length === slips.length;
+  const toggleAll = () => setSelectedIds(allSelected ? [] : slips.map(s => s._id));
+  const toggleOne = (id: string) => setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
 
   return (
-    <PageShell
-      title="Advance Payments"
-      description="Track advance amounts given to contractors against projects. Recoveries are auto-deducted at bill release."
-      cta={
-        <Button type="primary" icon={<PlusOutlined />} size="large"
-          onClick={() => { form.resetFields(); setModal(true); }}
-          style={{ background: "#FF7A00", borderColor: "#FF7A00" }}>
-          New Advance Slip
-        </Button>
-      }
-    >
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 14 }}>
-        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#6B7280" }}>
-          <Switch size="small" checked={showArchived} onChange={setShowArchived} />
-          Show Archived
-        </label>
-        {selectedRowKeys.length > 0 && (
-          <Popconfirm
-            title={showArchived ? `Unarchive ${selectedRowKeys.length} slip(s)?` : `Archive ${selectedRowKeys.length} slip(s)?`}
-            onConfirm={archiveSelected}
-          >
-            <Button icon={<InboxOutlined />} loading={archiving}>
-              {showArchived ? "Unarchive" : "Archive"} Selected ({selectedRowKeys.length})
-            </Button>
-          </Popconfirm>
+    <div>
+      <PageHeader
+        title="Advance Payments"
+        subtitle="Track advance amounts given to contractors against projects. Recoveries are auto-deducted at bill release."
+        icon={Wallet}
+        actions={<Btn label="New Advance Slip" icon={Plus} color="primary" onClick={() => { setForm(emptyForm); setModal(true); }} />}
+      />
+
+      <div className="flex items-center gap-3 flex-wrap mb-4">
+        <Switch checked={showArchived} onChange={setShowArchived} onLabel="Archived" offLabel="Active" />
+        {selectedIds.length > 0 && (
+          <Btn
+            small icon={showArchived ? ArchiveRestore : Archive}
+            label={`${showArchived ? "Unarchive" : "Archive"} Selected (${selectedIds.length})`}
+            loading={archiving}
+            onClick={() => setBulkArchiveConfirm(true)}
+          />
         )}
       </div>
 
       {loading ? (
-        <div style={{ textAlign: "center", padding: 60 }}><Spin size="large" /></div>
+        <Spinner label="Loading advance slips…" />
       ) : slips.length === 0 ? (
-        <Empty description={showArchived ? "No archived advance slips" : "No advance slips yet"} />
+        <Card className="text-center py-14 text-gray-400">
+          {showArchived ? "No archived advance slips" : "No advance slips yet"}
+        </Card>
       ) : (
-        <Table
-          dataSource={slips}
-          columns={columns}
-          rowKey="_id"
-          size="middle"
-          pagination={{ pageSize: 20 }}
-          rowSelection={{
-            selectedRowKeys,
-            onChange: (keys) => setSelectedRowKeys(keys as string[]),
-          }}
+        <Table>
+          <Thead>
+            <Tr>
+              <Th><Checkbox checked={allSelected} onChange={toggleAll} /></Th>
+              <Th>Slip No</Th>
+              <Th>Date</Th>
+              <Th>Project</Th>
+              <Th>Contractor</Th>
+              <Th className="text-right">Advance Given</Th>
+              <Th className="text-right">Recovered</Th>
+              <Th className="text-right">Balance</Th>
+              <Th>Reference</Th>
+              <Th>Status</Th>
+              <Th>Actions</Th>
+            </Tr>
+          </Thead>
+          <Tbody>
+            {slips.map(s => {
+              const live = contractors.find(c => c.vendorCode === s.contractorCode);
+              const cfg = STATUS_CFG[s.status] ?? { color: "orange" as const, label: s.status };
+              return (
+                <Tr key={s._id}>
+                  <Td><Checkbox checked={selectedIds.includes(s._id)} onChange={() => toggleOne(s._id)} /></Td>
+                  <Td><span className="font-mono font-bold text-primary">{s.slipNo}</span></Td>
+                  <Td><TdText>{dayjs(s.date).format("DD MMM YYYY")}</TdText></Td>
+                  <Td><TdText>{s.projectName}</TdText></Td>
+                  <Td>
+                    <div className="text-sm text-[#1A1A2E] dark:text-[#F1F5F9]">{live ? vendorLabel(live.companyName, live.shortCode) : s.contractorName}</div>
+                    <div className="text-[11px] text-gray-400 font-mono">{s.contractorCode}</div>
+                  </Td>
+                  <Td className="text-right"><span className="font-mono font-semibold"><TdText>{fmt(s.amount)}</TdText></span></Td>
+                  <Td className="text-right"><span className="font-mono text-emerald-600 dark:text-emerald-400">{fmt(s.amountRecovered)}</span></Td>
+                  <Td className="text-right"><span className={`font-mono font-bold ${s.balance > 0 ? "text-red-600 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400"}`}>{fmt(s.balance)}</span></Td>
+                  <Td>{s.reference || <span className="text-gray-300 dark:text-gray-600">—</span>}</Td>
+                  <Td><Badge color={cfg.color} small>{cfg.label}</Badge></Td>
+                  <Td>
+                    <div className="flex items-center gap-1.5">
+                      {s.amountRecovered === 0 ? (
+                        <Btn small color="red" icon={Trash2} onClick={() => setDeleteTarget(s)} />
+                      ) : (
+                        <span className="text-xs text-gray-400">Has recoveries</span>
+                      )}
+                      <Btn small outline icon={showArchived ? ArchiveRestore : Archive} label={showArchived ? "Unarchive" : "Archive"} onClick={() => setArchiveTarget(s)} />
+                    </div>
+                  </Td>
+                </Tr>
+              );
+            })}
+          </Tbody>
+        </Table>
+      )}
+
+      {modal && (
+        <Modal title="New Advance Slip" onClose={() => setModal(false)} footer={
+          <div className="flex justify-end gap-2">
+            <Btn label="Cancel" outline onClick={() => setModal(false)} disabled={saving} />
+            <Btn label="Create Advance Slip" color="primary" loading={saving} onClick={handleCreate} />
+          </div>
+        }>
+          <div className="flex flex-col gap-4">
+            <SField
+              label="Project" required placeholder="Select project"
+              value={form.projectId || null}
+              onChange={v => setForm(f => ({ ...f, projectId: v }))}
+              options={selectableProjects(projects).map(p => ({ label: p.name, value: p._id }))}
+            />
+            <SField
+              label="Contractor" required placeholder="Select contractor"
+              value={form.contractorCode || null}
+              onChange={v => setForm(f => ({ ...f, contractorCode: v }))}
+              options={contractors.map(c => ({ label: `${c.vendorCode} — ${vendorLabel(c.companyName, c.shortCode)}`, value: c.vendorCode }))}
+            />
+            <Field
+              label="Advance Amount (₹)" required type="number" min={1} step={1}
+              placeholder="e.g. 50000"
+              value={form.amount}
+              onChange={e => setForm(f => ({ ...f, amount: e.target.value }))}
+            />
+            <DatePicker label="Date" value={form.date} onChange={v => setForm(f => ({ ...f, date: v }))} />
+            <Field
+              label="Reference / Cheque No. (optional)"
+              placeholder="e.g. UTR123456 or CHQ-0042"
+              value={form.reference}
+              onChange={e => setForm(f => ({ ...f, reference: e.target.value }))}
+            />
+            <Field
+              textarea label="Notes (optional)" rows={2}
+              placeholder="e.g. Advance for mobilisation, Phase 1..."
+              value={form.notes}
+              onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+            />
+          </div>
+        </Modal>
+      )}
+
+      {deleteTarget && (
+        <ConfirmModal
+          title="Delete this advance slip?" message={`${deleteTarget.slipNo} will be permanently removed.`}
+          confirmLabel="Delete" danger
+          onConfirm={handleDelete} onCancel={() => setDeleteTarget(null)}
         />
       )}
 
-      <Modal
-        open={modal}
-        onCancel={() => setModal(false)}
-        onOk={handleCreate}
-        title="New Advance Slip"
-        okText="Create Advance Slip"
-        okButtonProps={{ loading: saving, style: { background: "#FF7A00", borderColor: "#FF7A00" } }}
-        destroyOnClose
-        width={560}
-      >
-        <Form form={form} layout="vertical" style={{ marginTop: 12 }}>
-          <Form.Item name="projectId" label="Project" rules={[{ required: true, message: "Select a project" }]}>
-            <Select placeholder="Select project" showSearch optionFilterProp="label"
-              options={selectableProjects(projects).map(p => ({ label: p.name, value: p._id }))} />
-          </Form.Item>
-          <Form.Item name="contractorCode" label="Contractor" rules={[{ required: true, message: "Select a contractor" }]}>
-            <Select placeholder="Select contractor" showSearch optionFilterProp="label"
-              options={contractors.map(c => ({ label: `${c.vendorCode} — ${vendorLabel(c.companyName, c.shortCode)}`, value: c.vendorCode }))} />
-          </Form.Item>
-          <Form.Item name="amount" label="Advance Amount (₹)" rules={[{ required: true, message: "Enter amount" }]}>
-            <InputNumber style={{ width: "100%" }} min={1} precision={0} prefix="₹" placeholder="e.g. 50000" />
-          </Form.Item>
-          <Form.Item name="date" label="Date" rules={[{ required: true, message: "Select date" }]}>
-            <DatePicker style={{ width: "100%" }} format="DD MMM YYYY" />
-          </Form.Item>
-          <Form.Item name="reference" label="Reference / Cheque No. (optional)">
-            <Input placeholder="e.g. UTR123456 or CHQ-0042" />
-          </Form.Item>
-          <Form.Item name="notes" label="Notes (optional)">
-            <Input.TextArea rows={2} placeholder="e.g. Advance for mobilisation, Phase 1..." />
-          </Form.Item>
-        </Form>
-      </Modal>
-    </PageShell>
+      {archiveTarget && (
+        <ConfirmModal
+          title={showArchived ? `Unarchive ${archiveTarget.slipNo}?` : `Archive ${archiveTarget.slipNo}?`}
+          message={showArchived ? "It will reappear in the normal list." : "It will be hidden from the normal list, but not deleted."}
+          confirmLabel={showArchived ? "Unarchive" : "Archive"}
+          onConfirm={archiveOne} onCancel={() => setArchiveTarget(null)}
+        />
+      )}
+
+      {bulkArchiveConfirm && (
+        <ConfirmModal
+          title={showArchived ? `Unarchive ${selectedIds.length} slip(s)?` : `Archive ${selectedIds.length} slip(s)?`}
+          message={showArchived ? "They will reappear in the normal list." : "They will be hidden from the normal list, but not deleted."}
+          confirmLabel={showArchived ? "Unarchive" : "Archive"}
+          loading={archiving}
+          onConfirm={archiveSelected} onCancel={() => setBulkArchiveConfirm(false)}
+        />
+      )}
+    </div>
   );
 }

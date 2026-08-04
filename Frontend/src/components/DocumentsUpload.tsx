@@ -1,7 +1,6 @@
-import { useState } from "react";
-import { Upload, Button, message } from "antd";
-import { UploadOutlined, DeleteOutlined, FileOutlined } from "@ant-design/icons";
-import type { UploadProps } from "antd";
+import { useRef, useState } from "react";
+import toast from "react-hot-toast";
+import { Upload, Trash2, FileText, Loader2 } from "lucide-react";
 
 export interface WODocument { name: string; url: string; }
 
@@ -30,60 +29,74 @@ export default function DocumentsUpload({
   onChange?: (docs: WODocument[]) => void;
 }) {
   const [uploading, setUploading] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  const beforeUpload: NonNullable<UploadProps["beforeUpload"]> = async (file) => {
+  async function handleFile(file: File) {
     if (value.length >= MAX_DOCUMENT_FILES) {
-      message.error(`You can attach up to ${MAX_DOCUMENT_FILES} documents`);
-      return false;
+      toast.error(`You can attach up to ${MAX_DOCUMENT_FILES} documents`);
+      return;
     }
     if (file.size > MAX_FILE_MB * 1024 * 1024) {
-      message.error(`${file.name} is larger than ${MAX_FILE_MB}MB`);
-      return false;
+      toast.error(`${file.name} is larger than ${MAX_FILE_MB}MB`);
+      return;
     }
     const currentTotalMb = value.reduce((s, d) => s + dataUrlSizeMb(d.url), 0);
     if (currentTotalMb + file.size / (1024 * 1024) > MAX_TOTAL_MB) {
-      message.error(`Total attachments can't exceed ${MAX_TOTAL_MB}MB`);
-      return false;
+      toast.error(`Total attachments can't exceed ${MAX_TOTAL_MB}MB`);
+      return;
     }
     setUploading(true);
     try {
       const dataUrl = await readFileAsDataUrl(file);
       onChange?.([...value, { name: file.name, url: dataUrl }]);
     } catch {
-      message.error(`Couldn't read ${file.name}`);
+      toast.error(`Couldn't read ${file.name}`);
     } finally {
       setUploading(false);
     }
-    return false;
-  };
+  }
 
   const remove = (idx: number) => onChange?.(value.filter((_, i) => i !== idx));
 
   const usedMb = value.reduce((s, d) => s + dataUrlSizeMb(d.url), 0);
   const nearLimit = usedMb >= MAX_TOTAL_MB * 0.9;
+  const atLimit = value.length >= MAX_DOCUMENT_FILES;
 
   return (
     <div>
-      <Upload beforeUpload={beforeUpload} showUploadList={false} accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" disabled={value.length >= MAX_DOCUMENT_FILES}>
-        <Button icon={<UploadOutlined />} loading={uploading}>
-          Upload PDF / Doc / Image{value.length > 0 ? ` (${value.length}/${MAX_DOCUMENT_FILES})` : ""}
-        </Button>
-      </Upload>
-      <div style={{ fontSize: 11, color: nearLimit ? "#dc2626" : "#9ba3b8", marginTop: 6 }}>
+      <input
+        ref={inputRef}
+        type="file"
+        accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+        className="hidden"
+        onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ""; }}
+      />
+      <button
+        type="button"
+        disabled={atLimit || uploading}
+        onClick={() => inputRef.current?.click()}
+        className="inline-flex items-center gap-1.5 h-9 px-3 rounded-md text-[13px] font-semibold border border-gray-300 dark:border-gray-600 bg-white dark:bg-transparent text-gray-700 dark:text-[#F1F5F9] hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 disabled:pointer-events-none"
+      >
+        {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+        Upload PDF / Doc / Image{value.length > 0 ? ` (${value.length}/${MAX_DOCUMENT_FILES})` : ""}
+      </button>
+      <div className={`text-[11px] mt-1.5 ${nearLimit ? "text-red-600" : "text-gray-400"}`}>
         {usedMb.toFixed(1)} MB of {MAX_TOTAL_MB} MB used · max {MAX_FILE_MB} MB per file, up to {MAX_DOCUMENT_FILES} files
       </div>
       {value.length > 0 && (
-        <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
+        <div className="mt-2 flex flex-col gap-1.5">
           {value.map((d, i) => (
-            <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, background: "#f5f6f8", border: "1px solid #e4e7ee", borderRadius: 6, padding: "6px 10px" }}>
-              <FileOutlined style={{ color: "#f37916" }} />
+            <div key={i} className="flex items-center gap-2 text-[12.5px] bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700 rounded-md px-2.5 py-1.5">
+              <FileText className="w-3.5 h-3.5 text-primary shrink-0" />
               <a
                 href={d.url} target="_blank" rel="noreferrer" download={d.name}
-                style={{ flex: 1, color: "#374151", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                className="flex-1 text-gray-700 dark:text-gray-200 overflow-hidden truncate"
               >
                 {d.name}
               </a>
-              <Button type="link" danger size="small" icon={<DeleteOutlined />} onClick={() => remove(i)} style={{ padding: 0 }} />
+              <button type="button" onClick={() => remove(i)} className="text-red-500 hover:text-red-600 shrink-0">
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
             </div>
           ))}
         </div>

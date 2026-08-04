@@ -1,13 +1,20 @@
 import { useEffect, useState, useCallback } from "react";
-import {
-  Button, Drawer, Form, Input, Select, Spin, Alert, Popconfirm, message, Tag, Space, Row, Col,
-} from "antd";
-import {
-  PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined, BankOutlined, SearchOutlined,
-} from "@ant-design/icons";
-import PageShell from "../../components/PageShell";
+import toast from "react-hot-toast";
+import { Plus, Pencil, Trash2, RotateCw, Landmark } from "lucide-react";
 import apiClient from "../../services/apiClient";
 import { useAuth } from "../../context/AuthContext";
+import PageHeader from "../../ui/PageHeader";
+import Btn from "../../ui/Btn";
+import Card from "../../ui/Card";
+import KPICard from "../../ui/KPICard";
+import Badge from "../../ui/Badge";
+import Field from "../../ui/Field";
+import SField from "../../ui/SField";
+import { SearchFilter } from "../../ui/Filters";
+import Modal from "../../ui/Modal";
+import ConfirmModal from "../../ui/ConfirmModal";
+import Spinner from "../../ui/Spinner";
+import Alert from "../../ui/Alert";
 
 // ── Types ──────────────────────────────────────────────────────
 interface Company {
@@ -61,6 +68,12 @@ function lighten(hex: string): string {
   return `rgb(${mix(r)},${mix(g)},${mix(b)})`;
 }
 
+const emptyForm = {
+  name: "", shortCode: "", type: "Private Limited", contactPerson: "", phone: "",
+  email: "", address: "", city: "", state: "", gstNumber: "", panNumber: "", cin: "",
+  isActive: true,
+};
+
 export default function Companies() {
   const { user } = useAuth();
   const isOwner  = user?.role === "owner";
@@ -72,8 +85,9 @@ export default function Companies() {
   const [drawerOpen, setDrawerOpen]   = useState(false);
   const [editing, setEditing]         = useState<Company | null>(null);
   const [saving, setSaving]           = useState(false);
-  const [form]                        = Form.useForm();
+  const [form, setForm]               = useState(emptyForm);
   const [pickedColor, setPickedColor] = useState(PALETTE[0]);
+  const [deleteTarget, setDeleteTarget] = useState<Company | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true); setError("");
@@ -97,367 +111,253 @@ export default function Companies() {
   function openAdd() {
     setEditing(null);
     setPickedColor(PALETTE[0]);
-    form.resetFields();
-    form.setFieldsValue({ isActive: true, type: "Private Limited", color: PALETTE[0] });
+    setForm(emptyForm);
     setDrawerOpen(true);
   }
 
   function openEdit(co: Company) {
     setEditing(co);
     setPickedColor(co.color);
-    form.setFieldsValue({
+    setForm({
       name: co.name, shortCode: co.shortCode, type: co.type,
-      cin: co.cin, gstNumber: co.gstNumber, panNumber: co.panNumber,
-      address: co.address, city: co.city, state: co.state,
-      email: co.email, phone: co.phone, contactPerson: co.contactPerson,
-      color: co.color, isActive: co.isActive,
+      cin: co.cin ?? "", gstNumber: co.gstNumber ?? "", panNumber: co.panNumber ?? "",
+      address: co.address ?? "", city: co.city ?? "", state: co.state ?? "",
+      email: co.email ?? "", phone: co.phone ?? "", contactPerson: co.contactPerson ?? "",
+      isActive: co.isActive,
     });
     setDrawerOpen(true);
   }
 
   async function handleSave() {
-    const values = await form.validateFields();
+    if (!form.name.trim()) return toast.error("Company name is required");
+    if (!form.shortCode.trim()) return toast.error("Short code is required");
+    if (form.shortCode.length > 8) return toast.error("Short code: max 8 characters");
+
     setSaving(true);
     try {
-      const payload = { ...values, color: pickedColor };
+      const payload = { ...form, color: pickedColor };
       if (editing) {
         const res = await apiClient.put(`/companies/${editing._id}`, payload);
         setCompanies(prev => prev.map(c => c._id === editing._id ? res.data.company : c));
-        message.success("Company updated");
+        toast.success("Company updated");
       } else {
         const res = await apiClient.post("/companies", payload);
         setCompanies(prev => [res.data.company, ...prev]);
-        message.success("Company added");
+        toast.success("Company added");
       }
       setDrawerOpen(false);
     } catch (e: unknown) {
       const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message || "Save failed";
-      message.error(msg);
+      toast.error(msg);
     } finally { setSaving(false); }
   }
 
-  async function handleDelete(co: Company) {
+  async function handleDelete() {
+    if (!deleteTarget) return;
     try {
-      await apiClient.delete(`/companies/${co._id}`);
-      setCompanies(prev => prev.filter(c => c._id !== co._id));
-      message.success(`"${co.name}" deleted`);
+      await apiClient.delete(`/companies/${deleteTarget._id}`);
+      setCompanies(prev => prev.filter(c => c._id !== deleteTarget._id));
+      toast.success(`"${deleteTarget.name}" deleted`);
+      setDeleteTarget(null);
     } catch (e: unknown) {
       const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message || "Delete failed";
-      message.error(msg);
+      toast.error(msg);
     }
   }
 
-  if (loading) return (
-    <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: 300 }}>
-      <Spin size="large" tip="Loading companies…" />
-    </div>
-  );
-
-  if (error) return <Alert type="error" message={error} style={{ margin: 24 }} />;
+  if (loading) return <Spinner label="Loading companies…" />;
+  if (error) return <div className="m-6"><Alert type="error" message={error} /></div>;
 
   return (
-    <PageShell
-      title="Companies"
-      description="All entities under the Neoteric Group umbrella. Each project can be tagged to a company for billing and reporting."
-      cta={
-        <Space>
-          <Button icon={<ReloadOutlined />} onClick={load} />
-          <Button
-            type="primary" icon={<PlusOutlined />}
-            onClick={openAdd}
-            style={{ background: "#FF7A00", borderColor: "#FF7A00" }}
-          >
-            Add Company
-          </Button>
-        </Space>
-      }
-    >
+    <div>
+      <PageHeader
+        title="Companies"
+        subtitle="All entities under the Neoteric Group umbrella. Each project can be tagged to a company for billing and reporting."
+        icon={Landmark}
+        actions={
+          <>
+            <Btn outline icon={RotateCw} onClick={load} />
+            <Btn label="Add Company" icon={Plus} color="primary" onClick={openAdd} />
+          </>
+        }
+      />
+
       {/* Stats */}
-      <div style={{ display: "flex", gap: 12, marginBottom: 24, flexWrap: "wrap" }}>
-        {[
-          { label: "Total Companies",  value: companies.length,                                          color: "#FF7A00" },
-          { label: "Active",           value: companies.filter(c => c.isActive).length,                  color: "#16a85a" },
-          { label: "Private Limited",  value: companies.filter(c => c.type === "Private Limited").length, color: "#2563eb" },
-          { label: "LLP / Other",      value: companies.filter(c => c.type !== "Private Limited").length, color: "#7c3aed" },
-        ].map(s => (
-          <div key={s.label} style={{ background: "var(--nx-white)", border: "1px solid #E5E7EB", borderRadius: 12, padding: "14px 20px", minWidth: 150, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
-            <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", color: "#9CA3AF", marginBottom: 4 }}>{s.label}</div>
-            <div style={{ fontFamily: "monospace", fontSize: 24, fontWeight: 700, color: s.color }}>{s.value}</div>
-          </div>
-        ))}
+      <div className="flex gap-3 mb-6 flex-wrap">
+        <KPICard label="Total Companies" value={companies.length} accent="#FF7A00" />
+        <KPICard label="Active" value={companies.filter(c => c.isActive).length} accent="#16a85a" />
+        <KPICard label="Private Limited" value={companies.filter(c => c.type === "Private Limited").length} accent="#2563eb" />
+        <KPICard label="LLP / Other" value={companies.filter(c => c.type !== "Private Limited").length} accent="#7c3aed" />
       </div>
 
-      {/* Search */}
-      <div style={{ marginBottom: 20 }}>
-        <Input
-          prefix={<SearchOutlined style={{ color: "#9CA3AF" }} />}
-          placeholder="Search by name, code, city, or contact…"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          style={{ maxWidth: 380 }}
-          allowClear
-        />
+      <div className="mb-5">
+        <SearchFilter value={search} onChange={setSearch} placeholder="Search by name, code, city, or contact…" />
       </div>
 
       {/* Company cards */}
       {filtered.length === 0 ? (
-        <div style={{ textAlign: "center", padding: "60px 20px", color: "#9CA3AF" }}>
-          <BankOutlined style={{ fontSize: 40, marginBottom: 12, display: "block" }} />
-          <div style={{ fontSize: 15, fontWeight: 600, color: "#374151" }}>
-            {search ? "No companies match your search" : "No companies yet"}
-          </div>
-          {!search && (
-            <div style={{ fontSize: 13, marginTop: 4 }}>Click "Add Company" to get started.</div>
-          )}
-        </div>
+        <Card className="text-center py-14 text-gray-400">
+          <Landmark className="w-9 h-9 mx-auto mb-3" />
+          <div className="font-bold text-gray-600 dark:text-gray-300">{search ? "No companies match your search" : "No companies yet"}</div>
+          {!search && <div className="text-sm mt-1">Click "Add Company" to get started.</div>}
+        </Card>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 14 }}>
+        <div className="grid gap-3.5 [grid-template-columns:repeat(auto-fill,minmax(320px,1fr))]">
           {filtered.map(co => (
-            <div
-              key={co._id}
-              style={{
-                background: "var(--nx-white)",
-                border: "1px solid #E5E7EB",
-                borderLeft: `4px solid ${co.color}`,
-                borderRadius: 12,
-                padding: "18px 18px 14px",
-                boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
-                opacity: co.isActive ? 1 : 0.6,
-                transition: "box-shadow 0.15s",
-              }}
-              onMouseEnter={e => (e.currentTarget.style.boxShadow = "0 4px 14px rgba(0,0,0,0.09)")}
-              onMouseLeave={e => (e.currentTarget.style.boxShadow = "0 1px 3px rgba(0,0,0,0.05)")}
-            >
+            <Card key={co._id} className={`transition-shadow hover:shadow-md ${co.isActive ? "" : "opacity-60"}`} style={{ borderLeft: `4px solid ${co.color}` }}>
               {/* Header row */}
-              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10, marginBottom: 10 }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  {/* Short code badge */}
-                  <span style={{
-                    display: "inline-block",
-                    background: lighten(co.color), color: co.color,
-                    fontFamily: "monospace", fontWeight: 700, fontSize: 11,
-                    padding: "2px 8px", borderRadius: 5, marginBottom: 6,
-                  }}>
+              <div className="flex items-start justify-between gap-2.5 mb-2.5">
+                <div className="flex-1 min-w-0">
+                  <span
+                    className="inline-block font-mono font-bold text-[11px] px-2 py-0.5 rounded mb-1.5"
+                    style={{ background: lighten(co.color), color: co.color }}
+                  >
                     {co.shortCode}
                   </span>
-                  {!co.isActive && <Tag style={{ marginLeft: 6, fontSize: 10 }}>Inactive</Tag>}
+                  {!co.isActive && <Badge color="gray" small>Inactive</Badge>}
 
-                  {/* Company name */}
-                  <div style={{ fontWeight: 700, fontSize: 14, color: "#111827", lineHeight: 1.4 }}>
-                    {co.name}
-                  </div>
+                  <div className="font-bold text-sm text-[#1A1A2E] dark:text-[#F1F5F9] leading-snug">{co.name}</div>
 
-                  {/* Type badge */}
-                  <div style={{ marginTop: 5 }}>
-                    <Tag
-                      color={TYPE_COLORS[co.type] ?? "#6B7280"}
-                      style={{ fontSize: 11, borderRadius: 4 }}
+                  <div className="mt-1">
+                    <span
+                      className="text-[11px] font-semibold px-1.5 py-0.5 rounded"
+                      style={{ background: `${TYPE_COLORS[co.type] ?? "#6B7280"}15`, color: TYPE_COLORS[co.type] ?? "#6B7280" }}
                     >
                       {co.type}
-                    </Tag>
+                    </span>
                   </div>
                 </div>
 
-                {/* Actions */}
-                <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
-                  <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(co)} style={{ color: "#6B7280" }} />
-                  {isOwner && (
-                    <Popconfirm
-                      title={`Delete "${co.name}"?`}
-                      description="This cannot be undone."
-                      okText="Yes, Delete" okType="danger" cancelText="Cancel"
-                      onConfirm={() => handleDelete(co)}
-                    >
-                      <Button size="small" icon={<DeleteOutlined />} danger />
-                    </Popconfirm>
-                  )}
+                <div className="flex gap-1 shrink-0">
+                  <Btn small outline icon={Pencil} onClick={() => openEdit(co)} />
+                  {isOwner && <Btn small color="red" icon={Trash2} onClick={() => setDeleteTarget(co)} />}
                 </div>
               </div>
 
               {/* Details */}
-              <div style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: "#6B7280" }}>
-                {co.contactPerson && (
-                  <div><span style={{ color: "#9CA3AF" }}>Contact: </span><span style={{ color: "#374151", fontWeight: 500 }}>{co.contactPerson}</span></div>
-                )}
-                {(co.city || co.state) && (
-                  <div><span style={{ color: "#9CA3AF" }}>Location: </span><span style={{ color: "#374151" }}>{[co.city, co.state].filter(Boolean).join(", ")}</span></div>
-                )}
-                {co.phone && (
-                  <div><span style={{ color: "#9CA3AF" }}>Phone: </span><span style={{ color: "#374151" }}>{co.phone}</span></div>
-                )}
-                {co.email && (
-                  <div><span style={{ color: "#9CA3AF" }}>Email: </span><span style={{ color: "#374151" }}>{co.email}</span></div>
-                )}
+              <div className="flex flex-col gap-1 text-xs text-gray-500 dark:text-gray-400">
+                {co.contactPerson && <div><span className="text-gray-400">Contact: </span><span className="text-gray-700 dark:text-gray-300 font-medium">{co.contactPerson}</span></div>}
+                {(co.city || co.state) && <div><span className="text-gray-400">Location: </span><span className="text-gray-700 dark:text-gray-300">{[co.city, co.state].filter(Boolean).join(", ")}</span></div>}
+                {co.phone && <div><span className="text-gray-400">Phone: </span><span className="text-gray-700 dark:text-gray-300">{co.phone}</span></div>}
+                {co.email && <div><span className="text-gray-400">Email: </span><span className="text-gray-700 dark:text-gray-300">{co.email}</span></div>}
                 {co.gstNumber && (
-                  <div style={{ marginTop: 2 }}>
-                    <span style={{ fontFamily: "monospace", background: "#F9FAFB", border: "1px solid #E5E7EB", borderRadius: 4, padding: "1px 6px", fontSize: 11 }}>
-                      GST: {co.gstNumber}
-                    </span>
+                  <div className="mt-0.5">
+                    <span className="font-mono bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700 rounded px-1.5 py-0.5 text-[11px]">GST: {co.gstNumber}</span>
                   </div>
                 )}
                 {co.panNumber && (
                   <div>
-                    <span style={{ fontFamily: "monospace", background: "#F9FAFB", border: "1px solid #E5E7EB", borderRadius: 4, padding: "1px 6px", fontSize: 11 }}>
-                      PAN: {co.panNumber}
-                    </span>
+                    <span className="font-mono bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700 rounded px-1.5 py-0.5 text-[11px]">PAN: {co.panNumber}</span>
                   </div>
                 )}
               </div>
-            </div>
+            </Card>
           ))}
         </div>
       )}
 
       {/* ── Add / Edit Drawer ──────────────────────────────────── */}
-      <Drawer
-        open={drawerOpen}
-        title={editing ? `Edit — ${editing.name}` : "Add New Company"}
-        onClose={() => setDrawerOpen(false)}
-        width={480}
-        footer={
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-            <Button onClick={() => setDrawerOpen(false)}>Cancel</Button>
-            <Button
-              type="primary" onClick={handleSave} loading={saving}
-              style={{ background: "#FF7A00", borderColor: "#FF7A00" }}
-            >
-              {editing ? "Save Changes" : "Add Company"}
-            </Button>
+      {drawerOpen && (
+        <Modal
+          title={editing ? `Edit — ${editing.name}` : "Add New Company"}
+          onClose={() => setDrawerOpen(false)}
+          footer={
+            <div className="flex justify-end gap-2">
+              <Btn label="Cancel" outline onClick={() => setDrawerOpen(false)} />
+              <Btn label={editing ? "Save Changes" : "Add Company"} color="primary" loading={saving} onClick={handleSave} />
+            </div>
+          }
+        >
+          <div className="flex flex-col gap-4">
+            <Field label="Company Name" required maxLength={120} placeholder="e.g. Gravity Infrastructure Pvt Ltd"
+              value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
+
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Short Code" required maxLength={8} placeholder="e.g. GLR" className="uppercase font-mono"
+                hint="A short abbreviation used in reports and badges (e.g. GLR, NPL)"
+                value={form.shortCode} onChange={e => setForm(f => ({ ...f, shortCode: e.target.value }))} />
+              <SField label="Company Type" required value={form.type}
+                onChange={v => setForm(f => ({ ...f, type: v }))}
+                options={COMPANY_TYPES.map(t => ({ label: t, value: t }))} />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Contact Person" placeholder="Primary point of contact"
+                value={form.contactPerson} onChange={e => setForm(f => ({ ...f, contactPerson: e.target.value }))} />
+              <Field label="Phone" maxLength={15} placeholder="10-digit mobile"
+                value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} />
+            </div>
+
+            <Field label="Email" type="email" placeholder="company@example.com"
+              value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} />
+
+            <Field textarea label="Address" rows={2} maxLength={300} placeholder="Registered office address"
+              value={form.address} onChange={e => setForm(f => ({ ...f, address: e.target.value }))} />
+
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="City" placeholder="Gwalior" value={form.city} onChange={e => setForm(f => ({ ...f, city: e.target.value }))} />
+              <Field label="State" placeholder="Madhya Pradesh" value={form.state} onChange={e => setForm(f => ({ ...f, state: e.target.value }))} />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="GST Number" maxLength={15} placeholder="23ABCDE1234F1Z5" className="font-mono"
+                value={form.gstNumber} onChange={e => setForm(f => ({ ...f, gstNumber: e.target.value }))} />
+              <Field label="PAN Number" maxLength={10} placeholder="ABCDE1234F" className="font-mono"
+                value={form.panNumber} onChange={e => setForm(f => ({ ...f, panNumber: e.target.value }))} />
+            </div>
+
+            <Field label="CIN / LLPIN" maxLength={21} placeholder="U74999MP2020PTC123456" className="font-mono"
+              hint="Company Identification Number or LLP Identification Number"
+              value={form.cin} onChange={e => setForm(f => ({ ...f, cin: e.target.value }))} />
+
+            {/* Colour */}
+            <div>
+              <span className="block text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wide mb-1.5">Brand Colour</span>
+              <div className="flex items-center gap-3 mb-2">
+                <input type="color" value={pickedColor} onChange={e => setPickedColor(e.target.value)}
+                  className="w-10 h-9 border border-gray-200 dark:border-gray-700 rounded-md p-0.5 cursor-pointer bg-transparent" />
+                <span className="font-mono text-[13px] text-gray-700 dark:text-gray-300">{pickedColor}</span>
+                <span className="font-bold text-[11px] px-2.5 py-0.5 rounded" style={{ background: lighten(pickedColor), color: pickedColor }}>
+                  {form.shortCode || "CODE"}
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {PALETTE.map(c => (
+                  <button key={c} type="button" onClick={() => setPickedColor(c)} title={c}
+                    className="w-[26px] h-[26px] rounded-full cursor-pointer p-0"
+                    style={{ background: c, border: pickedColor === c ? "3px solid #111" : "2px solid #fff", boxShadow: "0 0 0 1px #E5E7EB" }} />
+                ))}
+              </div>
+            </div>
+
+            {/* Status */}
+            <div>
+              <span className="block text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wide mb-1.5">Status</span>
+              <div className="flex gap-2.5">
+                {[{ label: "Active", value: true, color: "#16a85a" }, { label: "Inactive", value: false, color: "#9CA3AF" }].map(opt => (
+                  <button key={String(opt.value)} type="button" onClick={() => setForm(f => ({ ...f, isActive: opt.value }))}
+                    className="px-4.5 py-1.5 rounded-lg border font-semibold text-xs cursor-pointer"
+                    style={{
+                      borderColor: form.isActive === opt.value ? opt.color : "#E5E7EB",
+                      background: form.isActive === opt.value ? `${opt.color}18` : "transparent",
+                      color: form.isActive === opt.value ? opt.color : "#6B7280",
+                    }}>
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
-        }
-      >
-        <Form form={form} layout="vertical">
-          <Form.Item
-            name="name" label="Company Name"
-            rules={[{ required: true, message: "Company name is required" }]}
-          >
-            <Input placeholder="e.g. Gravity Infrastructure Pvt Ltd" maxLength={120} />
-          </Form.Item>
+        </Modal>
+      )}
 
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item
-                name="shortCode" label="Short Code"
-                tooltip="A short abbreviation used in reports and badges (e.g. GLR, NPL)"
-                rules={[{ required: true, message: "Short code is required" }, { max: 8, message: "Max 8 characters" }]}
-              >
-                <Input placeholder="e.g. GLR" maxLength={8} style={{ textTransform: "uppercase", fontFamily: "monospace" }} />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="type" label="Company Type" rules={[{ required: true }]}>
-                <Select
-                  options={COMPANY_TYPES.map(t => ({ label: t, value: t }))}
-                  getPopupContainer={trigger => trigger.parentElement || document.body}
-                />
-              </Form.Item>
-            </Col>
-          </Row>
-
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item name="contactPerson" label="Contact Person">
-                <Input placeholder="Primary point of contact" />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="phone" label="Phone">
-                <Input placeholder="10-digit mobile" maxLength={15} />
-              </Form.Item>
-            </Col>
-          </Row>
-
-          <Form.Item name="email" label="Email">
-            <Input placeholder="company@example.com" type="email" />
-          </Form.Item>
-
-          <Form.Item name="address" label="Address">
-            <Input.TextArea placeholder="Registered office address" rows={2} maxLength={300} />
-          </Form.Item>
-
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item name="city" label="City">
-                <Input placeholder="Gwalior" />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="state" label="State">
-                <Input placeholder="Madhya Pradesh" />
-              </Form.Item>
-            </Col>
-          </Row>
-
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item name="gstNumber" label="GST Number">
-                <Input placeholder="23ABCDE1234F1Z5" maxLength={15} style={{ fontFamily: "monospace" }} />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="panNumber" label="PAN Number">
-                <Input placeholder="ABCDE1234F" maxLength={10} style={{ fontFamily: "monospace" }} />
-              </Form.Item>
-            </Col>
-          </Row>
-
-          <Form.Item name="cin" label="CIN / LLPIN" tooltip="Company Identification Number or LLP Identification Number">
-            <Input placeholder="U74999MP2020PTC123456" maxLength={21} style={{ fontFamily: "monospace" }} />
-          </Form.Item>
-
-          {/* Colour */}
-          <Form.Item label="Brand Colour">
-            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
-              <input
-                type="color" value={pickedColor}
-                onChange={e => { setPickedColor(e.target.value); form.setFieldValue("color", e.target.value); }}
-                style={{ width: 40, height: 36, border: "1px solid #E5E7EB", borderRadius: 6, padding: 2, cursor: "pointer", background: "none" }}
-              />
-              <span style={{ fontFamily: "monospace", fontSize: 13, color: "#374151" }}>{pickedColor}</span>
-              <span style={{ background: lighten(pickedColor), color: pickedColor, fontWeight: 700, fontSize: 11, padding: "3px 10px", borderRadius: 5 }}>
-                {form.getFieldValue("shortCode") || "CODE"}
-              </span>
-            </div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-              {PALETTE.map(c => (
-                <button
-                  key={c} type="button"
-                  onClick={() => { setPickedColor(c); form.setFieldValue("color", c); }}
-                  style={{
-                    width: 26, height: 26, borderRadius: "50%", background: c, cursor: "pointer", padding: 0,
-                    border: pickedColor === c ? "3px solid #111" : "2px solid #fff",
-                    boxShadow: "0 0 0 1px #E5E7EB",
-                  }}
-                  title={c}
-                />
-              ))}
-            </div>
-            <Form.Item name="color" hidden><Input /></Form.Item>
-          </Form.Item>
-
-          {/* Status */}
-          <Form.Item name="isActive" label="Status">
-            <div style={{ display: "flex", gap: 10 }}>
-              {[
-                { label: "Active",   value: true,  color: "#16a85a" },
-                { label: "Inactive", value: false, color: "#9CA3AF" },
-              ].map(opt => (
-                <button
-                  key={String(opt.value)} type="button"
-                  onClick={() => form.setFieldValue("isActive", opt.value)}
-                  style={{
-                    padding: "6px 18px", borderRadius: 7, border: "1px solid", cursor: "pointer",
-                    fontWeight: 600, fontSize: 12,
-                    borderColor: form.getFieldValue("isActive") === opt.value ? opt.color : "#E5E7EB",
-                    background:  form.getFieldValue("isActive") === opt.value ? `${opt.color}18` : "#fff",
-                    color:       form.getFieldValue("isActive") === opt.value ? opt.color : "#6B7280",
-                  }}
-                >{opt.label}</button>
-              ))}
-            </div>
-          </Form.Item>
-        </Form>
-      </Drawer>
-    </PageShell>
+      {deleteTarget && (
+        <ConfirmModal
+          title={`Delete "${deleteTarget.name}"?`} message="This cannot be undone."
+          confirmLabel="Yes, Delete" danger
+          onConfirm={handleDelete} onCancel={() => setDeleteTarget(null)}
+        />
+      )}
+    </div>
   );
 }

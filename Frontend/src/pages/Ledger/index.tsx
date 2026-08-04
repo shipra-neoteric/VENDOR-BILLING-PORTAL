@@ -1,12 +1,19 @@
 import { useEffect, useState, useMemo, useCallback } from "react";
 import type { Dayjs } from "dayjs";
-import { Button, Tag, Select, Row, Col, Empty, Spin, Alert, Descriptions, Switch } from "antd";
-import { ArrowLeftOutlined, BookOutlined, ReloadOutlined } from "@ant-design/icons";
+import { ArrowLeft, BookOpen, RotateCw } from "lucide-react";
 import dayjs from "dayjs";
 import apiClient from "../../services/apiClient";
 import DateRangeFilter, { inDateRange } from "../../components/DateRangeFilter";
 import { selectableProjects, getWorkOrderProjectId } from "../../utils/projectOptions";
 import { vendorLabel } from "../../utils/vendorLabel";
+import Btn from "../../ui/Btn";
+import Badge from "../../ui/Badge";
+import { SelectFilter } from "../../ui/Filters";
+import SField from "../../ui/SField";
+import { Descriptions, DescItem } from "../../ui/Descriptions";
+import Switch from "../../ui/Switch";
+import Spinner from "../../ui/Spinner";
+import Alert from "../../ui/Alert";
 
 // ── Types ─────────────────────────────────────────────────────
 type BillStatus = "draft" | "verify-done" | "l1-approved" | "approved" | "sent-to-tms" | "hold" | "rejected" | "paid";
@@ -49,15 +56,15 @@ function calcBill(b: Bill) {
   return { gst, gross, tds, retention, advance, net };
 }
 
-const STATUS_CFG: Record<BillStatus, { color: string; label: string }> = {
-  draft:         { color: "default",  label: "Draft" },
-  "verify-done": { color: "blue",     label: "Awaiting L1 AGM" },
-  "l1-approved": { color: "blue",     label: "Awaiting L2 Director" },
-  approved:      { color: "gold",     label: "Ready for TMS" },
-  "sent-to-tms": { color: "gold",     label: "Sent to TMS" },
-  hold:          { color: "purple",   label: "On Hold" },
-  rejected:      { color: "red",      label: "Rejected" },
-  paid:          { color: "purple",   label: "Paid" },
+const STATUS_CFG: Record<BillStatus, { color: "gray" | "blue" | "amber" | "purple" | "red"; label: string }> = {
+  draft:         { color: "gray",   label: "Draft" },
+  "verify-done": { color: "blue",   label: "Awaiting L1 AGM" },
+  "l1-approved": { color: "blue",   label: "Awaiting L2 Director" },
+  approved:      { color: "amber",  label: "Ready for TMS" },
+  "sent-to-tms": { color: "amber",  label: "Sent to TMS" },
+  hold:          { color: "purple", label: "On Hold" },
+  rejected:      { color: "red",    label: "Rejected" },
+  paid:          { color: "purple", label: "Paid" },
 };
 
 const BILL_TYPE_LABEL: Record<string, string> = {
@@ -218,13 +225,9 @@ export default function Ledger() {
     return { wo, rows, contract, totalGross, totalNet, certifiedNet: cumCertifiedNet, pendingGross, balance, supersededCount };
   }, [selectedWOId, workOrders, bills]);
 
-  if (loading) return (
-    <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: 300 }}>
-      <Spin size="large" tip="Loading ledger…" />
-    </div>
-  );
+  if (loading) return <Spinner label="Loading ledger…" />;
 
-  if (error) return <Alert type="error" message={error} style={{ margin: 24 }} />;
+  if (error) return <div className="m-6"><Alert type="error" message={error} /></div>;
 
   // ── Portfolio totals ──────────────────────────────────────
   const portfolioContract      = woSummaries.reduce((s, r) => s + r.contract, 0);
@@ -242,17 +245,17 @@ export default function Ledger() {
     return (
       <>
         <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 24 }}>
-          <Button icon={<ArrowLeftOutlined />} onClick={() => setSelectedWOId(null)}>All Work Orders</Button>
+          <Btn outline icon={ArrowLeft} label="All Work Orders" onClick={() => setSelectedWOId(null)} />
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
               <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>
                 Ledger — <span style={{ fontFamily: "monospace", color: "#f37916" }}>{detail.wo.workOrderNo}</span>
               </h1>
-              <Tag color="blue" style={{ fontFamily: "monospace" }}>{detail.wo.vendorCode}</Tag>
+              <Badge color="blue"><span style={{ fontFamily: "monospace" }}>{detail.wo.vendorCode}</span></Badge>
               {detail.wo.category && (
-                <Tag style={{ background: CATEGORY_COLOR[detail.wo.category] ? `${CATEGORY_COLOR[detail.wo.category]}20` : "#f5f6f8", color: CATEGORY_COLOR[detail.wo.category] || "#5a6278", border: "none", fontWeight: 600 }}>
+                <span style={{ background: CATEGORY_COLOR[detail.wo.category] ? `${CATEGORY_COLOR[detail.wo.category]}20` : "#f5f6f8", color: CATEGORY_COLOR[detail.wo.category] || "#5a6278", fontWeight: 600, fontSize: 12, padding: "2px 8px", borderRadius: 6 }}>
                   {detail.wo.category}
-                </Tag>
+                </span>
               )}
             </div>
             <p style={{ color: "#5a6278", marginTop: 4, marginBottom: 0, fontSize: 12 }}>
@@ -262,7 +265,7 @@ export default function Ledger() {
         </div>
 
         {/* Stat cards */}
-        <Row gutter={12} style={{ marginBottom: 20 }}>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-5">
           {[
             { label: "Contract Value", value: fmt(detail.contract), sub: "opening balance", color: "#2563eb" },
             { label: "Total Billed", value: detail.totalGross > 0 ? fmt(detail.totalGross) : "—", sub: `${detail.rows.length} bill${detail.rows.length !== 1 ? "s" : ""} · incl. GST`, color: "#f37916" },
@@ -270,20 +273,18 @@ export default function Ledger() {
             { label: "Total Bill Amount", value: fmt(detail.rows.filter(r => r.b.status === "paid").reduce((s, r) => s + r.gross, 0)), sub: "gross billed (paid bills)", color: "#0d9488" },
             { label: "Cash Released (Net TDS)", value: fmt(detail.rows.filter(r => r.b.status === "paid").reduce((s, r) => s + r.net, 0)), sub: "actual bank transfer", color: "#1d4ed8" },
             { label: "Balance Remaining", value: fmt(Math.max(detail.balance, 0)), sub: detail.balance < 0 ? "⚠️ over-billed" : "uncertified contract value", color: detail.balance < 0 ? "#e03b3b" : "#5a6278" },
-          ].map(s => (
-            <Col key={s.label} xs={12} sm={6}><StatCard {...s} /></Col>
-          ))}
-        </Row>
+          ].map(s => <StatCard key={s.label} {...s} />)}
+        </div>
 
         <TapeBar contract={detail.contract} certified={detail.certifiedNet} pending={detail.pendingGross} />
 
         {/* WO meta */}
         <div style={{ background: "var(--nx-white)", border: "1px solid #e4e7ee", borderRadius: 12, padding: "14px 18px", marginBottom: 20 }}>
-          <Descriptions size="small" column={3}>
-            {detail.wo.issueDate && <Descriptions.Item label="Issue Date">{dayjs(detail.wo.issueDate).format("DD MMM YYYY")}</Descriptions.Item>}
-            <Descriptions.Item label="Project">{detail.wo.projectName}</Descriptions.Item>
-            <Descriptions.Item label="Status"><Tag>{(detail.wo.status || "").toUpperCase()}</Tag></Descriptions.Item>
-            {detail.wo.scopeOfWork && <Descriptions.Item label="Scope" span={3}>{detail.wo.scopeOfWork}</Descriptions.Item>}
+          <Descriptions columns={3}>
+            {detail.wo.issueDate && <DescItem label="Issue Date">{dayjs(detail.wo.issueDate).format("DD MMM YYYY")}</DescItem>}
+            <DescItem label="Project">{detail.wo.projectName}</DescItem>
+            <DescItem label="Status"><Badge color="gray">{(detail.wo.status || "").toUpperCase()}</Badge></DescItem>
+            {detail.wo.scopeOfWork && <DescItem label="Scope" span={3}>{detail.wo.scopeOfWork}</DescItem>}
           </Descriptions>
         </div>
 
@@ -358,8 +359,8 @@ export default function Ledger() {
                     <td style={{ padding: "10px 12px", textAlign: "right", fontFamily: "monospace", color: r.isSuperseded ? "#9ba3b8" : "#16a85a", fontWeight: 600 }}>{fmt(r.net)}</td>
                     <td style={{ padding: "10px 12px", textAlign: "center" }}>
                       {r.isSuperseded
-                        ? <Tag color="default" style={{ fontSize: 10 }}>SUPERSEDED</Tag>
-                        : <Tag color={STATUS_CFG[r.b.status].color}>{STATUS_CFG[r.b.status].label.toUpperCase()}</Tag>
+                        ? <Badge color="gray" small>SUPERSEDED</Badge>
+                        : <Badge color={STATUS_CFG[r.b.status].color}>{STATUS_CFG[r.b.status].label.toUpperCase()}</Badge>
                       }
                     </td>
                     <td style={{ padding: "10px 12px", textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: r.balanceAfter !== null ? (r.balanceAfter < 0 ? "#e03b3b" : "#16a85a") : "#9ba3b8" }}>
@@ -389,7 +390,7 @@ export default function Ledger() {
             </table>
           </div>
           {detail.rows.length === 0 && (
-            <Empty description="No running bills for this work order yet" image={Empty.PRESENTED_IMAGE_SIMPLE} style={{ padding: "40px 0" }} />
+            <div className="text-center py-10 text-gray-400">No running bills for this work order yet</div>
           )}
         </div>
       </>
@@ -409,16 +410,13 @@ export default function Ledger() {
           </p>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#5a6278" }}>
-            <Switch size="small" checked={includeArchived} onChange={setIncludeArchived} />
-            Include archived bills
-          </label>
-          <Button icon={<ReloadOutlined />} onClick={() => load(includeArchived)}>Refresh</Button>
+          <Switch checked={includeArchived} onChange={setIncludeArchived} offLabel="Include archived bills" onLabel="Including archived bills" />
+          <Btn outline icon={RotateCw} label="Refresh" onClick={() => load(includeArchived)} />
         </div>
       </div>
 
       {/* Portfolio stat cards */}
-      <Row gutter={12} style={{ marginBottom: 20 }}>
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-5">
         {[
           { label: "Total Contract Value", value: fmt(portfolioContract), sub: `${woSummaries.length} work orders`, color: "#2563eb" },
           { label: "Total Billed (Gross)", value: fmt(portfolioGross), sub: "all running bills incl. GST", color: "#f37916" },
@@ -426,39 +424,36 @@ export default function Ledger() {
           { label: "Total Bill Amount", value: fmt(bills.filter(b => b.status === "paid" && woSummaries.some(r => r.wo._id === b.workOrderId)).reduce((s, b) => s + (b.amount ?? 0), 0)), sub: "gross billed (paid bills)", color: "#0d9488" },
           { label: "Cash Released (Net TDS)", value: fmt(portfolioActuallyPaid), sub: "actual bank transfer", color: "#1d4ed8" },
           { label: "Balance Remaining", value: fmt(portfolioBalance), sub: "uncertified contract value", color: "#5a6278" },
-        ].map(s => (
-          <Col key={s.label} xs={12} sm={6}><StatCard {...s} /></Col>
-        ))}
-      </Row>
+        ].map(s => <StatCard key={s.label} {...s} />)}
+      </div>
 
       {/* Filters */}
       <div style={{ display: "flex", gap: 10, marginBottom: 20, flexWrap: "wrap", alignItems: "center" }}>
-        <Select
-          value={projectFilter} onChange={setProjectFilter} style={{ width: 220 }}
-          options={[
-            { value: "all", label: "All Projects" },
-            ...selectableProjects(projects).map(p => ({ value: p._id, label: p.name || p._id })),
-          ]}
-        />
-        <Select
-          value={vendorFilter} onChange={setVendorFilter} style={{ width: 240 }}
-          options={[
-            { value: "all", label: "All Vendors" },
-            ...contractors.map(c => ({ value: c.vendorCode, label: `${c.vendorCode} — ${vendorLabel(c.companyName || "", c.shortCode)}` })),
-          ]}
-        />
+        <div style={{ width: 220 }}>
+          <SelectFilter
+            value={projectFilter} onChange={setProjectFilter}
+            options={[{ value: "all", label: "All Projects" }, ...selectableProjects(projects).map(p => ({ value: p._id, label: p.name || p._id }))]}
+          />
+        </div>
+        <div style={{ width: 240 }}>
+          <SelectFilter
+            value={vendorFilter} onChange={setVendorFilter}
+            options={[{ value: "all", label: "All Vendors" }, ...contractors.map(c => ({ value: c.vendorCode, label: `${c.vendorCode} — ${vendorLabel(c.companyName || "", c.shortCode)}` }))]}
+          />
+        </div>
         <DateRangeFilter onChange={(from, to) => { setDateFrom(from); setDateTo(to); }} />
-        <Select
-          showSearch allowClear placeholder="Jump to Work Order…" style={{ width: 280 }}
-          value={null} onChange={(id: string) => { if (id) setSelectedWOId(id); }}
-          options={workOrders.map(wo => ({ value: wo._id, label: `${wo.workOrderNo} — ${wo.vendorName}` }))}
-          filterOption={(input, opt) => String(opt?.label ?? "").toLowerCase().includes(input.toLowerCase())}
-        />
+        <div style={{ width: 280 }}>
+          <SField
+            value={null} placeholder="Jump to Work Order…"
+            onChange={id => { if (id) setSelectedWOId(id); }}
+            options={workOrders.map(wo => ({ value: wo._id, label: `${wo.workOrderNo} — ${wo.vendorName}` }))}
+          />
+        </div>
       </div>
 
       {/* Summary table */}
       {woSummaries.length === 0 ? (
-        <Empty description="No work orders match the selected filters" />
+        <div className="text-center py-14 text-gray-400">No work orders match the selected filters</div>
       ) : (
         <div style={{ background: "var(--nx-white)", border: "1px solid #e4e7ee", borderRadius: 12, overflow: "hidden" }}>
           <div style={{ overflowX: "auto" }}>
@@ -481,7 +476,7 @@ export default function Ledger() {
                     <td style={{ padding: "10px 12px", color: "#5a6278" }}>{r.wo.projectName || "—"}</td>
                     <td style={{ padding: "10px 12px" }}>
                       <div style={{ fontWeight: 600, fontSize: 12 }}>{r.wo.vendorName || "—"}</div>
-                      <Tag color="blue" style={{ fontFamily: "monospace", fontSize: 10 }}>{r.wo.vendorCode}</Tag>
+                      <Badge color="blue" small><span style={{ fontFamily: "monospace" }}>{r.wo.vendorCode}</span></Badge>
                     </td>
                     <td style={{ padding: "10px 12px" }}>
                       {r.wo.category ? (
@@ -508,9 +503,10 @@ export default function Ledger() {
                       {r.woBills.length || "—"}
                     </td>
                     <td style={{ padding: "10px 12px", textAlign: "center" }}>
-                      <Button type="link" icon={<BookOutlined />} onClick={e => { e.stopPropagation(); setSelectedWOId(r.wo._id); }} style={{ color: "#f37916", paddingLeft: 0 }}>
-                        View Ledger
-                      </Button>
+                      <button type="button" onClick={e => { e.stopPropagation(); setSelectedWOId(r.wo._id); }}
+                        style={{ display: "inline-flex", alignItems: "center", gap: 5, background: "none", border: "none", color: "#f37916", fontWeight: 600, fontSize: 13, cursor: "pointer", padding: 0 }}>
+                        <BookOpen size={14} /> View Ledger
+                      </button>
                     </td>
                   </tr>
                 ))}

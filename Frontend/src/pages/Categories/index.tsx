@@ -1,12 +1,18 @@
 import { useEffect, useState, useCallback } from "react";
-import {
-  Button, Input, Modal, Form, Spin, Alert, Popconfirm, message, Tag, Select, Tooltip,
-} from "antd";
-import {
-  PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined, AppstoreOutlined,
-} from "@ant-design/icons";
-import PageShell from "../../components/PageShell";
+import toast from "react-hot-toast";
+import { Plus, Pencil, Trash2, RotateCw, LayoutGrid, ChevronRight } from "lucide-react";
 import apiClient from "../../services/apiClient";
+import PageHeader from "../../ui/PageHeader";
+import Btn from "../../ui/Btn";
+import Card from "../../ui/Card";
+import KPICard from "../../ui/KPICard";
+import Badge from "../../ui/Badge";
+import Field from "../../ui/Field";
+import SField from "../../ui/SField";
+import Modal from "../../ui/Modal";
+import ConfirmModal from "../../ui/ConfirmModal";
+import Spinner from "../../ui/Spinner";
+import Alert from "../../ui/Alert";
 
 // ── Types ─────────────────────────────────────────────────────
 interface Category {
@@ -34,6 +40,8 @@ function lighten(hex: string): string {
   return `rgb(${mix(r)},${mix(g)},${mix(b)})`;
 }
 
+const emptyForm = { name: "", description: "", isActive: true, parentId: "" };
+
 export default function Categories() {
   const [cats, setCats]         = useState<Category[]>([]);
   const [loading, setLoading]   = useState(true);
@@ -42,10 +50,12 @@ export default function Categories() {
   const [editing, setEditing]           = useState<Category | null>(null);
   const [defaultParentId, setDefaultParentId] = useState<string | null>(null);
   const [saving, setSaving]     = useState(false);
-  const [form]                  = Form.useForm();
+  const [form, setForm]         = useState(emptyForm);
   const [pickedColor, setPickedColor]   = useState(PALETTE[0]);
   const [expanded, setExpanded]         = useState<Set<string>>(new Set());
   const [subExpanded, setSubExpanded]   = useState<Set<string>>(new Set());
+  const [deleteTarget, setDeleteTarget] = useState<Category | null>(null);
+  const [deleteBlockedReason, setDeleteBlockedReason] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true); setError("");
@@ -80,11 +90,10 @@ export default function Categories() {
     setSubExpanded(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   }
 
-  function getParentColor(parentId: string | null | undefined): string {
+  function getParentColor(parentId: string | null): string {
     if (!parentId) return PALETTE[0];
     const p = cats.find(c => c._id === parentId);
     if (!p) return PALETTE[0];
-    // If p itself has a parent, use that parent's color
     if (p.parentId) return cats.find(c => c._id === p.parentId)?.color ?? p.color;
     return p.color;
   }
@@ -94,8 +103,7 @@ export default function Categories() {
     setDefaultParentId(parentId);
     const color = getParentColor(parentId);
     setPickedColor(color);
-    form.resetFields();
-    form.setFieldsValue({ color, isActive: true, parentId: parentId ?? undefined });
+    setForm({ ...emptyForm, parentId: parentId ?? "" });
     setModalOpen(true);
   }
 
@@ -103,12 +111,7 @@ export default function Categories() {
     setEditing(cat);
     setDefaultParentId(null);
     setPickedColor(cat.color);
-    form.setFieldsValue({
-      name: cat.name, color: cat.color,
-      description: cat.description ?? "",
-      isActive: cat.isActive,
-      parentId: cat.parentId ?? undefined,
-    });
+    setForm({ name: cat.name, description: cat.description ?? "", isActive: cat.isActive, parentId: cat.parentId ?? "" });
     setModalOpen(true);
   }
 
@@ -128,255 +131,180 @@ export default function Categories() {
   }
 
   async function handleSave() {
-    const values = await form.validateFields();
+    if (!form.name.trim() || form.name.trim().length < 2) return toast.error("Name must be at least 2 characters");
+
     setSaving(true);
     try {
-      const payload = { ...values, color: pickedColor, parentId: values.parentId ?? null };
+      const payload = { ...form, color: pickedColor, parentId: form.parentId || null };
       if (editing) {
         await apiClient.put(`/categories/${editing._id}`, payload);
-        message.success("Category updated");
+        toast.success("Category updated");
       } else {
         await apiClient.post("/categories", payload);
         const label = !payload.parentId ? "Category"
           : level1.some(l => l._id === payload.parentId) ? "Sub-Category"
           : "Sub-Sub-Category";
-        message.success(`${label} created`);
+        toast.success(`${label} created`);
       }
       setModalOpen(false);
       await load();
     } catch (e: unknown) {
       const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message || "Save failed";
-      message.error(msg);
+      toast.error(msg);
     } finally { setSaving(false); }
   }
 
-  async function handleDelete(cat: Category) {
+  function requestDelete(cat: Category, blockedReason: string) {
+    setDeleteTarget(cat);
+    setDeleteBlockedReason(blockedReason);
+  }
+
+  async function handleDelete() {
+    if (!deleteTarget) return;
     try {
-      await apiClient.delete(`/categories/${cat._id}`);
-      message.success(`"${cat.name}" deleted`);
+      await apiClient.delete(`/categories/${deleteTarget._id}`);
+      toast.success(`"${deleteTarget.name}" deleted`);
+      setDeleteTarget(null);
       await load();
     } catch (e: unknown) {
       const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message || "Delete failed";
-      message.error(msg);
+      toast.error(msg);
     }
   }
 
-  if (loading) return (
-    <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: 300 }}>
-      <Spin size="large" tip="Loading categories…" />
-    </div>
-  );
-
-  if (error) return <Alert type="error" message={error} style={{ margin: 24 }} />;
+  if (loading) return <Spinner label="Loading categories…" />;
+  if (error) return <div className="m-6"><Alert type="error" message={error} /></div>;
 
   // Parent options for modal: level1 + level2
   const parentOptions = [
-    { label: "── Top-Level Categories ──", value: "__sep1", disabled: true },
     ...level1.map(c => ({ label: c.name, value: c._id })),
-    ...(level2.length > 0 ? [
-      { label: "── Sub-Categories ──", value: "__sep2", disabled: true },
-      ...level2.map(c => {
-        const p = level1.find(l => l._id === c.parentId);
-        return { label: `${p?.name ?? ""} › ${c.name}`, value: c._id };
-      }),
-    ] : []),
+    ...level2.map(c => {
+      const p = level1.find(l => l._id === c.parentId);
+      return { label: `${p?.name ?? ""} › ${c.name}`, value: c._id };
+    }),
   ];
 
   return (
-    <PageShell
-      title="Categories"
-      description="3-level category hierarchy: Category → Sub-Category → Sub-Sub-Category. Used across Work Orders for scope item classification."
-      cta={
-        <div style={{ display: "flex", gap: 8 }}>
-          <Button icon={<ReloadOutlined />} onClick={load} />
-          <Button
-            type="primary" icon={<PlusOutlined />}
-            onClick={() => openAdd(null)}
-            style={{ background: "#FF7A00", borderColor: "#FF7A00" }}
-          >
-            New Category
-          </Button>
-        </div>
-      }
-    >
+    <div>
+      <PageHeader
+        title="Categories"
+        subtitle="3-level category hierarchy: Category → Sub-Category → Sub-Sub-Category. Used across Work Orders for scope item classification."
+        icon={LayoutGrid}
+        actions={
+          <>
+            <Btn outline icon={RotateCw} onClick={load} />
+            <Btn label="New Category" icon={Plus} color="primary" onClick={() => openAdd(null)} />
+          </>
+        }
+      />
+
       {/* Stats strip */}
-      <div style={{ display: "flex", gap: 12, marginBottom: 24, flexWrap: "wrap" }}>
-        {[
-          { label: "Total",         value: cats.length,                          color: "#FF7A00" },
-          { label: "Category",      value: level1.length,                        color: "#2563eb" },
-          { label: "Sub-Category",  value: level2.length,                        color: "#7c3aed" },
-          { label: "Sub-Sub-Cat",   value: level3.length,                        color: "#0d9488" },
-          { label: "Active",        value: cats.filter(c => c.isActive).length,  color: "#16a85a" },
-        ].map(s => (
-          <div key={s.label} style={{ background: "var(--nx-white)", border: "1px solid #E5E7EB", borderRadius: 12, padding: "14px 20px", minWidth: 120, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
-            <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", color: "#9CA3AF", marginBottom: 4 }}>{s.label}</div>
-            <div style={{ fontFamily: "monospace", fontSize: 24, fontWeight: 700, color: s.color }}>{s.value}</div>
-          </div>
-        ))}
+      <div className="flex gap-3 mb-6 flex-wrap">
+        <KPICard label="Total" value={cats.length} accent="#FF7A00" />
+        <KPICard label="Category" value={level1.length} accent="#2563eb" />
+        <KPICard label="Sub-Category" value={level2.length} accent="#7c3aed" />
+        <KPICard label="Sub-Sub-Cat" value={level3.length} accent="#0d9488" />
+        <KPICard label="Active" value={cats.filter(c => c.isActive).length} accent="#16a85a" />
       </div>
 
       {/* ── Category tree ─────────────────────────────────────── */}
       {level1.length === 0 ? (
-        <div style={{ textAlign: "center", padding: "60px 20px", color: "#9CA3AF" }}>
-          <AppstoreOutlined style={{ fontSize: 40, marginBottom: 12, display: "block" }} />
-          <div style={{ fontSize: 15, fontWeight: 600, color: "#374151" }}>No categories yet</div>
-          <div style={{ fontSize: 13, marginTop: 4 }}>Click "New Category" to add your first one.</div>
-        </div>
+        <Card className="text-center py-14 text-gray-400">
+          <LayoutGrid className="w-9 h-9 mx-auto mb-3" />
+          <div className="font-bold text-gray-600 dark:text-gray-300">No categories yet</div>
+          <div className="text-sm mt-1">Click "New Category" to add your first one.</div>
+        </Card>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <div className="flex flex-col gap-2.5">
           {level1.map(cat => {
             const subs   = getLevel2(cat._id);
             const isOpen = expanded.has(cat._id);
 
             return (
-              <div
-                key={cat._id}
-                style={{
-                  background: "var(--nx-white)",
-                  border: "1px solid #E5E7EB",
-                  borderLeft: `4px solid ${cat.color}`,
-                  borderRadius: 12,
-                  overflow: "hidden",
-                  boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
-                  opacity: cat.isActive ? 1 : 0.6,
-                }}
-              >
+              <Card key={cat._id} padded={false} className={`overflow-hidden ${cat.isActive ? "" : "opacity-60"}`} style={{ borderLeft: `4px solid ${cat.color}` }}>
                 {/* ── Level-1 header ── */}
-                <div
-                  style={{ display: "flex", alignItems: "center", padding: "13px 16px", gap: 10, cursor: "pointer", userSelect: "none" }}
-                  onClick={() => toggleExpand(cat._id)}
-                >
-                  <span style={{ fontSize: 10, color: "#9CA3AF", display: "inline-block", transition: "transform 0.2s", transform: isOpen ? "rotate(90deg)" : "rotate(0deg)" }}>▶</span>
-                  <span style={{ width: 12, height: 12, borderRadius: "50%", background: cat.color, display: "inline-block", flexShrink: 0 }} />
-                  <span style={{ fontWeight: 700, fontSize: 14, color: "#111827", flex: 1 }}>
-                    {cat.name}
-                    {!cat.isActive && <Tag style={{ marginLeft: 8, fontSize: 10 }}>Inactive</Tag>}
+                <div className="flex items-center px-4 py-3 gap-2.5 cursor-pointer select-none" onClick={() => toggleExpand(cat._id)}>
+                  <ChevronRight className={`w-3 h-3 text-gray-400 transition-transform shrink-0 ${isOpen ? "rotate-90" : ""}`} />
+                  <span className="w-3 h-3 rounded-full shrink-0" style={{ background: cat.color }} />
+                  <span className="font-bold text-sm text-[#1A1A2E] dark:text-[#F1F5F9] flex-1">
+                    {cat.name}{!cat.isActive && <Badge color="gray" small><span className="ml-2">Inactive</span></Badge>}
                   </span>
-                  <span style={{ fontSize: 12, color: "#9CA3AF", marginRight: 6 }}>
-                    {subs.length} sub-{subs.length === 1 ? "category" : "categories"}
-                  </span>
-                  <div onClick={e => e.stopPropagation()} style={{ display: "flex", gap: 4 }}>
-                    <Tooltip title="Add sub-category">
-                      <Button
-                        size="small" icon={<PlusOutlined />}
-                        onClick={() => { openAdd(cat._id); setExpanded(p => new Set([...p, cat._id])); }}
-                        style={{ background: lighten(cat.color), borderColor: cat.color, color: cat.color }}
-                      />
-                    </Tooltip>
-                    <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(cat)} style={{ color: "#6B7280" }} />
-                    <Popconfirm
-                      title={`Delete "${cat.name}"?`}
-                      description={subs.length > 0 ? "Delete all sub-categories first." : "This cannot be undone."}
-                      okText="Delete" okType="danger" cancelText="Cancel"
-                      onConfirm={() => handleDelete(cat)}
-                      disabled={subs.length > 0}
-                    >
-                      <Button size="small" icon={<DeleteOutlined />} danger disabled={subs.length > 0} />
-                    </Popconfirm>
+                  <span className="text-xs text-gray-400 mr-1.5">{subs.length} sub-{subs.length === 1 ? "category" : "categories"}</span>
+                  <div onClick={e => e.stopPropagation()} className="flex gap-1">
+                    <Btn small title="Add sub-category" icon={Plus}
+                      style={{ background: lighten(cat.color), borderColor: cat.color, color: cat.color }}
+                      onClick={() => { openAdd(cat._id); setExpanded(p => new Set([...p, cat._id])); }} />
+                    <Btn small outline icon={Pencil} onClick={() => openEdit(cat)} />
+                    <Btn small color="red" icon={Trash2} disabled={subs.length > 0}
+                      onClick={() => requestDelete(cat, subs.length > 0 ? "Delete all sub-categories first." : "")} />
                   </div>
                 </div>
 
                 {/* ── Level-2 panel ── */}
                 {isOpen && (
-                  <div style={{ borderTop: "1px solid #F3F4F6", padding: "12px 16px 14px 44px", background: "#FAFAFA" }}>
+                  <div className="border-t border-gray-100 dark:border-gray-700/40 bg-gray-50 dark:bg-gray-800/30" style={{ padding: "12px 16px 14px 44px" }}>
                     {subs.length === 0 ? (
-                      <div style={{ color: "#9CA3AF", fontSize: 13, padding: "6px 0" }}>
+                      <div className="text-gray-400 text-sm py-1.5">
                         No sub-categories yet —{" "}
-                        <button type="button" onClick={() => openAdd(cat._id)}
-                          style={{ background: "none", border: "none", color: "#FF7A00", cursor: "pointer", fontWeight: 600, padding: 0, fontSize: 13 }}>
+                        <button type="button" onClick={() => openAdd(cat._id)} className="bg-transparent border-none text-primary cursor-pointer font-semibold p-0 text-sm">
                           add one
                         </button>
                       </div>
                     ) : (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      <div className="flex flex-col gap-1.5">
                         {subs.map(sub => {
                           const subSubs   = getLevel3(sub._id);
                           const subIsOpen = subExpanded.has(sub._id);
 
                           return (
-                            <div key={sub._id} style={{
-                              background: "var(--nx-white)", border: "1px solid #EAEAEA",
-                              borderLeft: `3px solid ${sub.color}`, borderRadius: 8,
-                              overflow: "hidden", opacity: sub.isActive ? 1 : 0.55,
-                            }}>
+                            <div key={sub._id} className={`bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700/40 rounded-lg overflow-hidden ${sub.isActive ? "" : "opacity-55"}`} style={{ borderLeft: `3px solid ${sub.color}` }}>
                               {/* Sub-cat row */}
-                              <div
-                                style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", cursor: "pointer", userSelect: "none" }}
-                                onClick={() => toggleSubExpand(sub._id)}
-                              >
-                                <span style={{ fontSize: 9, color: "#9CA3AF", display: "inline-block", transition: "transform 0.2s", transform: subIsOpen ? "rotate(90deg)" : "rotate(0deg)" }}>▶</span>
-                                <span style={{ width: 8, height: 8, borderRadius: "50%", background: sub.color, display: "inline-block", flexShrink: 0 }} />
-                                <span style={{ fontWeight: 600, fontSize: 13, color: "#374151", flex: 1 }}>
-                                  {sub.name}
-                                  {!sub.isActive && <Tag style={{ marginLeft: 6, fontSize: 10 }}>Inactive</Tag>}
+                              <div className="flex items-center gap-2 px-3 py-2 cursor-pointer select-none" onClick={() => toggleSubExpand(sub._id)}>
+                                <ChevronRight className={`w-2.5 h-2.5 text-gray-400 transition-transform shrink-0 ${subIsOpen ? "rotate-90" : ""}`} />
+                                <span className="w-2 h-2 rounded-full shrink-0" style={{ background: sub.color }} />
+                                <span className="font-semibold text-[13px] text-gray-700 dark:text-gray-300 flex-1">
+                                  {sub.name}{!sub.isActive && <Badge color="gray" small><span className="ml-1.5">Inactive</span></Badge>}
                                 </span>
-                                {sub.description && <span style={{ fontSize: 12, color: "#9CA3AF" }}>{sub.description}</span>}
-                                <span style={{ fontSize: 11, color: "#9CA3AF", marginRight: 4 }}>
-                                  {subSubs.length > 0 ? `${subSubs.length} sub-sub` : ""}
-                                </span>
-                                <div onClick={e => e.stopPropagation()} style={{ display: "flex", gap: 4 }}>
-                                  <Tooltip title="Add sub-sub-category">
-                                    <Button
-                                      size="small" icon={<PlusOutlined />}
-                                      onClick={() => { openAdd(sub._id); setSubExpanded(p => new Set([...p, sub._id])); }}
-                                      style={{ background: lighten(sub.color), borderColor: sub.color, color: sub.color }}
-                                    />
-                                  </Tooltip>
-                                  <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(sub)} style={{ color: "#6B7280" }} />
-                                  <Popconfirm
-                                    title={`Delete "${sub.name}"?`}
-                                    description={subSubs.length > 0 ? "Delete all sub-sub-categories first." : "This cannot be undone."}
-                                    okText="Delete" okType="danger" cancelText="Cancel"
-                                    onConfirm={() => handleDelete(sub)}
-                                    disabled={subSubs.length > 0}
-                                  >
-                                    <Button size="small" icon={<DeleteOutlined />} danger disabled={subSubs.length > 0} />
-                                  </Popconfirm>
+                                {sub.description && <span className="text-xs text-gray-400">{sub.description}</span>}
+                                <span className="text-[11px] text-gray-400 mr-1">{subSubs.length > 0 ? `${subSubs.length} sub-sub` : ""}</span>
+                                <div onClick={e => e.stopPropagation()} className="flex gap-1">
+                                  <Btn small title="Add sub-sub-category" icon={Plus}
+                                    style={{ background: lighten(sub.color), borderColor: sub.color, color: sub.color }}
+                                    onClick={() => { openAdd(sub._id); setSubExpanded(p => new Set([...p, sub._id])); }} />
+                                  <Btn small outline icon={Pencil} onClick={() => openEdit(sub)} />
+                                  <Btn small color="red" icon={Trash2} disabled={subSubs.length > 0}
+                                    onClick={() => requestDelete(sub, subSubs.length > 0 ? "Delete all sub-sub-categories first." : "")} />
                                 </div>
                               </div>
 
                               {/* Level-3 panel */}
                               {subIsOpen && (
-                                <div style={{ borderTop: "1px solid #F3F4F6", padding: "8px 12px 10px 36px", background: "#F8F9FC" }}>
+                                <div className="border-t border-gray-100 dark:border-gray-700/40 bg-gray-50 dark:bg-gray-800/40" style={{ padding: "8px 12px 10px 36px" }}>
                                   {subSubs.length === 0 ? (
-                                    <div style={{ color: "#9CA3AF", fontSize: 12, padding: "4px 0" }}>
+                                    <div className="text-gray-400 text-xs py-1">
                                       No sub-sub-categories yet —{" "}
-                                      <button type="button" onClick={() => openAdd(sub._id)}
-                                        style={{ background: "none", border: "none", color: "#FF7A00", cursor: "pointer", fontWeight: 600, padding: 0, fontSize: 12 }}>
+                                      <button type="button" onClick={() => openAdd(sub._id)} className="bg-transparent border-none text-primary cursor-pointer font-semibold p-0 text-xs">
                                         add one
                                       </button>
                                     </div>
                                   ) : (
-                                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                                    <div className="flex flex-col gap-1">
                                       {subSubs.map(ss => (
-                                        <div key={ss._id} style={{
-                                          display: "flex", alignItems: "center", gap: 8,
-                                          padding: "6px 10px", background: "var(--nx-white)",
-                                          border: "1px solid #EAEAEA", borderLeft: `2px solid ${ss.color}`,
-                                          borderRadius: 6, opacity: ss.isActive ? 1 : 0.5,
-                                        }}>
-                                          <span style={{ width: 6, height: 6, borderRadius: "50%", background: ss.color, display: "inline-block", flexShrink: 0 }} />
-                                          <span style={{ fontWeight: 600, fontSize: 12, color: "#374151", flex: 1 }}>
-                                            {ss.name}
-                                            {!ss.isActive && <Tag style={{ marginLeft: 6, fontSize: 10 }}>Inactive</Tag>}
+                                        <div key={ss._id} className={`flex items-center gap-2 px-2.5 py-1.5 bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700/40 rounded-md ${ss.isActive ? "" : "opacity-50"}`} style={{ borderLeft: `2px solid ${ss.color}` }}>
+                                          <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: ss.color }} />
+                                          <span className="font-semibold text-xs text-gray-700 dark:text-gray-300 flex-1">
+                                            {ss.name}{!ss.isActive && <Badge color="gray" small><span className="ml-1.5">Inactive</span></Badge>}
                                           </span>
-                                          {ss.description && <span style={{ fontSize: 11, color: "#9CA3AF" }}>{ss.description}</span>}
-                                          <div style={{ display: "flex", gap: 4, marginLeft: "auto" }}>
-                                            <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(ss)} style={{ color: "#6B7280" }} />
-                                            <Popconfirm
-                                              title={`Delete "${ss.name}"?`}
-                                              description="This cannot be undone."
-                                              okText="Delete" okType="danger" cancelText="Cancel"
-                                              onConfirm={() => handleDelete(ss)}
-                                            >
-                                              <Button size="small" icon={<DeleteOutlined />} danger />
-                                            </Popconfirm>
+                                          {ss.description && <span className="text-[11px] text-gray-400">{ss.description}</span>}
+                                          <div className="flex gap-1 ml-auto">
+                                            <Btn small outline icon={Pencil} onClick={() => openEdit(ss)} />
+                                            <Btn small color="red" icon={Trash2} onClick={() => requestDelete(ss, "")} />
                                           </div>
                                         </div>
                                       ))}
                                       <button type="button" onClick={() => openAdd(sub._id)}
-                                        style={{ marginTop: 2, background: "none", border: "1px dashed #D1D5DB", color: "#9CA3AF", borderRadius: 6, padding: "5px 10px", cursor: "pointer", fontSize: 11, textAlign: "left", display: "flex", alignItems: "center", gap: 5 }}>
-                                        <PlusOutlined /> Add sub-sub-category under {sub.name}
+                                        className="mt-0.5 bg-transparent border border-dashed border-gray-300 dark:border-gray-600 text-gray-400 rounded-md cursor-pointer text-[11px] text-left flex items-center gap-1.5 px-2.5 py-1.5">
+                                        <Plus className="w-3 h-3" /> Add sub-sub-category under {sub.name}
                                       </button>
                                     </div>
                                   )}
@@ -387,115 +315,95 @@ export default function Categories() {
                         })}
 
                         <button type="button" onClick={() => openAdd(cat._id)}
-                          style={{ marginTop: 2, background: "none", border: "1px dashed #D1D5DB", color: "#9CA3AF", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontSize: 12, textAlign: "left", display: "flex", alignItems: "center", gap: 6 }}>
-                          <PlusOutlined /> Add sub-category under {cat.name}
+                          className="mt-0.5 bg-transparent border border-dashed border-gray-300 dark:border-gray-600 text-gray-400 rounded-lg cursor-pointer text-xs text-left flex items-center gap-1.5 px-3 py-1.5">
+                          <Plus className="w-3.5 h-3.5" /> Add sub-category under {cat.name}
                         </button>
                       </div>
                     )}
                   </div>
                 )}
-              </div>
+              </Card>
             );
           })}
         </div>
       )}
 
       {/* ── Add / Edit Modal ────────────────────────────────────── */}
-      <Modal
-        open={modalOpen}
-        title={getModalTitle()}
-        onCancel={() => setModalOpen(false)}
-        onOk={handleSave}
-        okText={editing ? "Save Changes" : "Create"}
-        confirmLoading={saving}
-        okButtonProps={{ style: { background: "#FF7A00", borderColor: "#FF7A00" } }}
-        destroyOnHidden
-        width={480}
-      >
-        <Form form={form} layout="vertical" style={{ marginTop: 12 }}>
-          {!editing && (
-            <Form.Item
-              name="parentId"
-              label="Parent"
-              tooltip="Leave empty for top-level. Select a Category to create a Sub-Category. Select a Sub-Category to create a Sub-Sub-Category."
-            >
-              <Select
-                placeholder="None — create as top-level category"
-                allowClear
-                showSearch
-                filterOption={(inp, opt) => String(opt?.label ?? "").toLowerCase().includes(inp.toLowerCase())}
-                options={parentOptions.filter(o => !("disabled" in o && o.disabled && o.value?.toString().startsWith("__")) || true)}
-                getPopupContainer={trigger => trigger.parentElement || document.body}
+      {modalOpen && (
+        <Modal
+          title={getModalTitle()} onClose={() => setModalOpen(false)}
+          footer={
+            <div className="flex justify-end gap-2">
+              <Btn label="Cancel" outline onClick={() => setModalOpen(false)} />
+              <Btn label={editing ? "Save Changes" : "Create"} color="primary" loading={saving} onClick={handleSave} />
+            </div>
+          }
+        >
+          <div className="flex flex-col gap-4">
+            {!editing && (
+              <SField
+                label="Parent" placeholder="None — create as top-level category"
+                hint="Leave empty for top-level. Select a Category to create a Sub-Category. Select a Sub-Category to create a Sub-Sub-Category."
+                value={form.parentId || null}
                 onChange={val => {
-                  if (val) {
-                    const parent = cats.find(c => c._id === val);
-                    if (parent) { setPickedColor(parent.color); form.setFieldValue("color", parent.color); }
-                  }
+                  setForm(f => ({ ...f, parentId: val }));
+                  const parent = cats.find(c => c._id === val);
+                  if (parent) setPickedColor(parent.color);
                 }}
+                options={parentOptions}
               />
-            </Form.Item>
-          )}
+            )}
 
-          <Form.Item
-            name="name" label="Name"
-            rules={[{ required: true, message: "Name is required" }, { min: 2, message: "At least 2 characters" }]}
-          >
-            <Input placeholder="e.g. Foundation, Basement, Inner Plaster…" maxLength={60} showCount />
-          </Form.Item>
+            <Field label="Name" required maxLength={60} placeholder="e.g. Foundation, Basement, Inner Plaster…"
+              value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
 
-          <Form.Item label="Colour" required>
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <input
-                type="color" value={pickedColor}
-                onChange={e => { setPickedColor(e.target.value); form.setFieldValue("color", e.target.value); }}
-                style={{ width: 40, height: 36, border: "1px solid #E5E7EB", borderRadius: 6, padding: 2, cursor: "pointer", background: "none" }}
-                title="Pick any colour"
-              />
-              <span style={{ fontFamily: "monospace", fontSize: 13, color: "#374151" }}>{pickedColor}</span>
+            <div>
+              <span className="block text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wide mb-1.5">Colour <span className="text-red-500">*</span></span>
+              <div className="flex items-center gap-3">
+                <input type="color" value={pickedColor} onChange={e => setPickedColor(e.target.value)} title="Pick any colour"
+                  className="w-10 h-9 border border-gray-200 dark:border-gray-700 rounded-md p-0.5 cursor-pointer bg-transparent" />
+                <span className="font-mono text-[13px] text-gray-700 dark:text-gray-300">{pickedColor}</span>
+              </div>
+              <div className="flex flex-wrap gap-1.5 mt-2.5">
+                {PALETTE.map(c => (
+                  <button key={c} type="button" onClick={() => setPickedColor(c)} title={c}
+                    className="w-[26px] h-[26px] rounded-full cursor-pointer p-0"
+                    style={{ background: c, border: pickedColor === c ? "3px solid #111" : "2px solid #fff", boxShadow: "0 0 0 1px #E5E7EB" }} />
+                ))}
+              </div>
             </div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
-              {PALETTE.map(c => (
-                <button
-                  key={c} type="button"
-                  onClick={() => { setPickedColor(c); form.setFieldValue("color", c); }}
-                  style={{
-                    width: 26, height: 26, borderRadius: "50%", background: c, cursor: "pointer", padding: 0,
-                    border: pickedColor === c ? "3px solid #111" : "2px solid #fff",
-                    boxShadow: "0 0 0 1px #E5E7EB",
-                  }}
-                  title={c}
-                />
-              ))}
-            </div>
-            <Form.Item name="color" hidden><Input /></Form.Item>
-          </Form.Item>
 
-          <Form.Item name="description" label="Description (optional)">
-            <Input.TextArea placeholder="Brief description…" rows={2} maxLength={200} showCount />
-          </Form.Item>
+            <Field textarea label="Description (optional)" rows={2} maxLength={200} placeholder="Brief description…"
+              value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
 
-          <Form.Item name="isActive" label="Status" initialValue={true}>
-            <div style={{ display: "flex", gap: 10 }}>
-              {[
-                { label: "Active",   value: true,  color: "#16a85a" },
-                { label: "Inactive", value: false, color: "#9CA3AF" },
-              ].map(opt => (
-                <button
-                  key={String(opt.value)} type="button"
-                  onClick={() => form.setFieldValue("isActive", opt.value)}
-                  style={{
-                    padding: "6px 16px", borderRadius: 7, border: "1px solid", cursor: "pointer",
-                    fontWeight: 600, fontSize: 12,
-                    borderColor: form.getFieldValue("isActive") === opt.value ? opt.color : "#E5E7EB",
-                    background:  form.getFieldValue("isActive") === opt.value ? `${opt.color}18` : "#fff",
-                    color:       form.getFieldValue("isActive") === opt.value ? opt.color : "#6B7280",
-                  }}
-                >{opt.label}</button>
-              ))}
+            <div>
+              <span className="block text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wide mb-1.5">Status</span>
+              <div className="flex gap-2.5">
+                {[{ label: "Active", value: true, color: "#16a85a" }, { label: "Inactive", value: false, color: "#9CA3AF" }].map(opt => (
+                  <button key={String(opt.value)} type="button" onClick={() => setForm(f => ({ ...f, isActive: opt.value }))}
+                    className="px-4 py-1.5 rounded-lg border font-semibold text-xs cursor-pointer"
+                    style={{
+                      borderColor: form.isActive === opt.value ? opt.color : "#E5E7EB",
+                      background: form.isActive === opt.value ? `${opt.color}18` : "transparent",
+                      color: form.isActive === opt.value ? opt.color : "#6B7280",
+                    }}>
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
             </div>
-          </Form.Item>
-        </Form>
-      </Modal>
-    </PageShell>
+          </div>
+        </Modal>
+      )}
+
+      {deleteTarget && (
+        <ConfirmModal
+          title={`Delete "${deleteTarget.name}"?`}
+          message={deleteBlockedReason || "This cannot be undone."}
+          confirmLabel="Delete" danger
+          onConfirm={handleDelete} onCancel={() => setDeleteTarget(null)}
+        />
+      )}
+    </div>
   );
 }

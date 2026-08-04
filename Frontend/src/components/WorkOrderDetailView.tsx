@@ -1,16 +1,19 @@
-import { Descriptions, Tag } from "antd";
-import { LinkOutlined, LockOutlined } from "@ant-design/icons";
+import { Link2, Lock } from "lucide-react";
 import dayjs from "dayjs";
 import WorkOrderApprovalWorkflow from "./WorkOrderApprovalWorkflow";
 import { getWorkOrderDocuments } from "./DocumentsUpload";
 import type { WorkOrder, WorkOrderStatus } from "../types/VendorBilling";
+import { Descriptions, DescItem } from "../ui/Descriptions";
+import Badge from "../ui/Badge";
+import Card from "../ui/Card";
+import { Table, Thead, Tbody, Tr, Th, Td, TdText } from "../ui/Table";
 
-const STATUS_CFG: Record<WorkOrderStatus, { color: string; label: string }> = {
-  draft:         { color: "default", label: "Draft" },
-  issued:        { color: "blue",    label: "Issued" },
-  "in-progress": { color: "orange",  label: "In Progress" },
-  completed:     { color: "green",   label: "Completed" },
-  cancelled:     { color: "red",     label: "Cancelled" },
+const STATUS_CFG: Record<WorkOrderStatus, { color: "gray" | "blue" | "orange" | "green" | "red"; label: string }> = {
+  draft:         { color: "gray",   label: "Draft" },
+  issued:        { color: "blue",   label: "Issued" },
+  "in-progress": { color: "orange", label: "In Progress" },
+  completed:     { color: "green",  label: "Completed" },
+  cancelled:     { color: "red",    label: "Cancelled" },
 };
 
 const fmt = (n: number) => "₹" + Math.round(n).toLocaleString("en-IN");
@@ -40,7 +43,7 @@ export default function WorkOrderDetailView({
   return (
     <>
       {/* ── Live Workflow — the same 4-level approval chain as the full page ── */}
-      <div style={{ marginBottom: 20 }}>
+      <div className="mb-5">
         <WorkOrderApprovalWorkflow
           workOrder={{ ...wo, _id: wo.id }}
           onUpdated={(updated) => onUpdated?.(updated as unknown as WorkOrder)}
@@ -48,196 +51,183 @@ export default function WorkOrderDetailView({
         />
       </div>
 
-      <Descriptions bordered column={2} size="small" style={{ marginBottom: 20 }}>
-        <Descriptions.Item label="Work Order No">
-          <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#FF7A00" }}>
-            {wo.workOrderNo}
-          </span>
-        </Descriptions.Item>
-        <Descriptions.Item label="Issue Date">
-          {dayjs(wo.issueDate).format("DD MMM YYYY")}
-        </Descriptions.Item>
-        <Descriptions.Item label="Project">{wo.projectName}</Descriptions.Item>
-        {wo.projectLocation && (
-          <Descriptions.Item label="Location">{wo.projectLocation}</Descriptions.Item>
-        )}
-        <Descriptions.Item label="Issuing Company">{wo.companyName || "—"}</Descriptions.Item>
-        <Descriptions.Item label="Status">
-          <Tag color={STATUS_CFG[wo.status]?.color}>
-            {STATUS_CFG[wo.status]?.label}
-          </Tag>
-          {wo.isLocked && (
-            <Tag color="gold" icon={<LockOutlined />} style={{ marginLeft: 6 }}>Locked</Tag>
-          )}
-        </Descriptions.Item>
-        {wo.isLocked && (
-          <Descriptions.Item label="Locked" span={2}>
-            <span style={{ color: "#9ba3b8", fontSize: 12 }}>
-              Rates, scope items, milestones, and contract value cannot be edited until unlocked.
-              {wo.lockedAt && ` (${dayjs(wo.lockedAt).format("DD MMM YYYY, hh:mm a")})`}
-            </span>
-          </Descriptions.Item>
-        )}
-        {wo.status === "cancelled" && (
-          <Descriptions.Item label="Cancellation Remark" span={2}>
-            <span style={{ color: "#cf1322" }}>{wo.cancelReason || "—"}</span>
-            {wo.cancelledAt && (
-              <span style={{ color: "#9ba3b8", marginLeft: 8, fontSize: 12 }}>
-                ({dayjs(wo.cancelledAt).format("DD MMM YYYY, hh:mm a")})
-              </span>
-            )}
-          </Descriptions.Item>
-        )}
-        <Descriptions.Item label={isProfessionalServices ? "Consultant Code" : "Vendor Code"}>
-          <span style={{ fontFamily: "monospace", background: "#eff4ff", color: "#2563eb", padding: "2px 7px", borderRadius: 4, fontWeight: 600 }}>
-            {wo.vendorCode}
-          </span>
-        </Descriptions.Item>
-        <Descriptions.Item label={isProfessionalServices ? "Firm" : "Contractor Company"}>{wo.vendorName}</Descriptions.Item>
-        <Descriptions.Item label={isProfessionalServices ? "Principal" : "Owner"}>{wo.ownerName}</Descriptions.Item>
-        <Descriptions.Item label="Mobile">{wo.mobile}</Descriptions.Item>
-        <Descriptions.Item label="Assigned DRI">
-          {(wo.assignedDRI ?? []).length > 0
-            ? (wo.assignedDRI ?? []).map(d => (typeof d === "string" ? d : d.name)).join(", ")
-            : <span style={{ color: "#9ba3b8" }}>Not assigned</span>}
-        </Descriptions.Item>
-        <Descriptions.Item label="Contract Value" span={2}>
-          <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#FF7A00", fontSize: 15 }}>
-            {fmt(wo.contractValue)}
-          </span>
-        </Descriptions.Item>
-        {getWorkOrderDocuments(wo).length > 0 && (
-          <Descriptions.Item label="Documents" span={2}>
-            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              {getWorkOrderDocuments(wo).map((d, i) => (
-                <a key={i} href={d.url} target="_blank" rel="noreferrer" download={d.name} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <LinkOutlined /> {d.name}
-                </a>
-              ))}
+      <Card className="mb-5">
+        <Descriptions>
+          <DescItem label="Work Order No">
+            <span className="font-mono font-bold text-primary">{wo.workOrderNo}</span>
+          </DescItem>
+          <DescItem label="Issue Date">{dayjs(wo.issueDate).format("DD MMM YYYY")}</DescItem>
+          <DescItem label="Project">{wo.projectName}</DescItem>
+          {wo.projectLocation && <DescItem label="Location">{wo.projectLocation}</DescItem>}
+          <DescItem label="Issuing Company">{wo.companyName}</DescItem>
+          <DescItem label="Status">
+            <div className="flex items-center gap-1.5">
+              <Badge color={STATUS_CFG[wo.status]?.color}>{STATUS_CFG[wo.status]?.label}</Badge>
+              {wo.isLocked && (
+                <Badge color="amber"><Lock className="w-3 h-3 mr-1 inline" />Locked</Badge>
+              )}
             </div>
-          </Descriptions.Item>
-        )}
-      </Descriptions>
+          </DescItem>
+          {wo.isLocked && (
+            <DescItem label="Locked" span={2}>
+              <span className="text-gray-400 text-xs">
+                Rates, scope items, milestones, and contract value cannot be edited until unlocked.
+                {wo.lockedAt && ` (${dayjs(wo.lockedAt).format("DD MMM YYYY, hh:mm a")})`}
+              </span>
+            </DescItem>
+          )}
+          {wo.status === "cancelled" && (
+            <DescItem label="Cancellation Remark" span={2}>
+              <span className="text-red-600">{wo.cancelReason || "—"}</span>
+              {wo.cancelledAt && (
+                <span className="text-gray-400 ml-2 text-xs">
+                  ({dayjs(wo.cancelledAt).format("DD MMM YYYY, hh:mm a")})
+                </span>
+              )}
+            </DescItem>
+          )}
+          <DescItem label={isProfessionalServices ? "Consultant Code" : "Vendor Code"}>
+            <span className="font-mono font-semibold text-blue-600 bg-blue-50 dark:bg-blue-500/10 dark:text-blue-400 px-1.5 py-0.5 rounded">
+              {wo.vendorCode}
+            </span>
+          </DescItem>
+          <DescItem label={isProfessionalServices ? "Firm" : "Contractor Company"}>{wo.vendorName}</DescItem>
+          <DescItem label={isProfessionalServices ? "Principal" : "Owner"}>{wo.ownerName}</DescItem>
+          <DescItem label="Mobile">{wo.mobile}</DescItem>
+          <DescItem label="Assigned DRI">
+            {(wo.assignedDRI ?? []).length > 0
+              ? (wo.assignedDRI ?? []).map(d => (typeof d === "string" ? d : d.name)).join(", ")
+              : <span className="text-gray-400">Not assigned</span>}
+          </DescItem>
+          <DescItem label="Contract Value" span={2}>
+            <span className="font-mono font-bold text-primary text-[15px]">{fmt(wo.contractValue)}</span>
+          </DescItem>
+          {wo.internalRemark && <DescItem label="Remarks" span={2}>{wo.internalRemark}</DescItem>}
+          {getWorkOrderDocuments(wo).length > 0 && (
+            <DescItem label="Documents" span={2}>
+              <div className="flex flex-col gap-1">
+                {getWorkOrderDocuments(wo).map((d, i) => (
+                  <a key={i} href={d.url} target="_blank" rel="noreferrer" download={d.name} className="flex items-center gap-1.5 text-primary hover:underline">
+                    <Link2 className="w-3.5 h-3.5" /> {d.name}
+                  </a>
+                ))}
+              </div>
+            </DescItem>
+          )}
+        </Descriptions>
+      </Card>
 
       {/* ── Billing Summary ─────────────────────────────── */}
-      <div style={{ background: "#F9FAFB", border: "1px solid #E5E7EB", borderRadius: 10, padding: "16px 20px", marginBottom: 20 }}>
-        <div style={{ fontWeight: 600, fontSize: 13, color: "#374151", marginBottom: 12 }}>Billing Summary</div>
-        <div style={{ display: "flex", height: 12, borderRadius: 6, overflow: "hidden", background: "#E5E7EB", marginBottom: 14 }}>
+      <Card className="mb-5">
+        <div className="font-semibold text-[13px] text-gray-700 dark:text-gray-300 mb-3">Billing Summary</div>
+        <div className="flex h-3 rounded-md overflow-hidden bg-gray-200 dark:bg-gray-700 mb-3.5">
           {certPct > 0 && <div style={{ width: `${certPct}%`, background: "#16a34a" }} title={`Certified: ${fmt(certifiedAmt)}`} />}
           {pendPct > 0 && <div style={{ width: `${pendPct}%`, background: "#f59e0b" }} title={`Pending: ${fmt(pendingAmt)}`} />}
         </div>
-        <div style={{ display: "flex", gap: 0, borderTop: "1px solid #E5E7EB", paddingTop: 12 }}>
+        <div className="flex border-t border-gray-200 dark:border-gray-700/40 pt-3">
           {[
-            { label: "Contract Value", value: fmt(contractVal), color: "#374151", dot: "#6B7280" },
-            { label: "Certified ✓", value: fmt(certifiedAmt), color: "#16a34a", dot: "#16a34a" },
-            { label: "Pending ⏳", value: fmt(pendingAmt), color: "#d97706", dot: "#f59e0b" },
-            { label: "Remaining", value: fmt(remaining), color: "#6B7280", dot: "#D1D5DB" },
+            { label: "Contract Value", value: fmt(contractVal), color: "text-gray-700 dark:text-gray-300", dot: "#6B7280" },
+            { label: "Certified ✓", value: fmt(certifiedAmt), color: "text-emerald-600 dark:text-emerald-400", dot: "#16a34a" },
+            { label: "Pending ⏳", value: fmt(pendingAmt), color: "text-amber-600 dark:text-amber-400", dot: "#f59e0b" },
+            { label: "Remaining", value: fmt(remaining), color: "text-gray-500 dark:text-gray-400", dot: "#D1D5DB" },
           ].map((s, i) => (
-            <div key={i} style={{ flex: 1, textAlign: i === 0 ? "left" : "center", borderRight: i < 3 ? "1px solid #E5E7EB" : "none", paddingRight: 12, paddingLeft: i > 0 ? 12 : 0 }}>
-              <div style={{ fontSize: 11, color: "#9CA3AF", marginBottom: 3, display: "flex", alignItems: "center", gap: 5, justifyContent: i === 0 ? "flex-start" : "center" }}>
-                <span style={{ width: 8, height: 8, borderRadius: "50%", background: s.dot, display: "inline-block" }} />
+            <div key={i} className={`flex-1 ${i === 0 ? "text-left pl-0" : "text-center pl-3"} ${i < 3 ? "border-r border-gray-200 dark:border-gray-700/40" : ""} pr-3`}>
+              <div className={`text-[11px] text-gray-400 mb-0.5 flex items-center gap-1.5 ${i === 0 ? "justify-start" : "justify-center"}`}>
+                <span className="w-2 h-2 rounded-full inline-block" style={{ background: s.dot }} />
                 {s.label}
               </div>
-              <div style={{ fontWeight: 700, fontFamily: "monospace", fontSize: 13, color: s.color }}>{s.value}</div>
+              <div className={`font-bold font-mono text-[13px] ${s.color}`}>{s.value}</div>
             </div>
           ))}
         </div>
-      </div>
+      </Card>
 
       {/* ── Scope of Work / Deliverables ────────────────────────────── */}
-      <div style={{ background: "var(--nx-white)", border: "1px solid #E5E7EB", borderRadius: 10, overflow: "hidden" }}>
-        <div style={{ padding: "12px 16px", borderBottom: "1px solid #E5E7EB", fontWeight: 600, fontSize: 13, color: "#374151" }}>
+      <Card padded={false} className="overflow-hidden">
+        <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700/40 font-semibold text-[13px] text-gray-700 dark:text-gray-300">
           {isProfessionalServices ? "Deliverables" : "Scope of Work"}
         </div>
         {wo.scopeItems.length === 0 ? (
-          <div style={{ padding: 24, textAlign: "center", color: "#9CA3AF", fontSize: 13 }}>
+          <div className="py-6 text-center text-gray-400 text-sm">
             {isProfessionalServices ? "No deliverables defined" : "No scope items defined"}
           </div>
         ) : (
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
-              <thead>
-                <tr style={{ background: "#F9FAFB" }}>
-                  {(isProfessionalServices
-                    ? ["Deliverable", "Stage", "Due Date", "Status", "Amount"]
-                    : ["Description", "Unit", "Planned Qty", "Rate", "Amount"]
-                  ).map(h => (
-                    <th key={h} style={{ padding: "8px 16px", fontSize: 11, fontWeight: 700, color: "#6B7280", textAlign: "left", textTransform: "uppercase", letterSpacing: "0.05em", borderBottom: "1px solid #E5E7EB", whiteSpace: "nowrap" }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {wo.scopeItems.map((si, i) => (
-                  <tr key={si.id} style={{ borderBottom: "1px solid #F3F4F6", background: i % 2 === 0 ? "#fff" : "#FAFAFA" }}>
-                    <td style={{ padding: "9px 16px", fontSize: 13, fontWeight: 600, color: "#111827" }}>{si.description}</td>
-                    {isProfessionalServices ? (
-                      <>
-                        <td style={{ padding: "9px 16px", fontSize: 12, color: "#6B7280" }}>{si.stage || "—"}</td>
-                        <td style={{ padding: "9px 16px", fontSize: 12, color: "#6B7280" }}>{si.plannedEnd ? dayjs(si.plannedEnd).format("DD MMM YYYY") : "—"}</td>
-                        <td style={{ padding: "9px 16px" }}>
-                          <Tag color={si.status === "completed" ? "green" : si.status === "running" ? "orange" : "default"}>
-                            {si.status === "completed" ? "Completed" : si.status === "running" ? "In Progress" : "Pending"}
-                          </Tag>
-                        </td>
-                      </>
-                    ) : (
-                      <>
-                        <td style={{ padding: "9px 16px", fontSize: 12, color: "#6B7280" }}>{si.unit}</td>
-                        <td style={{ padding: "9px 16px", fontFamily: "monospace", fontSize: 13, color: "#374151" }}>{si.plannedQty.toLocaleString("en-IN")}</td>
-                        <td style={{ padding: "9px 16px", fontFamily: "monospace", fontSize: 13, color: "#374151" }}>{fmt(si.rate || 0)}</td>
-                      </>
-                    )}
-                    <td style={{ padding: "9px 16px", fontFamily: "monospace", fontSize: 13, fontWeight: 700, color: "#FF7A00" }}>{fmt(si.amount || 0)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <Table>
+            <Thead>
+              <Tr>
+                {(isProfessionalServices
+                  ? ["Deliverable", "Stage", "Due Date", "Status", "Amount"]
+                  : ["Description", "Unit", "Planned Qty", "Rate", "Amount"]
+                ).map(h => <Th key={h}>{h}</Th>)}
+              </Tr>
+            </Thead>
+            <Tbody>
+              {wo.scopeItems.map((si) => (
+                <Tr key={si.id}>
+                  <Td><span className="font-semibold text-[#1A1A2E] dark:text-[#F1F5F9]">{si.description}</span></Td>
+                  {isProfessionalServices ? (
+                    <>
+                      <Td><TdText>{si.stage || "—"}</TdText></Td>
+                      <Td><TdText>{si.plannedEnd ? dayjs(si.plannedEnd).format("DD MMM YYYY") : "—"}</TdText></Td>
+                      <Td>
+                        <Badge color={si.status === "completed" ? "green" : si.status === "running" ? "orange" : "gray"} small>
+                          {si.status === "completed" ? "Completed" : si.status === "running" ? "In Progress" : "Pending"}
+                        </Badge>
+                      </Td>
+                    </>
+                  ) : (
+                    <>
+                      <Td><TdText>{si.unit}</TdText></Td>
+                      <Td><span className="font-mono"><TdText>{si.plannedQty.toLocaleString("en-IN")}</TdText></span></Td>
+                      <Td><span className="font-mono"><TdText>{fmt(si.rate || 0)}</TdText></span></Td>
+                    </>
+                  )}
+                  <Td><span className="font-mono font-bold text-primary">{fmt(si.amount || 0)}</span></Td>
+                </Tr>
+              ))}
+            </Tbody>
+          </Table>
         )}
-      </div>
+      </Card>
 
       {/* ── Payment Milestones ──────────────────────── */}
       {(wo.paymentMilestones?.length ?? 0) > 0 && (
-        <div style={{ background: "var(--nx-white)", border: "1px solid #E5E7EB", borderRadius: 10, overflow: "hidden", marginTop: 16 }}>
-          <div style={{ padding: "12px 16px", borderBottom: "1px solid #E5E7EB", fontWeight: 600, fontSize: 13, color: "#374151" }}>
+        <Card padded={false} className="overflow-hidden mt-4">
+          <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700/40 font-semibold text-[13px] text-gray-700 dark:text-gray-300">
             Payment Milestones
           </div>
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
-              <thead>
-                <tr style={{ background: "#F9FAFB" }}>
-                  {["Type", "Date", "Mode", "Amount", "GST", "Payable"].map(h => (
-                    <th key={h} style={{ padding: "8px 16px", fontSize: 11, fontWeight: 700, color: "#6B7280", textAlign: "left", textTransform: "uppercase", letterSpacing: "0.05em", borderBottom: "1px solid #E5E7EB", whiteSpace: "nowrap" }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {wo.paymentMilestones!.map((m, i) => (
-                  <tr key={m.id} style={{ borderBottom: "1px solid #F3F4F6", background: i % 2 === 0 ? "#fff" : "#FAFAFA" }}>
-                    <td style={{ padding: "9px 16px", fontSize: 13, color: "#111827" }}>{m.type}</td>
-                    <td style={{ padding: "9px 16px", fontSize: 12, color: "#6B7280" }}>{m.date ? dayjs(m.date).format("DD MMM YYYY") : "—"}</td>
-                    <td style={{ padding: "9px 16px", fontSize: 12, color: "#6B7280" }}>{m.mode}</td>
-                    <td style={{ padding: "9px 16px", fontFamily: "monospace", fontSize: 13, color: "#374151" }}>{fmt(m.amount || 0)}</td>
-                    <td style={{ padding: "9px 16px", fontSize: 12, color: "#6B7280" }}>{m.gstPercent}%</td>
-                    <td style={{ padding: "9px 16px", fontFamily: "monospace", fontSize: 13, fontWeight: 700, color: "#FF7A00" }}>{fmt(m.payable || 0)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+          <Table>
+            <Thead>
+              <Tr>
+                {["Type", "Date", "Mode", "Amount", "GST", "Payable"].map(h => <Th key={h}>{h}</Th>)}
+              </Tr>
+            </Thead>
+            <Tbody>
+              {wo.paymentMilestones!.map((m) => (
+                <Tr key={m.id}>
+                  <Td><TdText>{m.type}</TdText></Td>
+                  <Td><TdText>{m.date ? dayjs(m.date).format("DD MMM YYYY") : "—"}</TdText></Td>
+                  <Td><TdText>{m.mode}</TdText></Td>
+                  <Td><span className="font-mono"><TdText>{fmt(m.amount || 0)}</TdText></span></Td>
+                  <Td><TdText>{m.gstPercent}%</TdText></Td>
+                  <Td><span className="font-mono font-bold text-primary">{fmt(m.payable || 0)}</span></Td>
+                </Tr>
+              ))}
+            </Tbody>
+          </Table>
+        </Card>
       )}
 
       {/* ── Warranty Terms ──────────────────────────── */}
       {(wo.warrantyTerms?.length ?? 0) > 0 && (
-        <div style={{ background: "var(--nx-white)", border: "1px solid #E5E7EB", borderRadius: 10, padding: "12px 16px", marginTop: 16 }}>
-          <div style={{ fontWeight: 600, fontSize: 13, color: "#374151", marginBottom: 8 }}>Special Terms and Conditions</div>
+        <Card className="mt-4">
+          <div className="font-semibold text-[13px] text-gray-700 dark:text-gray-300 mb-2">Special Terms and Conditions</div>
           {wo.warrantyTerms!.map((t, i) => (
-            <div key={i} style={{ fontSize: 13, color: "#374151", marginBottom: 4, display: "flex", gap: 6 }}>
-              <span style={{ color: "#9CA3AF" }}>{i + 1}.</span> {t}
+            <div key={i} className="text-sm text-gray-700 dark:text-gray-300 mb-1 flex gap-1.5">
+              <span className="text-gray-400">{i + 1}.</span> {t}
             </div>
           ))}
-        </div>
+        </Card>
       )}
     </>
   );

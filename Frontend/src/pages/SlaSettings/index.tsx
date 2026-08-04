@@ -1,16 +1,25 @@
 import { useCallback, useEffect, useState } from "react";
-import { Button, Switch, Popconfirm, message, Tag, Spin, Alert } from "antd";
-import { PlusOutlined, EditOutlined, DeleteOutlined, ClockCircleOutlined } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
-import PageShell from "../../components/PageShell";
+import toast from "react-hot-toast";
+import { Plus, Pencil, Trash2, Clock } from "lucide-react";
 import apiClient from "../../services/apiClient";
 import type { WorkflowTemplate } from "../../types/Workflow";
+import PageHeader from "../../ui/PageHeader";
+import Btn from "../../ui/Btn";
+import Card from "../../ui/Card";
+import Badge from "../../ui/Badge";
+import Switch from "../../ui/Switch";
+import Spinner from "../../ui/Spinner";
+import Alert from "../../ui/Alert";
+import ConfirmModal from "../../ui/ConfirmModal";
 
 export default function SlaSettings() {
   const navigate = useNavigate();
   const [templates, setTemplates] = useState<WorkflowTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<WorkflowTemplate | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true); setError("");
@@ -24,14 +33,19 @@ export default function SlaSettings() {
 
   useEffect(() => { load(); }, [load]);
 
-  async function handleDelete(t: WorkflowTemplate) {
+  async function handleDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
     try {
-      await apiClient.delete(`/workflows/templates/${t._id}`);
-      message.success(`"${t.name}" deleted`);
+      await apiClient.delete(`/workflows/templates/${deleteTarget._id}`);
+      toast.success(`"${deleteTarget.name}" deleted`);
+      setDeleteTarget(null);
       await load();
     } catch (e: unknown) {
       const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message || "Delete failed";
-      message.error(msg);
+      toast.error(msg);
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -40,70 +54,77 @@ export default function SlaSettings() {
       await apiClient.put(`/workflows/templates/${t._id}`, { isActive });
       setTemplates(prev => prev.map(x => x._id === t._id ? { ...x, isActive } : x));
     } catch {
-      message.error("Failed to update status");
+      toast.error("Failed to update status");
     }
   }
 
-  if (loading) return (
-    <div style={{ display: "flex", justifyContent: "center", padding: 60 }}>
-      <Spin size="large" tip="Loading SLA templates…" />
-    </div>
-  );
+  if (loading) return <Spinner label="Loading SLA templates…" />;
 
-  if (error) return <Alert type="error" message={error} style={{ margin: 24 }} />;
+  if (error) return <div className="p-6"><Alert type="error" message={error} /></div>;
 
   return (
-    <PageShell
-      title="SLA Settings"
-      description="Define multi-stage approval workflows with per-stage SLA timers, so real approvals in your system are tracked and timed automatically."
-      cta={
-        <Button type="primary" icon={<PlusOutlined />} size="large" onClick={() => navigate("/sla-settings/new")}
-          style={{ background: "#FF7A00", borderColor: "#FF7A00" }}>
-          New Workflow
-        </Button>
-      }
-    >
+    <div>
+      <PageHeader
+        title="SLA Settings"
+        subtitle="Define multi-stage approval workflows with per-stage SLA timers, so real approvals in your system are tracked and timed automatically."
+        icon={Clock}
+        actions={<Btn label="New Workflow" icon={Plus} color="primary" onClick={() => navigate("/sla-settings/new")} />}
+      />
+
       {templates.length === 0 ? (
-        <div style={{ textAlign: "center", padding: "60px 20px", color: "#9ba3b8", background: "var(--nx-white)", border: "1px solid #E5E7EB", borderRadius: 12 }}>
-          <ClockCircleOutlined style={{ fontSize: 36, marginBottom: 12 }} />
-          <div style={{ fontWeight: 700, fontSize: 15, color: "#374151" }}>No SLA workflows yet</div>
-          <div style={{ fontSize: 13, marginTop: 4 }}>Click "New Workflow" to define your first approval chain.</div>
-        </div>
+        <Card className="text-center py-14 text-gray-400">
+          <Clock className="w-9 h-9 mx-auto mb-3" />
+          <div className="font-bold text-gray-600 dark:text-gray-300">No SLA workflows yet</div>
+          <div className="text-sm mt-1">Click "New Workflow" to define your first approval chain.</div>
+        </Card>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <div className="flex flex-col gap-3">
           {templates.map(t => (
-            <div
+            <Card
               key={t._id}
               onClick={() => navigate(`/sla-settings/${t._id}`)}
-              style={{ background: "var(--nx-white)", border: "1px solid #E5E7EB", borderRadius: 12, padding: "16px 20px", opacity: t.isActive ? 1 : 0.6, cursor: "pointer" }}
+              className={`cursor-pointer transition-opacity ${t.isActive ? "" : "opacity-60"}`}
             >
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+              <div className="flex items-start justify-between gap-3 flex-wrap">
                 <div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{ fontWeight: 700, fontSize: 15 }}>{t.name}</span>
-                    <Tag color={t.entityType === "WorkOrder" ? "blue" : t.entityType === "BillRequest" ? "purple" : "default"}>{t.entityType}</Tag>
-                    <Tag>{t.stages.length} stage{t.stages.length !== 1 ? "s" : ""}</Tag>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-bold text-[15px] text-[#1A1A2E] dark:text-[#F1F5F9]">{t.name}</span>
+                    <Badge color={t.entityType === "WorkOrder" ? "blue" : t.entityType === "BillRequest" ? "purple" : "gray"}>
+                      {t.entityType}
+                    </Badge>
+                    <Badge color="gray">{t.stages.length} stage{t.stages.length !== 1 ? "s" : ""}</Badge>
                   </div>
-                  {t.description && <div style={{ fontSize: 13, color: "var(--nx-text-2)", marginTop: 4 }}>{t.description}</div>}
-                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
+                  {t.description && <div className="text-sm text-gray-500 dark:text-gray-400 mt-1">{t.description}</div>}
+                  <div className="flex gap-1.5 flex-wrap mt-2">
                     {t.stages.map(s => (
-                      <Tag key={s.name + s.order}>{s.name} · {s.slaHours}h{s.assignedRole !== "any" ? ` · ${s.assignedRole}` : ""}</Tag>
+                      <Badge key={s.name + s.order} color="gray" small>
+                        {s.name} · {s.slaHours}h{s.assignedRole !== "any" ? ` · ${s.assignedRole}` : ""}
+                      </Badge>
                     ))}
                   </div>
                 </div>
-                <div onClick={e => e.stopPropagation()} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <Switch checked={t.isActive} checkedChildren="Active" unCheckedChildren="Inactive"
-                    onChange={v => toggleActive(t, v)} />
-                  <Button size="small" icon={<EditOutlined />} onClick={() => navigate(`/sla-settings/${t._id}`)}>Edit</Button>
-                  <Popconfirm title={`Delete "${t.name}"?`} description="This cannot be undone." okText="Delete" okType="danger" onConfirm={() => handleDelete(t)}>
-                    <Button size="small" danger icon={<DeleteOutlined />} />
-                  </Popconfirm>
+                <div onClick={e => e.stopPropagation()} className="flex items-center gap-2.5 shrink-0">
+                  <Switch checked={t.isActive} onLabel="Active" offLabel="Inactive" onChange={v => toggleActive(t, v)} />
+                  <Btn small outline icon={Pencil} label="Edit" onClick={() => navigate(`/sla-settings/${t._id}`)} />
+                  <Btn small color="red" icon={Trash2} onClick={() => setDeleteTarget(t)} />
                 </div>
               </div>
-            </div>
+            </Card>
           ))}
         </div>
       )}
-    </PageShell>
+
+      {deleteTarget && (
+        <ConfirmModal
+          title={`Delete "${deleteTarget.name}"?`}
+          message="This cannot be undone."
+          confirmLabel="Delete"
+          danger
+          loading={deleting}
+          onConfirm={handleDelete}
+          onCancel={() => setDeleteTarget(null)}
+        />
+      )}
+    </div>
   );
 }

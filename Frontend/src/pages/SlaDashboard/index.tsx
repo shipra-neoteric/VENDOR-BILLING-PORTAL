@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
-import { Select, Spin, Alert, Tag, Tooltip } from "antd";
 import { useNavigate } from "react-router-dom";
 import dayjs from "dayjs";
-import PageShell from "../../components/PageShell";
 import apiClient from "../../services/apiClient";
 import type { WorkflowMISReport, WorkflowEntityType, MISPipeline } from "../../types/Workflow";
+import PageHeader from "../../ui/PageHeader";
+import { SelectFilter } from "../../ui/Filters";
+import Badge from "../../ui/Badge";
+import Spinner from "../../ui/Spinner";
+import Alert from "../../ui/Alert";
 
 // ── Helpers ──────────────────────────────────────────────────────
 function fmtMinutes(min: number): string {
@@ -152,13 +155,9 @@ export default function SlaDashboard() {
 
   useEffect(() => { load(); }, [load]);
 
-  if (loading && !report) return (
-    <div style={{ display: "flex", justifyContent: "center", padding: 60 }}>
-      <Spin size="large" tip="Loading SLA MIS report…" />
-    </div>
-  );
+  if (loading && !report) return <Spinner label="Loading SLA MIS report…" />;
 
-  if (error) return <Alert type="error" message={error} style={{ margin: 24 }} />;
+  if (error) return <div className="m-6"><Alert type="error" message={error} /></div>;
   if (!report) return null;
 
   const { health, alerts, bottlenecks, pipeline, byStage, byAssignee, departments, projectHealth, financial, contractorDelays, agingBuckets, drilldown, heatmap, recentActivity, trend } = report;
@@ -176,10 +175,8 @@ export default function SlaDashboard() {
   const heatProjects = [...new Map(heatmap.map(h => [h.projectId, h.projectName])).entries()];
 
   return (
-    <PageShell
-      title="SLA MIS Dashboard"
-      description="Where is the problem, who owns it, and what should you do next."
-    >
+    <div>
+      <PageHeader title="SLA MIS Dashboard" subtitle="Where is the problem, who owns it, and what should you do next." />
       {/* ── Sticky executive bar ── */}
       <div style={{
         position: "sticky", top: 0, zIndex: 20, background: "rgba(255,255,255,0.97)", backdropFilter: "blur(4px)",
@@ -203,9 +200,9 @@ export default function SlaDashboard() {
           <span style={{ fontSize: 20, fontWeight: 800, color: "#e03b3b" }}>{fmtMoney(financial.breachedAmount)}</span>
         </div>
         <div style={{ marginLeft: "auto", display: "flex", gap: 10 }}>
-          <Select value={entityFilter} onChange={setEntityFilter} size="small" style={{ width: 140 }}
+          <SelectFilter value={entityFilter} onChange={v => setEntityFilter(v as WorkflowEntityType | "all")}
             options={[{ label: "All Types", value: "all" }, { label: "Work Order", value: "WorkOrder" }, { label: "Bill Request", value: "BillRequest" }, { label: "Custom", value: "Custom" }]} />
-          <Select value={rangeFilter} onChange={setRangeFilter} size="small" style={{ width: 130 }}
+          <SelectFilter value={rangeFilter} onChange={v => setRangeFilter(v as "all" | "7" | "30" | "90")}
             options={[{ label: "All Time", value: "all" }, { label: "7 Days", value: "7" }, { label: "30 Days", value: "30" }, { label: "90 Days", value: "90" }]} />
         </div>
       </div>
@@ -218,9 +215,9 @@ export default function SlaDashboard() {
         <div style={{ display: "flex", alignItems: "center", gap: 28 }}>
           <HealthGauge score={health.score} />
           <div>
-            <Tag color={health.status === "good" ? "green" : health.status === "warning" ? "gold" : "red"} style={{ fontWeight: 700, fontSize: 12, padding: "3px 10px" }}>
+            <Badge color={health.status === "good" ? "green" : health.status === "warning" ? "amber" : "red"}>
               {health.status === "good" ? "GOOD" : health.status === "warning" ? "NEEDS ATTENTION" : "CRITICAL"}
-            </Tag>
+            </Badge>
             <div style={{ display: "flex", gap: 20, marginTop: 14, flexWrap: "wrap" }}>
               {[
                 { label: "Open", value: health.openWorkflows },
@@ -278,7 +275,7 @@ export default function SlaDashboard() {
               <div key={`${b.entityType}:${b.stageName}`} style={{ border: "1px solid #F3F4F6", borderRadius: 10, padding: "10px 14px", marginBottom: 10 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
                   <span style={{ fontWeight: 700, fontSize: 13, color: "#374151" }}>{b.stageName}</span>
-                  <Tag color={b.entityType === "WorkOrder" ? "blue" : "purple"}>{b.entityType}</Tag>
+                  <Badge color={b.entityType === "WorkOrder" ? "blue" : "purple"}>{b.entityType}</Badge>
                 </div>
                 <div style={{ fontSize: 24, fontWeight: 800, color: "#f37916", marginTop: 2 }}>{b.pendingCount} <span style={{ fontSize: 12, fontWeight: 500, color: "#9CA3AF" }}>waiting</span></div>
                 <div style={{ background: "#F3F4F6", borderRadius: 4, height: 6, marginTop: 6 }}>
@@ -295,22 +292,21 @@ export default function SlaDashboard() {
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {projectHealth.map(p => (
-                <Tooltip key={p.projectId} title={`${p.total} total workflow${p.total !== 1 ? "s" : ""} tracked for this project`}>
-                  <div style={{ border: `1px solid ${statusColor(p.onTimePct)}33`, background: `${statusColor(p.onTimePct)}0c`, borderRadius: 10, padding: "10px 14px" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-                      <span style={{ fontWeight: 700, fontSize: 13, color: "#374151" }}>{statusEmoji(p.onTimePct)} {p.projectName}</span>
-                      <span style={{ fontSize: 20, fontWeight: 800, color: statusColor(p.onTimePct) }}>{p.onTimePct}%</span>
-                    </div>
-                    <div style={{ background: "#F3F4F6", borderRadius: 4, height: 6, marginTop: 6 }}>
-                      <div style={{ width: `${p.onTimePct}%`, background: statusColor(p.onTimePct), height: "100%", borderRadius: 4 }} />
-                    </div>
-                    <div style={{ display: "flex", gap: 16, marginTop: 8, fontSize: 11.5, color: "#6B7280" }}>
-                      <span>Open: <strong style={{ color: "#374151" }}>{p.pending}</strong></span>
-                      <span>Delayed: <strong style={{ color: p.delayed > 0 ? "#e03b3b" : "#374151" }}>{p.delayed}</strong></span>
-                      <span>Blocked: <strong style={{ color: p.blockedAmount > 0 ? "#e03b3b" : "#374151" }}>{fmtMoney(p.blockedAmount)}</strong></span>
-                    </div>
+                <div key={p.projectId} title={`${p.total} total workflow${p.total !== 1 ? "s" : ""} tracked for this project`}
+                  style={{ border: `1px solid ${statusColor(p.onTimePct)}33`, background: `${statusColor(p.onTimePct)}0c`, borderRadius: 10, padding: "10px 14px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                    <span style={{ fontWeight: 700, fontSize: 13, color: "#374151" }}>{statusEmoji(p.onTimePct)} {p.projectName}</span>
+                    <span style={{ fontSize: 20, fontWeight: 800, color: statusColor(p.onTimePct) }}>{p.onTimePct}%</span>
                   </div>
-                </Tooltip>
+                  <div style={{ background: "#F3F4F6", borderRadius: 4, height: 6, marginTop: 6 }}>
+                    <div style={{ width: `${p.onTimePct}%`, background: statusColor(p.onTimePct), height: "100%", borderRadius: 4 }} />
+                  </div>
+                  <div style={{ display: "flex", gap: 16, marginTop: 8, fontSize: 11.5, color: "#6B7280" }}>
+                    <span>Open: <strong style={{ color: "#374151" }}>{p.pending}</strong></span>
+                    <span>Delayed: <strong style={{ color: p.delayed > 0 ? "#e03b3b" : "#374151" }}>{p.delayed}</strong></span>
+                    <span>Blocked: <strong style={{ color: p.blockedAmount > 0 ? "#e03b3b" : "#374151" }}>{fmtMoney(p.blockedAmount)}</strong></span>
+                  </div>
+                </div>
               ))}
             </div>
           )}
@@ -391,9 +387,7 @@ export default function SlaDashboard() {
                       return (
                         <td key={d} style={{ padding: "8px 12px", textAlign: "center" }}>
                           {cell ? (
-                            <Tooltip title={`${cell.compliancePct}% compliant`}>
-                              <span>{statusEmoji(cell.compliancePct)}</span>
-                            </Tooltip>
+                            <span title={`${cell.compliancePct}% compliant`}>{statusEmoji(cell.compliancePct)}</span>
                           ) : <span style={{ color: "#D1D5DB" }}>—</span>}
                         </td>
                       );
@@ -497,7 +491,7 @@ export default function SlaDashboard() {
                           <span style={{ color: "#FF7A00", fontWeight: 600, cursor: "pointer" }} onClick={() => navigate(`/work-items/${d.entityId}`)}>{d.entityLabel}</span>
                         ) : d.entityLabel}
                       </td>
-                      <td style={{ padding: "9px 12px" }}><Tag color={d.entityType === "WorkOrder" ? "blue" : "purple"}>{d.entityType}</Tag></td>
+                      <td style={{ padding: "9px 12px" }}><Badge color={d.entityType === "WorkOrder" ? "blue" : "purple"}>{d.entityType}</Badge></td>
                       <td style={{ padding: "9px 12px" }}>{d.currentStage}</td>
                       <td style={{ padding: "9px 12px" }}>{d.assignedTo}</td>
                       <td style={{ padding: "9px 12px", fontFamily: "monospace", fontSize: 12 }}>
@@ -506,7 +500,7 @@ export default function SlaDashboard() {
                           : "—"}
                       </td>
                       <td style={{ padding: "9px 12px", textAlign: "right" }}>
-                        {d.breached ? <Tag color="red">🔴 Overdue</Tag> : <Tag color="green">🟢 On Track</Tag>}
+                        {d.breached ? <Badge color="red">🔴 Overdue</Badge> : <Badge color="green">🟢 On Track</Badge>}
                       </td>
                     </tr>
                   );
@@ -516,6 +510,6 @@ export default function SlaDashboard() {
           </div>
         )}
       </Panel>
-    </PageShell>
+    </div>
   );
 }

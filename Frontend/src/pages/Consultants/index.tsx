@@ -1,14 +1,21 @@
 import { useEffect, useState } from "react";
-import {
-  Button, Col, Drawer, Form, Input, Row, Select, Space, Spin, Table, Tag, Upload, message,
-} from "antd";
-import { PlusOutlined, UploadOutlined } from "@ant-design/icons";
-import PageShell from "../../components/PageShell";
+import toast from "react-hot-toast";
+import { Plus, Upload, X, Ruler } from "lucide-react";
+import PageHeader from "../../ui/PageHeader";
+import Btn from "../../ui/Btn";
+import Card from "../../ui/Card";
+import Field from "../../ui/Field";
+import SField from "../../ui/SField";
+import { SearchFilter } from "../../ui/Filters";
+import Modal from "../../ui/Modal";
+import { Table, Thead, Tbody, Tr, Th, Td, TdText } from "../../ui/Table";
+import { SkeletonTable } from "../../ui/Skeleton";
+import { SectionHeading } from "../../ui/Descriptions";
 import ConsultantDetailView from "../../components/ConsultantDetailView";
 import apiClient from "../../services/apiClient";
 import type { Consultant, ConsultancyType } from "../../types/VendorBilling";
 
-const normalizeId = (obj: any) => ({ ...obj, id: obj._id || obj.id });
+const normalizeId = (obj: Consultant & { _id?: string }) => ({ ...obj, id: obj._id || obj.id });
 
 const CONSULTANCY_TYPES: ConsultancyType[] = [
   "Architect", "Interior Designer", "Structural Consultant", "MEP Consultant",
@@ -23,30 +30,84 @@ const DESIGN_SOFTWARE_OPTIONS = [
 ];
 
 const TYPE_COLOR: Record<ConsultancyType, string> = {
-  Architect: "purple",
-  "Interior Designer": "magenta",
-  "Structural Consultant": "blue",
-  "MEP Consultant": "cyan",
-  "Landscape Consultant": "green",
-  "Facade Consultant": "geekblue",
-  "Quantity Surveyor": "gold",
-  "Project Management Consultant": "volcano",
-  "BIM Consultant": "blue",
-  "Environmental Consultant": "green",
-  "Lighting Consultant": "orange",
-  Other: "default",
+  Architect: "#7c3aed",
+  "Interior Designer": "#db2777",
+  "Structural Consultant": "#2563eb",
+  "MEP Consultant": "#0891b2",
+  "Landscape Consultant": "#16a34a",
+  "Facade Consultant": "#4338ca",
+  "Quantity Surveyor": "#d97706",
+  "Project Management Consultant": "#ea580c",
+  "BIM Consultant": "#2563eb",
+  "Environmental Consultant": "#16a34a",
+  "Lighting Consultant": "#f37916",
+  Other: "#6b7280",
 };
 
-function SectionHeading({ children }: { children: React.ReactNode }) {
+const REQUIRED_FIELDS: { key: keyof typeof emptyForm; label: string }[] = [
+  { key: "firmName", label: "Firm / Consultant Name" },
+  { key: "principalName", label: "Principal Name" },
+  { key: "consultancyType", label: "Consultancy Type" },
+  { key: "address", label: "Address" },
+  { key: "mobile", label: "Mobile" },
+  { key: "alternateMobile", label: "Alternate Mobile" },
+  { key: "email", label: "Email" },
+  { key: "professionalRegistration", label: "Professional Registration No." },
+  { key: "licenseNo", label: "License No." },
+  { key: "experience", label: "Experience" },
+  { key: "portfolioUrl", label: "Portfolio URL" },
+  { key: "accountHolderName", label: "Account Holder Name" },
+  { key: "bankName", label: "Bank Name" },
+  { key: "accountNumber", label: "Account Number" },
+  { key: "ifscCode", label: "IFSC Code" },
+  { key: "branchName", label: "Branch" },
+  { key: "panNumber", label: "PAN Number" },
+  { key: "aadhaarNumber", label: "Aadhaar Number" },
+];
+
+const emptyForm = {
+  firmName: "", principalName: "", consultancyType: "" as ConsultancyType | "", address: "",
+  mobile: "", alternateMobile: "", email: "",
+  professionalRegistration: "", licenseNo: "", experience: "", portfolioUrl: "",
+  designSoftware: [] as string[],
+  accountHolderName: "", bankName: "", accountNumber: "", ifscCode: "", branchName: "",
+  panNumber: "", aadhaarNumber: "", gstNumber: "",
+};
+
+function TagInput({ value, onChange, suggestions }: { value: string[]; onChange: (v: string[]) => void; suggestions: string[] }) {
+  const [input, setInput] = useState("");
+  function add(v: string) {
+    const t = v.trim();
+    if (t && !value.includes(t)) onChange([...value, t]);
+    setInput("");
+  }
   return (
-    <div
-      style={{
-        fontSize: 12, fontWeight: 700, color: "#6B7280", textTransform: "uppercase",
-        letterSpacing: "0.06em", borderBottom: "1px solid #E5E7EB",
-        paddingBottom: 8, marginBottom: 16, marginTop: 24,
-      }}
-    >
-      {children}
+    <div>
+      {value.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mb-2">
+          {value.map(v => (
+            <span key={v} className="inline-flex items-center gap-1 bg-primary/10 text-primary text-xs font-semibold px-2 py-1 rounded-md">
+              {v}
+              <button type="button" onClick={() => onChange(value.filter(x => x !== v))}><X className="w-3 h-3" /></button>
+            </span>
+          ))}
+        </div>
+      )}
+      <input
+        value={input}
+        onChange={e => setInput(e.target.value)}
+        onKeyDown={e => { if ((e.key === "Enter" || e.key === ",") && input.trim()) { e.preventDefault(); add(input); } }}
+        placeholder="Type software name and press Enter…"
+        className="w-full h-10 px-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0F172A] text-sm text-[#1A1A2E] dark:text-[#F1F5F9] placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+      />
+      <div className="flex flex-wrap gap-1.5 mt-2">
+        {suggestions.filter(s => !value.includes(s)).map(s => (
+          <button key={s} type="button" onClick={() => add(s)}
+            className="text-xs px-2 py-1 rounded-md border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-primary hover:text-primary">
+            + {s}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -60,7 +121,7 @@ export default function Consultants() {
   const [editingConsultant, setEditingConsultant] = useState<Consultant | null>(null);
   const [viewOpen, setViewOpen]     = useState(false);
   const [selected, setSelected]     = useState<Consultant | null>(null);
-  const [form] = Form.useForm();
+  const [form, setForm] = useState(emptyForm);
 
   useEffect(() => {
     apiClient
@@ -78,324 +139,231 @@ export default function Consultants() {
       c.mobile.includes(search)
   );
 
+  function openAdd() {
+    setEditingConsultant(null);
+    setForm(emptyForm);
+    setRegisterOpen(true);
+  }
+
+  const openEdit = (record: Consultant) => {
+    setForm({
+      firmName: record.firmName, principalName: record.principalName, consultancyType: record.consultancyType,
+      address: record.address ?? "", mobile: record.mobile, alternateMobile: record.alternateMobile ?? "",
+      email: record.email ?? "", professionalRegistration: record.professionalRegistration ?? "",
+      licenseNo: record.licenseNo ?? "", experience: record.experience ?? "", portfolioUrl: record.portfolioUrl ?? "",
+      designSoftware: record.designSoftware ?? [],
+      accountHolderName: record.accountHolderName ?? "", bankName: record.bankName ?? "",
+      accountNumber: record.accountNumber ?? "", ifscCode: record.ifscCode ?? "", branchName: record.branchName ?? "",
+      panNumber: record.panNumber ?? "", aadhaarNumber: record.aadhaarNumber ?? "", gstNumber: record.gstNumber ?? "",
+    });
+    setEditingConsultant(record);
+    setRegisterOpen(true);
+  };
+
   const handleRegister = async () => {
+    const missing = REQUIRED_FIELDS.find(f => !form[f.key]);
+    if (missing) return toast.error(`${missing.label} is required`);
+    if (form.designSoftware.length === 0) return toast.error("Select at least one design software");
+
+    setSaving(true);
     try {
-      const values = await form.validateFields();
-      setSaving(true);
       if (editingConsultant) {
-        const res = await apiClient.put<{ consultant: Consultant }>(`/consultants/${editingConsultant.id}`, values);
+        const res = await apiClient.put<{ consultant: Consultant }>(`/consultants/${editingConsultant.id}`, form);
         const updated = normalizeId(res.data.consultant);
         setConsultants((prev) => prev.map((c) => (c.id === editingConsultant.id ? updated : c)));
-        message.success(`${res.data.consultant.firmName} updated`);
+        toast.success(`${res.data.consultant.firmName} updated`);
       } else {
-        const res = await apiClient.post<{ consultant: Consultant }>("/consultants", values);
+        const res = await apiClient.post<{ consultant: Consultant }>("/consultants", form);
         setConsultants((prev) => [normalizeId(res.data.consultant), ...prev]);
-        message.success(`${res.data.consultant.firmName} registered as ${res.data.consultant.consultantCode}`);
+        toast.success(`${res.data.consultant.firmName} registered as ${res.data.consultant.consultantCode}`);
       }
-      form.resetFields();
       setEditingConsultant(null);
       setRegisterOpen(false);
-    } catch (err: unknown) {
-      if (err && typeof err === "object" && "errorFields" in err) return;
+    } catch (e: unknown) {
+      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message || "Save failed";
+      toast.error(msg);
     } finally {
       setSaving(false);
     }
   };
 
-  const openEdit = (record: Consultant) => {
-    form.setFieldsValue(record);
-    setEditingConsultant(record);
-    setRegisterOpen(true);
-  };
-
-  const columns = [
-    {
-      title: "Consultant Code",
-      dataIndex: "consultantCode",
-      width: 130,
-      render: (v: string) => (
-        <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#FF7A00" }}>{v}</span>
-      ),
-    },
-    { title: "Firm / Consultant", dataIndex: "firmName", width: 200 },
-    { title: "Principal", dataIndex: "principalName", width: 160 },
-    {
-      title: "Type",
-      dataIndex: "consultancyType",
-      width: 180,
-      render: (v: ConsultancyType) => <Tag color={TYPE_COLOR[v] ?? "default"}>{v}</Tag>,
-    },
-    { title: "Mobile", dataIndex: "mobile", width: 130 },
-    {
-      title: "Status",
-      dataIndex: "status",
-      width: 90,
-      render: (v: string) => <Tag color={v === "active" ? "green" : "default"}>{(v || "").toUpperCase()}</Tag>,
-    },
-    {
-      title: "Actions",
-      width: 170,
-      render: (_: unknown, record: Consultant) => (
-        <Space size={0}>
-          <Button
-            type="link"
-            size="small"
-            onClick={() => {
-              setSelected(record);
-              setViewOpen(true);
-              apiClient.get<{ consultant: Consultant }>(`/consultants/${record.id}`).then(res => {
-                const full = normalizeId(res.data.consultant);
-                setSelected(full);
-                setConsultants(prev => prev.map(c => c.id === record.id ? full : c));
-              }).catch(() => {});
-            }}
-          >
-            View Profile
-          </Button>
-          <Button type="link" size="small" onClick={() => openEdit(record)}>
-            Edit
-          </Button>
-        </Space>
-      ),
-    },
-  ];
+  function viewProfile(record: Consultant) {
+    setSelected(record);
+    setViewOpen(true);
+    apiClient.get<{ consultant: Consultant }>(`/consultants/${record.id}`).then(res => {
+      const full = normalizeId(res.data.consultant);
+      setSelected(full);
+      setConsultants(prev => prev.map(c => c.id === record.id ? full : c));
+    }).catch(() => {});
+  }
 
   return (
-    <PageShell
-      title="Consultants"
-      description="Manage registered architects, designers, and professional-services firms."
-      cta={
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          size="large"
-          onClick={() => { form.resetFields(); setEditingConsultant(null); setRegisterOpen(true); }}
-          style={{ background: "#FF7A00", borderColor: "#FF7A00" }}
-        >
-          Register Consultant
-        </Button>
-      }
-    >
-      <div style={{ background: "var(--nx-white)", border: "1px solid #E5E7EB", borderRadius: 10, padding: "14px 16px", marginBottom: 16 }}>
-        <Input.Search
-          placeholder="Search by consultant code, firm, principal, or mobile…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          allowClear
-          style={{ maxWidth: 420 }}
-        />
-      </div>
+    <div>
+      <PageHeader
+        title="Consultants"
+        subtitle="Manage registered architects, designers, and professional-services firms."
+        icon={Ruler}
+        actions={<Btn label="Register Consultant" icon={Plus} color="primary" onClick={openAdd} />}
+      />
 
-      <div style={{ background: "var(--nx-white)", border: "1px solid #E5E7EB", borderRadius: 10, overflow: "hidden" }}>
-        <Spin spinning={loading}>
-          <Table
-            rowKey="id"
-            dataSource={filtered}
-            columns={columns}
-            pagination={{ pageSize: 10, showSizeChanger: false }}
-            locale={{
-              emptyText: loading ? " " : (
-                <div style={{ padding: 40, textAlign: "center", color: "#9CA3AF" }}>
-                  <div style={{ fontSize: 28, marginBottom: 8 }}>📐</div>
-                  <div style={{ fontWeight: 600, color: "#374151" }}>No consultants yet</div>
-                  <div style={{ fontSize: 12, marginTop: 4 }}>Click "Register Consultant" to add your first firm.</div>
-                </div>
-              ),
-            }}
-          />
-        </Spin>
-      </div>
+      <Card className="mb-4">
+        <SearchFilter value={search} onChange={setSearch} placeholder="Search by consultant code, firm, principal, or mobile…" />
+      </Card>
 
-      {/* ── Register Consultant Drawer ─────────────────────────── */}
-      <Drawer
-        open={registerOpen}
-        onClose={() => { setRegisterOpen(false); setEditingConsultant(null); }}
-        placement="right"
-        width={640}
-        title={
-          <Space>
-            <span style={{ fontSize: 20 }}>📐</span>
-            <div>
-              <div style={{ fontWeight: 700, fontSize: 16 }}>{editingConsultant ? "Edit Consultant" : "Register Consultant"}</div>
-              <div style={{ fontSize: 12, color: "#6B7280", fontWeight: 400 }}>
-                {editingConsultant ? `Editing ${editingConsultant.consultantCode}` : "Fill in firm, professional, and bank details"}
-              </div>
+      {loading ? (
+        <Card padded={false} className="p-4"><SkeletonTable rows={6} cols={6} /></Card>
+      ) : filtered.length === 0 ? (
+        <Card className="text-center py-14 text-gray-400">
+          <div className="text-2xl mb-2">📐</div>
+          <div className="font-bold text-gray-600 dark:text-gray-300">No consultants yet</div>
+          <div className="text-sm mt-1">Click "Register Consultant" to add your first firm.</div>
+        </Card>
+      ) : (
+        <Table>
+          <Thead>
+            <Tr>
+              <Th>Consultant Code</Th>
+              <Th>Firm / Consultant</Th>
+              <Th>Principal</Th>
+              <Th>Type</Th>
+              <Th>Mobile</Th>
+              <Th>Status</Th>
+              <Th>Actions</Th>
+            </Tr>
+          </Thead>
+          <Tbody>
+            {filtered.map(c => (
+              <Tr key={c.id}>
+                <Td><span className="font-mono font-bold text-primary">{c.consultantCode}</span></Td>
+                <Td><TdText>{c.firmName}</TdText></Td>
+                <Td><TdText>{c.principalName}</TdText></Td>
+                <Td>
+                  <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded" style={{ background: `${TYPE_COLOR[c.consultancyType] ?? "#6b7280"}15`, color: TYPE_COLOR[c.consultancyType] ?? "#6b7280" }}>
+                    {c.consultancyType}
+                  </span>
+                </Td>
+                <Td><TdText>{c.mobile}</TdText></Td>
+                <Td>
+                  <span className={`text-[11px] font-bold uppercase px-1.5 py-0.5 rounded ${c.status === "active" ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400" : "bg-gray-100 text-gray-500 dark:bg-gray-700/40"}`}>
+                    {(c.status || "").toUpperCase()}
+                  </span>
+                </Td>
+                <Td>
+                  <div className="flex gap-1.5">
+                    <button type="button" onClick={() => viewProfile(c)} className="text-xs font-semibold text-primary hover:underline">View Profile</button>
+                    <button type="button" onClick={() => openEdit(c)} className="text-xs font-semibold text-gray-500 dark:text-gray-400 hover:underline">Edit</button>
+                  </div>
+                </Td>
+              </Tr>
+            ))}
+          </Tbody>
+        </Table>
+      )}
+
+      {/* ── Register Consultant Modal ─────────────────────────── */}
+      {registerOpen && (
+        <Modal
+          title={editingConsultant ? "Edit Consultant" : "Register Consultant"}
+          subtitle={editingConsultant ? `Editing ${editingConsultant.consultantCode}` : "Fill in firm, professional, and bank details"}
+          icon={Ruler}
+          wide
+          onClose={() => { setRegisterOpen(false); setEditingConsultant(null); }}
+          footer={
+            <div className="flex justify-end gap-2">
+              <Btn label="Cancel" outline onClick={() => { setRegisterOpen(false); setEditingConsultant(null); }} />
+              <Btn label={editingConsultant ? "Save Changes" : "Register Consultant"} color="primary" loading={saving} onClick={handleRegister} />
             </div>
-          </Space>
-        }
-        footer={
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-            <Button size="large" onClick={() => { setRegisterOpen(false); setEditingConsultant(null); }}>Cancel</Button>
-            <Button
-              size="large" type="primary" loading={saving} onClick={handleRegister}
-              style={{ background: "#FF7A00", borderColor: "#FF7A00" }}
-            >
-              {editingConsultant ? "Save Changes" : "Register Consultant"}
-            </Button>
+          }
+        >
+          <div className="flex flex-col gap-4">
+            <SectionHeading>Firm Details</SectionHeading>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Firm / Consultant Name" required placeholder="e.g. Iksana Design"
+                value={form.firmName} onChange={e => setForm(f => ({ ...f, firmName: e.target.value }))} />
+              <Field label="Principal Name" required placeholder="e.g. Vishal Dubey"
+                value={form.principalName} onChange={e => setForm(f => ({ ...f, principalName: e.target.value }))} />
+            </div>
+            <SField label="Consultancy Type" required placeholder="Select type"
+              value={form.consultancyType || null}
+              onChange={v => setForm(f => ({ ...f, consultancyType: v as ConsultancyType }))}
+              options={CONSULTANCY_TYPES.map(t => ({ label: t, value: t }))} />
+            <Field textarea label="Address" required rows={2} placeholder="Full address…"
+              value={form.address} onChange={e => setForm(f => ({ ...f, address: e.target.value }))} />
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Mobile" required placeholder="10-digit mobile"
+                value={form.mobile} onChange={e => setForm(f => ({ ...f, mobile: e.target.value }))} />
+              <Field label="Alternate Mobile" required
+                value={form.alternateMobile} onChange={e => setForm(f => ({ ...f, alternateMobile: e.target.value }))} />
+            </div>
+            <Field label="Email" required type="email" placeholder="firm@email.com"
+              value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} />
+
+            <SectionHeading>Professional Details</SectionHeading>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Professional Registration No." required placeholder="e.g. CA/2015/12345"
+                hint="e.g. Council of Architecture (COA) registration number"
+                value={form.professionalRegistration} onChange={e => setForm(f => ({ ...f, professionalRegistration: e.target.value }))} />
+              <Field label="License No." required
+                value={form.licenseNo} onChange={e => setForm(f => ({ ...f, licenseNo: e.target.value }))} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Experience" required placeholder="e.g. 12 years"
+                value={form.experience} onChange={e => setForm(f => ({ ...f, experience: e.target.value }))} />
+              <Field label="Portfolio URL" required placeholder="https://…"
+                value={form.portfolioUrl} onChange={e => setForm(f => ({ ...f, portfolioUrl: e.target.value }))} />
+            </div>
+            <div>
+              <span className="block text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wide mb-1.5">Design Software <span className="text-red-500">*</span></span>
+              <TagInput value={form.designSoftware} onChange={v => setForm(f => ({ ...f, designSoftware: v }))} suggestions={DESIGN_SOFTWARE_OPTIONS} />
+            </div>
+
+            <SectionHeading>Bank Details</SectionHeading>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Account Holder Name" required
+                value={form.accountHolderName} onChange={e => setForm(f => ({ ...f, accountHolderName: e.target.value }))} />
+              <Field label="Bank Name" required placeholder="e.g. HDFC Bank"
+                value={form.bankName} onChange={e => setForm(f => ({ ...f, bankName: e.target.value }))} />
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <Field label="Account Number" required
+                value={form.accountNumber} onChange={e => setForm(f => ({ ...f, accountNumber: e.target.value }))} />
+              <Field label="IFSC Code" required
+                value={form.ifscCode} onChange={e => setForm(f => ({ ...f, ifscCode: e.target.value }))} />
+              <Field label="Branch" required
+                value={form.branchName} onChange={e => setForm(f => ({ ...f, branchName: e.target.value }))} />
+            </div>
+
+            <SectionHeading>Tax Details</SectionHeading>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="PAN Number" required placeholder="10-char PAN"
+                value={form.panNumber} onChange={e => setForm(f => ({ ...f, panNumber: e.target.value }))} />
+              <Field label="Aadhaar Number" required placeholder="12-digit Aadhaar" maxLength={12}
+                value={form.aadhaarNumber} onChange={e => setForm(f => ({ ...f, aadhaarNumber: e.target.value }))} />
+            </div>
+            <Field label="GST Number" placeholder="15-char GST (optional)"
+              hint="Optional — many individual consultants aren't GST-registered"
+              value={form.gstNumber} onChange={e => setForm(f => ({ ...f, gstNumber: e.target.value }))} />
+
+            <SectionHeading>Documents</SectionHeading>
+            <div className="flex flex-col gap-2.5">
+              {["GST Certificate", "PAN Card", "Cancelled Cheque", "Business Card", "Professional Registration Certificate"].map(doc => (
+                <Btn key={doc} outline icon={Upload} label={doc} className="w-[260px] justify-start" />
+              ))}
+            </div>
           </div>
-        }
-        destroyOnClose
-      >
-        <Form form={form} layout="vertical">
-          <SectionHeading>Firm Details</SectionHeading>
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item label="Firm / Consultant Name" name="firmName" rules={[{ required: true }]}>
-                <Input placeholder="e.g. Iksana Design" />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item label="Principal Name" name="principalName" rules={[{ required: true }]}>
-                <Input placeholder="e.g. Vishal Dubey" />
-              </Form.Item>
-            </Col>
-          </Row>
-          <Form.Item label="Consultancy Type" name="consultancyType" rules={[{ required: true }]}>
-            <Select
-              placeholder="Select type"
-              options={CONSULTANCY_TYPES.map((t) => ({ label: t, value: t }))}
-              placement="bottomLeft" getPopupContainer={(trigger) => trigger.parentElement || document.body}
-            />
-          </Form.Item>
-          <Form.Item label="Address" name="address" rules={[{ required: true }]}>
-            <Input.TextArea rows={2} placeholder="Full address…" />
-          </Form.Item>
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item label="Mobile" name="mobile" rules={[{ required: true }]}>
-                <Input placeholder="10-digit mobile" />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item label="Alternate Mobile" name="alternateMobile" rules={[{ required: true }]}>
-                <Input />
-              </Form.Item>
-            </Col>
-          </Row>
-          <Form.Item label="Email" name="email" rules={[{ required: true }]}>
-            <Input type="email" placeholder="firm@email.com" />
-          </Form.Item>
+        </Modal>
+      )}
 
-          <SectionHeading>Professional Details</SectionHeading>
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item label="Professional Registration No." name="professionalRegistration" tooltip="e.g. Council of Architecture (COA) registration number" rules={[{ required: true }]}>
-                <Input placeholder="e.g. CA/2015/12345" />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item label="License No." name="licenseNo" rules={[{ required: true }]}>
-                <Input />
-              </Form.Item>
-            </Col>
-          </Row>
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item label="Experience" name="experience" rules={[{ required: true }]}>
-                <Input placeholder="e.g. 12 years" />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item label="Portfolio URL" name="portfolioUrl" rules={[{ required: true }]}>
-                <Input placeholder="https://…" />
-              </Form.Item>
-            </Col>
-          </Row>
-          <Form.Item label="Design Software" name="designSoftware" rules={[{ required: true, message: "Select at least one" }]}>
-            <Select
-              mode="tags"
-              placeholder="Select or type software used"
-              options={DESIGN_SOFTWARE_OPTIONS.map((s) => ({ label: s, value: s }))}
-              placement="bottomLeft" getPopupContainer={(trigger) => trigger.parentElement || document.body}
-            />
-          </Form.Item>
-
-          <SectionHeading>Bank Details</SectionHeading>
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item label="Account Holder Name" name="accountHolderName" rules={[{ required: true }]}>
-                <Input />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item label="Bank Name" name="bankName" rules={[{ required: true }]}>
-                <Input placeholder="e.g. HDFC Bank" />
-              </Form.Item>
-            </Col>
-          </Row>
-          <Row gutter={16}>
-            <Col span={8}>
-              <Form.Item label="Account Number" name="accountNumber" rules={[{ required: true }]}>
-                <Input />
-              </Form.Item>
-            </Col>
-            <Col span={8}>
-              <Form.Item label="IFSC Code" name="ifscCode" rules={[{ required: true }]}>
-                <Input />
-              </Form.Item>
-            </Col>
-            <Col span={8}>
-              <Form.Item label="Branch" name="branchName" rules={[{ required: true }]}>
-                <Input />
-              </Form.Item>
-            </Col>
-          </Row>
-
-          <SectionHeading>Tax Details</SectionHeading>
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item label="PAN Number" name="panNumber" rules={[{ required: true }]}>
-                <Input placeholder="10-char PAN" />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item label="Aadhaar Number" name="aadhaarNumber" rules={[{ required: true }]}>
-                <Input placeholder="12-digit Aadhaar" maxLength={12} />
-              </Form.Item>
-            </Col>
-          </Row>
-          <Form.Item label="GST Number" name="gstNumber" tooltip="Optional — many individual consultants aren't GST-registered">
-            <Input placeholder="15-char GST (optional)" />
-          </Form.Item>
-
-          <SectionHeading>Documents</SectionHeading>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {["GST Certificate", "PAN Card", "Cancelled Cheque", "Business Card", "Professional Registration Certificate"].map(
-              (doc) => (
-                <Upload key={doc} beforeUpload={() => false} maxCount={1}>
-                  <Button icon={<UploadOutlined />} style={{ width: 260 }}>{doc}</Button>
-                </Upload>
-              )
-            )}
-          </div>
-        </Form>
-      </Drawer>
-
-      {/* ── View Profile Drawer ────────────────────────────────── */}
-      <Drawer
-        open={viewOpen}
-        onClose={() => setViewOpen(false)}
-        placement="right"
-        width={600}
-        title={
-          selected && (
-            <Space>
-              <span style={{ fontSize: 20 }}>📐</span>
-              <div>
-                <div style={{ fontWeight: 700, fontSize: 16 }}>{selected.firmName}</div>
-                <div style={{ fontSize: 12, color: "#6B7280", fontWeight: 400 }}>{selected.consultantCode}</div>
-              </div>
-            </Space>
-          )
-        }
-        footer={
-          <div style={{ display: "flex", justifyContent: "flex-end" }}>
-            <Button size="large" onClick={() => setViewOpen(false)}>Close</Button>
-          </div>
-        }
-      >
-        {selected && <ConsultantDetailView consultant={selected} />}
-      </Drawer>
-    </PageShell>
+      {/* ── View Profile Modal ────────────────────────────────── */}
+      {viewOpen && selected && (
+        <Modal
+          title={selected.firmName} subtitle={selected.consultantCode}
+          onClose={() => setViewOpen(false)}
+          footer={<Btn label="Close" outline onClick={() => setViewOpen(false)} />}
+        >
+          <ConsultantDetailView consultant={selected} />
+        </Modal>
+      )}
+    </div>
   );
 }

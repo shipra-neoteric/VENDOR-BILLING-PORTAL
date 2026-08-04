@@ -1,6 +1,10 @@
-import { Button, Input, Select, InputNumber, Switch, Row, Col } from "antd";
-import { PlusOutlined, DeleteOutlined } from "@ant-design/icons";
+import { Plus, Trash2 } from "lucide-react";
 import type { WorkflowTemplateStage, WorkflowEntityType } from "../../types/Workflow";
+import Btn from "../../ui/Btn";
+import Field from "../../ui/Field";
+import SField from "../../ui/SField";
+import MultiSelect from "../../ui/MultiSelect";
+import Switch from "../../ui/Switch";
 
 export const ENTITY_OPTIONS: { label: string; value: WorkflowEntityType }[] = [
   { label: "Work Order",   value: "WorkOrder" },
@@ -41,95 +45,82 @@ export function StageBuilder({
   const upd = (i: number, patch: Partial<WorkflowTemplateStage>) =>
     onChange(stages.map((s, idx) => idx === i ? { ...s, ...patch } : s));
 
+  const userOptions = users.map(u => ({ label: `${u.name} (${u.email})`, value: u._id }));
+
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-        <div style={{ fontWeight: 700, fontSize: 14 }}>Stages</div>
-        <Button type="dashed" icon={<PlusOutlined />} size="small"
-          onClick={() => onChange([...stages, newStage()])}
-          style={{ borderColor: "#f37916", color: "#f37916" }}>
-          Add Stage
-        </Button>
+      <div className="flex items-center justify-between mb-3">
+        <div className="font-bold text-sm text-[#1A1A2E] dark:text-[#F1F5F9]">Stages</div>
+        <Btn small outline icon={Plus} label="Add Stage" onClick={() => onChange([...stages, newStage()])} />
       </div>
 
       {stages.length === 0 && (
-        <div style={{ border: "2px dashed #e4e7ee", borderRadius: 8, padding: "24px 20px", textAlign: "center", color: "#9ba3b8", marginBottom: 12, fontSize: 12 }}>
+        <div className="border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-lg py-6 px-5 text-center text-gray-400 text-xs mb-3">
           No stages yet — e.g. "Contractor Sign-off", "AGM Approval", "GM Approval".
         </div>
       )}
 
       {stages.map((s, i) => (
-        <div key={i} style={{ border: "1px solid #e4e7ee", borderRadius: 8, marginBottom: 10, padding: "12px 14px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-            <span style={{ background: "#f37916", color: "#fff", borderRadius: "50%", width: 22, height: 22, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, flexShrink: 0 }}>{i + 1}</span>
-            <Input
+        <div key={i} className="border border-gray-200 dark:border-gray-700/40 rounded-lg mb-2.5 p-3.5">
+          <div className="flex items-center gap-2 mb-2.5">
+            <span className="bg-primary text-white rounded-full w-[22px] h-[22px] inline-flex items-center justify-center text-[11px] font-bold shrink-0">{i + 1}</span>
+            <Field
               placeholder="Stage name, e.g. AGM Approval"
               value={s.name}
               onChange={e => upd(i, { name: e.target.value })}
-              style={{ flex: 1 }}
+              className="flex-1"
             />
-            <Button type="link" danger size="small" icon={<DeleteOutlined />}
-              onClick={() => onChange(stages.filter((_, idx) => idx !== i))} />
+            <Btn small color="red" icon={Trash2} onClick={() => onChange(stages.filter((_, idx) => idx !== i))} />
           </div>
 
-          <Row gutter={[10, 10]}>
-            <Col xs={12} sm={6}>
-              <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Assigned Role</div>
-              <Select value={s.assignedRole} options={ROLE_OPTIONS} style={{ width: "100%" }}
-                onChange={v => upd(i, { assignedRole: v })} />
-            </Col>
-            <Col xs={12} sm={6}>
-              <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Assigned Person (optional)</div>
-              <Select
-                allowClear placeholder="Anyone with the role"
-                value={s.assignedUserId || undefined}
-                options={users.map(u => ({ label: `${u.name} (${u.email})`, value: u._id }))}
-                style={{ width: "100%" }} showSearch
-                filterOption={(inp, opt) => String(opt?.label ?? "").toLowerCase().includes(inp.toLowerCase())}
-                onChange={v => upd(i, { assignedUserId: v || null })}
-              />
-            </Col>
-            <Col xs={12} sm={4}>
-              <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>SLA (hours)</div>
-              <InputNumber min={0.5} step={0.5} value={s.slaHours} style={{ width: "100%" }}
-                onChange={v => upd(i, { slaHours: v || 1 })} />
-            </Col>
-            <Col xs={12} sm={4}>
-              <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Escalate After (min)</div>
-              <InputNumber min={0} placeholder="0 = none" value={s.escalateAfterMinutes} style={{ width: "100%" }}
-                onChange={v => upd(i, { escalateAfterMinutes: v || 0 })} />
-            </Col>
-            <Col xs={24} sm={4} style={{ display: "flex", alignItems: "flex-end", gap: 6 }}>
-              <Switch size="small" checked={s.businessHoursOnly}
-                onChange={v => upd(i, { businessHoursOnly: v })} />
-              <span style={{ fontSize: 12, color: "var(--nx-text-2)" }}>Business hours only (9am–6pm)</span>
-            </Col>
-          </Row>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+            <SField
+              label="Assigned Role" value={s.assignedRole} options={ROLE_OPTIONS}
+              onChange={v => upd(i, { assignedRole: v })}
+            />
+            <SField
+              label="Assigned Person (optional)" placeholder="Anyone with the role"
+              value={s.assignedUserId || null} options={userOptions}
+              onChange={v => upd(i, { assignedUserId: v || null })}
+            />
+            <Field
+              label="SLA (hours)" type="number" min={0.5} step={0.5}
+              value={s.slaHours}
+              onChange={e => upd(i, { slaHours: Number(e.target.value) || 1 })}
+            />
+            <Field
+              label="Escalate After (min)" type="number" min={0} placeholder="0 = none"
+              value={s.escalateAfterMinutes}
+              onChange={e => upd(i, { escalateAfterMinutes: Number(e.target.value) || 0 })}
+            />
+          </div>
+
+          <div className="mt-2.5">
+            <Switch
+              checked={s.businessHoursOnly}
+              onChange={v => upd(i, { businessHoursOnly: v })}
+              offLabel="Business hours only (9am–6pm)"
+              onLabel="Business hours only (9am–6pm)"
+            />
+          </div>
 
           {s.businessHoursOnly && (
-            <Row style={{ marginTop: 10 }}>
-              <Col span={24}>
-                <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Working Days</div>
-                <Select mode="multiple" value={s.workingDays} options={DAY_OPTIONS} style={{ width: "100%" }}
-                  onChange={v => upd(i, { workingDays: v })} />
-              </Col>
-            </Row>
+            <div className="mt-2.5">
+              <MultiSelect
+                label="Working Days" values={s.workingDays} options={DAY_OPTIONS}
+                onChange={v => upd(i, { workingDays: v })}
+              />
+            </div>
           )}
 
           {s.escalateAfterMinutes > 0 && (
-            <Row style={{ marginTop: 10 }}>
-              <Col span={12}>
-                <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Escalate To (optional)</div>
-                <Select
-                  allowClear placeholder="Escalation contact"
-                  value={s.escalateToUserId || undefined}
-                  options={users.map(u => ({ label: `${u.name} (${u.email})`, value: u._id }))}
-                  style={{ width: "100%" }} showSearch
-                  filterOption={(inp, opt) => String(opt?.label ?? "").toLowerCase().includes(inp.toLowerCase())}
-                  onChange={v => upd(i, { escalateToUserId: v || null })}
-                />
-              </Col>
-            </Row>
+            <div className="mt-2.5 max-w-[50%]">
+              <SField
+                label="Escalate To (optional)" placeholder="Escalation contact"
+                value={s.escalateToUserId || null} options={userOptions}
+                onChange={v => upd(i, { escalateToUserId: v || null })}
+              />
+            </div>
           )}
         </div>
       ))}

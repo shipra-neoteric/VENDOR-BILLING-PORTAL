@@ -1,104 +1,91 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Form, Input, Button, Typography, Alert } from "antd";
+import { Eye, EyeOff } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
-
-const { Title, Text } = Typography;
+import Field from "../../ui/Field";
+import Btn from "../../ui/Btn";
+import Alert from "../../ui/Alert";
 
 export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [touched, setTouched] = useState(false);
 
-  const onFinish = async (values: { email: string; password: string }) => {
+  const emailError = touched && !email ? "Email is required" : touched && !/^\S+@\S+\.\S+$/.test(email) ? "Enter a valid email" : "";
+  const passwordError = touched && !password ? "Password is required" : "";
+
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setTouched(true);
+    if (!email || !/^\S+@\S+\.\S+$/.test(email) || !password) return;
     setLoading(true);
     setError("");
     try {
-      await login(values.email, values.password);
+      await login(email, password);
       navigate("/", { replace: true });
-    } catch (err: any) {
-      setError(err?.response?.data?.message || "Invalid email or password");
+    } catch (err: unknown) {
+      setError((err as { response?: { data?: { message?: string } } }).response?.data?.message || "Invalid email or password");
     } finally {
       setLoading(false);
     }
-  };
+  }
 
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        background: "#F8FAFC",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-      }}
-    >
-      <div
-        style={{
-          width: 420,
-          background: "#fff",
-          borderRadius: 16,
-          padding: "40px 40px 32px",
-          boxShadow: "0 4px 24px rgba(0,0,0,0.08)",
-          border: "1px solid #E5E7EB",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 32 }}>
-          <div
-            style={{
-              width: 40, height: 40,
-              background: "#FF7A00",
-              borderRadius: 10,
-              display: "flex", alignItems: "center", justifyContent: "center",
-              fontWeight: 800, fontSize: 18, color: "#fff",
-            }}
-          >
+    <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#0B1120] flex items-center justify-center p-4">
+      <div className="w-full max-w-[420px] bg-white dark:bg-[#1E293B] rounded-2xl p-10 pb-8 shadow-lg border border-gray-200 dark:border-gray-700/40">
+        <div className="flex items-center gap-3 mb-8">
+          <div className="w-10 h-10 bg-primary rounded-[10px] flex items-center justify-center font-extrabold text-lg text-white">
             N
           </div>
           <div>
-            <div style={{ fontWeight: 700, fontSize: 15, color: "#111827", lineHeight: 1.2 }}>
+            <div className="font-bold text-[15px] text-[#1A1A2E] dark:text-[#F1F5F9] leading-tight">
               Neoteric Properties
             </div>
-            <div style={{ fontSize: 12, color: "#6B7280", lineHeight: 1.2 }}>
+            <div className="text-xs text-gray-500 dark:text-gray-400 leading-tight">
               Project Cost Center
             </div>
           </div>
         </div>
 
-        <Title level={4} style={{ margin: "0 0 4px", color: "#111827" }}>Sign in</Title>
-        <Text type="secondary" style={{ fontSize: 13, display: "block", marginBottom: 24 }}>
+        <h4 className="text-lg font-bold text-[#1A1A2E] dark:text-[#F1F5F9] mb-1">Sign in</h4>
+        <p className="text-[13px] text-gray-500 dark:text-gray-400 mb-6">
           Enter your credentials to continue
-        </Text>
+        </p>
 
-        {error && (
-          <Alert message={error} type="error" showIcon style={{ marginBottom: 20, borderRadius: 8 }} />
-        )}
+        {error && <div className="mb-5"><Alert type="error" message={error} /></div>}
 
-        <Form layout="vertical" onFinish={onFinish} requiredMark={false}>
-          <Form.Item
-            label="Email" name="email"
-            rules={[
-              { required: true, message: "Email is required" },
-              { type: "email", message: "Enter a valid email" },
-            ]}
-          >
-            <Input size="large" placeholder="you@example.com" autoComplete="email" />
-          </Form.Item>
+        <form onSubmit={onSubmit} className="flex flex-col gap-4">
+          <Field
+            label="Email" required type="email" autoComplete="email"
+            placeholder="you@example.com"
+            value={email} error={emailError}
+            onChange={e => setEmail(e.target.value)}
+          />
 
-          <Form.Item
-            label="Password" name="password"
-            rules={[{ required: true, message: "Password is required" }]}
-          >
-            <Input.Password size="large" placeholder="••••••••" autoComplete="current-password" />
-          </Form.Item>
+          <div className="relative">
+            <Field
+              label="Password" required type={showPassword ? "text" : "password"} autoComplete="current-password"
+              placeholder="••••••••"
+              value={password} error={passwordError}
+              onChange={e => setPassword(e.target.value)}
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword(v => !v)}
+              className="absolute right-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+              style={{ top: 34 }}
+            >
+              {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            </button>
+          </div>
 
-          <Form.Item style={{ marginBottom: 0, marginTop: 8 }}>
-            <Button type="primary" htmlType="submit" size="large" loading={loading} block style={{ fontWeight: 600 }}>
-              Sign in
-            </Button>
-          </Form.Item>
-        </Form>
+          <Btn type="submit" label="Sign in" color="primary" loading={loading} className="w-full mt-1" />
+        </form>
       </div>
     </div>
   );

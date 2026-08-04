@@ -96,6 +96,24 @@ export const ESCALATION_REQUIRED_OPTIONS = [
 // glance without re-deriving this per screen.
 export const isAlert = (value?: string) => !!value && value.trim().toLowerCase().startsWith("yes");
 
+// Required fields, shared between the public and authenticated submission
+// pages so both reject an incomplete report the same way.
+const REQUIRED_DPR_FIELDS: { key: keyof DprFormValues; label: string }[] = [
+  { key: "tomorrowsPlan",           label: "Tomorrow's Plan" },
+  { key: "workDelayed",             label: "work delay status" },
+  { key: "labourShort",             label: "labour shortage status" },
+  { key: "materialShort",           label: "material shortage status" },
+  { key: "materialReceivedOnTime",  label: "material on-time status" },
+  { key: "drawingPending",          label: "drawing pending status" },
+  { key: "challengeBlocking",       label: "challenge status" },
+  { key: "escalationRequired",      label: "escalation status" },
+];
+
+export function firstMissingDprField(values: Partial<DprFormValues>): string | null {
+  const missing = REQUIRED_DPR_FIELDS.find(f => !values[f.key]);
+  return missing ? missing.label : null;
+}
+
 export interface DprFormValues {
   projectId: string;
   projectName?: string;

@@ -1,14 +1,21 @@
 import { useEffect, useState } from "react";
-import { Form, Select, DatePicker, Button, Card, Table, Tag, Modal, Descriptions, message, Empty } from "antd";
-import { PlusOutlined, EyeOutlined } from "@ant-design/icons";
-import type { ColumnsType } from "antd/es/table";
+import toast from "react-hot-toast";
+import { Plus, Eye, FileText } from "lucide-react";
 import dayjs from "dayjs";
-import PageShell from "../../components/PageShell";
 import apiClient from "../../services/apiClient";
 import { useAuth } from "../../context/AuthContext";
 import DailyProjectReportSections from "../../components/DailyProjectReportSections";
-import { isAlert } from "../../shared/constants/dprOptions";
+import { isAlert, firstMissingDprField } from "../../shared/constants/dprOptions";
 import type { DprFormValues } from "../../shared/constants/dprOptions";
+import PageHeader from "../../ui/PageHeader";
+import Btn from "../../ui/Btn";
+import Card from "../../ui/Card";
+import Badge from "../../ui/Badge";
+import SField from "../../ui/SField";
+import { DatePicker } from "../../ui/DatePicker";
+import Modal from "../../ui/Modal";
+import { Table, Thead, Tbody, Tr, Th, Td, TdText } from "../../ui/Table";
+import { SkeletonTable } from "../../ui/Skeleton";
 
 interface ProjectOption { _id: string; name: string; }
 
@@ -26,9 +33,22 @@ const ALERT_FIELDS: { key: keyof DprFormValues; label: string }[] = [
   { key: "escalationRequired",label: "Escalation" },
 ];
 
+const emptyForm: { projectId: string; date: string } & Partial<DprFormValues> = {
+  projectId: "", date: dayjs().format("YYYY-MM-DD"),
+};
+
+function DetailRow({ label, value }: { label: string; value?: React.ReactNode }) {
+  if (!value) return null;
+  return (
+    <div className="flex gap-3 py-2 border-b border-gray-100 dark:border-gray-700/40 last:border-b-0">
+      <span className="w-44 shrink-0 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide">{label}</span>
+      <span className="text-sm text-[#1A1A2E] dark:text-[#F1F5F9]">{value}</span>
+    </div>
+  );
+}
+
 export default function DailyProjectReport() {
   const { user } = useAuth();
-  const [form] = Form.useForm();
 
   const [projects, setProjects]   = useState<ProjectOption[]>([]);
   const [reports, setReports]     = useState<DprRow[]>([]);
@@ -36,6 +56,7 @@ export default function DailyProjectReport() {
   const [submitting, setSubmitting] = useState(false);
   const [showForm, setShowForm]   = useState(false);
   const [viewReport, setViewReport] = useState<DprRow | null>(null);
+  const [form, setForm] = useState(emptyForm);
 
   const load = () => {
     setLoading(true);
@@ -50,121 +71,127 @@ export default function DailyProjectReport() {
 
   useEffect(load, []);
 
-  async function onFinish(vals: Omit<DprFormValues, "driName"> & { date: dayjs.Dayjs }) {
+  async function onSubmit() {
+    if (!form.projectId) return toast.error("Select a project");
+    if (!form.date) return toast.error("Select a date");
+    const missing = firstMissingDprField(form);
+    if (missing) return toast.error(`Select ${missing}`);
+
     setSubmitting(true);
     try {
       await apiClient.post("/daily-reports", {
-        ...vals,
+        ...form,
         driName: user?.name,
-        date: vals.date.toISOString(),
+        date: dayjs(form.date).toISOString(),
       });
-      message.success("Daily Project Report submitted");
-      form.resetFields();
+      toast.success("Daily Project Report submitted");
+      setForm(emptyForm);
       setShowForm(false);
       load();
     } catch (err: unknown) {
       const e = err as { response?: { data?: { message?: string } } };
-      message.error(e?.response?.data?.message || "Failed to submit report");
+      toast.error(e?.response?.data?.message || "Failed to submit report");
     } finally {
       setSubmitting(false);
     }
   }
 
-  const columns: ColumnsType<DprRow> = [
-    { title: "Date", dataIndex: "date", width: 110, render: v => dayjs(v).format("DD MMM YYYY") },
-    { title: "Project", dataIndex: "projectName", ellipsis: true },
-    {
-      title: "Alerts",
-      render: (_, r) => (
-        <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-          {ALERT_FIELDS.filter(f => isAlert(r[f.key] as string)).map(f => (
-            <Tag key={f.key} color={f.key === "escalationRequired" ? "red" : "orange"}>{f.label}</Tag>
-          ))}
-          {ALERT_FIELDS.every(f => !isAlert(r[f.key] as string)) && <Tag color="green">All clear</Tag>}
-        </div>
-      ),
-    },
-    {
-      title: "", width: 70, render: (_, r) => (
-        <Button size="small" icon={<EyeOutlined />} onClick={() => setViewReport(r)} />
-      ),
-    },
-  ];
-
   return (
-    <PageShell
-      title="Daily Project Report"
-      description="Log your end-of-day site report — work progress, labour/material/drawing alerts, and anything that needs escalation."
-      cta={<Button type="primary" icon={<PlusOutlined />} onClick={() => setShowForm(true)} style={{ background: "#4f46e5", borderColor: "#4f46e5" }}>New Report</Button>}
-    >
-      <Card title="My Recent Reports" style={{ borderRadius: 12 }}>
-        <Table
-          rowKey="_id"
-          loading={loading}
-          dataSource={reports}
-          columns={columns}
-          size="middle"
-          pagination={{ pageSize: 10 }}
-          locale={{ emptyText: <Empty description="No reports submitted yet" /> }}
-        />
+    <div>
+      <PageHeader
+        title="Daily Project Report"
+        subtitle="Log your end-of-day site report — work progress, labour/material/drawing alerts, and anything that needs escalation."
+        icon={FileText}
+        actions={<Btn label="New Report" icon={Plus} style={{ background: "#4f46e5", borderColor: "#4f46e5" }} onClick={() => { setForm(emptyForm); setShowForm(true); }} />}
+      />
+
+      <Card padded={false} className="overflow-hidden">
+        <div className="px-5 py-3.5 border-b border-gray-100 dark:border-gray-700/40 font-bold text-sm text-[#1A1A2E] dark:text-[#F1F5F9]">
+          My Recent Reports
+        </div>
+        {loading ? (
+          <div className="p-4"><SkeletonTable rows={5} cols={4} /></div>
+        ) : reports.length === 0 ? (
+          <div className="py-12 text-center text-gray-400">No reports submitted yet</div>
+        ) : (
+          <Table>
+            <Thead>
+              <Tr>
+                <Th>Date</Th>
+                <Th>Project</Th>
+                <Th>Alerts</Th>
+                <Th></Th>
+              </Tr>
+            </Thead>
+            <Tbody>
+              {reports.map(r => (
+                <Tr key={r._id}>
+                  <Td><TdText>{dayjs(r.date).format("DD MMM YYYY")}</TdText></Td>
+                  <Td><TdText>{r.projectName}</TdText></Td>
+                  <Td>
+                    <div className="flex gap-1 flex-wrap">
+                      {ALERT_FIELDS.filter(f => isAlert(r[f.key] as string)).map(f => (
+                        <Badge key={f.key} color={f.key === "escalationRequired" ? "red" : "orange"} small>{f.label}</Badge>
+                      ))}
+                      {ALERT_FIELDS.every(f => !isAlert(r[f.key] as string)) && <Badge color="green" small>All clear</Badge>}
+                    </div>
+                  </Td>
+                  <Td><Btn small outline icon={Eye} onClick={() => setViewReport(r)} /></Td>
+                </Tr>
+              ))}
+            </Tbody>
+          </Table>
+        )}
       </Card>
 
-      <Modal
-        open={showForm}
-        onCancel={() => setShowForm(false)}
-        title="New Daily Project Report"
-        width={760}
-        footer={null}
-        destroyOnClose
-      >
-        <Form form={form} layout="vertical" onFinish={onFinish} initialValues={{ date: dayjs() }}>
-          <Card style={{ borderRadius: 12, marginBottom: 20, boxShadow: "0 2px 12px rgba(0,0,0,0.05)" }}>
-            <Form.Item label="Project" name="projectId" rules={[{ required: true, message: "Select a project" }]}>
-              <Select
-                placeholder="Choose"
-                showSearch
-                filterOption={(inp, opt) => String(opt?.label ?? "").toLowerCase().includes(inp.toLowerCase())}
-                options={projects.map(p => ({ label: p.name, value: p._id }))}
-              />
-            </Form.Item>
-            <Form.Item label="Date" name="date" rules={[{ required: true, message: "Select a date" }]} style={{ marginBottom: 0 }}>
-              <DatePicker style={{ width: "100%" }} format="DD/MM/YYYY" disabledDate={d => d.isAfter(dayjs(), "day")} />
-            </Form.Item>
+      {showForm && (
+        <Modal
+          title="New Daily Project Report" wide onClose={() => setShowForm(false)}
+          footer={<Btn label="Submit Report" style={{ background: "#4f46e5", borderColor: "#4f46e5" }} className="w-full" loading={submitting} onClick={onSubmit} />}
+        >
+          <Card className="mb-5 flex flex-col gap-4">
+            <SField
+              label="Project" required placeholder="Choose"
+              value={form.projectId || null}
+              onChange={v => setForm(f => ({ ...f, projectId: v }))}
+              options={projects.map(p => ({ label: p.name, value: p._id }))}
+            />
+            <DatePicker
+              label="Date" value={form.date}
+              onChange={v => setForm(f => ({ ...f, date: v }))}
+              max={dayjs().format("YYYY-MM-DD")}
+            />
           </Card>
 
-          <DailyProjectReportSections />
+          <DailyProjectReportSections values={form} onChange={patch => setForm(f => ({ ...f, ...patch }))} />
+        </Modal>
+      )}
 
-          <Button type="primary" htmlType="submit" block loading={submitting} size="large" style={{ background: "#4f46e5", borderColor: "#4f46e5", height: 46, fontWeight: 600 }}>
-            Submit Report
-          </Button>
-        </Form>
-      </Modal>
-
-      <Modal open={!!viewReport} onCancel={() => setViewReport(null)} title={`DPR — ${viewReport?.projectName ?? ""}`} footer={null} width={640}>
-        {viewReport && (
-          <Descriptions column={1} bordered size="small">
-            <Descriptions.Item label="Date">{dayjs(viewReport.date).format("DD MMM YYYY")}</Descriptions.Item>
-            <Descriptions.Item label="DRI">{viewReport.driName}</Descriptions.Item>
-            <Descriptions.Item label="Tomorrow's Plan">{viewReport.tomorrowsPlan}</Descriptions.Item>
-            <Descriptions.Item label="Work Delayed">{viewReport.workDelayed}</Descriptions.Item>
-            <Descriptions.Item label="Labour Short">{viewReport.labourShort}</Descriptions.Item>
-            {viewReport.additionalLabourNeeded && <Descriptions.Item label="Additional Labour Needed">{viewReport.additionalLabourNeeded}</Descriptions.Item>}
-            {viewReport.labourShortageImpact && <Descriptions.Item label="Labour Impact">{viewReport.labourShortageImpact}</Descriptions.Item>}
-            <Descriptions.Item label="Material Short">{viewReport.materialShort}</Descriptions.Item>
-            {viewReport.materialRunOutDays && <Descriptions.Item label="Material Runs Out In">{viewReport.materialRunOutDays}</Descriptions.Item>}
-            <Descriptions.Item label="Material Received On Time">{viewReport.materialReceivedOnTime}</Descriptions.Item>
-            {viewReport.materialShortageImpact && <Descriptions.Item label="Material Impact">{viewReport.materialShortageImpact}</Descriptions.Item>}
-            <Descriptions.Item label="Drawing Pending">{viewReport.drawingPending}</Descriptions.Item>
-            {viewReport.drawingReference && <Descriptions.Item label="Drawing Reference">{viewReport.drawingReference}</Descriptions.Item>}
-            {viewReport.drawingPendingDays && <Descriptions.Item label="Pending Since">{viewReport.drawingPendingDays}</Descriptions.Item>}
-            {viewReport.drawingBlockedActivity && <Descriptions.Item label="Blocked Activity">{viewReport.drawingBlockedActivity}</Descriptions.Item>}
-            <Descriptions.Item label="Challenge">{viewReport.challengeBlocking}</Descriptions.Item>
-            {viewReport.challengeDescription && <Descriptions.Item label="Challenge Details">{viewReport.challengeDescription}</Descriptions.Item>}
-            <Descriptions.Item label="Escalation Required">{viewReport.escalationRequired}</Descriptions.Item>
-            {viewReport.escalationAction && <Descriptions.Item label="Escalation Action">{viewReport.escalationAction}</Descriptions.Item>}
-          </Descriptions>
-        )}
-      </Modal>
-    </PageShell>
+      {viewReport && (
+        <Modal title={`DPR — ${viewReport.projectName ?? ""}`} onClose={() => setViewReport(null)}>
+          <Card padded={false} className="px-4">
+            <DetailRow label="Date" value={dayjs(viewReport.date).format("DD MMM YYYY")} />
+            <DetailRow label="DRI" value={viewReport.driName} />
+            <DetailRow label="Tomorrow's Plan" value={viewReport.tomorrowsPlan} />
+            <DetailRow label="Work Delayed" value={viewReport.workDelayed} />
+            <DetailRow label="Labour Short" value={viewReport.labourShort} />
+            <DetailRow label="Additional Labour Needed" value={viewReport.additionalLabourNeeded} />
+            <DetailRow label="Labour Impact" value={viewReport.labourShortageImpact} />
+            <DetailRow label="Material Short" value={viewReport.materialShort} />
+            <DetailRow label="Material Runs Out In" value={viewReport.materialRunOutDays} />
+            <DetailRow label="Material Received On Time" value={viewReport.materialReceivedOnTime} />
+            <DetailRow label="Material Impact" value={viewReport.materialShortageImpact} />
+            <DetailRow label="Drawing Pending" value={viewReport.drawingPending} />
+            <DetailRow label="Drawing Reference" value={viewReport.drawingReference} />
+            <DetailRow label="Pending Since" value={viewReport.drawingPendingDays} />
+            <DetailRow label="Blocked Activity" value={viewReport.drawingBlockedActivity} />
+            <DetailRow label="Challenge" value={viewReport.challengeBlocking} />
+            <DetailRow label="Challenge Details" value={viewReport.challengeDescription} />
+            <DetailRow label="Escalation Required" value={viewReport.escalationRequired} />
+            <DetailRow label="Escalation Action" value={viewReport.escalationAction} />
+          </Card>
+        </Modal>
+      )}
+    </div>
   );
 }

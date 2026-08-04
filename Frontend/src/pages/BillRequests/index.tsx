@@ -1,29 +1,39 @@
 import { useState, useEffect } from "react";
-import {
-  Button, Tag, Table, Modal, Input, InputNumber, message, Popconfirm, Spin, Empty, Tabs, Badge, Select, Switch,
-} from "antd";
-import type { ColumnsType } from "antd/es/table";
-import {
-  CheckCircleOutlined, CloseCircleOutlined, EyeOutlined, TrophyOutlined, InboxOutlined,
-} from "@ant-design/icons";
+import toast from "react-hot-toast";
+import { CheckCircle2, XCircle, Eye, Trophy, Inbox, FileText } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import dayjs from "dayjs";
-import PageShell from "../../components/PageShell";
 import apiClient from "../../services/apiClient";
 import { selectableProjects } from "../../utils/projectOptions";
 import { useAuth } from "../../context/AuthContext";
 import WorkflowInstanceStepper from "../../components/WorkflowInstanceStepper";
 import type { WorkflowInstance } from "../../types/Workflow";
 import { billFinancials } from "../../shared/utils/billMath";
+import PageHeader from "../../ui/PageHeader";
+import Btn from "../../ui/Btn";
+import Badge from "../../ui/Badge";
+import Segmented from "../../ui/Segmented";
+import Switch from "../../ui/Switch";
+import Field from "../../ui/Field";
+import SField from "../../ui/SField";
+import { SearchFilter } from "../../ui/Filters";
+import Modal from "../../ui/Modal";
+import ConfirmModal from "../../ui/ConfirmModal";
+import Checkbox from "../../ui/Checkbox";
+import Spinner from "../../ui/Spinner";
+import { Table, Thead, Tbody, Tr, Th, Td, TdText } from "../../ui/Table";
+import Pagination from "../../ui/Pagination";
 
 const fmt = (n: number) => "₹" + Math.round(n).toLocaleString("en-IN");
 
-const STATUS_CFG: Record<string, { color: string; label: string }> = {
+const STATUS_CFG: Record<string, { color: "orange" | "blue" | "green" | "red"; label: string }> = {
   pending:      { color: "orange", label: "Pending (L1 — AGM)"  },
   "pending-gm": { color: "blue",   label: "Pending (L2 — GM)"   },
   approved:     { color: "green",  label: "Approved" },
   rejected:     { color: "red",    label: "Rejected" },
 };
+
+const PAGE_SIZE = 20;
 
 interface BillItem {
   scopeItemId?: string;
@@ -79,19 +89,22 @@ export default function BillRequests() {
   // AGM's approval — first stage of the bill chain: sets the hold/advance breakdown.
   const [approveModal,     setApproveModal]     = useState(false);
   const [approveTarget,    setApproveTarget]    = useState<string | null>(null);
-  const [approveRetention, setApproveRetention] = useState<number | null>(null);
-  const [approveAdvance,   setApproveAdvance]   = useState<number | null>(null);
+  const [approveRetention, setApproveRetention] = useState("");
+  const [approveAdvance,   setApproveAdvance]   = useState("");
 
   const [search,            setSearch]            = useState("");
-  const [projectFilter,     setProjectFilter]     = useState<string | undefined>(undefined);
+  const [projectFilter,     setProjectFilter]     = useState("");
   const [projectOptions,    setProjectOptions]    = useState<{ label: string; value: string }[]>([]);
   const [showArchived,      setShowArchived]      = useState(false);
-  const [selectedRowKeys,   setSelectedRowKeys]   = useState<string[]>([]);
+  const [selectedIds,       setSelectedIds]       = useState<string[]>([]);
   const [archiving,         setArchiving]         = useState(false);
+  const [archiveTarget,     setArchiveTarget]     = useState<BillRequest | null>(null);
+  const [bulkArchiveConfirm, setBulkArchiveConfirm] = useState(false);
+  const [page,               setPage]               = useState(1);
 
   const load = async (status?: string, archived?: boolean) => {
     setLoading(true);
-    setSelectedRowKeys([]);
+    setSelectedIds([]);
     try {
       const params = new URLSearchParams();
       if (status && status !== "all") params.set("status", status);
@@ -99,7 +112,7 @@ export default function BillRequests() {
       const qs = params.toString();
       const res = await apiClient.get(`/bill-requests${qs ? `?${qs}` : ""}`);
       setRequests(res.data.billRequests ?? []);
-    } catch { message.error("Failed to load bill requests"); }
+    } catch { toast.error("Failed to load bill requests"); }
     finally { setLoading(false); }
   };
 
@@ -123,8 +136,8 @@ export default function BillRequests() {
 
   const openApprove = (id: string) => {
     setApproveTarget(id);
-    setApproveRetention(null);
-    setApproveAdvance(null);
+    setApproveRetention("");
+    setApproveAdvance("");
     setApproveModal(true);
   };
 
@@ -133,16 +146,17 @@ export default function BillRequests() {
     setSaving(true);
     try {
       const body: Record<string, number> = {};
-      if (approveRetention != null) body.retentionAmount = approveRetention;
-      if (approveAdvance   != null) body.advanceRecovery = approveAdvance;
+      if (approveRetention !== "") body.retentionAmount = Number(approveRetention);
+      if (approveAdvance   !== "") body.advanceRecovery = Number(approveAdvance);
       const res = await apiClient.put(`/bill-requests/${approveTarget}/agm-approve`, body);
-      message.success(res.data.message || "Approved & bill generated");
+      toast.success(res.data.message || "Approved & bill generated");
       setApproveModal(false);
       setApproveTarget(null);
       load(tab === "all" ? undefined : tab, showArchived);
       if (viewReq?._id === approveTarget) setViewReq(null);
-    } catch (e: any) {
-      message.error(e?.response?.data?.message || "Failed to approve");
+    } catch (e: unknown) {
+      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message || "Failed to approve";
+      toast.error(msg);
     } finally { setSaving(false); }
   };
 
@@ -151,279 +165,215 @@ export default function BillRequests() {
     setSaving(true);
     try {
       await apiClient.put(`/bill-requests/${rejectTarget}/reject`, { rejectReason });
-      message.success("Request rejected");
+      toast.success("Request rejected");
       setRejectModal(false);
       setRejectReason("");
       setRejectTarget(null);
       load(tab === "all" ? undefined : tab, showArchived);
       if (viewReq?._id === rejectTarget) setViewReq(null);
-    } catch { message.error("Failed to reject"); }
+    } catch { toast.error("Failed to reject"); }
     finally { setSaving(false); }
   };
 
-  async function archiveOne(r: BillRequest) {
+  async function archiveOne() {
+    if (!archiveTarget) return;
     try {
-      await apiClient.patch(`/bill-requests/${r._id}/${showArchived ? "unarchive" : "archive"}`);
-      message.success(showArchived ? `${r.reqNo} unarchived` : `${r.reqNo} archived`);
+      await apiClient.patch(`/bill-requests/${archiveTarget._id}/${showArchived ? "unarchive" : "archive"}`);
+      toast.success(showArchived ? `${archiveTarget.reqNo} unarchived` : `${archiveTarget.reqNo} archived`);
+      setArchiveTarget(null);
       load(tab === "all" ? undefined : tab, showArchived);
-    } catch (e: any) {
-      message.error(e?.response?.data?.message || "Action failed");
+    } catch (e: unknown) {
+      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message || "Action failed";
+      toast.error(msg);
     }
   }
 
   async function archiveSelected() {
-    if (selectedRowKeys.length === 0) return;
+    if (selectedIds.length === 0) return;
     setArchiving(true);
     try {
-      await apiClient.patch(`/bill-requests/${showArchived ? "unarchive-bulk" : "archive-bulk"}`, { ids: selectedRowKeys });
-      message.success(`${selectedRowKeys.length} request(s) ${showArchived ? "unarchived" : "archived"}`);
+      await apiClient.patch(`/bill-requests/${showArchived ? "unarchive-bulk" : "archive-bulk"}`, { ids: selectedIds });
+      toast.success(`${selectedIds.length} request(s) ${showArchived ? "unarchived" : "archived"}`);
+      setBulkArchiveConfirm(false);
       load(tab === "all" ? undefined : tab, showArchived);
-    } catch (e: any) {
-      message.error(e?.response?.data?.message || "Action failed");
+    } catch (e: unknown) {
+      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message || "Action failed";
+      toast.error(msg);
     } finally {
       setArchiving(false);
     }
   }
 
-  const columns: ColumnsType<BillRequest> = [
-    {
-      title: "Stage / Request",
-      width: 140,
-      render: (_, r) => (
-        <div>
-          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-            {r.stageNo && (
-              <span style={{ background: "#FFF4E8", border: "1px solid #FF7A00", color: "#FF7A00", fontSize: 10, fontWeight: 800, padding: "1px 6px", borderRadius: 6 }}>
-                S{r.stageNo}
-              </span>
-            )}
-            <button
-              type="button"
-              onClick={() => setViewReq(r)}
-              style={{ background: "none", border: "none", cursor: "pointer", color: "#FF7A00", fontWeight: 700, fontFamily: "monospace", fontSize: 13, padding: 0 }}
-            >
-              {r.reqNo}
-            </button>
-          </div>
-          {r.milestoneAchieved && (
-            <span style={{ fontSize: 10, color: "#FF7A00" }}>🏆 Milestone</span>
-          )}
-        </div>
-      ),
-    },
-    { title: "Work Order", dataIndex: "workOrderNo", render: (v, r) => (
-      <div>
-        <code style={{ cursor: "pointer", color: "#3b82f6" }} onClick={() => r.workOrderId && navigate(`/work-items/${r.workOrderId}`)}>{v}</code>
-      </div>
-    )},
-    {
-      title: "Project",
-      dataIndex: "projectName",
-      render: (name: string, r: BillRequest) => (
-        <div>
-          <div>{name}</div>
-          {r.projectLocation && (
-            <div style={{ fontSize: 11, color: "#9ba3b8" }}>{r.projectLocation}</div>
-          )}
-        </div>
-      ),
-    },
-    { title: "Contractor", dataIndex: "vendorName"  },
-    {
-      title: "Period",
-      render: (_, r) => r.periodFrom ? (
-        <div style={{ fontSize: 12, color: "#6B7280" }}>
-          {dayjs(r.periodFrom).format("DD MMM")} → {dayjs(r.periodTo ?? r.createdAt).format("DD MMM YYYY")}
-        </div>
-      ) : <span style={{ color: "#9CA3AF" }}>—</span>,
-    },
-    {
-      title: "Items",
-      dataIndex: "items",
-      render: (items: BillItem[]) => <span>{items.length} item{items.length !== 1 ? "s" : ""}</span>,
-    },
-    {
-      title: "Requested By",
-      dataIndex: "requestedBy",
-      render: (u) => u?.name || "—",
-    },
-    {
-      title: "Date",
-      dataIndex: "createdAt",
-      render: (d) => dayjs(d).format("DD MMM YYYY"),
-    },
-    {
-      title: "Status",
-      dataIndex: "status",
-      render: (s: string) => {
-        const cfg = STATUS_CFG[s] ?? { color: "default", label: s };
-        return <Tag color={cfg.color}>{cfg.label}</Tag>;
-      },
-    },
-    {
-      title: "Actions",
-      render: (_, r) => (
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          <Button size="small" icon={<EyeOutlined />} onClick={() => setViewReq(r)}>View</Button>
-          {r.status === "pending" && (
-            <>
-              <Button size="small" type="primary" icon={<CheckCircleOutlined />} onClick={() => openApprove(r._id)}>Approve</Button>
-              <Button
-                size="small" danger icon={<CloseCircleOutlined />}
-                onClick={() => { setRejectTarget(r._id); setRejectModal(true); }}
-              >
-                Reject
-              </Button>
-            </>
-          )}
-          <Popconfirm
-            title={showArchived ? `Unarchive ${r.reqNo}?` : `Archive ${r.reqNo}?`}
-            description={showArchived ? "It will reappear in the normal list." : "It will be hidden from the normal list (and its linked bill, if any), but not deleted."}
-            onConfirm={() => archiveOne(r)}
-          >
-            <Button size="small" icon={<InboxOutlined />} style={{ color: "#6B7280" }}>
-              {showArchived ? "Unarchive" : "Archive"}
-            </Button>
-          </Popconfirm>
-        </div>
-      ),
-    },
-  ];
-
   const filtered = (() => {
     let byTab = tab === "all" ? requests : requests.filter(r => r.status === tab);
     if (projectFilter) byTab = byTab.filter(r => r.projectId === projectFilter);
     const q = search.trim().toLowerCase();
-    if (!q) return byTab;
-    return byTab.filter(r =>
-      r.reqNo.toLowerCase().includes(q) ||
-      r.workOrderNo.toLowerCase().includes(q) ||
-      r.vendorName.toLowerCase().includes(q) ||
-      (r.vendorCode || "").toLowerCase().includes(q) ||
-      r.projectName.toLowerCase().includes(q) ||
-      (r.category || "").toLowerCase().includes(q)
-    );
+    if (q) {
+      byTab = byTab.filter(r =>
+        r.reqNo.toLowerCase().includes(q) ||
+        r.workOrderNo.toLowerCase().includes(q) ||
+        r.vendorName.toLowerCase().includes(q) ||
+        (r.vendorCode || "").toLowerCase().includes(q) ||
+        r.projectName.toLowerCase().includes(q) ||
+        (r.category || "").toLowerCase().includes(q)
+      );
+    }
+    return byTab;
   })();
+  const paged = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
   const viewTotal = viewReq ? viewReq.items.reduce((s, it) => s + (it.rate ?? 0) * it.billedQty, 0) : 0;
 
+  const pendingCount = requests.filter(r => r.status === "pending").length;
+  const allSelected = paged.length > 0 && selectedIds.length === paged.length;
+  const toggleAll = () => setSelectedIds(allSelected ? [] : paged.map(r => r._id));
+  const toggleOne = (id: string) => setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+
   return (
-    <PageShell
-      title="Bill Requests"
-      description="DRI payment requests reviewed and converted to running bills."
-    >
-      <Tabs
-        activeKey={tab}
-        onChange={setTab}
-        items={[
-          { key: "pending",  label: <span>Pending {requests.filter(r => r.status === "pending").length > 0 && <Badge count={requests.filter(r => r.status === "pending").length} style={{ background: "#f59e0b" }} />}</span>  },
-          { key: "approved", label: "Approved" },
-          { key: "rejected", label: "Rejected" },
-          { key: "all",      label: "All"      },
-        ]}
-        style={{ marginBottom: 16 }}
+    <div>
+      <PageHeader
+        title="Bill Requests"
+        subtitle="DRI payment requests reviewed and converted to running bills."
+        icon={FileText}
       />
 
-      <div style={{ marginBottom: 16, display: "flex", gap: 10, flexWrap: "wrap" }}>
-        <Input
-          allowClear
-          placeholder="Search by request no, work order, contractor, vendor code or project…"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          style={{ maxWidth: 440, borderRadius: 8 }}
-          prefix={<span style={{ color: "#9ca3af", marginRight: 4 }}>🔍</span>}
+      <div className="mb-4">
+        <Segmented
+          value={tab}
+          onChange={v => { setTab(v); setPage(1); }}
+          options={[
+            { value: "pending", label: <span className="flex items-center gap-1.5">Pending {pendingCount > 0 && <Badge color="amber" small>{pendingCount}</Badge>}</span> },
+            { value: "approved", label: "Approved" },
+            { value: "rejected", label: "Rejected" },
+            { value: "all", label: "All" },
+          ]}
         />
-        <Select
-          allowClear
-          showSearch
-          placeholder="Filter by project…"
-          value={projectFilter}
-          onChange={setProjectFilter}
-          options={projectOptions}
-          filterOption={(input, option) => (option?.label ?? "").toLowerCase().includes(input.toLowerCase())}
-          style={{ minWidth: 240 }}
-        />
-        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#6B7280" }}>
-          <Switch size="small" checked={showArchived} onChange={setShowArchived} />
-          Show Archived
-        </label>
-        {selectedRowKeys.length > 0 && (
-          <Popconfirm
-            title={showArchived ? `Unarchive ${selectedRowKeys.length} request(s)?` : `Archive ${selectedRowKeys.length} request(s)?`}
-            onConfirm={archiveSelected}
-          >
-            <Button icon={<InboxOutlined />} loading={archiving}>
-              {showArchived ? "Unarchive" : "Archive"} Selected ({selectedRowKeys.length})
-            </Button>
-          </Popconfirm>
+      </div>
+
+      <div className="mb-4 flex gap-2.5 flex-wrap items-center">
+        <SearchFilter value={search} onChange={v => { setSearch(v); setPage(1); }} placeholder="Search by request no, work order, contractor, vendor code or project…" />
+        <div className="w-60">
+          <SField value={projectFilter || null} onChange={v => { setProjectFilter(v); setPage(1); }} placeholder="Filter by project…" options={projectOptions} />
+        </div>
+        <Switch checked={showArchived} onChange={setShowArchived} onLabel="Archived" offLabel="Active" />
+        {selectedIds.length > 0 && (
+          <Btn icon={Inbox} loading={archiving} label={`${showArchived ? "Unarchive" : "Archive"} Selected (${selectedIds.length})`} onClick={() => setBulkArchiveConfirm(true)} />
         )}
       </div>
 
       {loading ? (
-        <div style={{ textAlign: "center", padding: 60 }}><Spin size="large" /></div>
+        <Spinner label="Loading bill requests…" />
       ) : filtered.length === 0 ? (
-        <Empty description={search ? `No results for "${search}"` : `No ${tab === "all" ? "" : tab} bill requests`} />
+        <div className="text-center py-14 text-gray-400">{search ? `No results for "${search}"` : `No ${tab === "all" ? "" : tab} bill requests`}</div>
       ) : (
-        <Table
-          dataSource={filtered}
-          columns={columns}
-          rowKey="_id"
-          size="middle"
-          pagination={{ pageSize: 20 }}
-          rowSelection={{
-            selectedRowKeys,
-            onChange: (keys) => setSelectedRowKeys(keys as string[]),
-          }}
-        />
+        <>
+          <Table>
+            <Thead>
+              <Tr>
+                <Th><Checkbox checked={allSelected} onChange={toggleAll} /></Th>
+                <Th>Stage / Request</Th>
+                <Th>Work Order</Th>
+                <Th>Project</Th>
+                <Th>Contractor</Th>
+                <Th>Period</Th>
+                <Th>Items</Th>
+                <Th>Requested By</Th>
+                <Th>Date</Th>
+                <Th>Status</Th>
+                <Th>Actions</Th>
+              </Tr>
+            </Thead>
+            <Tbody>
+              {paged.map(r => {
+                const cfg = STATUS_CFG[r.status] ?? { color: "orange" as const, label: r.status };
+                return (
+                  <Tr key={r._id}>
+                    <Td><Checkbox checked={selectedIds.includes(r._id)} onChange={() => toggleOne(r._id)} /></Td>
+                    <Td>
+                      <div className="flex gap-1.5 items-center">
+                        {r.stageNo && <Badge color="orange" small>S{r.stageNo}</Badge>}
+                        <button type="button" onClick={() => setViewReq(r)} className="bg-transparent border-none cursor-pointer text-primary font-bold font-mono text-[13px] p-0">
+                          {r.reqNo}
+                        </button>
+                      </div>
+                      {r.milestoneAchieved && <span className="text-[10px] text-primary flex items-center gap-1"><Trophy className="w-2.5 h-2.5" /> Milestone</span>}
+                    </Td>
+                    <Td>
+                      <code className="cursor-pointer text-blue-500" onClick={() => r.workOrderId && navigate(`/work-items/${r.workOrderId}`)}>{r.workOrderNo}</code>
+                    </Td>
+                    <Td>
+                      <TdText>{r.projectName}</TdText>
+                      {r.projectLocation && <div className="text-[11px] text-gray-400">{r.projectLocation}</div>}
+                    </Td>
+                    <Td><TdText>{r.vendorName}</TdText></Td>
+                    <Td>
+                      {r.periodFrom ? (
+                        <span className="text-xs text-gray-500">{dayjs(r.periodFrom).format("DD MMM")} → {dayjs(r.periodTo ?? r.createdAt).format("DD MMM YYYY")}</span>
+                      ) : <span className="text-gray-300">—</span>}
+                    </Td>
+                    <Td><TdText>{r.items.length} item{r.items.length !== 1 ? "s" : ""}</TdText></Td>
+                    <Td><TdText>{r.requestedBy?.name || "—"}</TdText></Td>
+                    <Td><TdText>{dayjs(r.createdAt).format("DD MMM YYYY")}</TdText></Td>
+                    <Td><Badge color={cfg.color}>{cfg.label}</Badge></Td>
+                    <Td>
+                      <div className="flex gap-1.5 flex-wrap">
+                        <Btn small outline icon={Eye} label="View" onClick={() => setViewReq(r)} />
+                        {r.status === "pending" && (
+                          <>
+                            <Btn small color="green" icon={CheckCircle2} label="Approve" onClick={() => openApprove(r._id)} />
+                            <Btn small color="red" icon={XCircle} label="Reject" onClick={() => { setRejectTarget(r._id); setRejectModal(true); }} />
+                          </>
+                        )}
+                        <Btn small outline icon={Inbox} label={showArchived ? "Unarchive" : "Archive"} onClick={() => setArchiveTarget(r)} />
+                      </div>
+                    </Td>
+                  </Tr>
+                );
+              })}
+            </Tbody>
+          </Table>
+          {filtered.length > PAGE_SIZE && (
+            <div className="flex items-center justify-between mt-4">
+              <span className="text-xs text-gray-400">{filtered.length} requests</span>
+              <Pagination page={page} totalPages={Math.ceil(filtered.length / PAGE_SIZE)} onChange={setPage} />
+            </div>
+          )}
+        </>
       )}
 
       {/* View / Approve Modal */}
-      <Modal
-        open={!!viewReq}
-        onCancel={() => setViewReq(null)}
-        title={
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span>Bill Request — {viewReq?.reqNo}</span>
-            {viewReq?.stageNo && (
-              <span style={{ background: "#FFF4E8", border: "1px solid #FF7A00", color: "#FF7A00", fontSize: 11, fontWeight: 800, padding: "2px 8px", borderRadius: 6 }}>
-                Stage {viewReq.stageNo}
-              </span>
-            )}
-            {viewReq?.milestoneAchieved && (
-              <span style={{ background: "#FF7A00", color: "#fff", fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 6 }}>
-                🏆 Milestone
-              </span>
-            )}
-          </div>
-        }
-        width={720}
-        footer={
-          viewReq?.status === "pending" ? (
-            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-              <Button onClick={() => setViewReq(null)}>Close</Button>
-              <Button danger onClick={() => { setRejectTarget(viewReq._id); setRejectModal(true); setViewReq(null); }}>Reject</Button>
-              <Button type="primary" onClick={() => { openApprove(viewReq._id); setViewReq(null); }}>Approve & Generate Bill</Button>
+      {viewReq && (
+        <Modal
+          title={
+            <div className="flex items-center gap-2">
+              <span>Bill Request — {viewReq.reqNo}</span>
+              {viewReq.stageNo && <Badge color="orange" small>Stage {viewReq.stageNo}</Badge>}
+              {viewReq.milestoneAchieved && (
+                <span className="inline-flex items-center gap-1 bg-primary text-white text-[11px] font-bold px-2 py-0.5 rounded-md"><Trophy className="w-3 h-3" /> Milestone</span>
+              )}
             </div>
-          ) : viewReq?.status === "approved" && !viewReq?.milestoneAchieved ? (
-            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-              <Button onClick={() => setViewReq(null)}>Close</Button>
-              <Button
-                type="primary"
-                icon={<TrophyOutlined />}
-                style={{ background: "#FF7A00", borderColor: "#FF7A00" }}
-                onClick={() => { setViewReq(null); navigate("/accounts-payment"); }}
-              >
-                Manage in Accounts Payment →
-              </Button>
-            </div>
-          ) : (
-            <Button onClick={() => setViewReq(null)}>Close</Button>
-          )
-        }
-      >
-        {viewReq && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          }
+          wide
+          onClose={() => setViewReq(null)}
+          footer={
+            viewReq.status === "pending" ? (
+              <div className="flex gap-2 justify-end">
+                <Btn label="Close" outline onClick={() => setViewReq(null)} />
+                <Btn label="Reject" color="red" onClick={() => { setRejectTarget(viewReq._id); setRejectModal(true); setViewReq(null); }} />
+                <Btn label="Approve & Generate Bill" color="primary" onClick={() => { openApprove(viewReq._id); setViewReq(null); }} />
+              </div>
+            ) : viewReq.status === "approved" && !viewReq.milestoneAchieved ? (
+              <div className="flex gap-2 justify-end">
+                <Btn label="Close" outline onClick={() => setViewReq(null)} />
+                <Btn label="Manage in Accounts Payment →" icon={Trophy} color="primary" onClick={() => { setViewReq(null); navigate("/accounts-payment"); }} />
+              </div>
+            ) : (
+              <Btn label="Close" outline onClick={() => setViewReq(null)} />
+            )
+          }
+        >
+          <div className="flex flex-col gap-3.5">
             {/* Header info */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, background: "#f9fafb", padding: 14, borderRadius: 8 }}>
+            <div className="grid grid-cols-2 gap-2 bg-gray-50 dark:bg-gray-800/40 p-3.5 rounded-lg">
               {[
                 ["Work Order",    viewReq.workOrderNo],
                 ["Project",       viewReq.projectLocation ? `${viewReq.projectName} — ${viewReq.projectLocation}` : viewReq.projectName],
@@ -431,12 +381,12 @@ export default function BillRequests() {
                 ["Category",      [viewReq.category, viewReq.subCategory].filter(Boolean).join(" › ")],
                 ["Requested By",  viewReq.requestedBy?.name || "—"],
                 ["Date",          dayjs(viewReq.createdAt).format("DD MMM YYYY")],
-                ...(viewReq.periodFrom ? [["Period", `${dayjs(viewReq.periodFrom).format("DD MMM YYYY")} → ${dayjs(viewReq.periodTo ?? viewReq.createdAt).format("DD MMM YYYY")}`]] : []),
-                ...(viewReq.billId ? [["Bill No.", viewReq.billId.billNo + " — " + fmt(viewReq.billId.amount)]] : []),
+                ...(viewReq.periodFrom ? [["Period", `${dayjs(viewReq.periodFrom).format("DD MMM YYYY")} → ${dayjs(viewReq.periodTo ?? viewReq.createdAt).format("DD MMM YYYY")}`] as [string, string]] : []),
+                ...(viewReq.billId ? [["Bill No.", viewReq.billId.billNo + " — " + fmt(viewReq.billId.amount)] as [string, string]] : []),
               ].map(([label, val]) => (
                 <div key={label}>
-                  <div style={{ fontSize: 10, color: "#6B7280", textTransform: "uppercase", letterSpacing: "0.06em" }}>{label}</div>
-                  <div style={{ fontWeight: 600, color: "#111827", fontSize: 13 }}>{val}</div>
+                  <div className="text-[10px] text-gray-500 dark:text-gray-400 uppercase tracking-wide">{label}</div>
+                  <div className="font-semibold text-[#1A1A2E] dark:text-[#F1F5F9] text-[13px]">{val}</div>
                 </div>
               ))}
             </div>
@@ -457,64 +407,60 @@ export default function BillRequests() {
 
             {/* Items table */}
             <div>
-              <div style={{ fontWeight: 700, fontSize: 12, color: "#374151", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Scope Items</div>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                <thead>
-                  <tr style={{ background: "#1F2937", color: "#fff" }}>
-                    {["Description", "Unit", "Qty Billed", "Rate", "Amount"].map(h => (
-                      <th key={h} style={{ padding: "6px 10px", textAlign: "left", fontSize: 11 }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
+              <div className="font-bold text-xs text-gray-600 dark:text-gray-300 mb-1.5 uppercase tracking-wide">Scope Items</div>
+              <Table>
+                <Thead>
+                  <Tr>
+                    <Th>Description</Th>
+                    <Th>Unit</Th>
+                    <Th className="text-right">Qty Billed</Th>
+                    <Th className="text-right">Rate</Th>
+                    <Th className="text-right">Amount</Th>
+                  </Tr>
+                </Thead>
+                <Tbody>
                   {viewReq.items.map((it, i) => {
                     const amt = (it.rate ?? 0) * it.billedQty;
                     return (
-                      <tr key={i} style={{ borderBottom: "1px solid #E5E7EB", background: i % 2 === 0 ? "#fff" : "#F9FAFB" }}>
-                        <td style={{ padding: "6px 10px" }}>{it.description}</td>
-                        <td style={{ padding: "6px 10px" }}>{it.unit}</td>
-                        <td style={{ padding: "6px 10px", textAlign: "right", fontFamily: "monospace" }}>{it.billedQty.toLocaleString("en-IN")}</td>
-                        <td style={{ padding: "6px 10px", textAlign: "right" }}>
-                          {it.rate ? fmt(it.rate) : <span style={{ color: "#9CA3AF" }}>pending</span>}
-                        </td>
-                        <td style={{ padding: "6px 10px", textAlign: "right", fontWeight: 600 }}>
-                          {it.rate ? fmt(amt) : <span style={{ color: "#9CA3AF" }}>—</span>}
-                        </td>
-                      </tr>
+                      <Tr key={i}>
+                        <Td>{it.description}</Td>
+                        <Td>{it.unit}</Td>
+                        <Td className="text-right font-mono">{it.billedQty.toLocaleString("en-IN")}</Td>
+                        <Td className="text-right">{it.rate ? fmt(it.rate) : <span className="text-gray-400">pending</span>}</Td>
+                        <Td className="text-right font-semibold">{it.rate ? fmt(amt) : <span className="text-gray-400">—</span>}</Td>
+                      </Tr>
                     );
                   })}
-                </tbody>
+                </Tbody>
                 {viewTotal > 0 && (
                   <tfoot>
-                    <tr style={{ borderTop: "2px solid #FF7A00", background: "#FFF8F3" }}>
-                      <td colSpan={4} style={{ padding: "8px 10px", fontWeight: 700, textAlign: "right", color: "#FF7A00" }}>Gross Total</td>
-                      <td style={{ padding: "8px 10px", fontWeight: 700, color: "#111827", textAlign: "right" }}>{fmt(viewTotal)}</td>
-                    </tr>
-                    {(viewReq?.billId?.retentionPercent ?? 0) > 0 && (
-                      <tr style={{ background: "#fff1f2" }}>
-                        <td colSpan={4} style={{ padding: "6px 10px", textAlign: "right", color: "#e03b3b", fontWeight: 600 }}>
-                          Retention @ {viewReq!.billId!.retentionPercent}%
-                        </td>
-                        <td style={{ padding: "6px 10px", textAlign: "right", color: "#e03b3b", fontWeight: 600, fontFamily: "monospace" }}>
-                          − {fmt(viewReq!.billId!.retentionAmount ?? Math.round(viewTotal * (viewReq!.billId!.retentionPercent ?? 0) / 100))}
-                        </td>
-                      </tr>
+                    <Tr className="bg-primary/5">
+                      <Td colSpan={4} className="font-bold text-right text-primary">Gross Total</Td>
+                      <Td className="font-bold text-right text-[#1A1A2E] dark:text-[#F1F5F9]">{fmt(viewTotal)}</Td>
+                    </Tr>
+                    {(viewReq.billId?.retentionPercent ?? 0) > 0 && (
+                      <Tr className="bg-red-50 dark:bg-red-500/10">
+                        <Td colSpan={4} className="text-right font-semibold text-red-600 dark:text-red-400">Retention @ {viewReq.billId!.retentionPercent}%</Td>
+                        <Td className="text-right font-semibold font-mono text-red-600 dark:text-red-400">
+                          − {fmt(viewReq.billId!.retentionAmount ?? Math.round(viewTotal * (viewReq.billId!.retentionPercent ?? 0) / 100))}
+                        </Td>
+                      </Tr>
                     )}
-                    {(viewReq?.billId?.retentionPercent ?? 0) > 0 && (
-                      <tr style={{ background: "#f0fdf4" }}>
-                        <td colSpan={4} style={{ padding: "8px 10px", fontWeight: 700, textAlign: "right", color: "#16a34a" }}>Net Release</td>
-                        <td style={{ padding: "8px 10px", fontWeight: 700, color: "#16a34a", textAlign: "right", fontFamily: "monospace" }}>
-                          {fmt(viewTotal - (viewReq!.billId!.retentionAmount ?? Math.round(viewTotal * (viewReq!.billId!.retentionPercent ?? 0) / 100)))}
-                        </td>
-                      </tr>
+                    {(viewReq.billId?.retentionPercent ?? 0) > 0 && (
+                      <Tr className="bg-emerald-50 dark:bg-emerald-500/10">
+                        <Td colSpan={4} className="font-bold text-right text-emerald-600 dark:text-emerald-400">Net Release</Td>
+                        <Td className="font-bold text-right font-mono text-emerald-600 dark:text-emerald-400">
+                          {fmt(viewTotal - (viewReq.billId!.retentionAmount ?? Math.round(viewTotal * (viewReq.billId!.retentionPercent ?? 0) / 100)))}
+                        </Td>
+                      </Tr>
                     )}
                   </tfoot>
                 )}
-              </table>
+              </Table>
             </div>
 
             {viewReq.remarks && (
-              <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 6, padding: 10, fontSize: 13 }}>
+              <div className="bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 rounded-md px-2.5 py-2 text-sm text-amber-800 dark:text-amber-300">
                 <strong>Remarks:</strong> {viewReq.remarks}
               </div>
             )}
@@ -528,44 +474,21 @@ export default function BillRequests() {
               const paid    = b.paidAmount;
               const tdsAmt  = paid != null ? Math.max(0, Math.round(netPay - advRec - paid)) : 0;
               return (
-                <div style={{ background: "#f0fdf4", border: "1px solid #86efac", borderRadius: 8, padding: 12, fontSize: 13 }}>
-                  <div style={{ fontWeight: 700, marginBottom: 8, color: "#166534" }}>
-                    Running Bill: {b.billNo}
-                  </div>
-                  <div style={{ fontFamily: "monospace", fontSize: 12, display: "flex", flexDirection: "column", gap: 3 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between" }}>
-                      <span style={{ color: "#6B7280" }}>Gross Billed</span>
-                      <span style={{ fontWeight: 600 }}>{fmt(gross)}</span>
-                    </div>
-                    {retAmt > 0 && <div style={{ display: "flex", justifyContent: "space-between" }}>
-                      <span style={{ color: "#dc2626" }}>Hold / Retention{(b.retentionPercent ?? 0) > 0 ? ` @ ${b.retentionPercent}%` : ""}</span>
-                      <span style={{ color: "#dc2626" }}>− {fmt(retAmt)}</span>
-                    </div>}
-                    {gstAmt > 0 && <div style={{ display: "flex", justifyContent: "space-between" }}>
-                      <span style={{ color: "#16a34a" }}>GST @ {b.gstPercent}%</span>
-                      <span style={{ color: "#16a34a" }}>+ {fmt(gstAmt)}</span>
-                    </div>}
-                    <div style={{ display: "flex", justifyContent: "space-between", borderTop: "1px solid #86efac", paddingTop: 4, marginTop: 2, fontWeight: 700 }}>
-                      <span>Net Payable</span>
-                      <span>{fmt(netPay)}</span>
-                    </div>
-                    {advRec > 0 && <div style={{ display: "flex", justifyContent: "space-between", marginTop: 2 }}>
-                      <span style={{ color: "#d97706" }}>Less: Advance Recovery</span>
-                      <span style={{ color: "#d97706" }}>− {fmt(advRec)}</span>
-                    </div>}
-                    {tdsAmt > 0 && <div style={{ display: "flex", justifyContent: "space-between" }}>
-                      <span style={{ color: "#dc2626" }}>Less: TDS Deducted</span>
-                      <span style={{ color: "#dc2626" }}>− {fmt(tdsAmt)}</span>
-                    </div>}
-                    {paid != null && <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700, color: "#16a34a", fontSize: 13, marginTop: 4, borderTop: "1px solid #86efac", paddingTop: 4 }}>
-                      <span>Actually Paid</span>
-                      <span>{fmt(paid)}</span>
-                    </div>}
+                <div className="bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-300 dark:border-emerald-500/30 rounded-lg p-3 text-sm">
+                  <div className="font-bold mb-2 text-emerald-800 dark:text-emerald-300">Running Bill: {b.billNo}</div>
+                  <div className="font-mono text-xs flex flex-col gap-0.5">
+                    <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">Gross Billed</span><span className="font-semibold">{fmt(gross)}</span></div>
+                    {retAmt > 0 && <div className="flex justify-between text-red-600 dark:text-red-400"><span>Hold / Retention{(b.retentionPercent ?? 0) > 0 ? ` @ ${b.retentionPercent}%` : ""}</span><span>− {fmt(retAmt)}</span></div>}
+                    {gstAmt > 0 && <div className="flex justify-between text-emerald-600 dark:text-emerald-400"><span>GST @ {b.gstPercent}%</span><span>+ {fmt(gstAmt)}</span></div>}
+                    <div className="flex justify-between border-t border-emerald-300 dark:border-emerald-500/30 pt-1 mt-0.5 font-bold"><span>Net Payable</span><span>{fmt(netPay)}</span></div>
+                    {advRec > 0 && <div className="flex justify-between mt-0.5 text-amber-600 dark:text-amber-400"><span>Less: Advance Recovery</span><span>− {fmt(advRec)}</span></div>}
+                    {tdsAmt > 0 && <div className="flex justify-between text-red-600 dark:text-red-400"><span>Less: TDS Deducted</span><span>− {fmt(tdsAmt)}</span></div>}
+                    {paid != null && <div className="flex justify-between font-bold text-emerald-600 dark:text-emerald-400 text-[13px] mt-1 border-t border-emerald-300 dark:border-emerald-500/30 pt-1"><span>Actually Paid</span><span>{fmt(paid)}</span></div>}
                   </div>
                   {viewReq.milestoneAchieved && viewReq.milestoneDate && (
-                    <div style={{ marginTop: 8, color: "#FF7A00", fontWeight: 600 }}>
-                      🏆 Payment Released: {dayjs(viewReq.milestoneDate).format("DD MMM YYYY")}
-                      {b.paymentUTR && <span style={{ fontFamily: "monospace", marginLeft: 8, fontSize: 12, color: "#7c3aed" }}>UTR: {b.paymentUTR}</span>}
+                    <div className="mt-2 text-primary font-semibold flex items-center gap-1.5">
+                      <Trophy className="w-3.5 h-3.5" /> Payment Released: {dayjs(viewReq.milestoneDate).format("DD MMM YYYY")}
+                      {b.paymentUTR && <span className="font-mono ml-2 text-xs text-purple-600 dark:text-purple-400">UTR: {b.paymentUTR}</span>}
                     </div>
                   )}
                 </div>
@@ -573,64 +496,68 @@ export default function BillRequests() {
             })()}
 
             {viewReq.status === "rejected" && viewReq.rejectReason && (
-              <div style={{ background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: 6, padding: 10, fontSize: 13 }}>
+              <div className="bg-red-50 dark:bg-red-500/10 border border-red-300 dark:border-red-500/30 rounded-md px-2.5 py-2 text-sm text-red-700 dark:text-red-300">
                 <strong>Reject Reason:</strong> {viewReq.rejectReason}
               </div>
             )}
           </div>
-        )}
-      </Modal>
+        </Modal>
+      )}
 
       {/* AGM Approve Modal — stage 1: sets hold/advance breakdown, then approves */}
-      <Modal
-        open={approveModal}
-        onCancel={() => { setApproveModal(false); setApproveTarget(null); }}
-        onOk={handleApprove}
-        title="Approve Bill Request — AGM Sign-off"
-        okText="Approve & Generate Bill"
-        okButtonProps={{ loading: saving }}
-        destroyOnClose
-      >
-        <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 14 }}>
-          A running bill will be generated for the amounts below. Leave a field blank to use the work order's automatic retention calculation.
-        </div>
-        <div style={{ marginBottom: 12 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Hold / Retention Amount (₹)</div>
-          <InputNumber
-            style={{ width: "100%" }} min={0}
-            placeholder="Auto-calculated from work order retention %"
-            value={approveRetention}
-            onChange={v => setApproveRetention(v)}
-          />
-        </div>
-        <div>
-          <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Advance Recovery Amount (₹)</div>
-          <InputNumber
-            style={{ width: "100%" }} min={0}
-            placeholder="0"
-            value={approveAdvance}
-            onChange={v => setApproveAdvance(v)}
-          />
-        </div>
-      </Modal>
+      {approveModal && (
+        <Modal
+          title="Approve Bill Request — AGM Sign-off"
+          onClose={() => { setApproveModal(false); setApproveTarget(null); }}
+          footer={<Btn label="Approve & Generate Bill" color="primary" loading={saving} onClick={handleApprove} />}
+        >
+          <div className="text-xs text-gray-500 dark:text-gray-400 mb-3.5">
+            A running bill will be generated for the amounts below. Leave a field blank to use the work order's automatic retention calculation.
+          </div>
+          <div className="flex flex-col gap-3">
+            <Field
+              label="Hold / Retention Amount (₹)" type="number" min={0}
+              placeholder="Auto-calculated from work order retention %"
+              value={approveRetention} onChange={e => setApproveRetention(e.target.value)}
+            />
+            <Field
+              label="Advance Recovery Amount (₹)" type="number" min={0}
+              placeholder="0"
+              value={approveAdvance} onChange={e => setApproveAdvance(e.target.value)}
+            />
+          </div>
+        </Modal>
+      )}
 
       {/* Reject Modal */}
-      <Modal
-        open={rejectModal}
-        onCancel={() => { setRejectModal(false); setRejectReason(""); setRejectTarget(null); }}
-        onOk={handleReject}
-        title="Reject Bill Request"
-        okText="Confirm Rejection"
-        okButtonProps={{ danger: true, loading: saving }}
-      >
-        <Input.TextArea
-          rows={3}
-          placeholder="Reason for rejection (optional)"
-          value={rejectReason}
-          onChange={e => setRejectReason(e.target.value)}
-        />
-      </Modal>
+      {rejectModal && (
+        <Modal
+          title="Reject Bill Request"
+          onClose={() => { setRejectModal(false); setRejectReason(""); setRejectTarget(null); }}
+          footer={<Btn label="Confirm Rejection" color="red" loading={saving} onClick={handleReject} />}
+        >
+          <Field textarea rows={3} placeholder="Reason for rejection (optional)" value={rejectReason} onChange={e => setRejectReason(e.target.value)} />
+        </Modal>
+      )}
 
-    </PageShell>
+      {archiveTarget && (
+        <ConfirmModal
+          title={showArchived ? `Unarchive ${archiveTarget.reqNo}?` : `Archive ${archiveTarget.reqNo}?`}
+          message={showArchived ? "It will reappear in the normal list." : "It will be hidden from the normal list (and its linked bill, if any), but not deleted."}
+          confirmLabel={showArchived ? "Unarchive" : "Archive"}
+          onConfirm={archiveOne} onCancel={() => setArchiveTarget(null)}
+        />
+      )}
+
+      {bulkArchiveConfirm && (
+        <ConfirmModal
+          title={showArchived ? `Unarchive ${selectedIds.length} request(s)?` : `Archive ${selectedIds.length} request(s)?`}
+          message={showArchived ? "They will reappear in the normal list." : "They will be hidden from the normal list, but not deleted."}
+          confirmLabel={showArchived ? "Unarchive" : "Archive"}
+          loading={archiving}
+          onConfirm={archiveSelected} onCancel={() => setBulkArchiveConfirm(false)}
+        />
+      )}
+    </div>
   );
 }

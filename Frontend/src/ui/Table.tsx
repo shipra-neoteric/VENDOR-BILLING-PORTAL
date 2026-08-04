@@ -26,6 +26,14 @@ export function Tbody({ children, ...rest }: HTMLAttributes<HTMLTableSectionElem
   );
 }
 
+export function Tfoot({ children, ...rest }: HTMLAttributes<HTMLTableSectionElement>) {
+  return (
+    <tfoot className="border-t-2 border-gray-200 dark:border-gray-700/40" {...rest}>
+      {children}
+    </tfoot>
+  );
+}
+
 export function Tr({ children, className = "", ...rest }: HTMLAttributes<HTMLTableRowElement>) {
   return (
     <tr className={["hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors", className].join(" ")} {...rest}>

@@ -1,12 +1,15 @@
 import { useEffect, useState } from "react";
-import { Form, Select, DatePicker, InputNumber, Button, Card, Typography, Space, Spin, Result } from "antd";
-import { CheckCircleOutlined, TeamOutlined } from "@ant-design/icons";
+import { Users, CheckCircle2 } from "lucide-react";
 import axios from "axios";
 import dayjs from "dayjs";
+import toast from "react-hot-toast";
 import { WORK_TYPE_OPTIONS, SHIFT_TYPE_OPTIONS } from "../../shared/constants/labourReportOptions";
-import type { LabourReportFormValues } from "../../shared/constants/labourReportOptions";
-
-const { Title, Text } = Typography;
+import Btn from "../../ui/Btn";
+import Card from "../../ui/Card";
+import Field from "../../ui/Field";
+import SField from "../../ui/SField";
+import { DatePicker } from "../../ui/DatePicker";
+import Spinner from "../../ui/Spinner";
 
 const BASE = (import.meta.env.VITE_API_URL || "http://localhost:5000/api").replace(/^﻿/, "");
 const pub = axios.create({ baseURL: BASE.replace(/\/api$/, "/api/public") });
@@ -18,13 +21,15 @@ pub.interceptors.response.use(r => {
 interface Lookup { _id: string; name: string; }
 interface ContractorLookup { vendorCode: string; companyName: string; }
 
+const emptyForm = { vendorCode: "", projectId: "", date: dayjs().format("YYYY-MM-DD"), workType: "", shiftType: "", labourCount: "" };
+
 export default function PublicLabourReportForm() {
-  const [form] = Form.useForm();
   const [projects, setProjects]       = useState<Lookup[]>([]);
   const [contractors, setContractors] = useState<ContractorLookup[]>([]);
   const [loading, setLoading]         = useState(true);
   const [submitting, setSubmitting]   = useState(false);
   const [submitted, setSubmitted]     = useState(false);
+  const [form, setForm] = useState(emptyForm);
 
   useEffect(() => {
     Promise.all([pub.get("/projects"), pub.get("/contractors")])
@@ -36,10 +41,17 @@ export default function PublicLabourReportForm() {
       .finally(() => setLoading(false));
   }, []);
 
-  async function onFinish(vals: LabourReportFormValues & { date: dayjs.Dayjs }) {
+  async function onSubmit() {
+    if (!form.vendorCode) return toast.error("Select a contractor");
+    if (!form.projectId) return toast.error("Select a location");
+    if (!form.date) return toast.error("Select a date");
+    if (!form.workType) return toast.error("Select a work type");
+    if (!form.shiftType) return toast.error("Select a shift");
+    if (form.labourCount === "" || Number(form.labourCount) < 0) return toast.error("Enter number of labourers");
+
     setSubmitting(true);
     try {
-      await pub.post("/daily-labour-reports", { ...vals, date: vals.date.toISOString() });
+      await pub.post("/daily-labour-reports", { ...form, labourCount: Number(form.labourCount), date: dayjs(form.date).toISOString() });
       setSubmitted(true);
     } catch {
       // axios interceptor shows the error toast
@@ -49,112 +61,90 @@ export default function PublicLabourReportForm() {
   }
 
   function reset() {
-    form.resetFields();
+    setForm(emptyForm);
     setSubmitted(false);
   }
 
   if (loading) {
     return (
-      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f8f9fb" }}>
-        <Spin size="large" tip="Loading form…" />
+      <div className="min-h-screen flex items-center justify-center bg-[#f8f9fb]">
+        <Spinner label="Loading form…" />
       </div>
     );
   }
 
   if (submitted) {
     return (
-      <div style={{ minHeight: "100vh", background: "#f8f9fb", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 24 }}>
-        <Card style={{ maxWidth: 480, width: "100%", textAlign: "center", borderRadius: 16, boxShadow: "0 4px 24px rgba(0,0,0,0.08)" }}>
-          <Result
-            icon={<CheckCircleOutlined style={{ color: "#16a85a", fontSize: 64 }} />}
-            title="Labour Report Submitted!"
-            subTitle={<Text>Thanks — today's labour count has been recorded.</Text>}
-            extra={
-              <Button type="primary" onClick={reset} style={{ background: "#0d9488", borderColor: "#0d9488" }}>
-                Submit Another
-              </Button>
-            }
-          />
+      <div className="min-h-screen bg-[#f8f9fb] flex flex-col items-center justify-center p-6">
+        <Card className="max-w-[480px] w-full text-center py-10">
+          <CheckCircle2 className="w-16 h-16 text-emerald-500 mx-auto mb-4" />
+          <div className="text-xl font-bold text-[#1a1f2e] mb-2">Labour Report Submitted!</div>
+          <p className="text-gray-500 mb-6">Thanks — today's labour count has been recorded.</p>
+          <Btn label="Submit Another" style={{ background: "#0d9488", borderColor: "#0d9488" }} onClick={reset} />
         </Card>
       </div>
     );
   }
 
   return (
-    <div style={{ minHeight: "100vh", background: "#f8f9fb" }}>
-      <div style={{
-        background: "#fff", borderBottom: "1px solid #eaedf2", padding: "0 24px",
-        display: "flex", alignItems: "center", height: 60,
-        position: "sticky", top: 0, zIndex: 100, boxShadow: "0 1px 4px rgba(0,0,0,0.06)",
-      }}>
-        <div style={{
-          width: 36, height: 36, borderRadius: 10, background: "#0d9488",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          color: "#fff", fontWeight: 800, fontSize: 18, marginRight: 12,
-        }}>N</div>
+    <div className="min-h-screen bg-[#f8f9fb]">
+      <div className="bg-white border-b border-gray-200 px-6 h-[60px] flex items-center sticky top-0 z-50 shadow-sm">
+        <div className="w-9 h-9 rounded-[10px] bg-[#0d9488] flex items-center justify-center text-white font-extrabold text-lg mr-3">N</div>
         <div>
-          <div style={{ fontWeight: 700, fontSize: 15, lineHeight: 1.2, color: "#1a1f2e" }}>Neoteric Properties</div>
-          <div style={{ fontSize: 11, color: "#9ba3b8" }}>Daily Contractor / Labour Report</div>
+          <div className="font-bold text-[15px] leading-tight text-[#1a1f2e]">Neoteric Properties</div>
+          <div className="text-[11px] text-gray-400">Daily Contractor / Labour Report</div>
         </div>
-        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
-          <TeamOutlined style={{ color: "#0d9488", fontSize: 18 }} />
-          <Text style={{ fontWeight: 600, color: "#1a1f2e" }}>Labour Report</Text>
+        <div className="ml-auto flex items-center gap-2">
+          <Users className="w-[18px] h-[18px] text-[#0d9488]" />
+          <span className="font-semibold text-[#1a1f2e]">Labour Report</span>
         </div>
       </div>
 
-      <div style={{ maxWidth: 560, margin: "0 auto", padding: "32px 16px 64px" }}>
-        <div style={{ marginBottom: 28 }}>
-          <Title level={3} style={{ margin: 0, color: "#1a1f2e" }}>Daily Contractor / Labour Report — All Sites</Title>
-          <Text type="secondary">Log today's on-site labour count per contractor and work type.</Text>
+      <div className="max-w-[560px] mx-auto px-4 py-8 pb-16">
+        <div className="mb-7">
+          <h3 className="text-2xl font-bold text-[#1a1f2e] m-0">Daily Contractor / Labour Report — All Sites</h3>
+          <p className="text-gray-500">Log today's on-site labour count per contractor and work type.</p>
         </div>
 
-        <Form form={form} layout="vertical" onFinish={onFinish} requiredMark="optional" initialValues={{ date: dayjs() }}>
-          <Card style={{ borderRadius: 12, boxShadow: "0 2px 12px rgba(0,0,0,0.05)" }}>
-            <Space direction="vertical" size={16} style={{ width: "100%" }}>
-              <Form.Item label="Contractor Name" name="vendorCode" rules={[{ required: true, message: "Select a contractor" }]} style={{ marginBottom: 0 }}>
-                <Select
-                  placeholder="Choose"
-                  showSearch
-                  filterOption={(inp, opt) => String(opt?.label ?? "").toLowerCase().includes(inp.toLowerCase())}
-                  options={contractors.map(c => ({ label: c.companyName, value: c.vendorCode }))}
-                />
-              </Form.Item>
-              <Form.Item label="Location" name="projectId" rules={[{ required: true, message: "Select a location" }]} style={{ marginBottom: 0 }}>
-                <Select
-                  placeholder="Choose"
-                  showSearch
-                  filterOption={(inp, opt) => String(opt?.label ?? "").toLowerCase().includes(inp.toLowerCase())}
-                  options={projects.map(p => ({ label: p.name, value: p._id }))}
-                />
-              </Form.Item>
-              <Form.Item label="Date" name="date" rules={[{ required: true, message: "Select a date" }]} style={{ marginBottom: 0 }}>
-                <DatePicker style={{ width: "100%" }} format="DD/MM/YYYY" disabledDate={d => d.isAfter(dayjs(), "day")} />
-              </Form.Item>
-              <Form.Item label="कार्य प्रकार (Work Type)" name="workType" rules={[{ required: true, message: "Select a work type" }]} style={{ marginBottom: 0 }}>
-                <Select
-                  placeholder="Choose"
-                  showSearch
-                  filterOption={(inp, opt) => String(opt?.label ?? "").toLowerCase().includes(inp.toLowerCase())}
-                  options={WORK_TYPE_OPTIONS.map(w => ({ label: w, value: w }))}
-                />
-              </Form.Item>
-              <Form.Item label="Shift Type" name="shiftType" rules={[{ required: true, message: "Select a shift" }]} style={{ marginBottom: 0 }}>
-                <Select placeholder="Choose" options={SHIFT_TYPE_OPTIONS.map(s => ({ label: s, value: s }))} />
-              </Form.Item>
-              <Form.Item label="श्रमिक संख्या (Number of Labourers)" name="labourCount" rules={[{ required: true, message: "Enter number of labourers" }]} style={{ marginBottom: 0 }}>
-                <InputNumber style={{ width: "100%" }} min={0} placeholder="e.g. 12" />
-              </Form.Item>
-            </Space>
-          </Card>
+        <Card className="flex flex-col gap-4">
+          <SField
+            label="Contractor Name" required placeholder="Choose"
+            value={form.vendorCode || null}
+            onChange={v => setForm(f => ({ ...f, vendorCode: v }))}
+            options={contractors.map(c => ({ label: c.companyName, value: c.vendorCode }))}
+          />
+          <SField
+            label="Location" required placeholder="Choose"
+            value={form.projectId || null}
+            onChange={v => setForm(f => ({ ...f, projectId: v }))}
+            options={projects.map(p => ({ label: p.name, value: p._id }))}
+          />
+          <DatePicker
+            label="Date" value={form.date}
+            onChange={v => setForm(f => ({ ...f, date: v }))}
+            max={dayjs().format("YYYY-MM-DD")}
+          />
+          <SField
+            label="कार्य प्रकार (Work Type)" required placeholder="Choose"
+            value={form.workType || null}
+            onChange={v => setForm(f => ({ ...f, workType: v }))}
+            options={WORK_TYPE_OPTIONS.map(w => ({ label: w, value: w }))}
+          />
+          <SField
+            label="Shift Type" required placeholder="Choose"
+            value={form.shiftType || null}
+            onChange={v => setForm(f => ({ ...f, shiftType: v }))}
+            options={SHIFT_TYPE_OPTIONS.map(s => ({ label: s, value: s }))}
+          />
+          <Field
+            label="श्रमिक संख्या (Number of Labourers)" required type="number" min={0}
+            placeholder="e.g. 12"
+            value={form.labourCount}
+            onChange={e => setForm(f => ({ ...f, labourCount: e.target.value }))}
+          />
+        </Card>
 
-          <Button
-            type="primary" htmlType="submit" size="large" block
-            loading={submitting}
-            style={{ background: "#0d9488", borderColor: "#0d9488", height: 48, fontWeight: 600, marginTop: 20 }}
-          >
-            Submit Report
-          </Button>
-        </Form>
+        <Btn label="Submit Report" style={{ background: "#0d9488", borderColor: "#0d9488" }} className="w-full mt-5" loading={submitting} onClick={onSubmit} />
       </div>
     </div>
   );

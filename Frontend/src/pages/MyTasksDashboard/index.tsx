@@ -1,12 +1,15 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Button, Empty, Spin } from "antd";
-import { FileTextOutlined, TeamOutlined, ClusterOutlined, ClockCircleOutlined } from "@ant-design/icons";
+import { FileText, Users, Network, Clock, LayoutList } from "lucide-react";
 import dayjs from "dayjs";
-import PageShell from "../../components/PageShell";
 import apiClient from "../../services/apiClient";
 import { useAuth } from "../../context/AuthContext";
-import StatCard from "../../shared/components/StatCard";
+import PageHeader from "../../ui/PageHeader";
+import KPICard from "../../ui/KPICard";
+import Card from "../../ui/Card";
+import Badge from "../../ui/Badge";
+import Btn from "../../ui/Btn";
+import Spinner from "../../ui/Spinner";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface BillRow {
@@ -39,37 +42,33 @@ function QueueSection({
   onOpen: (key: string) => void;
 }) {
   return (
-    <div style={{ background: "var(--nx-white)", border: "1px solid #e4e7ee", borderRadius: 12, overflow: "hidden", marginBottom: 20 }}>
-      <div style={{ padding: "14px 18px", borderBottom: "1px solid #e4e7ee", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <span style={{ fontWeight: 700, fontSize: 14, color: "var(--nx-text)" }}>{title}</span>
-          <span style={{ background: `${color}1a`, color, fontSize: 12, fontWeight: 700, padding: "2px 10px", borderRadius: 12 }}>{rows.length}</span>
-        </div>
+    <Card padded={false} className="overflow-hidden mb-5">
+      <div className="px-5 py-3.5 border-b border-gray-100 dark:border-gray-700/40 flex items-center gap-2.5">
+        <span className="font-bold text-sm text-[#1A1A2E] dark:text-[#F1F5F9]">{title}</span>
+        <span className="text-xs font-bold px-2.5 py-0.5 rounded-full" style={{ background: `${color}1a`, color }}>{rows.length}</span>
       </div>
       {rows.length === 0 ? (
-        <div style={{ padding: "28px 18px" }}><Empty description={emptyText} image={Empty.PRESENTED_IMAGE_SIMPLE} /></div>
+        <div className="py-8 px-5 text-center text-sm text-gray-400">{emptyText}</div>
       ) : (
         <div>
           {rows.map(r => (
-            <div key={r.key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "12px 18px", borderBottom: "1px solid #f3f4f6" }}>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontWeight: 700, fontSize: 13, color: "var(--nx-text)" }}>{r.label}</div>
-                <div style={{ fontSize: 12, color: "var(--nx-text-2)", marginTop: 2 }}>{r.sub}</div>
+            <div key={r.key} className="flex items-center justify-between gap-3 px-5 py-3 border-b border-gray-50 dark:border-gray-700/30 last:border-b-0">
+              <div className="min-w-0">
+                <div className="font-bold text-[13px] text-[#1A1A2E] dark:text-[#F1F5F9]">{r.label}</div>
+                <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{r.sub}</div>
               </div>
-              <div style={{ textAlign: "right", flexShrink: 0, display: "flex", alignItems: "center", gap: 14 }}>
-                <div>
-                  {r.amount != null && <div style={{ fontFamily: "monospace", fontWeight: 700, color, fontSize: 14 }}>{fmt(r.amount)}</div>}
-                  <div style={{ fontSize: 11, color: "var(--nx-text-muted)" }}>{r.when}</div>
+              <div className="flex items-center gap-3.5 shrink-0">
+                <div className="text-right">
+                  {r.amount != null && <div className="font-mono font-bold text-sm" style={{ color }}>{fmt(r.amount)}</div>}
+                  <div className="text-[11px] text-gray-400">{r.when}</div>
                 </div>
-                <Button size="small" type="primary" style={{ background: color, borderColor: color }} onClick={() => onOpen(r.key)}>
-                  {buttonLabel}
-                </Button>
+                <Btn small label={buttonLabel} style={{ background: color, borderColor: color }} onClick={() => onOpen(r.key)} />
               </div>
             </div>
           ))}
         </div>
       )}
-    </div>
+    </Card>
   );
 }
 
@@ -111,13 +110,7 @@ export default function MyTasksDashboard() {
       .finally(() => setLoading(false));
   }, []);
 
-  if (loading) {
-    return (
-      <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: 300 }}>
-        <Spin size="large" tip="Loading your tasks…" />
-      </div>
-    );
-  }
+  if (loading) return <Spinner label="Loading your tasks…" />;
 
   // Work orders currently sitting at a stage assigned to this role.
   const myWOInstances = woInstances.filter(inst => {
@@ -167,31 +160,32 @@ export default function MyTasksDashboard() {
   const roleLabel = role === "gm" ? "General Manager" : role === "agm" ? "AGM" : role === "accounts" ? "Accounts" : "";
 
   return (
-    <PageShell
-      title={`Welcome back, ${user?.name?.split(" ")[0] || roleLabel}`}
-      description={`Here's what's waiting on your approval right now.`}
-    >
+    <div>
+      <PageHeader
+        title={`Welcome back, ${user?.name?.split(" ")[0] || roleLabel}`}
+        subtitle="Here's what's waiting on your approval right now."
+        icon={LayoutList}
+      />
+
       {(role === "gm" || role === "agm") && (
         <>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(178px, 1fr))", gap: 14, marginBottom: 20 }}>
-            <StatCard label="Pending L1 (AGM)" value={billReqs.length} icon={<ClockCircleOutlined />} accent="#d97706" />
-            <StatCard label="Pending L2 (GM)" value={billReqsGm.length} icon={<ClockCircleOutlined />} accent="#2563eb" />
-            <StatCard label="Today's Progress Entries" value={kpis.progressEntriesToday} icon={<FileTextOutlined />} accent="#16a34a" />
-            <StatCard label="Active DRIs Today" value={kpis.drisActiveToday} icon={<TeamOutlined />} accent="#7c3aed" />
-            <StatCard label="Active Projects Today" value={kpis.projectsActiveToday} icon={<ClusterOutlined />} accent="#0d9488" />
+          <div className="grid gap-3.5 [grid-template-columns:repeat(auto-fit,minmax(178px,1fr))] mb-5">
+            <KPICard label="Pending L1 (AGM)" value={billReqs.length} icon={Clock} accent="#d97706" />
+            <KPICard label="Pending L2 (GM)" value={billReqsGm.length} icon={Clock} accent="#2563eb" />
+            <KPICard label="Today's Progress Entries" value={kpis.progressEntriesToday} icon={FileText} accent="#16a34a" />
+            <KPICard label="Active DRIs Today" value={kpis.drisActiveToday} icon={Users} accent="#7c3aed" />
+            <KPICard label="Active Projects Today" value={kpis.projectsActiveToday} icon={Network} accent="#0d9488" />
           </div>
 
-          <div style={{ background: "var(--nx-white)", border: "1px solid #e4e7ee", borderRadius: 12, padding: "16px 18px", marginBottom: 20, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+          <Card className="mb-5 flex items-center justify-between flex-wrap gap-2.5">
             <div>
-              <div style={{ fontWeight: 700, fontSize: 14, color: "var(--nx-text)" }}>Site Progress</div>
-              <div style={{ fontSize: 12, color: "var(--nx-text-2)", marginTop: 2 }}>
+              <div className="font-bold text-sm text-[#1A1A2E] dark:text-[#F1F5F9]">Site Progress</div>
+              <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                 See what DRI has been logging project-by-project, approve any over-plan progress, and carry a bill through AGM (L1) and GM (L2) approval.
               </div>
             </div>
-            <Button type="primary" style={{ background: "#FF7A00", borderColor: "#FF7A00" }} onClick={() => navigate("/site-progress")}>
-              Open Site Progress →
-            </Button>
-          </div>
+            <Btn label="Open Site Progress →" color="primary" onClick={() => navigate("/site-progress")} />
+          </Card>
         </>
       )}
 
@@ -256,8 +250,10 @@ export default function MyTasksDashboard() {
       )}
 
       {!role && (
-        <Empty description="No task queues configured for your role" />
+        <div className="text-center py-16 text-gray-400">
+          <Badge color="gray">No task queues configured for your role</Badge>
+        </div>
       )}
-    </PageShell>
+    </div>
   );
 }

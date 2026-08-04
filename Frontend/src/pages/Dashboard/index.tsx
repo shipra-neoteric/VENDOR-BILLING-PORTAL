@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { Segmented, DatePicker, Select, Skeleton, Alert, notification } from "antd";
 import dayjs from "dayjs";
 import type { Dayjs } from "dayjs";
+import toast from "react-hot-toast";
 import apiClient from "../../services/apiClient";
 import { useDPRData } from "../../features/dashboard/hooks/useDPRData";
 import { selectableProjects } from "../../utils/projectOptions";
@@ -10,6 +10,12 @@ import FinancialView from "./FinancialView";
 import { ReportSummaryHeader, ReportToolbar } from "../../features/dashboard/components/ReportToolbar";
 import type { ComparisonMode } from "../../features/dashboard/components/MiniCharts";
 import { useDueReportSchedules } from "../../features/dashboard/hooks/useReportSchedules";
+import Segmented from "../../ui/Segmented";
+import { DatePicker, DateRangePicker } from "../../ui/DatePicker";
+import { SelectFilter } from "../../ui/Filters";
+import SField from "../../ui/SField";
+import { Skeleton } from "../../ui/Skeleton";
+import Alert from "../../ui/Alert";
 
 interface ProjectOption { _id: string; name: string; parentId?: string | null; }
 type ViewType = "operational" | "financial" | "both";
@@ -24,7 +30,7 @@ export default function Dashboard() {
   const [view, setView] = useState<ViewType>("both");
   const [date, setDate] = useState<Dayjs>(dayjs());
   const [rangePreset, setRangePreset] = useState<RangePreset>("today");
-  const [customRange, setCustomRange] = useState<[Dayjs, Dayjs]>([dayjs().subtract(6, "day"), dayjs()]);
+  const [customRange, setCustomRange] = useState<[string, string]>([dayjs().subtract(6, "day").format("YYYY-MM-DD"), dayjs().format("YYYY-MM-DD")]);
   const [projectId, setProjectId] = useState<string>("all");
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [comparisonMode, setComparisonMode] = useState<ComparisonMode>("yesterday");
@@ -52,7 +58,7 @@ export default function Dashboard() {
       return { dprDateFrom: null as string | null, dprDateTo: now.format("YYYY-MM-DD") };
     }
     // custom
-    return { dprDateFrom: customRange[0].format("YYYY-MM-DD"), dprDateTo: customRange[1].format("YYYY-MM-DD") };
+    return { dprDateFrom: customRange[0], dprDateTo: customRange[1] };
   }, [rangePreset, date, customRange]);
 
   useEffect(() => {
@@ -63,10 +69,9 @@ export default function Dashboard() {
   useEffect(() => {
     if (!dueSchedules?.length) return;
     dueSchedules.forEach(s => {
-      notification.info({
-        message: "Scheduled report ready",
-        description: `Your ${s.timeOfDay} ${s.viewType} report for ${s.projectName} is ready to view — switch views above and download it.`,
-        placement: "topRight",
+      toast(`Your ${s.timeOfDay} ${s.viewType} report for ${s.projectName} is ready to view — switch views above and download it.`, {
+        icon: "🔔",
+        duration: 6000,
       });
     });
   }, [dueSchedules]);
@@ -76,40 +81,36 @@ export default function Dashboard() {
   const projectLabel = projectId === "all" ? "All Projects" : selectableProjects(projects).find(p => p._id === projectId)?.name ?? "All Projects";
 
   return (
-    <div style={{ paddingBottom: 40 }}>
+    <div className="pb-10">
       {/* Header */}
-      <div style={{ marginBottom: 20, display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
+      <div className="mb-5 flex justify-between items-start flex-wrap gap-3">
         <div>
-          <h1 style={{ fontSize: 26, fontWeight: 700, margin: 0, color: "var(--nx-text)" }}>Project Cost Center</h1>
-          <p style={{ color: "var(--nx-text-2)", marginTop: 4, marginBottom: 0 }}>
+          <h1 className="text-2xl font-bold text-[#1A1A2E] dark:text-[#F1F5F9] m-0">Project Cost Center</h1>
+          <p className="text-gray-500 dark:text-gray-400 mt-1 mb-0">
             Daily progress, billing, and payment MIS — operational and financial views.
           </p>
         </div>
         <Segmented
           value={view}
-          onChange={v => setView(v as ViewType)}
+          onChange={setView}
           options={[
             { label: "🏗️ Operational", value: "operational" },
             { label: "💰 Financial", value: "financial" },
             { label: "🔎 Both", value: "both" },
           ]}
-          size="large"
         />
       </div>
 
       {/* Filters */}
-      <div style={{ display: "flex", gap: 12, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}>
+      <div className="flex gap-3 mb-4 flex-wrap items-center">
         <DatePicker
-          value={date}
-          onChange={d => setDate(d || dayjs())}
-          format="DD MMM YYYY"
-          allowClear={false}
+          value={date.format("YYYY-MM-DD")}
+          onChange={d => setDate(d ? dayjs(d) : dayjs())}
           disabled={rangePreset !== "today"}
         />
-        <Select
+        <SelectFilter
           value={rangePreset}
-          onChange={setRangePreset}
-          style={{ width: 150 }}
+          onChange={v => setRangePreset(v as RangePreset)}
           options={[
             { label: "All Time", value: "all" },
             { label: "Today", value: "today" },
@@ -119,20 +120,22 @@ export default function Dashboard() {
           ]}
         />
         {rangePreset === "custom" && (
-          <DatePicker.RangePicker
-            value={customRange}
-            onChange={v => { if (v && v[0] && v[1]) setCustomRange([v[0], v[1]]); }}
-            format="DD MMM YYYY"
-            allowClear={false}
+          <DateRangePicker
+            from={customRange[0]}
+            to={customRange[1]}
+            onChange={(from, to) => setCustomRange([from, to])}
           />
         )}
-        <Select
-          value={projectId} onChange={setProjectId} style={{ width: 220 }} showSearch
-          filterOption={(input, opt) => String(opt?.label ?? "").toLowerCase().includes(input.toLowerCase())}
-          options={[{ label: "All Projects", value: "all" }, ...selectableProjects(projects).map(p => ({ label: p.name, value: p._id }))]}
-        />
-        <Select
-          value={comparisonMode} onChange={setComparisonMode} style={{ width: 170 }}
+        <div className="w-56">
+          <SField
+            value={projectId}
+            onChange={setProjectId}
+            options={[{ label: "All Projects", value: "all" }, ...selectableProjects(projects).map(p => ({ label: p.name, value: p._id }))]}
+          />
+        </div>
+        <SelectFilter
+          value={comparisonMode}
+          onChange={v => setComparisonMode(v as ComparisonMode)}
           disabled={rangePreset !== "today"}
           options={[
             { label: "No Comparison", value: "none" },
@@ -144,22 +147,24 @@ export default function Dashboard() {
       </div>
 
       {isLoading ? (
-        <Skeleton active paragraph={{ rows: 8 }} />
+        <div className="space-y-3">
+          {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-6 w-full" />)}
+        </div>
       ) : error || !data ? (
-        <Alert type="error" showIcon message={(error as Error)?.message ?? "Failed to load MIS report"} style={{ margin: 24, borderRadius: 10 }} />
+        <div className="m-6"><Alert type="error" message={(error as Error)?.message ?? "Failed to load MIS report"} /></div>
       ) : view === "both" ? (
         <>
           {/* Operational section */}
-          <div style={{ fontSize: 15, fontWeight: 700, color: "var(--nx-text)", marginBottom: 10 }}>🏗️ Operational</div>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, background: "var(--nx-white)", border: "1px solid #E5E7EB", borderRadius: 10, padding: "12px 16px", marginBottom: 20 }}>
+          <div className="text-[15px] font-bold text-[#1A1A2E] dark:text-[#F1F5F9] mb-2.5">🏗️ Operational</div>
+          <div className="flex justify-between items-center flex-wrap gap-2.5 bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700/40 rounded-xl px-4 py-3 mb-5">
             <ReportSummaryHeader report={data} viewType="operational" projectLabel={projectLabel} />
             <ReportToolbar report={data} viewType="operational" projectLabel={projectLabel} projectId={projectId} />
           </div>
           <OperationalView data={data.operational} comparisonMode={comparisonMode} />
 
           {/* Financial section */}
-          <div style={{ fontSize: 15, fontWeight: 700, color: "var(--nx-text)", margin: "32px 0 10px", paddingTop: 24, borderTop: "1px solid #E5E7EB" }}>💰 Financial</div>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, background: "var(--nx-white)", border: "1px solid #E5E7EB", borderRadius: 10, padding: "12px 16px", marginBottom: 20 }}>
+          <div className="text-[15px] font-bold text-[#1A1A2E] dark:text-[#F1F5F9] mt-8 mb-2.5 pt-6 border-t border-gray-200 dark:border-gray-700/40">💰 Financial</div>
+          <div className="flex justify-between items-center flex-wrap gap-2.5 bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700/40 rounded-xl px-4 py-3 mb-5">
             <ReportSummaryHeader report={data} viewType="financial" projectLabel={projectLabel} />
             <ReportToolbar report={data} viewType="financial" projectLabel={projectLabel} projectId={projectId} />
           </div>
@@ -168,7 +173,7 @@ export default function Dashboard() {
       ) : (
         <>
           {/* Report summary + export toolbar */}
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, background: "var(--nx-white)", border: "1px solid #E5E7EB", borderRadius: 10, padding: "12px 16px", marginBottom: 20 }}>
+          <div className="flex justify-between items-center flex-wrap gap-2.5 bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700/40 rounded-xl px-4 py-3 mb-5">
             <ReportSummaryHeader report={data} viewType={view} projectLabel={projectLabel} />
             <ReportToolbar report={data} viewType={view} projectLabel={projectLabel} projectId={projectId} />
           </div>

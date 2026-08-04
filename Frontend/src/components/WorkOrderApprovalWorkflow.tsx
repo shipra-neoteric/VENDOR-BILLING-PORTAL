@@ -1,11 +1,15 @@
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
-import { Button, Input, Steps, message } from "antd";
-import { CheckCircleFilled, CloseCircleFilled, ExclamationCircleFilled } from "@ant-design/icons";
+import { Check, X, AlertTriangle } from "lucide-react";
+import toast from "react-hot-toast";
 import dayjs from "dayjs";
 import apiClient from "../services/apiClient";
 import { useAuth } from "../context/AuthContext";
 import type { AuthUser } from "../context/AuthContext";
+import Steps from "../ui/Steps";
+import type { StepItem } from "../ui/Steps";
+import Btn from "../ui/Btn";
+import Field from "../ui/Field";
 
 // ── Shared types ──────────────────────────────────────────────────────────────
 // A `by` actor field only ever comes back as a raw ObjectId string from the
@@ -93,14 +97,18 @@ function currentStageLabel(wo: ApprovalWorkOrder): { text: string; color: string
   }
 }
 
-const actionPanelStyle: React.CSSProperties = {
-  border: "1px solid #E5E7EB", borderRadius: 10, padding: "14px 16px", marginTop: 14, background: "#F9FAFB",
-};
-
 function MutedText({ text }: { text: string }) {
   return (
-    <div style={{ marginTop: 14, padding: "10px 14px", background: "#F9FAFB", border: "1px dashed #E5E7EB", borderRadius: 8, color: "#9CA3AF", fontSize: 12.5 }}>
+    <div className="mt-3.5 rounded-lg text-gray-400 text-[12.5px]" style={{ padding: "10px 14px", background: "#F9FAFB", border: "1px dashed #E5E7EB" }}>
       {text}
+    </div>
+  );
+}
+
+function ActionPanel({ children, background }: { children: ReactNode; background?: string }) {
+  return (
+    <div className="rounded-[10px] mt-3.5 border" style={{ padding: "14px 16px", background: background ?? "#F9FAFB", borderColor: background ? "#FECACA" : "#E5E7EB" }}>
+      {children}
     </div>
   );
 }
@@ -110,7 +118,7 @@ function MutedText({ text }: { text: string }) {
 // times, so this renders every entry (oldest first), not just the latest state.
 function ApprovalTimeline({ history, actorLabel }: { history: ApprovalHistoryEntry[]; actorLabel: (by: ActorRef | undefined, roleFallback: string) => string }) {
   if (!history || history.length === 0) {
-    return <div style={{ fontSize: 12.5, color: "#9CA3AF" }}>No workflow activity yet.</div>;
+    return <div className="text-[12.5px] text-gray-400">No workflow activity yet.</div>;
   }
   return (
     <div>
@@ -123,29 +131,37 @@ function ApprovalTimeline({ history, actorLabel }: { history: ApprovalHistoryEnt
         const verb  = h.action === "submitted" ? "submitted" : isApprove ? "approved" : isReopened ? "reopened this work order for editing" : "sent back";
         const roleLabel = STAGE_ROLE_LABEL[h.stage];
         return (
-          <div key={i} style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
-            <div style={{ flexShrink: 0, textAlign: "center" }}>
-              <div style={{ width: 26, height: 26, borderRadius: "50%", background: bg, border: `2px solid ${color}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, color }}>
-                {isReject ? "✕" : isReopened ? "↺" : isApprove ? "✓" : "●"}
+          <div key={i} className="flex gap-3 items-start">
+            <div className="shrink-0 text-center">
+              <div className="w-[26px] h-[26px] rounded-full flex items-center justify-center text-xs font-bold" style={{ background: bg, border: `2px solid ${color}`, color }}>
+                {isReject ? <X className="w-3 h-3" /> : isReopened ? "↺" : isApprove ? <Check className="w-3 h-3" /> : "●"}
               </div>
-              {i < history.length - 1 && <div style={{ width: 2, height: 30, background: "#E5E7EB", margin: "2px auto" }} />}
+              {i < history.length - 1 && <div className="w-0.5 h-[30px] bg-gray-200 mx-auto" style={{ marginTop: 2, marginBottom: 2 }} />}
             </div>
-            <div style={{ flex: 1, minWidth: 0, paddingBottom: 14 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: "#111827" }}>
+            <div className="flex-1 min-w-0 pb-3.5">
+              <div className="text-[13px] font-bold text-gray-900">
                 {isReopened ? actorLabel(h.by, roleLabel) : roleLabel} {verb}
                 {!isReopened && (
-                  <span style={{ fontWeight: 400, color: "#9CA3AF", marginLeft: 8, fontSize: 12 }}>
+                  <span className="font-normal text-gray-400 ml-2 text-xs">
                     {actorLabel(h.by, roleLabel)}{h.at ? ` · ${dayjs(h.at).format("DD MMM YYYY, hh:mm A")}` : ""}
                   </span>
                 )}
                 {isReopened && h.at && (
-                  <span style={{ fontWeight: 400, color: "#9CA3AF", marginLeft: 8, fontSize: 12 }}>
+                  <span className="font-normal text-gray-400 ml-2 text-xs">
                     · {dayjs(h.at).format("DD MMM YYYY, hh:mm A")}
                   </span>
                 )}
               </div>
               {h.remarks && (
-                <div style={{ fontSize: 12.5, color: isReject ? "#B91C1C" : isReopened ? "#92400E" : "#6B7280", marginTop: 4, background: isReject ? "#FEF2F2" : isReopened ? "#FFFBEB" : "#F9FAFB", border: `1px solid ${isReject ? "#FCA5A5" : isReopened ? "#FDE68A" : "#E5E7EB"}`, borderRadius: 6, padding: "6px 10px" }}>
+                <div
+                  className="text-[12.5px] mt-1 rounded-md border"
+                  style={{
+                    padding: "6px 10px",
+                    color: isReject ? "#B91C1C" : isReopened ? "#92400E" : "#6B7280",
+                    background: isReject ? "#FEF2F2" : isReopened ? "#FFFBEB" : "#F9FAFB",
+                    borderColor: isReject ? "#FCA5A5" : isReopened ? "#FDE68A" : "#E5E7EB",
+                  }}
+                >
                   {isReject ? "Reason: " : "Remarks: "}{h.remarks}
                 </div>
               )}
@@ -227,7 +243,7 @@ export default function WorkOrderApprovalWorkflow<T extends ApprovalWorkOrder>({
     return userMap[uid] || roleFallback;
   }
 
-  function buildApprovalSteps(): { title: string; description?: string; icon: ReactNode; status: "wait" | "process" | "finish" | "error" }[] {
+  function buildApprovalSteps(): StepItem[] {
     let currentIdx = 0;
     let rejectedIdx: number | null = null;
 
@@ -254,15 +270,15 @@ export default function WorkOrderApprovalWorkflow<T extends ApprovalWorkOrder>({
     };
 
     return STAGE_ORDER.map((stage, idx) => {
-      let status: "wait" | "process" | "finish" | "error" = "wait";
+      let status: StepItem["status"] = "wait";
       if (rejectedIdx !== null && idx === rejectedIdx) status = "error";
       else if (idx < currentIdx) status = "finish";
       else if (idx === currentIdx) status = "process";
 
-      let icon: ReactNode = <span style={{ fontWeight: 700 }}>{idx + 1}</span>;
-      if (status === "finish") icon = <CheckCircleFilled style={{ color: "#16A34A" }} />;
-      else if (status === "error") icon = <CloseCircleFilled style={{ color: "#DC2626" }} />;
-      else if (status === "process") icon = <ExclamationCircleFilled style={{ color: "#D97706" }} />;
+      let icon: ReactNode = undefined;
+      if (status === "finish") icon = <Check className="w-3.5 h-3.5" style={{ color: "#16A34A" }} />;
+      else if (status === "error") icon = <X className="w-3.5 h-3.5" style={{ color: "#DC2626" }} />;
+      else if (status === "process") icon = <AlertTriangle className="w-3.5 h-3.5" style={{ color: "#D97706" }} />;
 
       let description: string | undefined;
       if (status === "finish") {
@@ -282,10 +298,10 @@ export default function WorkOrderApprovalWorkflow<T extends ApprovalWorkOrder>({
     try {
       const res = await apiClient.patch(`/work-orders/${wo._id}/submit`, { remarks: submitRemarks });
       onUpdated(res.data.workOrder as T);
-      message.success("Submitted — awaiting checker review");
+      toast.success("Submitted — awaiting checker review");
     } catch (err: unknown) {
       const e = err as { response?: { data?: { message?: string } } };
-      message.error(e?.response?.data?.message || "Failed to submit");
+      toast.error(e?.response?.data?.message || "Failed to submit");
     } finally {
       setSubmitSaving(false);
     }
@@ -296,10 +312,10 @@ export default function WorkOrderApprovalWorkflow<T extends ApprovalWorkOrder>({
     try {
       const res = await apiClient.patch(`/work-orders/${wo._id}/checker-approve`, { remarks: checkerRemarks });
       onUpdated(res.data.workOrder as T);
-      message.success("Verified & approved — forwarded to approver");
+      toast.success("Verified & approved — forwarded to approver");
     } catch (err: unknown) {
       const e = err as { response?: { data?: { message?: string } } };
-      message.error(e?.response?.data?.message || "Failed to approve");
+      toast.error(e?.response?.data?.message || "Failed to approve");
     } finally {
       setCheckerSaving(false);
     }
@@ -310,10 +326,10 @@ export default function WorkOrderApprovalWorkflow<T extends ApprovalWorkOrder>({
     try {
       const res = await apiClient.patch(`/work-orders/${wo._id}/approver-approve`, { remarks: approverRemarks });
       onUpdated(res.data.workOrder as T);
-      message.success("Approved — forwarded for final approval");
+      toast.success("Approved — forwarded for final approval");
     } catch (err: unknown) {
       const e = err as { response?: { data?: { message?: string } } };
-      message.error(e?.response?.data?.message || "Failed to approve");
+      toast.error(e?.response?.data?.message || "Failed to approve");
     } finally {
       setApproverSaving(false);
     }
@@ -324,10 +340,10 @@ export default function WorkOrderApprovalWorkflow<T extends ApprovalWorkOrder>({
     try {
       const res = await apiClient.patch(`/work-orders/${wo._id}/final-approve`, { remarks: finalRemarks });
       onUpdated(res.data.workOrder as T);
-      message.success("Final approval granted — work order locked");
+      toast.success("Final approval granted — work order locked");
     } catch (err: unknown) {
       const e = err as { response?: { data?: { message?: string } } };
-      message.error(e?.response?.data?.message || "Failed to grant final approval");
+      toast.error(e?.response?.data?.message || "Failed to grant final approval");
     } finally {
       setFinalSaving(false);
     }
@@ -339,10 +355,10 @@ export default function WorkOrderApprovalWorkflow<T extends ApprovalWorkOrder>({
     try {
       const res = await apiClient.patch(`/work-orders/${wo._id}/send-back`, { reason: sendBackReason });
       onUpdated(res.data.workOrder as T);
-      message.success("Sent back to maker");
+      toast.success("Sent back to maker");
     } catch (err: unknown) {
       const e = err as { response?: { data?: { message?: string } } };
-      message.error(e?.response?.data?.message || "Failed to send back");
+      toast.error(e?.response?.data?.message || "Failed to send back");
     } finally {
       setSendBackSaving(false);
     }
@@ -353,21 +369,14 @@ export default function WorkOrderApprovalWorkflow<T extends ApprovalWorkOrder>({
   function renderWorkflowAction(): ReactNode {
     if (sendingBack) {
       return (
-        <div style={{ ...actionPanelStyle, background: "#FEF2F2", border: "1px solid #FECACA" }}>
-          <div style={{ fontWeight: 700, fontSize: 13, color: "#DC2626", marginBottom: 8 }}>Send Back to Maker</div>
-          <Input.TextArea
-            rows={3}
-            placeholder="Explain what needs to be corrected…"
-            value={sendBackReason}
-            onChange={(e) => setSendBackReason(e.target.value)}
-          />
-          <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-            <Button danger type="primary" loading={sendBackSaving} disabled={!sendBackReason.trim()} onClick={handleSendBackWO}>
-              Confirm Send Back
-            </Button>
-            <Button onClick={() => { setSendingBack(false); setSendBackReason(""); }}>Cancel</Button>
+        <ActionPanel background="#FEF2F2">
+          <div className="font-bold text-[13px] mb-2" style={{ color: "#DC2626" }}>Send Back to Maker</div>
+          <Field textarea rows={3} placeholder="Explain what needs to be corrected…" value={sendBackReason} onChange={(e) => setSendBackReason(e.target.value)} />
+          <div className="flex gap-2 mt-2.5">
+            <Btn color="red" loading={sendBackSaving} disabled={!sendBackReason.trim()} onClick={handleSendBackWO} label="Confirm Send Back" />
+            <Btn outline onClick={() => { setSendingBack(false); setSendBackReason(""); }} label="Cancel" />
           </div>
-        </div>
+        </ActionPanel>
       );
     }
 
@@ -378,73 +387,65 @@ export default function WorkOrderApprovalWorkflow<T extends ApprovalWorkOrder>({
           return <MutedText text={`Awaiting Maker to ${wo.approvalStatus === "sent-back" ? "revise and resubmit" : "submit"} this work order.`} />;
         }
         return (
-          <div style={actionPanelStyle}>
-            <div style={{ fontWeight: 700, fontSize: 13, color: "#FF7A00", marginBottom: 8 }}>
+          <ActionPanel>
+            <div className="font-bold text-[13px] mb-2 text-primary">
               {wo.approvalStatus === "sent-back" ? "Resubmit for Checker Review" : "Submit for Checker Review"}
             </div>
-            <Input.TextArea rows={2} placeholder="Remarks (optional)" value={submitRemarks} onChange={(e) => setSubmitRemarks(e.target.value)} />
-            <div style={{ marginTop: 10 }}>
-              <Button type="primary" style={{ background: "#FF7A00", borderColor: "#FF7A00" }} loading={submitSaving} onClick={handleSubmitWO}>
-                Submit
-              </Button>
+            <Field textarea rows={2} placeholder="Remarks (optional)" value={submitRemarks} onChange={(e) => setSubmitRemarks(e.target.value)} />
+            <div className="mt-2.5">
+              <Btn color="primary" loading={submitSaving} onClick={handleSubmitWO} label="Submit" />
             </div>
-          </div>
+          </ActionPanel>
         );
       }
 
       case "pending-checker": {
         if (!hasPerm(user, "checker")) return <MutedText text="Awaiting Checker Verification." />;
         return (
-          <div style={actionPanelStyle}>
-            <div style={{ fontWeight: 700, fontSize: 13, color: "#2563EB", marginBottom: 8 }}>Checker Verification</div>
-            <Input.TextArea rows={2} placeholder="Remarks (optional)" value={checkerRemarks} onChange={(e) => setCheckerRemarks(e.target.value)} />
-            <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-              <Button type="primary" style={{ background: "#16A34A", borderColor: "#16A34A" }} loading={checkerSaving} onClick={handleCheckerApproveWO}>
-                Verify & Approve
-              </Button>
-              <Button danger onClick={() => setSendingBack(true)}>Send Back</Button>
+          <ActionPanel>
+            <div className="font-bold text-[13px] mb-2" style={{ color: "#2563EB" }}>Checker Verification</div>
+            <Field textarea rows={2} placeholder="Remarks (optional)" value={checkerRemarks} onChange={(e) => setCheckerRemarks(e.target.value)} />
+            <div className="flex gap-2 mt-2.5">
+              <Btn color="green" loading={checkerSaving} onClick={handleCheckerApproveWO} label="Verify & Approve" />
+              <Btn color="red" onClick={() => setSendingBack(true)} label="Send Back" />
             </div>
-          </div>
+          </ActionPanel>
         );
       }
 
       case "pending-approver": {
         if (!hasPerm(user, "approver")) return <MutedText text="Awaiting Approver Approval." />;
         return (
-          <div style={actionPanelStyle}>
-            <div style={{ fontWeight: 700, fontSize: 13, color: "#D97706", marginBottom: 8 }}>Approver Approval</div>
-            <Input.TextArea rows={2} placeholder="Remarks (optional)" value={approverRemarks} onChange={(e) => setApproverRemarks(e.target.value)} />
-            <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-              <Button type="primary" style={{ background: "#16A34A", borderColor: "#16A34A" }} loading={approverSaving} onClick={handleApproverApproveWO}>
-                Verify & Approve
-              </Button>
-              <Button danger onClick={() => setSendingBack(true)}>Send Back</Button>
+          <ActionPanel>
+            <div className="font-bold text-[13px] mb-2" style={{ color: "#D97706" }}>Approver Approval</div>
+            <Field textarea rows={2} placeholder="Remarks (optional)" value={approverRemarks} onChange={(e) => setApproverRemarks(e.target.value)} />
+            <div className="flex gap-2 mt-2.5">
+              <Btn color="green" loading={approverSaving} onClick={handleApproverApproveWO} label="Verify & Approve" />
+              <Btn color="red" onClick={() => setSendingBack(true)} label="Send Back" />
             </div>
-          </div>
+          </ActionPanel>
         );
       }
 
       case "pending-final": {
         if (!hasPerm(user, "ceo-approve")) return <MutedText text="Awaiting Final (CEO/Owner) Approval." />;
         return (
-          <div style={actionPanelStyle}>
-            <div style={{ fontWeight: 700, fontSize: 13, color: "#7C3AED", marginBottom: 8 }}>Final Approval</div>
-            <Input.TextArea rows={2} placeholder="Remarks (optional)" value={finalRemarks} onChange={(e) => setFinalRemarks(e.target.value)} />
-            <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-              <Button type="primary" style={{ background: "#7C3AED", borderColor: "#7C3AED" }} loading={finalSaving} onClick={handleFinalApproveWO}>
-                Final Approval
-              </Button>
-              <Button danger onClick={() => setSendingBack(true)}>Send Back</Button>
+          <ActionPanel>
+            <div className="font-bold text-[13px] mb-2" style={{ color: "#7C3AED" }}>Final Approval</div>
+            <Field textarea rows={2} placeholder="Remarks (optional)" value={finalRemarks} onChange={(e) => setFinalRemarks(e.target.value)} />
+            <div className="flex gap-2 mt-2.5">
+              <Btn color="purple" loading={finalSaving} onClick={handleFinalApproveWO} label="Final Approval" />
+              <Btn color="red" onClick={() => setSendingBack(true)} label="Send Back" />
             </div>
-          </div>
+          </ActionPanel>
         );
       }
 
       case "approved":
         return (
-          <div style={{ marginTop: 14 }}>
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 700, color: "#16A34A", background: "#F0FDF4", border: "1px solid #86EFAC", borderRadius: 20, padding: "5px 14px" }}>
-              ✓ Approved · Locked
+          <div className="mt-3.5">
+            <span className="inline-flex items-center gap-1.5 text-[12.5px] font-bold rounded-full" style={{ color: "#16A34A", background: "#F0FDF4", border: "1px solid #86EFAC", padding: "5px 14px" }}>
+              <Check className="w-3.5 h-3.5" /> Approved · Locked
             </span>
           </div>
         );
@@ -457,27 +458,22 @@ export default function WorkOrderApprovalWorkflow<T extends ApprovalWorkOrder>({
   const stageInfo = currentStageLabel(wo);
 
   return (
-    <div style={{ background: "var(--nx-white)", border: "1px solid #E5E7EB", borderRadius: 12, padding: "18px 20px" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
-        <div style={{ fontSize: 11, fontWeight: 700, color: "#9CA3AF", textTransform: "uppercase", letterSpacing: "0.07em" }}>
+    <div className="bg-white dark:bg-[#1E293B] rounded-xl border border-gray-200 dark:border-gray-700/40" style={{ padding: "18px 20px" }}>
+      <div className="flex items-center justify-between flex-wrap gap-2 mb-4">
+        <div className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">
           Live Workflow
         </div>
-        <div style={{ fontSize: 13, fontWeight: 700, padding: "5px 14px", borderRadius: 20, color: stageInfo.color, background: stageInfo.bg, border: `1px solid ${stageInfo.color}` }}>
+        <div className="text-[13px] font-bold rounded-full" style={{ padding: "5px 14px", color: stageInfo.color, background: stageInfo.bg, border: `1px solid ${stageInfo.color}` }}>
           {stageInfo.text}
         </div>
       </div>
 
-      <div className="wo-steps" style={{ marginBottom: 18 }}>
-        <style>{`
-          .wo-steps .ant-steps-item-title, .wo-steps .ant-steps-item-description {
-            word-break: keep-all; overflow-wrap: normal; white-space: normal;
-          }
-        `}</style>
-        <Steps size="small" items={buildApprovalSteps()} />
+      <div className="mb-4.5">
+        <Steps items={buildApprovalSteps()} />
       </div>
 
-      <div style={{ borderTop: "1px solid #F3F4F6", paddingTop: 14 }}>
-        <div style={{ fontSize: 11, fontWeight: 700, color: "#6B7280", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 10 }}>
+      <div className="border-t border-gray-100 dark:border-gray-700/40 pt-3.5">
+        <div className="text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2.5">
           Workflow Timeline
         </div>
         <ApprovalTimeline history={wo.approvalHistory || []} actorLabel={actorLabel} />

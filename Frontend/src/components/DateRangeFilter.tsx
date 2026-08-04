@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { Select, DatePicker } from "antd";
 import type { Dayjs } from "dayjs";
 import dayjs from "dayjs";
 
@@ -22,9 +21,14 @@ export function inDateRange(
   return true;
 }
 
+const selectClass =
+  "h-9 px-2.5 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-[#0F172A] text-sm " +
+  "text-[#1A1A2E] dark:text-[#F1F5F9] focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary";
+
 export default function DateRangeFilter({ onChange }: Props) {
   const [preset, setPreset] = useState<Preset>("all");
-  const [customRange, setCustomRange] = useState<[Dayjs | null, Dayjs | null]>([null, null]);
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
 
   function applyPreset(p: Preset) {
     setPreset(p);
@@ -44,40 +48,50 @@ export default function DateRangeFilter({ onChange }: Props) {
       onChange(start, end);
       return;
     }
-    // custom — wait for range picker; clear previous resolved range
+    // custom — wait for the date inputs; clear previous resolved range
     onChange(null, null);
   }
 
   return (
-    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-      <Select
+    <div className="flex items-center gap-2">
+      <select
         value={preset}
-        onChange={applyPreset}
+        onChange={e => applyPreset(e.target.value as Preset)}
+        className={selectClass}
         style={{ width: 148 }}
-        options={[
-          { label: "All Time",     value: "all" },
-          { label: "Today",        value: "today" },
-          { label: "Current Week", value: "week" },
-          { label: "Last Week",    value: "lastweek" },
-          { label: "Custom Range", value: "custom" },
-        ]}
-      />
+      >
+        <option value="all">All Time</option>
+        <option value="today">Today</option>
+        <option value="week">Current Week</option>
+        <option value="lastweek">Last Week</option>
+        <option value="custom">Custom Range</option>
+      </select>
       {preset === "custom" && (
-        <DatePicker.RangePicker
-          value={customRange}
-          format="DD/MM/YYYY"
-          allowClear
-          onChange={range => {
-            const from = range?.[0] ?? null;
-            const to   = range?.[1] ?? null;
-            setCustomRange([from, to]);
-            onChange(
-              from ? from.startOf("day") : null,
-              to   ? to.endOf("day")     : null
-            );
-          }}
-          style={{ width: 230 }}
-        />
+        <div className="flex items-center gap-1.5">
+          <input
+            type="date"
+            value={customFrom}
+            className={selectClass}
+            style={{ width: 130, colorScheme: "light" }}
+            onChange={e => {
+              setCustomFrom(e.target.value);
+              const from = e.target.value ? dayjs(e.target.value).startOf("day") : null;
+              onChange(from, customTo ? dayjs(customTo).endOf("day") : null);
+            }}
+          />
+          <span className="text-gray-400 text-xs">to</span>
+          <input
+            type="date"
+            value={customTo}
+            className={selectClass}
+            style={{ width: 130, colorScheme: "light" }}
+            onChange={e => {
+              setCustomTo(e.target.value);
+              const to = e.target.value ? dayjs(e.target.value).endOf("day") : null;
+              onChange(customFrom ? dayjs(customFrom).startOf("day") : null, to);
+            }}
+          />
+        </div>
       )}
     </div>
   );

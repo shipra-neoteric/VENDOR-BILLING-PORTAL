@@ -1,8 +1,13 @@
 import { useState } from "react";
-import { Button, Modal, Input, message, Tag, Tooltip } from "antd";
+import toast from "react-hot-toast";
+import { Check } from "lucide-react";
 import dayjs from "dayjs";
 import apiClient from "../services/apiClient";
 import type { WorkflowInstance, WorkflowInstanceStage } from "../types/Workflow";
+import Modal from "../ui/Modal";
+import Btn from "../ui/Btn";
+import Badge from "../ui/Badge";
+import Field from "../ui/Field";
 
 type StepStatus = "completed" | "current" | "pending" | "breached";
 
@@ -63,43 +68,46 @@ export default function WorkflowInstanceStepper({
         stageId: stage._id,
         remarks: remarksText,
       });
-      message.success(`"${stage.name}" marked complete`);
+      toast.success(`"${stage.name}" marked complete`);
       setRemarksModal(null);
       setRemarks("");
       onChanged?.();
     } catch (err: unknown) {
       const e = err as { response?: { data?: { message?: string } } };
-      message.error(e?.response?.data?.message || "Failed to mark complete");
+      toast.error(e?.response?.data?.message || "Failed to mark complete");
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <div style={{ margin: compact ? "8px 0" : "14px 0 12px", padding: compact ? "10px 12px" : "12px 14px", background: "var(--nx-fill-2)", borderRadius: 10, border: "1px solid var(--nx-border)" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-        <div style={{ fontSize: 10, fontWeight: 700, color: "var(--nx-text-muted)", textTransform: "uppercase", letterSpacing: "0.07em" }}>
+    <div className="bg-gray-50 dark:bg-gray-800/40 rounded-[10px] border border-gray-200 dark:border-gray-700/40" style={{ margin: compact ? "8px 0" : "14px 0 12px", padding: compact ? "10px 12px" : "12px 14px" }}>
+      <div className="flex justify-between items-center mb-2.5">
+        <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
           {instance.templateName}
         </div>
-        {instance.status === "completed" && <Tag color="green">Completed</Tag>}
-        {instance.status === "cancelled" && <Tag>Cancelled</Tag>}
-        {instance.isBreached && instance.status === "in-progress" && <Tag color="red">SLA Breached</Tag>}
+        {instance.status === "completed" && <Badge color="green" small>Completed</Badge>}
+        {instance.status === "cancelled" && <Badge color="gray" small>Cancelled</Badge>}
+        {instance.isBreached && instance.status === "in-progress" && <Badge color="red" small>SLA Breached</Badge>}
       </div>
 
       {/* Circles + connectors */}
-      <div style={{ display: "flex", alignItems: "center" }}>
+      <div className="flex items-center">
         {stages.map((stage, i) => {
           const st = stageStatus(stage);
           const c = STEP_COLORS[st];
+          const tooltip = `${stage.name}${userName(stage.assignedUserId) ? ` — ${userName(stage.assignedUserId)}` : stage.assignedRole !== "any" ? ` — ${stage.assignedRole}` : ""}`;
           return (
-            <div key={stage._id} style={{ display: "flex", alignItems: "center", flex: i < stages.length - 1 ? 1 : "none" }}>
-              <Tooltip title={`${stage.name}${userName(stage.assignedUserId) ? ` — ${userName(stage.assignedUserId)}` : stage.assignedRole !== "any" ? ` — ${stage.assignedRole}` : ""}`}>
-                <div style={{ width: CIRCLE, height: CIRCLE, borderRadius: "50%", background: c.bg, border: `2.5px solid ${c.ring}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 12, fontWeight: 800, color: c.ring }}>
-                  {st === "completed" ? "✓" : <span style={{ fontSize: 10 }}>{i + 1}</span>}
-                </div>
-              </Tooltip>
+            <div key={stage._id} className={`flex items-center ${i < stages.length - 1 ? "flex-1" : ""}`}>
+              <div
+                title={tooltip}
+                className="rounded-full flex items-center justify-center shrink-0 font-extrabold"
+                style={{ width: CIRCLE, height: CIRCLE, background: c.bg, border: `2.5px solid ${c.ring}`, fontSize: 12, color: c.ring }}
+              >
+                {st === "completed" ? <Check className="w-3.5 h-3.5" /> : <span className="text-[10px]">{i + 1}</span>}
+              </div>
               {i < stages.length - 1 && (
-                <div style={{ flex: 1, height: 2.5, borderRadius: 2, background: stages[i + 1].status !== "pending" ? "#16a34a" : "var(--nx-border)", margin: "0 2px" }} />
+                <div className="flex-1 h-[2.5px] rounded mx-0.5" style={{ background: stages[i + 1].status !== "pending" ? "#16a34a" : "#E5E7EB" }} />
               )}
             </div>
           );
@@ -107,68 +115,56 @@ export default function WorkflowInstanceStepper({
       </div>
 
       {/* Labels */}
-      <div style={{ display: "flex", marginTop: 6 }}>
+      <div className="flex mt-1.5">
         {stages.map((stage, i) => (
-          <div key={stage._id} style={{ flex: i < stages.length - 1 ? 1 : "none", minWidth: CIRCLE, textAlign: "center", padding: "0 2px" }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: STEP_COLORS[stageStatus(stage)].text, lineHeight: 1.2 }}>{stage.name}</div>
+          <div key={stage._id} className={`text-center px-0.5 ${i < stages.length - 1 ? "flex-1" : ""}`} style={{ minWidth: CIRCLE }}>
+            <div className="text-[10px] font-bold leading-tight" style={{ color: STEP_COLORS[stageStatus(stage)].text }}>{stage.name}</div>
           </div>
         ))}
       </div>
 
       {/* Current stage detail card */}
       {currentStage && instance.status === "in-progress" && (
-        <div style={{ marginTop: 12, padding: "10px 12px", background: currentStage.breached ? "#fef2f2" : "#fff", border: `1px solid ${currentStage.breached ? "#fecaca" : "var(--nx-border)"}`, borderRadius: 8, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
-          <div style={{ fontSize: 12 }}>
-            <div style={{ fontWeight: 600, color: "var(--nx-text)" }}>{currentStage.name}</div>
-            <div style={{ color: "var(--nx-text-muted)", marginTop: 2 }}>
+        <div
+          className="mt-3 rounded-lg flex justify-between items-center flex-wrap gap-2 border"
+          style={{ padding: "10px 12px", background: currentStage.breached ? "#fef2f2" : "#fff", borderColor: currentStage.breached ? "#fecaca" : "#E5E7EB" }}
+        >
+          <div className="text-xs">
+            <div className="font-semibold text-[#1A1A2E]">{currentStage.name}</div>
+            <div className="text-gray-400 mt-0.5">
               {userName(currentStage.assignedUserId) || (currentStage.assignedRole !== "any" ? currentStage.assignedRole : "Anyone")}
               {currentStage.dueAt && <> · Due {dayjs(currentStage.dueAt).format("DD MMM, h:mm A")}</>}
             </div>
             {currentStage.breached && (
-              <Tag color="red" style={{ marginTop: 4 }}>
-                Overdue by {fmtDelay(Math.round((Date.now() - new Date(currentStage.dueAt!).getTime()) / 60000))}
-              </Tag>
+              <div className="mt-1"><Badge color="red" small>Overdue by {fmtDelay(Math.round((Date.now() - new Date(currentStage.dueAt!).getTime()) / 60000))}</Badge></div>
             )}
           </div>
           {canActOnStage(currentStage, userRole, userId) && (
-            <Button
-              size="small" type="primary"
-              style={{ background: "#16a85a", borderColor: "#16a85a" }}
-              onClick={() => setRemarksModal(currentStage)}
-            >
-              Mark as Complete
-            </Button>
+            <Btn small style={{ background: "#16a85a", borderColor: "#16a85a" }} label="Mark as Complete" onClick={() => setRemarksModal(currentStage)} />
           )}
         </div>
       )}
 
       {/* Completed stages — on-time/delayed badges */}
       {!compact && (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
+        <div className="flex flex-wrap gap-1.5 mt-2.5">
           {stages.filter(s => s.status === "completed").map(s => (
-            <Tag key={s._id} color={s.delayMinutes > 0 ? "red" : "green"}>
+            <Badge key={s._id} color={s.delayMinutes > 0 ? "red" : "green"} small>
               {s.name}: {s.delayMinutes > 0 ? `+${fmtDelay(s.delayMinutes)} late` : "On time"}
-            </Tag>
+            </Badge>
           ))}
         </div>
       )}
 
-      <Modal
-        open={!!remarksModal}
-        title={`Mark "${remarksModal?.name}" complete`}
-        onCancel={() => { setRemarksModal(null); setRemarks(""); }}
-        onOk={() => remarksModal && completeStage(remarksModal, remarks)}
-        confirmLoading={saving}
-        okText="Confirm Complete"
-        okButtonProps={{ style: { background: "#16a85a", borderColor: "#16a85a" } }}
-      >
-        <Input.TextArea
-          rows={3}
-          placeholder="Remarks (optional)"
-          value={remarks}
-          onChange={e => setRemarks(e.target.value)}
-        />
-      </Modal>
+      {remarksModal && (
+        <Modal
+          title={`Mark "${remarksModal.name}" complete`}
+          onClose={() => { setRemarksModal(null); setRemarks(""); }}
+          footer={<Btn label="Confirm Complete" style={{ background: "#16a85a", borderColor: "#16a85a" }} loading={saving} onClick={() => completeStage(remarksModal, remarks)} />}
+        >
+          <Field textarea rows={3} placeholder="Remarks (optional)" value={remarks} onChange={e => setRemarks(e.target.value)} />
+        </Modal>
+      )}
     </div>
   );
 }

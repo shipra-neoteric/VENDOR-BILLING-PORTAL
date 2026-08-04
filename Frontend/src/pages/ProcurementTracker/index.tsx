@@ -1,12 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
-import { Button, Col, Input, Row, Select, Space, Table, Tag } from "antd";
-import { SearchOutlined } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
 import dayjs from "dayjs";
-import PageShell from "../../components/PageShell";
+import { ClipboardList, CircleCheck } from "lucide-react";
 import apiClient from "../../services/apiClient";
-import StatCard from "../../shared/components/StatCard";
-import StatusTag from "../../shared/components/StatusTag";
+import PageHeader from "../../ui/PageHeader";
+import Btn from "../../ui/Btn";
+import KPICard from "../../ui/KPICard";
+import Badge from "../../ui/Badge";
+import StatusBadge from "../../ui/StatusBadge";
+import { FilterRow, SearchFilter, SelectFilter } from "../../ui/Filters";
+import { Table, Thead, Tbody, Tr, Th, Td, TdText } from "../../ui/Table";
+import Pagination from "../../ui/Pagination";
+import { SkeletonTable } from "../../ui/Skeleton";
 import { selectableProjects } from "../../utils/projectOptions";
 import { vendorLabel } from "../../utils/vendorLabel";
 import type { Contractor } from "../../types/VendorBilling";
@@ -54,18 +59,22 @@ function stageReached(status: string, stage: string): boolean {
 }
 
 function StageCell({ done, who, at }: { done: boolean; who?: string; at?: string }) {
-  if (!done) return <span style={{ color: "#C0C4CC" }}>—</span>;
+  if (!done) return <span className="text-gray-300 dark:text-gray-600">—</span>;
   return (
     <div>
-      <Tag color="green" style={{ fontSize: 11 }}>✓ Done</Tag>
+      <Badge color="green" small>
+        <CircleCheck className="w-3 h-3 mr-1" /> Done
+      </Badge>
       {(who || at) && (
-        <div style={{ fontSize: 10, color: "#9ba3b8", marginTop: 2 }}>
+        <div className="text-[10px] text-gray-400 mt-1">
           {who || ""}{who && at ? " · " : ""}{at ? dayjs(at).format("DD MMM") : ""}
         </div>
       )}
     </div>
   );
 }
+
+const PAGE_SIZE = 20;
 
 export default function ProcurementTracker() {
   const navigate = useNavigate();
@@ -75,9 +84,10 @@ export default function ProcurementTracker() {
   const [loading, setLoading] = useState(true);
 
   const [search, setSearch] = useState("");
-  const [projectFilter, setProjectFilter] = useState<string | undefined>(undefined);
-  const [vendorFilter, setVendorFilter] = useState<string | undefined>(undefined);
-  const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
+  const [projectFilter, setProjectFilter] = useState("");
+  const [vendorFilter, setVendorFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
     setLoading(true);
@@ -109,6 +119,11 @@ export default function ProcurementTracker() {
     }).sort((a, b) => (b.billDate || "").localeCompare(a.billDate || ""));
   }, [bills, search, projectFilter, vendorFilter, statusFilter, projects]);
 
+  const paged = useMemo(
+    () => filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    [filtered, page]
+  );
+
   const stats = useMemo(() => ({
     total:       bills.length,
     verifying:   bills.filter((b) => b.status === "draft").length,
@@ -119,95 +134,105 @@ export default function ProcurementTracker() {
     outstanding: bills.filter((b) => !["paid", "rejected"].includes(b.status)).reduce((s, b) => s + (b.amount || 0), 0),
   }), [bills]);
 
-  const columns = [
-    { title: "PO Number", dataIndex: "workOrderNo", width: 120, render: (v?: string) => v ? <span style={{ fontFamily: "monospace", color: "#2563EB", fontWeight: 700 }}>{v}</span> : <span style={{ color: "#C0C4CC" }}>—</span> },
-    { title: "Bill No", dataIndex: "billNo", width: 110, render: (v: string) => <span style={{ fontFamily: "monospace" }}>{v}</span> },
-    {
-      title: "Vendor / Project", key: "vendor", width: 220,
-      render: (_: unknown, r: BillRow) => (
-        <div>
-          <div style={{ fontWeight: 600 }}>{r.vendorName || "—"}</div>
-          <div style={{ fontSize: 11, color: "#9ba3b8" }}>{r.projectName || "—"}</div>
-        </div>
-      ),
-    },
-    { title: "Amount", dataIndex: "amount", width: 120, align: "right" as const, render: (v: number) => <span style={{ fontFamily: "monospace", fontWeight: 700 }}>{fmt(v)}</span> },
-    { title: "Verification", key: "verify", width: 110, render: (_: unknown, r: BillRow) => <StageCell done={stageReached(r.status, "verify-done")} who={r.verificationBy?.name} at={r.verificationAt} /> },
-    { title: "L1", key: "l1", width: 110, render: (_: unknown, r: BillRow) => <StageCell done={stageReached(r.status, "l1-approved")} who={r.l1ApprovedBy?.name} at={r.l1ApprovedAt} /> },
-    { title: "L2", key: "l2", width: 110, render: (_: unknown, r: BillRow) => <StageCell done={stageReached(r.status, "approved")} who={r.l2ApprovedBy?.name} at={r.l2ApprovedAt} /> },
-    { title: "Payment", key: "payment", width: 120, render: (_: unknown, r: BillRow) => r.status === "paid" ? <StageCell done who={r.paidAmount != null ? fmt(r.paidAmount) : undefined} at={r.paymentDate} /> : r.status === "sent-to-tms" ? <Tag color="processing" style={{ fontSize: 11 }}>Awaiting TMS</Tag> : <span style={{ color: "#C0C4CC" }}>—</span> },
-    { title: "Overall Status", dataIndex: "status", width: 150, render: (v: string) => <StatusTag status={v} /> },
-    {
-      title: "", key: "actions", width: 50,
-      render: () => (
-        <Button type="link" size="small" onClick={(e) => { e.stopPropagation(); navigate("/accounts-payment"); }}>Open →</Button>
-      ),
-    },
-  ];
-
   return (
-    <PageShell
-      title="Procurement Tracker"
-      description="Track every bill's Verification → L1 AGM → L2 Director → TMS Payment lifecycle in one place"
-      cta={
-        <Space>
-          <Button onClick={() => navigate("/accounts-payment")}>Accounts Payment</Button>
-          <Button type="primary" style={{ background: "#FF7A00", borderColor: "#FF7A00" }}>Procurement Tracker</Button>
-        </Space>
-      }
-    >
-      <Row gutter={[12, 12]} style={{ marginBottom: 20 }}>
-        <Col xs={12} sm={8} md={4}><StatCard label="Total Bills" value={stats.total} accent="#6B7280" /></Col>
-        <Col xs={12} sm={8} md={4}><StatCard label="Verifying" value={stats.verifying} accent="#FF7A00" /></Col>
-        <Col xs={12} sm={8} md={4}><StatCard label="Awaiting L1" value={stats.l1} accent="#0891b2" /></Col>
-        <Col xs={12} sm={8} md={4}><StatCard label="Awaiting L2" value={stats.l2} accent="#7C3AED" /></Col>
-        <Col xs={12} sm={8} md={4}><StatCard label="Sent to TMS" value={stats.sentToTms} accent="#1D4ED8" /></Col>
-        <Col xs={12} sm={8} md={4}><StatCard label="Outstanding" value={fmt(stats.outstanding)} accent="#DC2626" /></Col>
-      </Row>
+    <div>
+      <PageHeader
+        title="Procurement Tracker"
+        subtitle="Track every bill's Verification → L1 AGM → L2 Director → TMS Payment lifecycle in one place"
+        icon={ClipboardList}
+        actions={<Btn label="Accounts Payment" outline onClick={() => navigate("/accounts-payment")} />}
+      />
 
-      <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
-        <Col flex="1" style={{ minWidth: 220 }}>
-          <Input
-            prefix={<SearchOutlined style={{ color: "#9CA3AF" }} />}
-            placeholder="Search bill no., PO, vendor, project…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            allowClear
-          />
-        </Col>
-        <Col>
-          <Select
-            allowClear placeholder="Project" style={{ width: 200 }}
-            value={projectFilter} onChange={setProjectFilter}
-            options={selectableProjects(projects).map((p) => ({ value: p.id, label: p.name }))}
-          />
-        </Col>
-        <Col>
-          <Select
-            allowClear placeholder="Vendor" style={{ width: 220 }}
-            value={vendorFilter} onChange={setVendorFilter}
-            options={contractors.map((c) => ({ value: c.vendorCode, label: `${vendorLabel(c.companyName, c.shortCode)} (${c.vendorCode})` }))}
-          />
-        </Col>
-        <Col>
-          <Select
-            allowClear placeholder="Status" style={{ width: 170 }}
-            value={statusFilter} onChange={setStatusFilter}
-            options={["draft", "verify-done", "l1-approved", "approved", "sent-to-tms", "hold", "paid", "rejected"].map((s) => ({ value: s, label: s }))}
-          />
-        </Col>
-      </Row>
-
-      <div style={{ background: "var(--nx-white)", border: "1px solid #E5E7EB", borderRadius: 10, overflow: "hidden" }}>
-        <Table
-          rowKey="id"
-          loading={loading}
-          columns={columns}
-          dataSource={filtered}
-          scroll={{ x: 1300 }}
-          pagination={{ pageSize: 20, showSizeChanger: false }}
-        />
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 mb-5">
+        <KPICard label="Total Bills" value={stats.total} accent="#6B7280" />
+        <KPICard label="Verifying" value={stats.verifying} accent="#FF7A00" />
+        <KPICard label="Awaiting L1" value={stats.l1} accent="#0891b2" />
+        <KPICard label="Awaiting L2" value={stats.l2} accent="#7C3AED" />
+        <KPICard label="Sent to TMS" value={stats.sentToTms} accent="#1D4ED8" />
+        <KPICard label="Outstanding" value={fmt(stats.outstanding)} accent="#DC2626" />
       </div>
-    </PageShell>
+
+      <FilterRow>
+        <SearchFilter value={search} onChange={v => { setSearch(v); setPage(1); }} placeholder="Search bill no., PO, vendor, project…" />
+        <SelectFilter
+          value={projectFilter}
+          onChange={v => { setProjectFilter(v); setPage(1); }}
+          placeholder="All Projects"
+          options={selectableProjects(projects).map(p => ({ label: p.name, value: p.id }))}
+        />
+        <SelectFilter
+          value={vendorFilter}
+          onChange={v => { setVendorFilter(v); setPage(1); }}
+          placeholder="All Vendors"
+          options={contractors.map(c => ({ label: `${vendorLabel(c.companyName, c.shortCode)} (${c.vendorCode})`, value: c.vendorCode }))}
+        />
+        <SelectFilter
+          value={statusFilter}
+          onChange={v => { setStatusFilter(v); setPage(1); }}
+          placeholder="All Statuses"
+          options={["draft", "verify-done", "l1-approved", "approved", "sent-to-tms", "hold", "paid", "rejected"].map(s => ({ label: s, value: s }))}
+        />
+      </FilterRow>
+
+      {loading ? (
+        <SkeletonTable rows={6} cols={9} />
+      ) : (
+        <Table>
+          <Thead>
+            <Tr>
+              <Th>PO Number</Th>
+              <Th>Bill No</Th>
+              <Th>Vendor / Project</Th>
+              <Th className="text-right">Amount</Th>
+              <Th>Verification</Th>
+              <Th>L1</Th>
+              <Th>L2</Th>
+              <Th>Payment</Th>
+              <Th>Overall Status</Th>
+              <Th></Th>
+            </Tr>
+          </Thead>
+          <Tbody>
+            {paged.length === 0 && (
+              <Tr><Td colSpan={10}><div className="text-center text-gray-400 py-8">No bills match these filters</div></Td></Tr>
+            )}
+            {paged.map(r => (
+              <Tr key={r.id}>
+                <Td>{r.workOrderNo ? <span className="font-mono font-bold text-blue-600 dark:text-blue-400">{r.workOrderNo}</span> : <span className="text-gray-300 dark:text-gray-600">—</span>}</Td>
+                <Td><span className="font-mono"><TdText>{r.billNo}</TdText></span></Td>
+                <Td>
+                  <div className="font-semibold text-sm text-[#1A1A2E] dark:text-[#F1F5F9]">{r.vendorName || "—"}</div>
+                  <div className="text-xs text-gray-400">{r.projectName || "—"}</div>
+                </Td>
+                <Td className="text-right"><span className="font-mono font-bold"><TdText>{fmt(r.amount)}</TdText></span></Td>
+                <Td><StageCell done={stageReached(r.status, "verify-done")} who={r.verificationBy?.name} at={r.verificationAt} /></Td>
+                <Td><StageCell done={stageReached(r.status, "l1-approved")} who={r.l1ApprovedBy?.name} at={r.l1ApprovedAt} /></Td>
+                <Td><StageCell done={stageReached(r.status, "approved")} who={r.l2ApprovedBy?.name} at={r.l2ApprovedAt} /></Td>
+                <Td>
+                  {r.status === "paid" ? (
+                    <StageCell done who={r.paidAmount != null ? fmt(r.paidAmount) : undefined} at={r.paymentDate} />
+                  ) : r.status === "sent-to-tms" ? (
+                    <Badge color="blue" small>Awaiting TMS</Badge>
+                  ) : (
+                    <span className="text-gray-300 dark:text-gray-600">—</span>
+                  )}
+                </Td>
+                <Td><StatusBadge status={r.status} /></Td>
+                <Td>
+                  <Btn small outline label="Open →" onClick={() => navigate("/accounts-payment")} />
+                </Td>
+              </Tr>
+            ))}
+          </Tbody>
+        </Table>
+      )}
+
+      {filtered.length > PAGE_SIZE && (
+        <div className="flex items-center justify-between mt-4">
+          <span className="text-xs text-gray-400">{filtered.length} bills</span>
+          <Pagination page={page} totalPages={Math.ceil(filtered.length / PAGE_SIZE)} onChange={setPage} />
+        </div>
+      )}
+    </div>
   );
 }

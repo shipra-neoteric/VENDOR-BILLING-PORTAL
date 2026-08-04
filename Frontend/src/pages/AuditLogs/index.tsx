@@ -1,11 +1,15 @@
 import { useEffect, useState } from "react";
-import { Select, DatePicker, Table, Tag, Input, Empty } from "antd";
-import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
-import PageShell from "../../components/PageShell";
+import { ChevronDown, ChevronUp, History } from "lucide-react";
 import apiClient from "../../services/apiClient";
+import PageHeader from "../../ui/PageHeader";
+import { FilterRow, SearchFilter, SelectFilter } from "../../ui/Filters";
+import { DatePicker } from "../../ui/DatePicker";
+import { Table, Thead, Tbody, Tr, Th, Td, TdText } from "../../ui/Table";
+import Badge from "../../ui/Badge";
+import Pagination from "../../ui/Pagination";
+import { Skeleton } from "../../ui/Skeleton";
 
-// ── Types ─────────────────────────────────────────────────────────────────────
 type Action = "LOGIN" | "CREATE" | "UPDATE" | "DELETE" | "APPROVE" | "REJECT";
 
 interface LogRow {
@@ -21,14 +25,13 @@ interface LogRow {
   createdAt: string;
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-const ACTION_CFG: Record<Action, string> = {
-  LOGIN:   "default",
+const ACTION_COLOR: Record<Action, "gray" | "green" | "blue" | "red" | "amber" | "purple"> = {
+  LOGIN:   "gray",
   CREATE:  "green",
   UPDATE:  "blue",
   DELETE:  "red",
-  APPROVE: "gold",
-  REJECT:  "volcano",
+  APPROVE: "amber",
+  REJECT:  "purple",
 };
 
 const MODULE_LABELS: Record<string, string> = {
@@ -52,13 +55,14 @@ export default function AuditLogs() {
   const [total, setTotal]     = useState(0);
   const [loading, setLoading] = useState(false);
   const [modules, setModules] = useState<string[]>([]);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
-  const [moduleFilter, setModuleFilter] = useState<string | undefined>(undefined);
-  const [actionFilter, setActionFilter] = useState<string | undefined>(undefined);
-  const [dateFrom, setDateFrom] = useState<dayjs.Dayjs | null>(null);
-  const [dateTo,   setDateTo]   = useState<dayjs.Dayjs | null>(null);
-  const [search, setSearch]     = useState("");
-  const [page, setPage]         = useState(1);
+  const [moduleFilter, setModuleFilter] = useState("");
+  const [actionFilter, setActionFilter] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
   const pageSize = 50;
 
   useEffect(() => {
@@ -70,10 +74,10 @@ export default function AuditLogs() {
     apiClient
       .get("/audit-logs", {
         params: {
-          module: moduleFilter,
-          action: actionFilter,
-          dateFrom: dateFrom ? dateFrom.format("YYYY-MM-DD") : undefined,
-          dateTo:   dateTo   ? dateTo.format("YYYY-MM-DD")   : undefined,
+          module: moduleFilter || undefined,
+          action: actionFilter || undefined,
+          dateFrom: dateFrom || undefined,
+          dateTo: dateTo || undefined,
           search: search || undefined,
           page,
           limit: pageSize,
@@ -89,88 +93,111 @@ export default function AuditLogs() {
 
   useEffect(() => { load(); }, [moduleFilter, actionFilter, dateFrom, dateTo, search, page]);
 
-  const columns: ColumnsType<LogRow> = [
-    {
-      title: "Action", dataIndex: "action", width: 110,
-      render: (a: Action) => <Tag color={ACTION_CFG[a]} style={{ fontWeight: 700, fontSize: 11 }}>{a}</Tag>,
-    },
-    {
-      title: "Module", dataIndex: "module", width: 150,
-      render: (m: string) => <span style={{ fontSize: 12.5, color: "var(--nx-text-2)" }}>{MODULE_LABELS[m] || m}</span>,
-    },
-    {
-      title: "User", dataIndex: "userName", width: 190,
-      render: (_: unknown, row: LogRow) => (
-        <div>
-          <div style={{ fontWeight: 600, fontSize: 13 }}>{row.userName || "—"}</div>
-          <div style={{ fontSize: 11.5, color: "var(--nx-text-muted)" }}>{row.userEmail}</div>
-        </div>
-      ),
-    },
-    {
-      title: "Description", dataIndex: "description",
-      render: (d: string) => <span style={{ fontSize: 13, color: "var(--nx-text)" }}>{d}</span>,
-    },
-    {
-      title: "Date / IP", dataIndex: "createdAt", width: 170,
-      render: (d: string, row: LogRow) => (
-        <div>
-          <div style={{ fontSize: 12.5 }}>{dayjs(d).format("DD MMM YYYY, hh:mm a")}</div>
-          <div style={{ fontSize: 11, color: "var(--nx-text-muted)", fontFamily: "monospace" }}>{row.ip || "—"}</div>
-        </div>
-      ),
-    },
-  ];
+  function toggleExpand(id: string) {
+    setExpanded(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
 
   return (
-    <PageShell title="Audit Logs" description="Complete record of who did what, and when — every approval, edit, and login across the system.">
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
-        <Select
-          allowClear placeholder="All Modules" style={{ width: 170 }}
-          value={moduleFilter} onChange={v => { setModuleFilter(v); setPage(1); }}
+    <div>
+      <PageHeader
+        title="Audit Logs"
+        subtitle="Complete record of who did what, and when — every approval, edit, and login across the system."
+        icon={History}
+      />
+
+      <FilterRow>
+        <SelectFilter
+          value={moduleFilter}
+          onChange={v => { setModuleFilter(v); setPage(1); }}
+          placeholder="All Modules"
           options={modules.map(m => ({ label: MODULE_LABELS[m] || m, value: m }))}
         />
-        <Select
-          allowClear placeholder="All Actions" style={{ width: 150 }}
-          value={actionFilter} onChange={v => { setActionFilter(v); setPage(1); }}
-          options={(Object.keys(ACTION_CFG) as Action[]).map(a => ({ label: a, value: a }))}
+        <SelectFilter
+          value={actionFilter}
+          onChange={v => { setActionFilter(v); setPage(1); }}
+          placeholder="All Actions"
+          options={(Object.keys(ACTION_COLOR) as Action[]).map(a => ({ label: a, value: a }))}
         />
-        <DatePicker placeholder="From date" format="DD/MM/YYYY" value={dateFrom} onChange={d => { setDateFrom(d); setPage(1); }} />
-        <DatePicker placeholder="To date" format="DD/MM/YYYY" value={dateTo} onChange={d => { setDateTo(d); setPage(1); }} />
-        <Input.Search
-          placeholder="Search description, user, or record…" style={{ width: 260 }}
-          allowClear onSearch={v => { setSearch(v); setPage(1); }}
-        />
-      </div>
+        <DatePicker value={dateFrom} onChange={v => { setDateFrom(v); setPage(1); }} />
+        <DatePicker value={dateTo} onChange={v => { setDateTo(v); setPage(1); }} />
+        <SearchFilter value={search} onChange={v => { setSearch(v); setPage(1); }} placeholder="Search description, user, or record…" />
+      </FilterRow>
 
-      <Table
-        rowKey="_id"
-        columns={columns}
-        dataSource={logs}
-        loading={loading}
-        locale={{ emptyText: <Empty description="No audit log entries match these filters" /> }}
-        expandable={{
-          rowExpandable: row => !!row.changes,
-          expandedRowRender: row => (
-            <div style={{ padding: "4px 12px", fontSize: 12.5 }}>
-              {Object.entries(row.changes || {}).map(([field, c]) => (
-                <div key={field} style={{ display: "flex", gap: 8, marginBottom: 4 }}>
-                  <strong style={{ minWidth: 140 }}>{field}</strong>
-                  <span style={{ color: "var(--nx-text-muted)" }}>{fmtVal(c.from)}</span>
-                  <span>→</span>
-                  <span style={{ color: "var(--nx-text)", fontWeight: 600 }}>{fmtVal(c.to)}</span>
-                </div>
-              ))}
-            </div>
-          ),
-        }}
-        pagination={{
-          current: page, pageSize, total,
-          onChange: setPage,
-          showTotal: t => `${t} log entries`,
-        }}
-        style={{ background: "var(--nx-white)", borderRadius: 12, overflow: "hidden" }}
-      />
-    </PageShell>
+      {loading ? (
+        <div className="space-y-2">
+          {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}
+        </div>
+      ) : (
+        <Table>
+          <Thead>
+            <Tr>
+              <Th>Action</Th>
+              <Th>Module</Th>
+              <Th>User</Th>
+              <Th>Description</Th>
+              <Th>Date / IP</Th>
+            </Tr>
+          </Thead>
+          <Tbody>
+            {logs.length === 0 && (
+              <Tr><Td colSpan={5}><div className="text-center text-gray-400 py-8">No audit log entries match these filters</div></Td></Tr>
+            )}
+            {logs.map(row => (
+              <>
+                <Tr
+                  key={row._id}
+                  className={row.changes ? "cursor-pointer" : ""}
+                  onClick={() => row.changes && toggleExpand(row._id)}
+                >
+                  <Td>
+                    <div className="flex items-center gap-1.5">
+                      {row.changes && (expanded.has(row._id) ? <ChevronUp className="w-3.5 h-3.5 text-gray-400" /> : <ChevronDown className="w-3.5 h-3.5 text-gray-400" />)}
+                      <Badge color={ACTION_COLOR[row.action]} small>{row.action}</Badge>
+                    </div>
+                  </Td>
+                  <Td><TdText>{MODULE_LABELS[row.module] || row.module}</TdText></Td>
+                  <Td>
+                    <div className="font-semibold text-sm text-[#1A1A2E] dark:text-[#F1F5F9]">{row.userName || "—"}</div>
+                    <div className="text-xs text-gray-400">{row.userEmail}</div>
+                  </Td>
+                  <Td><TdText>{row.description}</TdText></Td>
+                  <Td>
+                    <div className="text-sm text-[#1A1A2E] dark:text-[#F1F5F9]">{dayjs(row.createdAt).format("DD MMM YYYY, hh:mm a")}</div>
+                    <div className="text-xs text-gray-400 font-mono">{row.ip || "—"}</div>
+                  </Td>
+                </Tr>
+                {row.changes && expanded.has(row._id) && (
+                  <Tr key={row._id + "-detail"} className="hover:!bg-transparent">
+                    <Td colSpan={5} className="bg-gray-50 dark:bg-[#162032]">
+                      <div className="py-1 space-y-1.5">
+                        {Object.entries(row.changes).map(([field, c]) => (
+                          <div key={field} className="flex gap-2 text-xs">
+                            <strong className="min-w-[140px] text-[#1A1A2E] dark:text-[#F1F5F9]">{field}</strong>
+                            <span className="text-gray-400">{fmtVal(c.from)}</span>
+                            <span className="text-gray-400">→</span>
+                            <span className="font-semibold text-[#1A1A2E] dark:text-[#F1F5F9]">{fmtVal(c.to)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </Td>
+                  </Tr>
+                )}
+              </>
+            ))}
+          </Tbody>
+        </Table>
+      )}
+
+      {total > pageSize && (
+        <div className="flex items-center justify-between mt-4">
+          <span className="text-xs text-gray-400">{total} log entries</span>
+          <Pagination page={page} totalPages={Math.ceil(total / pageSize)} onChange={setPage} />
+        </div>
+      )}
+    </div>
   );
 }

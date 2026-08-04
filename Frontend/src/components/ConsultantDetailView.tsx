@@ -1,6 +1,7 @@
-import type { ReactNode } from "react";
-import { Descriptions, Tag } from "antd";
+import { Paperclip } from "lucide-react";
 import type { Consultant } from "../types/VendorBilling";
+import { Descriptions, DescItem, SectionHeading } from "../ui/Descriptions";
+import Badge from "../ui/Badge";
 
 const DOCUMENT_FIELD_LABELS: { key: string; label: string }[] = [
   { key: "gstCertificate",  label: "GST Certificate" },
@@ -9,26 +10,6 @@ const DOCUMENT_FIELD_LABELS: { key: string; label: string }[] = [
   { key: "businessCard",    label: "Business Card" },
   { key: "professionalRegistrationCert", label: "Professional Registration Certificate" },
 ];
-
-function SectionHeading({ children }: { children: ReactNode }) {
-  return (
-    <div
-      style={{
-        fontSize: 12,
-        fontWeight: 700,
-        color: "#6B7280",
-        textTransform: "uppercase",
-        letterSpacing: "0.06em",
-        borderBottom: "1px solid #E5E7EB",
-        paddingBottom: 8,
-        marginBottom: 16,
-        marginTop: 24,
-      }}
-    >
-      {children}
-    </div>
-  );
-}
 
 // The complete consultant profile — mirrors ContractorDetailView's structure
 // so both "master data" modules feel consistent, with consultancy-specific
@@ -39,72 +20,65 @@ export default function ConsultantDetailView({ consultant }: { consultant: Consu
   return (
     <>
       <SectionHeading>Firm Details</SectionHeading>
-      <Descriptions column={2} size="small">
-        <Descriptions.Item label="Consultant Code" span={2}>
-          <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#FF7A00" }}>
-            {c.consultantCode}
-          </span>
-        </Descriptions.Item>
-        <Descriptions.Item label="Firm / Consultant">{c.firmName}</Descriptions.Item>
-        <Descriptions.Item label="Principal">{c.principalName}</Descriptions.Item>
-        <Descriptions.Item label="Type" span={2}>
-          <Tag color="purple">{c.consultancyType}</Tag>
-        </Descriptions.Item>
-        <Descriptions.Item label="Mobile">{c.mobile}</Descriptions.Item>
-        <Descriptions.Item label="Alt. Mobile">{c.alternateMobile || "—"}</Descriptions.Item>
-        <Descriptions.Item label="Email" span={2}>{c.email || "—"}</Descriptions.Item>
-        <Descriptions.Item label="Address" span={2}>{c.address || "—"}</Descriptions.Item>
+      <Descriptions>
+        <DescItem label="Consultant Code" span={2}>
+          <span className="font-mono font-bold text-primary">{c.consultantCode}</span>
+        </DescItem>
+        <DescItem label="Firm / Consultant">{c.firmName}</DescItem>
+        <DescItem label="Principal">{c.principalName}</DescItem>
+        <DescItem label="Type" span={2}><Badge color="purple">{c.consultancyType}</Badge></DescItem>
+        <DescItem label="Mobile">{c.mobile}</DescItem>
+        <DescItem label="Alt. Mobile">{c.alternateMobile}</DescItem>
+        <DescItem label="Email" span={2}>{c.email}</DescItem>
+        <DescItem label="Address" span={2}>{c.address}</DescItem>
       </Descriptions>
 
       <SectionHeading>Professional Details</SectionHeading>
-      <Descriptions column={2} size="small">
-        <Descriptions.Item label="Professional Registration">{c.professionalRegistration || "—"}</Descriptions.Item>
-        <Descriptions.Item label="License No.">{c.licenseNo || "—"}</Descriptions.Item>
-        <Descriptions.Item label="Experience">{c.experience || "—"}</Descriptions.Item>
-        <Descriptions.Item label="Portfolio" span={2}>
-          {c.portfolioUrl ? <a href={c.portfolioUrl} target="_blank" rel="noopener noreferrer">{c.portfolioUrl}</a> : "—"}
-        </Descriptions.Item>
+      <Descriptions>
+        <DescItem label="Professional Registration">{c.professionalRegistration}</DescItem>
+        <DescItem label="License No.">{c.licenseNo}</DescItem>
+        <DescItem label="Experience">{c.experience}</DescItem>
+        <DescItem label="Portfolio" span={2}>
+          {c.portfolioUrl ? <a href={c.portfolioUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">{c.portfolioUrl}</a> : undefined}
+        </DescItem>
       </Descriptions>
       {(c.designSoftware || []).length > 0 && (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+        <div className="flex flex-wrap gap-1.5 mt-2">
           {c.designSoftware!.map((s) => (
-            <Tag key={s} color="blue">{s}</Tag>
+            <Badge key={s} color="blue">{s}</Badge>
           ))}
         </div>
       )}
 
       <SectionHeading>Bank Details</SectionHeading>
-      <Descriptions column={2} size="small">
-        <Descriptions.Item label="Account Holder">{c.accountHolderName || "—"}</Descriptions.Item>
-        <Descriptions.Item label="Bank">{c.bankName || "—"}</Descriptions.Item>
-        <Descriptions.Item label="Account No.">{c.accountNumber || "—"}</Descriptions.Item>
-        <Descriptions.Item label="IFSC">{c.ifscCode || "—"}</Descriptions.Item>
-        <Descriptions.Item label="Branch">{c.branchName || "—"}</Descriptions.Item>
+      <Descriptions>
+        <DescItem label="Account Holder">{c.accountHolderName}</DescItem>
+        <DescItem label="Bank">{c.bankName}</DescItem>
+        <DescItem label="Account No.">{c.accountNumber}</DescItem>
+        <DescItem label="IFSC">{c.ifscCode}</DescItem>
+        <DescItem label="Branch">{c.branchName}</DescItem>
       </Descriptions>
 
       <SectionHeading>Tax Details</SectionHeading>
-      <Descriptions column={2} size="small">
-        <Descriptions.Item label="PAN">{c.panNumber || "—"}</Descriptions.Item>
-        <Descriptions.Item label="Aadhaar">{c.aadhaarNumber || "—"}</Descriptions.Item>
-        <Descriptions.Item label="GST" span={2}>{c.gstNumber || "—"}</Descriptions.Item>
+      <Descriptions>
+        <DescItem label="PAN">{c.panNumber}</DescItem>
+        <DescItem label="Aadhaar">{c.aadhaarNumber}</DescItem>
+        <DescItem label="GST" span={2}>{c.gstNumber}</DescItem>
       </Descriptions>
 
       {c.documents && Object.values(c.documents).some(d => d?.dataUrl) && (
         <>
           <SectionHeading>Documents</SectionHeading>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <div className="flex flex-col gap-1.5">
             {DOCUMENT_FIELD_LABELS.filter(({ key }) => c.documents?.[key]?.dataUrl).map(({ key, label }) => (
               <a
                 key={key}
                 href={c.documents![key]!.dataUrl}
                 download={c.documents![key]!.fileName || label}
-                style={{
-                  display: "flex", alignItems: "center", gap: 8, fontSize: 13,
-                  color: "#FF7A00", textDecoration: "none",
-                }}
+                className="flex items-center gap-2 text-[13px] text-primary no-underline hover:underline"
               >
-                📎 {label}
-                <span style={{ color: "#9CA3AF", fontSize: 12 }}>({c.documents![key]!.fileName || "download"})</span>
+                <Paperclip className="w-3.5 h-3.5" /> {label}
+                <span className="text-gray-400 text-xs">({c.documents![key]!.fileName || "download"})</span>
               </a>
             ))}
           </div>

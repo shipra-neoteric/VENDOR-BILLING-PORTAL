@@ -1,13 +1,23 @@
 import { useEffect, useState } from "react";
-import { Button, Drawer, Form, Input, Select, Space, Spin, Table, Tag, message } from "antd";
-import { PlusOutlined, TeamOutlined, UserDeleteOutlined } from "@ant-design/icons";
-import PageShell from "../../components/PageShell";
+import toast from "react-hot-toast";
+import { Plus, Users, UserMinus } from "lucide-react";
 import apiClient from "../../services/apiClient";
 import { selectableProjects } from "../../utils/projectOptions";
 import { vendorLabel } from "../../utils/vendorLabel";
 import type { Contractor, Project, VendorGroup } from "../../types/VendorBilling";
+import PageHeader from "../../ui/PageHeader";
+import Btn from "../../ui/Btn";
+import Card from "../../ui/Card";
+import Badge from "../../ui/Badge";
+import Field from "../../ui/Field";
+import SField from "../../ui/SField";
+import MultiSelect from "../../ui/MultiSelect";
+import Modal from "../../ui/Modal";
+import { Table, Thead, Tbody, Tr, Th, Td, TdText } from "../../ui/Table";
+import { SkeletonTable } from "../../ui/Skeleton";
+import Spinner from "../../ui/Spinner";
 
-const normalizeId = (obj: any) => ({ ...obj, id: obj._id || obj.id });
+const normalizeId = <T extends { _id?: string; id?: string }>(obj: T) => ({ ...obj, id: obj._id || obj.id });
 const fmt = (n: number) => "₹" + Math.round(n || 0).toLocaleString("en-IN");
 
 interface GroupMember {
@@ -41,7 +51,7 @@ export default function VendorGroups() {
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [form] = Form.useForm();
+  const [groupName, setGroupName] = useState("");
 
   const [viewOpen, setViewOpen] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState<VendorGroup | null>(null);
@@ -66,33 +76,33 @@ export default function VendorGroups() {
 
   useEffect(() => {
     load();
-    apiClient.get<{ projects: any[] }>("/projects")
+    apiClient.get<{ projects: (Project & { _id?: string })[] }>("/projects")
       .then((r) => setProjects(r.data.projects.map(normalizeId)))
       .catch(() => {});
-    apiClient.get<{ contractors: any[] }>("/contractors")
+    apiClient.get<{ contractors: (Contractor & { _id?: string })[] }>("/contractors")
       .then((r) => setContractors(r.data.contractors.map(normalizeId)))
       .catch(() => {});
   }, []);
 
   async function handleCreate() {
+    if (!groupName.trim()) return toast.error("Group name is required");
+    setSaving(true);
     try {
-      const values = await form.validateFields();
-      setSaving(true);
-      const res = await apiClient.post<{ group: VendorGroup }>("/vendor-groups", values);
+      const res = await apiClient.post<{ group: VendorGroup }>("/vendor-groups", { name: groupName });
       setGroups((prev) => [normalizeId(res.data.group), ...prev]);
-      message.success(`Vendor group ${res.data.group.groupCode} created`);
-      form.resetFields();
+      toast.success(`Vendor group ${res.data.group.groupCode} created`);
+      setGroupName("");
       setCreateOpen(false);
-    } catch (err: any) {
-      if (err?.errorFields) return;
-      message.error(err?.response?.data?.message || "Failed to create vendor group");
+    } catch (e: unknown) {
+      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message || "Failed to create vendor group";
+      toast.error(msg);
     } finally {
       setSaving(false);
     }
   }
 
   function loadMembers(groupId: string) {
-    return apiClient.get<{ members: any[] }>(`/vendor-groups/${groupId}`)
+    return apiClient.get<{ members: (GroupMember & { _id?: string })[] }>(`/vendor-groups/${groupId}`)
       .then((r) => setMembers((r.data.members || []).map(normalizeId)))
       .catch(() => setMembers([]));
   }
@@ -117,9 +127,10 @@ export default function VendorGroups() {
       setAddMemberIds([]);
       await loadMembers(selectedGroup.id);
       setGroups((prev) => prev.map((g) => (g.id === selectedGroup.id ? { ...g, memberCount: (g.memberCount || 0) + addMemberIds.length } : g)));
-      message.success(`${addMemberIds.length} member${addMemberIds.length !== 1 ? "s" : ""} added`);
-    } catch (err: any) {
-      message.error(err?.response?.data?.message || "Failed to add members");
+      toast.success(`${addMemberIds.length} member${addMemberIds.length !== 1 ? "s" : ""} added`);
+    } catch (e: unknown) {
+      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message || "Failed to add members";
+      toast.error(msg);
     } finally {
       setAddingMembers(false);
     }
@@ -133,9 +144,10 @@ export default function VendorGroups() {
       setContractors((prev) => prev.map((c) => (c.id === member.id ? { ...c, groupId: null } : c)));
       await loadMembers(selectedGroup.id);
       setGroups((prev) => prev.map((g) => (g.id === selectedGroup.id ? { ...g, memberCount: Math.max(0, (g.memberCount || 0) - 1) } : g)));
-      message.success(`${member.companyName} removed from the group`);
-    } catch (err: any) {
-      message.error(err?.response?.data?.message || "Failed to remove member");
+      toast.success(`${member.companyName} removed from the group`);
+    } catch (e: unknown) {
+      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message || "Failed to remove member";
+      toast.error(msg);
     } finally {
       setRemovingId(null);
     }
@@ -151,219 +163,186 @@ export default function VendorGroups() {
       .finally(() => setProgressLoading(false));
   }
 
-  const columns = [
-    {
-      title: "Group Code",
-      dataIndex: "groupCode",
-      width: 120,
-      render: (v: string) => <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#7c3aed" }}>{v}</span>,
-    },
-    { title: "Name", dataIndex: "name" },
-    {
-      title: "Members",
-      dataIndex: "memberCount",
-      width: 120,
-      render: (v: number) => <Tag color={v > 0 ? "purple" : "default"}>{v ?? 0}</Tag>,
-    },
-    {
-      title: "Actions",
-      width: 140,
-      render: (_: unknown, record: VendorGroup) => (
-        <Button type="link" size="small" onClick={() => openGroup(record)}>View</Button>
-      ),
-    },
-  ];
-
-  const memberColumns = [
-    { title: "Vendor Code", dataIndex: "vendorCode", width: 120, render: (v: string) => <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#FF7A00" }}>{v}</span> },
-    { title: "Company", dataIndex: "companyName" },
-    { title: "Owner", dataIndex: "ownerName" },
-    { title: "Mobile", dataIndex: "mobile", width: 130 },
-    {
-      title: "",
-      width: 90,
-      render: (_: unknown, record: GroupMember) => (
-        <Button
-          type="link" size="small" danger icon={<UserDeleteOutlined />}
-          loading={removingId === record.id}
-          onClick={() => removeMember(record)}
-        >
-          Remove
-        </Button>
-      ),
-    },
-  ];
-
-  const progressColumns = [
-    { title: "Vendor Code", dataIndex: "vendorCode", width: 120, render: (v: string) => <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#FF7A00" }}>{v}</span> },
-    { title: "Company", dataIndex: "companyName" },
-    { title: "Work Orders", dataIndex: "workOrderCount", width: 110, align: "right" as const },
-    { title: "Contract Value", dataIndex: "contractValue", width: 140, align: "right" as const, render: fmt },
-    { title: "Billed", dataIndex: "billed", width: 130, align: "right" as const, render: fmt },
-    { title: "Paid", dataIndex: "paid", width: 130, align: "right" as const, render: (v: number) => <span style={{ color: "#16a34a", fontWeight: 600 }}>{fmt(v)}</span> },
-  ];
-
   return (
-    <PageShell
-      title="Vendor Groups"
-      description="Internal grouping only — several individually-registered vendor codes belonging to the same real business, so a bill can be paid into any member's account regardless of whose work order it's under."
-      cta={
-        <Button
-          type="primary" icon={<PlusOutlined />} size="large"
-          onClick={() => { form.resetFields(); setCreateOpen(true); }}
-          style={{ background: "#7c3aed", borderColor: "#7c3aed" }}
-        >
-          New Vendor Group
-        </Button>
-      }
-    >
-      <div style={{ background: "var(--nx-white)", border: "1px solid #E5E7EB", borderRadius: 10, overflow: "hidden" }}>
-        <Spin spinning={loading}>
-          <Table
-            rowKey="id"
-            dataSource={groups}
-            columns={columns}
-            pagination={{ pageSize: 10, showSizeChanger: false }}
-            locale={{
-              emptyText: loading ? " " : (
-                <div style={{ padding: 40, textAlign: "center", color: "#9CA3AF" }}>
-                  <div style={{ fontSize: 28, marginBottom: 8 }}><TeamOutlined /></div>
-                  <div style={{ fontWeight: 600, color: "#374151" }}>No vendor groups yet</div>
-                  <div style={{ fontSize: 12, marginTop: 4 }}>
-                    Click "New Vendor Group" to create one, then add members from inside it.
-                  </div>
-                </div>
-              ),
-            }}
-          />
-        </Spin>
-      </div>
+    <div>
+      <PageHeader
+        title="Vendor Groups"
+        subtitle="Internal grouping only — several individually-registered vendor codes belonging to the same real business, so a bill can be paid into any member's account regardless of whose work order it's under."
+        icon={Users}
+        actions={<Btn label="New Vendor Group" icon={Plus} style={{ background: "#7c3aed", borderColor: "#7c3aed" }} onClick={() => { setGroupName(""); setCreateOpen(true); }} />}
+      />
 
-      {/* ── Create Drawer ─────────────────────────────────────── */}
-      <Drawer
-        open={createOpen}
-        onClose={() => setCreateOpen(false)}
-        placement="right"
-        width={480}
-        title="New Vendor Group"
-        footer={
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-            <Button size="large" onClick={() => setCreateOpen(false)}>Cancel</Button>
-            <Button size="large" type="primary" loading={saving} onClick={handleCreate} style={{ background: "#7c3aed", borderColor: "#7c3aed" }}>
-              Create
-            </Button>
-          </div>
-        }
-        destroyOnClose
-      >
-        <Form form={form} layout="vertical">
-          <Form.Item label="Group Name" name="name" rules={[{ required: true, message: "Required" }]}>
-            <Input placeholder="e.g. Ambika Construction Group" />
-          </Form.Item>
-        </Form>
-        <div style={{ fontSize: 12, color: "#9CA3AF" }}>
-          You can add members right after creating the group — open it and search for contractors to add.
-        </div>
-      </Drawer>
+      {loading ? (
+        <Card padded={false} className="p-4"><SkeletonTable rows={5} cols={3} /></Card>
+      ) : groups.length === 0 ? (
+        <Card className="text-center py-14 text-gray-400">
+          <Users className="w-9 h-9 mx-auto mb-3" />
+          <div className="font-bold text-gray-600 dark:text-gray-300">No vendor groups yet</div>
+          <div className="text-sm mt-1">Click "New Vendor Group" to create one, then add members from inside it.</div>
+        </Card>
+      ) : (
+        <Table>
+          <Thead>
+            <Tr>
+              <Th>Group Code</Th>
+              <Th>Name</Th>
+              <Th>Members</Th>
+              <Th>Actions</Th>
+            </Tr>
+          </Thead>
+          <Tbody>
+            {groups.map(g => (
+              <Tr key={g.id}>
+                <Td><span className="font-mono font-bold text-purple-600 dark:text-purple-400">{g.groupCode}</span></Td>
+                <Td><TdText>{g.name}</TdText></Td>
+                <Td><Badge color={(g.memberCount ?? 0) > 0 ? "purple" : "gray"}>{g.memberCount ?? 0}</Badge></Td>
+                <Td><button type="button" onClick={() => openGroup(g)} className="text-xs font-semibold text-primary hover:underline">View</button></Td>
+              </Tr>
+            ))}
+          </Tbody>
+        </Table>
+      )}
 
-      {/* ── Group Detail / Progress Drawer ────────────────────── */}
-      <Drawer
-        open={viewOpen}
-        onClose={() => setViewOpen(false)}
-        placement="right"
-        width={800}
-        title={
-          selectedGroup && (
-            <Space>
-              <TeamOutlined style={{ color: "#7c3aed" }} />
-              <div>
-                <div style={{ fontWeight: 700, fontSize: 16 }}>{selectedGroup.name}</div>
-                <div style={{ fontSize: 12, color: "#6B7280", fontWeight: 400 }}>{selectedGroup.groupCode}</div>
-              </div>
-            </Space>
-          )
-        }
-        footer={<div style={{ display: "flex", justifyContent: "flex-end" }}><Button size="large" onClick={() => setViewOpen(false)}>Close</Button></div>}
-        destroyOnClose
-      >
-        <div style={{ fontWeight: 700, fontSize: 13, color: "#374151", marginBottom: 8 }}>Members</div>
-
-        <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-          <Select
-            mode="multiple"
-            style={{ flex: 1 }}
-            placeholder="Search contractors by name or vendor code to add…"
-            showSearch
-            value={addMemberIds}
-            onChange={setAddMemberIds}
-            filterOption={(inp, opt) => String(opt?.label ?? "").toLowerCase().includes(inp.toLowerCase())}
-            options={contractors
-              .filter((c) => !members.some((m) => m.id === c.id))
-              .map((c) => ({
-                label: `${vendorLabel(c.companyName, c.shortCode)} (${c.vendorCode})${c.groupId && c.groupId !== selectedGroup?.id ? " — currently in another group" : ""}`,
-                value: c.id,
-              }))}
-          />
-          <Button
-            type="primary" loading={addingMembers} disabled={addMemberIds.length === 0}
-            onClick={addMembers} style={{ background: "#7c3aed", borderColor: "#7c3aed" }}
-          >
-            Add
-          </Button>
-        </div>
-
-        <Table
-          rowKey="id"
-          size="small"
-          dataSource={members}
-          columns={memberColumns}
-          pagination={false}
-          locale={{ emptyText: "No members yet — search and add contractors above" }}
-          style={{ marginBottom: 24 }}
-        />
-
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-          <div style={{ fontWeight: 700, fontSize: 13, color: "#374151" }}>Progress</div>
-          <Select
-            allowClear
-            placeholder="All Projects"
-            style={{ width: 240 }}
-            value={projectId || undefined}
-            options={selectableProjects(projects).map((p) => ({ label: p.name, value: (p as any)._id || p.id }))}
-            onChange={(v) => {
-              const pid = v || "";
-              setProjectId(pid);
-              if (selectedGroup) loadProgress(selectedGroup.id, pid);
-            }}
-          />
-        </div>
-
-        <Spin spinning={progressLoading}>
-          {summary && (
-            <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
-              {[
-                { label: "Work Orders", value: summary.workOrderCount, color: "#374151" },
-                { label: "Contract Value", value: fmt(summary.contractValue), color: "#374151" },
-                { label: "Billed", value: fmt(summary.billed), color: "#d97706" },
-                { label: "Paid", value: fmt(summary.paid), color: "#16a34a" },
-              ].map((s) => (
-                <div key={s.label} style={{ flex: 1, background: "#F9FAFB", border: "1px solid #E5E7EB", borderRadius: 8, padding: "10px 14px" }}>
-                  <div style={{ fontSize: 11, color: "#9CA3AF", textTransform: "uppercase", letterSpacing: "0.05em" }}>{s.label}</div>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: s.color, marginTop: 2 }}>{s.value}</div>
-                </div>
-              ))}
+      {/* ── Create Modal ─────────────────────────────────────── */}
+      {createOpen && (
+        <Modal
+          title="New Vendor Group" onClose={() => setCreateOpen(false)}
+          footer={
+            <div className="flex justify-end gap-2">
+              <Btn label="Cancel" outline onClick={() => setCreateOpen(false)} />
+              <Btn label="Create" style={{ background: "#7c3aed", borderColor: "#7c3aed" }} loading={saving} onClick={handleCreate} />
             </div>
+          }
+        >
+          <Field label="Group Name" required placeholder="e.g. Ambika Construction Group" value={groupName} onChange={e => setGroupName(e.target.value)} />
+          <div className="text-xs text-gray-400 mt-3">
+            You can add members right after creating the group — open it and search for contractors to add.
+          </div>
+        </Modal>
+      )}
+
+      {/* ── Group Detail / Progress Modal ────────────────────── */}
+      {viewOpen && selectedGroup && (
+        <Modal
+          title={selectedGroup.name} subtitle={selectedGroup.groupCode} icon={Users}
+          extraWide
+          onClose={() => setViewOpen(false)}
+          footer={<Btn label="Close" outline onClick={() => setViewOpen(false)} />}
+        >
+          <div className="font-bold text-[13px] text-gray-700 dark:text-gray-300 mb-2">Members</div>
+
+          <div className="flex gap-2 mb-4">
+            <div className="flex-1">
+              <MultiSelect
+                placeholder="Search contractors by name or vendor code to add…"
+                values={addMemberIds}
+                onChange={setAddMemberIds}
+                options={contractors
+                  .filter((c) => !members.some((m) => m.id === c.id))
+                  .map((c) => ({
+                    label: `${vendorLabel(c.companyName, c.shortCode)} (${c.vendorCode})${c.groupId && c.groupId !== selectedGroup?.id ? " — currently in another group" : ""}`,
+                    value: c.id,
+                  }))}
+              />
+            </div>
+            <Btn label="Add" style={{ background: "#7c3aed", borderColor: "#7c3aed" }} loading={addingMembers} disabled={addMemberIds.length === 0} onClick={addMembers} />
+          </div>
+
+          {members.length === 0 ? (
+            <div className="text-center py-8 text-gray-400 text-sm mb-6">No members yet — search and add contractors above</div>
+          ) : (
+            <Table className="mb-6">
+              <Thead>
+                <Tr>
+                  <Th>Vendor Code</Th>
+                  <Th>Company</Th>
+                  <Th>Owner</Th>
+                  <Th>Mobile</Th>
+                  <Th></Th>
+                </Tr>
+              </Thead>
+              <Tbody>
+                {members.map(m => (
+                  <Tr key={m.id}>
+                    <Td><span className="font-mono font-bold text-primary">{m.vendorCode}</span></Td>
+                    <Td><TdText>{m.companyName}</TdText></Td>
+                    <Td><TdText>{m.ownerName}</TdText></Td>
+                    <Td><TdText>{m.mobile}</TdText></Td>
+                    <Td>
+                      <Btn small color="red" icon={UserMinus} label="Remove" loading={removingId === m.id} onClick={() => removeMember(m)} />
+                    </Td>
+                  </Tr>
+                ))}
+              </Tbody>
+            </Table>
           )}
-          <Table
-            rowKey="vendorCode"
-            size="small"
-            dataSource={perMember}
-            columns={progressColumns}
-            pagination={false}
-            locale={{ emptyText: "No work orders for this group yet" }}
-          />
-        </Spin>
-      </Drawer>
-    </PageShell>
+
+          <div className="flex items-center justify-between mb-2">
+            <div className="font-bold text-[13px] text-gray-700 dark:text-gray-300">Progress</div>
+            <div className="w-60">
+              <SField
+                placeholder="All Projects"
+                value={projectId || null}
+                options={selectableProjects(projects).map((p) => ({ label: p.name, value: p.id }))}
+                onChange={(v) => {
+                  setProjectId(v);
+                  if (selectedGroup) loadProgress(selectedGroup.id, v);
+                }}
+              />
+            </div>
+          </div>
+
+          {progressLoading ? (
+            <Spinner label="Loading progress…" />
+          ) : (
+            <>
+              {summary && (
+                <div className="flex gap-3 mb-4">
+                  {[
+                    { label: "Work Orders", value: summary.workOrderCount, color: "text-gray-700 dark:text-gray-300" },
+                    { label: "Contract Value", value: fmt(summary.contractValue), color: "text-gray-700 dark:text-gray-300" },
+                    { label: "Billed", value: fmt(summary.billed), color: "text-amber-600 dark:text-amber-400" },
+                    { label: "Paid", value: fmt(summary.paid), color: "text-emerald-600 dark:text-emerald-400" },
+                  ].map((s) => (
+                    <div key={s.label} className="flex-1 bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700/40 rounded-lg px-3.5 py-2.5">
+                      <div className="text-[11px] text-gray-400 uppercase tracking-wide">{s.label}</div>
+                      <div className={`text-[15px] font-bold mt-0.5 ${s.color}`}>{s.value}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {perMember.length === 0 ? (
+                <div className="text-center py-8 text-gray-400 text-sm">No work orders for this group yet</div>
+              ) : (
+                <Table>
+                  <Thead>
+                    <Tr>
+                      <Th>Vendor Code</Th>
+                      <Th>Company</Th>
+                      <Th className="text-right">Work Orders</Th>
+                      <Th className="text-right">Contract Value</Th>
+                      <Th className="text-right">Billed</Th>
+                      <Th className="text-right">Paid</Th>
+                    </Tr>
+                  </Thead>
+                  <Tbody>
+                    {perMember.map(m => (
+                      <Tr key={m.vendorCode}>
+                        <Td><span className="font-mono font-bold text-primary">{m.vendorCode}</span></Td>
+                        <Td><TdText>{m.companyName}</TdText></Td>
+                        <Td className="text-right"><TdText>{m.workOrderCount}</TdText></Td>
+                        <Td className="text-right"><TdText>{fmt(m.contractValue)}</TdText></Td>
+                        <Td className="text-right"><TdText>{fmt(m.billed)}</TdText></Td>
+                        <Td className="text-right"><span className="text-emerald-600 dark:text-emerald-400 font-semibold">{fmt(m.paid)}</span></Td>
+                      </Tr>
+                    ))}
+                  </Tbody>
+                </Table>
+              )}
+            </>
+          )}
+        </Modal>
+      )}
+    </div>
   );
 }

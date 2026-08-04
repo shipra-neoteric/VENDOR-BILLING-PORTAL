@@ -1,5 +1,6 @@
-import { Tag } from "antd";
+import { CornerLeftUp } from "lucide-react";
 import dayjs from "dayjs";
+import Badge from "../ui/Badge";
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -35,10 +36,10 @@ const BILL_TYPE_CFG: Record<string, { label: string; color: string }> = {
   retention_release:    { label: "Retention Release",color: "#0369a1" },
 };
 
-const STATUS_COLORS: Record<string, string> = {
-  draft: "default", "verify-done": "processing", "l1-approved": "warning",
-  approved: "success", "sent-to-tms": "gold", hold: "purple",
-  rejected: "error", paid: "purple",
+const STATUS_BADGE: Record<string, "gray" | "blue" | "amber" | "green" | "orange" | "purple" | "red"> = {
+  draft: "gray", "verify-done": "blue", "l1-approved": "amber",
+  approved: "green", "sent-to-tms": "orange", hold: "purple",
+  rejected: "red", paid: "purple",
 };
 
 const REL_LABEL: Record<string, string> = {
@@ -71,13 +72,13 @@ export function BillingChain({ bills, compact = false }: Props) {
   );
 
   return (
-    <div style={{ position: "relative" }}>
+    <div className="relative">
       {/* vertical spine */}
       {sorted.length > 1 && (
-        <div style={{
-          position: "absolute", left: compact ? 16 : 20, top: 28,
-          bottom: 28, width: 2, background: "#e4e7ee", zIndex: 0,
-        }} />
+        <div
+          className="absolute bg-gray-200 dark:bg-gray-700/40 z-0"
+          style={{ left: compact ? 16 : 20, top: 28, bottom: 28, width: 2 }}
+        />
       )}
 
       {sorted.map((bill, idx) => {
@@ -86,88 +87,91 @@ export function BillingChain({ bills, compact = false }: Props) {
         const isLast = idx === sorted.length - 1;
 
         return (
-          <div key={bill._id} style={{ display: "flex", alignItems: "flex-start", gap: compact ? 10 : 14, marginBottom: isLast ? 0 : 16, position: "relative", zIndex: 1 }}>
+          <div key={bill._id} className={`flex items-start relative z-[1] ${isLast ? "" : "mb-4"}`} style={{ gap: compact ? 10 : 14 }}>
             {/* Node dot */}
-            <div style={{
-              width: compact ? 32 : 40,
-              height: compact ? 32 : 40,
-              borderRadius: "50%",
-              background: isSuperseded ? "#f3f4f6" : `${typeCfg.color}15`,
-              border: `2px solid ${isSuperseded ? "#d1d5db" : typeCfg.color}`,
-              display: "flex", alignItems: "center", justifyContent: "center",
-              flexShrink: 0,
-              fontSize: compact ? 11 : 13, fontWeight: 800,
-              color: isSuperseded ? "#9ca3af" : typeCfg.color,
-              fontFamily: "monospace",
-            }}>
+            <div
+              className="rounded-full flex items-center justify-center shrink-0 font-mono font-extrabold"
+              style={{
+                width: compact ? 32 : 40,
+                height: compact ? 32 : 40,
+                background: isSuperseded ? "#f3f4f6" : `${typeCfg.color}15`,
+                border: `2px solid ${isSuperseded ? "#d1d5db" : typeCfg.color}`,
+                fontSize: compact ? 11 : 13,
+                color: isSuperseded ? "#9ca3af" : typeCfg.color,
+              }}
+            >
               {bill.billingCycle ?? idx + 1}
             </div>
 
             {/* Card */}
-            <div style={{
-              flex: 1,
-              border: `1px solid ${isSuperseded ? "#e5e7eb" : typeCfg.color + "40"}`,
-              borderRadius: 10,
-              padding: compact ? "10px 12px" : "12px 16px",
-              background: isSuperseded ? "#f9fafb" : "#fff",
-              opacity: isSuperseded ? 0.7 : 1,
-            }}>
+            <div
+              className="flex-1 rounded-[10px]"
+              style={{
+                border: `1px solid ${isSuperseded ? "#e5e7eb" : typeCfg.color + "40"}`,
+                padding: compact ? "10px 12px" : "12px 16px",
+                background: isSuperseded ? "#f9fafb" : "#fff",
+                opacity: isSuperseded ? 0.7 : 1,
+              }}
+            >
               {/* Header row */}
-              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 6 }}>
-                <span style={{
-                  fontFamily: "monospace", fontWeight: 700,
-                  color: isSuperseded ? "#9ba3b8" : "#f37916",
-                  fontSize: compact ? 13 : 14,
-                  textDecoration: isSuperseded ? "line-through" : undefined,
-                }}>
+              <div className="flex items-center gap-2 flex-wrap mb-1.5">
+                <span
+                  className="font-mono font-bold"
+                  style={{
+                    color: isSuperseded ? "#9ba3b8" : "#f37916",
+                    fontSize: compact ? 13 : 14,
+                    textDecoration: isSuperseded ? "line-through" : undefined,
+                  }}
+                >
                   {bill.billNo}
                 </span>
-                <Tag
+                <span
+                  className="text-[10px] font-semibold px-1.5 py-0.5 rounded-md border"
                   style={{
-                    fontSize: 10, fontWeight: 600,
                     color: isSuperseded ? "#6b7280" : typeCfg.color,
                     borderColor: isSuperseded ? "#d1d5db" : typeCfg.color,
                     background: isSuperseded ? "#f3f4f6" : `${typeCfg.color}10`,
                   }}
                 >
                   {isSuperseded ? "SUPERSEDED" : typeCfg.label}
-                </Tag>
-                <Tag color={STATUS_COLORS[bill.status] || "default"} style={{ fontSize: 10 }}>
-                  {bill.status.toUpperCase()}
-                </Tag>
-                <span style={{ marginLeft: "auto", fontFamily: "monospace", fontWeight: 700, color: isSuperseded ? "#9ba3b8" : "#1a1f2e", fontSize: compact ? 12 : 13 }}>
+                </span>
+                <Badge color={STATUS_BADGE[bill.status] || "gray"} small>{bill.status.toUpperCase()}</Badge>
+                <span
+                  className="font-mono font-bold ml-auto"
+                  style={{ color: isSuperseded ? "#9ba3b8" : "#1a1f2e", fontSize: compact ? 12 : 13 }}
+                >
                   {fmt(bill.amount)}
                 </span>
               </div>
 
               {/* Metadata row */}
-              <div style={{ display: "flex", gap: 16, flexWrap: "wrap", fontSize: 11, color: "#9ba3b8" }}>
+              <div className="flex gap-4 flex-wrap text-[11px] text-gray-400">
                 <span>{dayjs(bill.billDate).format("DD MMM YYYY")}</span>
                 {bill.paidAmount != null && bill.status === "paid" && (
-                  <span style={{ color: "#16a85a", fontWeight: 600 }}>
+                  <span className="text-emerald-600 font-semibold">
                     Actually Paid: {fmt(bill.paidAmount)}
                   </span>
                 )}
-                {bill.remarks && <span style={{ fontStyle: "italic" }}>{bill.remarks}</span>}
+                {bill.remarks && <span className="italic">{bill.remarks}</span>}
               </div>
 
               {/* Relationship indicators */}
               {bill.supersededBy && (
-                <div style={{ marginTop: 6, fontSize: 11, color: "#7c3aed", fontWeight: 600 }}>
-                  ↩ Superseded by{" "}
-                  <span style={{ fontFamily: "monospace" }}>{bill.supersededBy.billNo}</span>
+                <div className="mt-1.5 text-[11px] text-purple-600 font-semibold flex items-center gap-1">
+                  <CornerLeftUp className="w-3 h-3" /> Superseded by{" "}
+                  <span className="font-mono">{bill.supersededBy.billNo}</span>
                 </div>
               )}
               {bill.linkedBills && bill.linkedBills.length > 0 && (
-                <div style={{ marginTop: 6, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                <div className="mt-1.5 flex gap-1.5 flex-wrap items-center">
                   {bill.linkedBills.map((l, i) => (
-                    <span key={i} style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                      <span style={{ fontSize: 10, color: "#7c3aed", fontWeight: 700, textTransform: "uppercase" }}>
+                    <span key={i} className="flex items-center gap-1">
+                      <span className="text-[10px] text-purple-600 font-bold uppercase">
                         {REL_LABEL[l.relationshipType] || l.relationshipType}
                       </span>
-                      <Tag style={{ fontFamily: "monospace", fontSize: 10, color: "#f37916", borderColor: "#f37916", background: "#fff7ed" }}>
+                      <span className="font-mono text-[10px] text-[#f37916] border border-[#f37916] bg-orange-50 rounded-md px-1.5 py-0.5">
                         {l.billNo}
-                      </Tag>
+                      </span>
                     </span>
                   ))}
                 </div>
