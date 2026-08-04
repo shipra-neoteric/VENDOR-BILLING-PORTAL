@@ -144,6 +144,10 @@ const workOrderSchema = new mongoose.Schema(
     description:   { type: String, default: '' },
     scopeOfWork:   { type: String },
     totalTenure:   { type: String, default: '' },
+    // A general remark on the work order itself (not per-item) — shown
+    // throughout the app and on the printed WO PDF, same visibility as every
+    // other WO field.
+    internalRemark: { type: String, default: '' },
     scopeItems:    [scopeItemSchema],
     contractValue: { type: Number, default: 0 },
     // Flat rupee discount off the overall contract value — entered once payment

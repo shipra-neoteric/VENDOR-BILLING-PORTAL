@@ -1904,6 +1904,14 @@ function WOFormFields({
         <Input placeholder="e.g. 45 Days, 3 Months" />
       </Form.Item>
 
+      <Form.Item
+        label="Remarks"
+        name="internalRemark"
+        tooltip="A general note on this work order — shown in the detail view and printed on the WO PDF under Project Details"
+      >
+        <Input.TextArea rows={2} placeholder="e.g. Site access via rear gate only, coordinate with security…" />
+      </Form.Item>
+
       <Form.Item label="Upload Work Order Documents" name="documents">
         <DocumentsUpload />
       </Form.Item>
@@ -1955,6 +1963,7 @@ export default function WorkItems() {
   const [contractTypeFilter, setContractTypeFilter] = useState<"all" | "execution" | "professional-services">(
     (searchParams.get("type") as "execution" | "professional-services" | null) || "all"
   );
+  const [viewMode, setViewMode] = useState<"list" | "monthly">("list");
 
   const { categories: apiCategories, lighten, setCategories: setApiCategories } = useCategories();
   const handleCategoryCreated = (cat: CatOption) => setApiCategories(prev => [...prev, cat as any]);
@@ -2200,6 +2209,45 @@ export default function WorkItems() {
     });
   }, [workOrders, search, statusFilter, categoryFilter, subCategoryFilter, progressFilter, projectFilter, subCatsOfSelected, dateFrom, dateTo, activeTab, contractTypeFilter, user?.role, canMaker, canChecker, canApprover, canFinal]);
 
+  // Rolls the currently-filtered work orders up by issue month — respects
+  // every filter above (project/category/date-range/contract type/etc.) so
+  // this is "the current view, summarized by month" rather than a separate
+  // unfiltered report.
+  const monthlyReport = useMemo(() => {
+    const map = new Map<string, {
+      key: string; label: string; count: number; contractValue: number;
+      draft: number; issued: number; inProgress: number; completed: number; cancelled: number;
+      billed: number;
+    }>();
+    for (const wo of filtered) {
+      const key = dayjs(wo.issueDate).format("YYYY-MM");
+      if (!map.has(key)) {
+        map.set(key, {
+          key, label: dayjs(wo.issueDate).format("MMMM YYYY"),
+          count: 0, contractValue: 0, draft: 0, issued: 0, inProgress: 0, completed: 0, cancelled: 0, billed: 0,
+        });
+      }
+      const row = map.get(key)!;
+      row.count += 1;
+      row.contractValue += wo.contractValue || 0;
+      if (wo.status === "draft") row.draft += 1;
+      else if (wo.status === "issued") row.issued += 1;
+      else if (wo.status === "in-progress") row.inProgress += 1;
+      else if (wo.status === "completed") row.completed += 1;
+      else if (wo.status === "cancelled") row.cancelled += 1;
+      row.billed += (woBillsMap[wo.id] || []).reduce((s, b) => s + (b.amount || 0), 0);
+    }
+    return Array.from(map.values()).sort((a, b) => b.key.localeCompare(a.key));
+  }, [filtered, woBillsMap]);
+
+  const monthlyReportTotals = useMemo(() => monthlyReport.reduce((acc, r) => ({
+    count: acc.count + r.count,
+    contractValue: acc.contractValue + r.contractValue,
+    draft: acc.draft + r.draft, issued: acc.issued + r.issued,
+    inProgress: acc.inProgress + r.inProgress, completed: acc.completed + r.completed,
+    cancelled: acc.cancelled + r.cancelled, billed: acc.billed + r.billed,
+  }), { count: 0, contractValue: 0, draft: 0, issued: 0, inProgress: 0, completed: 0, cancelled: 0, billed: 0 }), [monthlyReport]);
+
   const nextWONo = useMemo(() => {
     const max = workOrders.reduce((m, wo) => {
       const match = wo.workOrderNo.match(/^WO-(\d+)/);
@@ -2258,6 +2306,7 @@ export default function WorkItems() {
         assignedDRI:  values.assignedDRI || [],
         description:  values.description?.trim() || "",
         totalTenure:  values.totalTenure?.trim() || "",
+        internalRemark: values.internalRemark?.trim() || "",
         scopeOfWork,
         scopeItems:   createScopeItems.map(draftToNewItem),
         contractValue: totalAmt,
@@ -2344,6 +2393,7 @@ export default function WorkItems() {
         issueDate:    values.issueDate ? dayjs(values.issueDate).format("YYYY-MM-DD") : currentEditWO.issueDate,
         description:  values.description?.trim() || "",
         totalTenure:  values.totalTenure?.trim() || "",
+        internalRemark: values.internalRemark?.trim() || "",
         scopeOfWork,
         scopeItems:   savedItems,
         contractValue: totalAmt,
@@ -2761,15 +2811,25 @@ export default function WorkItems() {
             { key: "pending", label: "Pending Approvals",  count: pendingApprovals.length },
           ]}
         />
-        <Segmented
-          value={contractTypeFilter}
-          onChange={(v) => setContractTypeFilter(v as typeof contractTypeFilter)}
-          options={[
-            { label: "All", value: "all" },
-            { label: "Execution", value: "execution" },
-            { label: "Professional Services", value: "professional-services" },
-          ]}
-        />
+        <Space size={12}>
+          <Segmented
+            value={contractTypeFilter}
+            onChange={(v) => setContractTypeFilter(v as typeof contractTypeFilter)}
+            options={[
+              { label: "All", value: "all" },
+              { label: "Execution", value: "execution" },
+              { label: "Professional Services", value: "professional-services" },
+            ]}
+          />
+          <Segmented
+            value={viewMode}
+            onChange={(v) => setViewMode(v as typeof viewMode)}
+            options={[
+              { label: "List View", value: "list" },
+              { label: "Monthly Report", value: "monthly" },
+            ]}
+          />
+        </Space>
       </div>
 
       {/* ── Filters ─────────────────────────────────────────── */}
@@ -2918,32 +2978,79 @@ export default function WorkItems() {
       </div>
 
       {/* Table */}
-      <div style={{ background: "var(--nx-white)", border: "1px solid #E5E7EB", borderRadius: 10, overflow: "hidden" }}>
-        <Spin spinning={loadingData}>
-          <Table
-            rowKey="id"
-            dataSource={filtered}
-            columns={columns}
-            onRow={record => ({
-              onClick: () => { setSelectedWOId(record.id); setDrawerOpen(true); },
-              style: { cursor: "pointer" },
-            })}
-            pagination={{ pageSize: 10, showSizeChanger: false }}
-            scroll={{ x: 1300 }}
-            locale={{
-              emptyText: loadingData ? " " : (
-                <div style={{ padding: "40px 20px", color: "#9CA3AF", textAlign: "center" }}>
-                  <div style={{ fontSize: 28, marginBottom: 10 }}>📋</div>
-                  <div style={{ fontWeight: 600, color: "#374151" }}>No work orders yet</div>
-                  <div style={{ fontSize: 12, marginTop: 4 }}>
-                    Click "New Work Order" to create your first one.
+      {viewMode === "list" ? (
+        <div style={{ background: "var(--nx-white)", border: "1px solid #E5E7EB", borderRadius: 10, overflow: "hidden" }}>
+          <Spin spinning={loadingData}>
+            <Table
+              rowKey="id"
+              dataSource={filtered}
+              columns={columns}
+              onRow={record => ({
+                onClick: () => { setSelectedWOId(record.id); setDrawerOpen(true); },
+                style: { cursor: "pointer" },
+              })}
+              pagination={{ pageSize: 10, showSizeChanger: false }}
+              scroll={{ x: 1300 }}
+              locale={{
+                emptyText: loadingData ? " " : (
+                  <div style={{ padding: "40px 20px", color: "#9CA3AF", textAlign: "center" }}>
+                    <div style={{ fontSize: 28, marginBottom: 10 }}>📋</div>
+                    <div style={{ fontWeight: 600, color: "#374151" }}>No work orders yet</div>
+                    <div style={{ fontSize: 12, marginTop: 4 }}>
+                      Click "New Work Order" to create your first one.
+                    </div>
                   </div>
-                </div>
-              ),
-            }}
-          />
-        </Spin>
-      </div>
+                ),
+              }}
+            />
+          </Spin>
+        </div>
+      ) : (
+        <div style={{ background: "var(--nx-white)", border: "1px solid #E5E7EB", borderRadius: 10, overflow: "hidden" }}>
+          <Spin spinning={loadingData}>
+            <Table
+              rowKey="key"
+              dataSource={monthlyReport}
+              pagination={false}
+              scroll={{ x: 1100 }}
+              summary={() => (
+                <Table.Summary fixed>
+                  <Table.Summary.Row style={{ background: "#FFF8F3", fontWeight: 700 }}>
+                    <Table.Summary.Cell index={0}>Total</Table.Summary.Cell>
+                    <Table.Summary.Cell index={1}>{monthlyReportTotals.count}</Table.Summary.Cell>
+                    <Table.Summary.Cell index={2}>{fmt(monthlyReportTotals.contractValue)}</Table.Summary.Cell>
+                    <Table.Summary.Cell index={3}>{fmt(monthlyReportTotals.billed)}</Table.Summary.Cell>
+                    <Table.Summary.Cell index={4}>{monthlyReportTotals.draft}</Table.Summary.Cell>
+                    <Table.Summary.Cell index={5}>{monthlyReportTotals.issued}</Table.Summary.Cell>
+                    <Table.Summary.Cell index={6}>{monthlyReportTotals.inProgress}</Table.Summary.Cell>
+                    <Table.Summary.Cell index={7}>{monthlyReportTotals.completed}</Table.Summary.Cell>
+                    <Table.Summary.Cell index={8}>{monthlyReportTotals.cancelled}</Table.Summary.Cell>
+                  </Table.Summary.Row>
+                </Table.Summary>
+              )}
+              columns={[
+                { title: "Month", dataIndex: "label", fixed: "left", width: 150, render: (v: string) => <strong>{v}</strong> },
+                { title: "WOs", dataIndex: "count", width: 70, align: "right" as const },
+                { title: "Contract Value", dataIndex: "contractValue", width: 150, align: "right" as const, render: fmt },
+                { title: "Billed", dataIndex: "billed", width: 150, align: "right" as const, render: (v: number) => <span style={{ color: "#16a85a", fontWeight: 600 }}>{fmt(v)}</span> },
+                { title: "Draft", dataIndex: "draft", width: 80, align: "right" as const },
+                { title: "Issued", dataIndex: "issued", width: 80, align: "right" as const },
+                { title: "In Progress", dataIndex: "inProgress", width: 100, align: "right" as const },
+                { title: "Completed", dataIndex: "completed", width: 100, align: "right" as const },
+                { title: "Cancelled", dataIndex: "cancelled", width: 100, align: "right" as const },
+              ]}
+              locale={{
+                emptyText: loadingData ? " " : (
+                  <div style={{ padding: "40px 20px", color: "#9CA3AF", textAlign: "center" }}>
+                    <div style={{ fontSize: 28, marginBottom: 10 }}>📊</div>
+                    <div style={{ fontWeight: 600, color: "#374151" }}>No work orders match the current filters</div>
+                  </div>
+                ),
+              }}
+            />
+          </Spin>
+        </div>
+      )}
 
       {/* ── View Drawer ──────────────────────────────────────── */}
       <Drawer

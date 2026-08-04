@@ -238,6 +238,9 @@ export interface WorkOrder {
   assignedDRI?: ({ _id: string; name: string; email?: string; mobile?: string } | string)[];
   scopeOfWork?: string;
   totalTenure?: string;
+  // A general remark on the work order itself — shown everywhere, including
+  // on the printed WO PDF.
+  internalRemark?: string;
   scopeItems: ScopeItem[];
   contractValue: number;
   discount?: number;

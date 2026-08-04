@@ -134,6 +134,7 @@ interface WOData {
   subCategory?: string;
   scopeOfWork?: string;
   totalTenure?: string;
+  internalRemark?: string;
   description?: string;
   vendorName?: string;
   vendorCode?: string;
@@ -356,7 +357,8 @@ export function WorkOrderDocument({ wo, company, contractor }: Props) {
           <InfoRow label="Category"          value={wo.category} />
           {wo.subCategory ? <InfoRow label="Sub-category" value={wo.subCategory} /> : null}
           <InfoRow label="Work Title / Scope" value={wo.description || wo.scopeOfWork} />
-          <InfoRow label="Total Tenure of Entire Work" value={wo.totalTenure} last />
+          <InfoRow label="Total Tenure of Entire Work" value={wo.totalTenure} />
+          <InfoRow label="Remarks" value={wo.internalRemark} last />
         </SectionBox>
 
         {/* ── Scope of Work (with pricing) ── */}
