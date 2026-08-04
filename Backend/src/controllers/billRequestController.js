@@ -397,10 +397,20 @@ exports.rejectBillRequest = asyncHandler(async (req, res) => {
       const target = resolveBillableItem(si, item.subItemId);
       if (!target) continue;
       target.lastBilledQty = Math.max(0, (target.lastBilledQty || 0) - item.billedQty);
-      for (const entry of target.progressEntries) {
-        if (entry.billedInRequestId && String(entry.billedInRequestId) === String(br._id) && !entry.invalidated?.done) {
-          entry.invalidated = { done: true, by: req.user._id, at: new Date(), reason: rejectReason };
-          entry.billedInRequestId = null;
+      // Bill requests created before per-particular billing existed have no
+      // subItemId — their marked progress entries could be sitting on ANY of
+      // the parent's particulars (the old code marked across all of them), not
+      // on the parent's own progressEntries. Search every plausible location
+      // so a legacy pending request still un-marks its real entry on reject.
+      const entrySources = item.subItemId
+        ? [target]
+        : (si.subItems && si.subItems.length > 0 ? si.subItems : [target]);
+      for (const src of entrySources) {
+        for (const entry of src.progressEntries) {
+          if (entry.billedInRequestId && String(entry.billedInRequestId) === String(br._id) && !entry.invalidated?.done) {
+            entry.invalidated = { done: true, by: req.user._id, at: new Date(), reason: rejectReason };
+            entry.billedInRequestId = null;
+          }
         }
       }
       recomputeAfterInvalidate(si);
