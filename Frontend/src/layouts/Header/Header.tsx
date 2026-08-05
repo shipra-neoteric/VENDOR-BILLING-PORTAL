@@ -130,30 +130,28 @@ export default function Header({ onToggleSidebar }: HeaderProps) {
         zIndex: 100,
       }}
     >
-      {/* Left: Hamburger (mobile) + Logo + Module name */}
+      {/* Left: Hamburger (collapses the sidebar on any screen size) + Logo + Module name */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
-        {isMobile && (
-          <button
-            onClick={onToggleSidebar}
-            aria-label="Toggle menu"
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: 8,
-              border: "1px solid var(--nx-border)",
-              background: "transparent",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: 17,
-              color: "var(--nx-text)",
-              cursor: "pointer",
-              flexShrink: 0,
-            }}
-          >
-            <MenuOutlined />
-          </button>
-        )}
+        <button
+          onClick={onToggleSidebar}
+          aria-label="Toggle menu"
+          style={{
+            width: 36,
+            height: 36,
+            borderRadius: 8,
+            border: "1px solid var(--nx-border)",
+            background: "transparent",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: 17,
+            color: "var(--nx-text)",
+            cursor: "pointer",
+            flexShrink: 0,
+          }}
+        >
+          <MenuOutlined />
+        </button>
         <div
           style={{
             width: 36,

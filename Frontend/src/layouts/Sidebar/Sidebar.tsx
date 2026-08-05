@@ -162,6 +162,11 @@ export default function Sidebar({ open = false, onClose }: SidebarProps) {
         .map(g => ({ ...g, items: g.items.filter(item => canView(item.moduleId, perms, user?.role)) }))
         .filter(g => g.items.length > 0);
 
+  // Desktop collapse reclaims the space entirely (content expands to fill)
+  // rather than sliding off-canvas behind a backdrop — that treatment is for
+  // mobile, where the sidebar overlays content instead of making room.
+  if (!isMobile && !open) return null;
+
   return (
     <>
       {/* Tap-to-close backdrop — mobile only, only while the sidebar is open */}

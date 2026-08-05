@@ -2,17 +2,26 @@ import { Outlet, useLocation } from "react-router-dom";
 import { useEffect, useState } from "react";
 import Sidebar from "../Sidebar/Sidebar";
 import Header from "../Header/Header";
+import { useIsMobile, MOBILE_BREAKPOINT } from "../../hooks/useIsMobile";
 import type { ReactNode } from "react";
 
 interface Props { children?: ReactNode; }
 
 export default function MainLayout({ children }: Props) {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  // Open by default on desktop (matches the sidebar's original always-visible
+  // behavior), closed by default on mobile (an off-canvas overlay shouldn't
+  // cover the page on first load). Read synchronously so there's no flash of
+  // the wrong state on first paint.
+  const [sidebarOpen, setSidebarOpen] = useState(() =>
+    typeof window === "undefined" || window.innerWidth >= MOBILE_BREAKPOINT
+  );
+  const isMobile = useIsMobile();
   const location = useLocation();
 
   // Close the mobile off-canvas sidebar on every navigation — otherwise it
-  // stays open over the new page until manually dismissed.
-  useEffect(() => { setSidebarOpen(false); }, [location.pathname]);
+  // stays open over the new page until manually dismissed. Desktop's
+  // collapse state is a deliberate user choice and shouldn't reset on nav.
+  useEffect(() => { if (isMobile) setSidebarOpen(false); }, [location.pathname, isMobile]);
 
   return (
     <div style={{ display: "flex", minHeight: "100vh", background: "var(--nx-bg)" }}>
