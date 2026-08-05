@@ -16,11 +16,11 @@ const STATUS_CFG: Record<WorkOrderStatus, { color: "gray" | "blue" | "orange" | 
   cancelled:     { color: "red",    label: "Cancelled" },
 };
 
-const fmt = (n: number) => "₹" + Math.round(n).toLocaleString("en-IN");
+const fmt = (n: number) => "₹" + (n).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 // Per-unit rates (e.g. ₹130.5/sqft) are fractional far more often than totals
 // are — rounding them for display (as the money-total fmt() above does)
 // silently turns 130.5 into 131. This keeps up to 2 decimal places instead.
-const fmtRate = (n: number) => "₹" + (n || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 });
+const fmtRate = (n: number) => "₹" + (n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 // The complete read side of a Work Order — Live Workflow, summary, billing
 // tape, scope of work, payment milestones, warranty terms — shared verbatim

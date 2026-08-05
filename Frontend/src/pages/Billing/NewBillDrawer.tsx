@@ -61,7 +61,7 @@ interface ScopeItemOpt { id: string; description: string; unit: string; plannedQ
 interface WorkOrderOpt { id: string; workOrderNo: string; projectId: string; projectName: string; vendorCode: string; vendorName: string; scopeItems: ScopeItemOpt[]; }
 interface AdvanceSlipOpt { _id: string; slipNo: string; amount: number; amountRecovered: number; balance: number; date?: string; reference?: string; }
 
-const fmt = (n: number) => "₹" + Math.round(n || 0).toLocaleString("en-IN");
+const fmt = (n: number) => "₹" + (n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const normalizeId = (obj: Record<string, unknown>) => ({ ...obj, id: (obj._id || obj.id)?.toString() || "" });
 const normalizeWO = (wo: Record<string, unknown>): WorkOrderOpt => ({
   ...normalizeId(wo),
@@ -229,7 +229,10 @@ export default function NewBillDrawer({
           updated.percentComplete = Math.round(((Number(val) || 0) / li.plannedQty) * 10000) / 100;
         }
         if (field === "billedQty" || field === "rate" || field === "percentComplete") {
-          updated.amount = Math.round((Number(updated.billedQty) || 0) * (Number(updated.rate) || 0));
+          // Rounded to paise (2 decimals), not the nearest whole rupee — a
+          // fractional rate (e.g. ₹50.5/sqft) produces a genuinely fractional
+          // amount, and rounding it away here would discard real money.
+          updated.amount = Math.round((Number(updated.billedQty) || 0) * (Number(updated.rate) || 0) * 100) / 100;
         }
         return updated;
       })
@@ -595,7 +598,7 @@ export default function NewBillDrawer({
                           {b.billNo}
                         </span>
                         <span style={{ color: "#9ba3b8", marginLeft: 6 }}>
-                          ₹{Math.round(b.amount).toLocaleString("en-IN")}
+                          ₹{b.amount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </span>
                         <span style={{ marginLeft: 6 }}><StatusTag status={b.status} /></span>
                         {isSuperseded && <Tag color="default" style={{ fontSize: 10 }}>Superseded</Tag>}

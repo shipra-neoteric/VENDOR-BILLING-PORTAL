@@ -225,7 +225,7 @@ const fmtDateTime = (d?: string) => {
 };
 
 const fmtAmt = (n?: number) =>
-  n ? "₹ " + Math.round(n).toLocaleString("en-IN") : "—";
+  n ? "₹ " + n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—";
 
 const TERMS = [
   "All work shall be executed strictly as per approved drawings, specifications, and IS standards. No deviation is allowed without written approval.",

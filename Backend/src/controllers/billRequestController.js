@@ -211,7 +211,10 @@ exports.agmApprove = asyncHandler(async (req, res) => {
     return s + (target?.rate ?? 0) * item.billedQty;
   }, 0);
   const retentionPercent = wo.retentionPercent ?? 0;
-  const defaultRetention = Math.round(totalAmount * retentionPercent / 100);
+  // Rounded to paise (2 decimals), not the nearest whole rupee — a fractional
+  // rate produces genuinely fractional amounts, and rounding away decimals
+  // here would discard real money rather than just formatting it for display.
+  const defaultRetention = Math.round(totalAmount * retentionPercent) / 100;
   // AGM sets the actual hold/advance figures as part of L1 approval — falls back
   // to the work order's automatic retention calc if AGM doesn't override it.
   // Persisted here (not just used once) since gmApprove reads them back later.

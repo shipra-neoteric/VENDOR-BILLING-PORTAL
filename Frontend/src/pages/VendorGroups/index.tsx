@@ -18,7 +18,7 @@ import { SkeletonTable } from "../../ui/Skeleton";
 import Spinner from "../../ui/Spinner";
 
 const normalizeId = <T extends { _id?: string; id?: string }>(obj: T) => ({ ...obj, id: obj._id || obj.id });
-const fmt = (n: number) => "₹" + Math.round(n || 0).toLocaleString("en-IN");
+const fmt = (n: number) => "₹" + (n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 interface GroupMember {
   id: string;

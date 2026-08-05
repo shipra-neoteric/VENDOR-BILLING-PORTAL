@@ -43,7 +43,7 @@ interface Project { _id: string; code?: string; name?: string; parentId?: string
 interface Contractor { _id: string; vendorCode: string; companyName?: string; shortCode?: string; }
 
 // ── Helpers ───────────────────────────────────────────────────
-const fmt = (n: number) => "₹" + Math.round(n || 0).toLocaleString("en-IN");
+const fmt = (n: number) => "₹" + (n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const pctStr = (n: number, d: number) => d ? ((n / d) * 100).toFixed(1) + "%" : "0%";
 
 function calcBill(b: Bill) {

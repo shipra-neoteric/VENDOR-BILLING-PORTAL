@@ -20,16 +20,24 @@ export interface BillFinancials {
   netPayable: number;
 }
 
+// Rounds to 2 decimal places (paise) rather than the nearest whole rupee —
+// a fractional rate (e.g. ₹50.5/sqft) produces genuinely fractional amounts
+// throughout this chain, and rounding to whole rupees at each step silently
+// discards real money rather than just formatting it for display.
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
 export function billFinancials({
   gross, gstPercent = 0, retentionAmount = 0, advanceRecovery = 0, tdsAmount = 0,
 }: BillFinancialsInput): BillFinancials {
-  const netBeforeGst = gross - retentionAmount - advanceRecovery;
-  const gstAmount    = Math.round(netBeforeGst * gstPercent / 100);
-  const netAfterHold = netBeforeGst + gstAmount;
-  const netPayable   = netAfterHold - tdsAmount;
+  const netBeforeGst = round2(gross - retentionAmount - advanceRecovery);
+  const gstAmount    = round2(netBeforeGst * gstPercent / 100);
+  const netAfterHold = round2(netBeforeGst + gstAmount);
+  const netPayable   = round2(netAfterHold - tdsAmount);
   return { gstAmount, netBeforeGst, netAfterHold, netPayable };
 }
 
 export function holdAmountFromPercent(gross: number, holdPercent: number): number {
-  return Math.round(gross * (holdPercent || 0) / 100);
+  return round2(gross * (holdPercent || 0) / 100);
 }

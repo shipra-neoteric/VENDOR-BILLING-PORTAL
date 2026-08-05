@@ -86,7 +86,7 @@ interface ScopeDraft {
 
 // ── Helpers ──────────────────────────────────────────────────────
 
-const fmt = (n: number) => "₹" + Math.round(n).toLocaleString("en-IN");
+const fmt = (n: number) => "₹" + (n).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 // Sub-items ("Particulars") are a read-only descriptive breakdown — the main
 // item's own qty/rate always drives the amount, so the two never get summed

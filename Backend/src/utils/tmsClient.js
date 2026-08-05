@@ -16,7 +16,9 @@ function netPayable(bill) {
   const netBeforeGst = (bill.amount || 0) - (bill.retentionAmount || 0) - (bill.advanceRecovery || 0);
   const gstAmount     = netBeforeGst * (bill.gstPercent ?? 0) / 100;
   const netAfterHold  = netBeforeGst + gstAmount;
-  return Math.round(netAfterHold - (bill.tdsAmount || 0));
+  // Rounded to paise (2 decimals), not the nearest whole rupee — see
+  // Frontend/src/shared/utils/billMath.ts's round2 for why.
+  return Math.round((netAfterHold - (bill.tdsAmount || 0)) * 100) / 100;
 }
 
 async function sendBill(bill, contractor) {

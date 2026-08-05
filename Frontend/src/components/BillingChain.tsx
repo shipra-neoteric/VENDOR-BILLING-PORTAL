@@ -54,7 +54,7 @@ const REL_LABEL: Record<string, string> = {
   RETENTION_RELEASE_OF: "RETENTION RELEASE OF",
 };
 
-const fmt = (n: number) => "₹" + Math.round(n || 0).toLocaleString("en-IN");
+const fmt = (n: number) => "₹" + (n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 // ── Component ────────────────────────────────────────────────────
 

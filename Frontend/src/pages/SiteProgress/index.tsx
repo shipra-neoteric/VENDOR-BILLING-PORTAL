@@ -100,10 +100,10 @@ interface BillRequestRow {
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
-const fmt  = (n: number) => "₹" + Math.round(n || 0).toLocaleString("en-IN");
+const fmt  = (n: number) => "₹" + (n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 // Per-unit rates are fractional far more often than totals are — rounding
 // them for display (as fmt() does) silently turns 130.5 into 131.
-const fmtRate = (n: number) => "₹" + (n || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 });
+const fmtRate = (n: number) => "₹" + (n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtN = (n: number) => (n ?? 0).toLocaleString("en-IN");
 const pctOf = (c: number, p: number) => p > 0 ? Math.min(100, Math.round((c / p) * 100)) : 0;
 

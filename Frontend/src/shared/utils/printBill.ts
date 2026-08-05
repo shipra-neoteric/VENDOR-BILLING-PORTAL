@@ -88,9 +88,9 @@ export function printBill(
         <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:center">${i + 1}</td>
         <td style="padding:8px 12px;border-bottom:1px solid #eee">${li.description}${li.remarks ? `<div style="font-size:10px;color:#d97706;margin-top:3px">📌 ${li.remarks}</div>` : ""}${li.progressRemarks ? `<div style="font-size:10px;color:#2563eb;margin-top:3px">👷 ${li.progressRemarks}</div>` : ""}</td>
         <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:center">${li.unit || "-"}</td>
-        <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:right">${(li.billedQty || 0).toLocaleString("en-IN")}</td>
-        <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:right">${(li.rate || 0).toLocaleString("en-IN")}</td>
-        <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:right;font-weight:600">${(li.amount || 0).toLocaleString("en-IN")}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:right">${(li.billedQty || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:right">${(li.rate || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:right;font-weight:600">${(li.amount || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
       </tr>`
     )
     .join("");
@@ -186,22 +186,22 @@ export function printBill(
 <div style="display:flex;justify-content:flex-end;margin-bottom:24px">
   <div style="min-width:320px;border:1px solid #e8e8e8;border-radius:6px;overflow:hidden;font-family:monospace">
     <div style="display:flex;justify-content:space-between;padding:9px 14px;border-bottom:1px solid #eee">
-      <span>Gross Amount</span><span>₹${(bill.amount || 0).toLocaleString("en-IN")}</span>
+      <span>Gross Amount</span><span>₹${(bill.amount || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
     </div>
     ${(bill.retentionAmount ?? 0) > 0 ? `
     <div style="display:flex;justify-content:space-between;padding:9px 14px;border-bottom:1px solid #eee;color:#dc2626">
       <span>Hold / Retention${(bill.retentionPercent ?? 0) > 0 ? ` @ ${bill.retentionPercent}%` : ""}</span>
-      <span>− ₹${Math.round(bill.retentionAmount ?? 0).toLocaleString("en-IN")}</span>
+      <span>− ₹${(bill.retentionAmount ?? 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
     </div>` : ""}
     ${(bill.advanceRecovery ?? 0) > 0 ? `
     <div style="display:flex;justify-content:space-between;padding:9px 14px;border-bottom:1px solid #eee;color:#d97706">
-      <span>Less: Advance Recovery</span><span>− ₹${Math.round(bill.advanceRecovery ?? 0).toLocaleString("en-IN")}</span>
+      <span>Less: Advance Recovery</span><span>− ₹${(bill.advanceRecovery ?? 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
     </div>` : ""}
     ${(() => {
       const { gstAmount } = billFinancials({ gross: bill.amount || 0, gstPercent: bill.gstPercent ?? 0, retentionAmount: bill.retentionAmount ?? 0, advanceRecovery: bill.advanceRecovery ?? 0 });
       return gstAmount > 0 ? `
     <div style="display:flex;justify-content:space-between;padding:9px 14px;border-bottom:1px solid #eee;color:#16a34a">
-      <span>GST @ ${bill.gstPercent}%</span><span>+ ₹${gstAmount.toLocaleString("en-IN")}</span>
+      <span>GST @ ${bill.gstPercent}%</span><span>+ ₹${gstAmount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
     </div>` : "";
     })()}
     ${(() => {
@@ -211,25 +211,26 @@ export function printBill(
         return `
     <div style="display:flex;justify-content:space-between;padding:13px 14px;background:#fff7ed;font-weight:bold;font-size:15px;color:#f47b20;border-top:2px solid #fed7aa">
       <span>NET PAYABLE</span>
-      <span>₹${netPay.toLocaleString("en-IN")}</span>
+      <span>₹${netPay.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
     </div>`;
       } else {
-        // POST-PAYMENT: show net payable, TDS, hold release, actually paid
-        const retRel = Math.round(bill.retentionReleased ?? 0);
-        const billPortion = bill.paidAmount != null ? Math.max(0, Math.round(bill.paidAmount) - retRel) : null;
-        const tds = billPortion != null ? Math.max(0, netPay - billPortion) : 0;
+        // POST-PAYMENT: show net payable, TDS, hold release, actually paid —
+        // rounded to paise (2 decimals), not the nearest whole rupee.
+        const retRel = Math.round((bill.retentionReleased ?? 0) * 100) / 100;
+        const billPortion = bill.paidAmount != null ? Math.max(0, Math.round((bill.paidAmount - retRel) * 100) / 100) : null;
+        const tds = billPortion != null ? Math.max(0, Math.round((netPay - billPortion) * 100) / 100) : 0;
         return `
     <div style="display:flex;justify-content:space-between;padding:11px 14px;background:#fff7ed;font-weight:bold;font-size:14px;color:#f47b20;border-top:2px solid #fed7aa">
-      <span>Net Payable</span><span>₹${netPay.toLocaleString("en-IN")}</span>
+      <span>Net Payable</span><span>₹${netPay.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
     </div>${tds > 0 ? `
     <div style="display:flex;justify-content:space-between;padding:9px 14px;border-bottom:1px solid #eee;color:#dc2626">
-      <span>Less: TDS Deducted${bill.tdsPercent ? ` (${bill.tdsPercent}%)` : ""}</span><span>− ₹${tds.toLocaleString("en-IN")}</span>
+      <span>Less: TDS Deducted${bill.tdsPercent ? ` (${bill.tdsPercent}%)` : ""}</span><span>− ₹${tds.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
     </div>` : ""}${retRel > 0 ? `
     <div style="display:flex;justify-content:space-between;padding:9px 14px;border-bottom:1px solid #eee;color:#0369a1;font-weight:600">
-      <span>Hold / Retention Released${bill.retentionReleaseRemark ? ` (${bill.retentionReleaseRemark})` : ""}</span><span>+ ₹${retRel.toLocaleString("en-IN")}</span>
+      <span>Hold / Retention Released${bill.retentionReleaseRemark ? ` (${bill.retentionReleaseRemark})` : ""}</span><span>+ ₹${retRel.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
     </div>` : ""}${bill.paidAmount != null ? `
     <div style="display:flex;justify-content:space-between;padding:13px 14px;background:#f0fdf4;font-weight:bold;font-size:15px;color:#16a34a;border-top:2px solid #bbf7d0">
-      <span>Actually Paid</span><span>₹${Math.round(bill.paidAmount).toLocaleString("en-IN")}</span>
+      <span>Actually Paid</span><span>₹${bill.paidAmount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
     </div>` : ""}`;
       }
     })()}

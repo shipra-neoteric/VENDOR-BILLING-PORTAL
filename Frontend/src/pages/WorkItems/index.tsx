@@ -311,7 +311,7 @@ interface ScopeItemDraft {
 
 // ── Helpers ──────────────────────────────────────────────────
 
-const fmt = (n: number) => "₹" + Math.round(n).toLocaleString("en-IN");
+const fmt = (n: number) => "₹" + (n).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 const resolveUnit = (unit: string, customUnit: string) =>
   unit === "custom" ? (customUnit.trim() || "unit") : unit;

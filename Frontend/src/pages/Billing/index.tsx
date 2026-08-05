@@ -55,10 +55,10 @@ interface Bill {
 
 interface ProjectOpt { id: string; name: string; code: string; parentId?: string | null; }
 
-const fmt = (n: number) => "₹" + Math.round(n || 0).toLocaleString("en-IN");
+const fmt = (n: number) => "₹" + (n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 // Per-unit rates are fractional far more often than totals are — rounding
 // them for display (as fmt() does) silently turns 130.5 into 131.
-const fmtRate = (n: number) => "₹" + (n || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 });
+const fmtRate = (n: number) => "₹" + (n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const netAfterAdvance = (b: Bill) =>
   billFinancials({
     gross: b.amount || 0, gstPercent: b.gstPercent ?? 0,

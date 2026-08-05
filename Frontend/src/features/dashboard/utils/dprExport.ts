@@ -17,7 +17,7 @@ function section(title: string, header: string[], rows: (string | number)[][]): 
   return lines;
 }
 
-const fmt = (n: number) => Math.round(n || 0);
+const fmt = (n: number) => Math.round((n || 0) * 100) / 100;
 
 export function downloadDPRCsv(viewType: "operational" | "financial", report: DPRReport, projectLabel: string) {
   const { operational: o, financial: f, meta } = report;

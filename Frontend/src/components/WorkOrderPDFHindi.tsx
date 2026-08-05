@@ -206,7 +206,7 @@ const fmtDateTime = (d?: string) => {
 };
 
 const fmtAmt = (n?: number) =>
-  n ? "₹ " + Math.round(n).toLocaleString("en-IN") : "—";
+  n ? "₹ " + n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—";
 
 // General Terms & Conditions — Hindi translation of the same 10 standard terms
 const TERMS = [

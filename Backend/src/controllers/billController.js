@@ -523,7 +523,7 @@ exports.tmsCallback = asyncHandler(async (req, res) => {
 
   await logAudit({
     action: 'UPDATE', module: MODULE, user: { _id: null, name: 'TMS', role: 'system' },
-    description: `TMS confirmed payment for bill ${bill.billNo}${bill.paidAmount != null ? ` — ₹${Math.round(bill.paidAmount).toLocaleString('en-IN')} paid` : ''}${bill.paymentUTR ? ` (UTR ${bill.paymentUTR})` : ''}`,
+    description: `TMS confirmed payment for bill ${bill.billNo}${bill.paidAmount != null ? ` — ₹${bill.paidAmount.toLocaleString('en-IN', { maximumFractionDigits: 2 })} paid` : ''}${bill.paymentUTR ? ` (UTR ${bill.paymentUTR})` : ''}`,
     entityType: 'RunningBill', entityId: bill._id, entityLabel: bill.billNo,
   });
 

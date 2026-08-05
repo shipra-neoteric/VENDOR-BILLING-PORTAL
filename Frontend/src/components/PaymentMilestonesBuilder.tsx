@@ -51,7 +51,7 @@ export function calcGrandTotal(items: MilestoneDraft[]): number {
   return items.reduce((s, m) => s + calcPayable(m), 0);
 }
 
-const fmt = (n: number) => "₹" + Math.round(n).toLocaleString("en-IN");
+const fmt = (n: number) => "₹" + (n).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export default function PaymentMilestonesBuilder({
   items, onChange, contractValue, contractValueInclGst,

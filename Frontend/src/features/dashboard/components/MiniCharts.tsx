@@ -156,7 +156,7 @@ export function BriefBanner({ icon, title, briefs }: { icon: string; title: stri
   );
 }
 
-export const fmtMoney = (n: number) => n ? "₹" + Math.round(n).toLocaleString("en-IN") : "₹0";
+export const fmtMoney = (n: number) => n ? "₹" + n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "₹0";
 export const statusColor = (pct: number) => pct >= 90 ? "#16a34a" : pct >= 60 ? "#f59e0b" : "#e03b3b";
 
 export function KpiCard({

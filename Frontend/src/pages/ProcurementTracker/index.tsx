@@ -49,7 +49,7 @@ interface BillRow {
 
 interface ProjectOpt { id: string; name: string; code: string; parentId?: string | null; }
 
-const fmt = (n: number) => "₹" + Math.round(n || 0).toLocaleString("en-IN");
+const fmt = (n: number) => "₹" + (n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const normalizeId = (obj: Record<string, unknown>) => ({ ...obj, id: (obj._id || obj.id)?.toString() || "" });
 
 const STAGE_ORDER = ["draft", "verify-done", "l1-approved", "approved", "sent-to-tms", "paid"];

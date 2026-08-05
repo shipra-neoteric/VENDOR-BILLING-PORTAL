@@ -19,7 +19,7 @@ function fmtMinutes(min: number): string {
   if (h > 0) return `${h}h ${m}m`;
   return `${m}m`;
 }
-const fmtMoney = (n: number) => n ? "₹" + Math.round(n).toLocaleString("en-IN") : "₹0";
+const fmtMoney = (n: number) => n ? "₹" + n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "₹0";
 const statusColor = (pct: number) => pct >= 90 ? "#16a34a" : pct >= 60 ? "#f59e0b" : "#e03b3b";
 const statusEmoji = (pct: number) => pct >= 90 ? "🟢" : pct >= 60 ? "🟡" : "🔴";
 

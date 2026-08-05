@@ -30,7 +30,7 @@ interface WFInstance {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-const fmt = (n: number) => "₹" + Math.round(n || 0).toLocaleString("en-IN");
+const fmt = (n: number) => "₹" + (n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const daysAgo = (d: string) => dayjs().diff(dayjs(d), "day");
 
 // ── Queue section (shared layout for every role's queues) ─────────────────────

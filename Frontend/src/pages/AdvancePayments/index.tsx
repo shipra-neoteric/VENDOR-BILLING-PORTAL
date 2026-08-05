@@ -19,7 +19,7 @@ import ConfirmModal from "../../ui/ConfirmModal";
 import Spinner from "../../ui/Spinner";
 import { Table, Thead, Tbody, Tr, Th, Td, TdText } from "../../ui/Table";
 
-const fmt = (n: number) => "₹" + Math.round(n).toLocaleString("en-IN");
+const fmt = (n: number) => "₹" + (n).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 const STATUS_CFG: Record<string, { color: "orange" | "amber" | "green"; label: string }> = {
   outstanding: { color: "orange", label: "Outstanding" },

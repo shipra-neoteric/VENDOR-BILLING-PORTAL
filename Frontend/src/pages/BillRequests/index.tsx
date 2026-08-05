@@ -24,10 +24,10 @@ import Spinner from "../../ui/Spinner";
 import { Table, Thead, Tbody, Tr, Th, Td, TdText } from "../../ui/Table";
 import Pagination from "../../ui/Pagination";
 
-const fmt = (n: number) => "₹" + Math.round(n).toLocaleString("en-IN");
+const fmt = (n: number) => "₹" + (n).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 // Per-unit rates are fractional far more often than totals are — rounding
 // them for display (as fmt() does) silently turns 130.5 into 131.
-const fmtRate = (n: number) => "₹" + (n || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 });
+const fmtRate = (n: number) => "₹" + (n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 const STATUS_CFG: Record<string, { color: "orange" | "blue" | "green" | "red"; label: string }> = {
   pending:      { color: "orange", label: "Pending (L1 — AGM)"  },

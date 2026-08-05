@@ -59,10 +59,10 @@ interface BillRequestStage {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-const fmtMoney = (n: number) => "₹" + Math.round(n).toLocaleString("en-IN");
+const fmtMoney = (n: number) => "₹" + (n).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 // Per-unit rates are fractional far more often than totals are — rounding
 // them for display (as fmtMoney() does) silently turns 130.5 into 131.
-const fmtRate  = (n: number) => "₹" + (n || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 });
+const fmtRate  = (n: number) => "₹" + (n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 // Net of GST, hold/retention and advance recovery — the amount actually due to the
 // contractor before TDS, not the raw gross bill figure. Matches Bills/Ledger/Approvals.

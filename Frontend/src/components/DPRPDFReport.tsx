@@ -63,7 +63,7 @@ function DataTable({ title, columns, rows }: { title: string; columns: string[];
   );
 }
 
-const fmt = (n: number) => n ? "Rs " + Math.round(n).toLocaleString("en-IN") : "Rs 0";
+const fmt = (n: number) => n ? "Rs " + n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "Rs 0";
 
 export function DPRDocument({ viewType, report, projectLabel }: { viewType: "operational" | "financial"; report: DPRReport; projectLabel: string }) {
   const { operational: o, financial: f, meta } = report;

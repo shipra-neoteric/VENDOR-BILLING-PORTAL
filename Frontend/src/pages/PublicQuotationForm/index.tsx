@@ -29,7 +29,7 @@ interface WorkOrderContext {
   scopeItems: ScopeItemContext[];
 }
 
-const fmt = (n: number) => "₹" + Math.round(n || 0).toLocaleString("en-IN");
+const fmt = (n: number) => "₹" + (n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 function workOrderIdFromPath(): string {
   // /public/quotation/:workOrderId — the first per-record-scoped public link

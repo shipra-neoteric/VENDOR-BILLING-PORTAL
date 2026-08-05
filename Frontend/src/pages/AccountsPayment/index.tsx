@@ -157,7 +157,7 @@ interface ProjectOpt { id: string; name: string; code: string; parentId?: string
 
 // ── Helpers ──────────────────────────────────────────────────────
 
-const fmt = (n: number) => "₹" + Math.round(n || 0).toLocaleString("en-IN");
+const fmt = (n: number) => "₹" + (n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 // Net payable after Hold/Retention (off the gross) + GST (on what's left of
 // the gross after Hold), minus advance recovery — before TDS.
 const netAfterAdvance = (b: Bill) =>
