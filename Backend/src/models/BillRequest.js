@@ -54,6 +54,17 @@ const billRequestSchema = new Schema(
     agmApprovedAt:    { type: Date },
     retentionAmount:  { type: Number, default: 0 },
     advanceRecovery:  { type: Number, default: 0 },
+    // Which real AdvanceSlip(s) advanceRecovery is actually settling — set by
+    // AGM alongside advanceRecovery, but not applied (slip balances updated)
+    // until gmApprove actually creates the RunningBill, exactly like the
+    // manual Billing flow applies its own recoveries at bill-creation time.
+    // Without this, advanceRecovery was just a bare number never linked back
+    // to any real slip, so a slip stayed "outstanding" forever even once its
+    // amount had genuinely been recovered through this approval flow.
+    advanceRecoveries: {
+      type: [{ slipId: { type: Schema.Types.ObjectId, ref: 'AdvanceSlip' }, amount: Number, _id: false }],
+      default: [],
+    },
     // Lets AGM set/override the GST% actually applied on the eventual bill —
     // mainly for a work order that has no GST% configured at all. Null means
     // "use the work order's own gstPercent", exactly like retention/advance

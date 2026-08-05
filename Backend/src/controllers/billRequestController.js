@@ -12,6 +12,7 @@ const { nextCode } = require('../utils/sequence');
 const { nextBillNo } = require('../utils/codeGen');
 const { recomputeAfterInvalidate, expandBillableCandidates, recomputeParentFromSubItems } = require('../utils/progressHelpers');
 const { resolvePayee } = require('../utils/vendorGroupHelpers');
+const { applyAdvanceRecoveries } = require('../utils/advanceRecovery');
 
 // Gathers the DRI's day-to-day notes for whichever progress entries on this
 // exact billable target (a particular, or a plain scope item with none)
@@ -215,7 +216,7 @@ exports.agmApprove = asyncHandler(async (req, res) => {
   // to the work order's automatic retention calc if AGM doesn't override it.
   // Persisted here (not just used once) since gmApprove reads them back later.
   const retentionAmount  = req.body.retentionAmount != null ? Number(req.body.retentionAmount) : defaultRetention;
-  const advanceRecovery  = req.body.advanceRecovery != null ? Number(req.body.advanceRecovery) : 0;
+  let advanceRecovery    = req.body.advanceRecovery != null ? Number(req.body.advanceRecovery) : 0;
 
   // Who this bill should actually pay — normally left unset (gmApprove then
   // defaults to the work order's own vendor); only resolved here when AGM
@@ -229,8 +230,26 @@ exports.agmApprove = asyncHandler(async (req, res) => {
     br.gstPercentOverride = gst;
   }
 
+  // Which real AdvanceSlip(s) advanceRecovery is settling — must belong to
+  // whoever is ACTUALLY receiving this bill's payment (the resolved payee
+  // above, which may be a fellow Vendor Group member, not just the work
+  // order's own base vendor) or the recovery makes no sense.
+  const advanceRecoveries = Array.isArray(req.body.advanceRecoveries) ? req.body.advanceRecoveries : [];
+  if (advanceRecoveries.length) {
+    const AdvanceSlip = require('../models/AdvanceSlip');
+    const slips = await AdvanceSlip.find({ _id: { $in: advanceRecoveries.map(r => r.slipId).filter(Boolean) } }).select('contractorCode');
+    const mismatch = slips.find(s => s.contractorCode !== payee.vendorCode);
+    if (mismatch) {
+      return badRequest(res, `Advance slip ${mismatch._id} does not belong to this bill's payee (${payee.vendorCode}).`);
+    }
+    // Keep the flat total consistent with the itemized breakdown, rather than
+    // trusting two independently-sent numbers to already agree.
+    advanceRecovery = advanceRecoveries.reduce((s, r) => s + (Number(r.amount) || 0), 0);
+  }
+
   br.retentionAmount = retentionAmount;
   br.advanceRecovery = advanceRecovery;
+  br.advanceRecoveries = advanceRecoveries;
   br.payeeVendorCode = payee.overridden ? payee.vendorCode : '';
   br.payeeVendorName = payee.overridden ? payee.vendorName : '';
   br.agmApprovedBy   = req.user._id;
@@ -366,6 +385,12 @@ exports.gmApprove = asyncHandler(async (req, res) => {
   br.processedAt = new Date();
   br.approvalHistory.push({ stage: 'gm', action: 'approved', by: req.user._id, remarks: req.body.remarks || '' });
   await br.save();
+
+  // Apply AGM's advance-slip recoveries now that the bill actually exists —
+  // same point (bill creation) the manual Billing flow applies its own.
+  if (br.advanceRecoveries?.length) {
+    await applyAdvanceRecoveries(br.advanceRecoveries, { billNo, releasedBy: req.user.name });
+  }
 
   emitEvent('BILL_REQUEST_APPROVED', {
     projectId:     wo.projectId,

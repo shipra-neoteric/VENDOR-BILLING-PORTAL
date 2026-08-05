@@ -461,6 +461,11 @@ export default function SiteProgress() {
   // vendor, but a fellow Vendor Group member can be picked instead.
   const [approvePayeeCode, setApprovePayeeCode] = useState<string>("");
   const [approveGroupSiblings, setApproveGroupSiblings] = useState<{ vendorCode: string; companyName: string }[]>([]);
+  // Outstanding advance slips for whoever is CURRENTLY selected as payee — so
+  // AGM's "Advance Recovery Amount" actually links back to a real slip
+  // instead of being a bare number no AdvanceSlip ever finds out about.
+  const [approvePendingAdvances, setApprovePendingAdvances] = useState<{ _id: string; slipNo: string; balance: number }[]>([]);
+  const [approveProjectId, setApproveProjectId] = useState<string>("");
   const [gmModal,     setGmModal]     = useState(false); // GM (L2)
   const [gmTarget,    setGmTarget]    = useState<string | null>(null);
   const [gmRemarks,   setGmRemarks]   = useState("");
@@ -473,12 +478,30 @@ export default function SiteProgress() {
   const [rejectReason, setRejectReason] = useState("");
   const [saving, setSaving] = useState(false);
 
+  const fetchPendingAdvances = async (projectId: string, vendorCode: string) => {
+    if (!projectId || !vendorCode) { setApprovePendingAdvances([]); return; }
+    try {
+      const res = await apiClient.get<{ advanceSlips: { _id: string; slipNo: string; balance: number }[] }>(
+        "/advance-slips/pending", { params: { projectId, vendorCode } }
+      );
+      setApprovePendingAdvances(res.data.advanceSlips || []);
+    } catch { setApprovePendingAdvances([]); }
+  };
+
+  const selectApprovePayee = (vendorCode: string) => {
+    setApprovePayeeCode(vendorCode);
+    fetchPendingAdvances(approveProjectId, vendorCode);
+  };
+
   const openApprove = async (id: string) => {
     setApproveTarget(id); setApproveRetention(null); setApproveAdvance(null); setApproveGst(null); setApproveModal(true);
-    setApprovePayeeCode(""); setApproveGroupSiblings([]);
+    setApprovePayeeCode(""); setApproveGroupSiblings([]); setApprovePendingAdvances([]);
     const br = billReqs.find(r => r._id === id);
     if (!br?.vendorCode) return;
     setApprovePayeeCode(br.vendorCode);
+    const projectId = br.projectId ?? "";
+    setApproveProjectId(projectId);
+    fetchPendingAdvances(projectId, br.vendorCode);
     try {
       const cRes = await apiClient.get<{ contractors: Contractor[] }>("/contractors", { params: { search: br.vendorCode } });
       const contractor = cRes.data.contractors.find(c => c.vendorCode === br.vendorCode);
@@ -491,11 +514,25 @@ export default function SiteProgress() {
     if (!approveTarget) return;
     setSaving(true);
     try {
-      const body: Record<string, number | string> = {};
+      const body: Record<string, unknown> = {};
       if (approveRetention != null) body.retentionAmount = approveRetention;
-      if (approveAdvance   != null) body.advanceRecovery = approveAdvance;
       if (approveGst       != null) body.gstPercent       = approveGst;
       if (approvePayeeCode) body.payeeVendorCode = approvePayeeCode;
+      if (approveAdvance != null) {
+        body.advanceRecovery = approveAdvance;
+        // Distribute the entered recovery across outstanding slips
+        // oldest-first, capped at each slip's own balance — same allocation
+        // the manual New Bill drawer already uses.
+        const recoveries: { slipId: string; amount: number }[] = [];
+        let remaining = approveAdvance;
+        for (const slip of approvePendingAdvances) {
+          if (remaining <= 0) break;
+          const take = Math.min(remaining, slip.balance);
+          if (take > 0) recoveries.push({ slipId: slip._id, amount: take });
+          remaining -= take;
+        }
+        if (recoveries.length) body.advanceRecoveries = recoveries;
+      }
       const res = await apiClient.put(`/bill-requests/${approveTarget}/agm-approve`, body);
       message.success(res.data.message || "AGM approved — forwarded to GM");
       setApproveModal(false); setApproveTarget(null); setViewReq(null);
@@ -1231,27 +1268,15 @@ export default function SiteProgress() {
         <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 14 }}>
           Sets the hold/advance figures GM will see at Stage 2. Leave a field blank to use the work order's automatic retention calculation.
         </div>
-        <div style={{ marginBottom: 12 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Hold / Retention Amount (₹, optional)</div>
-          <InputNumber style={{ width: "100%" }} min={0} placeholder="Auto-calculated from work order retention %" value={approveRetention} onChange={setApproveRetention} />
-        </div>
-        <div style={{ marginBottom: 12 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Advance Recovery Amount (₹, optional)</div>
-          <InputNumber style={{ width: "100%" }} min={0} placeholder="0" value={approveAdvance} onChange={setApproveAdvance} />
-        </div>
-        <div style={{ marginBottom: approveGroupSiblings.length > 1 ? 12 : 0 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>GST % (optional)</div>
-          <InputNumber style={{ width: "100%" }} min={0} max={100} placeholder="Leave blank to use the work order's GST%" value={approveGst} onChange={setApproveGst} />
-        </div>
         {approveGroupSiblings.length > 1 && (
-          <div>
+          <div style={{ marginBottom: 12 }}>
             <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>
               Pay To (Vendor Group)
             </div>
             <Select
               style={{ width: "100%" }}
               value={approvePayeeCode}
-              onChange={setApprovePayeeCode}
+              onChange={selectApprovePayee}
               options={approveGroupSiblings.map(c => ({
                 value: c.vendorCode,
                 label: `${c.companyName} (${c.vendorCode})`,
@@ -1259,6 +1284,29 @@ export default function SiteProgress() {
             />
           </div>
         )}
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Hold / Retention Amount (₹, optional)</div>
+          <InputNumber style={{ width: "100%" }} min={0} placeholder="Auto-calculated from work order retention %" value={approveRetention} onChange={setApproveRetention} />
+        </div>
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Advance Recovery Amount (₹, optional)</div>
+          <InputNumber
+            style={{ width: "100%" }} min={0}
+            max={approvePendingAdvances.length ? approvePendingAdvances.reduce((s, sl) => s + sl.balance, 0) : undefined}
+            placeholder="0" value={approveAdvance} onChange={setApproveAdvance}
+          />
+          {approvePendingAdvances.length > 0 ? (
+            <div style={{ marginTop: 6, fontSize: 11, color: "#6B7280" }}>
+              Outstanding for this payee: {approvePendingAdvances.map(sl => `${sl.slipNo} (${fmt(sl.balance)})`).join(", ")} — settled oldest-first.
+            </div>
+          ) : (
+            <div style={{ marginTop: 6, fontSize: 11, color: "#9CA3AF" }}>No outstanding advance slips for this payee on this project.</div>
+          )}
+        </div>
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>GST % (optional)</div>
+          <InputNumber style={{ width: "100%" }} min={0} max={100} placeholder="Leave blank to use the work order's GST%" value={approveGst} onChange={setApproveGst} />
+        </div>
       </Modal>
 
       {/* ── GM approve modal (L2) — final, creates the RunningBill ── */}
