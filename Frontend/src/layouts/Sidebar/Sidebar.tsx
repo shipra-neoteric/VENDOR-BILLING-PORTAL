@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { NavLink } from "react-router-dom";
+import { useIsMobile } from "../../hooks/useIsMobile";
 import {
   LayoutOutlined, BankOutlined, ApartmentOutlined, TeamOutlined, TagsOutlined,
   FileTextOutlined, LineChartOutlined, WalletOutlined,
@@ -153,6 +154,7 @@ export default function Sidebar({ open = false, onClose }: SidebarProps) {
   const { user } = useAuth();
   const isDRI  = user?.role === "site-dri";
   const perms  = user?.permissions;
+  const isMobile = useIsMobile();
 
   const rawGroups = isDRI
     ? buildDRIGroups(perms)
@@ -163,25 +165,37 @@ export default function Sidebar({ open = false, onClose }: SidebarProps) {
   return (
     <>
       {/* Tap-to-close backdrop — mobile only, only while the sidebar is open */}
-      {open && (
+      {isMobile && open && (
         <div
-          className="md:hidden fixed inset-0 z-40 bg-black/40"
+          style={{ position: "fixed", inset: 0, zIndex: 40, background: "rgba(0,0,0,0.4)" }}
           onClick={onClose}
         />
       )}
       <div
-        className={`fixed md:sticky inset-y-0 left-0 z-50 md:z-auto transition-transform duration-200 ${open ? "translate-x-0" : "-translate-x-full"} md:translate-x-0`}
+        data-testid="app-sidebar"
         style={{
           width: 260,
           background: "var(--nx-sidebar-bg)",
           borderRight: "1px solid var(--nx-sidebar-border)",
           height: "100vh",
-          top: 0,
           display: "flex",
           flexDirection: "column",
           overflowY: "auto",
           flexShrink: 0,
           boxShadow: "2px 0 8px rgba(0,0,0,0.04)",
+          ...(isMobile
+            ? {
+                position: "fixed",
+                top: 0,
+                left: 0,
+                zIndex: 50,
+                transition: "transform 0.2s ease",
+                transform: open ? "translateX(0)" : "translateX(-100%)",
+              }
+            : {
+                position: "sticky",
+                top: 0,
+              }),
         }}
       >
       {/* ── Logo / Brand ── */}
