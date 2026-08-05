@@ -473,18 +473,18 @@ export default function BillRequests() {
               const gross   = b.amount || 0;
               const retAmt  = b.retentionAmount ?? 0;
               const advRec  = b.advanceRecovery ?? 0;
-              const { gstAmount: gstAmt, netAfterHold: netPay } = billFinancials({ gross, gstPercent: b.gstPercent ?? 0, retentionAmount: retAmt });
+              const { gstAmount: gstAmt, netAfterHold: netPay } = billFinancials({ gross, gstPercent: b.gstPercent ?? 0, retentionAmount: retAmt, advanceRecovery: advRec });
               const paid    = b.paidAmount;
-              const tdsAmt  = paid != null ? Math.max(0, Math.round(netPay - advRec - paid)) : 0;
+              const tdsAmt  = paid != null ? Math.max(0, Math.round(netPay - paid)) : 0;
               return (
                 <div className="bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-300 dark:border-emerald-500/30 rounded-lg p-3 text-sm">
                   <div className="font-bold mb-2 text-emerald-800 dark:text-emerald-300">Running Bill: {b.billNo}</div>
                   <div className="font-mono text-xs flex flex-col gap-0.5">
                     <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">Gross Billed</span><span className="font-semibold">{fmt(gross)}</span></div>
                     {retAmt > 0 && <div className="flex justify-between text-red-600 dark:text-red-400"><span>Hold / Retention{(b.retentionPercent ?? 0) > 0 ? ` @ ${b.retentionPercent}%` : ""}</span><span>− {fmt(retAmt)}</span></div>}
+                    {advRec > 0 && <div className="flex justify-between text-amber-600 dark:text-amber-400"><span>Less: Advance Recovery</span><span>− {fmt(advRec)}</span></div>}
                     {gstAmt > 0 && <div className="flex justify-between text-emerald-600 dark:text-emerald-400"><span>GST @ {b.gstPercent}%</span><span>+ {fmt(gstAmt)}</span></div>}
                     <div className="flex justify-between border-t border-emerald-300 dark:border-emerald-500/30 pt-1 mt-0.5 font-bold"><span>Net Payable</span><span>{fmt(netPay)}</span></div>
-                    {advRec > 0 && <div className="flex justify-between mt-0.5 text-amber-600 dark:text-amber-400"><span>Less: Advance Recovery</span><span>− {fmt(advRec)}</span></div>}
                     {tdsAmt > 0 && <div className="flex justify-between text-red-600 dark:text-red-400"><span>Less: TDS Deducted</span><span>− {fmt(tdsAmt)}</span></div>}
                     {paid != null && <div className="flex justify-between font-bold text-emerald-600 dark:text-emerald-400 text-[13px] mt-1 border-t border-emerald-300 dark:border-emerald-500/30 pt-1"><span>Actually Paid</span><span>{fmt(paid)}</span></div>}
                   </div>

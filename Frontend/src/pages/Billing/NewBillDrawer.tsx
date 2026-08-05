@@ -301,9 +301,9 @@ export default function NewBillDrawer({
   const holdAmount = holdMode === "percent"
     ? holdAmountFromPercent(gross, holdPercent || 0)
     : Math.round(holdAmountInput || 0);
-  const { gstAmount: gstAmt, netAfterHold } = billFinancials({ gross, gstPercent, retentionAmount: holdAmount });
+  const { gstAmount: gstAmt, netAfterHold } = billFinancials({ gross, gstPercent, retentionAmount: holdAmount, advanceRecovery: recoveryAmount || 0 });
   const maxRecovery = pendingAdvances.reduce((s, sl) => s + sl.balance, 0);
-  const payableNow = Math.max(0, netAfterHold - (recoveryAmount || 0));
+  const payableNow = netAfterHold;
 
   async function handleSubmit() {
     const validItems = lineItems.filter((li) => li.description.trim() && li.billedQty > 0);
@@ -834,19 +834,8 @@ export default function NewBillDrawer({
             </div>
           </div>
 
-          <div style={{ fontFamily: "monospace", fontSize: 13 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", padding: "7px 14px", borderBottom: "1px solid #f5f6f8", color: "#1a1f2e" }}>
-              <span>Net Before GST</span><span>{fmt(gross - holdAmount)}</span>
-            </div>
-            <div style={{ display: "flex", justifyContent: "space-between", padding: "7px 14px", borderBottom: "1px solid #f5f6f8", color: "#16a85a" }}>
-              <span>+ GST @ {gstPercent}%</span><span>{fmt(gstAmt)}</span>
-            </div>
-            <div style={{ display: "flex", justifyContent: "space-between", padding: "7px 14px", borderBottom: "1px solid #f5f6f8", color: "#1a1f2e" }}>
-              <span>Net After Hold</span><span>{fmt(netAfterHold)}</span>
-            </div>
-          </div>
-
-          {/* Advance Recovery */}
+          {/* Advance Recovery — deducted (along with Hold, above) BEFORE GST is
+              calculated, not after, so it's shown here rather than below. */}
           {!advancesUnavailable && (
             <div style={{ padding: "10px 14px", borderBottom: "1px solid #f5f6f8", background: "#fff7ed" }}>
               <div style={{ fontWeight: 700, fontSize: 12, color: "#92400e", marginBottom: 8 }}>Advance Recovery</div>
@@ -880,6 +869,15 @@ export default function NewBillDrawer({
               </div>
             </div>
           )}
+
+          <div style={{ fontFamily: "monospace", fontSize: 13 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", padding: "7px 14px", borderBottom: "1px solid #f5f6f8", color: "#1a1f2e" }}>
+              <span>Net Before GST</span><span>{fmt(gross - holdAmount - (recoveryAmount || 0))}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", padding: "7px 14px", borderBottom: "1px solid #f5f6f8", color: "#16a85a" }}>
+              <span>+ GST @ {gstPercent}%</span><span>{fmt(gstAmt)}</span>
+            </div>
+          </div>
 
           <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 14px", background: "#fff8f3", fontWeight: 800, fontSize: 15, color: "#d4620c" }}>
             <span>Payable Now</span>

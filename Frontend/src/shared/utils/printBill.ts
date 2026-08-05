@@ -193,38 +193,35 @@ export function printBill(
       <span>Hold / Retention${(bill.retentionPercent ?? 0) > 0 ? ` @ ${bill.retentionPercent}%` : ""}</span>
       <span>− ₹${Math.round(bill.retentionAmount ?? 0).toLocaleString("en-IN")}</span>
     </div>` : ""}
+    ${(bill.advanceRecovery ?? 0) > 0 ? `
+    <div style="display:flex;justify-content:space-between;padding:9px 14px;border-bottom:1px solid #eee;color:#d97706">
+      <span>Less: Advance Recovery</span><span>− ₹${Math.round(bill.advanceRecovery ?? 0).toLocaleString("en-IN")}</span>
+    </div>` : ""}
     ${(() => {
-      const { gstAmount } = billFinancials({ gross: bill.amount || 0, gstPercent: bill.gstPercent ?? 0, retentionAmount: bill.retentionAmount ?? 0 });
+      const { gstAmount } = billFinancials({ gross: bill.amount || 0, gstPercent: bill.gstPercent ?? 0, retentionAmount: bill.retentionAmount ?? 0, advanceRecovery: bill.advanceRecovery ?? 0 });
       return gstAmount > 0 ? `
     <div style="display:flex;justify-content:space-between;padding:9px 14px;border-bottom:1px solid #eee;color:#16a34a">
       <span>GST @ ${bill.gstPercent}%</span><span>+ ₹${gstAmount.toLocaleString("en-IN")}</span>
     </div>` : "";
     })()}
     ${(() => {
-      const advRec = Math.round(bill.advanceRecovery ?? 0);
-      const netPay = billFinancials({ gross: bill.amount || 0, gstPercent: bill.gstPercent ?? 0, retentionAmount: bill.retentionAmount ?? 0 }).netAfterHold;
+      const netPay = billFinancials({ gross: bill.amount || 0, gstPercent: bill.gstPercent ?? 0, retentionAmount: bill.retentionAmount ?? 0, advanceRecovery: bill.advanceRecovery ?? 0 }).netAfterHold;
       if (mode === 'pre') {
-        // PRE-PAYMENT: show advance recovery, end at net payable (no TDS/payment)
-        return `${advRec > 0 ? `
-    <div style="display:flex;justify-content:space-between;padding:9px 14px;border-bottom:1px solid #eee;color:#d97706">
-      <span>Less: Advance Recovery</span><span>− ₹${advRec.toLocaleString("en-IN")}</span>
-    </div>` : ""}
+        // PRE-PAYMENT: end at net payable (Hold/Advance already deducted above)
+        return `
     <div style="display:flex;justify-content:space-between;padding:13px 14px;background:#fff7ed;font-weight:bold;font-size:15px;color:#f47b20;border-top:2px solid #fed7aa">
       <span>NET PAYABLE</span>
-      <span>₹${(netPay - advRec).toLocaleString("en-IN")}</span>
+      <span>₹${netPay.toLocaleString("en-IN")}</span>
     </div>`;
       } else {
-        // POST-PAYMENT: show net payable, advance, TDS, hold release, actually paid
+        // POST-PAYMENT: show net payable, TDS, hold release, actually paid
         const retRel = Math.round(bill.retentionReleased ?? 0);
         const billPortion = bill.paidAmount != null ? Math.max(0, Math.round(bill.paidAmount) - retRel) : null;
-        const tds = billPortion != null ? Math.max(0, netPay - advRec - billPortion) : 0;
+        const tds = billPortion != null ? Math.max(0, netPay - billPortion) : 0;
         return `
     <div style="display:flex;justify-content:space-between;padding:11px 14px;background:#fff7ed;font-weight:bold;font-size:14px;color:#f47b20;border-top:2px solid #fed7aa">
       <span>Net Payable</span><span>₹${netPay.toLocaleString("en-IN")}</span>
-    </div>${advRec > 0 ? `
-    <div style="display:flex;justify-content:space-between;padding:9px 14px;border-bottom:1px solid #eee;color:#d97706">
-      <span>Less: Advance Recovery</span><span>− ₹${advRec.toLocaleString("en-IN")}</span>
-    </div>` : ""}${tds > 0 ? `
+    </div>${tds > 0 ? `
     <div style="display:flex;justify-content:space-between;padding:9px 14px;border-bottom:1px solid #eee;color:#dc2626">
       <span>Less: TDS Deducted${bill.tdsPercent ? ` (${bill.tdsPercent}%)` : ""}</span><span>− ₹${tds.toLocaleString("en-IN")}</span>
     </div>` : ""}${retRel > 0 ? `

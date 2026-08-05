@@ -308,14 +308,14 @@ export default function Billing() {
                   <span>− Hold / Retention{viewBill.retentionPercent ? ` (${viewBill.retentionPercent}%)` : ""}</span><span>{fmt(viewBill.retentionAmount || 0)}</span>
                 </div>
               )}
-              <div style={{ display: "flex", justifyContent: "space-between", padding: "7px 14px", borderBottom: "1px solid #f5f6f8" }}>
-                <span>+ GST @ {viewBill.gstPercent}%</span><span>{fmt(billFinancials({ gross: viewBill.amount, gstPercent: viewBill.gstPercent, retentionAmount: viewBill.retentionAmount ?? 0 }).gstAmount)}</span>
-              </div>
               {(viewBill.advanceRecovery ?? 0) > 0 && (
                 <div style={{ display: "flex", justifyContent: "space-between", padding: "7px 14px", borderBottom: "1px solid #f5f6f8", color: "#b45309" }}>
                   <span>− Advance Recovery</span><span>{fmt(viewBill.advanceRecovery || 0)}</span>
                 </div>
               )}
+              <div style={{ display: "flex", justifyContent: "space-between", padding: "7px 14px", borderBottom: "1px solid #f5f6f8" }}>
+                <span>+ GST @ {viewBill.gstPercent}%</span><span>{fmt(billFinancials({ gross: viewBill.amount, gstPercent: viewBill.gstPercent, retentionAmount: viewBill.retentionAmount ?? 0, advanceRecovery: viewBill.advanceRecovery ?? 0 }).gstAmount)}</span>
+              </div>
               <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 14px", background: "#fff8f3", fontWeight: 800, fontSize: 15, color: "#d4620c" }}>
                 <span>Net Payable</span><span>{fmt(netAfterAdvance(viewBill))}</span>
               </div>
