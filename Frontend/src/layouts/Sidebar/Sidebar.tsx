@@ -162,10 +162,11 @@ export default function Sidebar({ open = false, onClose }: SidebarProps) {
         .map(g => ({ ...g, items: g.items.filter(item => canView(item.moduleId, perms, user?.role)) }))
         .filter(g => g.items.length > 0);
 
-  // Desktop collapse reclaims the space entirely (content expands to fill)
-  // rather than sliding off-canvas behind a backdrop — that treatment is for
-  // mobile, where the sidebar overlays content instead of making room.
-  if (!isMobile && !open) return null;
+  // On desktop, "closed" shrinks to a narrow icon-only rail rather than
+  // disappearing outright — same collapse treatment as the reference. Mobile
+  // still fully hides (slides off-canvas behind a backdrop), since there a
+  // permanent icon rail would eat too much of an already-narrow screen.
+  const collapsed = !isMobile && !open;
 
   return (
     <>
@@ -179,15 +180,17 @@ export default function Sidebar({ open = false, onClose }: SidebarProps) {
       <div
         data-testid="app-sidebar"
         style={{
-          width: 260,
+          width: collapsed ? 72 : 260,
           background: "var(--nx-sidebar-bg)",
           borderRight: "1px solid var(--nx-sidebar-border)",
           height: "100vh",
           display: "flex",
           flexDirection: "column",
           overflowY: "auto",
+          overflowX: "hidden",
           flexShrink: 0,
           boxShadow: "2px 0 8px rgba(0,0,0,0.04)",
+          transition: "width 0.18s ease",
           ...(isMobile
             ? {
                 position: "fixed",
@@ -204,8 +207,8 @@ export default function Sidebar({ open = false, onClose }: SidebarProps) {
         }}
       >
       {/* ── Logo / Brand ── */}
-      <div style={{ padding: "20px 18px 16px", borderBottom: "1px solid var(--nx-sidebar-logo-border)" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+      <div style={{ padding: collapsed ? "20px 0 16px" : "20px 18px 16px", borderBottom: "1px solid var(--nx-sidebar-logo-border)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, justifyContent: collapsed ? "center" : "flex-start" }}>
           <div
             style={{
               width: 40, height: 40,
@@ -220,14 +223,16 @@ export default function Sidebar({ open = false, onClose }: SidebarProps) {
           >
             N
           </div>
-          <div>
-            <div style={{ fontWeight: 800, fontSize: 16, color: "var(--nx-sidebar-brand-color)", lineHeight: 1.2 }}>
-              Nexora ERP
+          {!collapsed && (
+            <div>
+              <div style={{ fontWeight: 800, fontSize: 16, color: "var(--nx-sidebar-brand-color)", lineHeight: 1.2, whiteSpace: "nowrap" }}>
+                Nexora ERP
+              </div>
+              <div style={{ fontSize: 12, color: "var(--nx-sidebar-sub-color)", marginTop: 2, lineHeight: 1.2, whiteSpace: "nowrap" }}>
+                {isDRI ? "Site Progress Portal" : "Project Cost Center"}
+              </div>
             </div>
-            <div style={{ fontSize: 12, color: "var(--nx-sidebar-sub-color)", marginTop: 2, lineHeight: 1.2 }}>
-              {isDRI ? "Site Progress Portal" : "Project Cost Center"}
-            </div>
-          </div>
+          )}
         </div>
       </div>
 
@@ -235,31 +240,35 @@ export default function Sidebar({ open = false, onClose }: SidebarProps) {
       <div style={{ flex: 1, padding: "6px 0 10px" }}>
         {rawGroups.map((group, gi) => (
           <div key={group.label} style={{ marginTop: gi === 0 ? 4 : 0 }}>
-            {/* Group label */}
-            <div
-              style={{
-                fontSize: 11,
-                fontWeight: 700,
-                color: "var(--nx-sidebar-group-color)",
-                textTransform: "uppercase",
-                letterSpacing: "0.09em",
-                padding: gi === 0 ? "10px 20px 5px" : "18px 20px 5px",
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-              }}
-            >
-              <span
+            {/* Group label — a plain divider line once collapsed, no text (no room for it) */}
+            {collapsed ? (
+              <div style={{ height: 1, background: "var(--nx-sidebar-group-line)", margin: gi === 0 ? "8px 16px 10px" : "16px 16px 10px" }} />
+            ) : (
+              <div
                 style={{
-                  flex: 1,
-                  height: 1,
-                  background: "var(--nx-sidebar-group-line)",
-                  display: "block",
-                  maxWidth: 16,
+                  fontSize: 11,
+                  fontWeight: 700,
+                  color: "var(--nx-sidebar-group-color)",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.09em",
+                  padding: gi === 0 ? "10px 20px 5px" : "18px 20px 5px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
                 }}
-              />
-              {group.label}
-            </div>
+              >
+                <span
+                  style={{
+                    flex: 1,
+                    height: 1,
+                    background: "var(--nx-sidebar-group-line)",
+                    display: "block",
+                    maxWidth: 16,
+                  }}
+                />
+                {group.label}
+              </div>
+            )}
 
             {/* Nav items */}
             {group.items.map((item) => (
@@ -267,23 +276,30 @@ export default function Sidebar({ open = false, onClose }: SidebarProps) {
                 key={item.path}
                 to={item.path}
                 onClick={onClose}
+                title={collapsed ? item.name : undefined}
                 style={{ textDecoration: "none", display: "block" }}
               >
                 {({ isActive }) => (
-                  <div className={`nx-nav-item${isActive ? " nx-nav-item--active" : ""}`}>
-                    <span className="nx-nav-icon">{item.icon}</span>
-                    <span style={{ flex: 1 }}>{item.name}</span>
-                    {isActive && (
-                      <span
-                        style={{
-                          width: 6, height: 6,
-                          borderRadius: "50%",
-                          background: "#FF7A00",
-                          flexShrink: 0,
-                        }}
-                      />
-                    )}
-                  </div>
+                  collapsed ? (
+                    <div style={{ display: "flex", justifyContent: "center", margin: "2px 0" }}>
+                      <span className={`nx-nav-icon${isActive ? " nx-nav-item--active" : ""}`}>{item.icon}</span>
+                    </div>
+                  ) : (
+                    <div className={`nx-nav-item${isActive ? " nx-nav-item--active" : ""}`}>
+                      <span className="nx-nav-icon">{item.icon}</span>
+                      <span style={{ flex: 1 }}>{item.name}</span>
+                      {isActive && (
+                        <span
+                          style={{
+                            width: 6, height: 6,
+                            borderRadius: "50%",
+                            background: "#FF7A00",
+                            flexShrink: 0,
+                          }}
+                        />
+                      )}
+                    </div>
+                  )
                 )}
               </NavLink>
             ))}
