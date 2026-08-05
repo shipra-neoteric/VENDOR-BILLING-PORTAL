@@ -86,6 +86,7 @@ interface BillRequestRow {
   agmApprovedAt?: string;
   retentionAmount?: number;
   advanceRecovery?: number;
+  gstPercentOverride?: number | null;
   payeeVendorCode?: string;
   payeeVendorName?: string;
   rejectReason?: string;
@@ -1099,15 +1100,27 @@ export default function SiteProgress() {
               <div style={{ background: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: 8, padding: 12 }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: "#1D4ED8", marginBottom: 8, textTransform: "uppercase" }}>AGM already set (read-only)</div>
                 <Row gutter={12}>
-                  <Col span={12}>
+                  <Col span={8}>
                     <div style={{ fontSize: 10, color: "#6B7280" }}>Hold / Retention</div>
                     <div style={{ fontWeight: 700 }}>{fmt(viewReq.retentionAmount ?? 0)}</div>
                   </Col>
-                  <Col span={12}>
+                  <Col span={8}>
                     <div style={{ fontSize: 10, color: "#6B7280" }}>Advance Recovery</div>
                     <div style={{ fontWeight: 700 }}>{fmt(viewReq.advanceRecovery ?? 0)}</div>
                   </Col>
+                  <Col span={8}>
+                    <div style={{ fontSize: 10, color: "#6B7280" }}>GST %</div>
+                    <div style={{ fontWeight: 700 }}>
+                      {viewReq.gstPercentOverride != null ? `${viewReq.gstPercentOverride}%` : <span style={{ color: "#9CA3AF", fontWeight: 400 }}>Work order default</span>}
+                    </div>
+                  </Col>
                 </Row>
+                {viewReq.payeeVendorCode && (
+                  <div style={{ marginTop: 8, fontSize: 12 }}>
+                    <span style={{ color: "#6B7280" }}>Pay To: </span>
+                    <span style={{ fontWeight: 700 }}>{viewReq.payeeVendorName} ({viewReq.payeeVendorCode})</span>
+                  </div>
+                )}
                 <div style={{ fontSize: 11, color: "#6B7280", marginTop: 6 }}>
                   {actorName(viewReq.agmApprovedBy) || "AGM"}{viewReq.agmApprovedAt ? ` · ${dayjs(viewReq.agmApprovedAt).format("DD MMM YYYY")}` : ""}
                 </div>
