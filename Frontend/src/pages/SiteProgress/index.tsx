@@ -24,6 +24,7 @@ import type { WorkflowInstance } from "../../types/Workflow";
 import { printBill } from "../../shared/utils/printBill";
 import type { PrintableBill } from "../../shared/utils/printBill";
 import type { Contractor } from "../../types/VendorBilling";
+import { billFinancials } from "../../shared/utils/billMath";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface ProgressEntryDetail {
@@ -257,6 +258,7 @@ async function printBillRequest(br: BillRequestRow) {
       amount: br.items.reduce((s, it) => s + (it.rate ?? 0) * it.billedQty, 0),
       retentionAmount: br.retentionAmount ?? 0,
       advanceRecovery: br.advanceRecovery ?? 0,
+      gstPercent: br.gstPercentOverride ?? undefined,
       remarks: br.rejectReason ? `${br.remarks ? br.remarks + " — " : ""}Rejected: ${br.rejectReason}` : br.remarks,
       status: br.status,
       agmApprovedBy: agmDone ? { name: actorName(br.agmApprovedBy) || "AGM" } : null,
@@ -1161,6 +1163,41 @@ export default function SiteProgress() {
                 </tfoot>
               )}
             </table>
+
+            {viewTotal > 0 && (() => {
+              const retAmt = viewReq.retentionAmount ?? 0;
+              const advRec = viewReq.advanceRecovery ?? 0;
+              const gstPct = viewReq.gstPercentOverride ?? 0;
+              const { gstAmount, netAfterHold, netPayable } = billFinancials({ gross: viewTotal, gstPercent: gstPct, retentionAmount: retAmt, advanceRecovery: advRec });
+              return (
+                <div style={{ background: "#FFF8F3", border: "1px solid #FED7AA", borderRadius: 8, padding: 12, fontFamily: "monospace", fontSize: 13 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", color: "#6B7280" }}>
+                    <span>Gross Total</span><span>{fmt(viewTotal)}</span>
+                  </div>
+                  {retAmt > 0 && (
+                    <div style={{ display: "flex", justifyContent: "space-between", color: "#dc2626" }}>
+                      <span>Hold / Retention</span><span>− {fmt(retAmt)}</span>
+                    </div>
+                  )}
+                  {gstAmount > 0 && (
+                    <div style={{ display: "flex", justifyContent: "space-between", color: "#16a34a" }}>
+                      <span>GST @ {gstPct}%</span><span>+ {fmt(gstAmount)}</span>
+                    </div>
+                  )}
+                  <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700, borderTop: "1px solid #FED7AA", paddingTop: 4, marginTop: 4 }}>
+                    <span>Net Payable</span><span>{fmt(netAfterHold)}</span>
+                  </div>
+                  {advRec > 0 && (
+                    <div style={{ display: "flex", justifyContent: "space-between", color: "#d97706" }}>
+                      <span>Less: Advance Recovery</span><span>− {fmt(advRec)}</span>
+                    </div>
+                  )}
+                  <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700, color: "#FF7A00", borderTop: "1px solid #FED7AA", paddingTop: 4, marginTop: 4 }}>
+                    <span>Final Amount</span><span>{fmt(netPayable)}</span>
+                  </div>
+                </div>
+              );
+            })()}
 
             {viewReq.remarks && (
               <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 6, padding: 10, fontSize: 13 }}>
