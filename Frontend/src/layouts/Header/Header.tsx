@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Dropdown, Tooltip, message } from "antd";
 import type { MenuProps } from "antd";
-import { LogoutOutlined, SwapOutlined, RollbackOutlined } from "@ant-design/icons";
+import { LogoutOutlined, SwapOutlined, RollbackOutlined, MenuOutlined } from "@ant-design/icons";
 import { useAuth } from "../../context/AuthContext";
 import type { AuthUser } from "../../context/AuthContext";
 import { useTheme } from "../../context/ThemeContext";
@@ -14,7 +14,11 @@ const ADMIN_SESSION_KEY = "adminSession";
 
 interface SwitchableUser { _id: string; name: string; email: string; role: string; isActive: boolean; }
 
-export default function Header() {
+interface HeaderProps {
+  onToggleSidebar?: () => void;
+}
+
+export default function Header({ onToggleSidebar }: HeaderProps) {
   const { user, token, logout, setSession } = useAuth();
   const { isDark, toggleTheme } = useTheme();
   const navigate = useNavigate();
@@ -111,11 +115,11 @@ export default function Header() {
 
   return (
     <div
+      className="px-3 md:px-6"
       style={{
         height: 64,
         background: "var(--nx-header-bg)",
         borderBottom: "1px solid var(--nx-border)",
-        padding: "0 24px",
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",
@@ -124,8 +128,29 @@ export default function Header() {
         zIndex: 100,
       }}
     >
-      {/* Left: Logo + Module name */}
-      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+      {/* Left: Hamburger (mobile) + Logo + Module name */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+        <button
+          onClick={onToggleSidebar}
+          className="md:hidden"
+          aria-label="Toggle menu"
+          style={{
+            width: 36,
+            height: 36,
+            borderRadius: 8,
+            border: "1px solid var(--nx-border)",
+            background: "transparent",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: 17,
+            color: "var(--nx-text)",
+            cursor: "pointer",
+            flexShrink: 0,
+          }}
+        >
+          <MenuOutlined />
+        </button>
         <div
           style={{
             width: 36,
@@ -139,24 +164,25 @@ export default function Header() {
             fontSize: 15,
             color: "#fff",
             letterSpacing: "-0.5px",
+            flexShrink: 0,
           }}
         >
           N
         </div>
-        <div>
-          <div style={{ fontWeight: 700, fontSize: 14, color: "var(--nx-text)", lineHeight: 1.2 }}>
+        <div className="hidden sm:block" style={{ minWidth: 0 }}>
+          <div style={{ fontWeight: 700, fontSize: 14, color: "var(--nx-text)", lineHeight: 1.2, whiteSpace: "nowrap" }}>
             Neoteric Properties
           </div>
-          <div style={{ fontSize: 11, color: "var(--nx-text-2)", lineHeight: 1.2 }}>
+          <div style={{ fontSize: 11, color: "var(--nx-text-2)", lineHeight: 1.2, whiteSpace: "nowrap" }}>
             Project Cost Center
           </div>
         </div>
       </div>
 
       {/* Right: Theme toggle + User */}
-      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
         {isImpersonating && (
-          <span style={{ background: "#FFF4E8", border: "1px solid #FED7AA", color: "#FF7A00", fontWeight: 600, fontSize: 11, padding: "4px 10px", borderRadius: 20 }}>
+          <span className="hidden sm:inline" style={{ background: "#FFF4E8", border: "1px solid #FED7AA", color: "#FF7A00", fontWeight: 600, fontSize: 11, padding: "4px 10px", borderRadius: 20, whiteSpace: "nowrap" }}>
             Viewing as {user?.name}
           </span>
         )}
@@ -190,7 +216,7 @@ export default function Header() {
           placement="bottomRight"
         >
           <div data-testid="user-menu-trigger" style={{ display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }}>
-            <div style={{ textAlign: "right" }}>
+            <div className="hidden sm:block" style={{ textAlign: "right" }}>
               <div style={{ fontWeight: 600, fontSize: 13, color: "var(--nx-text)", lineHeight: 1.2 }}>
                 {user?.name || "User"}
               </div>

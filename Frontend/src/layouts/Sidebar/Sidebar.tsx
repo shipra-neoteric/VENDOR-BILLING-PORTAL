@@ -140,8 +140,16 @@ function buildDRIGroups(perms: PermEntry[] | undefined): NavGroup[] {
   return groups;
 }
 
+interface SidebarProps {
+  // Only meaningful below the md breakpoint — desktop always shows the
+  // sidebar regardless of this prop. On mobile it's an off-canvas overlay
+  // that slides in/out and sits behind a tap-to-close backdrop.
+  open?: boolean;
+  onClose?: () => void;
+}
+
 // ── Sidebar component ──────────────────────────────────────────────────────────
-export default function Sidebar() {
+export default function Sidebar({ open = false, onClose }: SidebarProps) {
   const { user } = useAuth();
   const isDRI  = user?.role === "site-dri";
   const perms  = user?.permissions;
@@ -153,21 +161,29 @@ export default function Sidebar() {
         .filter(g => g.items.length > 0);
 
   return (
-    <div
-      style={{
-        width: 260,
-        background: "var(--nx-sidebar-bg)",
-        borderRight: "1px solid var(--nx-sidebar-border)",
-        height: "100vh",
-        position: "sticky",
-        top: 0,
-        display: "flex",
-        flexDirection: "column",
-        overflowY: "auto",
-        flexShrink: 0,
-        boxShadow: "2px 0 8px rgba(0,0,0,0.04)",
-      }}
-    >
+    <>
+      {/* Tap-to-close backdrop — mobile only, only while the sidebar is open */}
+      {open && (
+        <div
+          className="md:hidden fixed inset-0 z-40 bg-black/40"
+          onClick={onClose}
+        />
+      )}
+      <div
+        className={`fixed md:sticky inset-y-0 left-0 z-50 md:z-auto transition-transform duration-200 ${open ? "translate-x-0" : "-translate-x-full"} md:translate-x-0`}
+        style={{
+          width: 260,
+          background: "var(--nx-sidebar-bg)",
+          borderRight: "1px solid var(--nx-sidebar-border)",
+          height: "100vh",
+          top: 0,
+          display: "flex",
+          flexDirection: "column",
+          overflowY: "auto",
+          flexShrink: 0,
+          boxShadow: "2px 0 8px rgba(0,0,0,0.04)",
+        }}
+      >
       {/* ── Logo / Brand ── */}
       <div style={{ padding: "20px 18px 16px", borderBottom: "1px solid var(--nx-sidebar-logo-border)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -231,6 +247,7 @@ export default function Sidebar() {
               <NavLink
                 key={item.path}
                 to={item.path}
+                onClick={onClose}
                 style={{ textDecoration: "none", display: "block" }}
               >
                 {({ isActive }) => (
@@ -254,6 +271,7 @@ export default function Sidebar() {
           </div>
         ))}
       </div>
-    </div>
+      </div>
+    </>
   );
 }
