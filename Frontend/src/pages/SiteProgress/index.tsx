@@ -86,6 +86,8 @@ interface BillRequestRow {
   agmApprovedAt?: string;
   retentionAmount?: number;
   advanceRecovery?: number;
+  payeeVendorCode?: string;
+  payeeVendorName?: string;
   rejectReason?: string;
   approvalHistory?: ApprovalHistoryEntry[];
   billId?: { _id: string; billNo: string; status: string; amount: number; paidAmount?: number; retentionPercent?: number; retentionAmount?: number; advanceRecovery?: number; gstPercent?: number; tdsAmount?: number; paymentDate?: string; paymentMode?: string; paymentUTR?: string; paymentBank?: string; paymentReleasedBy?: string };
@@ -449,6 +451,9 @@ export default function SiteProgress() {
   const [approveTarget,    setApproveTarget]    = useState<string | null>(null);
   const [approveRetention, setApproveRetention] = useState<number | null>(null);
   const [approveAdvance,   setApproveAdvance]   = useState<number | null>(null);
+  // Lets AGM set/override GST% on this bill — mainly for a work order that
+  // has no GST% configured at all. Blank means "use the work order's own".
+  const [approveGst,       setApproveGst]       = useState<number | null>(null);
   // Who this bill's payment actually goes to — normally the work order's own
   // vendor, but a fellow Vendor Group member can be picked instead.
   const [approvePayeeCode, setApprovePayeeCode] = useState<string>("");
@@ -456,13 +461,17 @@ export default function SiteProgress() {
   const [gmModal,     setGmModal]     = useState(false); // GM (L2)
   const [gmTarget,    setGmTarget]    = useState<string | null>(null);
   const [gmRemarks,   setGmRemarks]   = useState("");
+  // GM has final say on who gets paid — can confirm AGM's Stage 1 choice (or
+  // the work order's own vendor, if neither ever set one) or override it.
+  const [gmPayeeCode, setGmPayeeCode] = useState<string>("");
+  const [gmGroupSiblings, setGmGroupSiblings] = useState<{ vendorCode: string; companyName: string }[]>([]);
   const [rejectModal,  setRejectModal]  = useState(false);
   const [rejectTarget, setRejectTarget] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState("");
   const [saving, setSaving] = useState(false);
 
   const openApprove = async (id: string) => {
-    setApproveTarget(id); setApproveRetention(null); setApproveAdvance(null); setApproveModal(true);
+    setApproveTarget(id); setApproveRetention(null); setApproveAdvance(null); setApproveGst(null); setApproveModal(true);
     setApprovePayeeCode(""); setApproveGroupSiblings([]);
     const br = billReqs.find(r => r._id === id);
     if (!br?.vendorCode) return;
@@ -482,6 +491,7 @@ export default function SiteProgress() {
       const body: Record<string, number | string> = {};
       if (approveRetention != null) body.retentionAmount = approveRetention;
       if (approveAdvance   != null) body.advanceRecovery = approveAdvance;
+      if (approveGst       != null) body.gstPercent       = approveGst;
       if (approvePayeeCode) body.payeeVendorCode = approvePayeeCode;
       const res = await apiClient.put(`/bill-requests/${approveTarget}/agm-approve`, body);
       message.success(res.data.message || "AGM approved — forwarded to GM");
@@ -491,12 +501,27 @@ export default function SiteProgress() {
       message.error(e?.response?.data?.message || "Failed to approve");
     } finally { setSaving(false); }
   };
-  const openGmApprove = (id: string) => { setGmTarget(id); setGmRemarks(""); setGmModal(true); };
+  const openGmApprove = async (id: string) => {
+    setGmTarget(id); setGmRemarks(""); setGmModal(true);
+    setGmPayeeCode(""); setGmGroupSiblings([]);
+    const br = billReqs.find(r => r._id === id);
+    if (!br?.vendorCode) return;
+    setGmPayeeCode(br.payeeVendorCode || br.vendorCode);
+    try {
+      const cRes = await apiClient.get<{ contractors: Contractor[] }>("/contractors", { params: { search: br.vendorCode } });
+      const contractor = cRes.data.contractors.find(c => c.vendorCode === br.vendorCode);
+      if (!contractor?.groupId) return;
+      const gRes = await apiClient.get<{ members: { vendorCode: string; companyName: string }[] }>(`/vendor-groups/${contractor.groupId}`);
+      setGmGroupSiblings(gRes.data.members || []);
+    } catch { /* group lookup is best-effort — approval still works without it */ }
+  };
   const handleGmApprove = async () => {
     if (!gmTarget) return;
     setSaving(true);
     try {
-      const res = await apiClient.put(`/bill-requests/${gmTarget}/gm-approve`, { remarks: gmRemarks });
+      const body: Record<string, unknown> = { remarks: gmRemarks };
+      if (gmPayeeCode) body.payeeVendorCode = gmPayeeCode;
+      const res = await apiClient.put(`/bill-requests/${gmTarget}/gm-approve`, body);
       message.success(res.data.message || "Approved & bill generated");
       setGmModal(false); setGmTarget(null); setViewReq(null);
       load();
@@ -1163,9 +1188,13 @@ export default function SiteProgress() {
           <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Hold / Retention Amount (₹, optional)</div>
           <InputNumber style={{ width: "100%" }} min={0} placeholder="Auto-calculated from work order retention %" value={approveRetention} onChange={setApproveRetention} />
         </div>
-        <div style={{ marginBottom: approveGroupSiblings.length > 1 ? 12 : 0 }}>
+        <div style={{ marginBottom: 12 }}>
           <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Advance Recovery Amount (₹, optional)</div>
           <InputNumber style={{ width: "100%" }} min={0} placeholder="0" value={approveAdvance} onChange={setApproveAdvance} />
+        </div>
+        <div style={{ marginBottom: approveGroupSiblings.length > 1 ? 12 : 0 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>GST % (optional)</div>
+          <InputNumber style={{ width: "100%" }} min={0} max={100} placeholder="Leave blank to use the work order's GST%" value={approveGst} onChange={setApproveGst} />
         </div>
         {approveGroupSiblings.length > 1 && (
           <div>
@@ -1196,8 +1225,24 @@ export default function SiteProgress() {
         destroyOnClose
       >
         <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 14 }}>
-          This creates the running bill using the retention/advance AGM already set. It then moves to Accounts Payment.
+          This creates the running bill using the retention/advance/GST AGM already set. It then moves to Accounts Payment.
         </div>
+        {gmGroupSiblings.length > 1 && (
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>
+              Pay To (Vendor Group) — final confirmation
+            </div>
+            <Select
+              style={{ width: "100%" }}
+              value={gmPayeeCode}
+              onChange={setGmPayeeCode}
+              options={gmGroupSiblings.map(c => ({
+                value: c.vendorCode,
+                label: `${c.companyName} (${c.vendorCode})`,
+              }))}
+            />
+          </div>
+        )}
         <Input.TextArea rows={2} placeholder="Remarks (optional)" value={gmRemarks} onChange={e => setGmRemarks(e.target.value)} />
       </Modal>
 

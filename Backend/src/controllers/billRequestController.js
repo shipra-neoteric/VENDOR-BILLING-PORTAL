@@ -219,8 +219,15 @@ exports.agmApprove = asyncHandler(async (req, res) => {
 
   // Who this bill should actually pay — normally left unset (gmApprove then
   // defaults to the work order's own vendor); only resolved here when AGM
-  // names a fellow Vendor Group member as the payee instead.
+  // names a fellow Vendor Group member as the payee instead. GM can still
+  // change this again at Stage 2 (final say before the bill is generated).
   const payee = await resolvePayee(wo.vendorCode, wo.vendorName, req.body.payeeVendorCode);
+
+  if (req.body.gstPercent != null) {
+    const gst = Number(req.body.gstPercent);
+    if (Number.isNaN(gst) || gst < 0 || gst > 100) return badRequest(res, 'GST% must be a number between 0 and 100');
+    br.gstPercentOverride = gst;
+  }
 
   br.retentionAmount = retentionAmount;
   br.advanceRecovery = advanceRecovery;
@@ -277,6 +284,16 @@ exports.gmApprove = asyncHandler(async (req, res) => {
     return badRequest(res, `"${wo.workOrderNo}" is no longer fully approved (currently ${wo.approvalStatus}) — it must clear its own approval chain again before this request can become a bill.`);
   }
 
+  // GM has final say on who actually gets paid — can confirm AGM's choice or
+  // override it with a different fellow Vendor Group member. Only re-resolved
+  // when GM explicitly sends a payeeVendorCode; otherwise AGM's choice (or the
+  // work order's own vendor, if neither ever set one) stands unchanged.
+  if (req.body.payeeVendorCode) {
+    const payee = await resolvePayee(wo.vendorCode, wo.vendorName, req.body.payeeVendorCode);
+    br.payeeVendorCode = payee.overridden ? payee.vendorCode : '';
+    br.payeeVendorName = payee.overridden ? payee.vendorName : '';
+  }
+
   // Build line items with rates from WO
   const lineItems = br.items.map(item => {
     const scopeItem = item.scopeItemId
@@ -322,7 +339,7 @@ exports.gmApprove = asyncHandler(async (req, res) => {
     retentionPercent: wo.retentionPercent ?? 0,
     retentionAmount,
     advanceRecovery,
-    gstPercent:  wo.gstPercent ?? 18,
+    gstPercent:  br.gstPercentOverride ?? (wo.gstPercent ?? 18),
     tdsPercent:  0,
     generatedBy: req.user.name,
     status:      'draft',

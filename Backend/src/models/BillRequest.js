@@ -54,6 +54,11 @@ const billRequestSchema = new Schema(
     agmApprovedAt:    { type: Date },
     retentionAmount:  { type: Number, default: 0 },
     advanceRecovery:  { type: Number, default: 0 },
+    // Lets AGM set/override the GST% actually applied on the eventual bill —
+    // mainly for a work order that has no GST% configured at all. Null means
+    // "use the work order's own gstPercent", exactly like retention/advance
+    // default to the WO's own calculation when left blank.
+    gstPercentOverride: { type: Number, default: null },
     // Who this request's eventual bill should actually pay — normally left
     // unset (defaults to the work order's own vendor at gmApprove); only
     // set when AGM names a fellow Vendor Group member as the payee instead.
