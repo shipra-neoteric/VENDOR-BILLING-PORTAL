@@ -64,6 +64,7 @@ export default function WorkOrderDetailView({
           <DescItem label="Project">{wo.projectName}</DescItem>
           {wo.projectLocation && <DescItem label="Location">{wo.projectLocation}</DescItem>}
           <DescItem label="Issuing Company">{wo.companyName}</DescItem>
+          {wo.category && <DescItem label="Category">{wo.category}{wo.subCategory ? ` / ${wo.subCategory}` : ""}</DescItem>}
           <DescItem label="Status">
             <div className="flex items-center gap-1.5">
               <Badge color={STATUS_CFG[wo.status]?.color}>{STATUS_CFG[wo.status]?.label}</Badge>
@@ -166,29 +167,49 @@ export default function WorkOrderDetailView({
               </Tr>
             </Thead>
             <Tbody>
-              {wo.scopeItems.map((si) => (
-                <Tr key={si.id}>
-                  <Td><span className="font-semibold text-[#1A1A2E] dark:text-[#F1F5F9]">{si.description}</span></Td>
-                  {isProfessionalServices ? (
-                    <>
-                      <Td><TdText>{si.stage || "—"}</TdText></Td>
-                      <Td><TdText>{si.plannedEnd ? dayjs(si.plannedEnd).format("DD MMM YYYY") : "—"}</TdText></Td>
+              {wo.scopeItems.map((si) => {
+                const hasSubItems = (si.subItems?.length ?? 0) > 0;
+                return (
+                <>
+                  <Tr key={si.id}>
+                    <Td>
+                      <span className="font-semibold text-[#1A1A2E] dark:text-[#F1F5F9]">{si.description}</span>
+                      {hasSubItems && <span className="ml-1.5 text-[11px] text-gray-400">({si.subItems.length} particulars)</span>}
+                      {si.remarks && <div className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">📌 {si.remarks}</div>}
+                    </Td>
+                    {isProfessionalServices ? (
+                      <>
+                        <Td><TdText>{si.stage || "—"}</TdText></Td>
+                        <Td><TdText>{si.plannedEnd ? dayjs(si.plannedEnd).format("DD MMM YYYY") : "—"}</TdText></Td>
+                        <Td>
+                          <Badge color={si.status === "completed" ? "green" : si.status === "running" ? "orange" : "gray"} small>
+                            {si.status === "completed" ? "Completed" : si.status === "running" ? "In Progress" : "Pending"}
+                          </Badge>
+                        </Td>
+                      </>
+                    ) : (
+                      <>
+                        <Td><TdText>{si.unit}</TdText></Td>
+                        <Td><span className="font-mono"><TdText>{si.plannedQty.toLocaleString("en-IN")}</TdText></span></Td>
+                        <Td><span className="font-mono"><TdText>{fmtRate(si.rate || 0)}</TdText></span></Td>
+                      </>
+                    )}
+                    <Td><span className="font-mono font-bold text-primary">{fmt(si.amount || 0)}</span></Td>
+                  </Tr>
+                  {hasSubItems && si.subItems.map(sub => (
+                    <Tr key={sub.id} className="bg-gray-50 dark:bg-gray-800/30">
                       <Td>
-                        <Badge color={si.status === "completed" ? "green" : si.status === "running" ? "orange" : "gray"} small>
-                          {si.status === "completed" ? "Completed" : si.status === "running" ? "In Progress" : "Pending"}
-                        </Badge>
+                        <span className="pl-4 text-[13px] text-gray-600 dark:text-gray-400">↳ {sub.description}</span>
+                        {sub.remarks && <div className="pl-4 text-xs text-amber-600 dark:text-amber-400 mt-0.5">📌 {sub.remarks}</div>}
                       </Td>
-                    </>
-                  ) : (
-                    <>
-                      <Td><TdText>{si.unit}</TdText></Td>
-                      <Td><span className="font-mono"><TdText>{si.plannedQty.toLocaleString("en-IN")}</TdText></span></Td>
-                      <Td><span className="font-mono"><TdText>{fmtRate(si.rate || 0)}</TdText></span></Td>
-                    </>
-                  )}
-                  <Td><span className="font-mono font-bold text-primary">{fmt(si.amount || 0)}</span></Td>
-                </Tr>
-              ))}
+                      <Td><TdText>{sub.unit}</TdText></Td>
+                      <Td><span className="font-mono"><TdText>{sub.plannedQty.toLocaleString("en-IN")}</TdText></span></Td>
+                      <Td><span className="font-mono"><TdText>{fmtRate(sub.rate || 0)}</TdText></span></Td>
+                      <Td><span className="font-mono font-semibold text-gray-600 dark:text-gray-400">{fmt(sub.amount || 0)}</span></Td>
+                    </Tr>
+                  ))}
+                </>
+              );})}
             </Tbody>
           </Table>
         )}

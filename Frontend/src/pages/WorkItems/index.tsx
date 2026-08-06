@@ -2345,7 +2345,7 @@ export default function WorkItems() {
     // out the actual attached files on this work order.
     const wo = await ensureFullWorkOrder(woIn);
     setEditWOId(wo.id);
-    editForm.setFieldsValue({ ...wo, issueDate: dayjs(wo.issueDate), category: wo.category || "", subCategory: wo.subCategory || "", assignedDRI: ((wo as any).assignedDRI || []).map((d: any) => d._id || d), gstPercent: wo.gstPercent ?? 18, retentionPercent: (wo as any).retentionPercent ?? 0, issuedUnder: wo.issuedUnder || "company", contractType: wo.contractType || "execution" });
+    editForm.setFieldsValue({ ...wo, issueDate: dayjs(wo.issueDate), projectId: getWorkOrderProjectId(wo.projectId), category: wo.category || "", subCategory: wo.subCategory || "", assignedDRI: ((wo as any).assignedDRI || []).map((d: any) => d._id || d), gstPercent: wo.gstPercent ?? 18, retentionPercent: (wo as any).retentionPercent ?? 0, issuedUnder: wo.issuedUnder || "company", contractType: wo.contractType || "execution" });
     setEditScopeItems((wo.scopeItems || []).map(toDraft));
     setEditMilestones((wo.paymentMilestones || []).map(toMilestoneDraft));
     setEditDiscount(wo.discount || null);
