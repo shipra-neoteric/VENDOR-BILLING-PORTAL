@@ -6,7 +6,7 @@ import apiClient from "../../services/apiClient";
 import { useAuth } from "../../context/AuthContext";
 import WorkCategoryChecklist from "../../components/WorkCategoryChecklist";
 import DrawingRequestButton from "../../components/DrawingRequestButton";
-import { firstMissingProgressField } from "../../shared/constants/dailyProgressReportOptions";
+import { firstMissingProgressField, MIN_IMAGES_PER_CATEGORY } from "../../shared/constants/dailyProgressReportOptions";
 import type { DailyProgressReportFormValues, WorkEntry } from "../../shared/constants/dailyProgressReportOptions";
 import PageHeader from "../../ui/PageHeader";
 import Btn from "../../ui/Btn";
@@ -81,8 +81,8 @@ export default function DailyProgressReport() {
     const missing = firstMissingProgressField(form);
     if (missing) return toast.error(`Select ${missing}`);
     if (form.workEntries.length === 0) return toast.error("Check at least one work type");
-    const short = form.workEntries.find(e => e.images.length < 5);
-    if (short) return toast.error(`"${short.workType}" needs at least 5 photos`);
+    const short = form.workEntries.find(e => e.images.length < MIN_IMAGES_PER_CATEGORY);
+    if (short) return toast.error(`"${short.workType}" needs at least ${MIN_IMAGES_PER_CATEGORY} photo${MIN_IMAGES_PER_CATEGORY === 1 ? "" : "s"}`);
 
     setSubmitting(true);
     try {

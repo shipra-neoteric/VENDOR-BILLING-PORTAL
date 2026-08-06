@@ -26,7 +26,7 @@ export interface DailyProgressReportFormValues {
   workEntries: WorkEntry[];
 }
 
-export const MIN_IMAGES_PER_CATEGORY = 5;
+export const MIN_IMAGES_PER_CATEGORY = 1;
 
 export function firstMissingProgressField(values: {
   projectId?: string; driName?: string; date?: string; vendorCode?: string;

@@ -4,7 +4,7 @@ import axios from "axios";
 import dayjs from "dayjs";
 import toast from "react-hot-toast";
 import WorkCategoryChecklist from "../../components/WorkCategoryChecklist";
-import { firstMissingProgressField } from "../../shared/constants/dailyProgressReportOptions";
+import { firstMissingProgressField, MIN_IMAGES_PER_CATEGORY } from "../../shared/constants/dailyProgressReportOptions";
 import type { DailyProgressReportFormValues, WorkEntry } from "../../shared/constants/dailyProgressReportOptions";
 import Btn from "../../ui/Btn";
 import Card from "../../ui/Card";
@@ -54,8 +54,8 @@ export default function PublicDailyProgressReportForm() {
     const missing = firstMissingProgressField(form);
     if (missing) return toast.error(`Select ${missing}`);
     if (form.workEntries.length === 0) return toast.error("Check at least one work type");
-    const short = form.workEntries.find(e => e.images.length < 5);
-    if (short) return toast.error(`"${short.workType}" needs at least 5 photos`);
+    const short = form.workEntries.find(e => e.images.length < MIN_IMAGES_PER_CATEGORY);
+    if (short) return toast.error(`"${short.workType}" needs at least ${MIN_IMAGES_PER_CATEGORY} photo${MIN_IMAGES_PER_CATEGORY === 1 ? "" : "s"}`);
 
     setSubmitting(true);
     try {

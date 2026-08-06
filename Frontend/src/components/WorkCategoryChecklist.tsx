@@ -4,7 +4,7 @@ import { Camera, Check, Loader2, X } from "lucide-react";
 import { WORK_TYPE_OPTIONS, MIN_IMAGES_PER_CATEGORY } from "../shared/constants/dailyProgressReportOptions";
 import type { WorkEntry } from "../shared/constants/dailyProgressReportOptions";
 
-const MAX_IMAGES_PER_CATEGORY = 10;
+const MAX_IMAGES_PER_CATEGORY = 5;
 const MAX_TOTAL_MB = 12; // stays under the server's 14MB cap with headroom for the rest of the payload
 const COMPRESS_MAX_DIM = 1280;
 const COMPRESS_QUALITY = 0.7;
