@@ -57,7 +57,7 @@ import { selectableProjects, getWorkOrderProjectId } from "../../utils/projectOp
 import { vendorLabel } from "../../utils/vendorLabel";
 import PaymentMilestonesBuilder, { calcPayable, calcGrandTotal, newMilestone } from "../../components/PaymentMilestonesBuilder";
 import type { MilestoneDraft } from "../../components/PaymentMilestonesBuilder";
-import SecurityDepositBuilder, { newSecurityDeposit, calcDepositAmount } from "../../components/SecurityDepositBuilder";
+import SecurityDepositBuilder, { calcDepositAmount } from "../../components/SecurityDepositBuilder";
 import type { SecurityDepositDraft } from "../../components/SecurityDepositBuilder";
 import GstSelect from "../../components/GstSelect";
 import DocumentsUpload, { getWorkOrderDocuments } from "../../components/DocumentsUpload";

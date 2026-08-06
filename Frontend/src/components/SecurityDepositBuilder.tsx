@@ -77,7 +77,7 @@ export default function SecurityDepositBuilder({
         </div>
       )}
 
-      {items.map((d, idx) => {
+      {items.map((d) => {
         const selected = scopeItems.filter(si => d.scopeItemIds.includes(si.id));
         const selectedValue = selected.reduce((s, si) => s + (si.amount || 0), 0);
         const depositAmount = calcDepositAmount(d, scopeItems);
