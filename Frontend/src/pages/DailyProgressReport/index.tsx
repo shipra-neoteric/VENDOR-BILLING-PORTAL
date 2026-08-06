@@ -120,7 +120,7 @@ export default function DailyProgressReport() {
           Recent Reports
         </div>
         {loading ? (
-          <div className="p-4"><SkeletonTable rows={5} cols={6} /></div>
+          <div className="p-4"><SkeletonTable rows={5} cols={7} /></div>
         ) : reports.length === 0 ? (
           <div className="py-12 text-center text-gray-400">No reports submitted yet</div>
         ) : (
@@ -130,6 +130,7 @@ export default function DailyProgressReport() {
                 <Th>Date</Th>
                 <Th>Project</Th>
                 <Th>Contractor</Th>
+                <Th>DRI</Th>
                 <Th>Shift</Th>
                 <Th className="text-right">Labourers</Th>
                 <Th>Categories</Th>
@@ -142,6 +143,7 @@ export default function DailyProgressReport() {
                   <Td><TdText>{dayjs(r.date).format("DD MMM YYYY")}</TdText></Td>
                   <Td><TdText>{r.projectName}</TdText></Td>
                   <Td><TdText>{r.vendorName}</TdText></Td>
+                  <Td><TdText>{r.driName}</TdText></Td>
                   <Td><TdText>{r.shiftType}</TdText></Td>
                   <Td className="text-right"><TdText>{r.labourCount}</TdText></Td>
                   <Td><Badge color="blue" small>{r.workEntries.length} categor{r.workEntries.length === 1 ? "y" : "ies"}</Badge></Td>

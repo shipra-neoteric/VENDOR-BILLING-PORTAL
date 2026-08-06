@@ -2018,6 +2018,14 @@ export default function WorkItems() {
   const [contractTypeFilter, setContractTypeFilter] = useState<"all" | "execution" | "professional-services">(
     (searchParams.get("type") as "execution" | "professional-services" | null) || "all"
   );
+  // Switching between those two nav items doesn't remount this component
+  // (same route, only the query string differs) — the useState initializer
+  // above only ever runs once, so without this the filter would silently
+  // stay stuck on whichever one was active when the page first mounted.
+  useEffect(() => {
+    const type = searchParams.get("type");
+    setContractTypeFilter(type === "execution" || type === "professional-services" ? type : "all");
+  }, [searchParams]);
   const [viewMode, setViewMode] = useState<"list" | "monthly">("list");
 
   const { categories: apiCategories, lighten, setCategories: setApiCategories } = useCategories();

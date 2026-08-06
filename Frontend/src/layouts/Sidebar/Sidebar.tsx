@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { NavLink } from "react-router-dom";
+import { NavLink, useLocation } from "react-router-dom";
 import { useIsMobile } from "../../hooks/useIsMobile";
 import {
   LayoutOutlined, BankOutlined, ApartmentOutlined, TeamOutlined, TagsOutlined,
@@ -35,19 +35,28 @@ const ADMIN_GROUPS: NavGroup[] = [
     ],
   },
   {
-    // Work Orders itself carries the Execution/Professional Services toggle
-    // (contractTypeFilter, on the page) — no separate nav item or group split
-    // for that distinction here.
-    label: "Operations",
+    // Construction/site work — measured quantities, day-to-day progress,
+    // drawing requests. "Work Orders" here is pre-filtered to execution via
+    // ?type=, same shared list page "Consultancy Orders" below also lands on.
+    label: "Execution",
     items: [
       { name: "Contractors",   path: "/contractors",   icon: <TeamOutlined />,         moduleId: "contractors" },
       { name: "Vendor Groups", path: "/vendor-groups", icon: <ClusterOutlined />,      moduleId: "vendor-groups" },
-      { name: "Consultants",   path: "/consultants",   icon: <ReadOutlined />,         moduleId: "consultants" },
-      { name: "Work Orders",   path: "/work-items",    icon: <FileTextOutlined />, moduleId: "work-orders" },
+      { name: "Work Orders",   path: "/work-items?type=execution", icon: <FileTextOutlined />, moduleId: "work-orders" },
       { name: "Quotation Comparison", path: "/quotation-comparison", icon: <DiffOutlined />, moduleId: "quotation-comparison" },
       { name: "Work Progress", path: "/work-progress", icon: <LineChartOutlined />, moduleId: "work-progress" },
       { name: "Daily Progress Report", path: "/daily-progress-report", icon: <ScheduleOutlined />, moduleId: "daily-progress-report" },
       { name: "Drawing Requests", path: "/drawing-requests", icon: <EditOutlined />, moduleId: "drawing-requests" },
+    ],
+  },
+  {
+    // Design/consultancy engagements — deliverables and milestone fees, no
+    // site measurement. "Consultancy Orders" lands on the same list page as
+    // "Work Orders" above, pre-filtered to professional-services via ?type=.
+    label: "Professional Services",
+    items: [
+      { name: "Consultants",        path: "/consultants",   icon: <ReadOutlined />,     moduleId: "consultants" },
+      { name: "Consultancy Orders", path: "/work-items?type=professional-services", icon: <FileTextOutlined />, moduleId: "work-orders" },
     ],
   },
   {
@@ -155,6 +164,18 @@ export default function Sidebar({ open = false, onClose }: SidebarProps) {
   const isDRI  = user?.role === "site-dri";
   const perms  = user?.permissions;
   const isMobile = useIsMobile();
+  const location = useLocation();
+
+  // NavLink's own isActive match ignores the query string, only comparing
+  // pathname — so "Work Orders" and "Consultancy Orders" (both /work-items,
+  // different ?type=) would both light up together. Compare the full
+  // path+search against each item's own instead.
+  const currentPath = location.pathname + location.search;
+  function isItemActive(itemPath: string): boolean {
+    const [path, query] = itemPath.split("?");
+    if (!query) return location.pathname === path;
+    return currentPath === `${path}?${query}`;
+  }
 
   const rawGroups = isDRI
     ? buildDRIGroups(perms)
@@ -271,38 +292,39 @@ export default function Sidebar({ open = false, onClose }: SidebarProps) {
             )}
 
             {/* Nav items */}
-            {group.items.map((item) => (
+            {group.items.map((item) => {
+              const isActive = isItemActive(item.path);
+              return (
               <NavLink
                 key={item.path}
                 to={item.path}
-                onClick={onClose}
+                onClick={isMobile ? onClose : undefined}
                 title={collapsed ? item.name : undefined}
                 style={{ textDecoration: "none", display: "block" }}
               >
-                {({ isActive }) => (
-                  collapsed ? (
-                    <div style={{ display: "flex", justifyContent: "center", margin: "2px 0" }}>
-                      <span className={`nx-nav-icon${isActive ? " nx-nav-item--active" : ""}`}>{item.icon}</span>
-                    </div>
-                  ) : (
-                    <div className={`nx-nav-item${isActive ? " nx-nav-item--active" : ""}`}>
-                      <span className="nx-nav-icon">{item.icon}</span>
-                      <span style={{ flex: 1 }}>{item.name}</span>
-                      {isActive && (
-                        <span
-                          style={{
-                            width: 6, height: 6,
-                            borderRadius: "50%",
-                            background: "#FF7A00",
-                            flexShrink: 0,
-                          }}
-                        />
-                      )}
-                    </div>
-                  )
+                {collapsed ? (
+                  <div style={{ display: "flex", justifyContent: "center", margin: "2px 0" }}>
+                    <span className={`nx-nav-icon${isActive ? " nx-nav-item--active" : ""}`}>{item.icon}</span>
+                  </div>
+                ) : (
+                  <div className={`nx-nav-item${isActive ? " nx-nav-item--active" : ""}`}>
+                    <span className="nx-nav-icon">{item.icon}</span>
+                    <span style={{ flex: 1 }}>{item.name}</span>
+                    {isActive && (
+                      <span
+                        style={{
+                          width: 6, height: 6,
+                          borderRadius: "50%",
+                          background: "#FF7A00",
+                          flexShrink: 0,
+                        }}
+                      />
+                    )}
+                  </div>
                 )}
               </NavLink>
-            ))}
+              );
+            })}
           </div>
         ))}
       </div>
