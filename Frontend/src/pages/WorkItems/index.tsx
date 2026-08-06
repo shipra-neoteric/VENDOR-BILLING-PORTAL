@@ -2198,6 +2198,10 @@ export default function WorkItems() {
 
   // Can this user act on wo's current approval stage? (Owner bypasses via hasPerm.)
   function canActOnWO(wo: WorkOrder): boolean {
+    // Cancelling freezes the chain wherever it was — approvalStatus is left
+    // untouched (so approval history stays intact), but a cancelled WO can
+    // never be actioned again regardless of what stage it's frozen at.
+    if (wo.status === "cancelled") return false;
     const st = wo.approvalStatus || "approved";
     if (st === "draft" || st === "sent-back") return canMaker;
     if (st === "pending-checker") return canChecker;
@@ -2215,6 +2219,7 @@ export default function WorkItems() {
   // (final approval) — a WO only genuinely needs the owner's attention once
   // it actually reaches pending-final, not before.
   function isPendingForMe(wo: WorkOrder): boolean {
+    if (wo.status === "cancelled") return false;
     if (user?.role === "owner") return (wo.approvalStatus || "approved") === "pending-final";
     return canActOnWO(wo);
   }

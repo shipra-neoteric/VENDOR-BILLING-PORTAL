@@ -38,6 +38,8 @@ export type ApprovalStatus = "draft" | "pending-checker" | "pending-approver" | 
 // class needed.
 export interface ApprovalWorkOrder {
   _id: string;
+  status?: string;
+  cancelReason?: string;
   approvalStatus?: ApprovalStatus;
   makerBy?: ActorRef; makerAt?: string;
   checkerBy?: ActorRef; checkerAt?: string; checkerRemarks?: string;
@@ -82,6 +84,11 @@ function lastSentBack(history?: ApprovalHistoryEntry[]): ApprovalHistoryEntry | 
 
 // One line, permanently visible: where this work order currently stands.
 function currentStageLabel(wo: ApprovalWorkOrder): { text: string; color: string; bg: string } {
+  // Cancelling freezes the approval chain wherever it was — approvalStatus is
+  // left untouched (so the history above still shows what was approved before
+  // cancellation), but the live stage badge/action panel must reflect that no
+  // further approval action is possible now.
+  if (wo.status === "cancelled") return { text: "Cancelled — Approval Chain Frozen", color: "#DC2626", bg: "#FEF2F2" };
   switch (wo.approvalStatus) {
     case "draft":            return { text: "Draft — Not Yet Submitted for Approval",        color: "#6B7280", bg: "#F9FAFB" };
     case "pending-checker":  return { text: "Waiting for Checker Verification",               color: "#2563EB", bg: "#EFF6FF" };
@@ -367,6 +374,9 @@ export default function WorkOrderApprovalWorkflow<T extends ApprovalWorkOrder>({
   // Inline (never a popup) action panel — exactly one state at a time, driven
   // by approvalStatus + the logged-in user's work-orders permissions.
   function renderWorkflowAction(): ReactNode {
+    if (wo.status === "cancelled") {
+      return <MutedText text={`This work order was cancelled${wo.cancelReason ? ` (${wo.cancelReason})` : ""} — no further approval action is possible.`} />;
+    }
     if (sendingBack) {
       return (
         <ActionPanel background="#FEF2F2">
