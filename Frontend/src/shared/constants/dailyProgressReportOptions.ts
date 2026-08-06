@@ -33,7 +33,8 @@ export interface DailyProgressReportFormValues {
 }
 
 export const MIN_IMAGES_PER_CATEGORY = 1;
-export const MIN_BEFORE_AFTER_IMAGES = 1;
+// Optional for now — Work Photos are the only mandatory evidence per category.
+export const MIN_BEFORE_AFTER_IMAGES = 0;
 
 export function firstMissingProgressField(values: {
   projectId?: string; driName?: string; date?: string; vendorCode?: string;

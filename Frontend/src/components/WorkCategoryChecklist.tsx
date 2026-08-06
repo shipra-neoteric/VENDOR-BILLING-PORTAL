@@ -101,9 +101,13 @@ export default function WorkCategoryChecklist({ entries, onChange }: Props) {
       <div className="mt-2.5">
         <div className="flex items-center justify-between mb-1.5">
           <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">{label}</span>
-          <span className={`text-[11px] font-semibold ${short ? "text-amber-600 dark:text-amber-400" : "text-emerald-600 dark:text-emerald-400"}`}>
-            {images.length}/{min} min
-          </span>
+          {min > 0 ? (
+            <span className={`text-[11px] font-semibold ${short ? "text-amber-600 dark:text-amber-400" : "text-emerald-600 dark:text-emerald-400"}`}>
+              {images.length}/{min} min
+            </span>
+          ) : (
+            <span className="text-[11px] text-gray-400">optional</span>
+          )}
         </div>
         <div className="flex flex-wrap gap-2">
           {images.map((img, i) => (
@@ -171,7 +175,7 @@ export default function WorkCategoryChecklist({ entries, onChange }: Props) {
       {entries.length > 0 && (
         <div className="flex flex-col gap-3 mt-5">
           <div className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide border-t border-gray-100 dark:border-gray-700/40 pt-4">
-            {entries.length} categor{entries.length === 1 ? "y" : "ies"} selected — add at least {MIN_IMAGES_PER_CATEGORY} work photo{MIN_IMAGES_PER_CATEGORY === 1 ? "" : "s"} plus a before &amp; after photo to each
+            {entries.length} categor{entries.length === 1 ? "y" : "ies"} selected — add at least {MIN_IMAGES_PER_CATEGORY} work photo{MIN_IMAGES_PER_CATEGORY === 1 ? "" : "s"} to each (before &amp; after photos are optional)
           </div>
           {entries.map(entry => (
             <div key={entry.workType} className="border rounded-lg p-3 border-gray-200 dark:border-gray-700/40">

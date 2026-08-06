@@ -8,7 +8,8 @@
 // after it finished) — same min/max, but never satisfied by `images`.
 const MIN_IMAGES_PER_CATEGORY = 1;
 const MAX_IMAGES_PER_CATEGORY = 5;
-const MIN_BEFORE_AFTER_IMAGES = 1;
+// Optional for now — Work Photos above are the only mandatory evidence.
+const MIN_BEFORE_AFTER_IMAGES = 0;
 const MAX_BEFORE_AFTER_IMAGES = 5;
 const MAX_TOTAL_MB = 14;
 
