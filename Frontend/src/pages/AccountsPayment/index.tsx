@@ -154,6 +154,10 @@ interface Bill {
 }
 
 interface ProjectOpt { id: string; name: string; code: string; parentId?: string | null; }
+// Bills only carry the issuing company as a denormalized name string (see
+// RunningBill.companyName, copied once from WorkOrder.companyName at bill
+// creation) — no companyId to match against, so this filter compares by name.
+interface CompanyOpt { id: string; name: string; }
 
 // ── Helpers ──────────────────────────────────────────────────────
 
@@ -498,6 +502,7 @@ export default function AccountsPayment() {
   const [loading, setLoading]         = useState(true);
   const [projects, setProjects]       = useState<ProjectOpt[]>([]);
   const [contractors, setContractors] = useState<Contractor[]>([]);
+  const [companies, setCompanies]     = useState<CompanyOpt[]>([]);
 
   const [activeTab, setActiveTab] = useState("all");
 
@@ -505,6 +510,7 @@ export default function AccountsPayment() {
   const [search, setSearch]             = useState("");
   const [projectFilter, setProjectFilter] = useState<string | undefined>(undefined);
   const [vendorFilter, setVendorFilter]   = useState<string | undefined>(undefined);
+  const [companyFilter, setCompanyFilter] = useState<string | undefined>(undefined);
   const [dateFrom, setDateFrom]         = useState<Dayjs | null>(null);
   const [dateTo, setDateTo]             = useState<Dayjs | null>(null);
   const [showArchived, setShowArchived] = useState(false);
@@ -571,6 +577,9 @@ export default function AccountsPayment() {
     apiClient.get<{ contractors: Record<string, unknown>[] }>("/contractors")
       .then((r) => setContractors((r.data.contractors || []).map((c) => normalizeId(c) as unknown as Contractor)))
       .catch(() => {});
+    apiClient.get<{ companies: Record<string, unknown>[] }>("/companies")
+      .then((r) => setCompanies((r.data.companies || []).map((c) => normalizeId(c) as unknown as CompanyOpt)))
+      .catch(() => {});
   }, []);
 
   // ── Derived ──────────────────────────────────────────────────
@@ -620,10 +629,11 @@ export default function AccountsPayment() {
       const matchTab     = matchesTab(b, activeTab);
       const matchProject = !projectFilter || b.projectId === projectFilter;
       const matchVendor  = !vendorFilter || b.vendorCode === vendorFilter;
+      const matchCompany = !companyFilter || b.companyName === companyFilter;
       const matchDate    = inDateRange(b.billDate, dateFrom, dateTo);
-      return matchSearch && matchTab && matchProject && matchVendor && matchDate;
+      return matchSearch && matchTab && matchProject && matchVendor && matchCompany && matchDate;
     });
-  }, [bills, search, activeTab, projectFilter, vendorFilter, dateFrom, dateTo]);
+  }, [bills, search, activeTab, projectFilter, vendorFilter, companyFilter, dateFrom, dateTo]);
 
   const tabs: TabDef[] = [
     { key: "all",         label: "All",              count: 0 },
@@ -1238,6 +1248,16 @@ export default function AccountsPayment() {
           filterOption={(input, opt) => String(opt?.label ?? "").toLowerCase().includes(input.toLowerCase())}
           style={{ width: 220 }}
         />
+        <Select
+          allowClear
+          showSearch
+          placeholder="All Companies"
+          value={companyFilter}
+          onChange={setCompanyFilter}
+          options={companies.map((c) => ({ label: c.name, value: c.name }))}
+          filterOption={(input, opt) => String(opt?.label ?? "").toLowerCase().includes(input.toLowerCase())}
+          style={{ width: 200 }}
+        />
         <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#5a6278" }}>
           <Switch size="small" checked={showArchived} onChange={setShowArchived} />
           Show Archived
@@ -1342,7 +1362,7 @@ export default function AccountsPayment() {
                     <Button
                       type="link"
                       style={{ padding: 0, marginTop: 8, height: "auto" }}
-                      onClick={() => navigate(`/work-items/${drawerBill.workOrderId}`)}
+                      onClick={() => openWODrawer(drawerBill.workOrderId!)}
                     >
                       View Work Order <ArrowRightOutlined />
                     </Button>
@@ -1519,6 +1539,13 @@ export default function AccountsPayment() {
         onClose={closeWODrawer}
         placement="right"
         width={820}
+        // Explicit — this drawer can now open while the bill drawer is still
+        // open underneath it (via "View Work Order →"). They're rendered as
+        // siblings, not nested, so antd's own z-index stacking (which only
+        // increases for a Drawer nested inside another Drawer's own React
+        // subtree) doesn't apply here; both would otherwise land on the same
+        // z-index and stacking would come down to DOM append order.
+        zIndex={1150}
         title={
           <Space>
             <span style={{ fontSize: 20 }}>📋</span>
