@@ -1,13 +1,16 @@
 import { useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { Camera, Check, Loader2, X } from "lucide-react";
-import { WORK_TYPE_OPTIONS, MIN_IMAGES_PER_CATEGORY } from "../shared/constants/dailyProgressReportOptions";
-import type { WorkEntry } from "../shared/constants/dailyProgressReportOptions";
+import { WORK_TYPE_OPTIONS, MIN_IMAGES_PER_CATEGORY, MIN_BEFORE_AFTER_IMAGES } from "../shared/constants/dailyProgressReportOptions";
+import type { WorkEntry, WorkImage } from "../shared/constants/dailyProgressReportOptions";
 
 const MAX_IMAGES_PER_CATEGORY = 5;
+const MAX_BEFORE_AFTER_IMAGES = 5;
 const MAX_TOTAL_MB = 12; // stays under the server's 14MB cap with headroom for the rest of the payload
 const COMPRESS_MAX_DIM = 1280;
 const COMPRESS_QUALITY = 0.7;
+
+type PhotoKind = "images" | "beforeImages" | "afterImages";
 
 function compressImage(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -48,23 +51,26 @@ export default function WorkCategoryChecklist({ entries, onChange }: Props) {
   const [uploadingFor, setUploadingFor] = useState<string | null>(null);
   const inputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
-  const totalMb = entries.flatMap(e => e.images).reduce((s, img) => s + dataUrlMb(img.url), 0);
+  const totalMb = entries
+    .flatMap(e => [...e.images, ...e.beforeImages, ...e.afterImages])
+    .reduce((s, img) => s + dataUrlMb(img.url), 0);
 
   function toggle(workType: string) {
     const exists = entries.some(e => e.workType === workType);
-    onChange(exists ? entries.filter(e => e.workType !== workType) : [...entries, { workType, images: [] }]);
+    onChange(exists ? entries.filter(e => e.workType !== workType) : [...entries, { workType, images: [], beforeImages: [], afterImages: [] }]);
   }
 
-  async function handleFiles(workType: string, files: FileList) {
+  async function handleFiles(workType: string, kind: PhotoKind, max: number, label: string, files: FileList) {
     const entry = entries.find(e => e.workType === workType);
     if (!entry) return;
-    const remaining = MAX_IMAGES_PER_CATEGORY - entry.images.length;
-    if (remaining <= 0) return toast.error(`"${workType}" already has the maximum of ${MAX_IMAGES_PER_CATEGORY} photos`);
+    const remaining = max - entry[kind].length;
+    if (remaining <= 0) return toast.error(`"${workType}" ${label} already has the maximum of ${max} photos`);
 
-    setUploadingFor(workType);
+    const uploadKey = `${workType}:${kind}`;
+    setUploadingFor(uploadKey);
     try {
       const picked = Array.from(files).slice(0, remaining);
-      const compressed: { name: string; url: string }[] = [];
+      const compressed: WorkImage[] = [];
       for (const file of picked) {
         if (totalMb + compressed.reduce((s, i) => s + dataUrlMb(i.url), 0) > MAX_TOTAL_MB) {
           toast.error(`Total photos would exceed ${MAX_TOTAL_MB}MB — remove some first`);
@@ -74,7 +80,7 @@ export default function WorkCategoryChecklist({ entries, onChange }: Props) {
         compressed.push({ name: file.name, url });
       }
       if (compressed.length > 0) {
-        onChange(entries.map(e => e.workType === workType ? { ...e, images: [...e.images, ...compressed] } : e));
+        onChange(entries.map(e => e.workType === workType ? { ...e, [kind]: [...e[kind], ...compressed] } : e));
       }
     } catch {
       toast.error("Couldn't process one or more photos");
@@ -83,8 +89,54 @@ export default function WorkCategoryChecklist({ entries, onChange }: Props) {
     }
   }
 
-  function removeImage(workType: string, idx: number) {
-    onChange(entries.map(e => e.workType === workType ? { ...e, images: e.images.filter((_, i) => i !== idx) } : e));
+  function removeImage(workType: string, kind: PhotoKind, idx: number) {
+    onChange(entries.map(e => e.workType === workType ? { ...e, [kind]: e[kind].filter((_, i) => i !== idx) } : e));
+  }
+
+  function PhotoRow({ entry, kind, label, min, max }: { entry: WorkEntry; kind: PhotoKind; label: string; min: number; max: number }) {
+    const images = entry[kind];
+    const short = images.length < min;
+    const uploadKey = `${entry.workType}:${kind}`;
+    return (
+      <div className="mt-2.5">
+        <div className="flex items-center justify-between mb-1.5">
+          <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">{label}</span>
+          <span className={`text-[11px] font-semibold ${short ? "text-amber-600 dark:text-amber-400" : "text-emerald-600 dark:text-emerald-400"}`}>
+            {images.length}/{min} min
+          </span>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {images.map((img, i) => (
+            <div key={i} className="relative w-16 h-16 rounded-md overflow-hidden border border-gray-200 dark:border-gray-700 shrink-0">
+              <img src={img.url} alt={img.name} className="w-full h-full object-cover" />
+              <button
+                type="button"
+                onClick={() => removeImage(entry.workType, kind, i)}
+                className="absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-black/60 text-white flex items-center justify-center"
+              >
+                <X className="w-2.5 h-2.5" />
+              </button>
+            </div>
+          ))}
+
+          {images.length < max && (
+            <button
+              type="button"
+              disabled={uploadingFor === uploadKey}
+              onClick={() => inputRefs.current[uploadKey]?.click()}
+              className="w-16 h-16 rounded-md border-2 border-dashed border-gray-300 dark:border-gray-600 flex items-center justify-center text-gray-400 hover:border-primary hover:text-primary disabled:opacity-50 shrink-0"
+            >
+              {uploadingFor === uploadKey ? <Loader2 className="w-4 h-4 animate-spin" /> : <Camera className="w-4 h-4" />}
+            </button>
+          )}
+          <input
+            ref={el => { inputRefs.current[uploadKey] = el; }}
+            type="file" accept="image/*" multiple className="hidden"
+            onChange={e => { if (e.target.files?.length) handleFiles(entry.workType, kind, max, label, e.target.files); e.target.value = ""; }}
+          />
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -119,52 +171,16 @@ export default function WorkCategoryChecklist({ entries, onChange }: Props) {
       {entries.length > 0 && (
         <div className="flex flex-col gap-3 mt-5">
           <div className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide border-t border-gray-100 dark:border-gray-700/40 pt-4">
-            {entries.length} categor{entries.length === 1 ? "y" : "ies"} selected — add at least {MIN_IMAGES_PER_CATEGORY} photos to each
+            {entries.length} categor{entries.length === 1 ? "y" : "ies"} selected — add at least {MIN_IMAGES_PER_CATEGORY} work photo{MIN_IMAGES_PER_CATEGORY === 1 ? "" : "s"} plus a before &amp; after photo to each
           </div>
-          {entries.map(entry => {
-            const short = entry.images.length < MIN_IMAGES_PER_CATEGORY;
-            return (
-              <div key={entry.workType} className={`border rounded-lg p-3 ${short ? "border-amber-300 dark:border-amber-500/40 bg-amber-50/40 dark:bg-amber-500/5" : "border-gray-200 dark:border-gray-700/40"}`}>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="font-semibold text-sm text-[#1A1A2E] dark:text-[#F1F5F9]">{entry.workType}</span>
-                  <span className={`text-xs font-semibold ${short ? "text-amber-600 dark:text-amber-400" : "text-emerald-600 dark:text-emerald-400"}`}>
-                    {entry.images.length}/{MIN_IMAGES_PER_CATEGORY} min photos
-                  </span>
-                </div>
-
-                <div className="flex flex-wrap gap-2">
-                  {entry.images.map((img, i) => (
-                    <div key={i} className="relative w-16 h-16 rounded-md overflow-hidden border border-gray-200 dark:border-gray-700 shrink-0">
-                      <img src={img.url} alt={img.name} className="w-full h-full object-cover" />
-                      <button
-                        type="button"
-                        onClick={() => removeImage(entry.workType, i)}
-                        className="absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-black/60 text-white flex items-center justify-center"
-                      >
-                        <X className="w-2.5 h-2.5" />
-                      </button>
-                    </div>
-                  ))}
-
-                  {entry.images.length < MAX_IMAGES_PER_CATEGORY && (
-                    <button
-                      type="button"
-                      disabled={uploadingFor === entry.workType}
-                      onClick={() => inputRefs.current[entry.workType]?.click()}
-                      className="w-16 h-16 rounded-md border-2 border-dashed border-gray-300 dark:border-gray-600 flex items-center justify-center text-gray-400 hover:border-primary hover:text-primary disabled:opacity-50 shrink-0"
-                    >
-                      {uploadingFor === entry.workType ? <Loader2 className="w-4 h-4 animate-spin" /> : <Camera className="w-4 h-4" />}
-                    </button>
-                  )}
-                  <input
-                    ref={el => { inputRefs.current[entry.workType] = el; }}
-                    type="file" accept="image/*" multiple className="hidden"
-                    onChange={e => { if (e.target.files?.length) handleFiles(entry.workType, e.target.files); e.target.value = ""; }}
-                  />
-                </div>
-              </div>
-            );
-          })}
+          {entries.map(entry => (
+            <div key={entry.workType} className="border rounded-lg p-3 border-gray-200 dark:border-gray-700/40">
+              <span className="font-semibold text-sm text-[#1A1A2E] dark:text-[#F1F5F9]">{entry.workType}</span>
+              <PhotoRow entry={entry} kind="images" label="Work Photos" min={MIN_IMAGES_PER_CATEGORY} max={MAX_IMAGES_PER_CATEGORY} />
+              <PhotoRow entry={entry} kind="beforeImages" label="Before Photo" min={MIN_BEFORE_AFTER_IMAGES} max={MAX_BEFORE_AFTER_IMAGES} />
+              <PhotoRow entry={entry} kind="afterImages" label="After Photo" min={MIN_BEFORE_AFTER_IMAGES} max={MAX_BEFORE_AFTER_IMAGES} />
+            </div>
+          ))}
           <div className="text-[11px] text-gray-400">{totalMb.toFixed(1)} MB of {MAX_TOTAL_MB} MB used across all categories</div>
         </div>
       )}

@@ -7,7 +7,14 @@ const { Schema } = mongoose;
 const workImageSchema = new Schema({ name: String, url: String }, { _id: false });
 
 const workEntrySchema = new Schema(
-  { workType: { type: String, required: true }, images: [workImageSchema] },
+  {
+    workType: { type: String, required: true },
+    images: [workImageSchema],
+    // Distinct from `images` (general work-in-progress shots) — one snapshot
+    // of the same spot before work started and after it finished.
+    beforeImages: [workImageSchema],
+    afterImages:  [workImageSchema],
+  },
   { _id: false }
 );
 

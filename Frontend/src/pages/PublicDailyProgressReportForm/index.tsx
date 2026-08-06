@@ -4,7 +4,7 @@ import axios from "axios";
 import dayjs from "dayjs";
 import toast from "react-hot-toast";
 import WorkCategoryChecklist from "../../components/WorkCategoryChecklist";
-import { firstMissingProgressField, MIN_IMAGES_PER_CATEGORY } from "../../shared/constants/dailyProgressReportOptions";
+import { firstMissingProgressField, MIN_IMAGES_PER_CATEGORY, MIN_BEFORE_AFTER_IMAGES } from "../../shared/constants/dailyProgressReportOptions";
 import type { DailyProgressReportFormValues, WorkEntry } from "../../shared/constants/dailyProgressReportOptions";
 import Btn from "../../ui/Btn";
 import Card from "../../ui/Card";
@@ -56,6 +56,10 @@ export default function PublicDailyProgressReportForm() {
     if (form.workEntries.length === 0) return toast.error("Check at least one work type");
     const short = form.workEntries.find(e => e.images.length < MIN_IMAGES_PER_CATEGORY);
     if (short) return toast.error(`"${short.workType}" needs at least ${MIN_IMAGES_PER_CATEGORY} photo${MIN_IMAGES_PER_CATEGORY === 1 ? "" : "s"}`);
+    const missingBefore = form.workEntries.find(e => e.beforeImages.length < MIN_BEFORE_AFTER_IMAGES);
+    if (missingBefore) return toast.error(`"${missingBefore.workType}" needs a before photo`);
+    const missingAfter = form.workEntries.find(e => e.afterImages.length < MIN_BEFORE_AFTER_IMAGES);
+    if (missingAfter) return toast.error(`"${missingAfter.workType}" needs an after photo`);
 
     setSubmitting(true);
     try {

@@ -12,6 +12,12 @@ export interface WorkImage {
 export interface WorkEntry {
   workType: string;
   images: WorkImage[];
+  // Distinct from `images` (general work-in-progress shots) — one snapshot
+  // of the same spot before work started and after it finished, so a
+  // reviewer can see the actual change without digging through the whole
+  // day's photos.
+  beforeImages: WorkImage[];
+  afterImages: WorkImage[];
 }
 
 export interface DailyProgressReportFormValues {
@@ -27,6 +33,7 @@ export interface DailyProgressReportFormValues {
 }
 
 export const MIN_IMAGES_PER_CATEGORY = 1;
+export const MIN_BEFORE_AFTER_IMAGES = 1;
 
 export function firstMissingProgressField(values: {
   projectId?: string; driName?: string; date?: string; vendorCode?: string;

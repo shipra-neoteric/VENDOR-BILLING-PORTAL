@@ -6,7 +6,7 @@ import apiClient from "../../services/apiClient";
 import { useAuth } from "../../context/AuthContext";
 import WorkCategoryChecklist from "../../components/WorkCategoryChecklist";
 import DrawingRequestButton from "../../components/DrawingRequestButton";
-import { firstMissingProgressField, MIN_IMAGES_PER_CATEGORY } from "../../shared/constants/dailyProgressReportOptions";
+import { firstMissingProgressField, MIN_IMAGES_PER_CATEGORY, MIN_BEFORE_AFTER_IMAGES } from "../../shared/constants/dailyProgressReportOptions";
 import type { DailyProgressReportFormValues, WorkEntry } from "../../shared/constants/dailyProgressReportOptions";
 import PageHeader from "../../ui/PageHeader";
 import Btn from "../../ui/Btn";
@@ -83,6 +83,10 @@ export default function DailyProgressReport() {
     if (form.workEntries.length === 0) return toast.error("Check at least one work type");
     const short = form.workEntries.find(e => e.images.length < MIN_IMAGES_PER_CATEGORY);
     if (short) return toast.error(`"${short.workType}" needs at least ${MIN_IMAGES_PER_CATEGORY} photo${MIN_IMAGES_PER_CATEGORY === 1 ? "" : "s"}`);
+    const missingBefore = form.workEntries.find(e => e.beforeImages.length < MIN_BEFORE_AFTER_IMAGES);
+    if (missingBefore) return toast.error(`"${missingBefore.workType}" needs a before photo`);
+    const missingAfter = form.workEntries.find(e => e.afterImages.length < MIN_BEFORE_AFTER_IMAGES);
+    if (missingAfter) return toast.error(`"${missingAfter.workType}" needs an after photo`);
 
     setSubmitting(true);
     try {
@@ -232,6 +236,30 @@ export default function DailyProgressReport() {
                     </a>
                   ))}
                 </div>
+                {(entry.beforeImages?.length > 0 || entry.afterImages?.length > 0) && (
+                  <div className="flex gap-4 mt-3 pt-3 border-t border-gray-100 dark:border-gray-700/40">
+                    <div>
+                      <div className="text-[11px] font-bold text-gray-400 uppercase tracking-wide mb-1.5">Before</div>
+                      <div className="flex flex-wrap gap-2">
+                        {entry.beforeImages.map((img, i) => (
+                          <a key={i} href={img.url} target="_blank" rel="noreferrer" className="w-16 h-16 rounded-md overflow-hidden border border-gray-200 dark:border-gray-700 shrink-0">
+                            <img src={img.url} alt={img.name} className="w-full h-full object-cover" />
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[11px] font-bold text-gray-400 uppercase tracking-wide mb-1.5">After</div>
+                      <div className="flex flex-wrap gap-2">
+                        {entry.afterImages.map((img, i) => (
+                          <a key={i} href={img.url} target="_blank" rel="noreferrer" className="w-16 h-16 rounded-md overflow-hidden border border-gray-200 dark:border-gray-700 shrink-0">
+                            <img src={img.url} alt={img.name} className="w-full h-full object-cover" />
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>
