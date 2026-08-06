@@ -152,6 +152,10 @@ export interface ScopeSubItem {
   plannedQty: number;
   rate: number;
   amount: number;
+  // A particular can run on its own sub-schedule within the parent item's
+  // own start/end window — independent of it, not derived from it.
+  plannedStart?: string;
+  plannedEnd?: string;
   status?: ScopeItemStatus;
   completedQty?: number;
   lastBilledQty?: number;
@@ -211,6 +215,20 @@ export interface PaymentMilestone {
   payable: number;
 }
 
+// A security deposit deliberately baked into a group of scope items' own
+// rates (e.g. the true agreed rate is ₹290/sqft, but each particular is
+// written up at a lower rate, holding back the gap as security until the
+// work is verified). Reference/tracking only — like particulars, it never
+// drives contractValue directly.
+export interface SecurityDeposit {
+  id: string;
+  scopeItemIds: string[];
+  mode: "perUnit" | "percent";
+  rate: number;
+  amount: number;
+  notes?: string;
+}
+
 export interface WorkOrder {
   id: string;
   workOrderNo: string;
@@ -250,6 +268,7 @@ export interface WorkOrder {
   documentUrl?: string;
   documents?: { name: string; url: string }[];
   paymentMilestones?: PaymentMilestone[];
+  securityDeposits?: SecurityDeposit[];
   warrantyTerms?: string[];
   status: WorkOrderStatus;
   cancelReason?: string;

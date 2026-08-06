@@ -57,6 +57,8 @@ import { selectableProjects, getWorkOrderProjectId } from "../../utils/projectOp
 import { vendorLabel } from "../../utils/vendorLabel";
 import PaymentMilestonesBuilder, { calcPayable, calcGrandTotal, newMilestone } from "../../components/PaymentMilestonesBuilder";
 import type { MilestoneDraft } from "../../components/PaymentMilestonesBuilder";
+import SecurityDepositBuilder, { newSecurityDeposit, calcDepositAmount } from "../../components/SecurityDepositBuilder";
+import type { SecurityDepositDraft } from "../../components/SecurityDepositBuilder";
 import GstSelect from "../../components/GstSelect";
 import DocumentsUpload, { getWorkOrderDocuments } from "../../components/DocumentsUpload";
 import type { WODocument } from "../../components/DocumentsUpload";
@@ -72,6 +74,7 @@ import type {
   ScopeItem,
   ScopeItemStatus,
   PaymentMilestone,
+  SecurityDeposit,
 } from "../../types/VendorBilling";
 
 // ── Constants ─────────────────────────────────────────────────
@@ -287,6 +290,8 @@ interface ScopeSubItemDraft {
   customUnit: string;
   plannedQty: number | null;
   rate: number | null;
+  plannedStart: string;
+  plannedEnd: string;
 }
 
 interface ScopeItemDraft {
@@ -395,6 +400,18 @@ const toMilestoneDraft = (pm: PaymentMilestone): MilestoneDraft => ({
   gstPercent: pm.gstPercent,
 });
 
+const toSecurityDepositDraft = (sd: SecurityDeposit): SecurityDepositDraft => ({
+  id: sd.id, scopeItemIds: sd.scopeItemIds, mode: sd.mode, rate: sd.rate, notes: sd.notes || "",
+});
+
+const securityDepositDraftToPayload = (d: SecurityDepositDraft, scopeItems: ScopeItemDraft[]) => ({
+  scopeItemIds: d.scopeItemIds,
+  mode: d.mode,
+  rate: d.rate || 0,
+  amount: calcDepositAmount(d, scopeItems.map(si => ({ id: si.id, description: si.description, plannedQty: si.plannedQty, amount: calcDraftItemAmt(si) }))),
+  notes: d.notes,
+});
+
 const milestoneDraftToPayload = (m: MilestoneDraft) => ({
   stage: m.stage, date: m.date, type: m.type, mode: m.mode,
   amount: m.amount || 0, amountMode: m.amountMode, amountPercent: m.amountPercent,
@@ -410,7 +427,7 @@ const milestoneDraftToPayload = (m: MilestoneDraft) => ({
 const newSubDraft = (): ScopeSubItemDraft => ({
   id: crypto.randomUUID(),
   description: "", remarks: "", unit: "sq.ft", customUnit: "",
-  plannedQty: null, rate: null,
+  plannedQty: null, rate: null, plannedStart: "", plannedEnd: "",
 });
 
 const newItemDraft = (gstPercent = 18): ScopeItemDraft => ({
@@ -453,6 +470,8 @@ const toDraft = (si: ScopeItem): ScopeItemDraft => ({
     customUnit: isKnownUnit(sub.unit) ? "" : sub.unit,
     plannedQty: sub.plannedQty,
     rate: sub.rate,
+    plannedStart: sub.plannedStart ?? "",
+    plannedEnd: sub.plannedEnd ?? "",
   })),
 });
 
@@ -479,6 +498,8 @@ const draftToNewItem = (d: ScopeItemDraft): ScopeItem => ({
     plannedQty: si.plannedQty || 0,
     rate: si.rate || 0,
     amount: calcSubItemAmt(si),
+    plannedStart: si.plannedStart || "",
+    plannedEnd: si.plannedEnd || "",
   })),
 });
 
@@ -524,6 +545,8 @@ const mergeWithExisting = (
       plannedQty: si.plannedQty || 0,
       rate: si.rate || 0,
       amount: calcSubItemAmt(si),
+      plannedStart: si.plannedStart || "",
+      plannedEnd: si.plannedEnd || "",
       status: existingSub?.status || "pending",
       completedQty: existingSub?.completedQty || 0,
       lastBilledQty: existingSub?.lastBilledQty || 0,
@@ -785,6 +808,20 @@ function ScopeItemsBuilder({ items, onChange, allCategories = [], topCatId = nul
                 {fmt(calcDraftItemAmt(item))}
               </span>
             )}
+            <Tooltip title="Insert a new work item below this one">
+              <Button
+                type="link"
+                size="small"
+                icon={<PlusOutlined />}
+                onClick={() => {
+                  const idx = items.findIndex(it => it.id === item.id);
+                  const next = [...items];
+                  next.splice(idx + 1, 0, newItemDraft(gstPercent));
+                  onChange(next);
+                }}
+                style={{ padding: "0 4px", color: "#f37916" }}
+              />
+            </Tooltip>
             <Button
               type="link"
               size="small"
@@ -1080,6 +1117,24 @@ function ScopeItemsBuilder({ items, onChange, allCategories = [], topCatId = nul
                       icon={<DeleteOutlined />}
                       onClick={() => removeSub(item.id, si.id)}
                       style={{ padding: 0 }}
+                    />
+                  </div>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 6, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 11, color: "#9ba3b8", minWidth: 60 }}>Start Date</span>
+                    <DatePicker
+                      size="small"
+                      format="DD/MM/YYYY"
+                      style={{ width: 130 }}
+                      value={si.plannedStart ? dayjs(si.plannedStart) : null}
+                      onChange={d => updSub(item.id, si.id, { plannedStart: d ? d.format("YYYY-MM-DD") : "" })}
+                    />
+                    <span style={{ fontSize: 11, color: "#9ba3b8", minWidth: 50 }}>End Date</span>
+                    <DatePicker
+                      size="small"
+                      format="DD/MM/YYYY"
+                      style={{ width: 130 }}
+                      value={si.plannedEnd ? dayjs(si.plannedEnd) : null}
+                      onChange={d => updSub(item.id, si.id, { plannedEnd: d ? d.format("YYYY-MM-DD") : "" })}
                     />
                   </div>
                   <Input
@@ -1904,16 +1959,16 @@ function WOFormFields({
         <Input placeholder="e.g. 45 Days, 3 Months" />
       </Form.Item>
 
+      <Form.Item label="Upload Work Order Documents" name="documents">
+        <DocumentsUpload />
+      </Form.Item>
+
       <Form.Item
         label="Remarks"
         name="internalRemark"
         tooltip="A general note on this work order — shown in the detail view and printed on the WO PDF under Project Details"
       >
         <Input.TextArea rows={2} placeholder="e.g. Site access via rear gate only, coordinate with security…" />
-      </Form.Item>
-
-      <Form.Item label="Upload Work Order Documents" name="documents">
-        <DocumentsUpload />
       </Form.Item>
 
       {!isEdit && (
@@ -2032,6 +2087,9 @@ export default function WorkItems() {
 
   const [createMilestones, setCreateMilestones] = useState<MilestoneDraft[]>([]);
   const [editMilestones,   setEditMilestones]   = useState<MilestoneDraft[]>([]);
+
+  const [createSecurityDeposits, setCreateSecurityDeposits] = useState<SecurityDepositDraft[]>([]);
+  const [editSecurityDeposits,   setEditSecurityDeposits]   = useState<SecurityDepositDraft[]>([]);
   const [createDiscount,   setCreateDiscount]   = useState<number | null>(null);
   const [editDiscount,     setEditDiscount]     = useState<number | null>(null);
   const [createWarranty,   setCreateWarranty]   = useState<string[]>([]);
@@ -2318,6 +2376,7 @@ export default function WorkItems() {
         preparedByContact: user?.email || "",
         documents:         values.documents || [],
         paymentMilestones: createMilestones.map(milestoneDraftToPayload),
+        securityDeposits:  createSecurityDeposits.map(d => securityDepositDraftToPayload(d, createScopeItems)),
         warrantyTerms:     createWarranty.filter(t => t.trim()),
       };
       if (values.workOrderNo?.trim()) body.workOrderNo = values.workOrderNo.trim();
@@ -2329,6 +2388,7 @@ export default function WorkItems() {
       createForm.resetFields();
       setCreateScopeItems([]);
       setCreateMilestones([]);
+      setCreateSecurityDeposits([]);
       setCreateDiscount(null);
       setCreateWarranty([]);
       setCreateDrawerOpen(false);
@@ -2348,6 +2408,7 @@ export default function WorkItems() {
     editForm.setFieldsValue({ ...wo, issueDate: dayjs(wo.issueDate), projectId: getWorkOrderProjectId(wo.projectId), category: wo.category || "", subCategory: wo.subCategory || "", assignedDRI: ((wo as any).assignedDRI || []).map((d: any) => d._id || d), gstPercent: wo.gstPercent ?? 18, retentionPercent: (wo as any).retentionPercent ?? 0, issuedUnder: wo.issuedUnder || "company", contractType: wo.contractType || "execution" });
     setEditScopeItems((wo.scopeItems || []).map(toDraft));
     setEditMilestones((wo.paymentMilestones || []).map(toMilestoneDraft));
+    setEditSecurityDeposits((wo.securityDeposits || []).map(toSecurityDepositDraft));
     setEditDiscount(wo.discount || null);
     setEditWarranty(wo.warrantyTerms || []);
     setEditModalOpen(true);
@@ -2403,6 +2464,7 @@ export default function WorkItems() {
         status:            values.status,
         documents:         values.documents ?? currentEditWO.documents ?? [],
         paymentMilestones: editMilestones.map(milestoneDraftToPayload),
+        securityDeposits:  editSecurityDeposits.map(d => securityDepositDraftToPayload(d, editScopeItems)),
         warrantyTerms:     editWarranty.filter(t => t.trim()),
       };
 
@@ -2791,6 +2853,7 @@ export default function WorkItems() {
             });
             setCreateScopeItems([]);
             setCreateMilestones([]);
+            setCreateSecurityDeposits([]);
             setCreateDiscount(null);
             setCreateWarranty([]);
             setCreateDrawerOpen(true);
@@ -3145,7 +3208,7 @@ export default function WorkItems() {
         }
         footer={
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-            <Button size="large" onClick={() => { createForm.resetFields(); setCreateScopeItems([]); setCreateMilestones([]); setCreateDiscount(null); setCreateWarranty([]); setCreateDrawerOpen(false); }}>
+            <Button size="large" onClick={() => { createForm.resetFields(); setCreateScopeItems([]); setCreateMilestones([]); setCreateSecurityDeposits([]); setCreateDiscount(null); setCreateWarranty([]); setCreateDrawerOpen(false); }}>
               Cancel
             </Button>
             <Button
@@ -3203,6 +3266,13 @@ export default function WorkItems() {
             contractValueInclGst={calcTotalInclGst(createScopeItems)}
             discount={createDiscount}
             onDiscountChange={setCreateDiscount}
+          />
+        </div>
+        <div style={{ borderTop: "1px solid #E5E7EB", marginTop: 16, paddingTop: 16 }}>
+          <SecurityDepositBuilder
+            items={createSecurityDeposits}
+            onChange={setCreateSecurityDeposits}
+            scopeItems={createScopeItems.map(si => ({ id: si.id, description: si.description, plannedQty: si.plannedQty, amount: calcDraftItemAmt(si) }))}
           />
         </div>
         <div style={{ borderTop: "1px solid #E5E7EB", marginTop: 16, paddingTop: 16 }}>
@@ -3292,6 +3362,13 @@ export default function WorkItems() {
             contractValueInclGst={calcTotalInclGst(editScopeItems)}
             discount={editDiscount}
             onDiscountChange={setEditDiscount}
+          />
+        </div>
+        <div style={{ borderTop: "1px solid #E5E7EB", marginTop: 16, paddingTop: 16 }}>
+          <SecurityDepositBuilder
+            items={editSecurityDeposits}
+            onChange={setEditSecurityDeposits}
+            scopeItems={editScopeItems.map(si => ({ id: si.id, description: si.description, plannedQty: si.plannedQty, amount: calcDraftItemAmt(si) }))}
           />
         </div>
         <div style={{ borderTop: "1px solid #E5E7EB", marginTop: 16, paddingTop: 16 }}>

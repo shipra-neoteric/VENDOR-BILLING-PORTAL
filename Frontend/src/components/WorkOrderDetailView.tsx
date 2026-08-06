@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import { Link2, Lock } from "lucide-react";
 import dayjs from "dayjs";
 import WorkOrderApprovalWorkflow from "./WorkOrderApprovalWorkflow";
@@ -170,8 +171,8 @@ export default function WorkOrderDetailView({
               {wo.scopeItems.map((si) => {
                 const hasSubItems = (si.subItems?.length ?? 0) > 0;
                 return (
-                <>
-                  <Tr key={si.id}>
+                <Fragment key={si.id}>
+                  <Tr>
                     <Td>
                       <span className="font-semibold text-[#1A1A2E] dark:text-[#F1F5F9]">{si.description}</span>
                       {hasSubItems && <span className="ml-1.5 text-[11px] text-gray-400">({si.subItems.length} particulars)</span>}
@@ -200,6 +201,11 @@ export default function WorkOrderDetailView({
                     <Tr key={sub.id} className="bg-gray-50 dark:bg-gray-800/30">
                       <Td>
                         <span className="pl-4 text-[13px] text-gray-600 dark:text-gray-400">↳ {sub.description}</span>
+                        {(sub.plannedStart || sub.plannedEnd) && (
+                          <div className="pl-4 text-xs text-gray-400 mt-0.5">
+                            {sub.plannedStart ? dayjs(sub.plannedStart).format("DD MMM YYYY") : "—"} → {sub.plannedEnd ? dayjs(sub.plannedEnd).format("DD MMM YYYY") : "—"}
+                          </div>
+                        )}
                         {sub.remarks && <div className="pl-4 text-xs text-amber-600 dark:text-amber-400 mt-0.5">📌 {sub.remarks}</div>}
                       </Td>
                       <Td><TdText>{sub.unit}</TdText></Td>
@@ -208,7 +214,7 @@ export default function WorkOrderDetailView({
                       <Td><span className="font-mono font-semibold text-gray-600 dark:text-gray-400">{fmt(sub.amount || 0)}</span></Td>
                     </Tr>
                   ))}
-                </>
+                </Fragment>
               );})}
             </Tbody>
           </Table>
@@ -240,6 +246,39 @@ export default function WorkOrderDetailView({
               ))}
             </Tbody>
           </Table>
+        </Card>
+      )}
+
+      {/* ── Security Deposits — reference only, doesn't drive contractValue ── */}
+      {(wo.securityDeposits?.length ?? 0) > 0 && (
+        <Card padded={false} className="overflow-hidden mt-4">
+          <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700/40 font-semibold text-[13px] text-gray-700 dark:text-gray-300">
+            Security Deposit
+          </div>
+          <div className="p-4 flex flex-col gap-3">
+            {wo.securityDeposits!.map((d) => {
+              const selected = wo.scopeItems.filter(si => d.scopeItemIds.includes(si.id));
+              const selectedValue = selected.reduce((s, si) => s + (si.amount || 0), 0);
+              return (
+                <div key={d.id} className="border border-gray-200 dark:border-gray-700/40 rounded-lg p-3 text-sm">
+                  <div className="font-semibold text-[#1A1A2E] dark:text-[#F1F5F9]">
+                    {selected.map(si => si.description).join(", ") || "—"}
+                  </div>
+                  <div className="text-gray-500 dark:text-gray-400 text-xs mt-0.5">
+                    Held as {d.mode === "percent" ? `${d.rate}%` : `${fmtRate(d.rate || 0)}/unit`}
+                  </div>
+                  {d.notes && <div className="text-amber-600 dark:text-amber-400 text-xs mt-1">📌 {d.notes}</div>}
+                  <div className="mt-2 pt-2 border-t border-dashed border-gray-200 dark:border-gray-700/40 text-xs text-gray-500 dark:text-gray-400">
+                    Selected items' value <span className="font-mono font-semibold text-gray-700 dark:text-gray-300">{fmt(selectedValue)}</span>
+                    {" + "}Deposit <span className="font-mono font-semibold text-primary">{fmt(d.amount || 0)}</span>
+                    {" = "}
+                    <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">{fmt(selectedValue + (d.amount || 0))}</span>
+                    {" true full value"}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </Card>
       )}
 

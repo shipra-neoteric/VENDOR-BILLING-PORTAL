@@ -40,6 +40,11 @@ const subItemSchema = new mongoose.Schema(
     plannedQty:  { type: Number, default: 0 },
     rate:        { type: Number, default: 0 },
     amount:      { type: Number, default: 0 },
+    // A particular can run on its own sub-schedule within the parent item's
+    // own start/end window (e.g. Column + Shuttering finishes before Slab
+    // casting even begins) — independent fields, not derived from the parent.
+    plannedStart: { type: String },
+    plannedEnd:   { type: String },
     // Progress is tracked per particular when an item has them — the parent
     // item's own status/completedQty are then derived from these (see
     // recomputeParentFromSubItems in workOrderController.js).
@@ -105,6 +110,30 @@ const paymentMilestoneSchema = new mongoose.Schema(
   { _id: true }
 );
 
+// Tracks a security deposit deliberately baked into a group of scope items'
+// own rates — e.g. the true agreed rate is ₹290/sqft, but each particular is
+// written up at a lower rate (summing to ₹275.5/sqft), holding back ₹14.5/sqft
+// as security until the work is verified. Reference/tracking only — like
+// particulars, it never drives contractValue directly; it exists so the gap
+// between the reduced rates actually written into scopeItems and the true
+// full rate can be verified arithmetically at WO creation time, rather than
+// trusting manual subtraction to not have a mistake in it.
+const securityDepositSchema = new mongoose.Schema(
+  {
+    // Which scope items (by _id) this deposit is held against.
+    scopeItemIds: [{ type: mongoose.Schema.Types.ObjectId }],
+    mode: { type: String, enum: ['perUnit', 'percent'], default: 'perUnit' },
+    // Per-unit rate (e.g. ₹/sqft) when mode is 'perUnit', or a percentage
+    // (0-100) of the selected items' own amount when mode is 'percent'.
+    rate:   { type: Number, default: 0 },
+    // Computed and stored at save time — sum(rate * item.plannedQty) for
+    // 'perUnit', or rate% of sum(item.amount) for 'percent'.
+    amount: { type: Number, default: 0 },
+    notes:  { type: String, default: '' },
+  },
+  { _id: true }
+);
+
 const workOrderSchema = new mongoose.Schema(
   {
     workOrderNo:   { type: String, required: true, unique: true },
@@ -161,6 +190,7 @@ const workOrderSchema = new mongoose.Schema(
     documentName:  { type: String },
     documents: [{ name: { type: String, required: true }, url: { type: String, required: true }, _id: false }],
     paymentMilestones: [paymentMilestoneSchema],
+    securityDeposits:  [securityDepositSchema],
     warrantyTerms:     [{ type: String }],
     status: {
       type: String,
