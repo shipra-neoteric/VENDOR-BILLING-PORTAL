@@ -38,6 +38,7 @@ const SlaDashboard      = lazy(() => import("../pages/SlaDashboard"));
 const AuditLogs         = lazy(() => import("../pages/AuditLogs"));
 const DailyProgressReport = lazy(() => import("../pages/DailyProgressReport"));
 const DrawingRequests    = lazy(() => import("../pages/DrawingRequests"));
+const DriHome            = lazy(() => import("../pages/DriHome"));
 
 import MainLayout     from "../layouts/MainLayout/MainLayout";
 import ProtectedRoute from "../components/ProtectedRoute";
@@ -59,8 +60,9 @@ function DriRoutes() {
         <Route path="/login" element={<Login />} />
         <Route element={<ProtectedRoute />}>
           <Route element={<MainLayout />}>
-            <Route index                    element={<Navigate to="/work-progress" replace />} />
+            <Route index                    element={<Navigate to="/dri-home" replace />} />
             {/* Core DRI routes */}
+            <Route path="/dri-home"         element={<DriHome />} />
             <Route path="/work-progress"    element={<WorkProgress />} />
             <Route path="/daily-progress-report" element={<DailyProgressReport />} />
             {/* Admin module routes — visible when admin grants DRI explicit view permission */}

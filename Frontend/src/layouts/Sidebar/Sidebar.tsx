@@ -85,6 +85,7 @@ const ADMIN_GROUPS: NavGroup[] = [
 ];
 
 const DRI_OWN_ITEMS: NavItem[] = [
+  { name: "Dashboard", path: "/dri-home", icon: <LayoutOutlined />, moduleId: "dashboard" },
   { name: "Project Wise Progress", path: "/work-progress", icon: <LineChartOutlined />, moduleId: "work-progress" },
   { name: "Daily Progress Report", path: "/daily-progress-report", icon: <ScheduleOutlined />, moduleId: "daily-progress-report" },
 ];
