@@ -51,7 +51,7 @@ const S = StyleSheet.create({
   colRemarks:   { fontSize: 7.5, color: GRAY, fontFamily: "Helvetica-Oblique", marginTop: 1.5, lineHeight: 1.3 },
   colUnit:   { width: 40, fontSize: 8.5, textAlign: "center", paddingRight: 6 },
   colQty:    { width: 42, fontSize: 8.5, textAlign: "right", paddingRight: 8 },
-  colDate:   { width: 52, fontSize: 8.5, textAlign: "center", paddingRight: 6 },
+  colDate:   { width: 60, fontSize: 8.5, textAlign: "center", paddingRight: 4 },
   colRate:   { width: 50, fontSize: 8.5, textAlign: "right", paddingRight: 8 },
   colGst:    { width: 32, fontSize: 8, textAlign: "center", paddingRight: 4 },
   colAmt:    { width: 62, fontSize: 8.5, textAlign: "right" },
