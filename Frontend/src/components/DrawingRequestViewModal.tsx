@@ -4,16 +4,20 @@ import Modal from "../ui/Modal";
 import Btn from "../ui/Btn";
 import Badge from "../ui/Badge";
 import { Descriptions, DescItem } from "../ui/Descriptions";
+import DrawingRequestReviewWorkflow from "./DrawingRequestReviewWorkflow";
 import {
   STATUS_LABEL, STATUS_COLOR, PRIORITY_LABEL, PRIORITY_COLOR, delayDays,
 } from "../shared/constants/drawingRequestOptions";
 import type { DrawingRequest } from "../shared/constants/drawingRequestOptions";
 
 export default function DrawingRequestViewModal({
-  request, onClose,
+  request, onClose, onUpdated,
 }: {
   request: DrawingRequest;
   onClose: () => void;
+  // Optional: omitted by read-only viewers (e.g. a DRI's own dashboard quick-
+  // view) who shouldn't act on the review chain regardless of permissions.
+  onUpdated?: (updated: DrawingRequest) => void;
 }) {
   const delay = delayDays(request);
 
@@ -23,6 +27,10 @@ export default function DrawingRequestViewModal({
       onClose={onClose}
       footer={<Btn label="Close" outline onClick={onClose} />}
     >
+      <div className="mb-4">
+        <DrawingRequestReviewWorkflow request={request} onUpdated={(u) => onUpdated?.(u)} readOnly={!onUpdated} />
+      </div>
+
       <Descriptions>
         <DescItem label="Ticket No" span={2}><span className="font-mono font-bold text-purple-600 dark:text-purple-400">{request.ticketNo}</span></DescItem>
         <DescItem label="Project">{request.projectName}</DescItem>

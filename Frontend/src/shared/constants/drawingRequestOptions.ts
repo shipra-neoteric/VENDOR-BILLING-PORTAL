@@ -18,6 +18,25 @@ export const STATUS_COLOR: Record<DrawingRequestStatus, "gray" | "blue" | "green
   pending: "amber", committed: "blue", completed: "green", delayed: "red",
 };
 
+// ── Review chain — AGM then GM must approve before Planning can act ─────────
+export type DrawingReviewStatus = "agm-review" | "gm-review" | "approved" | "returned";
+
+export const REVIEW_STATUS_LABEL: Record<DrawingReviewStatus, string> = {
+  "agm-review": "AGM Review", "gm-review": "GM Review", approved: "Approved", returned: "Returned",
+};
+
+export const REVIEW_STATUS_COLOR: Record<DrawingReviewStatus, "gray" | "blue" | "green" | "red" | "amber" | "purple"> = {
+  "agm-review": "amber", "gm-review": "purple", approved: "green", returned: "red",
+};
+
+export interface DrawingReviewHistoryEntry {
+  stage: "agm" | "gm" | "dri";
+  action: "forwarded" | "approved" | "returned" | "resubmitted";
+  by?: { _id: string; name: string } | null;
+  at: string;
+  remarks?: string;
+}
+
 export const PRIORITY_LABEL: Record<string, string> = {
   low: "Low", medium: "Medium", high: "High", urgent: "Urgent",
 };
@@ -37,6 +56,8 @@ export interface DrawingRequest {
   drawingType: string;
   source: string;
   driName: string;
+  reviewStatus: DrawingReviewStatus;
+  reviewHistory: DrawingReviewHistoryEntry[];
   assignedTo?: DrawingRequestUser | null;
   committedDate?: string | null;
   priority: string;

@@ -6,6 +6,7 @@ import apiClient from "../../services/apiClient";
 import {
   DRAWING_TYPE_OPTIONS, STATUS_OPTIONS, STATUS_LABEL, STATUS_COLOR,
   PRIORITY_OPTIONS, PRIORITY_LABEL, PRIORITY_COLOR, delayDays,
+  REVIEW_STATUS_LABEL, REVIEW_STATUS_COLOR,
 } from "../../shared/constants/drawingRequestOptions";
 import type { DrawingRequest } from "../../shared/constants/drawingRequestOptions";
 import PageHeader from "../../ui/PageHeader";
@@ -88,7 +89,7 @@ export default function DrawingRequests() {
       </FilterRow>
 
       {loading ? (
-        <SkeletonTable rows={6} cols={10} />
+        <SkeletonTable rows={6} cols={11} />
       ) : requests.length === 0 ? (
         <div className="text-center py-14 text-gray-400">No drawing requests match these filters</div>
       ) : (
@@ -102,6 +103,7 @@ export default function DrawingRequests() {
               <Th>Source</Th>
               <Th>Requested By</Th>
               <Th>Request Date</Th>
+              <Th>Review</Th>
               <Th>Assigned To</Th>
               <Th>Priority</Th>
               <Th>Status</Th>
@@ -126,6 +128,7 @@ export default function DrawingRequests() {
                   <Td>{r.source ? <TdText>{r.source}</TdText> : <span className="text-gray-300 dark:text-gray-600">—</span>}</Td>
                   <Td><TdText>{r.driName}</TdText></Td>
                   <Td><TdText>{dayjs(r.createdAt).format("DD MMM YYYY")}</TdText></Td>
+                  <Td><Badge color={REVIEW_STATUS_COLOR[r.reviewStatus]} small>{REVIEW_STATUS_LABEL[r.reviewStatus]}</Badge></Td>
                   <Td>{r.assignedTo ? <TdText>{r.assignedTo.name}</TdText> : <span className="text-gray-300 dark:text-gray-600">—</span>}</Td>
                   <Td>{r.priority ? <Badge color={PRIORITY_COLOR[r.priority]} small>{PRIORITY_LABEL[r.priority]}</Badge> : <span className="text-gray-300 dark:text-gray-600">—</span>}</Td>
                   <Td><Badge color={STATUS_COLOR[r.status]} small>{STATUS_LABEL[r.status]}</Badge></Td>
@@ -150,7 +153,14 @@ export default function DrawingRequests() {
       )}
 
       {viewTarget && (
-        <DrawingRequestViewModal request={viewTarget} onClose={() => setViewTarget(null)} />
+        <DrawingRequestViewModal
+          request={viewTarget}
+          onClose={() => setViewTarget(null)}
+          onUpdated={(updated) => {
+            setRequests(prev => prev.map(r => r._id === updated._id ? updated : r));
+            setViewTarget(updated);
+          }}
+        />
       )}
 
       {editTarget && (

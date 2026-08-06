@@ -25,6 +25,21 @@ const drawingRequestSchema = new Schema(
     },
     driName: { type: String, required: true }, // "Requested By (DRI)" — free text, same convention as Daily Progress Report
 
+    // ── Review chain — AGM then GM must approve before Planning can act on it.
+    // Kept separate from `status` below (which tracks the actual drawing's
+    // production progress, only meaningful once reviewStatus === 'approved').
+    // "Returned" is a dead end only the DRI can revive, via resubmit — it
+    // always goes back to AGM review, never straight to GM, same "always to
+    // L1" segregation the Work Order approval chain uses.
+    reviewStatus: { type: String, enum: ['agm-review', 'gm-review', 'approved', 'returned'], default: 'agm-review' },
+    reviewHistory: [{
+      stage:   { type: String, enum: ['agm', 'gm', 'dri'], required: true },
+      action:  { type: String, enum: ['forwarded', 'approved', 'returned', 'resubmitted'], required: true },
+      by:      { type: Schema.Types.ObjectId, ref: 'User' },
+      at:      { type: Date, default: Date.now },
+      remarks: { type: String, default: '' },
+    }],
+
     // ── AGM response ──
     assignedTo:    { type: Schema.Types.ObjectId, ref: 'User', default: null },
     committedDate: { type: Date, default: null },

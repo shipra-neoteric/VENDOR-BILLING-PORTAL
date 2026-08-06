@@ -3,6 +3,15 @@ const { success, created, notFound, badRequest } = require('../utils/responseFor
 const DrawingRequest = require('../models/DrawingRequest');
 const Project = require('../models/Project');
 const { nextDrawingRequestTicketNo } = require('../utils/codeGen');
+const { logAudit } = require('../utils/auditLog');
+
+async function populatedRequest(id) {
+  return DrawingRequest.findById(id)
+    .populate('assignedTo', 'name email')
+    .populate('submittedBy', 'name email')
+    .populate('reviewHistory.by', 'name')
+    .lean();
+}
 
 const DRAWING_TYPES = ['Architectural', 'Structural', 'MEP', 'Civil', 'Interior', 'Landscape', 'Shop Drawing', 'As-Built', 'Other'];
 
@@ -92,10 +101,7 @@ exports.listRequests = asyncHandler(async (req, res) => {
 
 // GET /api/drawing-requests/:id
 exports.getRequest = asyncHandler(async (req, res) => {
-  const request = await DrawingRequest.findById(req.params.id)
-    .populate('assignedTo', 'name email')
-    .populate('submittedBy', 'name email')
-    .lean();
+  const request = await populatedRequest(req.params.id);
   if (!request) return notFound(res, 'Drawing request not found');
   success(res, { request });
 });
@@ -126,12 +132,95 @@ exports.updateRequest = asyncHandler(async (req, res) => {
   }
   await request.save();
 
-  const populated = await DrawingRequest.findById(request._id)
-    .populate('assignedTo', 'name email')
-    .populate('submittedBy', 'name email')
-    .lean();
+  success(res, { request: await populatedRequest(request._id) }, 'Drawing request updated');
+});
 
-  success(res, { request: populated }, 'Drawing request updated');
+// ── Review chain — AGM then GM ──────────────────────────────────────────────
+// Stage 1 — AGM reviews the request and either forwards it to GM (optionally
+// assigning who'll draft it + a committed date) or returns it to the DRI.
+exports.agmReview = asyncHandler(async (req, res) => {
+  const { action, assignedTo, committedDate, remarks } = req.body;
+  if (!['forward', 'return'].includes(action)) return badRequest(res, "action must be 'forward' or 'return'");
+
+  const request = await DrawingRequest.findById(req.params.id);
+  if (!request) return notFound(res, 'Drawing request not found');
+  if (request.reviewStatus !== 'agm-review') {
+    return badRequest(res, `Cannot AGM-review a request with review status '${request.reviewStatus}'`);
+  }
+
+  if (action === 'return') {
+    if (!remarks || !remarks.trim()) return badRequest(res, 'A reason is required to return a drawing request');
+    request.reviewStatus = 'returned';
+    request.reviewHistory.push({ stage: 'agm', action: 'returned', by: req.user._id, remarks: remarks.trim() });
+  } else {
+    if (assignedTo !== undefined) request.assignedTo = assignedTo || null;
+    if (committedDate !== undefined) request.committedDate = committedDate || null;
+    request.reviewStatus = 'gm-review';
+    request.reviewHistory.push({ stage: 'agm', action: 'forwarded', by: req.user._id, remarks: (remarks || '').trim() });
+  }
+  await request.save();
+
+  await logAudit({
+    action: action === 'forward' ? 'APPROVE' : 'REJECT', module: 'drawing-requests', user: req.user,
+    description: `AGM ${action === 'forward' ? 'forwarded' : 'returned'} drawing request ${request.ticketNo}`,
+    entityType: 'DrawingRequest', entityId: request._id, entityLabel: request.ticketNo,
+  });
+
+  success(res, { request: await populatedRequest(request._id) }, action === 'forward' ? 'Forwarded to GM review' : 'Returned to DRI');
+});
+
+// Stage 2 — GM reviews the request and either approves it (optionally setting
+// priority) or returns it to the DRI. Approval is terminal — Planning then
+// takes over via the existing status/verification fields on this same doc.
+exports.gmReview = asyncHandler(async (req, res) => {
+  const { action, priority, remarks } = req.body;
+  if (!['approve', 'return'].includes(action)) return badRequest(res, "action must be 'approve' or 'return'");
+
+  const request = await DrawingRequest.findById(req.params.id);
+  if (!request) return notFound(res, 'Drawing request not found');
+  if (request.reviewStatus !== 'gm-review') {
+    return badRequest(res, `Cannot GM-review a request with review status '${request.reviewStatus}'`);
+  }
+
+  if (action === 'return') {
+    if (!remarks || !remarks.trim()) return badRequest(res, 'A reason is required to return a drawing request');
+    request.reviewStatus = 'returned';
+    request.reviewHistory.push({ stage: 'gm', action: 'returned', by: req.user._id, remarks: remarks.trim() });
+  } else {
+    if (priority) request.priority = priority;
+    request.reviewStatus = 'approved';
+    request.reviewHistory.push({ stage: 'gm', action: 'approved', by: req.user._id, remarks: (remarks || '').trim() });
+  }
+  await request.save();
+
+  await logAudit({
+    action: action === 'approve' ? 'APPROVE' : 'REJECT', module: 'drawing-requests', user: req.user,
+    description: `GM ${action === 'approve' ? 'approved' : 'returned'} drawing request ${request.ticketNo}`,
+    entityType: 'DrawingRequest', entityId: request._id, entityLabel: request.ticketNo,
+  });
+
+  success(res, { request: await populatedRequest(request._id) }, action === 'approve' ? 'Approved' : 'Returned to DRI');
+});
+
+// Returned always goes back to AGM review, never straight to GM — same "always
+// to L1" segregation the Work Order approval chain uses.
+exports.resubmitRequest = asyncHandler(async (req, res) => {
+  const request = await DrawingRequest.findById(req.params.id);
+  if (!request) return notFound(res, 'Drawing request not found');
+  if (request.reviewStatus !== 'returned') {
+    return badRequest(res, `Cannot resubmit a request with review status '${request.reviewStatus}'`);
+  }
+  request.reviewStatus = 'agm-review';
+  request.reviewHistory.push({ stage: 'dri', action: 'resubmitted', by: req.user._id, remarks: (req.body.remarks || '').trim() });
+  await request.save();
+
+  await logAudit({
+    action: 'UPDATE', module: 'drawing-requests', user: req.user,
+    description: `Resubmitted drawing request ${request.ticketNo} for AGM review`,
+    entityType: 'DrawingRequest', entityId: request._id, entityLabel: request.ticketNo,
+  });
+
+  success(res, { request: await populatedRequest(request._id) }, 'Resubmitted for AGM review');
 });
 
 // DELETE /api/drawing-requests/:id
