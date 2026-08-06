@@ -158,7 +158,7 @@ interface WOData {
     plannedStart?: string;
     plannedEnd?: string;
     stage?: string;
-    subItems?: Array<{ description: string; remarks?: string; unit?: string; plannedQty?: number; rate?: number; amount?: number }>;
+    subItems?: Array<{ description: string; remarks?: string; unit?: string; plannedQty?: number; rate?: number; amount?: number; plannedStart?: string; plannedEnd?: string }>;
   }>;
   paymentMilestones?: PaymentMilestoneData[];
   warrantyTerms?: string[];
@@ -287,7 +287,7 @@ export function WorkOrderDocument({ wo, company, contractor }: Props) {
     const amount = item.amount ?? (item.plannedQty ?? 0) * (item.rate ?? 0);
     lineItems.push({ desc: item.description, remarks: item.remarks, unit: item.unit, qty: item.plannedQty, rate: item.rate, amount, gstPercent: item.gstPercent, start: item.plannedStart, end: item.plannedEnd, stage: item.stage, isParent: (item.subItems?.length ?? 0) > 0 });
     for (const sub of item.subItems ?? []) {
-      lineItems.push({ desc: sub.description, remarks: sub.remarks, unit: sub.unit, qty: sub.plannedQty, rate: sub.rate, amount: sub.amount ?? (sub.plannedQty ?? 0) * (sub.rate ?? 0), isChild: true });
+      lineItems.push({ desc: sub.description, remarks: sub.remarks, unit: sub.unit, qty: sub.plannedQty, rate: sub.rate, amount: sub.amount ?? (sub.plannedQty ?? 0) * (sub.rate ?? 0), start: sub.plannedStart, end: sub.plannedEnd, isChild: true });
     }
   }
 
