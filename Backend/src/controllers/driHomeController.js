@@ -4,24 +4,28 @@ const DrawingRequest = require('../models/DrawingRequest');
 const asyncHandler = require('../utils/asyncHandler');
 const { success } = require('../utils/responseFormatter');
 
-function todayBounds() {
-  const d = new Date();
+// `dateStr` (YYYY-MM-DD) picks which calendar day to report on — defaults to
+// today. Parsed as a local calendar day, not a UTC instant, so a date typed
+// in a plain <input type="date"> lines up with what the DRI actually means.
+function dayBounds(dateStr) {
+  const d = dateStr ? new Date(`${dateStr}T00:00:00`) : new Date();
   const start = new Date(d.getFullYear(), d.getMonth(), d.getDate());
   const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
   return { start, end };
 }
 
-// GET /api/dri-home — a site-dri's own landing dashboard: their assigned
-// projects' progress, today's activity, and their own drawing requests'
-// review state. Everything here is scoped to req.user._id — no cross-DRI
-// visibility, unlike the admin-facing /dri-dashboard.
+// GET /api/dri-home?date=YYYY-MM-DD — a site-dri's own landing dashboard:
+// their assigned projects' progress, a chosen day's activity (defaults to
+// today), and their own drawing requests' review state. Everything here is
+// scoped to req.user._id — no cross-DRI visibility, unlike the admin-facing
+// /dri-dashboard.
 exports.getDriHome = asyncHandler(async (req, res) => {
   const userId = req.user._id;
-  const { start: todayStart, end: todayEnd } = todayBounds();
+  const { start: dayStart, end: dayEnd } = dayBounds(req.query.date);
 
   const [workOrders, todayReports, myRequests] = await Promise.all([
     WorkOrder.find({ assignedDRI: userId }).lean(),
-    DailyProgressReport.find({ driUserId: userId, date: { $gte: todayStart, $lt: todayEnd } }).lean(),
+    DailyProgressReport.find({ driUserId: userId, date: { $gte: dayStart, $lt: dayEnd } }).lean(),
     DrawingRequest.find({ submittedBy: userId }).sort({ createdAt: -1 }).lean(),
   ]);
 
@@ -78,6 +82,10 @@ exports.getDriHome = asyncHandler(async (req, res) => {
   const returned = myRequests.filter((r) => r.reviewStatus === 'returned');
 
   success(res, {
+    // Formatted from dayStart's own local components, not toISOString() —
+    // that converts to UTC and would roll back to the previous calendar day
+    // for any timezone ahead of UTC (this app's users are all IST).
+    selectedDate: `${dayStart.getFullYear()}-${String(dayStart.getMonth() + 1).padStart(2, '0')}-${String(dayStart.getDate()).padStart(2, '0')}`,
     summary: {
       projectsAssigned: projectMap.size,
       workOrders: workOrders.length,

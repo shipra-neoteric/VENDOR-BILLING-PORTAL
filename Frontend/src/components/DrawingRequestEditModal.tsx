@@ -43,17 +43,24 @@ export default function DrawingRequestEditModal({
     apiClient.get("/auth/users").then(res => setUsers(res.data.users ?? [])).catch(() => {});
   }, []);
 
+  const isApproved = request.reviewStatus === "approved";
+
   async function handleSave() {
     setSaving(true);
     try {
       const res = await apiClient.put(`/drawing-requests/${request._id}`, {
-        assignedTo: form.assignedTo || null,
-        committedDate: form.committedDate || null,
-        priority: form.priority || "",
-        status: form.status,
-        actualCompletionDate: form.actualCompletionDate || null,
-        planningVerified: form.planningVerified,
-        projectAcknowledged: form.projectAcknowledged,
+        // AGM/GM/Planning fields only reach the backend once the review chain
+        // has actually cleared — sending them earlier just gets rejected, so
+        // there's no reason to send fields the form isn't even showing.
+        ...(isApproved ? {
+          assignedTo: form.assignedTo || null,
+          committedDate: form.committedDate || null,
+          priority: form.priority || "",
+          status: form.status,
+          actualCompletionDate: form.actualCompletionDate || null,
+          planningVerified: form.planningVerified,
+          projectAcknowledged: form.projectAcknowledged,
+        } : {}),
         remarks: form.remarks,
       });
       toast.success("Drawing request updated");
@@ -89,55 +96,63 @@ export default function DrawingRequestEditModal({
           <Field label="Requested By (DRI)" value={request.driName} disabled />
         </div>
 
-        <SectionHeading>AGM Response</SectionHeading>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <SField
-            label="Assigned To" placeholder="Choose employee"
-            value={form.assignedTo || null}
-            onChange={v => setForm(f => ({ ...f, assignedTo: v }))}
-            options={users.map(u => ({ label: u.name, value: u._id }))}
-          />
-          <DatePicker
-            label="Committed Date" value={form.committedDate}
-            onChange={v => setForm(f => ({ ...f, committedDate: v }))}
-          />
-        </div>
+        {isApproved ? (
+          <>
+            <SectionHeading>AGM Response</SectionHeading>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <SField
+                label="Assigned To" placeholder="Choose employee"
+                value={form.assignedTo || null}
+                onChange={v => setForm(f => ({ ...f, assignedTo: v }))}
+                options={users.map(u => ({ label: u.name, value: u._id }))}
+              />
+              <DatePicker
+                label="Committed Date" value={form.committedDate}
+                onChange={v => setForm(f => ({ ...f, committedDate: v }))}
+              />
+            </div>
 
-        <SectionHeading>GM — Priority</SectionHeading>
-        <SField
-          label="Priority" placeholder="Choose priority"
-          value={form.priority || null}
-          onChange={v => setForm(f => ({ ...f, priority: v }))}
-          options={PRIORITY_OPTIONS.map(p => ({ label: PRIORITY_LABEL[p], value: p }))}
-        />
+            <SectionHeading>GM — Priority</SectionHeading>
+            <SField
+              label="Priority" placeholder="Choose priority"
+              value={form.priority || null}
+              onChange={v => setForm(f => ({ ...f, priority: v }))}
+              options={PRIORITY_OPTIONS.map(p => ({ label: PRIORITY_LABEL[p], value: p }))}
+            />
 
-        <SectionHeading>Planning — Status</SectionHeading>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <SField
-            label="Status" required
-            value={form.status}
-            onChange={v => setForm(f => ({ ...f, status: v as typeof form.status }))}
-            options={STATUS_OPTIONS.map(s => ({ label: STATUS_LABEL[s], value: s }))}
-          />
-          <DatePicker
-            label="Actual Completion" value={form.actualCompletionDate}
-            onChange={v => setForm(f => ({ ...f, actualCompletionDate: v }))}
-          />
-        </div>
+            <SectionHeading>Planning — Status</SectionHeading>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <SField
+                label="Status" required
+                value={form.status}
+                onChange={v => setForm(f => ({ ...f, status: v as typeof form.status }))}
+                options={STATUS_OPTIONS.map(s => ({ label: STATUS_LABEL[s], value: s }))}
+              />
+              <DatePicker
+                label="Actual Completion" value={form.actualCompletionDate}
+                onChange={v => setForm(f => ({ ...f, actualCompletionDate: v }))}
+              />
+            </div>
 
-        <SectionHeading>Verification</SectionHeading>
-        <div className="flex gap-6">
-          <Checkbox
-            checked={form.planningVerified}
-            onChange={v => setForm(f => ({ ...f, planningVerified: v }))}
-            label="Planning Verified"
-          />
-          <Checkbox
-            checked={form.projectAcknowledged}
-            onChange={v => setForm(f => ({ ...f, projectAcknowledged: v }))}
-            label="Project Acknowledged"
-          />
-        </div>
+            <SectionHeading>Verification</SectionHeading>
+            <div className="flex gap-6">
+              <Checkbox
+                checked={form.planningVerified}
+                onChange={v => setForm(f => ({ ...f, planningVerified: v }))}
+                label="Planning Verified"
+              />
+              <Checkbox
+                checked={form.projectAcknowledged}
+                onChange={v => setForm(f => ({ ...f, projectAcknowledged: v }))}
+                label="Project Acknowledged"
+              />
+            </div>
+          </>
+        ) : (
+          <div className="text-[12.5px] text-gray-400 rounded-lg border border-dashed border-gray-200 dark:border-gray-700/40 px-3.5 py-3">
+            AGM Response, GM Priority, and Planning Status only become editable once this request clears AGM and GM review — use the Review Workflow panel on the request's detail view to move it forward.
+          </div>
+        )}
         <Field
           textarea label="Remarks" rows={2} placeholder="Optional remarks"
           value={form.remarks}

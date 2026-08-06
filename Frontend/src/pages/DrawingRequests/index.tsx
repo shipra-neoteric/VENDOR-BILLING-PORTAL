@@ -6,7 +6,7 @@ import apiClient from "../../services/apiClient";
 import {
   DRAWING_TYPE_OPTIONS, STATUS_OPTIONS, STATUS_LABEL, STATUS_COLOR,
   PRIORITY_OPTIONS, PRIORITY_LABEL, PRIORITY_COLOR, delayDays,
-  REVIEW_STATUS_LABEL, REVIEW_STATUS_COLOR,
+  REVIEW_STATUS_OPTIONS, REVIEW_STATUS_LABEL, REVIEW_STATUS_COLOR,
 } from "../../shared/constants/drawingRequestOptions";
 import type { DrawingRequest } from "../../shared/constants/drawingRequestOptions";
 import PageHeader from "../../ui/PageHeader";
@@ -26,6 +26,7 @@ export default function DrawingRequests() {
 
   const [search, setSearch]           = useState("");
   const [statusFilter, setStatusFilter]     = useState("");
+  const [reviewStatusFilter, setReviewStatusFilter] = useState("");
   const [priorityFilter, setPriorityFilter] = useState("");
   const [typeFilter, setTypeFilter]         = useState("");
   const [dateFrom, setDateFrom] = useState("");
@@ -42,6 +43,7 @@ export default function DrawingRequests() {
       params: {
         search: search || undefined,
         status: statusFilter || undefined,
+        reviewStatus: reviewStatusFilter || undefined,
         priority: priorityFilter || undefined,
         drawingType: typeFilter || undefined,
         dateFrom: dateFrom || undefined,
@@ -53,7 +55,7 @@ export default function DrawingRequests() {
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { load(); }, [search, statusFilter, priorityFilter, typeFilter, dateFrom, dateTo]);
+  useEffect(() => { load(); }, [search, statusFilter, reviewStatusFilter, priorityFilter, typeFilter, dateFrom, dateTo]);
 
   async function handleDelete() {
     if (!deleteTarget) return;
@@ -84,6 +86,7 @@ export default function DrawingRequests() {
         <SelectFilter value={typeFilter} onChange={setTypeFilter} placeholder="All Types" options={DRAWING_TYPE_OPTIONS.map(t => ({ label: t, value: t }))} />
         <SelectFilter value={priorityFilter} onChange={setPriorityFilter} placeholder="All Priorities" options={PRIORITY_OPTIONS.map(p => ({ label: PRIORITY_LABEL[p], value: p }))} />
         <SelectFilter value={statusFilter} onChange={setStatusFilter} placeholder="All Statuses" options={STATUS_OPTIONS.map(s => ({ label: STATUS_LABEL[s], value: s }))} />
+        <SelectFilter value={reviewStatusFilter} onChange={setReviewStatusFilter} placeholder="All Review Stages" options={REVIEW_STATUS_OPTIONS.map(s => ({ label: REVIEW_STATUS_LABEL[s], value: s }))} />
         <DateRangePicker from={dateFrom} to={dateTo} onChange={(f, t) => { setDateFrom(f); setDateTo(t); }} />
         <Btn label="Search" icon={Eye} color="purple" onClick={load} />
       </FilterRow>

@@ -19,7 +19,8 @@ export const STATUS_COLOR: Record<DrawingRequestStatus, "gray" | "blue" | "green
 };
 
 // ── Review chain — AGM then GM must approve before Planning can act ─────────
-export type DrawingReviewStatus = "agm-review" | "gm-review" | "approved" | "returned";
+export const REVIEW_STATUS_OPTIONS = ["agm-review", "gm-review", "approved", "returned"] as const;
+export type DrawingReviewStatus = typeof REVIEW_STATUS_OPTIONS[number];
 
 export const REVIEW_STATUS_LABEL: Record<DrawingReviewStatus, string> = {
   "agm-review": "AGM Review", "gm-review": "GM Review", approved: "Approved", returned: "Returned",

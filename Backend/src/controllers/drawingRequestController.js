@@ -67,14 +67,15 @@ exports.createPublicRequest = asyncHandler(async (req, res) => {
   created(res, { request }, 'Drawing request submitted');
 });
 
-// GET /api/drawing-requests?projectId=&status=&priority=&drawingType=&search=&dateFrom=&dateTo=
+// GET /api/drawing-requests?projectId=&status=&reviewStatus=&priority=&drawingType=&search=&dateFrom=&dateTo=
 exports.listRequests = asyncHandler(async (req, res) => {
-  const { projectId, status, priority, drawingType, search, dateFrom, dateTo } = req.query;
+  const { projectId, status, reviewStatus, priority, drawingType, search, dateFrom, dateTo } = req.query;
   const filter = {};
-  if (projectId)   filter.projectId = projectId;
-  if (status)      filter.status = status;
-  if (priority)    filter.priority = priority;
-  if (drawingType) filter.drawingType = drawingType;
+  if (projectId)    filter.projectId = projectId;
+  if (status)       filter.status = status;
+  if (reviewStatus) filter.reviewStatus = reviewStatus;
+  if (priority)     filter.priority = priority;
+  if (drawingType)  filter.drawingType = drawingType;
   if (dateFrom || dateTo) {
     filter.createdAt = {};
     if (dateFrom) filter.createdAt.$gte = new Date(dateFrom + 'T00:00:00.000Z');
@@ -106,10 +107,18 @@ exports.getRequest = asyncHandler(async (req, res) => {
   success(res, { request });
 });
 
-const UPDATABLE_FIELDS = [
+// AGM Response / GM Priority / Planning Status / Verification — these are
+// exactly what the dedicated agm-review/gm-review endpoints above decide.
+// Letting them through this generic PUT regardless of reviewStatus would
+// make the whole review gate optional: anyone with an edit grant could set
+// `status: 'completed'` and `planningVerified: true` on a request AGM/GM
+// haven't even looked at yet. Only usable once the chain has actually
+// cleared — for post-approval corrections, not as a side door around review.
+const WORKFLOW_FIELDS = [
   'assignedTo', 'committedDate', 'priority', 'status', 'actualCompletionDate',
-  'planningVerified', 'projectAcknowledged', 'remarks',
+  'planningVerified', 'projectAcknowledged',
 ];
+const UPDATABLE_FIELDS = [...WORKFLOW_FIELDS, 'remarks'];
 
 // PUT /api/drawing-requests/:id — the AGM Response / GM Priority / Planning
 // Status / Verification sections of the edit modal; request-info fields
@@ -118,6 +127,11 @@ const UPDATABLE_FIELDS = [
 exports.updateRequest = asyncHandler(async (req, res) => {
   const request = await DrawingRequest.findById(req.params.id);
   if (!request) return notFound(res, 'Drawing request not found');
+
+  const touchesWorkflowField = WORKFLOW_FIELDS.some((f) => f in req.body);
+  if (touchesWorkflowField && request.reviewStatus !== 'approved') {
+    return badRequest(res, 'This request must clear AGM and GM review first — use the Review Workflow actions, not a direct edit, to move it forward.');
+  }
 
   for (const field of UPDATABLE_FIELDS) {
     if (!(field in req.body)) continue;

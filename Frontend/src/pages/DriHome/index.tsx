@@ -7,6 +7,7 @@ import { useAuth } from "../../context/AuthContext";
 import { KpiCard, KpiRow, Donut, Funnel, Panel, Grid2 } from "../../features/dashboard/components/MiniCharts";
 import DrawingRequestButton from "../../components/DrawingRequestButton";
 import SField from "../../ui/SField";
+import { DatePicker } from "../../ui/DatePicker";
 import Btn from "../../ui/Btn";
 import Badge from "../../ui/Badge";
 import Spinner from "../../ui/Spinner";
@@ -42,6 +43,7 @@ interface ReturnedDrawingRequest {
 }
 
 interface DriHomeData {
+  selectedDate: string;
   summary: {
     projectsAssigned: number;
     workOrders: number;
@@ -67,13 +69,17 @@ export default function DriHome() {
   const [data, setData] = useState<DriHomeData | null>(null);
   const [loading, setLoading] = useState(true);
   const [projectFilter, setProjectFilter] = useState<string | null>(null);
+  const today = dayjs().format("YYYY-MM-DD");
+  const [selectedDate, setSelectedDate] = useState(today);
+  const isToday = selectedDate === today;
 
   useEffect(() => {
-    apiClient.get("/dri-home")
+    setLoading(true);
+    apiClient.get("/dri-home", { params: { date: selectedDate } })
       .then(res => setData(res.data))
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, []);
+  }, [selectedDate]);
 
   const projectOptions = useMemo(
     () => (data?.projects ?? []).map(p => ({ label: p.projectName, value: p.projectId })),
@@ -104,12 +110,7 @@ export default function DriHome() {
     ];
   }, [data]);
 
-  if (loading) {
-    return <div className="flex justify-center py-24"><Spinner /></div>;
-  }
-  if (!data) {
-    return <div className="text-center py-14 text-gray-400">Couldn't load your dashboard — try refreshing.</div>;
-  }
+  const dayLabel = dayjs(selectedDate).format("DD MMM YYYY");
 
   return (
     <div>
@@ -118,17 +119,30 @@ export default function DriHome() {
           <div className="flex items-center gap-2 text-[22px] font-extrabold text-[#1A1A2E] dark:text-[#F1F5F9]">
             <LayoutDashboard className="w-5 h-5 text-primary" /> Welcome back, {user?.name} 👋
           </div>
-          <div className="text-sm text-gray-400 mt-1">Here's what's happening on your projects today — {dayjs().format("DD MMM YYYY")}.</div>
+          <div className="text-sm text-gray-400 mt-1">
+            {isToday ? `Here's what's happening on your projects today — ${dayLabel}.` : `Here's what's happening on your projects on ${dayLabel}.`}
+          </div>
         </div>
-        <div style={{ width: 220 }}>
-          <SField placeholder="All Projects" value={projectFilter} onChange={setProjectFilter} options={projectOptions} />
+        <div className="flex gap-2.5 flex-wrap">
+          <div style={{ width: 170 }}>
+            <DatePicker value={selectedDate} onChange={setSelectedDate} max={today} />
+          </div>
+          <div style={{ width: 220 }}>
+            <SField placeholder="All Projects" value={projectFilter} onChange={setProjectFilter} options={projectOptions} />
+          </div>
         </div>
       </div>
 
+      {loading ? (
+        <div className="flex justify-center py-24"><Spinner /></div>
+      ) : !data ? (
+        <div className="text-center py-14 text-gray-400">Couldn't load your dashboard — try refreshing.</div>
+      ) : (
+      <>
       <KpiRow>
         <KpiCard icon="🏗️" label="Projects Assigned" value={data.summary.projectsAssigned} color="#f37916" />
         <KpiCard icon="📋" label="Work Orders" value={data.summary.workOrders} color="#2563eb" />
-        <KpiCard icon="📅" label="Today's Progress Reports" value={data.summary.todayReports} color="#16a34a" />
+        <KpiCard icon="📅" label={isToday ? "Today's Progress Reports" : `Progress Reports (${dayLabel})`} value={data.summary.todayReports} color="#16a34a" />
         <KpiCard icon="✏️" label="Drawing Requests" value={data.summary.drawingRequests} color="#7c3aed" />
         <KpiCard icon="⚠️" label="Pending Approvals" value={data.summary.needsAttention} color={data.summary.needsAttention > 0 ? "#dc2626" : "#16a34a"} />
       </KpiRow>
@@ -144,7 +158,7 @@ export default function DriHome() {
                   <Tr>
                     <Th>Project</Th>
                     <Th>Overall Progress</Th>
-                    <Th>Today's Progress</Th>
+                    <Th>{isToday ? "Today's" : dayLabel} Progress</Th>
                     <Th>Work Orders</Th>
                     <Th>Pending Items</Th>
                   </Tr>
@@ -172,9 +186,9 @@ export default function DriHome() {
           )}
         </Panel>
 
-        <Panel title="Today's Progress by Work Type" sub="Categories checked off in today's reports">
+        <Panel title={isToday ? "Today's Progress by Work Type" : `Progress by Work Type — ${dayLabel}`} sub={isToday ? "Categories checked off in today's reports" : `Categories checked off in reports filed on ${dayLabel}`}>
           {donutSegments.length === 0 ? (
-            <div className="text-center py-8 text-gray-400 text-sm">No progress reports filed today yet.</div>
+            <div className="text-center py-8 text-gray-400 text-sm">No progress reports filed {isToday ? "today" : `on ${dayLabel}`} yet.</div>
           ) : (
             <Donut segments={donutSegments} />
           )}
@@ -250,6 +264,8 @@ export default function DriHome() {
           </Panel>
         </div>
       </Grid2>
+      </>
+      )}
     </div>
   );
 }
