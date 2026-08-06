@@ -9,7 +9,9 @@ router.use(authenticate);
 // site-dri bypasses unconditionally — raising/tracking a ticket from the
 // field is core to that role, same treatment the sidebar itself already
 // gives "Drawing Requests" (always shown, never gated behind the permission
-// checklist for a DRI). Any other role needs an explicit grant.
+// checklist for a DRI). Any other role needs an explicit grant. GET/list is
+// intentionally left ungated, matching every other module's routes
+// (consultants.js, contractors.js, ...) — only mutations require a grant.
 router.get('/',    listRequests);
 router.get('/:id', getRequest);
 router.post('/',   authorizeOr('drawing-requests', 'create', 'owner', 'gm', 'agm', 'site-dri'), createRequest);

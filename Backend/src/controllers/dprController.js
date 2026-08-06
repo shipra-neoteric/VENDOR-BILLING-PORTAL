@@ -320,7 +320,7 @@ exports.getDPR = asyncHandler(async (req, res) => {
     released: sum(paidBills, netReleased),
     retentionHeld: sum(runningBills, b => (b.retentionAmount || 0) - (b.retentionReleased || 0)),
     advanceRecovered: sum(runningBills, b => b.advanceRecovery || 0),
-    tds: sum(paidBills, b => (b.amount || 0) * (b.tdsPercent || 0) / 100),
+    tds: sum(paidBills, b => b.tdsAmount || 0),
   };
   paymentBreakdown.net = Math.max(0, paymentBreakdown.released - paymentBreakdown.tds);
 

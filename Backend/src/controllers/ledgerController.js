@@ -3,11 +3,19 @@ const RunningBill  = require('../models/RunningBill');
 const asyncHandler = require('../utils/asyncHandler');
 const { success, notFound } = require('../utils/responseFormatter');
 
+// Hold/Retention and Advance Recovery aren't the contractor's taxable value —
+// GST is calculated on the amount net of both, not the raw billed amount.
+// TDS is the bill's own already-decided tdsAmount (set at Verification,
+// itself net of Hold/Advance/GST) rather than a recompute from a stale
+// tdsPercent against the full gross.
 function calcBill(b) {
-  const gst   = (b.amount * b.gstPercent) / 100;
-  const gross = b.amount + gst;
-  const tds   = (gross * b.tdsPercent) / 100;
-  const net   = gross - tds;
+  const retention = b.retentionAmount || 0;
+  const advance   = b.advanceRecovery || 0;
+  const netBeforeGst = (b.amount || 0) - retention - advance;
+  const gst   = (netBeforeGst * (b.gstPercent || 0)) / 100;
+  const gross = (b.amount || 0) + gst;
+  const tds   = b.tdsAmount || 0;
+  const net   = gross - tds - retention - advance;
   return { gst, gross, tds, net };
 }
 

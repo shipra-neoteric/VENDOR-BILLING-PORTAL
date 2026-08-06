@@ -74,6 +74,7 @@ function DriRoutes() {
             <Route path="/accounts-payment"  element={<AccountsPayment />} />
             <Route path="/bill-requests"    element={<BillRequests />} />
             <Route path="/ledger"           element={<Ledger />} />
+            <Route path="/drawing-requests" element={<DrawingRequests />} />
             <Route path="*"                 element={<Navigate to="/work-progress" replace />} />
           </Route>
         </Route>

@@ -31,7 +31,7 @@ interface Bill {
   _id: string; billNo: string; workOrderId?: string; workOrderNo?: string;
   projectName?: string; vendorCode?: string; vendorName?: string;
   billDate: string; billRefNo?: string; amount: number;
-  gstPercent: number; tdsPercent: number; paidAmount?: number;
+  gstPercent: number; tdsPercent: number; tdsAmount?: number; paidAmount?: number;
   retentionAmount?: number; advanceRecovery?: number;
   remarks?: string; status: BillStatus;
   billType?: string; relationshipType?: string; isActive?: boolean;
@@ -46,12 +46,20 @@ interface Contractor { _id: string; vendorCode: string; companyName?: string; sh
 const fmt = (n: number) => "₹" + (n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const pctStr = (n: number, d: number) => d ? ((n / d) * 100).toFixed(1) + "%" : "0%";
 
+// Hold/Retention and Advance Recovery aren't the contractor's taxable value —
+// GST is calculated on the amount net of both, not the raw billed amount.
+// TDS is the bill's own already-decided tdsAmount (set at Verification,
+// itself net of Hold/Advance/GST) rather than a recompute against the gross.
+// "Gross"/"Net" below keep their original amount+GST / gross-tds-retention-advance
+// shape so every downstream column and total still lines up — only the GST
+// rupee figure itself moves to the corrected base.
 function calcBill(b: Bill) {
-  const gst   = (b.amount * (b.gstPercent ?? 18)) / 100;
-  const gross = b.amount + gst;
-  const tds   = (gross * (b.tdsPercent ?? 1)) / 100;
   const retention = b.retentionAmount ?? 0;
   const advance   = b.advanceRecovery ?? 0;
+  const netBeforeGst = b.amount - retention - advance;
+  const gst   = (netBeforeGst * (b.gstPercent ?? 18)) / 100;
+  const gross = b.amount + gst;
+  const tds   = b.tdsAmount ?? 0;
   const net   = gross - tds - retention - advance;
   return { gst, gross, tds, retention, advance, net };
 }

@@ -1011,11 +1011,14 @@ export default function AccountsPayment() {
                   onChange={(v) => {
                     const pct = Number(v) || 0;
                     setVerifyTdsPercent(pct);
-                    // TDS applies to what's actually payable now — the gross minus what's
-                    // being held back, before GST (a pass-through tax, not the
-                    // contractor's income). Never on the GST-inclusive figure.
-                    const tdsBase = (bill.amount || 0) - (bill.retentionAmount ?? 0);
-                    setVerifyTdsAmount(Math.round(tdsBase * pct / 100));
+                    // TDS applies to what's actually payable now — gross minus Hold
+                    // and Advance Recovery (neither is the contractor's taxable
+                    // value), before GST (a pass-through tax, not the contractor's
+                    // income). Never on the raw gross or the GST-inclusive figure.
+                    const { netBeforeGst } = billFinancials({
+                      gross: bill.amount || 0, retentionAmount: bill.retentionAmount ?? 0, advanceRecovery: bill.advanceRecovery ?? 0,
+                    });
+                    setVerifyTdsAmount(Math.round(netBeforeGst * pct / 100));
                   }}
                 />
               </Col>
@@ -1026,8 +1029,10 @@ export default function AccountsPayment() {
                   onChange={(v) => {
                     const amt = Number(v) || 0;
                     setVerifyTdsAmount(amt);
-                    const tdsBase = (bill.amount || 0) - (bill.retentionAmount ?? 0);
-                    setVerifyTdsPercent(tdsBase > 0 ? Math.round((amt / tdsBase) * 10000) / 100 : 0);
+                    const { netBeforeGst } = billFinancials({
+                      gross: bill.amount || 0, retentionAmount: bill.retentionAmount ?? 0, advanceRecovery: bill.advanceRecovery ?? 0,
+                    });
+                    setVerifyTdsPercent(netBeforeGst > 0 ? Math.round((amt / netBeforeGst) * 10000) / 100 : 0);
                   }}
                 />
               </Col>
