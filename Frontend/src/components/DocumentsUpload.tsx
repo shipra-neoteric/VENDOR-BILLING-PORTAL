@@ -1,32 +1,25 @@
 import { useRef, useState } from "react";
+import type { AxiosInstance } from "axios";
 import toast from "react-hot-toast";
 import { Upload, Trash2, FileText, Loader2 } from "lucide-react";
+import apiClient from "../services/apiClient";
+import { uploadToCloudinary } from "../utils/cloudinaryUpload";
 
 export interface WODocument { name: string; url: string; }
 
 export const MAX_DOCUMENT_FILES = 5;
 const MAX_FILE_MB = 5;
-const MAX_TOTAL_MB = 8; // keeps combined base64 payload well under Mongo's 16MB document limit
-
-function readFileAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload  = () => resolve(reader.result as string);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
-// Data URLs are ~4/3 the size of the raw bytes they encode.
-function dataUrlSizeMb(dataUrl: string): number {
-  return (dataUrl.length * 0.75) / (1024 * 1024);
-}
 
 export default function DocumentsUpload({
-  value = [], onChange,
+  value = [], onChange, uploadClient = apiClient,
 }: {
   value?: WODocument[];
   onChange?: (docs: WODocument[]) => void;
+  // Defaults to the authenticated apiClient — the public (no-login) Work
+  // Order form passes its own `pub` client instead, since there's no session
+  // token to sign an upload with otherwise (see Backend/src/routes/
+  // uploads.js vs routes/public.js's separate signer).
+  uploadClient?: AxiosInstance;
 }) {
   const [uploading, setUploading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -40,17 +33,12 @@ export default function DocumentsUpload({
       toast.error(`${file.name} is larger than ${MAX_FILE_MB}MB`);
       return;
     }
-    const currentTotalMb = value.reduce((s, d) => s + dataUrlSizeMb(d.url), 0);
-    if (currentTotalMb + file.size / (1024 * 1024) > MAX_TOTAL_MB) {
-      toast.error(`Total attachments can't exceed ${MAX_TOTAL_MB}MB`);
-      return;
-    }
     setUploading(true);
     try {
-      const dataUrl = await readFileAsDataUrl(file);
-      onChange?.([...value, { name: file.name, url: dataUrl }]);
-    } catch {
-      toast.error(`Couldn't read ${file.name}`);
+      const url = await uploadToCloudinary(uploadClient, file, "work-orders", file.name);
+      onChange?.([...value, { name: file.name, url }]);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : `Couldn't upload ${file.name}`);
     } finally {
       setUploading(false);
     }
@@ -58,8 +46,6 @@ export default function DocumentsUpload({
 
   const remove = (idx: number) => onChange?.(value.filter((_, i) => i !== idx));
 
-  const usedMb = value.reduce((s, d) => s + dataUrlSizeMb(d.url), 0);
-  const nearLimit = usedMb >= MAX_TOTAL_MB * 0.9;
   const atLimit = value.length >= MAX_DOCUMENT_FILES;
 
   return (
@@ -80,8 +66,8 @@ export default function DocumentsUpload({
         {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
         Upload PDF / Doc / Image{value.length > 0 ? ` (${value.length}/${MAX_DOCUMENT_FILES})` : ""}
       </button>
-      <div className={`text-[11px] mt-1.5 ${nearLimit ? "text-red-600" : "text-gray-400"}`}>
-        {usedMb.toFixed(1)} MB of {MAX_TOTAL_MB} MB used · max {MAX_FILE_MB} MB per file, up to {MAX_DOCUMENT_FILES} files
+      <div className="text-[11px] mt-1.5 text-gray-400">
+        max {MAX_FILE_MB} MB per file, up to {MAX_DOCUMENT_FILES} files
       </div>
       {value.length > 0 && (
         <div className="mt-2 flex flex-col gap-1.5">

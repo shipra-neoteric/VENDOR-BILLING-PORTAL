@@ -5,6 +5,7 @@ import {
 import type { UploadProps } from "antd";
 import { CheckCircleOutlined, ReadOutlined, UploadOutlined } from "@ant-design/icons";
 import axios from "axios";
+import { uploadToCloudinary } from "../../utils/cloudinaryUpload";
 
 const { Title, Text } = Typography;
 
@@ -37,31 +38,26 @@ const DOCUMENT_FIELDS: { key: string; label: string; required?: boolean }[] = [
 
 const MAX_FILE_MB = 5;
 
-function readFileAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload  = () => resolve(reader.result as string);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
 export default function PublicConsultantForm() {
   const [form] = Form.useForm();
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted]   = useState<{ consultantCode: string; firmName: string } | null>(null);
   const [documents, setDocuments]   = useState<Record<string, { fileName: string; dataUrl: string } | undefined>>({});
+  const [uploadingKey, setUploadingKey] = useState<string | null>(null);
 
   const handleDocSelect: (key: string) => UploadProps["beforeUpload"] = (key) => async (file) => {
     if (file.size > MAX_FILE_MB * 1024 * 1024) {
       message.error(`${file.name} is larger than ${MAX_FILE_MB}MB`);
       return false;
     }
+    setUploadingKey(key);
     try {
-      const dataUrl = await readFileAsDataUrl(file);
-      setDocuments(prev => ({ ...prev, [key]: { fileName: file.name, dataUrl } }));
+      const url = await uploadToCloudinary(pub, file, "public-submissions", file.name);
+      setDocuments(prev => ({ ...prev, [key]: { fileName: file.name, dataUrl: url } }));
     } catch {
-      message.error(`Couldn't read ${file.name}`);
+      message.error(`Couldn't upload ${file.name}`);
+    } finally {
+      setUploadingKey(null);
     }
     return false;
   };
@@ -250,8 +246,8 @@ export default function PublicConsultantForm() {
                     showUploadList={false}
                     accept=".pdf,.jpg,.jpeg,.png"
                   >
-                    <Button icon={<UploadOutlined />} style={{ width: "100%", textAlign: "left" }}>
-                      {documents[key]?.fileName || label}
+                    <Button icon={<UploadOutlined />} loading={uploadingKey === key} style={{ width: "100%", textAlign: "left" }}>
+                      {uploadingKey === key ? "Uploading…" : (documents[key]?.fileName || label)}
                     </Button>
                   </Upload>
                   {documents[key] && (

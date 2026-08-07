@@ -17,6 +17,7 @@ const { createPublicReport: createLegacyLabourReport } = require('../controllers
 const { createPublicReport: createProgressReport } = require('../controllers/dailyProgressReportController');
 const { createPublicRequest: createDrawingRequest } = require('../controllers/drawingRequestController');
 const { getWorkOrderQuotationContext, submitQuotation } = require('../controllers/contractorQuotationController');
+const { signUpload } = require('../utils/cloudinary');
 
 // ── Lookup lists (read-only, no auth) ──────────────────────────
 router.get('/projects', asyncHandler(async (_req, res) => {
@@ -54,6 +55,14 @@ router.get('/dri-users', asyncHandler(async (_req, res) => {
   const users = await User.find({ role: 'site-dri' }).select('_id name email').sort({ name: 1 }).lean();
   success(res, { users });
 }));
+
+// ── Cloudinary upload signing (no auth) — every public form uploading a
+// document/photo needs this before it can talk to Cloudinary directly. The
+// folder is fixed server-side (never taken from the request) so an anonymous
+// caller can't sign an upload into anywhere else in the account. ──
+router.post('/uploads/sign', (_req, res) => {
+  success(res, signUpload('public-submissions'));
+});
 
 // ── Submit new work order (no auth) ────────────────────────────
 router.post('/work-orders', asyncHandler(async (req, res) => {

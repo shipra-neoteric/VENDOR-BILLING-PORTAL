@@ -1,59 +1,30 @@
 import { useRef, useState } from "react";
+import type { AxiosInstance } from "axios";
 import toast from "react-hot-toast";
 import { Camera, Check, Loader2, X } from "lucide-react";
+import apiClient from "../services/apiClient";
+import { uploadToCloudinary, compressImageToBlob } from "../utils/cloudinaryUpload";
 import { WORK_TYPE_OPTIONS, MIN_IMAGES_PER_CATEGORY, MIN_BEFORE_AFTER_IMAGES } from "../shared/constants/dailyProgressReportOptions";
 import type { WorkEntry, WorkImage } from "../shared/constants/dailyProgressReportOptions";
 
 const MAX_IMAGES_PER_CATEGORY = 5;
 const MAX_BEFORE_AFTER_IMAGES = 5;
-const MAX_TOTAL_MB = 12; // stays under the server's 14MB cap with headroom for the rest of the payload
-const COMPRESS_MAX_DIM = 1280;
-const COMPRESS_QUALITY = 0.7;
 
 type PhotoKind = "images" | "beforeImages" | "afterImages";
-
-function compressImage(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const img = new Image();
-      img.onload = () => {
-        let { width, height } = img;
-        if (width > COMPRESS_MAX_DIM || height > COMPRESS_MAX_DIM) {
-          const scale = COMPRESS_MAX_DIM / Math.max(width, height);
-          width = Math.round(width * scale);
-          height = Math.round(height * scale);
-        }
-        const canvas = document.createElement("canvas");
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) return reject(new Error("Canvas not supported"));
-        ctx.drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL("image/jpeg", COMPRESS_QUALITY));
-      };
-      img.onerror = () => reject(new Error("Couldn't read image"));
-      img.src = reader.result as string;
-    };
-    reader.onerror = () => reject(new Error("Couldn't read file"));
-    reader.readAsDataURL(file);
-  });
-}
-
-const dataUrlMb = (url: string) => (url.length * 0.75) / (1024 * 1024);
 
 interface Props {
   entries: WorkEntry[];
   onChange: (entries: WorkEntry[]) => void;
+  // Defaults to the authenticated apiClient — the public (no-login) Daily
+  // Progress Report form passes its own `pub` client instead, since there's
+  // no session token to sign an upload with otherwise (see
+  // Backend/src/routes/uploads.js vs routes/public.js's separate signer).
+  uploadClient?: AxiosInstance;
 }
 
-export default function WorkCategoryChecklist({ entries, onChange }: Props) {
+export default function WorkCategoryChecklist({ entries, onChange, uploadClient = apiClient }: Props) {
   const [uploadingFor, setUploadingFor] = useState<string | null>(null);
   const inputRefs = useRef<Record<string, HTMLInputElement | null>>({});
-
-  const totalMb = entries
-    .flatMap(e => [...e.images, ...e.beforeImages, ...e.afterImages])
-    .reduce((s, img) => s + dataUrlMb(img.url), 0);
 
   function toggle(workType: string) {
     const exists = entries.some(e => e.workType === workType);
@@ -70,20 +41,17 @@ export default function WorkCategoryChecklist({ entries, onChange }: Props) {
     setUploadingFor(uploadKey);
     try {
       const picked = Array.from(files).slice(0, remaining);
-      const compressed: WorkImage[] = [];
+      const uploaded: WorkImage[] = [];
       for (const file of picked) {
-        if (totalMb + compressed.reduce((s, i) => s + dataUrlMb(i.url), 0) > MAX_TOTAL_MB) {
-          toast.error(`Total photos would exceed ${MAX_TOTAL_MB}MB — remove some first`);
-          break;
-        }
-        const url = await compressImage(file);
-        compressed.push({ name: file.name, url });
+        const blob = await compressImageToBlob(file);
+        const url = await uploadToCloudinary(uploadClient, blob, "daily-progress-reports", file.name);
+        uploaded.push({ name: file.name, url });
       }
-      if (compressed.length > 0) {
-        onChange(entries.map(e => e.workType === workType ? { ...e, [kind]: [...e[kind], ...compressed] } : e));
+      if (uploaded.length > 0) {
+        onChange(entries.map(e => e.workType === workType ? { ...e, [kind]: [...e[kind], ...uploaded] } : e));
       }
-    } catch {
-      toast.error("Couldn't process one or more photos");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't upload one or more photos");
     } finally {
       setUploadingFor(null);
     }
@@ -185,7 +153,6 @@ export default function WorkCategoryChecklist({ entries, onChange }: Props) {
               <PhotoRow entry={entry} kind="afterImages" label="After Photo" min={MIN_BEFORE_AFTER_IMAGES} max={MAX_BEFORE_AFTER_IMAGES} />
             </div>
           ))}
-          <div className="text-[11px] text-gray-400">{totalMb.toFixed(1)} MB of {MAX_TOTAL_MB} MB used across all categories</div>
         </div>
       )}
     </div>

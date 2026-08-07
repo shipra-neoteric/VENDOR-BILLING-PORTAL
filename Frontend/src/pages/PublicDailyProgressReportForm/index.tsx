@@ -155,7 +155,7 @@ export default function PublicDailyProgressReportForm() {
 
         <Card className="mb-5">
           <div className="font-bold text-sm text-[#1a1f2e] mb-3">Work Type — check what happened today</div>
-          <WorkCategoryChecklist entries={form.workEntries} onChange={setEntries} />
+          <WorkCategoryChecklist entries={form.workEntries} onChange={setEntries} uploadClient={pub} />
         </Card>
 
         <Btn

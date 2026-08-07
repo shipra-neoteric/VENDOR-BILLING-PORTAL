@@ -650,7 +650,7 @@ export default function PublicWorkOrderForm() {
             </Form.Item>
 
             <Form.Item label="Upload Work Order Documents">
-              <DocumentsUpload value={documents} onChange={setDocuments} />
+              <DocumentsUpload value={documents} onChange={setDocuments} uploadClient={pub} />
             </Form.Item>
           </Card>
 
