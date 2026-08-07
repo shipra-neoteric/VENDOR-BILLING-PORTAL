@@ -4,6 +4,7 @@ const DailyProgressReport = require('../models/DailyProgressReport');
 const Project = require('../models/Project');
 const Contractor = require('../models/Contractor');
 const { workEntriesInvalidReason } = require('../utils/validateWorkEntries');
+const { notifyDailyProgressReport } = require('../utils/n8nWebhook');
 
 const REQUIRED_FIELDS = ['projectId', 'driName', 'date', 'vendorCode', 'shiftType', 'labourCount'];
 
@@ -14,7 +15,7 @@ async function buildReportDoc(body) {
   const entriesError = workEntriesInvalidReason(body.workEntries);
   if (entriesError) return { error: entriesError };
 
-  const project = await Project.findById(body.projectId).select('name');
+  const project = await Project.findById(body.projectId).select('name slackChannelId');
   if (!project) return { error: 'Project not found' };
 
   const contractor = await Contractor.findOne({ vendorCode: body.vendorCode }).select('companyName');
@@ -32,12 +33,13 @@ async function buildReportDoc(body) {
       labourCount: Number(body.labourCount),
       workEntries: body.workEntries,
     },
+    project,
   };
 }
 
 // POST /api/daily-progress-reports — authenticated (DRI dashboard, or anyone logged in)
 exports.createReport = asyncHandler(async (req, res) => {
-  const { doc, error } = await buildReportDoc(req.body);
+  const { doc, error, project } = await buildReportDoc(req.body);
   if (error) return badRequest(res, error);
 
   const report = await DailyProgressReport.create({
@@ -48,12 +50,15 @@ exports.createReport = asyncHandler(async (req, res) => {
     isPublicSubmission: false,
   });
 
+  // Fire-and-forget — an n8n/webhook outage should never fail the submission itself.
+  notifyDailyProgressReport(report, project).catch(() => {});
+
   created(res, { report }, 'Daily Progress Report submitted');
 });
 
 // POST /api/public/daily-progress-reports — no auth
 exports.createPublicReport = asyncHandler(async (req, res) => {
-  const { doc, error } = await buildReportDoc(req.body);
+  const { doc, error, project } = await buildReportDoc(req.body);
   if (error) return badRequest(res, error);
 
   const report = await DailyProgressReport.create({
@@ -61,6 +66,9 @@ exports.createPublicReport = asyncHandler(async (req, res) => {
     submittedBy: null,
     isPublicSubmission: true,
   });
+
+  // Fire-and-forget — an n8n/webhook outage should never fail the submission itself.
+  notifyDailyProgressReport(report, project).catch(() => {});
 
   created(res, { report }, 'Daily Progress Report submitted');
 });
