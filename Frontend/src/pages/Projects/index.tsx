@@ -25,6 +25,7 @@ interface Project {
   startDate?: string;
   expectedCompletion?: string;
   parentId?: string | null;
+  slackChannelId?: string;
 }
 
 interface WORow {
@@ -811,6 +812,7 @@ export default function Projects() {
       client: project.client || undefined,
       startDate: project.startDate ? dayjs(project.startDate) : undefined,
       expectedCompletion: project.expectedCompletion ? dayjs(project.expectedCompletion) : undefined,
+      slackChannelId: project.slackChannelId || undefined,
     });
     setDrawerOpen(true);
   };
@@ -1109,6 +1111,14 @@ export default function Projects() {
               <Select.Option value="completed"><Tag color="blue">Completed</Tag></Select.Option>
               <Select.Option value="on-hold"><Tag color="orange">On Hold</Tag></Select.Option>
             </Select>
+          </Form.Item>
+
+          <Form.Item
+            label="Slack Channel ID"
+            name="slackChannelId"
+            tooltip="Daily Progress Reports for this project post here — the channel's ID (e.g. C0AR8J39S8H), not its name, so it still works if the channel gets renamed later. In Slack: open the channel → View channel details → the ID is at the bottom. Leave blank to skip Slack for this project."
+          >
+            <Input placeholder="e.g. C0AR8J39S8H" />
           </Form.Item>
         </Form>
       </Drawer>

@@ -12,6 +12,11 @@ const projectSchema = new mongoose.Schema(
     expectedCompletion: { type: Date },
     projectType:        { type: String, enum: ['apartment', 'plot'], default: 'apartment' },
     status:             { type: String, enum: ['active', 'completed', 'on-hold'], default: 'active' },
+    // Where this project's Daily Progress Reports get posted in Slack — the
+    // channel ID (e.g. C0AR8J39S8H), not a channel name, since IDs never
+    // change even if the channel gets renamed. Blank means no Slack posting
+    // for this project's reports.
+    slackChannelId:     { type: String, trim: true, default: '' },
     parentId:           { type: mongoose.Schema.Types.ObjectId, ref: 'Project', default: null },
     createdBy:          { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },
