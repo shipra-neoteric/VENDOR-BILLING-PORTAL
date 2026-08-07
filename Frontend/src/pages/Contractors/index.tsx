@@ -1,6 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import {
-  Alert,
   Button,
   Checkbox,
   Col,
@@ -8,7 +7,6 @@ import {
   Form,
   Input,
   InputNumber,
-  Modal,
   Row,
   Select,
   Space,
@@ -22,10 +20,6 @@ import {
   PlusOutlined,
   UploadOutlined,
   DownloadOutlined,
-  ImportOutlined,
-  CheckCircleOutlined,
-  CloseCircleOutlined,
-  MinusCircleOutlined,
 } from "@ant-design/icons";
 import * as XLSX from "xlsx";
 
@@ -80,97 +74,30 @@ function SectionHeading({ children }: { children: React.ReactNode }) {
   );
 }
 
-// ── Import field definitions ───────────────────────────────────
+// ── Contractor list export ──────────────────────────────────────
+// Same fields shown in the table itself (Vendor Code/Company/Owner/Mobile/
+// Vendor Group/Work Types), exported for every contractor regardless of the
+// current search filter — this is "the list", not "what's on screen".
 
-const IMPORT_FIELDS = [
-  { key: "companyName",       label: "Company Name",        required: true },
-  { key: "ownerName",         label: "Owner / Contact Name", required: false },
-  { key: "mobile",            label: "Mobile / Phone",      required: false },
-  { key: "alternateMobile",   label: "Alternate Mobile",    required: false },
-  { key: "address",           label: "Address",             required: false },
-  { key: "email",             label: "Email",               required: false },
-  { key: "panNumber",         label: "PAN Number",          required: false },
-  { key: "gstNumber",         label: "GST Number",          required: false },
-  { key: "accountHolderName", label: "Account Holder Name", required: false },
-  { key: "bankName",          label: "Bank Name",           required: false },
-  { key: "accountNumber",     label: "Account Number",      required: false },
-  { key: "ifscCode",          label: "IFSC Code",           required: false },
-  { key: "branchName",        label: "Branch Name",         required: false },
-  { key: "workTypes",         label: "Work Types",          required: false },
-  { key: "reference1",        label: "Reference 1",         required: false },
-  { key: "reference2",        label: "Reference 2",         required: false },
-  { key: "averageTurnover",   label: "Average Turnover",    required: false },
-];
-
-// Auto-guess column mapping from Excel header names
-const AUTO_GUESS: Record<string, string> = {
-  "company name": "companyName", "companyname": "companyName", "company": "companyName",
-  "firm name": "companyName", "firmname": "companyName", "firm": "companyName",
-  "business name": "companyName", "vendor name": "companyName", "name of firm": "companyName",
-  "party name": "companyName", "supplier name": "companyName",
-  "owner name": "ownerName", "ownername": "ownerName", "owner": "ownerName",
-  "contact person": "ownerName", "contact name": "ownerName", "proprietor": "ownerName",
-  "proprietor name": "ownerName", "name": "ownerName", "person name": "ownerName",
-  "director name": "ownerName", "partner name": "ownerName",
-  "mobile": "mobile", "phone": "mobile", "mobile number": "mobile", "mobile no": "mobile",
-  "phone number": "mobile", "contact no": "mobile", "contact number": "mobile",
-  "phone no": "mobile", "mob": "mobile", "cell": "mobile", "cell number": "mobile",
-  "telephone": "mobile", "tel": "mobile", "mob no": "mobile",
-  "alternate mobile": "alternateMobile", "alt mobile": "alternateMobile",
-  "alternate phone": "alternateMobile", "alt phone": "alternateMobile",
-  "other mobile": "alternateMobile", "mobile 2": "alternateMobile",
-  "address": "address", "addr": "address", "office address": "address",
-  "email": "email", "email id": "email", "email address": "email", "mail": "email",
-  "pan": "panNumber", "pan number": "panNumber", "pan no": "panNumber", "panno": "panNumber",
-  "gst": "gstNumber", "gst number": "gstNumber", "gst no": "gstNumber", "gstin": "gstNumber",
-  "account holder": "accountHolderName", "account holder name": "accountHolderName",
-  "bank name": "bankName", "bank": "bankName", "bank nm": "bankName",
-  "account number": "accountNumber", "account no": "accountNumber", "acc no": "accountNumber",
-  "a/c no": "accountNumber", "ac no": "accountNumber",
-  "ifsc": "ifscCode", "ifsc code": "ifscCode", "ifsc no": "ifscCode",
-  "branch": "branchName", "branch name": "branchName",
-  "work types": "workTypes", "work type": "workTypes", "type of work": "workTypes",
-  "nature of work": "workTypes", "category": "workTypes", "work category": "workTypes",
-  "reference 1": "reference1", "ref 1": "reference1", "reference1": "reference1",
-  "reference 2": "reference2", "ref 2": "reference2", "reference2": "reference2",
-  "turnover": "averageTurnover", "average turnover": "averageTurnover",
-  "annual turnover": "averageTurnover",
-};
-
-function applyMapping(rawRows: Record<string, any>[], mapping: Record<string, string>) {
-  return rawRows.map(raw => {
-    const out: Record<string, any> = {};
-    for (const [excelCol, fieldKey] of Object.entries(mapping)) {
-      if (!fieldKey) continue;
-      const val = raw[excelCol];
-      if (val !== undefined && val !== null && String(val).trim() !== "") {
-        out[fieldKey] = fieldKey === "averageTurnover" ? Number(val) : String(val).trim();
-      }
-    }
-    return out;
-  }).filter(r => r.companyName);
-}
-
-// ── Template download ──────────────────────────────────────────
-
-function downloadTemplate() {
-  const headers = [
-    "Company Name", "Owner Name", "Mobile", "Alternate Mobile", "Address", "Email",
-    "Account Holder Name", "Bank Name", "Account Number", "IFSC Code", "Branch Name",
-    "GST Number", "PAN Number", "Work Types", "Reference 1", "Reference 2", "Average Turnover",
-  ];
-  const sample = [
-    "ABC Construction", "Ramesh Kumar", "9876543210", "9988776655",
-    "123 MG Road Bhopal", "ramesh@abc.com",
-    "Ramesh Kumar", "SBI", "1234567890", "SBIN0001234", "Bhopal Main",
-    "27AAAAA0000A1Z5", "ABCDE1234F", "Concrete, Excavation",
-    "Suresh Jain", "", "5000000",
-  ];
-  const ws = XLSX.utils.aoa_to_sheet([headers, sample]);
-  ws["!cols"] = headers.map(() => ({ wch: 22 }));
+function downloadContractorList(contractors: Contractor[], vendorGroups: VendorGroup[]) {
+  const headers = ["Vendor Code", "Company", "Owner", "Mobile", "Vendor Group", "Work Types"];
+  const rows = contractors.map((c) => {
+    const group = vendorGroups.find((g) => g.id === c.groupId);
+    return [
+      c.vendorCode,
+      vendorLabel(c.companyName, c.shortCode),
+      c.ownerName || "",
+      c.mobile || "",
+      group ? group.name : "",
+      (c.workTypes || []).join(", "),
+    ];
+  });
+  const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+  ws["!cols"] = headers.map(() => ({ wch: 24 }));
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Contractors");
-  XLSX.writeFile(wb, "contractor_import_template.xlsx");
+  const today = new Date().toISOString().slice(0, 10);
+  XLSX.writeFile(wb, `contractors_${today}.xlsx`);
 }
 
 // ── Vendor Group select — pick an existing group or type a new name to
@@ -252,88 +179,6 @@ export default function Contractors() {
   const [vendorGroups, setVendorGroups] = useState<VendorGroup[]>([]);
   const [groupId, setGroupId] = useState<string | null>(null);
   const [form] = Form.useForm();
-
-  // ── Import state ──────────────────────────────────────────────
-  type ImportStep = "map" | "preview" | "done";
-  const [importModalOpen, setImportModalOpen] = useState(false);
-  const [importStep,      setImportStep]      = useState<ImportStep>("map");
-  const [rawRows,         setRawRows]         = useState<Record<string, any>[]>([]);
-  const [excelHeaders,    setExcelHeaders]    = useState<string[]>([]);
-  const [colMapping,      setColMapping]      = useState<Record<string, string>>({});
-  const [importRows,      setImportRows]      = useState<any[]>([]);
-  const [importing,       setImporting]       = useState(false);
-  const [importResult,    setImportResult]    = useState<{ created: any[]; skipped: any[]; errors: any[] } | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const resetImport = () => {
-    setImportStep("map");
-    setRawRows([]);
-    setExcelHeaders([]);
-    setColMapping({});
-    setImportRows([]);
-    setImportResult(null);
-    setImportModalOpen(false);
-  };
-
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      const data = new Uint8Array(evt.target!.result as ArrayBuffer);
-      const wb = XLSX.read(data, { type: "array" });
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const raw: Record<string, any>[] = XLSX.utils.sheet_to_json(ws, { defval: "" });
-      if (raw.length === 0) { message.error("No data rows found in the file."); return; }
-
-      const headers = Object.keys(raw[0]);
-      // Auto-guess mapping
-      const guessed: Record<string, string> = {};
-      for (const h of headers) {
-        const guess = AUTO_GUESS[h.trim().toLowerCase()];
-        if (guess) guessed[h] = guess;
-      }
-      setRawRows(raw);
-      setExcelHeaders(headers);
-      setColMapping(guessed);
-      setImportStep("map");
-      setImportResult(null);
-      setImportModalOpen(true);
-    };
-    reader.readAsArrayBuffer(file);
-    e.target.value = "";
-  };
-
-  const handleApplyMapping = () => {
-    const mapped = applyMapping(rawRows, colMapping);
-    if (mapped.length === 0) {
-      message.error("No rows have a Company Name after mapping. Please map the Company Name column.");
-      return;
-    }
-    setImportRows(mapped);
-    setImportStep("preview");
-  };
-
-  const handleImport = async () => {
-    if (importRows.length === 0) return;
-    setImporting(true);
-    try {
-      const res = await apiClient.post<{ created: any[]; skipped: any[]; errors: any[] }>(
-        "/contractors/bulk",
-        { contractors: importRows }
-      );
-      setImportResult(res.data);
-      setImportStep("done");
-      if (res.data.created.length > 0) {
-        setContractors(prev => [...res.data.created.map(normalizeId), ...prev]);
-      }
-      message.success(`Import done: ${res.data.created.length} added, ${res.data.skipped.length} skipped, ${res.data.errors.length} errors`);
-    } catch {
-      message.error("Import failed. Please try again.");
-    } finally {
-      setImporting(false);
-    }
-  };
 
   // ── Load ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -477,24 +322,10 @@ export default function Contractors() {
           <Button
             icon={<DownloadOutlined />}
             size="large"
-            onClick={downloadTemplate}
+            onClick={() => downloadContractorList(contractors, vendorGroups)}
           >
-            Download Template
+            Download List
           </Button>
-          <Button
-            icon={<ImportOutlined />}
-            size="large"
-            onClick={() => fileInputRef.current?.click()}
-          >
-            Import Excel
-          </Button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".xlsx,.xls,.csv"
-            style={{ display: "none" }}
-            onChange={handleFileSelect}
-          />
           <Button
             type="primary"
             icon={<PlusOutlined />}
@@ -770,178 +601,6 @@ export default function Contractors() {
       >
         {selected && <ContractorDetailView contractor={selected} />}
       </Drawer>
-
-      {/* ── Import Modal (3-step) ──────────────────────────────── */}
-      <Modal
-        open={importModalOpen}
-        onCancel={resetImport}
-        width={980}
-        title={
-          <Space>
-            <span style={{ fontSize: 20 }}>📥</span>
-            <div>
-              <div style={{ fontWeight: 700, fontSize: 16 }}>Import Contractors from Excel</div>
-              <div style={{ fontSize: 12, color: "#6B7280", fontWeight: 400 }}>
-                {importStep === "map"     && `${rawRows.length} rows detected — map your columns below`}
-                {importStep === "preview" && `${importRows.length} contractors ready — review before importing`}
-                {importStep === "done"    && importResult && `Done — ${importResult.created.length} added, ${importResult.skipped.length} skipped, ${importResult.errors.length} errors`}
-              </div>
-            </div>
-          </Space>
-        }
-        footer={
-          <Space>
-            {importStep === "map" && (
-              <>
-                <Button size="large" onClick={resetImport}>Cancel</Button>
-                <Button size="large" type="primary" onClick={handleApplyMapping} style={{ background: "#FF7A00", borderColor: "#FF7A00" }}>
-                  Preview Mapped Data →
-                </Button>
-              </>
-            )}
-            {importStep === "preview" && (
-              <>
-                <Button size="large" onClick={() => setImportStep("map")}>← Back to Mapping</Button>
-                <Button
-                  size="large" type="primary" loading={importing}
-                  onClick={handleImport}
-                  style={{ background: "#16a85a", borderColor: "#16a85a" }}
-                >
-                  Import {importRows.length} Contractor{importRows.length !== 1 ? "s" : ""}
-                </Button>
-              </>
-            )}
-            {importStep === "done" && (
-              <Button size="large" onClick={resetImport}>Close</Button>
-            )}
-          </Space>
-        }
-        destroyOnClose
-      >
-        {/* ── Step 1: Column Mapper ── */}
-        {importStep === "map" && (
-          <div>
-            <Alert
-              type="info" showIcon style={{ marginBottom: 16, borderRadius: 6 }}
-              message="Map your Excel columns to contractor fields"
-              description={`Your file has ${excelHeaders.length} columns. We've auto-guessed the mapping where possible — check and correct any mismatches. Only "Company Name" is required.`}
-            />
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px 24px" }}>
-              {IMPORT_FIELDS.map(field => (
-                <div key={field.key} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <div style={{ minWidth: 160, fontSize: 13, color: field.required ? "#1a1f2e" : "#5a6278", fontWeight: field.required ? 700 : 400 }}>
-                    {field.label}
-                    {field.required && <span style={{ color: "#e03b3b", marginLeft: 2 }}>*</span>}
-                  </div>
-                  <Select
-                    allowClear
-                    placeholder="— skip —"
-                    style={{ flex: 1 }}
-                    value={Object.entries(colMapping).find(([, v]) => v === field.key)?.[0] || undefined}
-                    onChange={(excelCol) => {
-                      setColMapping(prev => {
-                        const next = { ...prev };
-                        // Remove any existing mapping to this field
-                        for (const k of Object.keys(next)) {
-                          if (next[k] === field.key) delete next[k];
-                        }
-                        if (excelCol) next[excelCol] = field.key;
-                        return next;
-                      });
-                    }}
-                    options={[
-                      ...excelHeaders.map(h => ({ label: h, value: h })),
-                    ]}
-                    showSearch
-                    filterOption={(inp, opt) =>
-                      String(opt?.label ?? "").toLowerCase().includes(inp.toLowerCase())
-                    }
-                  />
-                </div>
-              ))}
-            </div>
-            <div style={{ marginTop: 16, padding: "10px 14px", background: "#f5f6f8", borderRadius: 8, fontSize: 12, color: "#5a6278" }}>
-              <strong>Tip:</strong> Fields left as "— skip —" will be blank for imported contractors. You can always edit them later.
-            </div>
-          </div>
-        )}
-
-        {/* ── Step 2: Preview ── */}
-        {importStep === "preview" && (
-          <div>
-            <Alert
-              type="success" showIcon style={{ marginBottom: 12, borderRadius: 6 }}
-              message={`${importRows.length} contractors mapped successfully`}
-              description="Vendor codes (VC-XXXX) will be auto-assigned. Rows where the mobile number already exists in the system will be skipped automatically."
-            />
-            <Table
-              size="small"
-              rowKey={(_, i) => String(i)}
-              dataSource={importRows}
-              pagination={{ pageSize: 10, showSizeChanger: false }}
-              scroll={{ x: 900 }}
-              columns={[
-                { title: "Company Name", dataIndex: "companyName", width: 200, render: v => <strong style={{ color: "#1a1f2e" }}>{v}</strong> },
-                { title: "Owner / Contact", dataIndex: "ownerName", width: 160, render: v => v || <span style={{ color: "#e4e7ee" }}>—</span> },
-                { title: "Mobile", dataIndex: "mobile", width: 120, render: v => v || <span style={{ color: "#e4e7ee" }}>—</span> },
-                { title: "PAN", dataIndex: "panNumber", width: 120, render: v => v || <span style={{ color: "#e4e7ee" }}>—</span> },
-                { title: "Bank", dataIndex: "bankName", width: 130, render: v => v || <span style={{ color: "#e4e7ee" }}>—</span> },
-                { title: "Work Types", dataIndex: "workTypes", width: 140, render: v => v || <span style={{ color: "#e4e7ee" }}>—</span> },
-                {
-                  title: "Status",
-                  width: 80,
-                  render: (_: unknown, row: any) =>
-                    row.companyName
-                      ? <Tag color="green" style={{ fontSize: 11 }}>Ready</Tag>
-                      : <Tag color="red" style={{ fontSize: 11 }}>Missing name</Tag>,
-                },
-              ]}
-            />
-          </div>
-        )}
-
-        {/* ── Step 3: Result ── */}
-        {importStep === "done" && importResult && (
-          <div>
-            <Row gutter={12} style={{ marginBottom: 16 }}>
-              <Col span={8}>
-                <div style={{ background: "#f0faf4", border: "1px solid #b7e8c8", borderRadius: 8, padding: "16px", textAlign: "center" }}>
-                  <CheckCircleOutlined style={{ color: "#16a85a", fontSize: 28, marginBottom: 6 }} />
-                  <div style={{ fontWeight: 800, fontSize: 32, color: "#16a85a" }}>{importResult.created.length}</div>
-                  <div style={{ fontSize: 13, color: "#5a6278", fontWeight: 600 }}>Contractors Added</div>
-                </div>
-              </Col>
-              <Col span={8}>
-                <div style={{ background: "#fff8f3", border: "1px solid #f8c9a0", borderRadius: 8, padding: "16px", textAlign: "center" }}>
-                  <MinusCircleOutlined style={{ color: "#f37916", fontSize: 28, marginBottom: 6 }} />
-                  <div style={{ fontWeight: 800, fontSize: 32, color: "#f37916" }}>{importResult.skipped.length}</div>
-                  <div style={{ fontSize: 13, color: "#5a6278", fontWeight: 600 }}>Skipped (duplicate)</div>
-                </div>
-              </Col>
-              <Col span={8}>
-                <div style={{ background: importResult.errors.length > 0 ? "#fff5f5" : "#f5f6f8", border: `1px solid ${importResult.errors.length > 0 ? "#ffcdd2" : "#e4e7ee"}`, borderRadius: 8, padding: "16px", textAlign: "center" }}>
-                  <CloseCircleOutlined style={{ color: importResult.errors.length > 0 ? "#e03b3b" : "#9ba3b8", fontSize: 28, marginBottom: 6 }} />
-                  <div style={{ fontWeight: 800, fontSize: 32, color: importResult.errors.length > 0 ? "#e03b3b" : "#9ba3b8" }}>{importResult.errors.length}</div>
-                  <div style={{ fontSize: 13, color: "#5a6278", fontWeight: 600 }}>Errors</div>
-                </div>
-              </Col>
-            </Row>
-
-            {importResult.skipped.length > 0 && (
-              <Alert type="warning" style={{ marginBottom: 10, borderRadius: 6 }}
-                message={`${importResult.skipped.length} skipped — mobile number already in system`}
-                description={importResult.skipped.slice(0, 5).map(s => s.row).join(", ") + (importResult.skipped.length > 5 ? ` + ${importResult.skipped.length - 5} more` : "")}
-              />
-            )}
-            {importResult.errors.length > 0 && (
-              <Alert type="error" style={{ marginBottom: 10, borderRadius: 6 }}
-                message="Rows that failed"
-                description={importResult.errors.slice(0, 5).map(e => `${e.row}: ${e.reason}`).join(" · ") + (importResult.errors.length > 5 ? ` + ${importResult.errors.length - 5} more` : "")}
-              />
-            )}
-          </div>
-        )}
-      </Modal>
     </PageShell>
   );
 }
