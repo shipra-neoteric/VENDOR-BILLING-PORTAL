@@ -201,15 +201,15 @@ function sameActor(user: AuthUser | null, actor?: BillUser | null): boolean {
 // ── Small visual building blocks ──────────────────────────────────
 
 function StatCard({
-  label, value, sub, icon, accent, onClick,
+  label, value, sub, icon, accent, onClick, active,
 }: {
-  label: string; value: ReactNode; sub?: string; icon: ReactNode; accent: string; onClick?: () => void;
+  label: string; value: ReactNode; sub?: string; icon: ReactNode; accent: string; onClick?: () => void; active?: boolean;
 }) {
   return (
     <div
       onClick={onClick}
       style={{
-        background: "#fff", border: "1px solid #E5E7EB", borderRadius: 12, padding: "16px 18px",
+        background: "#fff", border: `1px solid ${active ? "#FF7A00" : "#E5E7EB"}`, borderRadius: 12, padding: "16px 18px",
         cursor: onClick ? "pointer" : undefined,
       }}
     >
@@ -1187,31 +1187,39 @@ export default function AccountsPayment() {
         .ap-table .ant-table-tbody > tr:hover > td { background: #F9FAFB !important; }
       `}</style>
 
-      {/* Stat cards */}
+      {/* Stat cards — each doubles as a shortcut into the matching pill tab below */}
       <Row gutter={[12, 12]} style={{ marginBottom: 22 }}>
         <Col xs={12} sm={8} md={3}>
-          <StatCard label="Awaiting Verification" value={draftBills.length} sub="Draft bills" icon={<FileAddOutlined />} accent="#6B7280" />
+          <StatCard label="Awaiting Verification" value={draftBills.length} sub="Draft bills" icon={<FileAddOutlined />} accent="#6B7280"
+            active={activeTab === "draft"} onClick={() => setActiveTab(activeTab === "draft" ? "all" : "draft")} />
         </Col>
         <Col xs={12} sm={8} md={3}>
-          <StatCard label="Awaiting L1 AGM" value={verifyDoneBills.length} sub="Verified" icon={<SafetyCertificateOutlined />} accent="#0891b2" />
+          <StatCard label="Awaiting L1 AGM" value={verifyDoneBills.length} sub="Verified" icon={<SafetyCertificateOutlined />} accent="#0891b2"
+            active={activeTab === "verifyDone"} onClick={() => setActiveTab(activeTab === "verifyDone" ? "all" : "verifyDone")} />
         </Col>
         <Col xs={12} sm={8} md={3}>
-          <StatCard label="Awaiting L2 Director" value={l1ApprovedBills.length} sub="L1 AGM approved" icon={<CheckCircleOutlined />} accent="#7C3AED" />
+          <StatCard label="Awaiting L2 Director" value={l1ApprovedBills.length} sub="L1 AGM approved" icon={<CheckCircleOutlined />} accent="#7C3AED"
+            active={activeTab === "l1Approved"} onClick={() => setActiveTab(activeTab === "l1Approved" ? "all" : "l1Approved")} />
         </Col>
         <Col xs={12} sm={8} md={3}>
-          <StatCard label="Ready for TMS" value={approvedBills.length} sub="L2 Director approved" icon={<ClockCircleOutlined />} accent="#3730a3" />
+          <StatCard label="Ready for TMS" value={approvedBills.length} sub="L2 Director approved" icon={<ClockCircleOutlined />} accent="#3730a3"
+            active={activeTab === "approved"} onClick={() => setActiveTab(activeTab === "approved" ? "all" : "approved")} />
         </Col>
         <Col xs={12} sm={8} md={3}>
-          <StatCard label="Sent to TMS" value={sentToTmsBills.length} sub="Awaiting payment" icon={<SendOutlined />} accent="#1D4ED8" />
+          <StatCard label="Sent to TMS" value={sentToTmsBills.length} sub="Awaiting payment" icon={<SendOutlined />} accent="#1D4ED8"
+            active={activeTab === "sentToTms"} onClick={() => setActiveTab(activeTab === "sentToTms" ? "all" : "sentToTms")} />
         </Col>
         <Col xs={12} sm={8} md={3}>
-          <StatCard label="Hold" value={holdBills.length} sub="Paused before TMS" icon={<PauseCircleOutlined />} accent="#9333EA" />
+          <StatCard label="Hold" value={holdBills.length} sub="Paused before TMS" icon={<PauseCircleOutlined />} accent="#9333EA"
+            active={activeTab === "hold"} onClick={() => setActiveTab(activeTab === "hold" ? "all" : "hold")} />
         </Col>
         <Col xs={12} sm={8} md={3}>
-          <StatCard label="Paid" value={stats.paidThisMonthCount} sub={`${fmt(stats.paidThisMonthAmt)} this month`} icon={<DollarOutlined />} accent="#16A34A" />
+          <StatCard label="Paid" value={stats.paidThisMonthCount} sub={`${fmt(stats.paidThisMonthAmt)} this month`} icon={<DollarOutlined />} accent="#16A34A"
+            active={activeTab === "paid"} onClick={() => setActiveTab(activeTab === "paid" ? "all" : "paid")} />
         </Col>
         <Col xs={12} sm={8} md={3}>
-          <StatCard label="Rejected" value={rejectedBills.length} sub="Bills rejected" icon={<CloseCircleOutlined />} accent="#DC2626" />
+          <StatCard label="Rejected" value={rejectedBills.length} sub="Bills rejected" icon={<CloseCircleOutlined />} accent="#DC2626"
+            active={activeTab === "rejected"} onClick={() => setActiveTab(activeTab === "rejected" ? "all" : "rejected")} />
         </Col>
       </Row>
 

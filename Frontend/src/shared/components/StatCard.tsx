@@ -7,19 +7,24 @@ interface StatCardProps {
   icon?:    ReactNode;
   color?:   string;
   accent?:  string;
+  onClick?: () => void;
+  /** Highlights the card as the currently-applied filter — orange border, this app's "active" convention. */
+  active?:  boolean;
 }
 
-export default function StatCard({ label, value, sub, icon, color = "var(--nx-text)", accent }: StatCardProps) {
+export default function StatCard({ label, value, sub, icon, color = "var(--nx-text)", accent, onClick, active }: StatCardProps) {
   return (
     <div
+      onClick={onClick}
       style={{
         background:    "var(--nx-white)",
-        border:        "1px solid var(--nx-border)",
-        borderLeft:    accent ? `4px solid ${accent}` : "1px solid var(--nx-border)",
+        border:        active ? "1px solid #FF7A00" : "1px solid var(--nx-border)",
+        borderLeft:    accent ? `4px solid ${accent}` : (active ? "1px solid #FF7A00" : "1px solid var(--nx-border)"),
         borderRadius:  12,
         padding:       "18px 20px",
         boxShadow:     "0 1px 3px rgba(0,0,0,0.05)",
         transition:    "box-shadow 0.2s",
+        cursor:        onClick ? "pointer" : undefined,
       }}
       onMouseEnter={(e) => (e.currentTarget.style.boxShadow = "0 4px 12px rgba(0,0,0,0.08)")}
       onMouseLeave={(e) => (e.currentTarget.style.boxShadow = "0 1px 3px rgba(0,0,0,0.05)")}

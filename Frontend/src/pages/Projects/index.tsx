@@ -1,11 +1,26 @@
 import { useEffect, useMemo, useState } from "react";
+import toast from "react-hot-toast";
 import {
-  Button, DatePicker, Drawer, Form, Input, Select, Space, Spin, Tag, message, Popconfirm, Tooltip,
-} from "antd";
+  Plus, Pencil, Trash2, Building2, FolderOpen, CheckCircle2, Clock, ArrowLeft,
+  Landmark, HardHat, Receipt, Banknote, TrendingUp, Users, ClipboardList, LayoutGrid, FileText, Activity,
+} from "lucide-react";
 import { WorkflowTimeline, type TimelineStep } from "../../components/WorkflowTimeline";
-import { ArrowLeftOutlined, DeleteOutlined, EditOutlined, PlusOutlined, SearchOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
-import PageShell from "../../components/PageShell";
+import PageHeader from "../../ui/PageHeader";
+import Btn from "../../ui/Btn";
+import Card from "../../ui/Card";
+import Field from "../../ui/Field";
+import SField from "../../ui/SField";
+import { DatePicker } from "../../ui/DatePicker";
+import Modal from "../../ui/Modal";
+import ConfirmModal from "../../ui/ConfirmModal";
+import Badge from "../../ui/Badge";
+import StatusBadge from "../../ui/StatusBadge";
+import StatCard from "../../ui/StatCard";
+import Spinner from "../../ui/Spinner";
+import Segmented from "../../ui/Segmented";
+import { Table, Thead, Tbody, Tr, Th, Td } from "../../ui/Table";
+import { SearchFilter } from "../../ui/Filters";
 import apiClient from "../../services/apiClient";
 import BillDetailModal, { type BillDetailRequest } from "../../components/BillDetailModal";
 import { vendorLabel } from "../../utils/vendorLabel";
@@ -104,9 +119,6 @@ const EVENT_CONFIG: Record<string, { icon: string; color: string; label: string 
 const STATUS_COLOR: Record<string, string> = {
   active: "#16a34a", completed: "#2563eb", "on-hold": "#f59e0b",
 };
-const STATUS_BG: Record<string, string> = {
-  active: "#f0fdf4", completed: "#eff6ff", "on-hold": "#fffbeb",
-};
 const STATUS_LABEL: Record<string, string> = {
   active: "Active", completed: "Completed", "on-hold": "On Hold",
 };
@@ -115,6 +127,12 @@ const WO_STATUS_COLOR: Record<string, string> = {
 };
 const WO_STATUS_LABEL: Record<string, string> = {
   draft: "Draft", issued: "Issued", "in-progress": "In Progress", completed: "Completed",
+};
+const BILL_REQ_STATUS_COLOR: Record<string, string> = {
+  approved: "#16a34a", rejected: "#dc2626", pending: "#f59e0b", "pending-gm": "#f59e0b",
+};
+const BILL_REQ_STATUS_LABEL: Record<string, string> = {
+  approved: "Approved", rejected: "Rejected", pending: "Pending", "pending-gm": "Pending GM",
 };
 
 const normalizeId = (obj: any): Project => ({ ...obj, id: obj._id || obj.id });
@@ -177,6 +195,19 @@ function ProjectDetail({
   const [activeTab,     setActiveTab]    = useState<"vendors" | "workorders" | "category" | "bills" | "activity">("workorders");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [viewBill,      setViewBill]     = useState<BillDetailRequest | null>(null);
+  const [deleteTarget,  setDeleteTarget] = useState<Project | null>(null);
+  const [deleting,      setDeleting]     = useState(false);
+
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await onDelete(deleteTarget);
+    } finally {
+      setDeleting(false);
+      setDeleteTarget(null);
+    }
+  }
 
   useEffect(() => {
     setLoading(true);
@@ -220,234 +251,155 @@ function ProjectDetail({
 
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20 }}>
-        <Button icon={<ArrowLeftOutlined />} onClick={onBack} style={{ fontWeight: 500 }}>
-          Back to Projects
-        </Button>
+      <div className="flex items-center gap-2.5 mb-5">
+        <Btn outline small icon={ArrowLeft} label="Back to Projects" onClick={onBack} />
         {parentProject && (
-          <Button type="link" onClick={() => onSelectProject(parentProject)} style={{ fontWeight: 500, color: "#FF7A00", paddingLeft: 4 }}>
-            ← {parentProject.name}
-          </Button>
+          <Btn outline small label={`← ${parentProject.name}`} onClick={() => onSelectProject(parentProject)} />
         )}
       </div>
 
       {/* Project header card */}
-      <div style={{
-        background: "var(--nx-white)", border: "1px solid var(--nx-border)",
-        borderLeft: `6px solid ${STATUS_COLOR[project.status] || "#9CA3AF"}`,
-        borderRadius: 12, padding: "24px 28px", marginBottom: 20,
-        display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 20, flexWrap: "wrap",
-      }}>
-        <div>
-          <span style={{
-            display: "inline-block", background: "#FFF4E8", color: "#FF7A00",
-            fontFamily: "monospace", fontWeight: 700, fontSize: 12,
-            padding: "3px 10px", borderRadius: 6, marginBottom: 8,
-          }}>
-            {project.code}
-          </span>
-          <div style={{ fontSize: 26, fontWeight: 800, color: "var(--nx-text)", lineHeight: 1.2, marginBottom: 6 }}>
-            {project.name}
-          </div>
-          {project.client && <div style={{ fontSize: 13, color: "var(--nx-text-2)", marginBottom: 2 }}>🏢 Client: {project.client}</div>}
-          <div style={{ fontSize: 14, color: "var(--nx-text-2)" }}>📍 {project.location || "—"}</div>
-          {(project.startDate || project.expectedCompletion) && (
-            <div style={{ fontSize: 12, color: "var(--nx-text-muted)", marginTop: 4 }}>
-              {project.startDate && `Start: ${dayjs(project.startDate).format("MMM YYYY")}`}
-              {project.startDate && project.expectedCompletion && " → "}
-              {project.expectedCompletion && `Target: ${dayjs(project.expectedCompletion).format("MMM YYYY")}`}
+      <Card className="mb-5">
+        <div className="flex justify-between items-start gap-5 flex-wrap">
+          <div>
+            <Badge color="orange">{project.code}</Badge>
+            <div className="text-2xl font-extrabold text-[#1A1A2E] dark:text-[#F1F5F9] leading-tight mt-2 mb-1.5">
+              {project.name}
             </div>
-          )}
-          <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
-            <span style={{
-              background: STATUS_BG[project.status], color: STATUS_COLOR[project.status],
-              fontSize: 12, fontWeight: 600, padding: "3px 12px", borderRadius: 20,
-            }}>{STATUS_LABEL[project.status]}</span>
-            {project.projectType && (
-              <span style={{
-                background: project.projectType === "apartment" ? "#ede9fe" : "#ccfbf1",
-                color: project.projectType === "apartment" ? "#7c3aed" : "#0d9488",
-                fontSize: 12, fontWeight: 600, padding: "3px 12px", borderRadius: 20,
-              }}>
-                {project.projectType === "apartment" ? "🏢 Apartment" : "🏠 Plot"}
-              </span>
+            {project.client && <div className="text-[13px] text-gray-500 dark:text-gray-400 mb-0.5">🏢 Client: {project.client}</div>}
+            <div className="text-sm text-gray-500 dark:text-gray-400">📍 {project.location || "—"}</div>
+            {(project.startDate || project.expectedCompletion) && (
+              <div className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                {project.startDate && `Start: ${dayjs(project.startDate).format("MMM YYYY")}`}
+                {project.startDate && project.expectedCompletion && " → "}
+                {project.expectedCompletion && `Target: ${dayjs(project.expectedCompletion).format("MMM YYYY")}`}
+              </div>
             )}
+            <div className="flex gap-2 mt-2.5 flex-wrap">
+              <StatusBadge status={project.status} colorMap={STATUS_COLOR} labelMap={STATUS_LABEL} />
+              {project.projectType && (
+                <Badge color={project.projectType === "apartment" ? "purple" : "teal"}>
+                  {project.projectType === "apartment" ? "Apartment" : "Plot"}
+                </Badge>
+              )}
+            </div>
+          </div>
+          <div className="flex gap-2 shrink-0">
+            <Btn color="primary" icon={Pencil} label="Edit Project" onClick={e => onEdit(project, e)} />
+            <Btn
+              color="red" icon={Trash2} label="Delete"
+              disabled={subProjects.length > 0}
+              title={subProjects.length > 0 ? "Delete its sub-projects first" : undefined}
+              onClick={() => setDeleteTarget(project)}
+            />
           </div>
         </div>
-        <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
-          <Button type="primary" icon={<EditOutlined />} onClick={e => onEdit(project, e)}
-            style={{ background: "#FF7A00", borderColor: "#FF7A00" }}>
-            Edit Project
-          </Button>
-          <Tooltip title={subProjects.length > 0 ? "Delete its sub-projects first" : undefined}>
-            <Popconfirm
-              title={`Delete "${project.name}"?`}
-              description="This cannot be undone."
-              okText="Delete" okType="danger" cancelText="Cancel"
-              onConfirm={() => onDelete(project)}
-              disabled={subProjects.length > 0}
-            >
-              <Button danger icon={<DeleteOutlined />} disabled={subProjects.length > 0}>
-                Delete
-              </Button>
-            </Popconfirm>
-          </Tooltip>
-        </div>
-      </div>
+      </Card>
 
       {/* Sub-Projects */}
       {!project.parentId && (
-        <div style={{ background: "var(--nx-white)", border: "1px solid var(--nx-border)", borderRadius: 12, overflow: "hidden", marginBottom: 20 }}>
-          <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--nx-border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <div style={{ fontWeight: 700, fontSize: 15, color: "var(--nx-text)" }}>Sub-Projects</div>
-            <Button size="small" icon={<PlusOutlined />} onClick={() => onAddSubProject(project)} style={{ color: "#FF7A00", borderColor: "#FF7A00" }}>
-              Add Sub-Project
-            </Button>
+        <Card padded={false} className="mb-5 overflow-hidden">
+          <div className="flex justify-between items-center px-5 py-3.5 border-b border-gray-100 dark:border-gray-700/40">
+            <div className="font-bold text-[15px] text-[#1A1A2E] dark:text-[#F1F5F9]">Sub-Projects</div>
+            <Btn small outline icon={Plus} label="Add Sub-Project" onClick={() => onAddSubProject(project)} />
           </div>
           {subProjects.length === 0 ? (
-            <div style={{ padding: 32, textAlign: "center", color: "var(--nx-text-muted)" }}>
-              <div style={{ fontSize: 13 }}>No sub-projects yet.</div>
-            </div>
+            <div className="text-center py-8 text-[13px] text-gray-400">No sub-projects yet.</div>
           ) : (
             <div>
               {subProjects.map((sp, i) => (
                 <div
                   key={sp.id}
                   onClick={() => onSelectProject(sp)}
-                  style={{
-                    display: "flex", alignItems: "center", gap: 12, padding: "12px 20px", cursor: "pointer",
-                    borderBottom: i < subProjects.length - 1 ? "1px solid var(--nx-border)" : "none",
-                  }}
+                  className={`flex items-center gap-3 px-5 py-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/40 ${i < subProjects.length - 1 ? "border-b border-gray-100 dark:border-gray-700/40" : ""}`}
                 >
-                  <span style={{
-                    background: "#FFF4E8", color: "#FF7A00", fontFamily: "monospace",
-                    fontWeight: 700, fontSize: 11, padding: "2px 8px", borderRadius: 5,
-                  }}>{sp.code}</span>
-                  <span style={{ flex: 1, fontWeight: 600, fontSize: 13, color: "var(--nx-text)" }}>{sp.name}</span>
-                  <span style={{
-                    background: STATUS_BG[sp.status], color: STATUS_COLOR[sp.status],
-                    fontSize: 11, fontWeight: 600, padding: "2px 10px", borderRadius: 20,
-                  }}>{STATUS_LABEL[sp.status]}</span>
-                  <div onClick={e => e.stopPropagation()}>
-                    <Popconfirm
-                      title={`Delete "${sp.name}"?`}
-                      description="This cannot be undone."
-                      okText="Delete" okType="danger" cancelText="Cancel"
-                      onConfirm={() => onDelete(sp)}
-                    >
-                      <Button size="small" icon={<DeleteOutlined />} danger />
-                    </Popconfirm>
-                  </div>
-                  <span style={{ fontSize: 12, color: "var(--nx-text-muted)" }}>→</span>
+                  <Badge color="orange" small>{sp.code}</Badge>
+                  <span className="flex-1 font-semibold text-[13px] text-[#1A1A2E] dark:text-[#F1F5F9]">{sp.name}</span>
+                  <StatusBadge status={sp.status} colorMap={STATUS_COLOR} labelMap={STATUS_LABEL} />
+                  <button
+                    type="button"
+                    onClick={e => { e.stopPropagation(); setDeleteTarget(sp); }}
+                    className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded transition-colors"
+                    title="Delete"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               ))}
             </div>
           )}
-        </div>
+        </Card>
       )}
 
       {loading ? (
-        <div style={{ display: "flex", justifyContent: "center", padding: 60 }}><Spin size="large" /></div>
+        <Spinner label="Loading project details…" />
       ) : (
         <>
           {/* Financial stats */}
           {stats && (
             <>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 12, marginBottom: 16 }}>
-                {[
-                  { label: "Awarded (WOs)",     value: fmt(stats.awardedContractValue), color: "#FF7A00" },
-                  { label: "Work Executed",     value: fmt(stats.workExecutedValue),    color: "#2563eb" },
-                  { label: "Billed Gross",      value: fmt(stats.billedGross),          color: "#6366f1" },
-                  { label: "Certified Net",     value: fmt(stats.certifiedNet),         color: "#0d9488" },
-                  { label: "Paid",              value: fmt(stats.paidAmount),           color: "#16a34a" },
-                  { label: "Remaining",         value: fmt(stats.remainingContract),    color: "#f59e0b" },
-                  { label: "Overall Progress",  value: `${stats.progress}%`,            color: stats.progress >= 100 ? "#16a34a" : "#FF7A00" },
-                ].map(s => (
-                  <div key={s.label} style={{ background: "var(--nx-white)", border: "1px solid var(--nx-border)", borderRadius: 12, padding: "16px 20px" }}>
-                    <div style={{ fontSize: 10, color: "var(--nx-text-muted)", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 4 }}>{s.label}</div>
-                    <div style={{ fontSize: 18, fontWeight: 800, color: s.color, fontFamily: "monospace" }}>{s.value}</div>
-                  </div>
-                ))}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                <StatCard label="Awarded (WOs)"    value={fmt(stats.awardedContractValue)} icon={Landmark}     iconColorClass="text-primary" />
+                <StatCard label="Work Executed"    value={fmt(stats.workExecutedValue)}    icon={HardHat}      iconColorClass="text-blue-500" />
+                <StatCard label="Billed Gross"     value={fmt(stats.billedGross)}          icon={Receipt}      iconColorClass="text-indigo-500" />
+                <StatCard label="Certified Net"    value={fmt(stats.certifiedNet)}         icon={CheckCircle2} iconColorClass="text-teal-500" />
+                <StatCard label="Paid"             value={fmt(stats.paidAmount)}           icon={Banknote}     iconColorClass="text-emerald-500" />
+                <StatCard label="Remaining"        value={fmt(stats.remainingContract)}    icon={Clock}        iconColorClass="text-amber-500" />
+                <StatCard label="Overall Progress" value={`${stats.progress}%`}            icon={TrendingUp}   iconColorClass={stats.progress >= 100 ? "text-emerald-500" : "text-primary"} />
               </div>
 
               {/* Quick indicators */}
-              <div style={{ display: "flex", gap: 10, marginBottom: 20, flexWrap: "wrap" }}>
-                {[
-                  { label: `${stats.activeVendors} Active Vendor${stats.activeVendors !== 1 ? "s" : ""}`, color: "#FF7A00" },
-                  { label: `${stats.woCount} Work Order${stats.woCount !== 1 ? "s" : ""}`, color: "#2563eb" },
-                  { label: `${completedCount} Completed WOs`, color: "#16a34a" },
-                  { label: `${stats.pendingBillReqs} Pending Bill Req${stats.pendingBillReqs !== 1 ? "s" : ""}`, color: stats.pendingBillReqs > 0 ? "#f59e0b" : "#9CA3AF" },
-                  { label: `${stats.openBills} Open Bill${stats.openBills !== 1 ? "s" : ""}`, color: stats.openBills > 0 ? "#6366f1" : "#9CA3AF" },
-                ].map(i => (
-                  <span key={i.label} style={{
-                    background: "var(--nx-white)", border: `1px solid ${i.color}33`,
-                    color: i.color, fontSize: 12, fontWeight: 600,
-                    padding: "4px 12px", borderRadius: 20,
-                  }}>{i.label}</span>
-                ))}
+              <div className="flex gap-2 flex-wrap mb-5">
+                <Badge color="orange">{stats.activeVendors} Active Vendor{stats.activeVendors !== 1 ? "s" : ""}</Badge>
+                <Badge color="blue">{stats.woCount} Work Order{stats.woCount !== 1 ? "s" : ""}</Badge>
+                <Badge color="green">{completedCount} Completed WOs</Badge>
+                <Badge color={stats.pendingBillReqs > 0 ? "amber" : "gray"}>{stats.pendingBillReqs} Pending Bill Req{stats.pendingBillReqs !== 1 ? "s" : ""}</Badge>
+                <Badge color={stats.openBills > 0 ? "purple" : "gray"}>{stats.openBills} Open Bill{stats.openBills !== 1 ? "s" : ""}</Badge>
               </div>
             </>
           )}
 
           {/* Tab switcher */}
-          <div style={{ display: "flex", gap: 4, background: "var(--nx-fill-2)", padding: 4, borderRadius: 12, marginBottom: 20, flexWrap: "wrap" }}>
-            {([
-              ["vendors",    "Vendors"],
-              ["workorders", "Work Orders"],
-              ["category",   "Category"],
-              ["bills",      "Bills"],
-              ["activity",   "Live Activity"],
-            ] as const).map(([key, label]) => (
-              <button
-                key={key}
-                type="button"
-                onClick={() => setActiveTab(key)}
-                style={{
-                  flex: "1 1 auto", border: "none", borderRadius: 9, padding: "8px 16px",
-                  fontSize: 13, fontWeight: 700, cursor: "pointer", transition: "all 0.15s",
-                  background: activeTab === key ? "#FF7A00" : "transparent",
-                  color:      activeTab === key ? "#fff"    : "var(--nx-text-2)",
-                }}
-              >
-                {label}
-              </button>
-            ))}
+          <div className="mb-5">
+            <Segmented
+              value={activeTab}
+              onChange={setActiveTab}
+              options={[
+                { value: "vendors",    label: <span className="flex items-center gap-1.5"><Users className="w-3.5 h-3.5" />Vendors</span> },
+                { value: "workorders", label: <span className="flex items-center gap-1.5"><ClipboardList className="w-3.5 h-3.5" />Work Orders</span> },
+                { value: "category",   label: <span className="flex items-center gap-1.5"><LayoutGrid className="w-3.5 h-3.5" />Category</span> },
+                { value: "bills",      label: <span className="flex items-center gap-1.5"><FileText className="w-3.5 h-3.5" />Bills</span> },
+                { value: "activity",   label: <span className="flex items-center gap-1.5"><Activity className="w-3.5 h-3.5" />Live Activity</span> },
+              ]}
+            />
           </div>
 
           {/* Vendors tab */}
           {activeTab === "vendors" && (
-            <div style={{ background: "var(--nx-white)", border: "1px solid var(--nx-border)", borderRadius: 12, overflow: "hidden", marginBottom: 20 }}>
-              <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--nx-border)", fontWeight: 700, fontSize: 15, color: "var(--nx-text)" }}>
-                Vendors
-              </div>
+            <div className="mb-5">
+              <div className="font-bold text-[15px] text-[#1A1A2E] dark:text-[#F1F5F9] mb-3">Vendors</div>
               {projectVendors.length === 0 ? (
-                <div style={{ padding: 48, textAlign: "center", color: "var(--nx-text-muted)" }}>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: "var(--nx-text-2)" }}>No vendors yet</div>
-                  <div style={{ fontSize: 12, marginTop: 4 }}>Vendors appear here once work orders are assigned to them.</div>
-                </div>
+                <Card className="text-center py-12">
+                  <div className="text-sm font-semibold text-gray-500 dark:text-gray-400">No vendors yet</div>
+                  <div className="text-xs text-gray-400 mt-1">Vendors appear here once work orders are assigned to them.</div>
+                </Card>
               ) : (
-                <div style={{ overflowX: "auto" }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                    <thead>
-                      <tr style={{ background: "var(--nx-fill-2)" }}>
-                        {["Vendor", "Vendor Code", "Owner", "Work Orders", "Contract Value"].map(h => (
-                          <th key={h} style={{ padding: "10px 16px", fontSize: 11, fontWeight: 700, color: "var(--nx-table-header-color)", textAlign: "left", textTransform: "uppercase", letterSpacing: "0.05em", borderBottom: "1px solid var(--nx-border)", whiteSpace: "nowrap" }}>{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {projectVendors.map((v, i) => (
-                        <tr key={v.contractor._id} style={{ borderBottom: "1px solid var(--nx-border)", background: i % 2 === 0 ? "var(--nx-white)" : "var(--nx-fill-2)" }}>
-                          <td style={{ padding: "10px 16px", fontSize: 13, color: "var(--nx-text)", fontWeight: 600 }}>{vendorLabel(v.contractor.companyName, v.contractor.shortCode)}</td>
-                          <td style={{ padding: "10px 16px", fontFamily: "monospace", fontSize: 12, color: "#FF7A00", fontWeight: 700 }}>{v.contractor.vendorCode}</td>
-                          <td style={{ padding: "10px 16px", fontSize: 12, color: "var(--nx-text-2)" }}>{v.contractor.ownerName || "—"}</td>
-                          <td style={{ padding: "10px 16px", fontFamily: "monospace", fontSize: 12, color: "var(--nx-text)" }}>{v.woCount}</td>
-                          <td style={{ padding: "10px 16px", fontFamily: "monospace", fontSize: 13, color: "var(--nx-text)", fontWeight: 600 }}>{fmt(v.contractValue)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <Table>
+                  <Thead>
+                    <Tr><Th>Vendor</Th><Th>Vendor Code</Th><Th>Owner</Th><Th>Work Orders</Th><Th>Contract Value</Th></Tr>
+                  </Thead>
+                  <Tbody>
+                    {projectVendors.map(v => (
+                      <Tr key={v.contractor._id}>
+                        <Td className="font-semibold text-[#1A1A2E] dark:text-[#F1F5F9]">{vendorLabel(v.contractor.companyName, v.contractor.shortCode)}</Td>
+                        <Td className="font-mono text-primary font-bold">{v.contractor.vendorCode}</Td>
+                        <Td className="text-gray-500 dark:text-gray-400">{v.contractor.ownerName || "—"}</Td>
+                        <Td className="font-mono">{v.woCount}</Td>
+                        <Td className="font-mono font-semibold">{fmt(v.contractValue)}</Td>
+                      </Tr>
+                    ))}
+                  </Tbody>
+                </Table>
               )}
             </div>
           )}
@@ -455,173 +407,130 @@ function ProjectDetail({
           {/* Work Orders tab */}
           {activeTab === "workorders" && (
             <>
-              <div style={{ background: "var(--nx-white)", border: "1px solid var(--nx-border)", borderRadius: 12, overflow: "hidden", marginBottom: 20 }}>
-                <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--nx-border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <div style={{ fontWeight: 700, fontSize: 15, color: "var(--nx-text)" }}>Work Orders</div>
-                  <div style={{ fontSize: 12, color: "var(--nx-text-muted)" }}>{wos.length} total</div>
+              <div className="mb-5">
+                <div className="flex justify-between items-center mb-3">
+                  <div className="font-bold text-[15px] text-[#1A1A2E] dark:text-[#F1F5F9]">Work Orders</div>
+                  <div className="text-xs text-gray-400">{wos.length} total</div>
                 </div>
                 {wos.length === 0 ? (
-                  <div style={{ padding: 48, textAlign: "center", color: "var(--nx-text-muted)" }}>
-                    <div style={{ fontSize: 32, marginBottom: 8 }}>📋</div>
-                    <div style={{ fontSize: 14, fontWeight: 600, color: "var(--nx-text-2)" }}>No work orders yet</div>
-                    <div style={{ fontSize: 12, marginTop: 4 }}>Work orders assigned to this project will appear here.</div>
-                  </div>
+                  <Card className="text-center py-12">
+                    <ClipboardList className="w-8 h-8 text-gray-300 dark:text-gray-600 mx-auto mb-2" />
+                    <div className="text-sm font-semibold text-gray-500 dark:text-gray-400">No work orders yet</div>
+                    <div className="text-xs text-gray-400 mt-1">Work orders assigned to this project will appear here.</div>
+                  </Card>
                 ) : (
-                  <div style={{ overflowX: "auto" }}>
-                    <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                      <thead>
-                        <tr style={{ background: "var(--nx-fill-2)" }}>
-                          {["WO Number", "Vendor", "Category", "Status", "Contract Value"].map(h => (
-                            <th key={h} style={{
-                              padding: "10px 16px", fontSize: 11, fontWeight: 700,
-                              color: "var(--nx-table-header-color)", textAlign: "left",
-                              textTransform: "uppercase", letterSpacing: "0.05em",
-                              borderBottom: "1px solid var(--nx-border)", whiteSpace: "nowrap",
-                            }}>{h}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {wos.map((wo, i) => (
-                          <tr key={wo._id} style={{ borderBottom: "1px solid var(--nx-border)", background: i % 2 === 0 ? "var(--nx-white)" : "var(--nx-fill-2)" }}>
-                            <td style={{ padding: "10px 16px", fontFamily: "monospace", fontWeight: 700, color: "#FF7A00", fontSize: 13 }}>{wo.workOrderNo}</td>
-                            <td style={{ padding: "10px 16px", fontSize: 13, color: "var(--nx-text)", fontWeight: 500 }}>{wo.vendorName || "—"}</td>
-                            <td style={{ padding: "10px 16px", fontSize: 12, color: "var(--nx-text-2)" }}>{wo.category || "—"}</td>
-                            <td style={{ padding: "10px 16px" }}>
-                              <span style={{
-                                background: (WO_STATUS_COLOR[wo.status] || "#9CA3AF") + "22",
-                                color: WO_STATUS_COLOR[wo.status] || "#9CA3AF",
-                                fontSize: 11, fontWeight: 600, padding: "2px 10px", borderRadius: 20,
-                              }}>
-                                {WO_STATUS_LABEL[wo.status] || wo.status}
-                              </span>
-                            </td>
-                            <td style={{ padding: "10px 16px", fontFamily: "monospace", fontSize: 13, color: "var(--nx-text)", fontWeight: 600 }}>
-                              {fmt(wo.contractValue || 0)}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                  <Table>
+                    <Thead>
+                      <Tr><Th>WO Number</Th><Th>Vendor</Th><Th>Category</Th><Th>Status</Th><Th>Contract Value</Th></Tr>
+                    </Thead>
+                    <Tbody>
+                      {wos.map(wo => (
+                        <Tr key={wo._id}>
+                          <Td className="font-mono font-bold text-primary">{wo.workOrderNo}</Td>
+                          <Td className="font-medium text-[#1A1A2E] dark:text-[#F1F5F9]">{wo.vendorName || "—"}</Td>
+                          <Td className="text-gray-500 dark:text-gray-400">{wo.category || "—"}</Td>
+                          <Td><StatusBadge status={wo.status} colorMap={WO_STATUS_COLOR} labelMap={WO_STATUS_LABEL} /></Td>
+                          <Td className="font-mono font-semibold">{fmt(wo.contractValue || 0)}</Td>
+                        </Tr>
+                      ))}
+                    </Tbody>
+                  </Table>
                 )}
               </div>
 
               {/* Work Order Lifecycle Timeline */}
               {wos.length > 0 && (
-                <div style={{ background: "var(--nx-white)", border: "1px solid var(--nx-border)", borderRadius: 12, overflow: "hidden", marginBottom: 20 }}>
-                  <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--nx-border)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+                <Card className="mb-5">
+                  <div className="flex justify-between items-start flex-wrap gap-2.5 mb-4">
                     <div>
-                      <div style={{ fontWeight: 700, fontSize: 15, color: "var(--nx-text)" }}>Work Order Lifecycle</div>
-                      <div style={{ fontSize: 11, color: "var(--nx-text-muted)", marginTop: 2 }}>Billing workflow progress — click any completed step for details</div>
+                      <div className="font-bold text-[15px] text-[#1A1A2E] dark:text-[#F1F5F9]">Work Order Lifecycle</div>
+                      <div className="text-xs text-gray-400 mt-0.5">Billing workflow progress — click any completed step for details</div>
                     </div>
-                    {/* WO selector */}
-                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    <div className="flex gap-1.5 flex-wrap">
                       {wos.map(wo => (
                         <button
                           key={wo._id}
                           onClick={() => setSelectedWONo(wo.workOrderNo)}
-                          style={{
-                            background: selectedWONo === wo.workOrderNo ? "#FF7A00" : "var(--nx-fill)",
-                            color:      selectedWONo === wo.workOrderNo ? "#fff"    : "var(--nx-text-2)",
-                            border: "none", borderRadius: 8, padding: "4px 12px",
-                            fontSize: 11, fontWeight: 700, fontFamily: "monospace",
-                            cursor: "pointer", transition: "all 0.15s",
-                          }}
+                          className={`rounded-lg px-3 py-1 text-[11px] font-bold font-mono transition-colors ${selectedWONo === wo.workOrderNo ? "bg-primary text-white" : "bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400"}`}
                         >
                           {wo.workOrderNo}
                         </button>
                       ))}
                     </div>
                   </div>
-                  <div style={{ padding: "20px 20px 16px" }}>
-                    <WorkflowTimeline
-                      steps={selectedWONo ? buildTimelineSteps(activity, selectedWONo) : []}
-                    />
-                  </div>
-                </div>
+                  <WorkflowTimeline steps={selectedWONo ? buildTimelineSteps(activity, selectedWONo) : []} />
+                </Card>
               )}
             </>
           )}
 
           {/* Category tab */}
           {activeTab === "category" && stats && (
-            <div style={{ background: "var(--nx-white)", border: "1px solid var(--nx-border)", borderRadius: 12, overflow: "hidden", marginBottom: 20 }}>
-              <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--nx-border)", display: "flex", alignItems: "center", gap: 10 }}>
+            <div className="mb-5">
+              <div className="flex items-center gap-2.5 mb-3">
                 {selectedCategory && (
-                  <button type="button" onClick={() => setSelectedCategory(null)} style={{ background: "none", border: "none", cursor: "pointer", color: "#FF7A00", fontWeight: 700, fontSize: 13, padding: 0 }}>
+                  <button type="button" onClick={() => setSelectedCategory(null)} className="text-primary font-bold text-[13px]">
                     ← Categories
                   </button>
                 )}
-                <div style={{ fontWeight: 700, fontSize: 14, color: "var(--nx-text)" }}>
+                <div className="font-bold text-sm text-[#1A1A2E] dark:text-[#F1F5F9]">
                   {selectedCategory ? `Bills — ${selectedCategory}` : "Category Breakdown"}
                 </div>
               </div>
 
               {!selectedCategory ? (
                 stats.categoryBreakdown.length === 0 ? (
-                  <div style={{ padding: 48, textAlign: "center", color: "var(--nx-text-muted)" }}>
-                    <div style={{ fontSize: 14, fontWeight: 600, color: "var(--nx-text-2)" }}>No categories yet</div>
-                  </div>
+                  <Card className="text-center py-12">
+                    <div className="text-sm font-semibold text-gray-500 dark:text-gray-400">No categories yet</div>
+                  </Card>
                 ) : (
-                  <div style={{ overflowX: "auto" }}>
-                    <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                      <thead>
-                        <tr style={{ background: "var(--nx-fill-2)" }}>
-                          {["Category", "WOs", "Vendors", "Contract Value", "Work Executed", "Progress"].map(h => (
-                            <th key={h} style={{ padding: "9px 14px", fontSize: 11, fontWeight: 700, color: "var(--nx-table-header-color)", textAlign: "left", textTransform: "uppercase", letterSpacing: "0.05em", borderBottom: "1px solid var(--nx-border)", whiteSpace: "nowrap" }}>{h}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {stats.categoryBreakdown.map((cat, i) => (
-                          <tr
-                            key={cat.category}
-                            onClick={() => setSelectedCategory(cat.category)}
-                            style={{ borderBottom: "1px solid var(--nx-border)", background: i % 2 === 0 ? "var(--nx-white)" : "var(--nx-fill-2)", cursor: "pointer" }}
-                          >
-                            <td style={{ padding: "10px 14px", fontWeight: 600, color: "var(--nx-text)", fontSize: 13 }}>{cat.category}</td>
-                            <td style={{ padding: "10px 14px", fontFamily: "monospace", fontSize: 12, color: "var(--nx-text)" }}>{cat.woCount}</td>
-                            <td style={{ padding: "10px 14px", fontFamily: "monospace", fontSize: 12, color: "var(--nx-text)" }}>{cat.vendorCount}</td>
-                            <td style={{ padding: "10px 14px", fontFamily: "monospace", fontSize: 13, color: "#FF7A00", fontWeight: 700 }}>{fmt(cat.contractValue)}</td>
-                            <td style={{ padding: "10px 14px", fontFamily: "monospace", fontSize: 12, color: "#2563eb" }}>{fmt(cat.workExecuted)}</td>
-                            <td style={{ padding: "10px 14px", minWidth: 140 }}>
-                              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                                <div style={{ flex: 1, height: 8, background: "var(--nx-border)", borderRadius: 4, overflow: "hidden" }}>
-                                  <div style={{ width: `${cat.progress}%`, height: "100%", background: cat.progress >= 100 ? "#16a34a" : "#FF7A00", borderRadius: 4 }} />
-                                </div>
-                                <span style={{ fontSize: 12, fontWeight: 700, color: cat.progress >= 100 ? "#16a34a" : "#FF7A00", minWidth: 32 }}>{cat.progress}%</span>
+                  <Table>
+                    <Thead>
+                      <Tr><Th>Category</Th><Th>WOs</Th><Th>Vendors</Th><Th>Contract Value</Th><Th>Work Executed</Th><Th>Progress</Th></Tr>
+                    </Thead>
+                    <Tbody>
+                      {stats.categoryBreakdown.map(cat => (
+                        <Tr key={cat.category} onClick={() => setSelectedCategory(cat.category)} className="cursor-pointer">
+                          <Td className="font-semibold text-[#1A1A2E] dark:text-[#F1F5F9]">{cat.category}</Td>
+                          <Td className="font-mono">{cat.woCount}</Td>
+                          <Td className="font-mono">{cat.vendorCount}</Td>
+                          <Td className="font-mono font-bold text-primary">{fmt(cat.contractValue)}</Td>
+                          <Td className="font-mono text-blue-500">{fmt(cat.workExecuted)}</Td>
+                          <Td className="min-w-[140px]">
+                            <div className="flex items-center gap-2">
+                              <div className="flex-1 h-2 bg-gray-100 dark:bg-gray-700 rounded overflow-hidden">
+                                <div className={`h-full rounded ${cat.progress >= 100 ? "bg-emerald-500" : "bg-primary"}`} style={{ width: `${cat.progress}%` }} />
                               </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                              <span className={`text-xs font-bold min-w-[32px] ${cat.progress >= 100 ? "text-emerald-500" : "text-primary"}`}>{cat.progress}%</span>
+                            </div>
+                          </Td>
+                        </Tr>
+                      ))}
+                    </Tbody>
+                  </Table>
                 )
               ) : (
                 (() => {
                   const catBills = billRequests.filter(br => br.category === selectedCategory);
                   return catBills.length === 0 ? (
-                    <div style={{ padding: 48, textAlign: "center", color: "var(--nx-text-muted)" }}>
-                      <div style={{ fontSize: 14, fontWeight: 600, color: "var(--nx-text-2)" }}>No bills under this category yet</div>
-                    </div>
+                    <Card className="text-center py-12">
+                      <div className="text-sm font-semibold text-gray-500 dark:text-gray-400">No bills under this category yet</div>
+                    </Card>
                   ) : (
-                    <div>
+                    <Card padded={false} className="overflow-hidden">
                       {catBills.map((br, i) => (
                         <div
                           key={br._id}
                           onClick={() => setViewBill(br)}
-                          style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 20px", cursor: "pointer", borderBottom: i < catBills.length - 1 ? "1px solid var(--nx-border)" : "none" }}
+                          className={`flex items-center gap-3 px-5 py-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/40 ${i < catBills.length - 1 ? "border-b border-gray-100 dark:border-gray-700/40" : ""}`}
                         >
-                          <span style={{ background: "#FFF4E8", color: "#FF7A00", fontFamily: "monospace", fontWeight: 700, fontSize: 12, padding: "2px 8px", borderRadius: 5 }}>{br.reqNo}</span>
-                          <span style={{ flex: 1, fontSize: 13, color: "var(--nx-text)", fontWeight: 500 }}>{br.vendorName}</span>
-                          <span style={{ fontSize: 12, color: "var(--nx-text-muted)" }}>{dayjs(br.createdAt).format("DD MMM YYYY")}</span>
-                          <Tag color={br.status === "approved" ? "green" : br.status === "rejected" ? "red" : "orange"}>{br.status}</Tag>
-                          <span style={{ fontSize: 12, color: "var(--nx-text-muted)" }}>→</span>
+                          <Badge color="orange" small>{br.reqNo}</Badge>
+                          <span className="flex-1 text-sm font-medium text-[#1A1A2E] dark:text-[#F1F5F9]">{br.vendorName}</span>
+                          <span className="text-xs text-gray-400">{dayjs(br.createdAt).format("DD MMM YYYY")}</span>
+                          <StatusBadge status={br.status} colorMap={BILL_REQ_STATUS_COLOR} labelMap={BILL_REQ_STATUS_LABEL} />
                         </div>
                       ))}
-                    </div>
+                    </Card>
                   );
                 })()
               )}
@@ -630,92 +539,78 @@ function ProjectDetail({
 
           {/* Bills tab */}
           {activeTab === "bills" && (
-            <div style={{ background: "var(--nx-white)", border: "1px solid var(--nx-border)", borderRadius: 12, overflow: "hidden", marginBottom: 20 }}>
-              <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--nx-border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <div style={{ fontWeight: 700, fontSize: 15, color: "var(--nx-text)" }}>Bills</div>
-                <div style={{ fontSize: 12, color: "var(--nx-text-muted)" }}>{billRequests.length} total</div>
+            <div className="mb-5">
+              <div className="flex justify-between items-center mb-3">
+                <div className="font-bold text-[15px] text-[#1A1A2E] dark:text-[#F1F5F9]">Bills</div>
+                <div className="text-xs text-gray-400">{billRequests.length} total</div>
               </div>
               {billRequests.length === 0 ? (
-                <div style={{ padding: 48, textAlign: "center", color: "var(--nx-text-muted)" }}>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: "var(--nx-text-2)" }}>No bills yet</div>
-                </div>
+                <Card className="text-center py-12">
+                  <div className="text-sm font-semibold text-gray-500 dark:text-gray-400">No bills yet</div>
+                </Card>
               ) : (
-                <div style={{ overflowX: "auto" }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                    <thead>
-                      <tr style={{ background: "var(--nx-fill-2)" }}>
-                        {["Req No", "Work Order", "Vendor", "Category", "Date", "Status"].map(h => (
-                          <th key={h} style={{ padding: "10px 16px", fontSize: 11, fontWeight: 700, color: "var(--nx-table-header-color)", textAlign: "left", textTransform: "uppercase", letterSpacing: "0.05em", borderBottom: "1px solid var(--nx-border)", whiteSpace: "nowrap" }}>{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {billRequests.map((br, i) => (
-                        <tr
-                          key={br._id}
-                          onClick={() => setViewBill(br)}
-                          style={{ borderBottom: "1px solid var(--nx-border)", background: i % 2 === 0 ? "var(--nx-white)" : "var(--nx-fill-2)", cursor: "pointer" }}
-                        >
-                          <td style={{ padding: "10px 16px", fontFamily: "monospace", fontWeight: 700, color: "#FF7A00", fontSize: 13 }}>{br.reqNo}</td>
-                          <td style={{ padding: "10px 16px", fontFamily: "monospace", fontSize: 12, color: "var(--nx-text)" }}>{br.workOrderNo}</td>
-                          <td style={{ padding: "10px 16px", fontSize: 13, color: "var(--nx-text)", fontWeight: 500 }}>{br.vendorName}</td>
-                          <td style={{ padding: "10px 16px", fontSize: 12, color: "var(--nx-text-2)" }}>{br.category || "—"}</td>
-                          <td style={{ padding: "10px 16px", fontSize: 12, color: "var(--nx-text-muted)" }}>{dayjs(br.createdAt).format("DD MMM YYYY")}</td>
-                          <td style={{ padding: "10px 16px" }}><Tag color={br.status === "approved" ? "green" : br.status === "rejected" ? "red" : "orange"}>{br.status}</Tag></td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <Table>
+                  <Thead>
+                    <Tr><Th>Req No</Th><Th>Work Order</Th><Th>Vendor</Th><Th>Category</Th><Th>Date</Th><Th>Status</Th></Tr>
+                  </Thead>
+                  <Tbody>
+                    {billRequests.map(br => (
+                      <Tr key={br._id} onClick={() => setViewBill(br)} className="cursor-pointer">
+                        <Td className="font-mono font-bold text-primary">{br.reqNo}</Td>
+                        <Td className="font-mono text-gray-500 dark:text-gray-400">{br.workOrderNo}</Td>
+                        <Td className="font-medium text-[#1A1A2E] dark:text-[#F1F5F9]">{br.vendorName}</Td>
+                        <Td className="text-gray-500 dark:text-gray-400">{br.category || "—"}</Td>
+                        <Td className="text-gray-400">{dayjs(br.createdAt).format("DD MMM YYYY")}</Td>
+                        <Td><StatusBadge status={br.status} colorMap={BILL_REQ_STATUS_COLOR} labelMap={BILL_REQ_STATUS_LABEL} /></Td>
+                      </Tr>
+                    ))}
+                  </Tbody>
+                </Table>
               )}
             </div>
           )}
 
           {/* Live Activity tab */}
           {activeTab === "activity" && (
-            <div style={{ background: "var(--nx-white)", border: "1px solid var(--nx-border)", borderRadius: 12, overflow: "hidden" }}>
-              <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--nx-border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <div style={{ fontWeight: 700, fontSize: 15, color: "var(--nx-text)" }}>Live Activity</div>
-                <div style={{ fontSize: 12, color: "var(--nx-text-muted)" }}>Last {activity.length} events</div>
+            <div className="mb-5">
+              <div className="flex justify-between items-center mb-3">
+                <div className="font-bold text-[15px] text-[#1A1A2E] dark:text-[#F1F5F9]">Live Activity</div>
+                <div className="text-xs text-gray-400">Last {activity.length} events</div>
               </div>
               {activity.length === 0 ? (
-                <div style={{ padding: 48, textAlign: "center", color: "var(--nx-text-muted)" }}>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: "var(--nx-text-2)" }}>No activity yet</div>
-                </div>
+                <Card className="text-center py-12">
+                  <div className="text-sm font-semibold text-gray-500 dark:text-gray-400">No activity yet</div>
+                </Card>
               ) : (
-                <div style={{ padding: "8px 20px 20px" }}>
+                <Card padded={false} className="px-5">
                   {activity.map((ev, i) => {
                     const cfg = EVENT_CONFIG[ev.type] ?? { icon: "📌", color: "#9CA3AF", label: ev.type };
                     return (
-                      <div key={ev._id} style={{ display: "flex", gap: 12, paddingTop: 14, paddingBottom: i < activity.length - 1 ? 14 : 0, borderBottom: i < activity.length - 1 ? "1px solid var(--nx-border)" : "none" }}>
-                        <div style={{
-                          width: 32, height: 32, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
-                          background: cfg.color + "18", border: `1.5px solid ${cfg.color}44`, fontSize: 15, flexShrink: 0,
-                        }}>
+                      <div key={ev._id} className={`flex gap-3 py-3.5 ${i < activity.length - 1 ? "border-b border-gray-100 dark:border-gray-700/40" : ""}`}>
+                        <div
+                          className="w-8 h-8 rounded-full flex items-center justify-center text-[15px] shrink-0"
+                          style={{ background: cfg.color + "18", border: `1.5px solid ${cfg.color}44` }}
+                        >
                           {cfg.icon}
                         </div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
-                            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--nx-text)" }}>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex justify-between items-start gap-2">
+                            <div className="text-sm font-semibold text-[#1A1A2E] dark:text-[#F1F5F9]">
                               {cfg.label}
-                              {ev.stageNo && <span style={{ color: "#FF7A00", fontSize: 11, marginLeft: 6 }}>Stage {ev.stageNo}</span>}
+                              {ev.stageNo && <span className="text-primary text-xs ml-1.5">Stage {ev.stageNo}</span>}
                             </div>
-                            <div style={{ fontSize: 11, color: "var(--nx-text-muted)", whiteSpace: "nowrap", flexShrink: 0 }}>
-                              {dayjs(ev.createdAt).format("DD MMM, HH:mm")}
-                            </div>
+                            <div className="text-[11px] text-gray-400 whitespace-nowrap shrink-0">{dayjs(ev.createdAt).format("DD MMM, HH:mm")}</div>
                           </div>
-                          <div style={{ fontSize: 12, color: "var(--nx-text-2)", marginTop: 2 }}>
+                          <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                             {ev.vendorName && <span>{ev.vendorName}</span>}
-                            {ev.workOrderNo && <span style={{ fontFamily: "monospace", color: "#FF7A00", marginLeft: ev.vendorName ? 6 : 0 }}>{ev.workOrderNo}</span>}
+                            {ev.workOrderNo && <span className={`font-mono text-primary ${ev.vendorName ? "ml-1.5" : ""}`}>{ev.workOrderNo}</span>}
                           </div>
-                          {ev.performedByName && (
-                            <div style={{ fontSize: 11, color: "var(--nx-text-muted)", marginTop: 2 }}>by {ev.performedByName}</div>
-                          )}
+                          {ev.performedByName && <div className="text-[11px] text-gray-400 mt-0.5">by {ev.performedByName}</div>}
                         </div>
                       </div>
                     );
                   })}
-                </div>
+                </Card>
               )}
             </div>
           )}
@@ -723,21 +618,41 @@ function ProjectDetail({
       )}
 
       <BillDetailModal billRequest={viewBill} open={!!viewBill} onClose={() => setViewBill(null)} />
+
+      {deleteTarget && (
+        <ConfirmModal
+          title={`Delete "${deleteTarget.name}"?`}
+          message="This cannot be undone."
+          confirmLabel="Delete"
+          danger
+          loading={deleting}
+          onConfirm={confirmDelete}
+          onCancel={() => setDeleteTarget(null)}
+        />
+      )}
     </div>
   );
 }
 
 // ── Main Page ──────────────────────────────────────────────────────────────────
+const EMPTY_FORM = {
+  name: "", client: "", location: "", projectType: "apartment", status: "active",
+  startDate: "", expectedCompletion: "", slackChannelId: "",
+};
+
 export default function Projects() {
   const [projects, setProjects]           = useState<Project[]>([]);
   const [loading, setLoading]             = useState(true);
   const [saving, setSaving]               = useState(false);
   const [search, setSearch]               = useState("");
+  const [statusFilter, setStatusFilter]   = useState<"all" | "active" | "completed" | "on-hold">("all");
   const [drawerOpen, setDrawerOpen]       = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [detailProject, setDetailProject] = useState<Project | null>(null);
   const [creatingUnderParent, setCreatingUnderParent] = useState<Project | null>(null);
-  const [form] = Form.useForm();
+  const [deleteTarget, setDeleteTarget]   = useState<Project | null>(null);
+  const [deleting, setDeleting]           = useState(false);
+  const [formState, setFormState]         = useState(EMPTY_FORM);
 
   // ── Load ──────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -750,53 +665,59 @@ export default function Projects() {
   const filtered = useMemo(() =>
     projects
       .filter(p =>
-        !p.parentId && (
+        !p.parentId &&
+        (statusFilter === "all" || p.status === statusFilter) && (
           p.name.toLowerCase().includes(search.toLowerCase()) ||
           p.code.toLowerCase().includes(search.toLowerCase()) ||
           (p.location || "").toLowerCase().includes(search.toLowerCase())
         )
       )
       .sort((a, b) => a.name.localeCompare(b.name)),
-    [projects, search]
+    [projects, search, statusFilter]
   );
 
   const getSubProjects = (parentId: string) =>
     projects.filter(p => p.parentId === parentId).sort((a, b) => a.name.localeCompare(b.name));
 
   const handleDeleteProject = async (project: Project) => {
+    setDeleting(true);
     try {
       await apiClient.delete(`/projects/${project.id}`);
       setProjects(prev => prev.filter(p => p.id !== project.id));
       if (detailProject?.id === project.id) setDetailProject(null);
-      message.success(`"${project.name}" deleted`);
+      toast.success(`"${project.name}" deleted`);
+      setDeleteTarget(null);
     } catch (e: unknown) {
       const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message || "Delete failed";
-      message.error(msg);
+      toast.error(msg);
+    } finally {
+      setDeleting(false);
     }
   };
 
   // ── Stats ─────────────────────────────────────────────────────────────────
-  const stats = [
-    { label: "Total Projects", value: projects.length,                                     color: "#FF7A00" },
-    { label: "Active",         value: projects.filter(p => p.status === "active").length,    color: "#16a34a" },
-    { label: "Completed",      value: projects.filter(p => p.status === "completed").length, color: "#2563eb" },
-    { label: "On Hold",        value: projects.filter(p => p.status === "on-hold").length,   color: "#f59e0b" },
+  // Each card doubles as a status filter for the list below — clicking one
+  // narrows `filtered` to that status; clicking it again (or "Total Projects")
+  // clears back to "all".
+  const statCards: { label: string; value: number; icon: typeof Building2; iconColorClass: string; filterValue: "all" | "active" | "completed" | "on-hold" }[] = [
+    { label: "Total Projects", value: projects.length,                                     icon: Building2,    iconColorClass: "text-primary",     filterValue: "all" },
+    { label: "Active",         value: projects.filter(p => p.status === "active").length,    icon: CheckCircle2, iconColorClass: "text-emerald-500", filterValue: "active" },
+    { label: "Completed",      value: projects.filter(p => p.status === "completed").length, icon: CheckCircle2, iconColorClass: "text-blue-500",    filterValue: "completed" },
+    { label: "On Hold",        value: projects.filter(p => p.status === "on-hold").length,   icon: Clock,        iconColorClass: "text-amber-500",   filterValue: "on-hold" },
   ];
 
   // ── Handlers ──────────────────────────────────────────────────────────────
   const openCreate = () => {
     setEditingProject(null);
     setCreatingUnderParent(null);
-    form.resetFields();
-    form.setFieldsValue({ status: "active", projectType: "apartment" });
+    setFormState(EMPTY_FORM);
     setDrawerOpen(true);
   };
 
   const openAddSubProject = (parent: Project) => {
     setEditingProject(null);
     setCreatingUnderParent(parent);
-    form.resetFields();
-    form.setFieldsValue({ status: "active", projectType: "apartment" });
+    setFormState(EMPTY_FORM);
     setDrawerOpen(true);
   };
 
@@ -804,41 +725,51 @@ export default function Projects() {
     e?.stopPropagation();
     setEditingProject(project);
     setCreatingUnderParent(null);
-    form.setFieldsValue({
+    setFormState({
       name: project.name,
+      client: project.client || "",
       location: project.location,
-      status: project.status,
       projectType: project.projectType || "apartment",
-      client: project.client || undefined,
-      startDate: project.startDate ? dayjs(project.startDate) : undefined,
-      expectedCompletion: project.expectedCompletion ? dayjs(project.expectedCompletion) : undefined,
-      slackChannelId: project.slackChannelId || undefined,
+      status: project.status,
+      startDate: project.startDate ? project.startDate.slice(0, 10) : "",
+      expectedCompletion: project.expectedCompletion ? project.expectedCompletion.slice(0, 10) : "",
+      slackChannelId: project.slackChannelId || "",
     });
     setDrawerOpen(true);
   };
 
   const handleSave = async () => {
+    if (!formState.name.trim()) return toast.error("Project name is required");
+    if (!formState.location.trim()) return toast.error("Location is required");
+
+    const payload = {
+      name: formState.name.trim(),
+      client: formState.client.trim() || undefined,
+      location: formState.location.trim(),
+      projectType: formState.projectType,
+      status: formState.status,
+      startDate: formState.startDate || undefined,
+      expectedCompletion: formState.expectedCompletion || undefined,
+      slackChannelId: formState.slackChannelId.trim(),
+    };
+
+    setSaving(true);
     try {
-      const values = await form.validateFields();
-      // Serialize dayjs date fields to ISO strings
-      if (values.startDate) values.startDate = (values.startDate as ReturnType<typeof dayjs>).toISOString();
-      if (values.expectedCompletion) values.expectedCompletion = (values.expectedCompletion as ReturnType<typeof dayjs>).toISOString();
-      setSaving(true);
       if (editingProject) {
-        const res = await apiClient.put<{ project: Project }>(`/projects/${editingProject.id}`, values);
+        const res = await apiClient.put<{ project: Project }>(`/projects/${editingProject.id}`, payload);
         const updated = normalizeId(res.data.project);
         setProjects(prev => prev.map(p => p.id === editingProject.id ? updated : p));
         if (detailProject?.id === editingProject.id) setDetailProject(updated);
-        message.success("Project updated");
+        toast.success("Project updated");
       } else {
-        const payload = { ...values, parentId: creatingUnderParent?.id ?? undefined };
-        const res = await apiClient.post<{ project: Project }>("/projects", payload);
+        const res = await apiClient.post<{ project: Project }>("/projects", { ...payload, parentId: creatingUnderParent?.id ?? undefined });
         setProjects(prev => [normalizeId(res.data.project), ...prev]);
-        message.success(`Project ${res.data.project.code} created`);
+        toast.success(`Project ${res.data.project.code} created`);
       }
       setDrawerOpen(false);
     } catch (err: unknown) {
-      if (err && typeof err === "object" && "errorFields" in err) return;
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message || "Save failed";
+      toast.error(msg);
     } finally {
       setSaving(false);
     }
@@ -846,38 +777,11 @@ export default function Projects() {
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <PageShell
-      title={detailProject ? detailProject.name : "Projects"}
-      description={
-        detailProject
-          ? `${detailProject.code} · ${detailProject.location || "No location"}`
-          : "Manage project master data — locations, contract values, and status."
-      }
-      cta={
-        detailProject ? (
-          <Button
-            type="primary"
-            icon={<EditOutlined />}
-            onClick={e => openEdit(detailProject, e)}
-            style={{ background: "#FF7A00", borderColor: "#FF7A00" }}
-          >
-            Edit Project
-          </Button>
-        ) : (
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            size="large"
-            onClick={openCreate}
-            style={{ background: "#FF7A00", borderColor: "#FF7A00" }}
-          >
-            Add Project
-          </Button>
-        )
-      }
-    >
+    <div>
       {detailProject ? (
-        /* ── Detail view ──────────────────────────────────────────────────── */
+        /* ── Detail view — ProjectDetail's own header card already carries
+        the title/code/location/Edit/Delete, so no outer page-header wrapper
+        is needed here (it would just duplicate that row). ── */
         <ProjectDetail
           project={detailProject}
           onBack={() => setDetailProject(null)}
@@ -887,241 +791,181 @@ export default function Projects() {
           onSelectProject={setDetailProject}
           onAddSubProject={openAddSubProject}
         />
-      ) : loading ? (
-        <div style={{ display: "flex", justifyContent: "center", padding: 80 }}>
-          <Spin size="large" />
-        </div>
       ) : (
         /* ── List view ────────────────────────────────────────────────────── */
         <>
-          {/* Stats strip */}
-          <div style={{ display: "flex", gap: 12, marginBottom: 24, flexWrap: "wrap" }}>
-            {stats.map(s => (
-              <div key={s.label} style={{
-                background: "var(--nx-white)", border: "1px solid var(--nx-border)",
-                borderRadius: 12, padding: "14px 20px", minWidth: 150,
-                boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
-              }}>
-                <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--nx-text-muted)", marginBottom: 4 }}>{s.label}</div>
-                <div style={{ fontFamily: "monospace", fontSize: 24, fontWeight: 700, color: s.color }}>{s.value}</div>
-              </div>
-            ))}
-          </div>
+          <PageHeader
+            title="Projects"
+            subtitle="Manage project master data — locations, contract values, and status."
+            icon={Building2}
+            actions={<Btn label="Add Project" icon={Plus} color="primary" onClick={openCreate} />}
+          />
 
-          {/* Search */}
-          <div style={{ marginBottom: 20 }}>
-            <Input
-              prefix={<SearchOutlined style={{ color: "#9CA3AF" }} />}
-              placeholder="Search by project name, code, or location…"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              style={{ maxWidth: 400 }}
-              allowClear
-            />
-          </div>
-
-          {/* Cards grid */}
-          {filtered.length === 0 ? (
-            <div style={{ textAlign: "center", padding: "60px 20px" }}>
-              <div style={{ fontSize: 40, marginBottom: 12 }}>🏗️</div>
-              <div style={{ fontSize: 15, fontWeight: 600, color: "var(--nx-text-3)" }}>
-                {search ? "No projects match your search" : "No projects yet"}
+          {loading ? (
+            <Spinner label="Loading projects…" />
+          ) : (
+            <>
+              {/* Stats strip */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-6">
+                {statCards.map(s => (
+                  <StatCard
+                    key={s.label} label={s.label} value={s.value} icon={s.icon} iconColorClass={s.iconColorClass}
+                    active={statusFilter === s.filterValue}
+                    onClick={() => setStatusFilter(statusFilter === s.filterValue ? "all" : s.filterValue)}
+                  />
+                ))}
               </div>
-              {!search && (
-                <div style={{ fontSize: 13, color: "var(--nx-text-muted)", marginTop: 4 }}>
-                  Click "Add Project" to get started.
+
+              {/* Search */}
+              <div className="mb-5">
+                <SearchFilter value={search} onChange={setSearch} placeholder="Search by project name, code, or location…" />
+              </div>
+
+              {/* Cards grid */}
+              {filtered.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-16 gap-3">
+                  <FolderOpen className="w-12 h-12 text-gray-300 dark:text-gray-600" />
+                  <p className="text-base font-medium text-gray-500 dark:text-gray-400">
+                    {search ? "No projects match your search" : "No projects yet"}
+                  </p>
+                  {!search && (
+                    <p className="text-sm text-gray-400 dark:text-gray-500">Click "Add Project" to get started.</p>
+                  )}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+                  {filtered.map(proj => {
+                    const subCount = getSubProjects(proj.id).length;
+                    return (
+                      <Card
+                        key={proj.id}
+                        onClick={() => setDetailProject(proj)}
+                        className="cursor-pointer hover:shadow-lg transition-all duration-200"
+                      >
+                        <div className="flex items-center justify-between gap-2 mb-2.5">
+                          <Badge color="orange">{proj.code}</Badge>
+                          <StatusBadge status={proj.status} colorMap={STATUS_COLOR} labelMap={STATUS_LABEL} />
+                        </div>
+
+                        <div className="font-bold text-[15px] text-[#1A1A2E] dark:text-[#F1F5F9] leading-snug mb-1.5">
+                          {proj.name}
+                        </div>
+
+                        <div className="text-xs text-gray-500 dark:text-gray-400 mb-1.5">📍 {proj.location || "—"}</div>
+
+                        {subCount > 0 && (
+                          <div className="text-[11px] text-purple-600 dark:text-purple-400 font-semibold mb-1.5">
+                            📁 {subCount} sub-project{subCount !== 1 ? "s" : ""}
+                          </div>
+                        )}
+
+                        {proj.projectType && (
+                          <div className="flex justify-end border-t border-gray-100 dark:border-gray-700/40 pt-2.5">
+                            <Badge color={proj.projectType === "apartment" ? "purple" : "teal"} small>
+                              {proj.projectType === "apartment" ? "Apartment" : "Plot"}
+                            </Badge>
+                          </div>
+                        )}
+
+                        <div className="mt-2 flex justify-end gap-1.5" onClick={e => e.stopPropagation()}>
+                          <Btn small outline icon={Pencil} label="Edit" onClick={e => openEdit(proj, e)} />
+                          <Btn
+                            small outline icon={Trash2} label="Delete"
+                            disabled={subCount > 0}
+                            title={subCount > 0 ? "Delete its sub-projects first" : undefined}
+                            onClick={e => { e.stopPropagation(); setDeleteTarget(proj); }}
+                          />
+                        </div>
+                      </Card>
+                    );
+                  })}
                 </div>
               )}
-            </div>
-          ) : (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 14 }}>
-              {filtered.map(proj => (
-                <div
-                  key={proj.id}
-                  onClick={() => setDetailProject(proj)}
-                  style={{
-                    background: "var(--nx-white)",
-                    border: "1px solid var(--nx-border)",
-                    borderLeft: `4px solid ${STATUS_COLOR[proj.status] || "#9CA3AF"}`,
-                    borderRadius: 12,
-                    padding: "18px 18px 14px",
-                    cursor: "pointer",
-                    transition: "box-shadow 0.15s, transform 0.12s",
-                    boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
-                  }}
-                  onMouseEnter={e => {
-                    e.currentTarget.style.boxShadow = "0 6px 20px rgba(0,0,0,0.1)";
-                    e.currentTarget.style.transform = "translateY(-2px)";
-                  }}
-                  onMouseLeave={e => {
-                    e.currentTarget.style.boxShadow = "0 1px 3px rgba(0,0,0,0.05)";
-                    e.currentTarget.style.transform = "translateY(0)";
-                  }}
-                >
-                  {/* Top row: code + status */}
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                    <span style={{
-                      background: "#FFF4E8", color: "#FF7A00",
-                      fontFamily: "monospace", fontWeight: 700, fontSize: 11,
-                      padding: "2px 8px", borderRadius: 5,
-                    }}>
-                      {proj.code}
-                    </span>
-                    <span style={{
-                      background: STATUS_BG[proj.status], color: STATUS_COLOR[proj.status],
-                      fontSize: 11, fontWeight: 600, padding: "2px 10px", borderRadius: 20,
-                    }}>
-                      {STATUS_LABEL[proj.status]}
-                    </span>
-                  </div>
-
-                  {/* Project name */}
-                  <div style={{ fontWeight: 700, fontSize: 15, color: "var(--nx-text)", lineHeight: 1.35, marginBottom: 6 }}>
-                    {proj.name}
-                  </div>
-
-                  {/* Location */}
-                  <div style={{ fontSize: 12, color: "var(--nx-text-2)", marginBottom: 6 }}>
-                    📍 {proj.location || "—"}
-                  </div>
-
-                  {/* Sub-projects badge */}
-                  {getSubProjects(proj.id).length > 0 && (
-                    <div style={{ fontSize: 11, color: "#7c3aed", fontWeight: 600, marginBottom: 6 }}>
-                      📁 {getSubProjects(proj.id).length} sub-project{getSubProjects(proj.id).length !== 1 ? "s" : ""}
-                    </div>
-                  )}
-
-                  {/* Bottom row: type + arrow */}
-                  <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", borderTop: "1px solid var(--nx-border)", paddingTop: 10, gap: 6 }}>
-                    {proj.projectType && (
-                      <span style={{
-                        background: proj.projectType === "apartment" ? "#ede9fe" : "#ccfbf1",
-                        color: proj.projectType === "apartment" ? "#7c3aed" : "#0d9488",
-                        fontSize: 10, fontWeight: 600, padding: "2px 8px", borderRadius: 20,
-                      }}>
-                        {proj.projectType === "apartment" ? "Apartment" : "Plot"}
-                      </span>
-                    )}
-                    <span style={{ fontSize: 12, color: "var(--nx-text-muted)" }}>→</span>
-                  </div>
-
-                  {/* Edit / Delete buttons */}
-                  <div style={{ marginTop: 8, display: "flex", justifyContent: "flex-end", gap: 4 }} onClick={e => e.stopPropagation()}>
-                    <Button
-                      size="small" type="link" icon={<EditOutlined />}
-                      onClick={e => openEdit(proj, e)}
-                      style={{ padding: "0 4px", fontSize: 12, color: "var(--nx-text-muted)" }}
-                    >
-                      Edit
-                    </Button>
-                    <Tooltip title={getSubProjects(proj.id).length > 0 ? "Delete its sub-projects first" : undefined}>
-                      <Popconfirm
-                        title={`Delete "${proj.name}"?`}
-                        description="This cannot be undone."
-                        okText="Delete" okType="danger" cancelText="Cancel"
-                        onConfirm={() => handleDeleteProject(proj)}
-                        disabled={getSubProjects(proj.id).length > 0}
-                      >
-                        <Button
-                          size="small" type="link" icon={<DeleteOutlined />} danger
-                          disabled={getSubProjects(proj.id).length > 0}
-                          style={{ padding: "0 4px", fontSize: 12 }}
-                        >
-                          Delete
-                        </Button>
-                      </Popconfirm>
-                    </Tooltip>
-                  </div>
-                </div>
-              ))}
-            </div>
+            </>
           )}
         </>
       )}
 
       {/* ── Create / Edit Drawer ─────────────────────────────────────────── */}
-      <Drawer
-        open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
-        placement="right"
-        width={520}
-        title={
-          <Space>
-            <span style={{ fontSize: 20 }}>🏗️</span>
-            <div>
-              <div style={{ fontWeight: 700, fontSize: 16 }}>
-                {editingProject ? "Edit Project" : creatingUnderParent ? "Add Sub-Project" : "Add Project"}
-              </div>
-              <div style={{ fontSize: 12, color: "#6B7280", fontWeight: 400 }}>
-                {editingProject
-                  ? `Editing ${editingProject.code}`
-                  : creatingUnderParent
-                    ? `Under "${creatingUnderParent.name}"`
-                    : "Project code will be auto-assigned (PRJ-001)"}
-              </div>
+      {drawerOpen && (
+        <Modal
+          icon={Building2}
+          title={editingProject ? "Edit Project" : creatingUnderParent ? "Add Sub-Project" : "Add Project"}
+          subtitle={
+            editingProject
+              ? `Editing ${editingProject.code}`
+              : creatingUnderParent
+                ? `Under "${creatingUnderParent.name}"`
+                : "Project code will be auto-assigned (PRJ-001)"
+          }
+          onClose={() => setDrawerOpen(false)}
+          footer={
+            <div className="flex justify-end gap-2">
+              <Btn label="Cancel" outline onClick={() => setDrawerOpen(false)} />
+              <Btn label={editingProject ? "Save Changes" : "Add Project"} color="primary" loading={saving} onClick={handleSave} />
             </div>
-          </Space>
-        }
-        footer={
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-            <Button size="large" onClick={() => setDrawerOpen(false)}>Cancel</Button>
-            <Button
-              size="large" type="primary" loading={saving} onClick={handleSave}
-              style={{ background: "#FF7A00", borderColor: "#FF7A00" }}
-            >
-              {editingProject ? "Save Changes" : "Add Project"}
-            </Button>
+          }
+        >
+          <div className="space-y-4">
+            <Field
+              label="Project Name" required placeholder="e.g. Metro Station Phase 2"
+              value={formState.name} onChange={e => setFormState(f => ({ ...f, name: e.target.value }))}
+            />
+            <Field
+              label="Client / Owner" placeholder="e.g. DDA, NMDC"
+              value={formState.client} onChange={e => setFormState(f => ({ ...f, client: e.target.value }))}
+            />
+            <Field
+              label="Location" required placeholder="e.g. Bhopal"
+              value={formState.location} onChange={e => setFormState(f => ({ ...f, location: e.target.value }))}
+            />
+            <SField
+              label="Project Type" value={formState.projectType}
+              options={[
+                { value: "apartment", label: "Apartment / Commercial" },
+                { value: "plot", label: "Plot / Villa" },
+              ]}
+              onChange={v => setFormState(f => ({ ...f, projectType: v }))}
+            />
+            <div className="grid grid-cols-2 gap-3">
+              <DatePicker
+                label="Start Date" value={formState.startDate}
+                onChange={v => setFormState(f => ({ ...f, startDate: v }))}
+              />
+              <DatePicker
+                label="Target Completion" value={formState.expectedCompletion}
+                onChange={v => setFormState(f => ({ ...f, expectedCompletion: v }))}
+              />
+            </div>
+            <SField
+              label="Status" value={formState.status}
+              options={[
+                { value: "active", label: "Active" },
+                { value: "completed", label: "Completed" },
+                { value: "on-hold", label: "On Hold" },
+              ]}
+              onChange={v => setFormState(f => ({ ...f, status: v }))}
+            />
+            <Field
+              label="Slack Channel ID" placeholder="e.g. C0AR8J39S8H"
+              hint='Daily Progress Reports for this project post here — the channel ID, not its name. In Slack: open the channel → View channel details. Leave blank to skip Slack.'
+              value={formState.slackChannelId} onChange={e => setFormState(f => ({ ...f, slackChannelId: e.target.value }))}
+            />
           </div>
-        }
-        destroyOnClose
-      >
-        <Form form={form} layout="vertical">
-          <Form.Item label="Project Name" name="name" rules={[{ required: true, message: "Required" }]}>
-            <Input placeholder="e.g. Metro Station Phase 2" />
-          </Form.Item>
+        </Modal>
+      )}
 
-          <Form.Item label="Client / Owner" name="client">
-            <Input placeholder="e.g. DDA, NMDC" />
-          </Form.Item>
-
-          <Form.Item label="Location" name="location" rules={[{ required: true, message: "Required" }]}>
-            <Input placeholder="e.g. Bhopal" />
-          </Form.Item>
-
-          <Form.Item label="Project Type" name="projectType" initialValue="apartment">
-            <Select>
-              <Select.Option value="apartment">🏢 Apartment / Commercial</Select.Option>
-              <Select.Option value="plot">🏠 Plot / Villa</Select.Option>
-            </Select>
-          </Form.Item>
-
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <Form.Item label="Start Date" name="startDate">
-              <DatePicker style={{ width: "100%" }} format="DD/MM/YYYY" picker="date" />
-            </Form.Item>
-            <Form.Item label="Target Completion" name="expectedCompletion">
-              <DatePicker style={{ width: "100%" }} format="DD/MM/YYYY" picker="date" />
-            </Form.Item>
-          </div>
-
-          <Form.Item label="Status" name="status" initialValue="active">
-            <Select>
-              <Select.Option value="active"><Tag color="green">Active</Tag></Select.Option>
-              <Select.Option value="completed"><Tag color="blue">Completed</Tag></Select.Option>
-              <Select.Option value="on-hold"><Tag color="orange">On Hold</Tag></Select.Option>
-            </Select>
-          </Form.Item>
-
-          <Form.Item
-            label="Slack Channel ID"
-            name="slackChannelId"
-            tooltip="Daily Progress Reports for this project post here — the channel's ID (e.g. C0AR8J39S8H), not its name, so it still works if the channel gets renamed later. In Slack: open the channel → View channel details → the ID is at the bottom. Leave blank to skip Slack for this project."
-          >
-            <Input placeholder="e.g. C0AR8J39S8H" />
-          </Form.Item>
-        </Form>
-      </Drawer>
-    </PageShell>
+      {deleteTarget && (
+        <ConfirmModal
+          title={`Delete "${deleteTarget.name}"?`}
+          message="This cannot be undone."
+          confirmLabel="Delete"
+          danger
+          loading={deleting}
+          onConfirm={() => handleDeleteProject(deleteTarget)}
+          onCancel={() => setDeleteTarget(null)}
+        />
+      )}
+    </div>
   );
 }

@@ -735,12 +735,16 @@ export default function SiteProgress() {
     >
       {/* ── KPI flashcards ── */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(178px, 1fr))", gap: 14, marginBottom: 24 }}>
-        <div onClick={() => { setMainTab("requests"); setReqTab("pending"); }} style={{ cursor: "pointer" }}>
-          <StatCard label="Pending L1 (AGM)" value={pendingAgmReqs.length} icon={<ClockCircleOutlined />} accent="#d97706" />
-        </div>
-        <div onClick={() => { setMainTab("requests"); setReqTab("pending-gm"); }} style={{ cursor: "pointer" }}>
-          <StatCard label="Pending L2 (GM)" value={pendingGmReqs.length} icon={<ClockCircleOutlined />} accent="#2563eb" />
-        </div>
+        <StatCard
+          label="Pending L1 (AGM)" value={pendingAgmReqs.length} icon={<ClockCircleOutlined />} accent="#d97706"
+          active={mainTab === "requests" && reqTab === "pending"}
+          onClick={() => { setMainTab("requests"); setReqTab(mainTab === "requests" && reqTab === "pending" ? "all" : "pending"); }}
+        />
+        <StatCard
+          label="Pending L2 (GM)" value={pendingGmReqs.length} icon={<ClockCircleOutlined />} accent="#2563eb"
+          active={mainTab === "requests" && reqTab === "pending-gm"}
+          onClick={() => { setMainTab("requests"); setReqTab(mainTab === "requests" && reqTab === "pending-gm" ? "all" : "pending-gm"); }}
+        />
         <StatCard label="Today's Progress Entries" value={kpis.progressEntriesToday} icon={<FileTextOutlined />} accent="#16a34a" />
         <StatCard label="Active DRIs Today" value={kpis.drisActiveToday} icon={<TeamOutlined />} accent="#7c3aed" />
         <StatCard label="Active Projects Today" value={kpis.projectsActiveToday} icon={<ClusterOutlined />} accent="#0d9488" />

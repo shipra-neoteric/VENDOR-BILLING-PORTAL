@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button, Tooltip, Modal, Input, TimePicker, message, List, Popconfirm, Empty } from "antd";
+import { ChevronDown } from "lucide-react";
 import dayjs from "dayjs";
 import type { Dayjs } from "dayjs";
 import type { DPRReport } from "../../../types/DPR";
@@ -7,6 +8,7 @@ import { downloadDPRPDF } from "../../../components/DPRPDFReport";
 import { downloadDPRCsv } from "../utils/dprExport";
 import { formatDprDateRange } from "../utils/dprDateRange";
 import { useReportSchedules } from "../hooks/useReportSchedules";
+import Btn from "../../../ui/Btn";
 
 type ViewType = "operational" | "financial";
 
@@ -40,6 +42,16 @@ export function ReportToolbar({ report, viewType, projectLabel, projectId }: { r
   const [emailOpen, setEmailOpen] = useState(false);
   const [emailTo, setEmailTo] = useState("");
   const { schedules, create, remove } = useReportSchedules();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function onDocClick(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+    }
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, []);
 
   async function confirmDownload() {
     if (confirmAction === "pdf") {
@@ -58,14 +70,25 @@ export function ReportToolbar({ report, viewType, projectLabel, projectId }: { r
   }
 
   return (
-    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-      <Button icon={<span>📄</span>} onClick={() => setConfirmAction("pdf")}>Download PDF</Button>
-      <Button icon={<span>📊</span>} onClick={() => setConfirmAction("excel")}>Export Excel</Button>
-      <Tooltip title="Prints the current page as shown">
-        <Button icon={<span>🖨</span>} onClick={() => window.print()}>Print</Button>
-      </Tooltip>
-      <Button icon={<span>📅</span>} onClick={() => setScheduleOpen(true)}>Schedule Report</Button>
-      <Button icon={<span>📧</span>} onClick={() => setEmailOpen(true)}>Email</Button>
+    <div ref={menuRef} style={{ position: "relative", display: "inline-block" }}>
+      <Btn color="primary" onClick={() => setMenuOpen(o => !o)}>
+        Actions
+        <ChevronDown className={`w-3.5 h-3.5 transition-transform ${menuOpen ? "rotate-180" : ""}`} />
+      </Btn>
+
+      {menuOpen && (
+        <div
+          className="absolute right-0 z-50 mt-1.5 min-w-[200px] rounded-xl border border-gray-200 dark:border-gray-700/40 bg-white dark:bg-[#1E293B] shadow-xl p-2 flex flex-col gap-1"
+        >
+          <Button block icon={<span>📄</span>} onClick={() => { setMenuOpen(false); setConfirmAction("pdf"); }}>Download PDF</Button>
+          <Button block icon={<span>📊</span>} onClick={() => { setMenuOpen(false); setConfirmAction("excel"); }}>Export Excel</Button>
+          <Tooltip title="Prints the current page as shown">
+            <Button block icon={<span>🖨</span>} onClick={() => { setMenuOpen(false); window.print(); }}>Print</Button>
+          </Tooltip>
+          <Button block icon={<span>📅</span>} onClick={() => { setMenuOpen(false); setScheduleOpen(true); }}>Schedule Report</Button>
+          <Button block icon={<span>📧</span>} onClick={() => { setMenuOpen(false); setEmailOpen(true); }}>Email</Button>
+        </div>
+      )}
 
       <Modal
         open={!!confirmAction} onCancel={() => setConfirmAction(null)} onOk={confirmDownload}

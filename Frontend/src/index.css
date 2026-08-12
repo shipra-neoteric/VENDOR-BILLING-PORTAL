@@ -227,15 +227,16 @@ body {
   background: var(--nx-nav-icon-hover-bg);
 }
 
+/* Active = color change only, no background fill — matches the rest of the
+   app's "active means orange text" convention (e.g. the dashboard's view toggle). */
 .nx-nav-item--active {
-  background: var(--nx-orange-50);
+  background: transparent;
   color: var(--nx-orange);
   font-weight: 650;
-  box-shadow: 0 1px 5px rgba(255, 122, 0, 0.14);
 }
 
 .nx-nav-item--active:hover {
-  background: var(--nx-orange-50);
+  background: var(--nx-nav-item-hover-bg);
   color: var(--nx-orange-hover);
 }
 

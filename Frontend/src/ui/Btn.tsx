@@ -14,7 +14,9 @@ const COLOR_CLASSES: Record<BtnColor, { bg: string; text: string }> = {
   green:   { bg: "bg-[#10B981] hover:bg-[#059669]", text: "text-white!" },
   amber:   { bg: "bg-amber-500/10 border border-amber-500/20 hover:bg-amber-500/20", text: "text-amber-600!" },
   outline: { bg: "border border-gray-200 dark:border-gray-700 bg-white dark:bg-transparent hover:bg-gray-50 dark:hover:bg-gray-800", text: "text-gray-700! dark:text-[#F1F5F9]!" },
-  dark:    { bg: "bg-gray-800 dark:bg-[#1E293B] border dark:border-gray-700 hover:bg-gray-700", text: "text-white!" },
+  // A true neutral (no blue undertone) — pairs with the orange brand accent
+  // better than gray-800/#1E293B's cool blue-slate tint did.
+  dark:    { bg: "bg-neutral-800 hover:bg-neutral-700 border border-neutral-700", text: "text-white!" },
 };
 
 interface BtnProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "color"> {

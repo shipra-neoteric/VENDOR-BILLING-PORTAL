@@ -26,7 +26,7 @@ interface AppUser {
   permissions?: { module: string; actions: string[] }[];
 }
 
-type PermAction = "view" | "create" | "edit" | "delete" | "approve" | "request" | "maker" | "checker" | "approver" | "reject" | "ceo-approve" | "send-back" | "agm-approve" | "gm-approve" | "verify" | "l1-agm-approve" | "l2-director-approve" | "hold" | "release-hold" | "retry-tms";
+type PermAction = "view" | "create" | "edit" | "delete" | "approve" | "request" | "maker" | "checker" | "approver" | "reject" | "ceo-approve" | "send-back" | "agm-approve" | "gm-approve" | "verify" | "l1-agm-approve" | "l2-director-approve" | "hold" | "release-hold" | "retry-tms" | "l1-review" | "l2-draw" | "l3-review" | "l4-approve";
 
 interface ModuleDef {
   id: string;
@@ -57,6 +57,10 @@ const ACTION_CFG: Record<PermAction, { label: string; bg: string }> = {
   hold:          { label: "Hold",          bg: "#d97706" },
   "release-hold":{ label: "Release Hold",  bg: "#16a34a" },
   "retry-tms":   { label: "Send/Retry TMS",bg: "#1d4ed8" },
+  "l1-review":  { label: "L1 GM Screening",     bg: "#d97706" },
+  "l2-draw":    { label: "L2 Architect Draw",   bg: "#2563eb" },
+  "l3-review":  { label: "L3 GM Cross-Check",   bg: "#7c3aed" },
+  "l4-approve": { label: "L4 GM Final Approval",bg: "#0d9488" },
 };
 
 const MODULE_DEFS: ModuleDef[] = [
@@ -71,7 +75,7 @@ const MODULE_DEFS: ModuleDef[] = [
   { id: "quotation-comparison", name: "Quotation Comparison", icon: "📑", group: "Execution", actions: ["view","create","approve"] },
   { id: "work-progress",    name: "Work Progress",      icon: "📊", group: "Execution",     actions: ["view","create","edit","delete"] },
   { id: "daily-progress-report", name: "Daily Progress Report", icon: "📅", group: "Execution", actions: ["view","create"] },
-  { id: "drawing-requests", name: "Drawing Requests",   icon: "✏️", group: "Execution",     actions: ["view","create","edit","delete","agm-approve","gm-approve"] },
+  { id: "drawing-requests", name: "Drawing Requests",   icon: "✏️", group: "Execution",     actions: ["view","create","edit","delete","l1-review","l2-draw","l3-review","l4-approve"] },
   { id: "bill-requests",    name: "Bill Requests",      icon: "📨", group: "Billing",       actions: ["view","create","agm-approve","gm-approve","reject"] },
   { id: "accounts-payment", name: "Accounts Payment",   icon: "💰", group: "Billing",       actions: ["view","edit","verify","l1-agm-approve","l2-director-approve","hold","release-hold","retry-tms","reject"] },
   { id: "billing",          name: "Billing",            icon: "🧮", group: "Billing",       actions: ["view","create"] },
@@ -132,16 +136,22 @@ const initials = (name: string) =>
 
 // ── Stat Card ─────────────────────────────────────────────────────
 
-function StatCard({ label, value, sub, color }: {
-  label: string; value: number | string; sub?: string; color?: string;
+// onClick makes the card act as a filter for the table below — active gets an
+// orange border (this app's "active = orange, not a fill" convention).
+function StatCard({ label, value, sub, color, onClick, active }: {
+  label: string; value: number | string; sub?: string; color?: string; onClick?: () => void; active?: boolean;
 }) {
   return (
-    <div style={{
-      background: "var(--nx-white)",
-      border: "1px solid var(--nx-border)",
-      borderRadius: 12,
-      padding: "18px 20px",
-    }}>
+    <div
+      onClick={onClick}
+      style={{
+        background: "var(--nx-white)",
+        border: `1px solid ${active ? "#FF7A00" : "var(--nx-border)"}`,
+        borderRadius: 12,
+        padding: "18px 20px",
+        cursor: onClick ? "pointer" : undefined,
+      }}
+    >
       <div style={{ fontSize: 11, fontWeight: 700, color: "var(--nx-text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
         {label}
       </div>
@@ -267,6 +277,7 @@ export default function UserManagement() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch]   = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
+  const [activeFilter, setActiveFilter] = useState<"all" | "active" | "inactive">("all");
 
   // Create / Edit drawer
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -315,9 +326,10 @@ export default function UserManagement() {
         u.email.toLowerCase().includes(q) ||
         ROLE_CFG[u.role]?.label.toLowerCase().includes(q);
       const matchRole = roleFilter === "all" || u.role === roleFilter;
-      return matchSearch && matchRole;
+      const matchActive = activeFilter === "all" || (activeFilter === "active" ? u.isActive : !u.isActive);
+      return matchSearch && matchRole && matchActive;
     });
-  }, [users, search, roleFilter]);
+  }, [users, search, roleFilter, activeFilter]);
 
   const stats = useMemo(() => ({
     total:    users.length,
@@ -536,13 +548,13 @@ export default function UserManagement() {
       {/* ── Stats ── */}
       <Row gutter={[14, 14]} style={{ marginBottom: 20 }}>
         <Col xs={12} sm={6}>
-          <StatCard label="Total Users" value={stats.total} />
+          <StatCard label="Total Users" value={stats.total} active={activeFilter === "all"} onClick={() => setActiveFilter("all")} />
         </Col>
         <Col xs={12} sm={6}>
-          <StatCard label="Active" value={stats.active} color="#16a85a" />
+          <StatCard label="Active" value={stats.active} color="#16a85a" active={activeFilter === "active"} onClick={() => setActiveFilter(activeFilter === "active" ? "all" : "active")} />
         </Col>
         <Col xs={12} sm={6}>
-          <StatCard label="Inactive" value={stats.inactive} color="#e03b3b" />
+          <StatCard label="Inactive" value={stats.inactive} color="#e03b3b" active={activeFilter === "inactive"} onClick={() => setActiveFilter(activeFilter === "inactive" ? "all" : "inactive")} />
         </Col>
         <Col xs={12} sm={6}>
           <div style={{
@@ -557,7 +569,10 @@ export default function UserManagement() {
             </div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
               {stats.byRole.map((r) => (
-                <Tag key={r.value} color={ROLE_CFG[r.value]?.color} style={{ fontWeight: 600, fontSize: 12 }}>
+                <Tag
+                  key={r.value} color={ROLE_CFG[r.value]?.color} style={{ fontWeight: 600, fontSize: 12, cursor: "pointer", outline: roleFilter === r.value ? "2px solid #FF7A00" : undefined }}
+                  onClick={() => setRoleFilter(roleFilter === r.value ? "all" : r.value)}
+                >
                   {r.label.split(" ")[0]} · {r.count}
                 </Tag>
               ))}

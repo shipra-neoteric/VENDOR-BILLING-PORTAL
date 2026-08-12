@@ -7,7 +7,7 @@ import { useDPRData } from "../../features/dashboard/hooks/useDPRData";
 import { selectableProjects } from "../../utils/projectOptions";
 import OperationalView from "../../features/dashboard/components/OperationalView";
 import FinancialView from "./FinancialView";
-import { ReportSummaryHeader, ReportToolbar } from "../../features/dashboard/components/ReportToolbar";
+import { ReportToolbar } from "../../features/dashboard/components/ReportToolbar";
 import type { ComparisonMode } from "../../features/dashboard/components/MiniCharts";
 import { useDueReportSchedules } from "../../features/dashboard/hooks/useReportSchedules";
 import Segmented from "../../ui/Segmented";
@@ -18,7 +18,7 @@ import { Skeleton } from "../../ui/Skeleton";
 import Alert from "../../ui/Alert";
 
 interface ProjectOption { _id: string; name: string; parentId?: string | null; }
-type ViewType = "operational" | "financial" | "both";
+type ViewType = "operational" | "financial";
 type RangePreset = "all" | "today" | "week" | "lastWeek" | "custom";
 
 // Monday-start week, independent of dayjs locale config.
@@ -27,7 +27,7 @@ function startOfWeek(d: Dayjs): Dayjs {
 }
 
 export default function Dashboard() {
-  const [view, setView] = useState<ViewType>("both");
+  const [view, setView] = useState<ViewType>("operational");
   const [date, setDate] = useState<Dayjs>(dayjs());
   const [rangePreset, setRangePreset] = useState<RangePreset>("today");
   const [customRange, setCustomRange] = useState<[string, string]>([dayjs().subtract(6, "day").format("YYYY-MM-DD"), dayjs().format("YYYY-MM-DD")]);
@@ -85,65 +85,61 @@ export default function Dashboard() {
       {/* Header */}
       <div className="mb-5 flex justify-between items-start flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-[#1A1A2E] dark:text-[#F1F5F9] m-0">Project Cost Center</h1>
+          <h1 className="text-2xl font-bold text-[#1A1A2E] dark:text-[#F1F5F9] m-0">
+            {view === "operational" ? "Operational Dashboard" : "Financial Dashboard"}
+          </h1>
           <p className="text-gray-500 dark:text-gray-400 mt-1 mb-0">
-            Daily progress, billing, and payment MIS — operational and financial views.
+            {view === "operational"
+              ? "Real-time overview of project operations and progress."
+              : "Billing, payments, and outstanding-value overview."}
           </p>
         </div>
         <Segmented
           value={view}
           onChange={setView}
+          variant="text"
           options={[
-            { label: "🏗️ Operational", value: "operational" },
-            { label: "💰 Financial", value: "financial" },
-            { label: "🔎 Both", value: "both" },
+            { label: "Operational", value: "operational" },
+            { label: "Financial", value: "financial" },
           ]}
         />
       </div>
 
-      {/* Filters */}
-      <div className="flex gap-3 mb-4 flex-wrap items-center">
-        <DatePicker
-          value={date.format("YYYY-MM-DD")}
-          onChange={d => setDate(d ? dayjs(d) : dayjs())}
-          disabled={rangePreset !== "today"}
-        />
-        <SelectFilter
-          value={rangePreset}
-          onChange={v => setRangePreset(v as RangePreset)}
-          options={[
-            { label: "All Time", value: "all" },
-            { label: "Today", value: "today" },
-            { label: "Current Week", value: "week" },
-            { label: "Last Week", value: "lastWeek" },
-            { label: "Custom Range", value: "custom" },
-          ]}
-        />
-        {rangePreset === "custom" && (
-          <DateRangePicker
-            from={customRange[0]}
-            to={customRange[1]}
-            onChange={(from, to) => setCustomRange([from, to])}
+      {/* Filters + actions */}
+      <div className="flex justify-between items-center gap-3 mb-5 flex-wrap">
+        <div className="flex gap-3 flex-wrap items-center">
+          <div className="w-56">
+            <SField
+              value={projectId}
+              onChange={setProjectId}
+              options={[{ label: "All Projects", value: "all" }, ...selectableProjects(projects).map(p => ({ label: p.name, value: p._id }))]}
+            />
+          </div>
+          <DatePicker
+            value={date.format("YYYY-MM-DD")}
+            onChange={d => setDate(d ? dayjs(d) : dayjs())}
+            disabled={rangePreset !== "today"}
           />
-        )}
-        <div className="w-56">
-          <SField
-            value={projectId}
-            onChange={setProjectId}
-            options={[{ label: "All Projects", value: "all" }, ...selectableProjects(projects).map(p => ({ label: p.name, value: p._id }))]}
+          <SelectFilter
+            value={rangePreset}
+            onChange={v => setRangePreset(v as RangePreset)}
+            options={[
+              { label: "All Time", value: "all" },
+              { label: "Today", value: "today" },
+              { label: "Current Week", value: "week" },
+              { label: "Last Week", value: "lastWeek" },
+              { label: "Custom Range", value: "custom" },
+            ]}
           />
+          {rangePreset === "custom" && (
+            <DateRangePicker
+              from={customRange[0]}
+              to={customRange[1]}
+              onChange={(from, to) => setCustomRange([from, to])}
+            />
+          )}
         </div>
-        <SelectFilter
-          value={comparisonMode}
-          onChange={v => setComparisonMode(v as ComparisonMode)}
-          disabled={rangePreset !== "today"}
-          options={[
-            { label: "No Comparison", value: "none" },
-            { label: "vs Yesterday", value: "yesterday" },
-            { label: "vs 7-Day Avg", value: "avg7d" },
-            { label: "vs 30-Day Avg", value: "avg30d" },
-          ]}
-        />
+        {data && <ReportToolbar report={data} viewType={view} projectLabel={projectLabel} projectId={projectId} />}
       </div>
 
       {isLoading ? (
@@ -152,38 +148,10 @@ export default function Dashboard() {
         </div>
       ) : error || !data ? (
         <div className="m-6"><Alert type="error" message={(error as Error)?.message ?? "Failed to load MIS report"} /></div>
-      ) : view === "both" ? (
-        <>
-          {/* Operational section */}
-          <div className="text-[15px] font-bold text-[#1A1A2E] dark:text-[#F1F5F9] mb-2.5">🏗️ Operational</div>
-          <div className="flex justify-between items-center flex-wrap gap-2.5 bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700/40 rounded-xl px-4 py-3 mb-5">
-            <ReportSummaryHeader report={data} viewType="operational" projectLabel={projectLabel} />
-            <ReportToolbar report={data} viewType="operational" projectLabel={projectLabel} projectId={projectId} />
-          </div>
-          <OperationalView data={data.operational} comparisonMode={comparisonMode} />
-
-          {/* Financial section */}
-          <div className="text-[15px] font-bold text-[#1A1A2E] dark:text-[#F1F5F9] mt-8 mb-2.5 pt-6 border-t border-gray-200 dark:border-gray-700/40">💰 Financial</div>
-          <div className="flex justify-between items-center flex-wrap gap-2.5 bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700/40 rounded-xl px-4 py-3 mb-5">
-            <ReportSummaryHeader report={data} viewType="financial" projectLabel={projectLabel} />
-            <ReportToolbar report={data} viewType="financial" projectLabel={projectLabel} projectId={projectId} />
-          </div>
-          <FinancialView financial={data.financial} comparisonMode={comparisonMode} projectPerformance={data.operational.projectPerformance} />
-        </>
+      ) : view === "operational" ? (
+        <OperationalView data={data.operational} comparisonMode={comparisonMode} projectId={projectId} />
       ) : (
-        <>
-          {/* Report summary + export toolbar */}
-          <div className="flex justify-between items-center flex-wrap gap-2.5 bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700/40 rounded-xl px-4 py-3 mb-5">
-            <ReportSummaryHeader report={data} viewType={view} projectLabel={projectLabel} />
-            <ReportToolbar report={data} viewType={view} projectLabel={projectLabel} projectId={projectId} />
-          </div>
-
-          {view === "operational" ? (
-            <OperationalView data={data.operational} comparisonMode={comparisonMode} />
-          ) : (
-            <FinancialView financial={data.financial} comparisonMode={comparisonMode} projectPerformance={data.operational.projectPerformance} />
-          )}
-        </>
+        <FinancialView financial={data.financial} comparisonMode={comparisonMode} projectId={projectId} />
       )}
     </div>
   );

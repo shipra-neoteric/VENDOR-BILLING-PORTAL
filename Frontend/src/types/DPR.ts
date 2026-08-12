@@ -36,12 +36,14 @@ export interface DPROperational {
 
 export interface DPRMoneyTrendPoint { date: string; amount: number; }
 export interface DPRBillsTrendPoint { date: string; raised: number; approved: number; paid: number; }
+export interface DPRMonthlyBillingPoint { month: string; raisedAmount: number; paidAmount: number; }
 
 export interface DPRAgingBucket { label: string; count: number; amount: number; }
 export interface DPRAgingRow { contractor: string; project: string; projectLocation?: string; billNo: string; amount: number; daysPending: number; status: string; }
 export interface DPRAgingHeatCell { projectId: string; projectName: string; projectLocation?: string; bucket: string; count: number; }
 
-export interface DPRDelayedContractor { vendorName: string; pendingAmount: number; daysWaiting: number; billCount: number; }
+export interface DPRDelayedContractor { vendorName: string; pendingAmount: number; overdueAmount: number; paidAmount: number; daysWaiting: number; billCount: number; }
+export interface DPRPaymentHealthBreakdown { onTime: number; delayed1to30: number; delayed31to60: number; delayedOver60: number; notDueYet: number; }
 export interface DPRDelayedProject { projectId: string; projectName: string; projectLocation?: string; pendingAmount: number; avgDelayDays: number; }
 export interface DPRAdvancePayment { vendorName: string; projectName: string; projectLocation?: string; amount: number; reason: string; adjusted: number; balance: number; date: string; }
 
@@ -53,8 +55,10 @@ export interface DPRFinancial {
   comparisons: Record<"amountReleased" | "billsRaisedValue" | "approvedValue" | "advanceAmount", DPRComparison>;
   details: Record<"amountReleasedToday" | "billsRaisedValueToday" | "approvedValueToday" | "advanceAmountToday" | "pendingValueToday" | "outstandingLiability", DPRDetailRow[]>;
   paymentBreakdown: { released: number; retentionHeld: number; advanceRecovered: number; tds: number; net: number };
+  paymentHealthBreakdown: DPRPaymentHealthBreakdown;
   dailyReleaseTrend: DPRMoneyTrendPoint[];
   billsTrend: DPRBillsTrendPoint[];
+  monthlyBillingTrend: DPRMonthlyBillingPoint[];
   aging: {
     buckets: DPRAgingBucket[]; table: DPRAgingRow[]; heatmap: DPRAgingHeatCell[];
     oldestPending: { contractor: string; project: string; amount: number; daysPending: number } | null;

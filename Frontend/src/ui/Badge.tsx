@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-type BadgeColor = "gray" | "orange" | "green" | "red" | "amber" | "blue" | "purple";
+type BadgeColor = "gray" | "orange" | "green" | "red" | "amber" | "blue" | "purple" | "teal";
 
 const COLOR_CLASSES: Record<BadgeColor, string> = {
   gray:   "bg-gray-100 text-gray-600 dark:bg-gray-700/40 dark:text-gray-300",
@@ -10,6 +10,7 @@ const COLOR_CLASSES: Record<BadgeColor, string> = {
   amber:  "bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400",
   blue:   "bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400",
   purple: "bg-purple-50 text-purple-600 dark:bg-purple-500/10 dark:text-purple-400",
+  teal:   "bg-teal-50 text-teal-600 dark:bg-teal-500/10 dark:text-teal-400",
 };
 
 interface BadgeProps {

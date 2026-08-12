@@ -1,173 +1,366 @@
-import { useState } from "react";
-import { Progress, Tag, Modal, Button } from "antd";
+import { useEffect, useState } from "react";
+import {
+  ClipboardList, FileText, Banknote, Hourglass, Target, HardHat, ChevronRight,
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import dayjs from "dayjs";
+import apiClient from "../../../services/apiClient";
 import { useCategories } from "../../../hooks/useCategories";
 import { useDashboardData } from "../hooks/useDashboardData";
 import { CategoryProgress } from "./CategoryProgress";
 import type { DPROperational, DPRProjectPerformance } from "../../../types/DPR";
-import { Panel, Grid2, KpiCard, KpiRow, Funnel, TrendLine, Donut, DrillDownDrawer, BriefBanner, statusColor } from "./MiniCharts";
+import type { WORow, BillRow } from "../utils";
+import { woProjectId } from "../utils";
 import type { ComparisonMode } from "./MiniCharts";
+import { progressBarClass, deltaText, ViewAllLink, StatTile, HighlightsBanner, DetailListModal } from "./shared";
+import Card from "../../../ui/Card";
+import Btn from "../../../ui/Btn";
+import Modal from "../../../ui/Modal";
+import Spinner from "../../../ui/Spinner";
+import { Table, Thead, Tbody, Tr, Th, Td } from "../../../ui/Table";
+import Funnel from "../../../ui/charts/Funnel";
+import Donut from "../../../ui/charts/Donut";
 
 const LIST_PREVIEW_LIMIT = 5;
+const WO_PENDING_APPROVAL_STATUSES = ["pending-checker", "pending-approver", "pending-final"];
+const BILL_PENDING_STATUSES = ["draft", "verify-done", "l1-approved"];
+
+// Buckets by the work order's own lifecycle status (authoritative field on the
+// model) rather than a derived percentage. `workOrders` is already filtered by
+// the caller to the selected project (or all, when none is selected).
+function WorkProgressPanel({ workOrders }: { workOrders: WORow[] }) {
+  const relevant = workOrders.filter(w => w.status !== "cancelled");
+  const completed = relevant.filter(w => w.status === "completed").length;
+  const inProgress = relevant.filter(w => w.status === "issued" || w.status === "in-progress").length;
+  const notStarted = relevant.filter(w => w.status === "draft" || !w.status).length;
+  const total = relevant.length;
+
+  return (
+    <Card>
+      <div className="font-bold text-[15px] text-[#1A1A2E] dark:text-[#F1F5F9]">Work Progress Overview</div>
+      <div className="text-xs text-gray-400 mb-4">Completion status across all work orders</div>
+      {total === 0 ? (
+        <div className="text-sm text-gray-400 text-center py-8">No work orders yet.</div>
+      ) : (
+        <>
+          <Donut
+            segments={[
+              { label: "Completed", value: completed, color: "#1baf7a" },
+              { label: "In Progress", value: inProgress, color: "#2a78d6" },
+              { label: "Not Started", value: notStarted, color: "#D1D5DB" },
+            ]}
+            legendMode="percent"
+            hideCenter
+          />
+          <div className="grid grid-cols-2 gap-3 mt-5 pt-4 border-t border-gray-100 dark:border-gray-700/40">
+            <div>
+              <div className="text-[11px] text-gray-400">Total Work Items</div>
+              <div className="text-lg font-bold font-mono text-[#1A1A2E] dark:text-[#F1F5F9]">{total}</div>
+            </div>
+            <div>
+              <div className="text-[11px] text-gray-400">Completed Items</div>
+              <div className="text-lg font-bold font-mono text-[#1A1A2E] dark:text-[#F1F5F9]">{completed}</div>
+            </div>
+          </div>
+        </>
+      )}
+    </Card>
+  );
+}
 
 function ProjectPerfTable({ rows }: { rows: DPRProjectPerformance[] }) {
   return (
-    <div style={{ overflowX: "auto" }}>
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
-        <thead>
-          <tr>
-            {["Project", "WO", "Bills", "Approved", "Paid", "Progress"].map((h, i) => (
-              <th key={h} style={{ padding: "6px 10px", textAlign: i === 0 ? "left" : "right", fontSize: 10.5, fontWeight: 700, color: "#9CA3AF", textTransform: "uppercase", borderBottom: "1px solid #E5E7EB", whiteSpace: "nowrap" }}>{h}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map(p => (
-            <tr key={p.projectId} style={{ borderBottom: "1px solid #F3F4F6" }}>
-              <td style={{ padding: "8px 10px", whiteSpace: "nowrap" }}>
-                <div style={{ fontWeight: 600, color: "#374151" }}>{p.projectName}</div>
-                {p.projectLocation && <div style={{ fontSize: 10.5, color: "#9CA3AF" }}>{p.projectLocation}</div>}
-              </td>
-              <td style={{ padding: "8px 10px", textAlign: "right" }}>{p.woCount}</td>
-              <td style={{ padding: "8px 10px", textAlign: "right" }}>{p.billRequestCount}</td>
-              <td style={{ padding: "8px 10px", textAlign: "right", color: "#16a34a" }}>{p.approvedCount}</td>
-              <td style={{ padding: "8px 10px", textAlign: "right", color: "#2563eb" }}>{p.paidCount}</td>
-              <td style={{ padding: "8px 10px", textAlign: "right", minWidth: 90 }}>
-                <Tag color={p.progressPct >= 90 ? "green" : p.progressPct >= 60 ? "gold" : "red"}>{p.progressPct}%</Tag>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <Table>
+      <Thead>
+        <Tr><Th>Project Name</Th><Th>WOs</Th><Th>Progress</Th><Th>Today's Activity</Th><Th>Pending</Th></Tr>
+      </Thead>
+      <Tbody>
+        {rows.map(p => {
+          const pending = Math.max(0, p.billRequestCount - p.approvedCount - p.paidCount);
+          return (
+            <Tr key={p.projectId}>
+              <Td>
+                <div className="font-semibold text-[#1A1A2E] dark:text-[#F1F5F9] whitespace-nowrap">{p.projectName}</div>
+                {p.projectLocation && <div className="text-xs text-gray-400">{p.projectLocation}</div>}
+              </Td>
+              <Td className="font-mono">{p.woCount}</Td>
+              <Td>
+                <div className="flex items-center gap-2 min-w-[110px]">
+                  <div className="w-16 h-1.5 rounded-full bg-gray-100 dark:bg-gray-700 overflow-hidden shrink-0">
+                    <div className={`h-full rounded-full ${progressBarClass(p.progressPct)}`} style={{ width: `${Math.min(100, p.progressPct)}%` }} />
+                  </div>
+                  <span className="text-xs font-mono font-semibold">{p.progressPct}%</span>
+                </div>
+              </Td>
+              <Td className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">{p.woCount} WOs, {p.billRequestCount} Bills</Td>
+              <Td>{pending > 0 ? <span className="font-mono font-bold text-amber-600 dark:text-amber-400">{pending}</span> : <span className="text-gray-300">—</span>}</Td>
+            </Tr>
+          );
+        })}
+      </Tbody>
+    </Table>
+  );
+}
+
+// Only the Bills row has a matching detail list to drill into (details.pendingApprovals
+// is bill requests specifically) — Work Orders and Site Progress rows are counts only,
+// since there's no equivalent per-row detail list available for those yet.
+function PendingApprovalsPanel({
+  workOrders, bills, siteProgressCount, onOpenBills,
+}: { workOrders: WORow[]; bills: BillRow[]; siteProgressCount: number; onOpenBills: () => void }) {
+  const woPending = workOrders.filter(w => WO_PENDING_APPROVAL_STATUSES.includes(w.approvalStatus || "")).length;
+  const billsPending = bills.filter(b => BILL_PENDING_STATUSES.includes(b.status || "")).length;
+
+  const rows: { icon: LucideIcon; color: string; label: string; sub: string; count: number; onClick?: () => void }[] = [
+    { icon: ClipboardList, color: "#2a78d6", label: "Work Orders", sub: "Waiting for approval", count: woPending },
+    { icon: FileText, color: "#eb6834", label: "Bills", sub: "Waiting for approval", count: billsPending, onClick: onOpenBills },
+    { icon: HardHat, color: "#1baf7a", label: "Site Progress Entries", sub: "Logged today", count: siteProgressCount },
+  ];
+
+  return (
+    <div className="flex flex-col gap-1">
+      {rows.map(r => (
+        <button
+          key={r.label} onClick={r.onClick} disabled={!r.onClick}
+          className={`flex items-center gap-3 px-1.5 py-2.5 rounded-lg text-left w-full ${r.onClick ? "hover:bg-gray-50 dark:hover:bg-gray-800/40 cursor-pointer" : "cursor-default"}`}
+        >
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: `${r.color}18` }}>
+            <r.icon className="w-4 h-4" style={{ color: r.color }} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-[13px] font-semibold text-[#1A1A2E] dark:text-[#F1F5F9]">{r.label}</div>
+            <div className="text-[11px] text-gray-400">{r.sub}</div>
+          </div>
+          <span className={`text-sm font-bold ${r.count > 0 ? "text-red-500" : "text-gray-300"}`}>{r.count}</span>
+          {r.onClick && <ChevronRight className="w-4 h-4 text-gray-300 shrink-0" />}
+        </button>
+      ))}
     </div>
   );
 }
 
-export default function OperationalView({ data, comparisonMode }: { data: DPROperational; comparisonMode: ComparisonMode }) {
-  const { kpis, comparisons, details, funnel, siteProgressToday, woTrend, woByCategory, projectPerformance, briefs } = data;
+interface ActivityEvent {
+  _id: string; type: string; vendorName?: string; workOrderNo?: string;
+  projectId?: { name?: string; code?: string } | string; createdAt: string;
+}
+
+const ACTIVITY_META: Record<string, { icon: LucideIcon; color: string; label: (ev: ActivityEvent) => string }> = {
+  WORK_ORDER_CREATED: { icon: ClipboardList, color: "#2a78d6", label: ev => `Work Order ${ev.workOrderNo ?? ""} created` },
+  PAYMENT_RELEASED:    { icon: Banknote,     color: "#008300", label: () => "Payment released" },
+  BILL_REQUESTED:       { icon: FileText,     color: "#eb6834", label: () => "Bill request submitted" },
+};
+
+function RecentActivitiesPanel({ projectId }: { projectId: string }) {
+  const [events, setEvents] = useState<ActivityEvent[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showMore, setShowMore] = useState(false);
+
+  useEffect(() => {
+    setLoading(true);
+    const params: Record<string, string | number> = { types: "WORK_ORDER_CREATED,PAYMENT_RELEASED,BILL_REQUESTED", limit: showMore ? 30 : 8 };
+    if (projectId !== "all") params.projectId = projectId;
+    apiClient.get("/projects/activity", { params })
+      .then(r => setEvents(r.data.events ?? []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [showMore, projectId]);
+
+  if (loading) return <Spinner size="small" />;
+  if (events.length === 0) return <div className="text-sm text-gray-400 text-center py-6">No recent activity.</div>;
+
+  return (
+    <div className="flex flex-col gap-3 max-h-96 overflow-y-auto custom-scrollbar">
+      {events.map(ev => {
+        const meta = ACTIVITY_META[ev.type] ?? { icon: ClipboardList, color: "#898781", label: () => ev.type };
+        const Icon = meta.icon;
+        const projectName = typeof ev.projectId === "object" ? ev.projectId?.name : undefined;
+        return (
+          <div key={ev._id} className="flex items-start gap-3">
+            <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0" style={{ background: `${meta.color}18`, border: `1.5px solid ${meta.color}44` }}>
+              <Icon className="w-4 h-4" style={{ color: meta.color }} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-medium text-[#1A1A2E] dark:text-[#F1F5F9]">{meta.label(ev)}</div>
+              <div className="text-xs text-gray-400 mt-0.5">
+                {projectName}{ev.vendorName ? ` · ${ev.vendorName}` : ""} · {dayjs(ev.createdAt).format("hh:mm A")}
+              </div>
+            </div>
+          </div>
+        );
+      })}
+      {!showMore && events.length >= 8 && (
+        <button onClick={() => setShowMore(true)} className="text-xs font-semibold text-primary hover:underline self-start">Load more</button>
+      )}
+    </div>
+  );
+}
+
+export default function OperationalView({ data, comparisonMode, projectId }: { data: DPROperational; comparisonMode: ComparisonMode; projectId: string }) {
+  const { kpis, comparisons, details, funnel, siteProgressToday, projectPerformance, briefs } = data;
   const [drill, setDrill] = useState<{ title: string; key: keyof typeof details } | null>(null);
   const [showAllProjects, setShowAllProjects] = useState(false);
   const [showAllCategories, setShowAllCategories] = useState(false);
+  const [showAllSiteProgress, setShowAllSiteProgress] = useState(false);
 
   const open = (title: string, key: keyof typeof details) => setDrill({ title, key });
 
-  const { categories } = useCategories();
+  const { categories, loading: categoriesLoading } = useCategories();
   const { data: legacyData } = useDashboardData(false);
   const workOrders = legacyData?.workOrders ?? [];
   const bills = legacyData?.bills ?? [];
-  const categoriesWithWOs = categories.filter(cat => workOrders.some(wo => wo.category === cat.name));
+
+  // Category progress, the work-progress ring, and pending-approval counts all
+  // scope to the project picked in the header filter — everything else on this
+  // page (funnel, site progress, projects table) already comes pre-scoped from
+  // the /dpr response itself.
+  const scopedWorkOrders = projectId === "all" ? workOrders : workOrders.filter(wo => woProjectId(wo) === projectId);
+  const scopedWOIds = new Set(scopedWorkOrders.map(w => w._id));
+  const scopedBills = projectId === "all" ? bills : bills.filter(b => b.workOrderId && scopedWOIds.has(b.workOrderId));
+  const categoriesWithWOs = categories.filter(cat => scopedWorkOrders.some(wo => wo.category === cat.name));
+
+  const cd = comparisonMode === "none" ? "yesterday" : comparisonMode;
+  const paymentsReleasedAmount = projectPerformance.reduce((s, p) => s + (p.releasedAmount || 0), 0);
+  const avgSiteProgressPct = siteProgressToday.length
+    ? Math.round(siteProgressToday.reduce((s, r) => s + r.completionPct, 0) / siteProgressToday.length)
+    : 0;
+  const siteProgressRows = showAllSiteProgress ? siteProgressToday : siteProgressToday.slice(0, LIST_PREVIEW_LIMIT);
 
   return (
     <div>
-      <BriefBanner icon="🏗️" title="Today's Operational Highlights" briefs={briefs} />
+      <HighlightsBanner
+        icon={HardHat} title="Today's Operational Highlights" briefs={briefs}
+        statusOk={kpis.pendingApprovals === 0}
+        statusText={kpis.pendingApprovals === 0 ? "No critical issues. Operations on track." : `${kpis.pendingApprovals} approval${kpis.pendingApprovals !== 1 ? "s" : ""} pending review.`}
+      />
 
-      {/* ── KPI cards ── */}
-      <KpiRow>
-        <KpiCard icon="📋" label="Work Orders Created" value={kpis.woCreatedToday} color="#2563eb"
-          change={comparisons.woCreated[comparisonMode === "none" ? "yesterday" : comparisonMode]} comparisonMode={comparisonMode}
-          onClick={() => open("Work Orders Created", "woCreatedToday")} />
-        <KpiCard icon="📝" label="Bill Requests Raised" value={kpis.billRequestsToday} color="#f37916"
-          change={comparisons.billRequestsRaised[comparisonMode === "none" ? "yesterday" : comparisonMode]} comparisonMode={comparisonMode}
-          onClick={() => open("Bill Requests Raised", "billRequestsToday")} />
-        <KpiCard icon="✅" label="Bills Approved" value={kpis.billsApprovedToday} color="#7c3aed"
-          change={comparisons.billsApproved[comparisonMode === "none" ? "yesterday" : comparisonMode]} comparisonMode={comparisonMode}
-          onClick={() => open("Bills Approved", "billsApprovedToday")} />
-        <KpiCard icon="💳" label="Payments Released" value={kpis.paymentsReleasedToday} color="#16a34a"
-          change={comparisons.paymentsReleased[comparisonMode === "none" ? "yesterday" : comparisonMode]} comparisonMode={comparisonMode}
-          onClick={() => open("Payments Released", "paymentsReleasedToday")} />
-        <KpiCard icon="💵" label="Advance Payments" value={kpis.advancePaymentsToday} color="#d97706"
-          change={comparisons.advancePayments[comparisonMode === "none" ? "yesterday" : comparisonMode]} comparisonMode={comparisonMode}
-          onClick={() => open("Advance Payments", "advancePaymentsToday")} />
-        <KpiCard icon="🏗️" label="Site Progress Entries" value={kpis.progressEntriesToday} color="#0891b2"
-          change={comparisons.progressEntries[comparisonMode === "none" ? "yesterday" : comparisonMode]} comparisonMode={comparisonMode} />
-        <KpiCard icon="⏳" label="Pending Approvals" value={kpis.pendingApprovals} color="#e03b3b"
-          onClick={() => open("Pending Approvals", "pendingApprovals")} />
-        <KpiCard icon="👷" label="Contractors Active" value={kpis.contractorsActiveToday} color="#374151" />
-      </KpiRow>
+      {/* Stat row */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+        <StatTile
+          icon={ClipboardList} label="Work Orders Today" value={kpis.woCreatedToday} accent="#2a78d6"
+          delta={deltaText(comparisons.woCreated[cd], comparisonMode)} deltaDown={(comparisons.woCreated[cd] ?? 0) < 0}
+          onClick={() => open("Work Orders Created", "woCreatedToday")}
+        />
+        <StatTile
+          icon={FileText} label="Bills Raised Today" value={kpis.billRequestsToday} accent="#4a3aa7"
+          delta={deltaText(comparisons.billRequestsRaised[cd], comparisonMode)} deltaDown={(comparisons.billRequestsRaised[cd] ?? 0) < 0}
+          onClick={() => open("Bill Requests Raised", "billRequestsToday")}
+        />
+        <StatTile
+          icon={Banknote} label="Payments Released" value={paymentsReleasedAmount >= 10_000_000 ? `₹${(paymentsReleasedAmount / 10_000_000).toFixed(2)} Cr` : `₹${(paymentsReleasedAmount / 100_000).toFixed(2)} L`} accent="#008300"
+          delta={deltaText(comparisons.paymentsReleased[cd], comparisonMode)} deltaDown={(comparisons.paymentsReleased[cd] ?? 0) < 0}
+          onClick={() => open("Payments Released", "paymentsReleasedToday")}
+        />
+        <StatTile
+          icon={Hourglass} label="Pending Approvals" value={kpis.pendingApprovals} accent="#eda100"
+          onClick={() => open("Pending Approvals", "pendingApprovals")}
+        />
+        <StatTile
+          icon={Target} label="Site Progress Today" value={`${avgSiteProgressPct}%`} accent="#2a78d6"
+        />
+      </div>
 
-      {/* ── Daily Workflow Funnel ── */}
-      <Panel title="Daily Workflow Funnel" sub="How many items moved through each stage on the selected date">
-        <Funnel stages={funnel.map(f => ({ label: f.label, count: f.count }))} colorFor={(i) => ["#2563eb", "#f37916", "#7c3aed", "#0891b2", "#16a34a"][i] || "#374151"} />
-      </Panel>
+      {/* Funnel + Work Progress + Category */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+        <Card>
+          <div className="font-bold text-[15px] text-[#1A1A2E] dark:text-[#F1F5F9]">Work Order Progress (By Stage)</div>
+          <div className="text-xs text-gray-400 mb-4">How many items moved through each stage on the selected date</div>
+          <Funnel stages={funnel.map(f => ({ label: f.label, count: f.count }))} />
+        </Card>
 
-      <div style={{ height: 4 }} />
+        <WorkProgressPanel workOrders={scopedWorkOrders} />
 
-      <Grid2>
-        <Panel title="Site Progress Today" sub="Scope items with progress logged on the selected date" tall>
+        <Card>
+          <div className="flex justify-between items-start mb-4">
+            <div>
+              <div className="font-bold text-[15px] text-[#1A1A2E] dark:text-[#F1F5F9]">Progress by Category</div>
+              <div className="text-xs text-gray-400 mt-0.5">Billed vs. contract value per work-order category</div>
+            </div>
+            {categoriesWithWOs.length > LIST_PREVIEW_LIMIT && (
+              <ViewAllLink label={`View All (${categoriesWithWOs.length})`} onClick={() => setShowAllCategories(true)} />
+            )}
+          </div>
+          {categoriesLoading ? <Spinner size="small" /> : (
+            <CategoryProgress categories={categories} workOrders={scopedWorkOrders} bills={scopedBills} limit={LIST_PREVIEW_LIMIT} />
+          )}
+        </Card>
+      </div>
+
+      {/* Site Progress / Projects at a Glance / Pending Approvals + Recent Activities */}
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 mb-6">
+        <Card className="lg:col-span-1">
+          <div className="flex justify-between items-start mb-1">
+            <div className="font-bold text-[15px] text-[#1A1A2E] dark:text-[#F1F5F9]">Site Progress Today</div>
+            {!showAllSiteProgress && siteProgressToday.length > LIST_PREVIEW_LIMIT && (
+              <ViewAllLink onClick={() => setShowAllSiteProgress(true)} />
+            )}
+          </div>
+          <div className="text-xs text-gray-400 mb-3.5">Top scope items with progress logged</div>
           {siteProgressToday.length === 0 ? (
-            <div style={{ color: "#9CA3AF", fontSize: 13, textAlign: "center", padding: "20px 0" }}>No site progress logged for this date.</div>
+            <div className="text-sm text-gray-400 text-center py-6">No site progress logged for this date.</div>
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 10, maxHeight: 320, overflowY: "auto" }}>
-              {siteProgressToday.map((s, i) => (
-                <div key={i} style={{ border: "1px solid #F3F4F6", borderRadius: 8, padding: "8px 12px" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between" }}>
-                    <span style={{ fontWeight: 600, fontSize: 12.5, color: "#374151" }}>{s.description}</span>
-                    <span style={{ fontSize: 12, fontWeight: 700, color: "#16a34a" }}>+{s.todayQty.toLocaleString("en-IN")} {s.unit}</span>
+            <div className="flex flex-col gap-2.5 max-h-96 overflow-y-auto custom-scrollbar">
+              {siteProgressRows.map((s, i) => (
+                <div key={i} className="border border-gray-100 dark:border-gray-700/40 rounded-lg px-3 py-2.5">
+                  <div className="flex justify-between items-start gap-2">
+                    <span className="font-semibold text-[13px] text-[#1A1A2E] dark:text-[#F1F5F9]">{s.description}</span>
+                    <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 whitespace-nowrap">+{s.todayQty.toLocaleString("en-IN")} {s.unit}</span>
                   </div>
-                  <div style={{ fontSize: 11, color: "#9CA3AF", marginTop: 2 }}>
+                  <div className="text-[11px] text-gray-400 mt-0.5">
                     {s.projectName}{s.projectLocation && ` (${s.projectLocation})`} · {s.workOrderNo}
                   </div>
-                  <Progress percent={s.completionPct} size="small" strokeColor={statusColor(s.completionPct)} style={{ marginTop: 4 }} />
+                  <div className="h-1.5 bg-gray-100 dark:bg-gray-700 rounded-full mt-2 overflow-hidden">
+                    <div className={`h-full rounded-full ${progressBarClass(s.completionPct)}`} style={{ width: `${Math.min(100, s.completionPct)}%` }} />
+                  </div>
                 </div>
               ))}
             </div>
           )}
-        </Panel>
+        </Card>
 
-        <Panel title="Project-wise Operational Performance" tall>
+        <Card padded={false} className="lg:col-span-2">
+          <div className="flex justify-between items-center px-5 pt-5 pb-3.5">
+            <div className="font-bold text-[15px] text-[#1A1A2E] dark:text-[#F1F5F9]">Projects at a Glance</div>
+            {projectPerformance.length > LIST_PREVIEW_LIMIT && (
+              <ViewAllLink label="View All Projects" onClick={() => setShowAllProjects(true)} />
+            )}
+          </div>
           {projectPerformance.length === 0 ? (
-            <div style={{ color: "#9CA3AF", fontSize: 13, textAlign: "center", padding: "20px 0" }}>No project-linked work orders yet.</div>
+            <div className="text-sm text-gray-400 text-center py-6">No project-linked work orders yet.</div>
           ) : (
-            <>
-              <ProjectPerfTable rows={projectPerformance.slice(0, LIST_PREVIEW_LIMIT)} />
-              {projectPerformance.length > LIST_PREVIEW_LIMIT && (
-                <Button type="link" size="small" style={{ padding: "8px 0 0" }} onClick={() => setShowAllProjects(true)}>
-                  View All ({projectPerformance.length})
-                </Button>
-              )}
-            </>
+            <ProjectPerfTable rows={projectPerformance.slice(0, LIST_PREVIEW_LIMIT)} />
           )}
-        </Panel>
-      </Grid2>
+        </Card>
 
-      <Grid2>
-        <Panel title="Work Order Creation Trend" sub="Last 30 days">
-          <TrendLine points={woTrend.map(t => ({ date: t.date, value: t.count }))} color="#2563eb" />
-        </Panel>
-        <Panel title="Work Orders by Category">
-          {woByCategory.length === 0 ? (
-            <div style={{ color: "#9CA3AF", fontSize: 13, textAlign: "center", padding: "20px 0" }}>No work orders yet.</div>
-          ) : (
-            <Donut segments={woByCategory.slice(0, 6).map(c => ({ label: c.name, value: c.count, color: c.color }))} />
-          )}
-        </Panel>
-      </Grid2>
+        <div className="lg:col-span-1 flex flex-col gap-4">
+          <Card>
+            <div className="font-bold text-[15px] text-[#1A1A2E] dark:text-[#F1F5F9] mb-2">Pending Approvals</div>
+            <PendingApprovalsPanel
+              workOrders={scopedWorkOrders} bills={scopedBills} siteProgressCount={siteProgressToday.length}
+              onOpenBills={() => open("Pending Approvals", "pendingApprovals")}
+            />
+          </Card>
+          <Card>
+            <div className="font-bold text-[15px] text-[#1A1A2E] dark:text-[#F1F5F9] mb-3.5">Recent Activities</div>
+            <RecentActivitiesPanel projectId={projectId} />
+          </Card>
+        </div>
+      </div>
 
-      {/* ── Progress by Category ── */}
-      <Panel title="Progress by Category" sub="Billed vs. contract value per work-order category">
-        <CategoryProgress categories={categories} workOrders={workOrders} bills={bills} limit={LIST_PREVIEW_LIMIT} />
-        {categoriesWithWOs.length > LIST_PREVIEW_LIMIT && (
-          <Button type="link" size="small" style={{ padding: "8px 0 0" }} onClick={() => setShowAllCategories(true)}>
-            View All ({categoriesWithWOs.length})
-          </Button>
-        )}
-      </Panel>
-
-      <Modal open={showAllProjects} onCancel={() => setShowAllProjects(false)} footer={null} title="Project-wise Operational Performance" width={720}>
-        <div style={{ maxHeight: 500, overflowY: "auto" }}>
+      {showAllProjects && (
+        <Modal title="Projects at a Glance" wide onClose={() => setShowAllProjects(false)} footer={<Btn label="Close" outline onClick={() => setShowAllProjects(false)} />}>
           <ProjectPerfTable rows={projectPerformance} />
-        </div>
-      </Modal>
+        </Modal>
+      )}
 
-      <Modal open={showAllCategories} onCancel={() => setShowAllCategories(false)} footer={null} title="Progress by Category" width={600}>
-        <div style={{ maxHeight: 500, overflowY: "auto" }}>
-          <CategoryProgress categories={categories} workOrders={workOrders} bills={bills} />
-        </div>
-      </Modal>
+      {showAllCategories && (
+        <Modal title="Progress by Category" onClose={() => setShowAllCategories(false)} footer={<Btn label="Close" outline onClick={() => setShowAllCategories(false)} />}>
+          <CategoryProgress categories={categories} workOrders={scopedWorkOrders} bills={scopedBills} />
+        </Modal>
+      )}
 
-      <DrillDownDrawer
-        open={!!drill} onClose={() => setDrill(null)}
-        title={drill?.title ?? ""} rows={drill ? details[drill.key] : []}
-      />
+      {drill && (
+        <DetailListModal title={drill.title} rows={details[drill.key]} onClose={() => setDrill(null)} />
+      )}
     </div>
   );
 }

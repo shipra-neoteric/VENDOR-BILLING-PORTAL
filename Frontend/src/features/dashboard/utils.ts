@@ -1,5 +1,12 @@
-export interface WORow   { _id: string; contractValue?: number; category?: string; status?: string; gstPercent?: number; }
+export interface WORow   { _id: string; contractValue?: number; category?: string; status?: string; approvalStatus?: string; gstPercent?: number; projectId?: string | { _id: string }; }
 export interface BillRow { _id: string; amount?: number; paidAmount?: number; status?: string; billDate?: string; workOrderId?: string; billNo?: string; vendorName?: string; }
+
+// projectId comes back either as a bare id string or a populated {_id, ...} object
+// depending on the endpoint — normalize both shapes to a plain id for comparison.
+export function woProjectId(wo: WORow): string | undefined {
+  if (!wo.projectId) return undefined;
+  return typeof wo.projectId === "string" ? wo.projectId : wo.projectId._id;
+}
 
 export function calcKPIs(workOrders: WORow[], bills: BillRow[]) {
   const totalContractValue = workOrders.reduce((s, wo) => s + (wo.contractValue ?? 0), 0);

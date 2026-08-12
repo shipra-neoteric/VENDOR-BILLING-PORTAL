@@ -25,30 +25,30 @@ export function CategoryProgress({ categories, workOrders, bills, limit }: Props
 
   if (stats.length === 0) {
     return (
-      <div style={{ color: "var(--nx-text-muted)", fontSize: 13, textAlign: "center", padding: "24px 0" }}>
+      <div className="text-[13px] text-gray-400 text-center py-6">
         No category data yet. Assign categories to work orders.
       </div>
     );
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+    <div className="flex flex-col gap-3.5">
       {stats.map(cat => (
         <div key={cat.name}>
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <span style={{ width: 10, height: 10, borderRadius: "50%", background: cat.color, display: "inline-block" }} />
-              <span style={{ fontSize: 13, fontWeight: 600, color: "var(--nx-text-3)" }}>{cat.name}</span>
-              <span style={{ fontSize: 11, color: "var(--nx-text-muted)" }}>({cat.count} WOs)</span>
+          <div className="flex justify-between items-center mb-1.5">
+            <div className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: cat.color }} />
+              <span className="text-[13px] font-semibold text-[#1A1A2E] dark:text-[#F1F5F9]">{cat.name}</span>
+              <span className="text-[11px] text-gray-400">({cat.count} WOs)</span>
             </div>
-            <span style={{ fontSize: 12, fontFamily: "monospace", color: cat.color, fontWeight: 700 }}>{cat.pct.toFixed(1)}%</span>
+            <span className="text-xs font-mono font-bold" style={{ color: cat.color }}>{cat.pct.toFixed(1)}%</span>
           </div>
-          <div style={{ height: 8, borderRadius: 4, background: "var(--nx-fill)", overflow: "hidden" }}>
-            <div style={{ width: `${cat.pct}%`, height: "100%", background: cat.color, borderRadius: 4, transition: "width 0.6s ease" }} />
+          <div className="h-2 rounded-full bg-gray-100 dark:bg-gray-700 overflow-hidden">
+            <div className="h-full rounded-full transition-[width] duration-500" style={{ width: `${cat.pct}%`, background: cat.color }} />
           </div>
-          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 3 }}>
-            <span style={{ fontSize: 11, color: "var(--nx-text-muted)" }}>Billed: {fmtCr(cat.billed)}</span>
-            <span style={{ fontSize: 11, color: "var(--nx-text-muted)" }}>Contract: {fmtCr(cat.contract)}</span>
+          <div className="flex justify-between mt-1">
+            <span className="text-[11px] text-gray-400">Billed: {fmtCr(cat.billed)}</span>
+            <span className="text-[11px] text-gray-400">Contract: {fmtCr(cat.contract)}</span>
           </div>
         </div>
       ))}

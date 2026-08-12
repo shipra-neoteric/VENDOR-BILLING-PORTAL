@@ -1,328 +1,371 @@
-import { useState } from "react";
-import { Skeleton, Alert, Tag, Switch, Tooltip } from "antd";
-import { useDashboardData } from "../../features/dashboard/hooks/useDashboardData";
-import { SummaryCards }     from "../../features/dashboard/components/SummaryCards";
-import { BillingChart }     from "../../features/dashboard/components/BillingChart";
-import { calcKPIs }         from "../../features/dashboard/utils";
-import { Panel, Grid2, KpiCard, KpiRow, TrendLine, Donut, Gauge, DrillDownDrawer, BriefBanner, fmtMoney, statusColor } from "../../features/dashboard/components/MiniCharts";
+import { useEffect, useState } from "react";
+import {
+  Banknote, Wallet, Receipt, FileText, AlertOctagon, HeartPulse,
+  ChevronRight, TrendingUp, CheckCircle2,
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import dayjs from "dayjs";
+import apiClient from "../../services/apiClient";
+import type { DPRFinancial } from "../../types/DPR";
 import type { ComparisonMode } from "../../features/dashboard/components/MiniCharts";
-import type { DPRFinancial, DPRProjectPerformance } from "../../types/DPR";
+import { deltaText, StatTile, HighlightsBanner, DetailListModal } from "../../features/dashboard/components/shared";
+import Card from "../../ui/Card";
+import Btn from "../../ui/Btn";
+import Badge from "../../ui/Badge";
+import Modal from "../../ui/Modal";
+import Spinner from "../../ui/Spinner";
+import { Table, Thead, Tbody, Tr, Th, Td } from "../../ui/Table";
+import Donut from "../../ui/charts/Donut";
+import GroupedBar from "../../ui/charts/GroupedBar";
+import { AGING_LIGHT, AGING_DARK } from "../../ui/charts/palette";
+import { useTheme } from "../../context/ThemeContext";
 
-export default function FinancialView({ financial, comparisonMode, projectPerformance }: { financial: DPRFinancial; comparisonMode: ComparisonMode; projectPerformance: DPRProjectPerformance[] }) {
-  const [includeArchived, setIncludeArchived] = useState(false);
-  const { data, isLoading, error } = useDashboardData(includeArchived);
-  const legacyKpis = data ? calcKPIs(data.workOrders, data.bills) : null;
+const LIST_PREVIEW_LIMIT = 5;
+
+const fmtCr = (n: number) => {
+  const v = n ?? 0;
+  return v >= 10_000_000 ? `₹${(v / 10_000_000).toFixed(2)} Cr`
+    : v >= 1_00_000 ? `₹${(v / 1_00_000).toFixed(2)} L`
+    : `₹${v.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
+};
+
+function contractorStatus(daysWaiting: number): { label: string; color: "green" | "amber" | "red" } {
+  if (daysWaiting >= 30) return { label: "Critical", color: "red" };
+  if (daysWaiting >= 15) return { label: "Delayed", color: "amber" };
+  return { label: "Good", color: "green" };
+}
+
+function PaymentHealthPanel({ breakdown, healthScore }: { breakdown: DPRFinancial["paymentHealthBreakdown"]; healthScore: DPRFinancial["healthScore"] }) {
+  const { isDark } = useTheme();
+  const colors = isDark ? AGING_DARK : AGING_LIGHT;
+  const notDueColor = isDark ? "#6B7280" : "#9CA3AF";
+  const segments = [
+    { label: "On Time", value: breakdown.onTime, color: colors[0] },
+    { label: "Delayed (1-30 Days)", value: breakdown.delayed1to30, color: colors[1] },
+    { label: "Delayed (31-60 Days)", value: breakdown.delayed31to60, color: colors[2] },
+    { label: "Delayed (>60 Days)", value: breakdown.delayedOver60, color: colors[3] },
+    { label: "Not Due Yet", value: breakdown.notDueYet, color: notDueColor },
+  ];
+  const statusMeta = healthScore.status === "good"
+    ? { text: "Healthy — your payment cycle is well-managed.", color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-50 dark:bg-emerald-500/10", Icon: CheckCircle2 }
+    : healthScore.status === "warning"
+    ? { text: "Needs attention — some bills are aging past 15 days.", color: "text-amber-600 dark:text-amber-400", bg: "bg-amber-50 dark:bg-amber-500/10", Icon: AlertOctagon }
+    : { text: "Critical — a significant share of bills are badly overdue.", color: "text-red-600 dark:text-red-400", bg: "bg-red-50 dark:bg-red-500/10", Icon: AlertOctagon };
+
+  return (
+    <Card>
+      <div className="font-bold text-[15px] text-[#1A1A2E] dark:text-[#F1F5F9]">Payment Health</div>
+      <div className="text-xs text-gray-400 mb-4">Paid bills by days-to-pay, plus bills not yet due</div>
+      <Donut segments={segments} legendValueFormat={fmtCr} hideCenter />
+      <div className={`flex items-center gap-2 mt-5 rounded-lg px-3 py-2.5 text-xs font-medium ${statusMeta.bg} ${statusMeta.color}`}>
+        <statusMeta.Icon className="w-4 h-4 shrink-0" />
+        {statusMeta.text}
+      </div>
+    </Card>
+  );
+}
+
+function TopContractorsTable({ contractors, onOpenContractor }: { contractors: DPRFinancial["topDelayedContractors"]; onOpenContractor: (vendorName: string) => void }) {
+  return (
+    <Table>
+      <Thead>
+        <Tr><Th>Contractor</Th><Th>Paid</Th><Th>Pending</Th><Th>Overdue</Th><Th>Days Waiting</Th><Th>Bills</Th><Th>Status</Th></Tr>
+      </Thead>
+      <Tbody>
+        {contractors.map(c => {
+          const status = contractorStatus(c.daysWaiting);
+          return (
+            <Tr key={c.vendorName} className="cursor-pointer" onClick={() => onOpenContractor(c.vendorName)}>
+              <Td className="font-semibold text-[#1A1A2E] dark:text-[#F1F5F9] whitespace-nowrap">{c.vendorName}</Td>
+              <Td className="font-mono text-emerald-600 dark:text-emerald-400">{fmtCr(c.paidAmount)}</Td>
+              <Td className="font-mono">{fmtCr(c.pendingAmount)}</Td>
+              <Td className="font-mono text-red-500">{c.overdueAmount > 0 ? fmtCr(c.overdueAmount) : "—"}</Td>
+              <Td className="font-mono">{c.daysWaiting}d</Td>
+              <Td>
+                <button onClick={e => { e.stopPropagation(); onOpenContractor(c.vendorName); }} className="font-mono text-primary hover:underline">{c.billCount}</button>
+              </Td>
+              <Td><Badge color={status.color} small>{status.label}</Badge></Td>
+            </Tr>
+          );
+        })}
+      </Tbody>
+    </Table>
+  );
+}
+
+function ContractorBillsModal({ vendorName, bills, onClose }: { vendorName: string; bills: DPRFinancial["aging"]["table"]; onClose: () => void }) {
+  const total = bills.reduce((s, b) => s + b.amount, 0);
+  return (
+    <Modal title={vendorName} subtitle={`${bills.length} pending bill${bills.length !== 1 ? "s" : ""} · ${fmtCr(total)} total`} onClose={onClose} footer={<Btn label="Close" outline onClick={onClose} />}>
+      {bills.length === 0 ? (
+        <div className="text-sm text-gray-400 text-center py-8">No pending bills for this contractor.</div>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {bills.map((b, i) => (
+            <div key={i} className="border border-gray-100 dark:border-gray-700/40 rounded-lg px-3 py-2.5">
+              <div className="flex justify-between items-center gap-2">
+                <span className="font-semibold text-sm text-[#1A1A2E] dark:text-[#F1F5F9] font-mono">{b.billNo}</span>
+                <span className="text-xs font-bold text-primary">{fmtCr(b.amount)}</span>
+              </div>
+              <div className="flex justify-between items-center gap-2 mt-0.5">
+                <span className="text-xs text-gray-400">{b.project}{b.projectLocation ? ` (${b.projectLocation})` : ""}</span>
+                <Badge color={b.daysPending >= 16 ? "red" : b.daysPending >= 8 ? "amber" : "green"} small>{b.daysPending}d</Badge>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+function AgingAnalysisPanel({ buckets, total }: { buckets: DPRFinancial["aging"]["buckets"]; total: number }) {
+  return (
+    <Card>
+      <div className="font-bold text-[15px] text-[#1A1A2E] dark:text-[#F1F5F9]">Aging Analysis</div>
+      <div className="text-xs text-gray-400 mb-4">Pending payments by days since raised</div>
+      <Table>
+        <Thead>
+          <Tr><Th>Aging Bucket</Th><Th>Amount</Th><Th>% of Total</Th></Tr>
+        </Thead>
+        <Tbody>
+          {buckets.map(b => (
+            <Tr key={b.label}>
+              <Td className="whitespace-nowrap">{b.label}</Td>
+              <Td className="font-mono">{fmtCr(b.amount)}</Td>
+              <Td className="font-mono">{total > 0 ? Math.round((b.amount / total) * 100) : 0}%</Td>
+            </Tr>
+          ))}
+        </Tbody>
+        <tfoot>
+          <Tr className="!hover:bg-transparent">
+            <Td className="font-bold text-primary">Total Pending</Td>
+            <Td className="font-mono font-bold text-primary">{fmtCr(total)}</Td>
+            <Td className="font-mono font-bold text-primary">100%</Td>
+          </Tr>
+        </tfoot>
+      </Table>
+    </Card>
+  );
+}
+
+const CR = 10_000_000;
+// "MMM" alone ("Apr") is ambiguous once the selected range spans more than a
+// year — two different Aprils would otherwise look identical on the axis.
+function monthLabeler(trend: { month: string }[]) {
+  const spansMultipleYears = new Set(trend.map(m => m.month.slice(0, 4))).size > 1;
+  return (m: string) => dayjs(`${m}-01`).format(spansMultipleYears ? "MMM 'YY" : "MMM");
+}
+
+function BillsVsPaymentsTable({ trend }: { trend: DPRFinancial["monthlyBillingTrend"] }) {
+  const monthLabel = monthLabeler(trend);
+  return (
+    <Table>
+      <Thead>
+        <Tr><Th>Month</Th><Th>Bills Raised</Th><Th>Payments Released</Th><Th>Balance</Th></Tr>
+      </Thead>
+      <Tbody>
+        {trend.map(m => (
+          <Tr key={m.month}>
+            <Td>{monthLabel(m.month)}</Td>
+            <Td className="font-mono">{fmtCr(m.raisedAmount)}</Td>
+            <Td className="font-mono">{fmtCr(m.paidAmount)}</Td>
+            <Td className="font-mono text-amber-600 dark:text-amber-400">{fmtCr(Math.max(0, m.raisedAmount - m.paidAmount))}</Td>
+          </Tr>
+        ))}
+      </Tbody>
+    </Table>
+  );
+}
+
+function BillsVsPaymentsPanel({ trend }: { trend: DPRFinancial["monthlyBillingTrend"] }) {
+  const [showAll, setShowAll] = useState(false);
+  const monthLabel = monthLabeler(trend);
+  const totalRaised = trend.reduce((s, m) => s + m.raisedAmount, 0);
+  const totalPaid = trend.reduce((s, m) => s + m.paidAmount, 0);
+  return (
+    <Card>
+      <div className="flex justify-between items-start mb-4">
+        <div>
+          <div className="font-bold text-[15px] text-[#1A1A2E] dark:text-[#F1F5F9]">Bills vs Payments</div>
+          <div className="text-xs text-gray-400 mt-0.5">Monthly value raised vs. released</div>
+        </div>
+        {trend.length > 0 && (
+          <button onClick={() => setShowAll(true)} className="text-xs font-semibold text-primary hover:underline flex items-center gap-0.5 shrink-0">
+            View All <ChevronRight className="w-3.5 h-3.5" />
+          </button>
+        )}
+      </div>
+      <GroupedBar
+        groups={trend.map(m => ({ label: monthLabel(m.month), values: [m.raisedAmount / CR, m.paidAmount / CR] }))}
+        seriesLabels={["Bills Raised (₹ Cr)", "Payments Released (₹ Cr)"]}
+        formatValue={n => `₹${n.toFixed(2)} Cr`}
+        formatAxisValue={n => String(Math.round(n))}
+      />
+      <div className="grid grid-cols-3 gap-3 mt-5 pt-4 border-t border-gray-100 dark:border-gray-700/40">
+        <div>
+          <div className="text-[11px] text-gray-400">Total Bills</div>
+          <div className="text-base font-bold font-mono text-[#1A1A2E] dark:text-[#F1F5F9]">{fmtCr(totalRaised)}</div>
+        </div>
+        <div>
+          <div className="text-[11px] text-gray-400">Total Payments</div>
+          <div className="text-base font-bold font-mono text-[#1A1A2E] dark:text-[#F1F5F9]">{fmtCr(totalPaid)}</div>
+        </div>
+        <div>
+          <div className="text-[11px] text-gray-400">Balance</div>
+          <div className="text-base font-bold font-mono text-amber-600 dark:text-amber-400">{fmtCr(Math.max(0, totalRaised - totalPaid))}</div>
+        </div>
+      </div>
+      {showAll && (
+        <Modal title="Bills vs Payments" onClose={() => setShowAll(false)} footer={<Btn label="Close" outline onClick={() => setShowAll(false)} />}>
+          <BillsVsPaymentsTable trend={trend} />
+        </Modal>
+      )}
+    </Card>
+  );
+}
+
+interface FinActivityEvent {
+  _id: string; type: string; vendorName?: string;
+  projectId?: { name?: string } | string; createdAt: string; metadata?: { billNo?: string; amount?: number };
+}
+
+const FIN_ACTIVITY_META: Record<string, { icon: LucideIcon; color: string; label: (ev: FinActivityEvent) => string }> = {
+  PAYMENT_RELEASED:       { icon: Banknote, color: "#008300", label: ev => `Payment of ${fmtCr(ev.metadata?.amount ?? 0)} released` },
+  RUNNING_BILL_APPROVED:  { icon: FileText, color: "#2a78d6", label: ev => `Bill ${ev.metadata?.billNo ?? ""} approved for payment` },
+};
+
+function RecentFinancialActivitiesPanel({ projectId }: { projectId: string }) {
+  const [events, setEvents] = useState<FinActivityEvent[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showMore, setShowMore] = useState(false);
+
+  useEffect(() => {
+    setLoading(true);
+    const params: Record<string, string | number> = { types: "PAYMENT_RELEASED,RUNNING_BILL_APPROVED", limit: showMore ? 30 : 8 };
+    if (projectId !== "all") params.projectId = projectId;
+    apiClient.get("/projects/activity", { params })
+      .then(r => setEvents(r.data.events ?? []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [showMore, projectId]);
+
+  if (loading) return <Spinner size="small" />;
+  if (events.length === 0) return <div className="text-sm text-gray-400 text-center py-6">No recent financial activity.</div>;
+
+  return (
+    <div className="flex flex-col gap-3 max-h-96 overflow-y-auto custom-scrollbar">
+      {events.map(ev => {
+        const meta = FIN_ACTIVITY_META[ev.type] ?? { icon: Banknote, color: "#898781", label: () => ev.type };
+        const Icon = meta.icon;
+        const projectName = typeof ev.projectId === "object" ? ev.projectId?.name : undefined;
+        return (
+          <div key={ev._id} className="flex items-start gap-3">
+            <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0" style={{ background: `${meta.color}18`, border: `1.5px solid ${meta.color}44` }}>
+              <Icon className="w-4 h-4" style={{ color: meta.color }} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-medium text-[#1A1A2E] dark:text-[#F1F5F9]">{meta.label(ev)} {ev.vendorName ? `to ${ev.vendorName}` : ""}</div>
+              <div className="text-xs text-gray-400 mt-0.5">
+                {projectName} · {dayjs(ev.createdAt).format("hh:mm A")}
+              </div>
+            </div>
+          </div>
+        );
+      })}
+      {!showMore && events.length >= 8 && (
+        <button onClick={() => setShowMore(true)} className="text-xs font-semibold text-primary hover:underline self-start">Load more</button>
+      )}
+    </div>
+  );
+}
+
+export default function FinancialView({ financial, comparisonMode, projectId }: { financial: DPRFinancial; comparisonMode: ComparisonMode; projectId: string }) {
+  const { kpis, comparisons, details, paymentBreakdown, paymentHealthBreakdown, monthlyBillingTrend, aging, topDelayedContractors, healthScore, briefs } = financial;
   const [drill, setDrill] = useState<{ title: string; key: keyof typeof details } | null>(null);
+  const [showAllContractors, setShowAllContractors] = useState(false);
+  const [openContractor, setOpenContractor] = useState<string | null>(null);
 
-  const { kpis, comparisons, details, paymentBreakdown, dailyReleaseTrend, billsTrend, aging, approvalTimes, topDelayedContractors, topDelayedProjects, advancePaymentsList, alerts, healthScore, briefs } = financial;
   const open = (title: string, key: keyof typeof details) => setDrill({ title, key });
-  const cmp = comparisonMode === "none" ? "yesterday" : comparisonMode;
-
-  const maxAgingCount = Math.max(1, ...aging.buckets.map(b => b.count));
-  const maxDelayDays = Math.max(1, ...topDelayedContractors.map(c => c.daysWaiting));
-  const heatProjects = [...new Map(aging.heatmap.map(h => [h.projectId, { name: h.projectName, location: h.projectLocation }])).entries()];
-  const heatBuckets = aging.buckets.map(b => b.label);
-  const topProjectsByRelease = [...projectPerformance].sort((a, b) => b.releasedAmount - a.releasedAmount).slice(0, 5);
+  const cd = comparisonMode === "none" ? "yesterday" : comparisonMode;
+  const totalPending = aging.buckets.reduce((s, b) => s + b.amount, 0);
+  // "Overdue" = past this system's ~15-day payment window (the 16+ Days bucket) —
+  // there's no 30/60/90-day cycle in the real data to key off instead.
+  const overdueAmount = aging.buckets.find(b => /16\+/.test(b.label))?.amount ?? 0;
 
   return (
     <div>
-      <BriefBanner icon="💰" title="Today's Financial Highlights" briefs={briefs} />
+      <HighlightsBanner
+        icon={TrendingUp} title="Today's Financial Highlights" briefs={briefs}
+        statusOk={healthScore.status === "good"}
+        statusText={healthScore.status === "good" ? "Overall financial status is healthy." : healthScore.status === "warning" ? "Financial health needs attention." : "Financial health is critical."}
+      />
 
-      {/* ── Health + Alerts ── */}
-      <div style={{ background: "#FFF7F7", border: "2px solid #EF4444", borderRadius: 18, padding: 28, marginBottom: 24, display: "grid", gridTemplateColumns: "auto 1fr", gap: 28, alignItems: "center" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
-          <Gauge score={healthScore.score} size={130} />
-          <div>
-            <div style={{ fontSize: 13, fontWeight: 700, color: "#374151" }}>Payment Health</div>
-            <div style={{ fontSize: 11.5, color: "#9CA3AF", marginTop: 2 }}>% of bills paid within 15 days of raising</div>
-            <Tag color={healthScore.status === "good" ? "green" : healthScore.status === "warning" ? "gold" : "red"} style={{ marginTop: 8, fontWeight: 700 }}>
-              {healthScore.status.toUpperCase()}
-            </Tag>
-          </div>
-        </div>
-        <div>
-          <div style={{ fontWeight: 800, fontSize: 15, color: "#991b1b", marginBottom: 10 }}>🚨 Critical Alerts</div>
-          {alerts.length === 0 ? (
-            <div style={{ fontSize: 13, color: "#6B7280" }}>Nothing critical right now.</div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {alerts.map((a, i) => (
-                <div key={i} style={{ fontSize: 13, color: "#7f1d1d", background: "#fff", border: "1px solid #fecaca", borderRadius: 8, padding: "8px 12px" }}>{a}</div>
-              ))}
-            </div>
-          )}
-        </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4 mb-6">
+        <StatTile
+          icon={Banknote} label="Payments Released Today" value={fmtCr(kpis.amountReleasedToday)} accent="#008300"
+          delta={deltaText(comparisons.amountReleased[cd], comparisonMode)} deltaDown={(comparisons.amountReleased[cd] ?? 0) < 0}
+          onClick={() => open("Amount Released", "amountReleasedToday")}
+        />
+        <StatTile icon={Wallet} label="Total Payments Released" value={fmtCr(paymentBreakdown.released)} accent="#eda100" />
+        <StatTile
+          icon={Receipt} label="Pending Payments" value={fmtCr(kpis.pendingValueToday)} accent="#7c3aed"
+          onClick={() => open("Pending Value", "pendingValueToday")}
+        />
+        <StatTile
+          icon={FileText} label="Bills Raised (Total)" value={fmtCr(kpis.billsRaisedValueToday)} accent="#2a78d6"
+          delta={deltaText(comparisons.billsRaisedValue[cd], comparisonMode)} deltaDown={(comparisons.billsRaisedValue[cd] ?? 0) < 0}
+          onClick={() => open("Bills Raised", "billsRaisedValueToday")}
+        />
+        <StatTile icon={AlertOctagon} label="Overdue Payments" value={fmtCr(overdueAmount)} accent="#DC2626" />
+        <StatTile icon={HeartPulse} label="Payment Health Score" value={`${healthScore.score}%`} accent={healthScore.status === "good" ? "#1baf7a" : healthScore.status === "warning" ? "#eda100" : "#DC2626"} />
       </div>
 
-      {/* ── Financial KPIs ── */}
-      <KpiRow>
-        <KpiCard icon="💰" label="Released" value={fmtMoney(kpis.amountReleasedToday)} color="#16a34a"
-          change={comparisons.amountReleased[cmp]} comparisonMode={comparisonMode} onClick={() => open("Amount Released", "amountReleasedToday")} />
-        <KpiCard icon="🧾" label="Bills Raised" value={fmtMoney(kpis.billsRaisedValueToday)} color="#2563eb"
-          change={comparisons.billsRaisedValue[cmp]} comparisonMode={comparisonMode} onClick={() => open("Bills Raised", "billsRaisedValueToday")} />
-        <KpiCard icon="✅" label="Approved Value" value={fmtMoney(kpis.approvedValueToday)} color="#7c3aed"
-          change={comparisons.approvedValue[cmp]} comparisonMode={comparisonMode} onClick={() => open("Approved Value", "approvedValueToday")} />
-        <KpiCard icon="⏳" label="Pending Value" value={fmtMoney(kpis.pendingValueToday)} color="#d97706"
-          onClick={() => open("Pending Value", "pendingValueToday")} />
-        <KpiCard icon="🔴" label="Outstanding Liability" value={fmtMoney(kpis.outstandingLiability)} color="#e03b3b"
-          onClick={() => open("Outstanding Liability", "outstandingLiability")} />
-        <KpiCard icon="💵" label="Advance Amount" value={fmtMoney(kpis.advanceAmountToday)} color="#0891b2"
-          change={comparisons.advanceAmount[cmp]} comparisonMode={comparisonMode} onClick={() => open("Advance Amount", "advanceAmountToday")} />
-      </KpiRow>
-
-      {/* ── Contract-value summary cards ── */}
-      <div style={{ marginBottom: 8, display: "flex", justifyContent: "flex-end" }}>
-        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--nx-text-2)" }}>
-          <Switch size="small" checked={includeArchived} onChange={setIncludeArchived} />
-          Include archived bills
-        </label>
-      </div>
-      {isLoading ? (
-        <Skeleton active paragraph={{ rows: 2 }} />
-      ) : error || !legacyKpis ? (
-        <Alert type="error" showIcon message={(error as Error)?.message ?? "Failed to load billing data"} style={{ borderRadius: 10, marginBottom: 24 }} />
-      ) : (
-        <SummaryCards {...legacyKpis} />
-      )}
-
-      {/* ── Payment breakdown + trend ── */}
-      <Grid2>
-        <Panel title="Payment Breakdown" sub="Cumulative, across paid bills">
-          {[
-            { label: "Released", value: paymentBreakdown.released, color: "#16a34a" },
-            { label: "Retention Held", value: paymentBreakdown.retentionHeld, color: "#7c3aed" },
-            { label: "Advance Recovered", value: paymentBreakdown.advanceRecovered, color: "#d97706" },
-            { label: "TDS", value: paymentBreakdown.tds, color: "#e03b3b" },
-            { label: "Net Payment", value: paymentBreakdown.net, color: "#2563eb" },
-          ].map(row => (
-            <div key={row.label} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-              <span style={{ width: 130, fontSize: 12.5, color: "#374151", flexShrink: 0 }}>{row.label}</span>
-              <div style={{ flex: 1, background: "#F3F4F6", borderRadius: 4, height: 16 }}>
-                <div style={{ width: `${Math.min(100, (row.value / Math.max(1, paymentBreakdown.released)) * 100)}%`, background: row.color, height: "100%", borderRadius: 4, minWidth: row.value > 0 ? 4 : 0 }} />
-              </div>
-              <span style={{ width: 100, fontSize: 12.5, fontWeight: 700, color: "#374151", textAlign: "right", flexShrink: 0 }}>{fmtMoney(row.value)}</span>
-            </div>
-          ))}
-        </Panel>
-        <Panel title="Daily Amount Released" sub="Last 7 days">
-          <TrendLine points={dailyReleaseTrend.map(t => ({ date: t.date, value: t.amount }))} color="#16a34a" formatValue={fmtMoney} />
-        </Panel>
-      </Grid2>
-
-      <Grid2>
-        <Panel title="Bills Raised — 30 Days" sub="Count of bills raised per day">
-          <TrendLine points={billsTrend.map(t => ({ date: t.date, value: t.raised }))} color="#2563eb" />
-        </Panel>
-        <Panel title="Bills Approved vs Paid — 30 Days" sub="Blue = approved, Green = paid">
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <TrendLine points={billsTrend.map(t => ({ date: t.date, value: t.approved }))} color="#7c3aed" height={90} />
-            <TrendLine points={billsTrend.map(t => ({ date: t.date, value: t.paid }))} color="#16a34a" height={90} />
-          </div>
-        </Panel>
-      </Grid2>
-
-      {/* ── Top projects by amount released ── */}
-      <Panel title="Top Projects" sub="By amount released">
-        {topProjectsByRelease.length === 0 ? (
-          <div style={{ color: "#9CA3AF", fontSize: 13, textAlign: "center", padding: "10px 0" }}>No project activity yet.</div>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {topProjectsByRelease.map(p => (
-              <div key={p.projectId} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: "1px solid #F3F4F6" }}>
-                <div>
-                  <div style={{ fontSize: 12.5, fontWeight: 600, color: "#374151" }}>{p.projectName}</div>
-                  <div style={{ fontSize: 11, color: "#9CA3AF" }}>
-                    {p.projectLocation && `${p.projectLocation} · `}{fmtMoney(p.releasedAmount)} released
-                  </div>
-                </div>
-                <Tag color={p.progressPct >= 90 ? "green" : p.progressPct >= 60 ? "gold" : "red"} style={{ color: statusColor(p.progressPct) }}>{p.progressPct}%</Tag>
-              </div>
-            ))}
-          </div>
-        )}
-      </Panel>
-
-      <div style={{ height: 4 }} />
-
-      {/* ── Aging report ── */}
-      <Panel title="Aging Report" sub="Days since bill raised, not yet paid">
-        <Grid2>
-          <div>
-            <Donut segments={aging.buckets.map((b, i) => ({ label: b.label, value: b.count, color: ["#16a34a", "#f59e0b", "#f97316", "#e03b3b"][i] }))} />
-            {aging.oldestPending && (
-              <div style={{ marginTop: 16, background: "#FFF7F7", border: "1px solid #fecaca", borderRadius: 10, padding: "10px 14px" }}>
-                <div style={{ fontSize: 11, color: "#9CA3AF", textTransform: "uppercase" }}>Oldest Pending</div>
-                <div style={{ fontWeight: 700, color: "#374151", fontSize: 13 }}>{aging.oldestPending.contractor}</div>
-                <div style={{ fontSize: 12, color: "#e03b3b", fontWeight: 700 }}>{fmtMoney(aging.oldestPending.amount)} · {aging.oldestPending.daysPending} days</div>
-              </div>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+        <PaymentHealthPanel breakdown={paymentHealthBreakdown} healthScore={healthScore} />
+        <Card padded={false} className="lg:col-span-2">
+          <div className="flex justify-between items-center px-5 pt-5 pb-3.5">
+            <div className="font-bold text-[15px] text-[#1A1A2E] dark:text-[#F1F5F9]">Top Contractors – Payment Status</div>
+            {topDelayedContractors.length > LIST_PREVIEW_LIMIT && (
+              <button onClick={() => setShowAllContractors(true)} className="text-xs font-semibold text-primary hover:underline flex items-center gap-0.5">
+                View All <ChevronRight className="w-3.5 h-3.5" />
+              </button>
             )}
           </div>
-          <div>
-            {aging.buckets.map((b, i) => (
-              <div key={b.label} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-                <span style={{ width: 90, fontSize: 12.5, color: "#374151" }}>{b.label}</span>
-                <div style={{ flex: 1, background: "#F3F4F6", borderRadius: 4, height: 16 }}>
-                  <div style={{ width: `${Math.min(100, (b.count / maxAgingCount) * 100)}%`, background: ["#16a34a", "#f59e0b", "#f97316", "#e03b3b"][i], height: "100%", borderRadius: 4, minWidth: b.count > 0 ? 4 : 0 }} />
-                </div>
-                <span style={{ width: 110, fontSize: 11.5, color: "#6B7280", textAlign: "right" }}>{b.count} · {fmtMoney(b.amount)}</span>
-              </div>
-            ))}
-          </div>
-        </Grid2>
-
-        {heatProjects.length > 0 && (
-          <div style={{ marginTop: 16, overflowX: "auto" }}>
-            <table style={{ borderCollapse: "collapse", fontSize: 12.5, width: "100%" }}>
-              <thead>
-                <tr>
-                  <th style={{ textAlign: "left", padding: "6px 12px", color: "#6B7280", fontSize: 11, textTransform: "uppercase" }}>Project</th>
-                  {heatBuckets.map(b => <th key={b} style={{ padding: "6px 12px", color: "#6B7280", fontSize: 11, textTransform: "uppercase" }}>{b}</th>)}
-                </tr>
-              </thead>
-              <tbody>
-                {heatProjects.map(([pid, proj]) => (
-                  <tr key={pid} style={{ borderTop: "1px solid #F3F4F6" }}>
-                    <td style={{ padding: "8px 12px" }}>
-                      <div style={{ fontWeight: 600, color: "#374151" }}>{proj.name}</div>
-                      {proj.location && <div style={{ fontSize: 10.5, color: "#9CA3AF" }}>{proj.location}</div>}
-                    </td>
-                    {heatBuckets.map(b => {
-                      const cell = aging.heatmap.find(h => h.projectId === pid && h.bucket === b);
-                      return (
-                        <td key={b} style={{ padding: "8px 12px", textAlign: "center" }}>
-                          {cell ? <Tooltip title={`${cell.count} bill(s)`}>{cell.count >= 3 ? "🔴" : cell.count >= 1 ? "🟡" : "—"}</Tooltip> : <span style={{ color: "#D1D5DB" }}>—</span>}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        {aging.table.length > 0 && (
-          <div style={{ marginTop: 16, overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
-              <thead>
-                <tr style={{ background: "#F9FAFB" }}>
-                  {["Contractor", "Project", "Bill No", "Amount", "Days Pending", "Status"].map(h => (
-                    <th key={h} style={{ padding: "8px 12px", textAlign: "left", fontSize: 11, fontWeight: 700, color: "#6B7280", textTransform: "uppercase", borderBottom: "1px solid #E5E7EB", whiteSpace: "nowrap" }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {aging.table.slice(0, 15).map((r, i) => (
-                  <tr key={i} style={{ borderBottom: "1px solid #F3F4F6" }}>
-                    <td style={{ padding: "8px 12px" }}>{r.contractor}</td>
-                    <td style={{ padding: "8px 12px" }}>
-                      <div>{r.project}</div>
-                      {r.projectLocation && <div style={{ fontSize: 10.5, color: "#9CA3AF" }}>{r.projectLocation}</div>}
-                    </td>
-                    <td style={{ padding: "8px 12px", fontFamily: "monospace" }}>{r.billNo}</td>
-                    <td style={{ padding: "8px 12px", fontFamily: "monospace" }}>{fmtMoney(r.amount)}</td>
-                    <td style={{ padding: "8px 12px" }}>
-                      <Tag color={r.daysPending >= 16 ? "red" : r.daysPending >= 8 ? "orange" : r.daysPending >= 4 ? "gold" : "green"}>{r.daysPending} days</Tag>
-                    </td>
-                    <td style={{ padding: "8px 12px" }}>{r.status}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </Panel>
-
-      <div style={{ height: 4 }} />
-
-      {/* ── Approval times + Top delayed ── */}
-      <Grid2>
-        <Panel title="Average Approval Cycle Times" tall>
-          {[
-            { label: "Verification", days: approvalTimes.avgVerificationDays },
-            { label: "Approval", days: approvalTimes.avgApprovalDays },
-            { label: "Payment Release", days: approvalTimes.avgPaymentDays },
-          ].map(row => (
-            <div key={row.label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: "1px solid #F3F4F6" }}>
-              <span style={{ fontSize: 13, color: "#374151" }}>{row.label}</span>
-              <span style={{ fontSize: 16, fontWeight: 800, color: statusColor(row.days <= 3 ? 100 : row.days <= 7 ? 75 : 40) }}>{row.days}d</span>
-            </div>
-          ))}
-        </Panel>
-        <Panel title="Top Delayed Contractors & Projects" tall>
-          <div style={{ fontSize: 11, fontWeight: 700, color: "#9CA3AF", textTransform: "uppercase", marginBottom: 8 }}>Contractors</div>
           {topDelayedContractors.length === 0 ? (
-            <div style={{ color: "#9CA3AF", fontSize: 12.5, marginBottom: 12 }}>None currently delayed.</div>
-          ) : topDelayedContractors.map(c => (
-            <div key={c.vendorName} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-              <span style={{ width: 130, fontSize: 12, color: "#374151", flexShrink: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.vendorName}</span>
-              <div style={{ flex: 1, background: "#F3F4F6", borderRadius: 4, height: 12 }}>
-                <div style={{ width: `${Math.min(100, (c.daysWaiting / maxDelayDays) * 100)}%`, background: "#e03b3b", height: "100%", borderRadius: 4 }} />
-              </div>
-              <span style={{ width: 110, fontSize: 11, color: "#6B7280", textAlign: "right" }}>{c.daysWaiting}d · {fmtMoney(c.pendingAmount)}</span>
-            </div>
-          ))}
-          <div style={{ fontSize: 11, fontWeight: 700, color: "#9CA3AF", textTransform: "uppercase", margin: "14px 0 8px" }}>Projects</div>
-          {topDelayedProjects.length === 0 ? (
-            <div style={{ color: "#9CA3AF", fontSize: 12.5 }}>None currently delayed.</div>
-          ) : topDelayedProjects.map(p => (
-            <div key={p.projectId} style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, padding: "4px 0" }}>
-              <span style={{ color: "#374151" }}>{p.projectName}{p.projectLocation && ` (${p.projectLocation})`}</span>
-              <span style={{ color: "#e03b3b", fontWeight: 600 }}>{fmtMoney(p.pendingAmount)} · avg {p.avgDelayDays}d</span>
-            </div>
-          ))}
-        </Panel>
-      </Grid2>
+            <div className="text-sm text-gray-400 text-center py-6">No contractor payments pending.</div>
+          ) : (
+            <TopContractorsTable contractors={topDelayedContractors.slice(0, LIST_PREVIEW_LIMIT)} onOpenContractor={setOpenContractor} />
+          )}
+        </Card>
+      </div>
 
-      {/* ── Advance payments ── */}
-      <Panel title="Advance Payments" sub="Most recent 15">
-        {advancePaymentsList.length === 0 ? (
-          <div style={{ color: "#9CA3AF", fontSize: 13, textAlign: "center", padding: "10px 0" }}>No advance payments recorded.</div>
-        ) : (
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
-              <thead>
-                <tr>
-                  {["Contractor", "Project", "Amount", "Reason", "Adjusted", "Balance"].map(h => (
-                    <th key={h} style={{ padding: "6px 10px", textAlign: "left", fontSize: 10.5, fontWeight: 700, color: "#9CA3AF", textTransform: "uppercase", borderBottom: "1px solid #E5E7EB", whiteSpace: "nowrap" }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {advancePaymentsList.map((a, i) => (
-                  <tr key={i} style={{ borderBottom: "1px solid #F3F4F6" }}>
-                    <td style={{ padding: "8px 10px", fontWeight: 600 }}>{a.vendorName}</td>
-                    <td style={{ padding: "8px 10px" }}>
-                      <div>{a.projectName}</div>
-                      {a.projectLocation && <div style={{ fontSize: 10.5, color: "#9CA3AF" }}>{a.projectLocation}</div>}
-                    </td>
-                    <td style={{ padding: "8px 10px", fontFamily: "monospace" }}>{fmtMoney(a.amount)}</td>
-                    <td style={{ padding: "8px 10px" }}>{a.reason}</td>
-                    <td style={{ padding: "8px 10px", fontFamily: "monospace" }}>{fmtMoney(a.adjusted)}</td>
-                    <td style={{ padding: "8px 10px", fontFamily: "monospace", color: a.balance > 0 ? "#e03b3b" : "#16a34a" }}>{fmtMoney(a.balance)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </Panel>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+        <AgingAnalysisPanel buckets={aging.buckets} total={totalPending} />
+        <BillsVsPaymentsPanel trend={monthlyBillingTrend} />
+        <Card>
+          <div className="font-bold text-[15px] text-[#1A1A2E] dark:text-[#F1F5F9] mb-3.5">Recent Financial Activities</div>
+          <RecentFinancialActivitiesPanel projectId={projectId} />
+        </Card>
+      </div>
 
-      <div style={{ height: 20 }} />
-
-      {/* ── Monthly billing trend ── */}
-      {isLoading ? (
-        <Skeleton active paragraph={{ rows: 6 }} />
-      ) : error || !data ? (
-        <Alert type="error" showIcon message={(error as Error)?.message ?? "Failed to load billing data"} style={{ borderRadius: 10 }} />
-      ) : (
-        <BillingChart bills={data.bills} />
+      {showAllContractors && (
+        <Modal title="Top Contractors – Payment Status" wide onClose={() => setShowAllContractors(false)} footer={<Btn label="Close" outline onClick={() => setShowAllContractors(false)} />}>
+          <TopContractorsTable contractors={topDelayedContractors} onOpenContractor={setOpenContractor} />
+        </Modal>
       )}
 
-      <DrillDownDrawer
-        open={!!drill} onClose={() => setDrill(null)}
-        title={drill?.title ?? ""} rows={drill ? details[drill.key] : []}
-      />
+      {openContractor && (
+        <ContractorBillsModal
+          vendorName={openContractor}
+          bills={aging.table.filter(b => b.contractor === openContractor)}
+          onClose={() => setOpenContractor(null)}
+        />
+      )}
+
+      {drill && (
+        <DetailListModal title={drill.title} rows={details[drill.key]} onClose={() => setDrill(null)} />
+      )}
     </div>
   );
 }

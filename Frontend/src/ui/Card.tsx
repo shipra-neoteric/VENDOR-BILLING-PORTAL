@@ -9,7 +9,7 @@ export default function Card({ children, padded = true, className = "", ...rest 
   return (
     <div
       className={[
-        "bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700/40 rounded-xl shadow-sm",
+        "bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700/40 rounded-lg shadow-sm",
         padded ? "p-5" : "",
         className,
       ].join(" ")}

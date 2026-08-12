@@ -350,6 +350,27 @@ exports.getDPR = asyncHandler(async (req, res) => {
   }
   const billsTrend = [...billsTrendMap.entries()].map(([date, v]) => ({ date, ...v }));
 
+  // Monthly billing trend, by ₹ value (not count) — spans the whole selected
+  // date range (dayStart..dayEnd), not a fixed last-30-days window, so "All
+  // Time" surfaces every month with activity rather than just the latest one.
+  const monthKey = d => { const dt = new Date(d); return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`; };
+  const monthlyMap = new Map();
+  for (const b of runningBills) {
+    if (b.billDate && inRange(b.billDate, dayStart, dayEnd)) {
+      const k = monthKey(b.billDate);
+      if (!monthlyMap.has(k)) monthlyMap.set(k, { raisedAmount: 0, paidAmount: 0 });
+      monthlyMap.get(k).raisedAmount += b.amount || 0;
+    }
+    if (b.status === 'paid' && b.paymentDate && inRange(b.paymentDate, dayStart, dayEnd)) {
+      const k = monthKey(b.paymentDate);
+      if (!monthlyMap.has(k)) monthlyMap.set(k, { raisedAmount: 0, paidAmount: 0 });
+      monthlyMap.get(k).paidAmount += netReleased(b);
+    }
+  }
+  const monthlyBillingTrend = [...monthlyMap.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([month, v]) => ({ month, raisedAmount: Math.round(v.raisedAmount), paidAmount: Math.round(v.paidAmount) }));
+
   // Aging report — unpaid bills, age = days since billDate (fallback createdAt)
   const agingCounts = AGING_BUCKETS.map(() => ({ count: 0, amount: 0 }));
   const agingTable = [];
@@ -406,9 +427,11 @@ exports.getDPR = asyncHandler(async (req, res) => {
   for (const b of unpaidBills) {
     const days = daysBetween(b.billDate || b.createdAt, now);
     if (b.vendorName) {
-      if (!byContractor.has(b.vendorName)) byContractor.set(b.vendorName, { pendingAmount: 0, maxDays: 0, count: 0 });
+      if (!byContractor.has(b.vendorName)) byContractor.set(b.vendorName, { pendingAmount: 0, overdueAmount: 0, paidAmount: 0, maxDays: 0, count: 0 });
       const c = byContractor.get(b.vendorName);
-      c.pendingAmount += b.amount || 0; c.maxDays = Math.max(c.maxDays, days); c.count++;
+      c.pendingAmount += b.amount || 0;
+      if (days > 15) c.overdueAmount += b.amount || 0; // past the same 15-day grace window as healthScore
+      c.maxDays = Math.max(c.maxDays, days); c.count++;
     }
     if (b.projectId) {
       const key = String(b.projectId);
@@ -417,8 +440,19 @@ exports.getDPR = asyncHandler(async (req, res) => {
       p.pendingAmount += b.amount || 0; p.days.push(days);
     }
   }
+  // paidAmount is tracked alongside the pending/overdue figures above so the
+  // "Top Contractors" panel can show a full Paid/Pending/Overdue picture, not
+  // just delay info — but the ranking itself stays scoped to contractors who
+  // currently have at least one unpaid bill (a fully-paid contractor has
+  // nothing to rank by delay).
+  for (const b of paidBills) {
+    if (!b.vendorName) continue;
+    if (!byContractor.has(b.vendorName)) byContractor.set(b.vendorName, { pendingAmount: 0, overdueAmount: 0, paidAmount: 0, maxDays: 0, count: 0 });
+    byContractor.get(b.vendorName).paidAmount += netReleased(b);
+  }
   const topDelayedContractors = [...byContractor.entries()]
-    .map(([vendorName, v]) => ({ vendorName, pendingAmount: v.pendingAmount, daysWaiting: v.maxDays, billCount: v.count }))
+    .filter(([, v]) => v.count > 0)
+    .map(([vendorName, v]) => ({ vendorName, pendingAmount: v.pendingAmount, overdueAmount: v.overdueAmount, paidAmount: v.paidAmount, daysWaiting: v.maxDays, billCount: v.count }))
     .sort((a, b) => b.daysWaiting - a.daysWaiting).slice(0, 5);
   const topDelayedProjects = [...byProjectDelay.entries()]
     .map(([projectId, v]) => ({ projectId, projectName: v.projectName, projectLocation: projectLocation.get(projectId) || '', pendingAmount: v.pendingAmount, avgDelayDays: avg(v.days) }))
@@ -446,10 +480,30 @@ exports.getDPR = asyncHandler(async (req, res) => {
   if (topProjToday && topProjToday.releasedAmount > 0) alerts.push(`${topProjToday.projectName} released the most this period: ₹${Math.round(topProjToday.releasedAmount).toLocaleString('en-IN')}`);
   if (amountReleasedToday === 0 && woToday.length === 0 && brToday.length === 0) alerts.push('No activity recorded for the selected period');
 
-  // Simple payment-health score: % of paid bills settled within 15 days of raising
-  const paidWithDays = paidBills.filter(b => b.billDate && b.paymentDate).map(b => daysBetween(b.billDate, b.paymentDate));
-  const onTimePaid = paidWithDays.filter(d => d <= 15).length;
-  const healthScore = paidWithDays.length ? Math.round((onTimePaid / paidWithDays.length) * 100) : 100;
+  // Payment-health score + breakdown: % of paid bills settled within 15 days of
+  // raising, plus the underlying amounts bucketed the same way a real AP aging
+  // view would show them — on-time/delayed tiers for bills that ARE paid (by
+  // how long they took), and a separate "Not Due Yet" bucket for bills that
+  // are still unpaid but haven't crossed that 15-day line yet (the 16+ Days
+  // aging bucket is the "already overdue" unpaid case, tracked separately).
+  let onTimeAmt = 0, delayed1to30Amt = 0, delayed31to60Amt = 0, delayedOver60Amt = 0, onTimeCount = 0, paidWithDatesCount = 0;
+  for (const b of paidBills) {
+    if (!b.billDate || !b.paymentDate) continue;
+    paidWithDatesCount++;
+    const delay = daysBetween(b.billDate, b.paymentDate);
+    const amt = netReleased(b);
+    if (delay <= 15) { onTimeAmt += amt; onTimeCount++; }
+    else if (delay <= 30) delayed1to30Amt += amt;
+    else if (delay <= 60) delayed31to60Amt += amt;
+    else delayedOver60Amt += amt;
+  }
+  const healthScore = paidWithDatesCount ? Math.round((onTimeCount / paidWithDatesCount) * 100) : 100;
+  const notDueYetAmt = agingCounts[0].amount + agingCounts[1].amount + agingCounts[2].amount;
+  const paymentHealthBreakdown = {
+    onTime: Math.round(onTimeAmt), delayed1to30: Math.round(delayed1to30Amt),
+    delayed31to60: Math.round(delayed31to60Amt), delayedOver60: Math.round(delayedOver60Amt),
+    notDueYet: Math.round(notDueYetAmt),
+  };
 
   const financial = {
     kpis: {
@@ -459,8 +513,10 @@ exports.getDPR = asyncHandler(async (req, res) => {
     comparisons: financialComparisons,
     details: financialDetails,
     paymentBreakdown,
+    paymentHealthBreakdown,
     dailyReleaseTrend,
     billsTrend,
+    monthlyBillingTrend,
     aging: {
       buckets: AGING_BUCKETS.map((b, i) => ({ label: b.label, count: agingCounts[i].count, amount: Math.round(agingCounts[i].amount) })),
       table: agingTable.slice(0, 50),
