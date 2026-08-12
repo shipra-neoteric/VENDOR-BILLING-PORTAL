@@ -296,6 +296,19 @@ export interface WorkOrder {
   finalApprovedAt?: string;
   finalRemarks?: string;
   approvalHistory?: WorkOrderApprovalHistoryEntry[];
+  // Live-joined from Contractor/Consultant (by vendorCode) when fetching a
+  // single WO — never persisted on the WorkOrder document itself.
+  contractorDetails?: {
+    address?: string;
+    email?: string;
+    gstNumber?: string;
+    panNumber?: string;
+    accountHolderName?: string;
+    bankName?: string;
+    accountNumber?: string;
+    ifscCode?: string;
+    branchName?: string;
+  };
 }
 
 export type WorkOrderApprovalStatus =
@@ -308,7 +321,7 @@ export type WorkOrderApprovalStatus =
 
 export interface WorkOrderApprovalHistoryEntry {
   stage: "maker" | "checker" | "approver" | "final";
-  action: "submitted" | "approved" | "sent-back";
+  action: "submitted" | "approved" | "sent-back" | "reopened";
   by?: { _id: string; name: string; email?: string } | string;
   at?: string;
   remarks?: string;

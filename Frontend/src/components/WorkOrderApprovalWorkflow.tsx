@@ -1,15 +1,15 @@
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
-import { Check, X, AlertTriangle } from "lucide-react";
+import { Check } from "lucide-react";
 import toast from "react-hot-toast";
 import dayjs from "dayjs";
 import apiClient from "../services/apiClient";
 import { useAuth } from "../context/AuthContext";
 import type { AuthUser } from "../context/AuthContext";
-import Steps from "../ui/Steps";
-import type { StepItem } from "../ui/Steps";
 import Btn from "../ui/Btn";
 import Field from "../ui/Field";
+import Badge from "../ui/Badge";
+import { Table, Thead, Tbody, Tr, Th, Td } from "../ui/Table";
 
 // ── Shared types ──────────────────────────────────────────────────────────────
 // A `by` actor field only ever comes back as a raw ObjectId string from the
@@ -64,119 +64,139 @@ function idOf(by?: ActorRef): string | undefined {
 }
 
 const STAGE_ORDER: ApprovalStage[] = ["maker", "checker", "approver", "final"];
-const STAGE_TITLE: Record<ApprovalStage, string> = {
-  maker:    "Maker Created",
-  checker:  "Checker Verification",
-  approver: "Approver Approval",
-  final:    "Final (CEO/Owner) Approval",
+// Human-facing role titles for the approval table (matches how this org
+// actually refers to these sign-offs).
+const TABLE_ROLE_LABEL: Record<ApprovalStage, string> = {
+  maker: "Maker (L1)", checker: "AGM (L2)", approver: "GM (L3)", final: "Director (L4)",
 };
-const STAGE_ROLE_LABEL: Record<ApprovalStage, string> = {
-  maker: "Maker", checker: "Checker", approver: "Approver", final: "Final Approver",
-};
-
-function lastSentBack(history?: ApprovalHistoryEntry[]): ApprovalHistoryEntry | undefined {
-  if (!history) return undefined;
-  for (let i = history.length - 1; i >= 0; i--) {
-    if (history[i].action === "sent-back") return history[i];
-  }
-  return undefined;
-}
-
-// One line, permanently visible: where this work order currently stands.
-function currentStageLabel(wo: ApprovalWorkOrder): { text: string; color: string; bg: string } {
-  // Cancelling freezes the approval chain wherever it was — approvalStatus is
-  // left untouched (so the history above still shows what was approved before
-  // cancellation), but the live stage badge/action panel must reflect that no
-  // further approval action is possible now.
-  if (wo.status === "cancelled") return { text: "Cancelled — Approval Chain Frozen", color: "#DC2626", bg: "#FEF2F2" };
-  switch (wo.approvalStatus) {
-    case "draft":            return { text: "Draft — Not Yet Submitted for Approval",        color: "#6B7280", bg: "#F9FAFB" };
-    case "pending-checker":  return { text: "Waiting for Checker Verification",               color: "#2563EB", bg: "#EFF6FF" };
-    case "pending-approver": return { text: "Waiting for Approver Approval",                  color: "#D97706", bg: "#FFFBEB" };
-    case "pending-final":    return { text: "Waiting for Final (CEO/Owner) Approval",         color: "#7C3AED", bg: "#F5F3FF" };
-    case "approved":         return { text: "Approved · Locked · Ready for Work Progress",    color: "#16A34A", bg: "#F0FDF4" };
-    case "sent-back": {
-      const sb = lastSentBack(wo.approvalHistory);
-      const stageLabel = sb ? STAGE_TITLE[sb.stage] : "a reviewer";
-      return { text: `Sent Back by ${stageLabel} — Revise & Resubmit`, color: "#DC2626", bg: "#FEF2F2" };
-    }
-    default: return { text: "Approved", color: "#16A34A", bg: "#F0FDF4" };
-  }
-}
 
 function MutedText({ text }: { text: string }) {
   return (
-    <div className="mt-3.5 rounded-lg text-gray-400 text-[12.5px]" style={{ padding: "10px 14px", background: "#F9FAFB", border: "1px dashed #E5E7EB" }}>
+    <div
+      className="mt-3.5 rounded-lg text-gray-400 dark:text-gray-500 text-[12.5px] bg-gray-50 dark:bg-gray-800/40 border border-dashed border-gray-200 dark:border-gray-700/40"
+      style={{ padding: "10px 14px" }}
+    >
       {text}
     </div>
   );
 }
 
-function ActionPanel({ children, background }: { children: ReactNode; background?: string }) {
+function ActionPanel({ children, danger = false }: { children: ReactNode; danger?: boolean }) {
   return (
-    <div className="rounded-[10px] mt-3.5 border" style={{ padding: "14px 16px", background: background ?? "#F9FAFB", borderColor: background ? "#FECACA" : "#E5E7EB" }}>
+    <div
+      className={[
+        "rounded-[10px] mt-3.5 border",
+        danger
+          ? "bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/30"
+          : "bg-gray-50 dark:bg-gray-800/40 border-gray-200 dark:border-gray-700/40",
+      ].join(" ")}
+      style={{ padding: "14px 16px" }}
+    >
       {children}
     </div>
   );
 }
 
-// Vertical, append-only timeline built directly from approvalHistory — a work
-// order can cycle through submit → send-back → resubmit → approve multiple
-// times, so this renders every entry (oldest first), not just the latest state.
-function ApprovalTimeline({ history, actorLabel }: { history: ApprovalHistoryEntry[]; actorLabel: (by: ActorRef | undefined, roleFallback: string) => string }) {
-  if (!history || history.length === 0) {
+// A work order can cycle through submit → send-back → resubmit → approve
+// multiple times. `approvalHistory` is a flat, append-only log of every event
+// across every cycle — this groups it back into cycles (one row per
+// submit-to-resolution pass) so the table below reads as "cycle 1's approvals,
+// then cycle 2's approvals" instead of one blurred-together list.
+// `reopened` events (only possible via a post-unlock edit, not a send-back)
+// are a rare edge case — they aren't given their own cycle boundary here; that
+// cycle's next 'maker'+'submitted' entry (from resubmitting) still opens the
+// next row normally.
+interface ApprovalCycle {
+  maker?: ApprovalHistoryEntry;
+  checker?: ApprovalHistoryEntry;
+  approver?: ApprovalHistoryEntry;
+  final?: ApprovalHistoryEntry;
+  sentBack?: ApprovalHistoryEntry;
+}
+
+function groupIntoCycles(history: ApprovalHistoryEntry[]): ApprovalCycle[] {
+  const cycles: ApprovalCycle[] = [];
+  let current: ApprovalCycle | null = null;
+  for (const entry of history) {
+    if (entry.stage === "maker" && entry.action === "submitted") {
+      current = { maker: entry };
+      cycles.push(current);
+    } else if (current) {
+      if (entry.action === "sent-back") current.sentBack = entry;
+      else current[entry.stage] = entry;
+    }
+  }
+  return cycles;
+}
+
+function CycleCell({
+  action, entry, actorLabel, roleLabel,
+}: { action: "submitted" | "approved" | "sent-back"; entry: ApprovalHistoryEntry; actorLabel: (by: ActorRef | undefined, roleFallback: string) => string; roleLabel: string }) {
+  return (
+    <div className="flex flex-col gap-1 min-w-[130px]">
+      <div className="text-[12.5px] font-bold text-gray-900 dark:text-[#F1F5F9]">{actorLabel(entry.by, roleLabel)}</div>
+      {entry.at && <div className="text-[11px] text-gray-400">{dayjs(entry.at).format("DD MMM YYYY, hh:mm A")}</div>}
+      <div>
+        {action === "sent-back" ? <Badge color="red" small>Sent Back</Badge> : action === "submitted" ? <Badge color="blue" small>Initiated</Badge> : <Badge color="green" small>Approved</Badge>}
+      </div>
+      {entry.remarks && (
+        <div className={`text-[11px] italic ${action === "sent-back" ? "text-red-600 dark:text-red-400" : "text-gray-400"}`}>
+          "{entry.remarks}"
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Replaces the old vertical timeline — same underlying data (approvalHistory),
+// but organized as one row per submit→resolution cycle instead of one flat
+// event list, so a sent-back-and-resubmitted work order shows its prior
+// cycle's approvals and its new cycle's approvals as clearly separate rows.
+function ApprovalCyclesTable({ history, actorLabel }: { history: ApprovalHistoryEntry[]; actorLabel: (by: ActorRef | undefined, roleFallback: string) => string }) {
+  const cycles = groupIntoCycles(history);
+  if (cycles.length === 0) {
     return <div className="text-[12.5px] text-gray-400">No workflow activity yet.</div>;
   }
   return (
-    <div>
-      {history.map((h, i) => {
-        const isReject   = h.action === "sent-back";
-        const isApprove  = h.action === "approved";
-        const isReopened = h.action === "reopened";
-        const color = isReject ? "#DC2626" : isReopened ? "#D97706" : isApprove ? "#16A34A" : "#2563EB";
-        const bg    = isReject ? "#FEF2F2" : isReopened ? "#FFFBEB" : isApprove ? "#F0FDF4" : "#EFF6FF";
-        const verb  = h.action === "submitted" ? "submitted" : isApprove ? "approved" : isReopened ? "reopened this work order for editing" : "sent back";
-        const roleLabel = STAGE_ROLE_LABEL[h.stage];
-        return (
-          <div key={i} className="flex gap-3 items-start">
-            <div className="shrink-0 text-center">
-              <div className="w-[26px] h-[26px] rounded-full flex items-center justify-center text-xs font-bold" style={{ background: bg, border: `2px solid ${color}`, color }}>
-                {isReject ? <X className="w-3 h-3" /> : isReopened ? "↺" : isApprove ? <Check className="w-3 h-3" /> : "●"}
-              </div>
-              {i < history.length - 1 && <div className="w-0.5 h-[30px] bg-gray-200 mx-auto" style={{ marginTop: 2, marginBottom: 2 }} />}
-            </div>
-            <div className="flex-1 min-w-0 pb-3.5">
-              <div className="text-[13px] font-bold text-gray-900">
-                {isReopened ? actorLabel(h.by, roleLabel) : roleLabel} {verb}
-                {!isReopened && (
-                  <span className="font-normal text-gray-400 ml-2 text-xs">
-                    {actorLabel(h.by, roleLabel)}{h.at ? ` · ${dayjs(h.at).format("DD MMM YYYY, hh:mm A")}` : ""}
-                  </span>
-                )}
-                {isReopened && h.at && (
-                  <span className="font-normal text-gray-400 ml-2 text-xs">
-                    · {dayjs(h.at).format("DD MMM YYYY, hh:mm A")}
-                  </span>
-                )}
-              </div>
-              {h.remarks && (
-                <div
-                  className="text-[12.5px] mt-1 rounded-md border"
-                  style={{
-                    padding: "6px 10px",
-                    color: isReject ? "#B91C1C" : isReopened ? "#92400E" : "#6B7280",
-                    background: isReject ? "#FEF2F2" : isReopened ? "#FFFBEB" : "#F9FAFB",
-                    borderColor: isReject ? "#FCA5A5" : isReopened ? "#FDE68A" : "#E5E7EB",
-                  }}
-                >
-                  {isReject ? "Reason: " : "Remarks: "}{h.remarks}
-                </div>
-              )}
-            </div>
-          </div>
-        );
-      })}
-    </div>
+    <Table>
+      <Thead>
+        <Tr>
+          <Th>Cycle</Th>
+          {STAGE_ORDER.map(stage => <Th key={stage}>{TABLE_ROLE_LABEL[stage]}</Th>)}
+        </Tr>
+      </Thead>
+      <Tbody>
+        {cycles.map((cycle, i) => (
+          <Tr key={i}>
+            <Td className="align-top text-[12.5px] font-semibold text-gray-500 dark:text-gray-400 whitespace-nowrap">
+              #{i + 1}{i === cycles.length - 1 && <div className="text-[10px] font-bold text-primary uppercase mt-0.5">Current</div>}
+            </Td>
+            {STAGE_ORDER.map(stage => {
+              if (stage === "maker") {
+                return (
+                  <Td key={stage} className="align-top">
+                    {cycle.maker ? <CycleCell action="submitted" entry={cycle.maker} actorLabel={actorLabel} roleLabel={TABLE_ROLE_LABEL.maker} /> : <span className="text-gray-300">—</span>}
+                  </Td>
+                );
+              }
+              const approved = cycle[stage];
+              const rejectedHere = cycle.sentBack?.stage === stage ? cycle.sentBack : undefined;
+              return (
+                <Td key={stage} className="align-top">
+                  {approved ? (
+                    <CycleCell action="approved" entry={approved} actorLabel={actorLabel} roleLabel={TABLE_ROLE_LABEL[stage]} />
+                  ) : rejectedHere ? (
+                    <CycleCell action="sent-back" entry={rejectedHere} actorLabel={actorLabel} roleLabel={TABLE_ROLE_LABEL[stage]} />
+                  ) : (
+                    <span className="text-gray-300">—</span>
+                  )}
+                </Td>
+              );
+            })}
+          </Tr>
+        ))}
+      </Tbody>
+    </Table>
   );
 }
 
@@ -248,56 +268,6 @@ export default function WorkOrderApprovalWorkflow<T extends ApprovalWorkOrder>({
     if (!uid) return roleFallback;
     if (user?.id && uid === user.id) return "You";
     return userMap[uid] || roleFallback;
-  }
-
-  function buildApprovalSteps(): StepItem[] {
-    let currentIdx = 0;
-    let rejectedIdx: number | null = null;
-
-    switch (wo.approvalStatus) {
-      case "draft":            currentIdx = 0; break;
-      case "pending-checker":  currentIdx = 1; break;
-      case "pending-approver": currentIdx = 2; break;
-      case "pending-final":    currentIdx = 3; break;
-      case "approved":         currentIdx = 4; break;
-      case "sent-back": {
-        const sb = lastSentBack(wo.approvalHistory);
-        rejectedIdx = sb ? STAGE_ORDER.indexOf(sb.stage) : 1;
-        currentIdx = 0; // maker must revise & resubmit
-        break;
-      }
-      default: currentIdx = 0;
-    }
-
-    const byAt: Record<ApprovalStage, { by?: ActorRef; at?: string }> = {
-      maker:    { by: wo.makerBy,         at: wo.makerAt },
-      checker:  { by: wo.checkerBy,       at: wo.checkerAt },
-      approver: { by: wo.approverBy,      at: wo.approverAt },
-      final:    { by: wo.finalApprovedBy, at: wo.finalApprovedAt },
-    };
-
-    return STAGE_ORDER.map((stage, idx) => {
-      let status: StepItem["status"] = "wait";
-      if (rejectedIdx !== null && idx === rejectedIdx) status = "error";
-      else if (idx < currentIdx) status = "finish";
-      else if (idx === currentIdx) status = "process";
-
-      let icon: ReactNode = undefined;
-      if (status === "finish") icon = <Check className="w-3.5 h-3.5" style={{ color: "#16A34A" }} />;
-      else if (status === "error") icon = <X className="w-3.5 h-3.5" style={{ color: "#DC2626" }} />;
-      else if (status === "process") icon = <AlertTriangle className="w-3.5 h-3.5" style={{ color: "#D97706" }} />;
-
-      let description: string | undefined;
-      if (status === "finish") {
-        const meta = byAt[stage];
-        description = `${actorLabel(meta.by, STAGE_ROLE_LABEL[stage])}${meta.at ? " · " + dayjs(meta.at).format("DD MMM YYYY") : ""}`;
-      } else if (status === "error") {
-        const sb = lastSentBack(wo.approvalHistory);
-        description = sb ? `Sent back${sb.remarks ? `: "${sb.remarks}"` : ""}` : "Sent back";
-      }
-
-      return { title: STAGE_TITLE[stage], description, icon, status };
-    });
   }
 
   async function handleSubmitWO() {
@@ -379,7 +349,7 @@ export default function WorkOrderApprovalWorkflow<T extends ApprovalWorkOrder>({
     }
     if (sendingBack) {
       return (
-        <ActionPanel background="#FEF2F2">
+        <ActionPanel danger>
           <div className="font-bold text-[13px] mb-2" style={{ color: "#DC2626" }}>Send Back to Maker</div>
           <Field textarea rows={3} placeholder="Explain what needs to be corrected…" value={sendBackReason} onChange={(e) => setSendBackReason(e.target.value)} />
           <div className="flex gap-2 mt-2.5">
@@ -465,29 +435,12 @@ export default function WorkOrderApprovalWorkflow<T extends ApprovalWorkOrder>({
     }
   }
 
-  const stageInfo = currentStageLabel(wo);
-
   return (
     <div className="bg-white dark:bg-[#1E293B] rounded-xl border border-gray-200 dark:border-gray-700/40" style={{ padding: "18px 20px" }}>
-      <div className="flex items-center justify-between flex-wrap gap-2 mb-4">
-        <div className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">
-          Live Workflow
-        </div>
-        <div className="text-[13px] font-bold rounded-full" style={{ padding: "5px 14px", color: stageInfo.color, background: stageInfo.bg, border: `1px solid ${stageInfo.color}` }}>
-          {stageInfo.text}
-        </div>
+      <div className="text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2.5">
+        Approval Workflow &amp; Signatures
       </div>
-
-      <div className="mb-4.5">
-        <Steps items={buildApprovalSteps()} />
-      </div>
-
-      <div className="border-t border-gray-100 dark:border-gray-700/40 pt-3.5">
-        <div className="text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2.5">
-          Workflow Timeline
-        </div>
-        <ApprovalTimeline history={wo.approvalHistory || []} actorLabel={actorLabel} />
-      </div>
+      <ApprovalCyclesTable history={wo.approvalHistory || []} actorLabel={actorLabel} />
 
       {!readOnly && renderWorkflowAction()}
     </div>

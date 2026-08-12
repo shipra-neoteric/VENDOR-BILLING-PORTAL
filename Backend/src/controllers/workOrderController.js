@@ -16,6 +16,22 @@ const { documentsExceedLimit } = require('../utils/validateDocuments');
 const { logAudit, diffFields } = require('../utils/auditLog');
 const { sumActiveQty, applyVarianceGate, recomputeParentFromSubItems } = require('../utils/progressHelpers');
 
+// vendorName/ownerName/mobile are snapshotted onto a WO at creation time, but
+// address/GST/PAN/bank details never were — both listWorkOrders and
+// getWorkOrder attach them fresh from the Contractor (or Consultant, for
+// professional-services WOs) so every screen that shows this work order can
+// display current contact + bank info without a second round-trip.
+const BANK_DETAIL_FIELDS = 'address email gstNumber panNumber accountHolderName bankName accountNumber ifscCode branchName';
+function toContractorDetails(party) {
+  if (!party) return undefined;
+  return {
+    address: party.address || '', email: party.email || '',
+    gstNumber: party.gstNumber || '', panNumber: party.panNumber || '',
+    accountHolderName: party.accountHolderName || '', bankName: party.bankName || '',
+    accountNumber: party.accountNumber || '', ifscCode: party.ifscCode || '', branchName: party.branchName || '',
+  };
+}
+
 // Per-scope-item rate/plannedQty diff, keyed by scope item _id — this is what actually
 // matters for an audit trail: did someone change the rate or planned qty on a line
 // item that bills have already been raised against.
@@ -88,6 +104,23 @@ exports.listWorkOrders = asyncHandler(async (req, res) => {
     .populate('createdBy', 'name email')
     .sort({ createdAt: -1 })
     .lean();
+
+  // Batched version of the same live lookup getWorkOrder does for a single
+  // WO — one query per party type across the whole list, not one per WO.
+  const contractorCodes = [...new Set(workOrders.filter(w => w.contractType !== 'professional-services' && w.vendorCode).map(w => w.vendorCode))];
+  const consultantCodes = [...new Set(workOrders.filter(w => w.contractType === 'professional-services' && w.vendorCode).map(w => w.vendorCode))];
+  const [contractors, consultants] = await Promise.all([
+    contractorCodes.length ? Contractor.find({ vendorCode: { $in: contractorCodes } }).select(`vendorCode ${BANK_DETAIL_FIELDS}`).lean() : [],
+    consultantCodes.length ? Consultant.find({ consultantCode: { $in: consultantCodes } }).select(`consultantCode ${BANK_DETAIL_FIELDS}`).lean() : [],
+  ]);
+  const contractorMap = new Map(contractors.map(c => [c.vendorCode, c]));
+  const consultantMap = new Map(consultants.map(c => [c.consultantCode, c]));
+  workOrders.forEach(w => {
+    const party = w.contractType === 'professional-services' ? consultantMap.get(w.vendorCode) : contractorMap.get(w.vendorCode);
+    const details = toContractorDetails(party);
+    if (details) w.contractorDetails = details;
+  });
+
   success(res, { workOrders });
 });
 
@@ -102,6 +135,20 @@ exports.getWorkOrder = asyncHandler(async (req, res) => {
     .populate('scopeItems.subItems.progressEntries.invalidated.by', 'name')
     .lean();
   if (!workOrder) return notFound(res, 'Work order not found');
+
+  // vendorName/ownerName/mobile are snapshotted onto the WO itself at creation
+  // time, but address/GST/PAN/bank details never were — fetch them fresh from
+  // the Contractor (or Consultant, for professional-services WOs) by vendorCode
+  // so the detail view can show current contact + bank info without a second
+  // round-trip from the frontend.
+  if (workOrder.vendorCode) {
+    const Party = workOrder.contractType === 'professional-services' ? Consultant : Contractor;
+    const codeField = workOrder.contractType === 'professional-services' ? 'consultantCode' : 'vendorCode';
+    const party = await Party.findOne({ [codeField]: workOrder.vendorCode }).select(BANK_DETAIL_FIELDS).lean();
+    const details = toContractorDetails(party);
+    if (details) workOrder.contractorDetails = details;
+  }
+
   success(res, { workOrder });
 });
 

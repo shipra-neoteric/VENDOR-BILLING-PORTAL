@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
 import {
   Table,
   Button,
@@ -1579,6 +1580,67 @@ function _ScopeItemsViewer_UNUSED({ scopeItems }: { scopeItems: ScopeItem[] }) {
   );
 }
 
+// ── FormSection — a bordered, labeled section wrapper used to group the
+// Create/Edit Work Order drawers into the same named blocks (Work Order
+// Information / Work Items / Payment Terms / Bank Details / Notes &
+// Attachments) as the reference layout, without touching what's inside.
+function FormSection({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div style={{ border: "1px solid #E5E7EB", borderRadius: 10, padding: "16px 18px 4px", marginBottom: 16 }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: "#9ba3b8", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 14 }}>
+        {title}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+// Read-only bank-details panel shown alongside Payment Terms in the Create/
+// Edit drawers — sourced live from the selected contractor/consultant record,
+// never independently editable per work order.
+function BankDetailsPanel({ vendorCode, contractType, contractorsList, consultantsList }: {
+  vendorCode?: string;
+  contractType?: string;
+  contractorsList: Contractor[];
+  consultantsList: Consultant[];
+}) {
+  const isProfessionalServices = contractType === "professional-services";
+  const party = isProfessionalServices
+    ? consultantsList.find(c => c.consultantCode === vendorCode)
+    : contractorsList.find(c => c.vendorCode === vendorCode);
+
+  if (!party) {
+    return (
+      <FormSection title={`Bank Details (${isProfessionalServices ? "Consultant" : "Contractor"})`}>
+        <div style={{ fontSize: 13, color: "#9ba3b8", paddingBottom: 14 }}>
+          Select a {isProfessionalServices ? "consultant" : "vendor"} above to see their bank details.
+        </div>
+      </FormSection>
+    );
+  }
+  const rows: [string, string | undefined][] = [
+    ["Account Holder Name", party.accountHolderName],
+    ["Bank Name", party.bankName],
+    ["Account Number", party.accountNumber],
+    ["IFSC Code", party.ifscCode],
+    ["Branch", party.branchName],
+  ];
+  return (
+    <FormSection title={`Bank Details (${isProfessionalServices ? "Consultant" : "Contractor"})`}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10, paddingBottom: 14 }}>
+        {rows.map(([label, value]) => (
+          <div key={label} style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 13 }}>
+            <span style={{ color: "#9ba3b8" }}>{label}</span>
+            <span style={{ fontWeight: 600, color: "#1a1f2e", fontFamily: label.includes("Number") || label.includes("IFSC") ? "monospace" : undefined }}>
+              {value || "—"}
+            </span>
+          </div>
+        ))}
+      </div>
+    </FormSection>
+  );
+}
+
 // ── WOFormFields ──────────────────────────────────────────────
 
 function WOFormFields({
@@ -2113,6 +2175,7 @@ export default function WorkItems() {
   const editGstPercent   = (Form.useWatch("gstPercent", editForm)   as number | undefined) ?? 18;
   const createContractType = (Form.useWatch("contractType", createForm) as string | undefined) ?? "execution";
   const editContractType   = (Form.useWatch("contractType", editForm)   as string | undefined) ?? "execution";
+  const createVendorCode = Form.useWatch("vendorCode", createForm) as string | undefined;
 
   // ── Load all data ─────────────────────────────────────────────
   // Each fetch settles independently — one endpoint failing (e.g. a role
@@ -3237,23 +3300,25 @@ export default function WorkItems() {
         }
         destroyOnClose
       >
-        <Form form={createForm} layout="vertical" initialValues={{ status: "draft" }}>
-          <WOFormFields
-            form={createForm}
-            nextWONo={nextWONo}
-            nextCWONo={nextCWONo}
-            contractorsList={contractors}
-            consultantsList={consultants}
-            projectsList={projects}
-            categoriesList={apiCategories}
-            companiesList={companies}
-            driList={driList}
-            preparedByName={user?.name}
-            preparedByContact={user?.email}
-            onExtracted={applyAiExtraction}
-          />
-        </Form>
-        <div style={{ borderTop: "1px solid #E5E7EB", marginTop: 16, paddingTop: 16 }}>
+        <FormSection title="Work Order Information">
+          <Form form={createForm} layout="vertical" initialValues={{ status: "draft" }}>
+            <WOFormFields
+              form={createForm}
+              nextWONo={nextWONo}
+              nextCWONo={nextCWONo}
+              contractorsList={contractors}
+              consultantsList={consultants}
+              projectsList={projects}
+              categoriesList={apiCategories}
+              companiesList={companies}
+              driList={driList}
+              preparedByName={user?.name}
+              preparedByContact={user?.email}
+              onExtracted={applyAiExtraction}
+            />
+          </Form>
+        </FormSection>
+        <FormSection title="Work Items">
           {createContractType === "professional-services" ? (
             <DeliverablesBuilder
               items={createScopeItems}
@@ -3270,27 +3335,39 @@ export default function WorkItems() {
               gstPercent={createGstPercent}
             />
           )}
+        </FormSection>
+        <div style={{ display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
+          <div style={{ flex: "2 1 420px", minWidth: 0 }}>
+            <FormSection title="Payment Terms">
+              <PaymentMilestonesBuilder
+                items={createMilestones}
+                onChange={setCreateMilestones}
+                contractValue={calcTotalAmt(createScopeItems)}
+                contractValueInclGst={calcTotalInclGst(createScopeItems)}
+                discount={createDiscount}
+                onDiscountChange={setCreateDiscount}
+              />
+            </FormSection>
+          </div>
+          <div style={{ flex: "1 1 260px", minWidth: 260 }}>
+            <BankDetailsPanel
+              vendorCode={createVendorCode}
+              contractType={createContractType}
+              contractorsList={contractors}
+              consultantsList={consultants}
+            />
+          </div>
         </div>
-        <div style={{ borderTop: "1px solid #E5E7EB", marginTop: 16, paddingTop: 16 }}>
-          <PaymentMilestonesBuilder
-            items={createMilestones}
-            onChange={setCreateMilestones}
-            contractValue={calcTotalAmt(createScopeItems)}
-            contractValueInclGst={calcTotalInclGst(createScopeItems)}
-            discount={createDiscount}
-            onDiscountChange={setCreateDiscount}
-          />
-        </div>
-        <div style={{ borderTop: "1px solid #E5E7EB", marginTop: 16, paddingTop: 16 }}>
+        <FormSection title="Security Deposit & Terms">
           <SecurityDepositBuilder
             items={createSecurityDeposits}
             onChange={setCreateSecurityDeposits}
             scopeItems={createScopeItems.map(si => ({ id: si.id, description: si.description, plannedQty: si.plannedQty, amount: calcDraftItemAmt(si) }))}
           />
-        </div>
-        <div style={{ borderTop: "1px solid #E5E7EB", marginTop: 16, paddingTop: 16 }}>
-          <WarrantyTermsBuilder items={createWarranty} onChange={setCreateWarranty} />
-        </div>
+          <div style={{ borderTop: "1px solid #E5E7EB", marginTop: 16, paddingTop: 16 }}>
+            <WarrantyTermsBuilder items={createWarranty} onChange={setCreateWarranty} />
+          </div>
+        </FormSection>
       </Drawer>
 
       {/* ── Edit Drawer ───────────────────────────────────────── */}
@@ -3333,23 +3410,25 @@ export default function WorkItems() {
         }
         destroyOnClose
       >
-        <Form form={editForm} layout="vertical">
-          <WOFormFields
-            form={editForm}
-            isEdit
-            nextWONo={nextWONo}
-            nextCWONo={nextCWONo}
-            contractorsList={contractors}
-            consultantsList={consultants}
-            projectsList={projects}
-            categoriesList={apiCategories}
-            companiesList={companies}
-            driList={driList}
-            preparedByName={currentEditWO?.preparedByName}
-            preparedByContact={currentEditWO?.preparedByContact}
-          />
-        </Form>
-        <div style={{ borderTop: "1px solid #E5E7EB", marginTop: 16, paddingTop: 16 }}>
+        <FormSection title="Work Order Information">
+          <Form form={editForm} layout="vertical">
+            <WOFormFields
+              form={editForm}
+              isEdit
+              nextWONo={nextWONo}
+              nextCWONo={nextCWONo}
+              contractorsList={contractors}
+              consultantsList={consultants}
+              projectsList={projects}
+              categoriesList={apiCategories}
+              companiesList={companies}
+              driList={driList}
+              preparedByName={currentEditWO?.preparedByName}
+              preparedByContact={currentEditWO?.preparedByContact}
+            />
+          </Form>
+        </FormSection>
+        <FormSection title="Work Items">
           {editContractType === "professional-services" ? (
             <DeliverablesBuilder
               items={editScopeItems}
@@ -3366,8 +3445,8 @@ export default function WorkItems() {
               gstPercent={editGstPercent}
             />
           )}
-        </div>
-        <div style={{ borderTop: "1px solid #E5E7EB", marginTop: 16, paddingTop: 16 }}>
+        </FormSection>
+        <FormSection title="Payment Terms">
           <PaymentMilestonesBuilder
             items={editMilestones}
             onChange={setEditMilestones}
@@ -3376,17 +3455,17 @@ export default function WorkItems() {
             discount={editDiscount}
             onDiscountChange={setEditDiscount}
           />
-        </div>
-        <div style={{ borderTop: "1px solid #E5E7EB", marginTop: 16, paddingTop: 16 }}>
+        </FormSection>
+        <FormSection title="Security Deposit & Terms">
           <SecurityDepositBuilder
             items={editSecurityDeposits}
             onChange={setEditSecurityDeposits}
             scopeItems={editScopeItems.map(si => ({ id: si.id, description: si.description, plannedQty: si.plannedQty, amount: calcDraftItemAmt(si) }))}
           />
-        </div>
-        <div style={{ borderTop: "1px solid #E5E7EB", marginTop: 16, paddingTop: 16 }}>
-          <WarrantyTermsBuilder items={editWarranty} onChange={setEditWarranty} />
-        </div>
+          <div style={{ borderTop: "1px solid #E5E7EB", marginTop: 16, paddingTop: 16 }}>
+            <WarrantyTermsBuilder items={editWarranty} onChange={setEditWarranty} />
+          </div>
+        </FormSection>
       </Drawer>
 
       {/* ── Progress Drawer ──────────────────────────────────── */}
