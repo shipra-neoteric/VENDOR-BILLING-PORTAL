@@ -47,6 +47,8 @@ export interface PrintableBill {
   advanceRecovery?: number;
   tdsPercent?: number;
   tdsAmount?: number;
+  adjustmentAmount?: number;
+  adjustmentRemark?: string;
   remarks?: string;
   status: BillStatus | string;
   agmApprovedBy?: PrintableBillUser | null;
@@ -225,6 +227,9 @@ export function printBill(
     </div>${tds > 0 ? `
     <div style="display:flex;justify-content:space-between;padding:9px 14px;border-bottom:1px solid #eee;color:#dc2626">
       <span>Less: TDS Deducted${bill.tdsPercent ? ` (${bill.tdsPercent}%)` : ""}</span><span>− ₹${tds.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+    </div>` : ""}${(bill.adjustmentAmount ?? 0) !== 0 ? `
+    <div style="display:flex;justify-content:space-between;padding:9px 14px;border-bottom:1px solid #eee;color:${(bill.adjustmentAmount ?? 0) > 0 ? "#16a34a" : "#dc2626"}">
+      <span>Adjustment${bill.adjustmentRemark ? ` (${bill.adjustmentRemark})` : ""}</span><span>${(bill.adjustmentAmount ?? 0) > 0 ? "+" : "−"} ₹${Math.abs(bill.adjustmentAmount ?? 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
     </div>` : ""}${retRel > 0 ? `
     <div style="display:flex;justify-content:space-between;padding:9px 14px;border-bottom:1px solid #eee;color:#0369a1;font-weight:600">
       <span>Hold / Retention Released${bill.retentionReleaseRemark ? ` (${bill.retentionReleaseRemark})` : ""}</span><span>+ ₹${retRel.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>

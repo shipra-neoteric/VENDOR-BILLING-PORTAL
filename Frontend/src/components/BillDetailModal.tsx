@@ -48,6 +48,8 @@ export interface BillDetailRequest {
     retentionAmount?: number;
     advanceRecovery?: number;
     gstPercent?: number;
+    adjustmentAmount?: number;
+    adjustmentRemark?: string;
     paymentUTR?: string;
   };
   milestoneAchieved?: boolean;
@@ -220,6 +222,12 @@ export default function BillDetailModal({
                   <div className="flex justify-between text-red-600 dark:text-red-400">
                     <span>Less: TDS Deducted</span>
                     <span>− {fmt(tdsAmt)}</span>
+                  </div>
+                )}
+                {(b.adjustmentAmount ?? 0) !== 0 && (
+                  <div className={`flex justify-between ${(b.adjustmentAmount ?? 0) > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
+                    <span>Adjustment{b.adjustmentRemark ? ` (${b.adjustmentRemark})` : ""}</span>
+                    <span>{(b.adjustmentAmount ?? 0) > 0 ? "+" : "−"} {fmt(Math.abs(b.adjustmentAmount ?? 0))}</span>
                   </div>
                 )}
                 {paid != null && (

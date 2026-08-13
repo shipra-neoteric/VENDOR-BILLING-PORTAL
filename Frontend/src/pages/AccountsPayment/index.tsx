@@ -12,6 +12,7 @@ import {
   InputNumber,
   Popconfirm,
   Row,
+  Segmented,
   Select,
   Space,
   Spin,
@@ -36,12 +37,12 @@ import {
   PauseCircleOutlined,
   PrinterOutlined,
   SafetyCertificateOutlined,
-  SearchOutlined,
   SendOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 import type { Dayjs } from "dayjs";
 import PageShell from "../../components/PageShell";
+import { SearchFilter } from "../../ui/Filters";
 import apiClient from "../../services/apiClient";
 import DateRangeFilter, { inDateRange } from "../../components/DateRangeFilter";
 import { selectableProjects } from "../../utils/projectOptions";
@@ -119,6 +120,8 @@ interface Bill {
   l2ApprovedBy?: BillUser | null;
   l2ApprovedAt?: string;
   tdsAmount?: number;
+  adjustmentAmount?: number;
+  adjustmentRemark?: string;
   approvalHistory?: ApprovalHistoryEntry[];
   holdBy?: BillUser | null;
   holdAt?: string;
@@ -532,6 +535,13 @@ export default function AccountsPayment() {
   const [verifyTdsAmount, setVerifyTdsAmount]   = useState(0);
   const [verifyRemarks, setVerifyRemarks]       = useState("");
   const [verifySaving, setVerifySaving]         = useState(false);
+  // Optional one-off correction to net payable — e.g. clawing back a small
+  // overpayment from a prior cycle. Stored/sent as a single signed amount;
+  // the sign toggle just controls which way verifyAdjustmentMagnitude counts.
+  const [verifyAdjustmentSign, setVerifyAdjustmentSign] = useState<"add" | "subtract">("subtract");
+  const [verifyAdjustmentMagnitude, setVerifyAdjustmentMagnitude] = useState<number | null>(null);
+  const [verifyAdjustmentRemark, setVerifyAdjustmentRemark] = useState("");
+  const verifyAdjustmentAmount = (verifyAdjustmentMagnitude || 0) * (verifyAdjustmentSign === "subtract" ? -1 : 1);
 
   // L1 AGM / L2 Director — pure approve-and-forward.
   const [l1Remarks, setL1Remarks] = useState("");
@@ -665,6 +675,10 @@ export default function AccountsPayment() {
     setVerifyTdsPercent(drawerBill.tdsPercent ?? 1);
     setVerifyTdsAmount(drawerBill.tdsAmount ?? 0);
     setVerifyRemarks("");
+    const priorAdjustment = drawerBill.adjustmentAmount ?? 0;
+    setVerifyAdjustmentSign(priorAdjustment < 0 ? "subtract" : "add");
+    setVerifyAdjustmentMagnitude(priorAdjustment !== 0 ? Math.abs(priorAdjustment) : null);
+    setVerifyAdjustmentRemark(drawerBill.adjustmentRemark || "");
     setL1Remarks("");
     setL2Remarks("");
 
@@ -737,11 +751,17 @@ export default function AccountsPayment() {
 
   async function handleVerify() {
     if (!drawerBillId) return;
+    if (verifyAdjustmentAmount !== 0 && !verifyAdjustmentRemark.trim()) {
+      message.error("A remark is required when adjusting the net payable amount");
+      return;
+    }
     setVerifySaving(true);
     try {
       const res = await apiClient.patch<{ bill: Record<string, unknown> }>(`/bills/${drawerBillId}/verify`, {
         tdsPercent: verifyTdsPercent,
         tdsAmount:  verifyTdsAmount,
+        adjustmentAmount: verifyAdjustmentAmount,
+        adjustmentRemark: verifyAdjustmentAmount !== 0 ? verifyAdjustmentRemark.trim() : undefined,
         remarks: verifyRemarks || undefined,
       });
       updateBillInList(normalizeId(res.data.bill) as unknown as Bill);
@@ -1047,7 +1067,53 @@ export default function AccountsPayment() {
                 />
               </Col>
             </Row>
-            <Input.TextArea rows={2} style={{ marginTop: 8 }} placeholder="Remarks (optional)" value={verifyRemarks} onChange={(e) => setVerifyRemarks(e.target.value)} />
+
+            <Divider style={{ margin: "14px 0 10px" }} />
+            <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 8 }}>
+              <strong style={{ color: "#374151" }}>Adjustment (optional)</strong> — correct the net payable for something
+              outside Hold/Advance/GST/TDS, e.g. clawing back a small overpayment from a previous bill.
+            </div>
+            <Row gutter={12} align="bottom">
+              <Col span={8}>
+                <div style={{ fontSize: 11, color: "#9CA3AF", marginBottom: 4 }}>Direction</div>
+                <Segmented
+                  value={verifyAdjustmentSign}
+                  onChange={(v) => setVerifyAdjustmentSign(v as "add" | "subtract")}
+                  options={[
+                    { label: "− Subtract", value: "subtract" },
+                    { label: "+ Add", value: "add" },
+                  ]}
+                  style={{ width: "100%" }}
+                />
+              </Col>
+              <Col span={8}>
+                <div style={{ fontSize: 11, color: "#9CA3AF", marginBottom: 4 }}>Amount (₹)</div>
+                <InputNumber
+                  style={{ width: "100%" }} min={0} placeholder="0"
+                  value={verifyAdjustmentMagnitude}
+                  onChange={(v) => setVerifyAdjustmentMagnitude(v == null ? null : Number(v))}
+                />
+              </Col>
+              <Col span={8}>
+                {!!verifyAdjustmentMagnitude && (
+                  <div style={{ fontSize: 12, color: verifyAdjustmentSign === "subtract" ? "#DC2626" : "#16A34A", fontWeight: 700 }}>
+                    {verifyAdjustmentSign === "subtract" ? "−" : "+"}{fmt(verifyAdjustmentMagnitude)}
+                  </div>
+                )}
+              </Col>
+            </Row>
+            {!!verifyAdjustmentMagnitude && (
+              <Input
+                style={{ marginTop: 8 }}
+                placeholder='Remark — required, e.g. "₹250 overpaid on RA-0198, recovering now"'
+                value={verifyAdjustmentRemark}
+                onChange={(e) => setVerifyAdjustmentRemark(e.target.value)}
+                status={!verifyAdjustmentRemark.trim() ? "warning" : undefined}
+              />
+            )}
+
+            <Divider style={{ margin: "14px 0 10px" }} />
+            <Input.TextArea rows={2} placeholder="Remarks (optional)" value={verifyRemarks} onChange={(e) => setVerifyRemarks(e.target.value)} />
           </div>
         );
       }
@@ -1227,13 +1293,10 @@ export default function AccountsPayment() {
 
       {/* Filter row */}
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16, alignItems: "center" }}>
-        <Input
-          allowClear
-          prefix={<SearchOutlined style={{ color: "#9CA3AF" }} />}
+        <SearchFilter
           placeholder="Search by bill no, vendor, work order, project…"
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          style={{ width: 300, borderRadius: 8 }}
+          onChange={setSearch}
         />
         <DateRangeFilter onChange={(from, to) => { setDateFrom(from); setDateTo(to); }} />
         <Select
@@ -1491,13 +1554,16 @@ export default function AccountsPayment() {
               const retRel   = bill.retentionReleased ?? 0;
               const tdsPctDisplay = isVerifyStage ? verifyTdsPercent : bill.tdsPercent;
               const tdsAmt = isVerifyStage ? verifyTdsAmount : (bill.tdsAmount ?? 0);
+              const adjAmt = isVerifyStage ? verifyAdjustmentAmount : (bill.adjustmentAmount ?? 0);
+              const adjRemark = isVerifyStage ? verifyAdjustmentRemark : (bill.adjustmentRemark || "");
 
               // Hold comes off the gross first (it's a deposit against the
               // contractor's own basic value, not the GST); GST is then calculated
               // on what's left. Net Payable is the true bottom line — Hold,
               // Advance Recovery, and TDS all land above it now, not after it.
+              // Adjustment (a manual Verify-time correction) lands last, after TDS.
               const { gstAmount: gstAmt, netPayable: finalNetPayable } = billFinancials({
-                gross, gstPercent: gstPct, retentionAmount: retAmt, advanceRecovery: advRec, tdsAmount: tdsAmt,
+                gross, gstPercent: gstPct, retentionAmount: retAmt, advanceRecovery: advRec, tdsAmount: tdsAmt, adjustmentAmount: adjAmt,
               });
               const retReleaseRemark = bill.retentionReleaseRemark;
 
@@ -1509,6 +1575,7 @@ export default function AccountsPayment() {
               if (advRec > 0) rows.push({ label: "Less: Advance Recovery", value: `− ${fmt(advRec)}`, color: "#d97706" });
               if (gstAmt > 0) rows.push({ label: `GST @ ${gstPct}%`, value: `+ ${fmt(gstAmt)}`, color: "#16a85a" });
               if (tdsAmt > 0) rows.push({ label: `Less: TDS Deducted${tdsPctDisplay ? ` (${tdsPctDisplay}%)` : ""}`, value: `− ${fmt(tdsAmt)}`, color: "#dc2626" });
+              if (adjAmt !== 0) rows.push({ label: `Adjustment${adjRemark ? ` (${adjRemark})` : ""}`, value: `${adjAmt > 0 ? "+" : "−"} ${fmt(Math.abs(adjAmt))}`, color: adjAmt > 0 ? "#16a85a" : "#dc2626" });
               rows.push({ label: "NET PAYABLE", value: fmt(finalNetPayable), color: "#7c3aed", bold: true, borderTop: true });
               if (retRel > 0) rows.push({ label: `Hold Released${retReleaseRemark ? ` (${retReleaseRemark})` : ""}`, value: `+ ${fmt(retRel)}`, color: "#0369a1", bold: false });
               if (paid != null) rows.push({ label: "ACTUALLY PAID", value: fmt(paid), color: "#16a85a", bold: true, borderTop: true, bg: "#f0fdf4" });

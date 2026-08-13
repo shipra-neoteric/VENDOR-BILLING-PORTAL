@@ -145,6 +145,19 @@ const runningBillSchema = new mongoose.Schema(
     l2ApprovedAt:   { type: Date },
 
     tdsAmount:   { type: Number, default: 0 },
+
+    // A one-off manual correction to net payable, set at Verify alongside
+    // TDS — e.g. clawing back a small overpayment from a prior bill cycle,
+    // or adding back a shortfall. Signed: positive adds to net payable,
+    // negative subtracts. adjustmentRemark is required whenever this is
+    // non-zero (enforced in verifyBill), since an unexplained deviation from
+    // the computed net payable is exactly what a reviewer needs to justify.
+    // Like tdsAmount/tdsPercent/remarks at this same stage, a re-verify after
+    // being sent back overwrites the previous value rather than accumulating
+    // — this corrects THIS bill's payout, it isn't a running ledger.
+    adjustmentAmount: { type: Number, default: 0 },
+    adjustmentRemark: { type: String, default: '' },
+
     rejectedBy:  { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     rejectReason:{ type: String },
 

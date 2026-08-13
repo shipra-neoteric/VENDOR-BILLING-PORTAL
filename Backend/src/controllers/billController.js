@@ -283,16 +283,28 @@ exports.verifyBill = asyncHandler(async (req, res) => {
     return badRequest(res, `Cannot verify a bill with status '${bill.status}'`);
   }
 
-  const before = { tdsPercent: bill.tdsPercent, tdsAmount: bill.tdsAmount };
+  const adjustmentAmount = req.body.adjustmentAmount != null ? Number(req.body.adjustmentAmount) : 0;
+  if (adjustmentAmount !== 0 && !String(req.body.adjustmentRemark || '').trim()) {
+    return badRequest(res, 'A remark is required when adjusting the net payable amount');
+  }
+
+  const before = { tdsPercent: bill.tdsPercent, tdsAmount: bill.tdsAmount, adjustmentAmount: bill.adjustmentAmount };
   if (req.body.tdsPercent != null) bill.tdsPercent = Number(req.body.tdsPercent);
   if (req.body.tdsAmount  != null) bill.tdsAmount  = Number(req.body.tdsAmount);
-  const amountChanges = diffFields(before, { tdsPercent: bill.tdsPercent, tdsAmount: bill.tdsAmount }, ['tdsPercent', 'tdsAmount']);
+  bill.adjustmentAmount = adjustmentAmount;
+  bill.adjustmentRemark = adjustmentAmount !== 0 ? String(req.body.adjustmentRemark).trim() : '';
+  const amountChanges = diffFields(before, { tdsPercent: bill.tdsPercent, tdsAmount: bill.tdsAmount, adjustmentAmount: bill.adjustmentAmount }, ['tdsPercent', 'tdsAmount', 'adjustmentAmount']);
 
   bill.status         = 'verify-done';
   bill.verificationBy = req.user._id;
   bill.verificationAt = new Date();
   if (req.body.remarks) bill.remarks = req.body.remarks;
-  pushHistory(bill, 'verify', 'done', req.user._id, req.body.remarks);
+  pushHistory(
+    bill, 'verify', 'done', req.user._id,
+    adjustmentAmount !== 0
+      ? `${req.body.remarks || ''} [Adjustment ${adjustmentAmount > 0 ? '+' : ''}₹${adjustmentAmount}: ${bill.adjustmentRemark}]`.trim()
+      : req.body.remarks
+  );
   await bill.save();
   await bill.populate('verificationBy', 'name role');
   await advanceBillRequestInstance(bill, req.user._id, 'Verified');

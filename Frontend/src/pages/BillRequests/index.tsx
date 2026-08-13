@@ -67,7 +67,7 @@ interface BillRequest {
   status: "pending" | "pending-gm" | "approved" | "rejected";
   rejectReason?: string;
   requestedBy?: { name: string; email: string };
-  billId?: { billNo: string; status: string; amount: number; paidAmount?: number; retentionPercent?: number; retentionAmount?: number; advanceRecovery?: number; gstPercent?: number; tdsAmount?: number; paymentDate?: string; paymentMode?: string; paymentUTR?: string; paymentBank?: string; paymentReleasedBy?: string };
+  billId?: { billNo: string; status: string; amount: number; paidAmount?: number; retentionPercent?: number; retentionAmount?: number; advanceRecovery?: number; gstPercent?: number; tdsAmount?: number; adjustmentAmount?: number; adjustmentRemark?: string; paymentDate?: string; paymentMode?: string; paymentUTR?: string; paymentBank?: string; paymentReleasedBy?: string };
   milestoneAchieved?: boolean;
   milestoneDate?: string;
   createdAt: string;
@@ -486,6 +486,7 @@ export default function BillRequests() {
                     {gstAmt > 0 && <div className="flex justify-between text-emerald-600 dark:text-emerald-400"><span>GST @ {b.gstPercent}%</span><span>+ {fmt(gstAmt)}</span></div>}
                     <div className="flex justify-between border-t border-emerald-300 dark:border-emerald-500/30 pt-1 mt-0.5 font-bold"><span>Net Payable</span><span>{fmt(netPay)}</span></div>
                     {tdsAmt > 0 && <div className="flex justify-between text-red-600 dark:text-red-400"><span>Less: TDS Deducted</span><span>− {fmt(tdsAmt)}</span></div>}
+                    {(b.adjustmentAmount ?? 0) !== 0 && <div className={`flex justify-between ${(b.adjustmentAmount ?? 0) > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}><span>Adjustment{b.adjustmentRemark ? ` (${b.adjustmentRemark})` : ""}</span><span>{(b.adjustmentAmount ?? 0) > 0 ? "+" : "−"} {fmt(Math.abs(b.adjustmentAmount ?? 0))}</span></div>}
                     {paid != null && <div className="flex justify-between font-bold text-emerald-600 dark:text-emerald-400 text-[13px] mt-1 border-t border-emerald-300 dark:border-emerald-500/30 pt-1"><span>Actually Paid</span><span>{fmt(paid)}</span></div>}
                   </div>
                   {viewReq.milestoneAchieved && viewReq.milestoneDate && (

@@ -11,6 +11,12 @@ export interface BillFinancialsInput {
   retentionAmount?: number;
   advanceRecovery?: number;
   tdsAmount?: number;
+  // A one-off manual correction applied at Verify — e.g. clawing back a
+  // small overpayment from a prior cycle, or adding back a shortfall.
+  // Signed: positive adds to net payable, negative subtracts. Applied last
+  // (after TDS), since it corrects the actual payout figure itself rather
+  // than any of the upstream taxable-value steps.
+  adjustmentAmount?: number;
 }
 
 export interface BillFinancials {
@@ -29,12 +35,12 @@ function round2(n: number): number {
 }
 
 export function billFinancials({
-  gross, gstPercent = 0, retentionAmount = 0, advanceRecovery = 0, tdsAmount = 0,
+  gross, gstPercent = 0, retentionAmount = 0, advanceRecovery = 0, tdsAmount = 0, adjustmentAmount = 0,
 }: BillFinancialsInput): BillFinancials {
   const netBeforeGst = round2(gross - retentionAmount - advanceRecovery);
   const gstAmount    = round2(netBeforeGst * gstPercent / 100);
   const netAfterHold = round2(netBeforeGst + gstAmount);
-  const netPayable   = round2(netAfterHold - tdsAmount);
+  const netPayable   = round2(netAfterHold - tdsAmount + adjustmentAmount);
   return { gstAmount, netBeforeGst, netAfterHold, netPayable };
 }
 

@@ -16,9 +16,13 @@ function netPayable(bill) {
   const netBeforeGst = (bill.amount || 0) - (bill.retentionAmount || 0) - (bill.advanceRecovery || 0);
   const gstAmount     = netBeforeGst * (bill.gstPercent ?? 0) / 100;
   const netAfterHold  = netBeforeGst + gstAmount;
+  // adjustmentAmount is a one-off manual correction set at Verify (e.g.
+  // clawing back a prior small overpayment) — signed, applied last, same as
+  // Frontend/src/shared/utils/billMath.ts's billFinancials.
+  const beforeAdjustment = netAfterHold - (bill.tdsAmount || 0);
   // Rounded to paise (2 decimals), not the nearest whole rupee — see
   // Frontend/src/shared/utils/billMath.ts's round2 for why.
-  return Math.round((netAfterHold - (bill.tdsAmount || 0)) * 100) / 100;
+  return Math.round((beforeAdjustment + (bill.adjustmentAmount || 0)) * 100) / 100;
 }
 
 async function sendBill(bill, contractor) {
@@ -43,6 +47,8 @@ async function sendBill(bill, contractor) {
       retentionAmount: bill.retentionAmount || 0,
       advanceRecovery: bill.advanceRecovery || 0,
       tdsAmount: bill.tdsAmount || 0,
+      adjustmentAmount: bill.adjustmentAmount || 0,
+      adjustmentRemark: bill.adjustmentAmount ? (bill.adjustmentRemark || '') : '',
       netPayable: netPayable(bill),
     },
     billDate: bill.billDate,
