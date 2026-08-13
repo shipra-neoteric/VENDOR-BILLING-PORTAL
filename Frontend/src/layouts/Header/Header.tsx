@@ -1,13 +1,13 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Dropdown, Tooltip, message } from "antd";
+import { Dropdown, message } from "antd";
 import type { MenuProps } from "antd";
-import { LogoutOutlined, SwapOutlined, RollbackOutlined, MenuOutlined } from "@ant-design/icons";
+import { LogOut, ArrowLeftRight, Undo2, Menu } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import type { AuthUser } from "../../context/AuthContext";
-import { useTheme } from "../../context/ThemeContext";
 import apiClient from "../../services/apiClient";
 import { useIsMobile } from "../../hooks/useIsMobile";
+import ThemeToggle from "../../ui/ThemeToggle";
 
 // Stashes the Owner's own session while they're impersonating someone else,
 // so "Back to Admin" is instant and doesn't need another login.
@@ -21,7 +21,6 @@ interface HeaderProps {
 
 export default function Header({ onToggleSidebar }: HeaderProps) {
   const { user, token, logout, setSession } = useAuth();
-  const { isDark, toggleTheme } = useTheme();
   const navigate = useNavigate();
   const isMobile = useIsMobile();
 
@@ -89,12 +88,12 @@ export default function Header({ onToggleSidebar }: HeaderProps) {
   const menuItems: MenuProps["items"] = [
     ...(isImpersonating ? [{
       key: "back-to-admin",
-      icon: <RollbackOutlined />,
+      icon: <Undo2 className="w-4 h-4" />,
       label: `Back to Admin (${stashedAdmin!.user.name})`,
     }] : []),
     ...(canSwitch && otherUsers.length > 0 ? [{
       key: "switch-account",
-      icon: <SwapOutlined />,
+      icon: <ArrowLeftRight className="w-4 h-4" />,
       label: "Switch Account",
       children: otherUsers.map(u => ({
         key: `switch-${u._id}`,
@@ -106,7 +105,7 @@ export default function Header({ onToggleSidebar }: HeaderProps) {
       })),
     }] : []),
     ...(isImpersonating || (canSwitch && otherUsers.length > 0) ? [{ type: "divider" as const }] : []),
-    { key: "logout", icon: <LogoutOutlined />, label: "Sign out", danger: true },
+    { key: "logout", icon: <LogOut className="w-4 h-4" />, label: "Sign out", danger: true },
   ];
 
   const onMenuClick: MenuProps["onClick"] = ({ key }) => {
@@ -117,46 +116,22 @@ export default function Header({ onToggleSidebar }: HeaderProps) {
 
   return (
     <div
-      className="px-3 md:px-6"
-      style={{
-        height: 64,
-        background: "var(--nx-header-bg)",
-        borderBottom: "1px solid var(--nx-border)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        position: "sticky",
-        top: 0,
-        zIndex: 100,
-      }}
+      className="mt-3 mx-3 px-3 md:px-6 h-16 rounded-xl bg-white/80 dark:bg-gray-800/90 backdrop-blur-md shadow-sm border border-gray-200/50 dark:border-gray-700/50 flex items-center justify-between sticky top-3 z-[100]"
     >
       {/* Left: Hamburger (collapses the sidebar on any screen size) + Logo + Module name */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
         <button
           onClick={onToggleSidebar}
           aria-label="Toggle menu"
-          style={{
-            width: 36,
-            height: 36,
-            borderRadius: 8,
-            border: "1px solid var(--nx-border)",
-            background: "transparent",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: 17,
-            color: "var(--nx-text)",
-            cursor: "pointer",
-            flexShrink: 0,
-          }}
+          className="w-9 h-9 rounded-lg border border-gray-200/70 dark:border-gray-700/50 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700/50 transition-colors shrink-0"
         >
-          <MenuOutlined />
+          <Menu className="w-4.5 h-4.5" />
         </button>
         <div
           style={{
             width: 36,
             height: 36,
-            background: "#FF7A00",
+            background: "var(--nx-orange)",
             borderRadius: 8,
             display: "flex",
             alignItems: "center",
@@ -185,32 +160,13 @@ export default function Header({ onToggleSidebar }: HeaderProps) {
       {/* Right: Theme toggle + User */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
         {isImpersonating && !isMobile && (
-          <span style={{ background: "#FFF4E8", border: "1px solid #FED7AA", color: "#FF7A00", fontWeight: 600, fontSize: 11, padding: "4px 10px", borderRadius: 20, whiteSpace: "nowrap" }}>
+          <span style={{ background: "var(--nx-orange-50)", border: "1px solid #FED7AA", color: "var(--nx-orange)", fontWeight: 600, fontSize: 11, padding: "4px 10px", borderRadius: 20, whiteSpace: "nowrap" }}>
             Viewing as {user?.name}
           </span>
         )}
 
         {/* Dark / light toggle */}
-        <Tooltip title={isDark ? "Switch to light mode" : "Switch to dark mode"}>
-          <button
-            onClick={toggleTheme}
-            style={{
-              width: 34,
-              height: 34,
-              borderRadius: 8,
-              border: "1px solid var(--nx-border)",
-              background: "transparent",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: 16,
-              transition: "background 0.15s ease, border-color 0.15s ease",
-            }}
-          >
-            {isDark ? "☀️" : "🌙"}
-          </button>
-        </Tooltip>
+        <ThemeToggle />
 
         {/* User dropdown */}
         <Dropdown
@@ -234,7 +190,7 @@ export default function Header({ onToggleSidebar }: HeaderProps) {
                 width: 36,
                 height: 36,
                 borderRadius: "50%",
-                background: "linear-gradient(135deg, #FF7A00 0%, #FF9A3C 100%)",
+                background: "linear-gradient(135deg, var(--nx-orange) 0%, var(--color-primary-light) 100%)",
                 boxShadow: "0 2px 6px rgba(255,122,0,0.35)",
                 color: "#fff",
                 display: "flex",

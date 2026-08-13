@@ -2,13 +2,13 @@ import type { ReactNode } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useIsMobile } from "../../hooks/useIsMobile";
 import {
-  LayoutOutlined, BankOutlined, ApartmentOutlined, TeamOutlined, TagsOutlined,
-  FileTextOutlined, LineChartOutlined, WalletOutlined,
-  AccountBookOutlined, UsergroupAddOutlined, MonitorOutlined,
-  ShareAltOutlined, SettingOutlined, ClockCircleOutlined, HistoryOutlined,
-  FileSearchOutlined, ScheduleOutlined, CreditCardOutlined,
-  NodeIndexOutlined, DiffOutlined, ReadOutlined, ClusterOutlined, EditOutlined,
-} from "@ant-design/icons";
+  LayoutDashboard, Landmark, Building2, Users, Tags,
+  FileText, LineChart, Wallet,
+  BookOpen, UserPlus, Monitor,
+  Share2, Settings, Clock, History,
+  FileSearch, CalendarClock, CreditCard,
+  Workflow, GitCompare, Ruler, Network, PenLine,
+} from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import type { PermEntry } from "../../context/AuthContext";
 
@@ -29,9 +29,9 @@ const ADMIN_GROUPS: NavGroup[] = [
   {
     label: "Overview",
     items: [
-      { name: "Dashboard",     path: "/dashboard",     icon: <LayoutOutlined />,       moduleId: "dashboard" },
-      { name: "MIS Dashboard", path: "/sla-dashboard",  icon: <ClockCircleOutlined />,  moduleId: "sla-dashboard" },
-      { name: "Projects",      path: "/projects",      icon: <ApartmentOutlined />,    moduleId: "projects" },
+      { name: "Dashboard",     path: "/dashboard",     icon: <LayoutDashboard className="w-4 h-4" />, moduleId: "dashboard" },
+      { name: "MIS Dashboard", path: "/sla-dashboard",  icon: <Clock className="w-4 h-4" />,  moduleId: "sla-dashboard" },
+      { name: "Projects",      path: "/projects",      icon: <Building2 className="w-4 h-4" />,    moduleId: "projects" },
     ],
   },
   {
@@ -40,13 +40,13 @@ const ADMIN_GROUPS: NavGroup[] = [
     // ?type=, same shared list page "Consultancy Orders" below also lands on.
     label: "Execution",
     items: [
-      { name: "Contractors",   path: "/contractors",   icon: <TeamOutlined />,         moduleId: "contractors" },
-      { name: "Vendor Groups", path: "/vendor-groups", icon: <ClusterOutlined />,      moduleId: "vendor-groups" },
-      { name: "Work Orders",   path: "/work-items?type=execution", icon: <FileTextOutlined />, moduleId: "work-orders" },
-      { name: "Quotation Comparison", path: "/quotation-comparison", icon: <DiffOutlined />, moduleId: "quotation-comparison" },
-      { name: "Work Progress", path: "/work-progress", icon: <LineChartOutlined />, moduleId: "work-progress" },
-      { name: "Daily Progress Report", path: "/daily-progress-report", icon: <ScheduleOutlined />, moduleId: "daily-progress-report" },
-      { name: "Drawing Requests", path: "/drawing-requests", icon: <EditOutlined />, moduleId: "drawing-requests" },
+      { name: "Contractors",   path: "/contractors",   icon: <Users className="w-4 h-4" />,         moduleId: "contractors" },
+      { name: "Vendor Groups", path: "/vendor-groups", icon: <Network className="w-4 h-4" />,      moduleId: "vendor-groups" },
+      { name: "Work Orders",   path: "/work-items?type=execution", icon: <FileText className="w-4 h-4" />, moduleId: "work-orders" },
+      { name: "Quotation Comparison", path: "/quotation-comparison", icon: <GitCompare className="w-4 h-4" />, moduleId: "quotation-comparison" },
+      { name: "Work Progress", path: "/work-progress", icon: <LineChart className="w-4 h-4" />, moduleId: "work-progress" },
+      { name: "Daily Progress Report", path: "/daily-progress-report", icon: <CalendarClock className="w-4 h-4" />, moduleId: "daily-progress-report" },
+      { name: "Drawing Requests", path: "/drawing-requests", icon: <PenLine className="w-4 h-4" />, moduleId: "drawing-requests" },
     ],
   },
   {
@@ -55,39 +55,39 @@ const ADMIN_GROUPS: NavGroup[] = [
     // "Work Orders" above, pre-filtered to professional-services via ?type=.
     label: "Professional Services",
     items: [
-      { name: "Consultants",        path: "/consultants",   icon: <ReadOutlined />,     moduleId: "consultants" },
-      { name: "Consultancy Orders", path: "/work-items?type=professional-services", icon: <FileTextOutlined />, moduleId: "work-orders" },
+      { name: "Consultants",        path: "/consultants",   icon: <Ruler className="w-4 h-4" />,     moduleId: "consultants" },
+      { name: "Consultancy Orders", path: "/work-items?type=professional-services", icon: <FileText className="w-4 h-4" />, moduleId: "work-orders" },
     ],
   },
   {
     label: "Billing",
     items: [
-      { name: "Site Progress",      path: "/site-progress",    icon: <FileSearchOutlined />,   moduleId: "bill-review" },
-      { name: "Billing",            path: "/billing",          icon: <CreditCardOutlined />,   moduleId: "billing" },
-      { name: "Accounts Payment",   path: "/accounts-payment", icon: <WalletOutlined />,       moduleId: "accounts-payment" },
-      { name: "Procurement Tracker", path: "/procurement-tracker", icon: <NodeIndexOutlined />, moduleId: "procurement-tracker" },
-      { name: "Ledger",             path: "/ledger",           icon: <AccountBookOutlined />,  moduleId: "ledger" },
-      { name: "Advance Payments",   path: "/advance-payments", icon: <BankOutlined />,         moduleId: "advance-payments" },
+      { name: "Site Progress",      path: "/site-progress",    icon: <FileSearch className="w-4 h-4" />,   moduleId: "bill-review" },
+      { name: "Billing",            path: "/billing",          icon: <CreditCard className="w-4 h-4" />,   moduleId: "billing" },
+      { name: "Accounts Payment",   path: "/accounts-payment", icon: <Wallet className="w-4 h-4" />,       moduleId: "accounts-payment" },
+      { name: "Procurement Tracker", path: "/procurement-tracker", icon: <Workflow className="w-4 h-4" />, moduleId: "procurement-tracker" },
+      { name: "Ledger",             path: "/ledger",           icon: <BookOpen className="w-4 h-4" />,  moduleId: "ledger" },
+      { name: "Advance Payments",   path: "/advance-payments", icon: <Landmark className="w-4 h-4" />,         moduleId: "advance-payments" },
     ],
   },
   {
     label: "Admin",
     items: [
-      { name: "Companies",          path: "/companies",     icon: <BankOutlined />,           moduleId: "companies" },
-      { name: "Categories",         path: "/categories",    icon: <TagsOutlined />,           moduleId: "categories" },
-      { name: "DRI Work Dashboard", path: "/dri-dashboard", icon: <MonitorOutlined />,        moduleId: "dri-dashboard" },
-      { name: "Public Forms",       path: "/public-forms",  icon: <ShareAltOutlined />,        moduleId: "public-forms" },
-      { name: "Audit Logs",         path: "/audit-logs",    icon: <HistoryOutlined />,         moduleId: "audit-logs" },
-      { name: "Users",              path: "/users",         icon: <UsergroupAddOutlined />,   moduleId: "user-management" },
-      { name: "SLA Settings",       path: "/sla-settings",  icon: <SettingOutlined />,         moduleId: "sla-settings" },
+      { name: "Companies",          path: "/companies",     icon: <Landmark className="w-4 h-4" />,           moduleId: "companies" },
+      { name: "Categories",         path: "/categories",    icon: <Tags className="w-4 h-4" />,           moduleId: "categories" },
+      { name: "DRI Work Dashboard", path: "/dri-dashboard", icon: <Monitor className="w-4 h-4" />,        moduleId: "dri-dashboard" },
+      { name: "Public Forms",       path: "/public-forms",  icon: <Share2 className="w-4 h-4" />,        moduleId: "public-forms" },
+      { name: "Audit Logs",         path: "/audit-logs",    icon: <History className="w-4 h-4" />,         moduleId: "audit-logs" },
+      { name: "Users",              path: "/users",         icon: <UserPlus className="w-4 h-4" />,   moduleId: "user-management" },
+      { name: "SLA Settings",       path: "/sla-settings",  icon: <Settings className="w-4 h-4" />,         moduleId: "sla-settings" },
     ],
   },
 ];
 
 const DRI_OWN_ITEMS: NavItem[] = [
-  { name: "Dashboard", path: "/dri-home", icon: <LayoutOutlined />, moduleId: "dashboard" },
-  { name: "Project Wise Progress", path: "/work-progress", icon: <LineChartOutlined />, moduleId: "work-progress" },
-  { name: "Daily Progress Report", path: "/daily-progress-report", icon: <ScheduleOutlined />, moduleId: "daily-progress-report" },
+  { name: "Dashboard", path: "/dri-home", icon: <LayoutDashboard className="w-4 h-4" />, moduleId: "dashboard" },
+  { name: "Project Wise Progress", path: "/work-progress", icon: <LineChart className="w-4 h-4" />, moduleId: "work-progress" },
+  { name: "Daily Progress Report", path: "/daily-progress-report", icon: <CalendarClock className="w-4 h-4" />, moduleId: "daily-progress-report" },
 ];
 
 // ── Permission helpers ─────────────────────────────────────────────────────────
@@ -201,30 +201,24 @@ export default function Sidebar({ open = false, onClose }: SidebarProps) {
       )}
       <div
         data-testid="app-sidebar"
+        className="flex flex-col overflow-y-auto overflow-x-hidden flex-shrink-0 bg-white/90 dark:bg-gray-800/95 backdrop-blur-xl border border-gray-100 dark:border-gray-700/50 rounded-xl shadow-sm"
         style={{
-          width: collapsed ? 72 : 260,
-          background: "var(--nx-sidebar-bg)",
-          borderRight: "1px solid var(--nx-sidebar-border)",
-          height: "100vh",
-          display: "flex",
-          flexDirection: "column",
-          overflowY: "auto",
-          overflowX: "hidden",
-          flexShrink: 0,
-          boxShadow: "2px 0 8px rgba(0,0,0,0.04)",
-          transition: "width 0.18s ease",
+          width: isMobile ? 320 : collapsed ? 80 : 256,
+          maxWidth: isMobile ? "85vw" : undefined,
+          height: "calc(100vh - 24px)",
+          transition: isMobile ? "transform 0.2s ease" : "width 0.18s ease",
           ...(isMobile
             ? {
                 position: "fixed",
-                top: 0,
-                left: 0,
+                top: 12,
+                left: 12,
                 zIndex: 50,
-                transition: "transform 0.2s ease",
-                transform: open ? "translateX(0)" : "translateX(-100%)",
+                transform: open ? "translateX(0)" : "translateX(calc(-100% - 24px))",
               }
             : {
                 position: "sticky",
-                top: 0,
+                top: 12,
+                marginLeft: 12,
               }),
         }}
       >
@@ -234,7 +228,7 @@ export default function Sidebar({ open = false, onClose }: SidebarProps) {
           <div
             style={{
               width: 40, height: 40,
-              background: "linear-gradient(135deg, #FF7A00 0%, #FF9A3C 100%)",
+              background: "linear-gradient(135deg, var(--nx-orange) 0%, var(--color-primary-light) 100%)",
               borderRadius: 11,
               display: "flex", alignItems: "center", justifyContent: "center",
               fontWeight: 900, fontSize: 20, color: "#fff",
@@ -316,7 +310,7 @@ export default function Sidebar({ open = false, onClose }: SidebarProps) {
                         style={{
                           width: 6, height: 6,
                           borderRadius: "50%",
-                          background: "#FF7A00",
+                          background: "var(--nx-orange)",
                           flexShrink: 0,
                         }}
                       />

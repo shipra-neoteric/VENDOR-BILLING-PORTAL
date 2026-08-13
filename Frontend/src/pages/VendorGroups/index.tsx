@@ -8,6 +8,7 @@ import type { Contractor, Project, VendorGroup } from "../../types/VendorBilling
 import PageHeader from "../../ui/PageHeader";
 import Btn from "../../ui/Btn";
 import Card from "../../ui/Card";
+import EmptyState from "../../ui/EmptyState";
 import Badge from "../../ui/Badge";
 import Field from "../../ui/Field";
 import SField from "../../ui/SField";
@@ -175,10 +176,14 @@ export default function VendorGroups() {
       {loading ? (
         <Card padded={false} className="p-4"><SkeletonTable rows={5} cols={3} /></Card>
       ) : groups.length === 0 ? (
-        <Card className="text-center py-14 text-gray-400">
-          <Users className="w-9 h-9 mx-auto mb-3" />
-          <div className="font-bold text-gray-600 dark:text-gray-300">No vendor groups yet</div>
-          <div className="text-sm mt-1">Click "New Vendor Group" to create one, then add members from inside it.</div>
+        <Card padded={false}>
+          <EmptyState
+            icon={Users}
+            title="No vendor groups yet"
+            message='Click "New Vendor Group" to create one, then add members from inside it.'
+            actionLabel="New Vendor Group"
+            onAction={() => { setGroupName(""); setCreateOpen(true); }}
+          />
         </Card>
       ) : (
         <Table>

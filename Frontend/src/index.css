@@ -13,6 +13,12 @@
    variable here since @theme values must be static. */
 @theme {
   --color-primary: #FF7A00;
+  /* Same lighter/darker shades already used for the logo gradient and hover
+     states elsewhere in this file/Sidebar/Header — registered here too so
+     `bg-primary-light`/`text-primary-dark` etc. are real Tailwind utilities,
+     instead of every consumer inventing its own shade of the brand color. */
+  --color-primary-light: #FF9A3C;
+  --color-primary-dark: #E56E00;
 }
 
 :root {

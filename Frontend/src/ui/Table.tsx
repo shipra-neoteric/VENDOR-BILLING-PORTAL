@@ -2,7 +2,7 @@ import type { ReactNode, HTMLAttributes, ThHTMLAttributes, TdHTMLAttributes } fr
 
 export function Table({ children, className = "", ...rest }: HTMLAttributes<HTMLTableElement>) {
   return (
-    <div className="w-full overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700/40">
+    <div className="w-full overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700/40">
       <table className={["w-full border-collapse text-sm", className].join(" ")} {...rest}>
         {children}
       </table>

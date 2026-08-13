@@ -28,7 +28,6 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   PlusOutlined,
   EditOutlined,
-  EyeOutlined,
   LinkOutlined,
   DeleteOutlined,
   DownOutlined,
@@ -36,17 +35,20 @@ import {
   ExclamationCircleOutlined,
   HistoryOutlined,
   FilePdfOutlined,
-  MoreOutlined,
-  StopOutlined,
   LockOutlined,
   UnlockOutlined,
   ThunderboltOutlined,
 } from "@ant-design/icons";
+import {
+  Plus, Pencil, Eye, Paperclip, Trash2, Ban, Lock, Unlock, AlertTriangle,
+  MoreHorizontal, FileText, ClipboardList, BarChart3,
+} from "lucide-react";
 import dayjs from "dayjs";
 import type { Dayjs } from "dayjs";
 
 import PageShell from "../../components/PageShell";
 import apiClient from "../../services/apiClient";
+import { SearchFilter } from "../../ui/Filters";
 import { useAuth } from "../../context/AuthContext";
 import type { AuthUser } from "../../context/AuthContext";
 import { useCategories } from "../../hooks/useCategories";
@@ -2101,9 +2103,9 @@ export default function WorkItems() {
 
   function CategoryBadge({ cat }: { cat?: string }) {
     if (!cat) return null;
-    const { color, bg } = getCatColor(cat);
+    const { color } = getCatColor(cat);
     return (
-      <span style={{ background: bg, color, border: `1px solid ${color}30`, borderRadius: 5, padding: "2px 8px", fontSize: 11, fontWeight: 600, whiteSpace: "nowrap" }}>
+      <span style={{ color, fontSize: 12, fontWeight: 600, whiteSpace: "nowrap" }}>
         {cat}
       </span>
     );
@@ -2702,7 +2704,7 @@ export default function WorkItems() {
     {
       title: "WO No",
       dataIndex: "workOrderNo",
-      width: 120,
+      width: 100,
       render: (t: string, record: WorkOrder) => (
         <span
           onClick={e => { e.stopPropagation(); navigate(`/work-items/${record.id}`); }}
@@ -2715,12 +2717,13 @@ export default function WorkItems() {
     {
       title: "Date",
       dataIndex: "issueDate",
-      width: 110,
+      width: 95,
       render: (d: string) => dayjs(d).format("DD MMM YYYY"),
     },
     {
       title: "Project",
       dataIndex: "projectName",
+      width: 150,
       render: (name: string, wo: WorkOrder) => (
         <div>
           <div>{name}</div>
@@ -2733,24 +2736,24 @@ export default function WorkItems() {
     {
       title: "Category",
       dataIndex: "category",
-      width: 140,
+      width: 125,
       render: (cat: string) => <CategoryBadge cat={cat} />,
     },
     {
       title: "Vendor Code",
       dataIndex: "vendorCode",
-      width: 110,
+      width: 95,
       render: (t: string) => (
-        <span style={{ fontFamily: "monospace", background: "#eff4ff", color: "#2563eb", padding: "2px 7px", borderRadius: 4, fontSize: 12, fontWeight: 600 }}>
+        <span style={{ fontFamily: "monospace", color: "#2563eb", fontSize: 12, fontWeight: 600 }}>
           {t}
         </span>
       ),
     },
-    { title: "Company Name", dataIndex: "vendorName" },
+    { title: "Company Name", dataIndex: "vendorName", width: 140 },
     {
       title: "Contract Value",
       dataIndex: "contractValue",
-      width: 140,
+      width: 125,
       render: (v: number) =>
         v ? (
           <span style={{ fontFamily: "monospace", color: "#f37916", fontWeight: 600 }}>{fmt(v)}</span>
@@ -2759,29 +2762,9 @@ export default function WorkItems() {
         ),
     },
     {
-      title: "Progress",
-      width: 140,
-      render: (_: unknown, record: WorkOrder) => {
-        const items = record.scopeItems || [];
-        if (items.length === 0) return <span style={{ color: "#9ba3b8" }}>—</span>;
-        const done    = items.filter(it => it.status === "completed").length;
-        const running = items.filter(it => it.status === "running").length;
-        const pct     = Math.round((done / items.length) * 100);
-        return (
-          <div>
-            <div style={{ fontSize: 11, color: "#5a6278", marginBottom: 3 }}>
-              {done}/{items.length} items done
-              {running > 0 && <span style={{ color: "#f37916", marginLeft: 4 }}>{running} running</span>}
-            </div>
-            <Progress percent={pct} size="small" strokeColor="#16a85a" trailColor="#f0f0f0" showInfo={false} />
-          </div>
-        );
-      },
-    },
-    {
       title: "Status",
       dataIndex: "status",
-      width: 170,
+      width: 110,
       render: (s: WorkOrderStatus, record: WorkOrder) => {
         const delays = countDelays(record);
         return (
@@ -2791,14 +2774,14 @@ export default function WorkItems() {
               <Tag color={STATUS_CFG[s]?.color} style={{ fontSize: 11 }}>{STATUS_CFG[s]?.label ?? s}</Tag>
               {record.isLocked && (
                 <Tooltip title="Rates, scope items, milestones, and contract value are locked">
-                  <Tag color="gold" icon={<LockOutlined />} style={{ fontSize: 11, cursor: "default" }}>
+                  <Tag color="gold" icon={<Lock className="w-3 h-3" style={{ display: "inline" }} />} style={{ fontSize: 11, cursor: "default" }}>
                     Locked
                   </Tag>
                 </Tooltip>
               )}
               {delays > 0 && (
                 <Tooltip title={`${delays} scope item${delays > 1 ? "s" : ""} past their planned end date`}>
-                  <Tag color="red" icon={<ExclamationCircleOutlined />} style={{ fontSize: 11, cursor: "default" }}>
+                  <Tag color="red" icon={<AlertTriangle className="w-3 h-3" style={{ display: "inline" }} />} style={{ fontSize: 11, cursor: "default" }}>
                     {delays} overdue
                   </Tag>
                 </Tooltip>
@@ -2811,12 +2794,12 @@ export default function WorkItems() {
     {
       title: "Created At",
       dataIndex: "createdAt",
-      width: 110,
+      width: 95,
       render: (d: string) => d ? dayjs(d).format("DD MMM YYYY") : <span style={{ color: "#9ba3b8" }}>—</span>,
     },
     {
       title: "Created By",
-      width: 130,
+      width: 90,
       render: (_: unknown, record: WorkOrder) => {
         const cb = record.createdBy;
         const name = cb && typeof cb === "object" ? cb.name : undefined;
@@ -2825,21 +2808,21 @@ export default function WorkItems() {
     },
     {
       title: "Actions",
-      width: 110,
+      width: 105,
       render: (_: unknown, record: WorkOrder) => {
         const docCount = getWorkOrderDocuments(record).length;
         const canCancel = record.status !== "cancelled" && record.status !== "completed";
         const menuItems: MenuProps["items"] = [
-          { key: "edit", label: "Edit", icon: <EditOutlined />, disabled: record.isLocked, ...(record.isLocked ? { title: "Locked — unlock to edit" } : {}) },
-          { key: "pdf-hindi", label: "Download PDF (Hindi)", icon: <FilePdfOutlined /> },
-          ...(docCount > 0 ? [{ key: "doc", label: `Documents (${docCount})`, icon: <LinkOutlined /> }] : []),
+          { key: "edit", label: "Edit", icon: <Pencil className="w-3.5 h-3.5" />, disabled: record.isLocked, ...(record.isLocked ? { title: "Locked — unlock to edit" } : {}) },
+          { key: "pdf-hindi", label: "Download PDF (Hindi)", icon: <FileText className="w-3.5 h-3.5" /> },
+          ...(docCount > 0 ? [{ key: "doc", label: `Documents (${docCount})`, icon: <Paperclip className="w-3.5 h-3.5" /> }] : []),
           ...(isOwner ? [{
             key: "lock-toggle",
             label: record.isLocked ? "Unlock Work Order" : "Lock Work Order",
-            icon: record.isLocked ? <UnlockOutlined /> : <LockOutlined />,
+            icon: record.isLocked ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />,
           }] : []),
-          ...(canCancel ? [{ key: "cancel", label: "Cancel Work Order", icon: <StopOutlined />, danger: true }] : []),
-          ...(isOwner ? [{ key: "delete", label: "Delete", icon: <DeleteOutlined />, danger: true }] : []),
+          ...(canCancel ? [{ key: "cancel", label: "Cancel Work Order", icon: <Ban className="w-3.5 h-3.5" />, danger: true }] : []),
+          ...(isOwner ? [{ key: "delete", label: "Delete", icon: <Trash2 className="w-3.5 h-3.5" />, danger: true }] : []),
         ];
         const onMenuClick: MenuProps["onClick"] = ({ key }) => {
           if (key === "edit") {
@@ -2872,7 +2855,7 @@ export default function WorkItems() {
                 <Button
                   type="text"
                   size="small"
-                  icon={<EyeOutlined />}
+                  icon={<Eye className="w-4 h-4" />}
                   onClick={() => { setSelectedWOId(record.id); setDrawerOpen(true); }}
                 />
               </Tooltip>
@@ -2881,15 +2864,13 @@ export default function WorkItems() {
                   type="text"
                   size="small"
                   loading={pdfLoading}
+                  icon={<FileText className="w-4 h-4" />}
                   onClick={() => handleDownloadPDF(record)}
-                  style={{ fontSize: 16 }}
-                >
-                  📄
-                </Button>
+                />
               </Tooltip>
               {menuItems.length > 0 && (
                 <Dropdown menu={{ items: menuItems, onClick: onMenuClick }} trigger={["click"]}>
-                  <Button type="text" size="small" icon={<MoreOutlined />} />
+                  <Button type="text" size="small" icon={<MoreHorizontal className="w-4 h-4" />} />
                 </Dropdown>
               )}
             </Space>
@@ -2917,7 +2898,7 @@ export default function WorkItems() {
       cta={
         <Button
           type="primary"
-          icon={<PlusOutlined />}
+          icon={<Plus className="w-4 h-4" />}
           size="large"
           onClick={() => {
             createForm.resetFields();
@@ -2940,6 +2921,10 @@ export default function WorkItems() {
         </Button>
       }
     >
+      {/* Entire list surface — tabs, filters and the table itself — in one glass-panel
+          shell, matching the app's sidebar/header treatment. Only the table body
+          scrolls internally (via Table's own `scroll.y`); everything above it stays put. */}
+      <div className="bg-white/90 dark:bg-gray-800/95 backdrop-blur-xl border border-gray-100 dark:border-gray-700/50 rounded-xl shadow-sm p-5">
       {/* ── Tabs ────────────────────────────────────────────── */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10, marginBottom: 12 }}>
         <PillTabs
@@ -2983,12 +2968,10 @@ export default function WorkItems() {
       >
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           {/* Search */}
-          <Input.Search
+          <SearchFilter
             placeholder="Search by WO No, project, vendor…"
             value={search}
-            onChange={e => setSearch(e.target.value)}
-            allowClear
-            style={{ width: 260 }}
+            onChange={setSearch}
           />
 
           {/* Status */}
@@ -3116,7 +3099,7 @@ export default function WorkItems() {
         )}
       </div>
 
-      {/* Table */}
+      {/* Table — the only internally-scrollable region; header/pagination stay fixed via antd's own scroll.y */}
       {viewMode === "list" ? (
         <div style={{ background: "var(--nx-white)", border: "1px solid #E5E7EB", borderRadius: 10, overflow: "hidden" }}>
           <Spin spinning={loadingData}>
@@ -3129,11 +3112,11 @@ export default function WorkItems() {
                 style: { cursor: "pointer" },
               })}
               pagination={{ pageSize: 10, showSizeChanger: false }}
-              scroll={{ x: 1300 }}
+              scroll={{ x: 1230, y: 440 }}
               locale={{
                 emptyText: loadingData ? " " : (
                   <div style={{ padding: "40px 20px", color: "#9CA3AF", textAlign: "center" }}>
-                    <div style={{ fontSize: 28, marginBottom: 10 }}>📋</div>
+                    <ClipboardList className="w-7 h-7 mx-auto mb-2.5 text-gray-300" />
                     <div style={{ fontWeight: 600, color: "#374151" }}>No work orders yet</div>
                     <div style={{ fontSize: 12, marginTop: 4 }}>
                       Click "New Work Order" to create your first one.
@@ -3151,7 +3134,7 @@ export default function WorkItems() {
               rowKey="key"
               dataSource={monthlyReport}
               pagination={false}
-              scroll={{ x: 1100 }}
+              scroll={{ x: 1100, y: 440 }}
               summary={() => (
                 <Table.Summary fixed>
                   <Table.Summary.Row style={{ background: "#FFF8F3", fontWeight: 700 }}>
@@ -3181,7 +3164,7 @@ export default function WorkItems() {
               locale={{
                 emptyText: loadingData ? " " : (
                   <div style={{ padding: "40px 20px", color: "#9CA3AF", textAlign: "center" }}>
-                    <div style={{ fontSize: 28, marginBottom: 10 }}>📊</div>
+                    <BarChart3 className="w-7 h-7 mx-auto mb-2.5 text-gray-300" />
                     <div style={{ fontWeight: 600, color: "#374151" }}>No work orders match the current filters</div>
                   </div>
                 ),
@@ -3190,6 +3173,7 @@ export default function WorkItems() {
           </Spin>
         </div>
       )}
+      </div>
 
       {/* ── View Drawer ──────────────────────────────────────── */}
       <Drawer

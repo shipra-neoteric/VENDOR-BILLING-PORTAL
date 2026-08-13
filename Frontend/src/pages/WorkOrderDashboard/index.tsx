@@ -1,9 +1,7 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import {
-  Button, Spin, Empty, message,
-} from "antd";
-import { ArrowLeftOutlined, TrophyFilled } from "@ant-design/icons";
+import toast from "react-hot-toast";
+import { ArrowLeft, Trophy, Check, X, ClipboardList, TrendingUp, CheckCircle2, Clock } from "lucide-react";
 import dayjs from "dayjs";
 import apiClient from "../../services/apiClient";
 import { useAuth } from "../../context/AuthContext";
@@ -12,6 +10,14 @@ import WorkOrderApprovalWorkflow, {
   type ActorRef, type ApprovalStatus, type ApprovalHistoryEntry,
 } from "../../components/WorkOrderApprovalWorkflow";
 import { billFinancials } from "../../shared/utils/billMath";
+import Spinner from "../../ui/Spinner";
+import EmptyState from "../../ui/EmptyState";
+import KPICard from "../../ui/KPICard";
+import Segmented from "../../ui/Segmented";
+import Card from "../../ui/Card";
+import Btn from "../../ui/Btn";
+import Badge from "../../ui/Badge";
+import { Table, Thead, Tbody, Tr, Th, Td, TdText } from "../../ui/Table";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface ProgressEntry { _id: string; date: string; qtyAdded: number; remarks?: string; }
@@ -136,27 +142,33 @@ function StageStepper({ stage }: { stage: BillRequestStage }) {
     },
   ];
 
-  const CIRCLE = 30;
-
   return (
-    <div style={{ margin: "14px 0 12px", padding: "12px 14px", background: "var(--nx-fill-2)", borderRadius: 10, border: "1px solid var(--nx-border)" }}>
-      <div style={{ fontSize: 10, fontWeight: 700, color: "var(--nx-text-muted)", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 12 }}>
+    <div className="my-3.5 px-3.5 py-3 rounded-lg border border-gray-200 dark:border-gray-700/40 bg-gray-50 dark:bg-gray-800/40">
+      <div className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">
         Stage Lifecycle
       </div>
 
       {/* Circles + connectors row */}
-      <div style={{ display: "flex", alignItems: "center" }}>
+      <div className="flex items-center">
         {steps.map((step, i) => {
           const c = STEP_COLORS[step.status];
           return (
-            <div key={i} style={{ display: "flex", alignItems: "center", flex: i < steps.length - 1 ? 1 : "none" }}>
-              <div style={{ width: CIRCLE, height: CIRCLE, borderRadius: "50%", background: c.bg, border: `2.5px solid ${c.ring}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 13, fontWeight: 800, color: c.ring, transition: "all 0.2s" }}>
-                {step.status === "completed" ? "✓"
-                 : step.status === "rejected" ? "✕"
-                 : <span style={{ fontSize: 11 }}>{i + 1}</span>}
+            <div key={i} className={`flex items-center ${i < steps.length - 1 ? "flex-1" : ""}`}>
+              <div
+                className="w-[30px] h-[30px] rounded-full flex items-center justify-center shrink-0 text-[13px] font-extrabold transition-all"
+                style={{ background: c.bg, border: `2.5px solid ${c.ring}`, color: c.ring }}
+              >
+                {step.status === "completed" ? <Check className="w-3.5 h-3.5" />
+                 : step.status === "rejected" ? <X className="w-3.5 h-3.5" />
+                 : <span className="text-[11px]">{i + 1}</span>}
               </div>
               {i < steps.length - 1 && (
-                <div style={{ flex: 1, height: 2.5, borderRadius: 2, background: steps[i + 1].status !== "pending" ? "#16a34a" : "var(--nx-border)", margin: "0 2px" }} />
+                <div
+                  className="flex-1 h-[2.5px] rounded mx-0.5"
+                  style={{ background: steps[i + 1].status !== "pending" ? "#16a34a" : undefined }}
+                >
+                  {steps[i + 1].status === "pending" && <div className="h-full rounded bg-gray-200 dark:bg-gray-700" />}
+                </div>
               )}
             </div>
           );
@@ -164,11 +176,11 @@ function StageStepper({ stage }: { stage: BillRequestStage }) {
       </div>
 
       {/* Labels row — one cell per step, same width allocation as above */}
-      <div style={{ display: "flex", marginTop: 6 }}>
+      <div className="flex mt-1.5">
         {steps.map((step, i) => (
-          <div key={i} style={{ flex: i < steps.length - 1 ? 1 : "none", minWidth: CIRCLE, textAlign: "center" }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: STEP_COLORS[step.status].text, lineHeight: 1.2 }}>{step.label}</div>
-            <div style={{ fontSize: 9, color: STEP_COLORS[step.status].text, opacity: 0.8, lineHeight: 1.2 }}>{step.sub}</div>
+          <div key={i} className={`text-center min-w-[30px] ${i < steps.length - 1 ? "flex-1" : ""}`}>
+            <div className="text-[10px] font-bold leading-tight" style={{ color: STEP_COLORS[step.status].text }}>{step.label}</div>
+            <div className="text-[9px] leading-tight opacity-80" style={{ color: STEP_COLORS[step.status].text }}>{step.sub}</div>
           </div>
         ))}
       </div>
@@ -185,6 +197,8 @@ const STAGE_STATUS: Record<string, { icon: string; color: string; label: string;
   rejected: { icon: "❌", color: "#ef4444", label: "Rejected",            bg: "#fef2f2" },
 };
 
+type TabKey = "items" | "milestones" | "bills" | "progress";
+
 // ── Component ─────────────────────────────────────────────────────────────────
 export default function WorkOrderDashboard() {
   const { id } = useParams<{ id: string }>();
@@ -196,7 +210,7 @@ export default function WorkOrderDashboard() {
   const [stages,  setStages]  = useState<BillRequestStage[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const [activeTab,       setActiveTab]       = useState<"items" | "milestones" | "bills" | "progress">("items");
+  const [activeTab,       setActiveTab]       = useState<TabKey>("items");
   const [viewBill,        setViewBill]        = useState<BillDetailRequest | null>(null);
 
   const load = async () => {
@@ -209,7 +223,7 @@ export default function WorkOrderDashboard() {
       setWO(woRes.data.workOrder);
       setStages(brRes.data.billRequests ?? []);
     } catch {
-      message.error("Failed to load dashboard data");
+      toast.error("Failed to load dashboard data");
     } finally {
       setLoading(false);
     }
@@ -217,8 +231,8 @@ export default function WorkOrderDashboard() {
 
   useEffect(() => { load(); }, [id]);
 
-  if (loading) return <div style={{ display: "flex", justifyContent: "center", padding: 80 }}><Spin size="large" /></div>;
-  if (!wo) return <Empty description="Work order not found." style={{ padding: 80 }} />;
+  if (loading) return <div className="flex justify-center py-20"><Spinner size="large" /></div>;
+  if (!wo) return <div className="py-20"><EmptyState title="Work order not found." /></div>;
 
   const isProfessionalServices = wo.contractType === "professional-services";
 
@@ -244,455 +258,432 @@ export default function WorkOrderDashboard() {
   ).sort((a, b) => dayjs(b.date).valueOf() - dayjs(a.date).valueOf());
 
   const woStatus = wo.status === "cancelled" ? "Cancelled" : wo.status === "in-progress" ? "In Progress" : wo.status === "completed" ? "Completed" : wo.status === "issued" ? "Issued" : "Draft";
-  const woStatusColor = wo.status === "cancelled" ? "#dc2626" : wo.status === "in-progress" ? "#f59e0b" : wo.status === "completed" ? "#16a34a" : "#6B7280";
+  const woStatusColor: "red" | "amber" | "green" | "gray" = wo.status === "cancelled" ? "red" : wo.status === "in-progress" ? "amber" : wo.status === "completed" ? "green" : "gray";
+  const progressTint: "green" | "amber" | "blue" = avgPct >= 100 ? "green" : avgPct > 50 ? "amber" : "blue";
 
   return (
-    <div style={{ maxWidth: 1100, margin: "0 auto", padding: "24px" }}>
-      {/* Back + Header */}
-      <div style={{ marginBottom: 20 }}>
-        <Button type="text" icon={<ArrowLeftOutlined />} onClick={() => navigate("/work-items")}
-          style={{ color: "#6B7280", marginBottom: 10, paddingLeft: 0 }}>
-          Work Orders
-        </Button>
-        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
-          <div>
-            <div style={{ fontSize: 24, fontWeight: 800, color: "#111827" }}>
-              {wo.workOrderNo}
-              <span style={{ marginLeft: 12, fontSize: 12, fontWeight: 600, color: woStatusColor, background: "#F9FAFB", border: `1px solid ${woStatusColor}`, borderRadius: 20, padding: "2px 10px" }}>
-                {woStatus}
-              </span>
-              {wo.isLocked && (
-                <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 600, color: "#B45309", background: "#FFFBEB", border: "1px solid #B45309", borderRadius: 20, padding: "2px 10px" }}>
-                  🔒 Locked
-                </span>
-              )}
-            </div>
-            <div style={{ fontSize: 14, color: "#6B7280", marginTop: 4 }}>
-              {wo.projectName} · {wo.category}{wo.subCategory ? ` › ${wo.subCategory}` : ""}
-            </div>
-            <div style={{ fontSize: 13, color: "#9CA3AF", marginTop: 2 }}>
-              Contractor: {wo.vendorName} · Issued: {fmtDate(wo.issueDate)}
-            </div>
-          </div>
-        </div>
-        {wo.status === "cancelled" && (
-          <div style={{ marginTop: 14, background: "#FEF2F2", border: "1px solid #FCA5A5", borderRadius: 10, padding: "10px 14px" }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: "#dc2626", textTransform: "uppercase", letterSpacing: "0.05em" }}>Work Order Cancelled</div>
-            <div style={{ fontSize: 13, color: "#7f1d1d", marginTop: 2 }}>
-              {wo.cancelReason || "No remark provided"}
-              {wo.cancelledAt && <span style={{ color: "#b91c1c", marginLeft: 8 }}>({fmtDate(wo.cancelledAt)})</span>}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Live Workflow Screen — always-visible approval status, timeline & inline actions */}
-      <div style={{ marginBottom: 24 }}>
-        <WorkOrderApprovalWorkflow workOrder={wo} onUpdated={setWO} />
-      </div>
-
-      {/* Stats Cards */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 24 }}>
-        {/* Contract Value card — shows base + GST-inclusive */}
-        <div style={{ background: "var(--nx-white)", border: "1px solid #E5E7EB", borderRadius: 12, padding: "16px 18px" }}>
-          <div style={{ fontSize: 22, marginBottom: 8 }}>📋</div>
-          <div style={{ fontSize: 10, color: "#9CA3AF", textTransform: "uppercase", letterSpacing: "0.07em" }}>Contract Value</div>
-          <div style={{ fontSize: 20, fontWeight: 800, color: "#374151", marginTop: 4 }}>{fmtMoney(totalContract)}</div>
-          {(wo.gstPercent ?? 0) > 0 && (
-            <div style={{ marginTop: 6, paddingTop: 6, borderTop: "1px dashed #E5E7EB" }}>
-              <div style={{ fontSize: 10, color: "#9CA3AF" }}>+ GST @{wo.gstPercent}%</div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: "#FF7A00", marginTop: 2 }}>
-                {fmtMoney(Math.round(totalContract * (1 + (wo.gstPercent ?? 0) / 100)))} incl. GST
-              </div>
-            </div>
-          )}
-        </div>
-
-        {[
-          { label: "Overall Progress", value: `${avgPct}%`,           icon: "📊", color: avgPct >= 100 ? "#16a34a" : avgPct > 50 ? "#f59e0b" : "#3b82f6" },
-          { label: "Billed to Date",   value: fmtMoney(billedAmount), icon: "✅", color: "#16a34a" },
-          { label: "Unbilled Work",    value: fmtMoney(unbilledValue),icon: "⏳", color: unbilledValue > 0 ? "#FF7A00" : "#16a34a" },
-        ].map(({ label, value, icon, color }) => (
-          <div key={label} style={{ background: "var(--nx-white)", border: "1px solid #E5E7EB", borderRadius: 12, padding: "16px 18px" }}>
-            <div style={{ fontSize: 22, marginBottom: 8 }}>{icon}</div>
-            <div style={{ fontSize: 10, color: "#9CA3AF", textTransform: "uppercase", letterSpacing: "0.07em" }}>{label}</div>
-            <div style={{ fontSize: 20, fontWeight: 800, color, marginTop: 4 }}>{value}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* Tab switcher */}
-      <div style={{ display: "flex", gap: 4, background: "#F3F4F6", padding: 4, borderRadius: 12, marginBottom: 20, flexWrap: "wrap" }}>
-        {([
-          ["items",      "Items"],
-          ["milestones", "Milestones"],
-          ["bills",      "Bills"],
-          ["progress",   "Progress"],
-        ] as const).map(([key, label]) => (
+    <div className="max-w-[1100px] mx-auto p-6">
+      <Card padded={false} className="overflow-hidden flex flex-col">
+        {/* Back + Header */}
+        <div className="p-6 pb-0">
           <button
-            key={key}
             type="button"
-            onClick={() => setActiveTab(key)}
-            style={{
-              flex: "1 1 auto", border: "none", borderRadius: 9, padding: "8px 16px",
-              fontSize: 13, fontWeight: 700, cursor: "pointer", transition: "all 0.15s",
-              background: activeTab === key ? "#FF7A00" : "transparent",
-              color:      activeTab === key ? "#fff"    : "#6B7280",
-            }}
+            onClick={() => navigate("/work-items")}
+            className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 mb-2.5"
           >
-            {label}
+            <ArrowLeft className="w-4 h-4" /> Work Orders
           </button>
-        ))}
-      </div>
-
-      {/* Items tab — scope of work definition */}
-      {activeTab === "items" && (
-        <div style={{ background: "var(--nx-white)", border: "1px solid #E5E7EB", borderRadius: 12, overflow: "hidden", marginBottom: 24 }}>
-          <div style={{ padding: "16px 20px", borderBottom: "1px solid #E5E7EB", fontWeight: 700, fontSize: 15, color: "#111827" }}>
-            {isProfessionalServices ? "Deliverables" : "Scope of Work"}
+          <div className="flex items-start justify-between flex-wrap gap-2">
+            <div>
+              <div className="text-2xl font-extrabold text-[#1A1A2E] dark:text-[#F1F5F9] flex items-center gap-3 flex-wrap">
+                {wo.workOrderNo}
+                <Badge color={woStatusColor}>{woStatus}</Badge>
+                {wo.isLocked && <Badge color="amber">🔒 Locked</Badge>}
+              </div>
+              <div className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                {wo.projectName} · {wo.category}{wo.subCategory ? ` › ${wo.subCategory}` : ""}
+              </div>
+              <div className="text-[13px] text-gray-400 dark:text-gray-500 mt-0.5">
+                Contractor: {wo.vendorName} · Issued: {fmtDate(wo.issueDate)}
+              </div>
+            </div>
           </div>
-          {wo.scopeItems.length === 0 ? (
-            <div style={{ padding: 40 }}><Empty description={isProfessionalServices ? "No deliverables defined" : "No scope items defined"} /></div>
-          ) : (
-            <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                <thead>
-                  <tr style={{ background: "#F9FAFB" }}>
-                    {(isProfessionalServices
-                      ? ["Deliverable", "Stage", "Due Date", "Amount", "Status"]
-                      : ["Description", "Unit", "Planned Qty", "Rate", "Amount", "Status"]
-                    ).map(h => (
-                      <th key={h} style={{ padding: "9px 16px", fontSize: 11, fontWeight: 700, color: "#6B7280", textAlign: "left", textTransform: "uppercase", letterSpacing: "0.05em", borderBottom: "1px solid #E5E7EB", whiteSpace: "nowrap" }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {wo.scopeItems.map((si, i) => (
-                    <tr key={si._id} style={{ borderBottom: "1px solid #F3F4F6", background: i % 2 === 0 ? "#fff" : "#FAFAFA" }}>
-                      <td style={{ padding: "10px 16px", fontSize: 13, fontWeight: 600, color: "#111827" }}>{si.description}</td>
-                      {isProfessionalServices ? (
-                        <>
-                          <td style={{ padding: "10px 16px", fontSize: 12, color: "#6B7280" }}>{si.stage || "—"}</td>
-                          <td style={{ padding: "10px 16px", fontSize: 12, color: "#6B7280" }}>{fmtDate(si.plannedEnd)}</td>
-                        </>
-                      ) : (
-                        <>
-                          <td style={{ padding: "10px 16px", fontSize: 12, color: "#6B7280" }}>{si.unit}</td>
-                          <td style={{ padding: "10px 16px", fontFamily: "monospace", fontSize: 13, color: "#374151" }}>{fmtQty(si.plannedQty)}</td>
-                          <td style={{ padding: "10px 16px", fontFamily: "monospace", fontSize: 13, color: "#374151" }}>{fmtMoney(si.rate || 0)}</td>
-                        </>
-                      )}
-                      <td style={{ padding: "10px 16px", fontFamily: "monospace", fontSize: 13, fontWeight: 700, color: "#FF7A00" }}>{fmtMoney(si.amount || 0)}</td>
-                      <td style={{ padding: "10px 16px", fontSize: 12, color: "#6B7280", textTransform: "capitalize" }}>{si.status}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          {wo.status === "cancelled" && (
+            <div className="mt-3.5 rounded-lg border border-red-300 dark:border-red-500/30 bg-red-50 dark:bg-red-500/10 px-3.5 py-2.5">
+              <div className="text-xs font-bold text-red-600 dark:text-red-400 uppercase tracking-wide">Work Order Cancelled</div>
+              <div className="text-sm text-red-800 dark:text-red-300 mt-0.5">
+                {wo.cancelReason || "No remark provided"}
+                {wo.cancelledAt && <span className="text-red-700 dark:text-red-400 ml-2">({fmtDate(wo.cancelledAt)})</span>}
+              </div>
             </div>
           )}
         </div>
-      )}
 
-      {/* Bills tab — every bill generated for this work order */}
-      {activeTab === "bills" && (() => {
-        const bills = stages.filter(s => s.billId).map(s => ({ stage: s, bill: s.billId! }));
-        const openBill = (stage: BillRequestStage) => setViewBill({
-          _id: stage._id, reqNo: stage.reqNo, stageNo: stage.stageNo,
-          workOrderNo: wo.workOrderNo, projectName: wo.projectName, vendorName: wo.vendorName,
-          category: wo.category, subCategory: wo.subCategory ?? "",
-          items: stage.items, remarks: stage.remarks ?? "",
-          periodFrom: stage.periodFrom, periodTo: stage.periodTo,
-          status: stage.status, rejectReason: stage.rejectReason,
-          requestedBy: stage.requestedBy, billId: stage.billId ?? undefined,
-          milestoneAchieved: stage.milestoneAchieved, milestoneDate: stage.milestoneDate,
-          createdAt: stage.createdAt,
-        });
-        return (
-          <div style={{ background: "var(--nx-white)", border: "1px solid #E5E7EB", borderRadius: 12, overflow: "hidden", marginBottom: 24 }}>
-            <div style={{ padding: "16px 20px", borderBottom: "1px solid #E5E7EB", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div style={{ fontWeight: 700, fontSize: 15, color: "#111827" }}>Bills</div>
-              <div style={{ fontSize: 12, color: "#9CA3AF" }}>{bills.length} total</div>
-            </div>
-            {bills.length === 0 ? (
-              <div style={{ padding: 40 }}><Empty description="No bills generated yet." /></div>
-            ) : (
-              <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                  <thead>
-                    <tr style={{ background: "#F9FAFB" }}>
-                      {["Bill No", "Stage", "Bill Amount", "Status", "Amount Paid", "Payment Date", ""].map(h => (
-                        <th key={h} style={{ padding: "9px 16px", fontSize: 11, fontWeight: 700, color: "#6B7280", textAlign: "left", textTransform: "uppercase", letterSpacing: "0.05em", borderBottom: "1px solid #E5E7EB", whiteSpace: "nowrap" }}>{h}</th>
+        {/* Stats Cards */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 px-6 pt-5">
+          <KPICard
+            label="Contract Value"
+            value={fmtMoney(totalContract)}
+            icon={ClipboardList}
+            tint="gray"
+            sub={(wo.gstPercent ?? 0) > 0 ? (
+              <div className="pt-1.5 mt-1 border-t border-dashed border-gray-200 dark:border-gray-700/40">
+                <div className="text-[10px] text-gray-400 dark:text-gray-500">+ GST @{wo.gstPercent}%</div>
+                <div className="text-[13px] font-bold text-primary mt-0.5">
+                  {fmtMoney(Math.round(totalContract * (1 + (wo.gstPercent ?? 0) / 100)))} incl. GST
+                </div>
+              </div>
+            ) : undefined}
+          />
+          <KPICard label="Overall Progress" value={`${avgPct}%`} icon={TrendingUp} tint={progressTint} />
+          <KPICard label="Billed to Date" value={fmtMoney(billedAmount)} icon={CheckCircle2} tint="green" />
+          <KPICard
+            label="Unbilled Work" value={fmtMoney(unbilledValue)} icon={Clock}
+            tint={unbilledValue > 0 ? "orange" : "green"}
+          />
+        </div>
+
+        {/* Live Workflow Screen — always-visible approval status, timeline & inline actions */}
+        <div className="px-6 pt-5">
+          <WorkOrderApprovalWorkflow workOrder={wo} onUpdated={setWO} />
+        </div>
+
+        {/* Tab switcher */}
+        <div className="px-6 pt-5 pb-4">
+          <Segmented
+            value={activeTab}
+            onChange={setActiveTab}
+            options={[
+              { label: "Items", value: "items" },
+              { label: "Milestones", value: "milestones" },
+              { label: "Bills", value: "bills" },
+              { label: "Progress", value: "progress" },
+            ]}
+          />
+        </div>
+
+        {/* Tab content — the ONLY part of this page that scrolls; everything above stays put. */}
+        <div className="border-t border-gray-100 dark:border-gray-700/40 max-h-[55vh] overflow-y-auto">
+          {/* Items tab — scope of work definition */}
+          {activeTab === "items" && (
+            <>
+              <div className="px-6 py-4 font-bold text-[15px] text-[#1A1A2E] dark:text-[#F1F5F9]">
+                {isProfessionalServices ? "Deliverables" : "Scope of Work"}
+              </div>
+              {wo.scopeItems.length === 0 ? (
+                <EmptyState title={isProfessionalServices ? "No deliverables defined" : "No scope items defined"} />
+              ) : (
+                <div className="px-6 pb-5">
+                  <Table>
+                    <Thead>
+                      <Tr>
+                        {(isProfessionalServices
+                          ? ["Deliverable", "Stage", "Due Date", "Amount", "Status"]
+                          : ["Description", "Unit", "Planned Qty", "Rate", "Amount", "Status"]
+                        ).map(h => <Th key={h}>{h}</Th>)}
+                      </Tr>
+                    </Thead>
+                    <Tbody>
+                      {wo.scopeItems.map(si => (
+                        <Tr key={si._id}>
+                          <Td><span className="font-semibold text-[#1A1A2E] dark:text-[#F1F5F9]">{si.description}</span></Td>
+                          {isProfessionalServices ? (
+                            <>
+                              <Td><TdText>{si.stage || "—"}</TdText></Td>
+                              <Td><TdText>{fmtDate(si.plannedEnd)}</TdText></Td>
+                            </>
+                          ) : (
+                            <>
+                              <Td><TdText>{si.unit}</TdText></Td>
+                              <Td><span className="font-mono"><TdText>{fmtQty(si.plannedQty)}</TdText></span></Td>
+                              <Td><span className="font-mono"><TdText>{fmtMoney(si.rate || 0)}</TdText></span></Td>
+                            </>
+                          )}
+                          <Td><span className="font-mono font-bold text-primary">{fmtMoney(si.amount || 0)}</span></Td>
+                          <Td><span className="capitalize"><TdText>{si.status}</TdText></span></Td>
+                        </Tr>
                       ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {bills.map(({ stage, bill }, i) => {
-                      const cfg = RB_STATUS_CFG[bill.status] ?? { label: bill.status, color: "#6B7280" };
-                      const isPaid = bill.status === "paid";
-                      const actuallyPaid = bill.paidAmount ?? Math.max(0, netPayable(bill) - (bill.tdsAmount ?? 0));
-                      return (
-                        <tr key={bill.billNo} style={{ borderBottom: "1px solid #F3F4F6", background: i % 2 === 0 ? "#fff" : "#FAFAFA" }}>
-                          <td style={{ padding: "10px 16px", fontFamily: "monospace", fontWeight: 700, color: "#FF7A00", fontSize: 13 }}>{bill.billNo}</td>
-                          <td style={{ padding: "10px 16px", fontSize: 12, color: "#6B7280" }}>Stage {stage.stageNo}</td>
-                          <td style={{ padding: "10px 16px", fontFamily: "monospace", fontSize: 13, fontWeight: 600, color: "#111827" }}>{fmtMoney(bill.amount)}</td>
-                          <td style={{ padding: "10px 16px", fontSize: 12, fontWeight: 600, color: cfg.color }}>{cfg.label}</td>
-                          <td style={{ padding: "10px 16px", fontFamily: "monospace", fontSize: 13, fontWeight: 700, color: isPaid ? "#16a34a" : "#9CA3AF" }}>
-                            {isPaid ? fmtMoney(actuallyPaid) : `${fmtMoney(netPayable(bill))} pending`}
-                          </td>
-                          <td style={{ padding: "10px 16px", fontSize: 12, color: "#6B7280" }}>{fmtDate(bill.paymentDate)}</td>
-                          <td style={{ padding: "10px 16px" }}>
-                            <Button type="link" size="small" onClick={() => openBill(stage)}>View</Button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        );
-      })()}
-
-      {/* Progress tab — per scope item progress breakdown */}
-      {activeTab === "progress" && isProfessionalServices && (
-      <div style={{ background: "var(--nx-white)", border: "1px solid #E5E7EB", borderRadius: 12, overflow: "hidden", marginBottom: 24 }}>
-        <div style={{ padding: "16px 20px", borderBottom: "1px solid #E5E7EB", fontWeight: 700, fontSize: 15, color: "#111827" }}>
-          Deliverable Status
-        </div>
-        {wo.scopeItems.length === 0 ? (
-          <div style={{ padding: 40 }}><Empty description="No deliverables defined" /></div>
-        ) : (
-          wo.scopeItems.map((si, idx) => {
-            const STATUS_CFG = {
-              completed: { icon: "✔", label: "Completed",  color: "#16a34a", bg: "#F0FDF4" },
-              running:   { icon: "⏳", label: "In Progress", color: "#d97706", bg: "#FFFBEB" },
-              pending:   { icon: "○", label: "Pending",     color: "#9CA3AF", bg: "#F9FAFB" },
-            } as const;
-            const cfg = STATUS_CFG[si.status as keyof typeof STATUS_CFG] ?? STATUS_CFG.pending;
-            return (
-              <div key={si._id} style={{ padding: "16px 20px", borderBottom: "1px solid #F3F4F6", background: idx % 2 === 0 ? "#fff" : "#FAFAFA", display: "flex", alignItems: "center", gap: 14 }}>
-                <div style={{ width: 34, height: 34, borderRadius: "50%", background: cfg.bg, border: `2px solid ${cfg.color}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, color: cfg.color, flexShrink: 0 }}>
-                  {cfg.icon}
+                    </Tbody>
+                  </Table>
                 </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 700, fontSize: 14, color: "#111827" }}>{si.description}</div>
-                  <div style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }}>
-                    {si.stage ? `${si.stage} · ` : ""}{fmtMoney(si.amount || 0)}
-                    {si.plannedEnd && ` · Due ${fmtDate(si.plannedEnd)}`}
+              )}
+            </>
+          )}
+
+          {/* Bills tab — every bill generated for this work order */}
+          {activeTab === "bills" && (() => {
+            const bills = stages.filter(s => s.billId).map(s => ({ stage: s, bill: s.billId! }));
+            const openBill = (stage: BillRequestStage) => setViewBill({
+              _id: stage._id, reqNo: stage.reqNo, stageNo: stage.stageNo,
+              workOrderNo: wo.workOrderNo, projectName: wo.projectName, vendorName: wo.vendorName,
+              category: wo.category, subCategory: wo.subCategory ?? "",
+              items: stage.items, remarks: stage.remarks ?? "",
+              periodFrom: stage.periodFrom, periodTo: stage.periodTo,
+              status: stage.status, rejectReason: stage.rejectReason,
+              requestedBy: stage.requestedBy, billId: stage.billId ?? undefined,
+              milestoneAchieved: stage.milestoneAchieved, milestoneDate: stage.milestoneDate,
+              createdAt: stage.createdAt,
+            });
+            return (
+              <>
+                <div className="px-6 py-4 flex justify-between items-center">
+                  <div className="font-bold text-[15px] text-[#1A1A2E] dark:text-[#F1F5F9]">Bills</div>
+                  <div className="text-xs text-gray-400 dark:text-gray-500">{bills.length} total</div>
+                </div>
+                {bills.length === 0 ? (
+                  <EmptyState title="No bills generated yet." />
+                ) : (
+                  <div className="px-6 pb-5">
+                    <Table>
+                      <Thead>
+                        <Tr>
+                          {["Bill No", "Stage", "Bill Amount", "Status", "Amount Paid", "Payment Date", ""].map(h => <Th key={h}>{h}</Th>)}
+                        </Tr>
+                      </Thead>
+                      <Tbody>
+                        {bills.map(({ stage, bill }) => {
+                          const cfg = RB_STATUS_CFG[bill.status] ?? { label: bill.status, color: "#6B7280" };
+                          const isPaid = bill.status === "paid";
+                          const actuallyPaid = bill.paidAmount ?? Math.max(0, netPayable(bill) - (bill.tdsAmount ?? 0));
+                          return (
+                            <Tr key={bill.billNo}>
+                              <Td><span className="font-mono font-bold text-primary">{bill.billNo}</span></Td>
+                              <Td><TdText>Stage {stage.stageNo}</TdText></Td>
+                              <Td><span className="font-mono font-semibold text-[#1A1A2E] dark:text-[#F1F5F9]">{fmtMoney(bill.amount)}</span></Td>
+                              <Td><span className="text-[12px] font-semibold" style={{ color: cfg.color }}>{cfg.label}</span></Td>
+                              <Td>
+                                <span className={`font-mono font-bold ${isPaid ? "text-emerald-600 dark:text-emerald-400" : "text-gray-400 dark:text-gray-500"}`}>
+                                  {isPaid ? fmtMoney(actuallyPaid) : `${fmtMoney(netPayable(bill))} pending`}
+                                </span>
+                              </Td>
+                              <Td><TdText>{fmtDate(bill.paymentDate)}</TdText></Td>
+                              <Td><Btn small outline label="View" onClick={() => openBill(stage)} /></Td>
+                            </Tr>
+                          );
+                        })}
+                      </Tbody>
+                    </Table>
                   </div>
-                </div>
-                <div style={{ fontSize: 12, fontWeight: 700, color: cfg.color }}>{cfg.label}</div>
-              </div>
+                )}
+              </>
             );
-          })
-        )}
-      </div>
-      )}
-      {activeTab === "progress" && !isProfessionalServices && (
-      <div style={{ background: "var(--nx-white)", border: "1px solid #E5E7EB", borderRadius: 12, overflow: "hidden", marginBottom: 24 }}>
-        <div style={{ padding: "16px 20px", borderBottom: "1px solid #E5E7EB", fontWeight: 700, fontSize: 15, color: "#111827" }}>
-          Scope Items Progress
-        </div>
-        {wo.scopeItems.length === 0 ? (
-          <div style={{ padding: 40 }}><Empty description="No scope items defined" /></div>
-        ) : (
-          wo.scopeItems.map((si, idx) => {
-            const pct      = pctOf(si.completedQty, si.plannedQty);
-            const billedPct= si.plannedQty > 0 ? Math.min(100, Math.round(((si.lastBilledQty || 0) / si.plannedQty) * 100)) : 0;
-            const pending  = Math.max(0, si.completedQty - (si.lastBilledQty || 0));
-            const remaining= Math.max(0, si.plannedQty - si.completedQty);
-            return (
-              <div key={si._id} style={{ padding: "18px 20px", borderBottom: "1px solid #F3F4F6", background: idx % 2 === 0 ? "#fff" : "#FAFAFA" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 }}>
-                  <div style={{ fontWeight: 700, fontSize: 14, color: "#111827" }}>{si.description}</div>
-                  <div style={{ fontSize: 13, fontWeight: 800, color: pct >= 100 ? "#16a34a" : "#FF7A00" }}>{pct}%</div>
-                </div>
+          })()}
 
-                {/* Multi-layer progress bar */}
-                <div style={{ height: 10, background: "#E5E7EB", borderRadius: 5, overflow: "hidden", position: "relative", marginBottom: 10 }}>
-                  {/* Billed layer */}
-                  <div style={{ position: "absolute", left: 0, top: 0, height: "100%", width: `${billedPct}%`, background: "#16a34a", borderRadius: 5 }} />
-                  {/* Done but not billed */}
-                  <div style={{ position: "absolute", left: `${billedPct}%`, top: 0, height: "100%", width: `${Math.max(0, pct - billedPct)}%`, background: "#FF7A00", borderRadius: 5 }} />
-                </div>
-                <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
-                  <span style={{ fontSize: 10, color: "#16a34a" }}>█ Billed</span>
-                  <span style={{ fontSize: 10, color: "#FF7A00" }}>█ Unbilled</span>
-                  <span style={{ fontSize: 10, color: "#E5E7EB" }}>█ Not done</span>
-                </div>
-
-                {/* Numbers row */}
-                <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
-                  {[
-                    { label: "Planned",   value: `${fmtQty(si.plannedQty)} ${si.unit}`,                        color: "#374151" },
-                    { label: "Done",      value: `${fmtQty(si.completedQty)} ${si.unit}`,                       color: pct >= 100 ? "#16a34a" : "#374151" },
-                    { label: "Billed",    value: `${fmtQty(si.lastBilledQty || 0)} ${si.unit}`,                 color: "#16a34a" },
-                    { label: "Unbilled",  value: pending > 0 ? `${fmtQty(pending)} ${si.unit}` : "—",           color: pending > 0 ? "#FF7A00" : "#9CA3AF" },
-                    { label: "Remaining", value: remaining > 0 ? `${fmtQty(remaining)} ${si.unit}` : "Done ✓",  color: remaining > 0 ? "#374151" : "#16a34a" },
-                    { label: "Rate",      value: fmtRate(si.rate || 0),                                          color: "#374151" },
-                  ].map(({ label, value, color }) => (
-                    <div key={label}>
-                      <div style={{ fontSize: 10, color: "#9CA3AF", textTransform: "uppercase", letterSpacing: "0.06em" }}>{label}</div>
-                      <div style={{ fontSize: 13, fontWeight: 600, color, marginTop: 2 }}>{value}</div>
-                    </div>
-                  ))}
-                </div>
+          {/* Progress tab — per scope item progress breakdown */}
+          {activeTab === "progress" && isProfessionalServices && (
+            <>
+              <div className="px-6 py-4 font-bold text-[15px] text-[#1A1A2E] dark:text-[#F1F5F9]">
+                Deliverable Status
               </div>
-            );
-          })
-        )}
-      </div>
-      )}
+              {wo.scopeItems.length === 0 ? (
+                <EmptyState title="No deliverables defined" />
+              ) : (
+                <div className="divide-y divide-gray-100 dark:divide-gray-700/40">
+                  {wo.scopeItems.map(si => {
+                    const STATUS_CFG = {
+                      completed: { icon: "✔", label: "Completed",  color: "#16a34a", bg: "#F0FDF4" },
+                      running:   { icon: "⏳", label: "In Progress", color: "#d97706", bg: "#FFFBEB" },
+                      pending:   { icon: "○", label: "Pending",     color: "#9CA3AF", bg: "#F9FAFB" },
+                    } as const;
+                    const cfg = STATUS_CFG[si.status as keyof typeof STATUS_CFG] ?? STATUS_CFG.pending;
+                    return (
+                      <div key={si._id} className="px-6 py-4 flex items-center gap-3.5">
+                        <div
+                          className="w-[34px] h-[34px] rounded-full flex items-center justify-center text-[15px] shrink-0"
+                          style={{ background: cfg.bg, border: `2px solid ${cfg.color}`, color: cfg.color }}
+                        >
+                          {cfg.icon}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-bold text-sm text-[#1A1A2E] dark:text-[#F1F5F9]">{si.description}</div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                            {si.stage ? `${si.stage} · ` : ""}{fmtMoney(si.amount || 0)}
+                            {si.plannedEnd && ` · Due ${fmtDate(si.plannedEnd)}`}
+                          </div>
+                        </div>
+                        <div className="text-xs font-bold" style={{ color: cfg.color }}>{cfg.label}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          )}
+          {activeTab === "progress" && !isProfessionalServices && (
+            <>
+              <div className="px-6 py-4 font-bold text-[15px] text-[#1A1A2E] dark:text-[#F1F5F9]">
+                Scope Items Progress
+              </div>
+              {wo.scopeItems.length === 0 ? (
+                <EmptyState title="No scope items defined" />
+              ) : (
+                <div className="divide-y divide-gray-100 dark:divide-gray-700/40">
+                  {wo.scopeItems.map(si => {
+                    const pct      = pctOf(si.completedQty, si.plannedQty);
+                    const billedPct= si.plannedQty > 0 ? Math.min(100, Math.round(((si.lastBilledQty || 0) / si.plannedQty) * 100)) : 0;
+                    const pending  = Math.max(0, si.completedQty - (si.lastBilledQty || 0));
+                    const remaining= Math.max(0, si.plannedQty - si.completedQty);
+                    return (
+                      <div key={si._id} className="px-6 py-4.5">
+                        <div className="flex justify-between items-baseline mb-2">
+                          <div className="font-bold text-sm text-[#1A1A2E] dark:text-[#F1F5F9]">{si.description}</div>
+                          <div className={`text-[13px] font-extrabold ${pct >= 100 ? "text-emerald-600 dark:text-emerald-400" : "text-primary"}`}>{pct}%</div>
+                        </div>
 
-      {/* Milestones tab */}
-      {activeTab === "milestones" && (
-      <>
-      {/* Stage Timeline */}
-      <div style={{ background: "var(--nx-white)", border: "1px solid #E5E7EB", borderRadius: 12, overflow: "hidden", marginBottom: 24 }}>
-        <div style={{ padding: "16px 20px", borderBottom: "1px solid #E5E7EB", fontWeight: 700, fontSize: 15, color: "#111827" }}>
-          Stage Timeline
-          <span style={{ marginLeft: 10, fontSize: 12, color: "#9CA3AF", fontWeight: 400 }}>
-            {stages.length} stage{stages.length !== 1 ? "s" : ""}
-          </span>
-        </div>
+                        {/* Multi-layer progress bar */}
+                        <div className="h-2.5 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden relative mb-2.5">
+                          <div className="absolute left-0 top-0 h-full rounded-full bg-emerald-600" style={{ width: `${billedPct}%` }} />
+                          <div className="absolute top-0 h-full rounded-full bg-primary" style={{ left: `${billedPct}%`, width: `${Math.max(0, pct - billedPct)}%` }} />
+                        </div>
+                        <div className="flex gap-3 mb-2.5">
+                          <span className="text-[10px] text-emerald-600 dark:text-emerald-400">█ Billed</span>
+                          <span className="text-[10px] text-primary">█ Unbilled</span>
+                          <span className="text-[10px] text-gray-300 dark:text-gray-600">█ Not done</span>
+                        </div>
 
-        {stages.length === 0 ? (
-          <div style={{ padding: 40 }}><Empty description="No bill requests submitted yet." /></div>
-        ) : (
-          stages.map((stage, idx) => {
-            const cfg = STAGE_STATUS[stage.status] ?? STAGE_STATUS.pending;
-            const stageTotal = stage.items.reduce((s, it) => s + (it.amount || 0), 0);
-            return (
-              <div key={stage._id} style={{ padding: "20px 20px", borderBottom: "1px solid #F3F4F6", display: "flex", gap: 16, alignItems: "flex-start" }}>
-                {/* Stage number + status icon */}
-                <div style={{ flexShrink: 0, textAlign: "center" }}>
-                  <div style={{
-                    width: 52, height: 52, borderRadius: "50%",
-                    background: stage.milestoneAchieved ? "#FFF4E8" : cfg.bg,
-                    border: `2px solid ${stage.milestoneAchieved ? "#FF7A00" : cfg.color}`,
-                    display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-                  }}>
-                    <div style={{ fontSize: 18 }}>{stage.milestoneAchieved ? "🏆" : cfg.icon}</div>
+                        {/* Numbers row */}
+                        <div className="flex gap-6 flex-wrap">
+                          {[
+                            { label: "Planned",   value: `${fmtQty(si.plannedQty)} ${si.unit}`,                        cls: "text-gray-700 dark:text-gray-300" },
+                            { label: "Done",      value: `${fmtQty(si.completedQty)} ${si.unit}`,                       cls: pct >= 100 ? "text-emerald-600 dark:text-emerald-400" : "text-gray-700 dark:text-gray-300" },
+                            { label: "Billed",    value: `${fmtQty(si.lastBilledQty || 0)} ${si.unit}`,                 cls: "text-emerald-600 dark:text-emerald-400" },
+                            { label: "Unbilled",  value: pending > 0 ? `${fmtQty(pending)} ${si.unit}` : "—",           cls: pending > 0 ? "text-primary" : "text-gray-400 dark:text-gray-500" },
+                            { label: "Remaining", value: remaining > 0 ? `${fmtQty(remaining)} ${si.unit}` : "Done ✓",  cls: remaining > 0 ? "text-gray-700 dark:text-gray-300" : "text-emerald-600 dark:text-emerald-400" },
+                            { label: "Rate",      value: fmtRate(si.rate || 0),                                          cls: "text-gray-700 dark:text-gray-300" },
+                          ].map(({ label, value, cls }) => (
+                            <div key={label}>
+                              <div className="text-[10px] text-gray-400 dark:text-gray-500 uppercase tracking-wide">{label}</div>
+                              <div className={`text-[13px] font-semibold mt-0.5 ${cls}`}>{value}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Milestones tab */}
+          {activeTab === "milestones" && (
+            <>
+              {/* Stage Timeline */}
+              <div className="px-6 py-4 font-bold text-[15px] text-[#1A1A2E] dark:text-[#F1F5F9]">
+                Stage Timeline
+                <span className="ml-2.5 text-xs text-gray-400 dark:text-gray-500 font-normal">
+                  {stages.length} stage{stages.length !== 1 ? "s" : ""}
+                </span>
+              </div>
+
+              {stages.length === 0 ? (
+                <EmptyState title="No bill requests submitted yet." />
+              ) : (
+                <div className="divide-y divide-gray-100 dark:divide-gray-700/40">
+                  {stages.map((stage, idx) => {
+                    const cfg = STAGE_STATUS[stage.status] ?? STAGE_STATUS.pending;
+                    const stageTotal = stage.items.reduce((s, it) => s + (it.amount || 0), 0);
+                    return (
+                      <div key={stage._id} className="px-6 py-5 flex gap-4 items-start">
+                        {/* Stage number + status icon */}
+                        <div className="shrink-0 text-center">
+                          <div
+                            className="w-[52px] h-[52px] rounded-full flex flex-col items-center justify-center"
+                            style={{
+                              background: stage.milestoneAchieved ? "#FFF4E8" : cfg.bg,
+                              border: `2px solid ${stage.milestoneAchieved ? "var(--nx-orange)" : cfg.color}`,
+                            }}
+                          >
+                            <div className="text-lg">{stage.milestoneAchieved ? "🏆" : cfg.icon}</div>
+                          </div>
+                          {idx < stages.length - 1 && (
+                            <div className="w-0.5 h-8 bg-gray-200 dark:bg-gray-700 mx-auto mt-1" />
+                          )}
+                        </div>
+
+                        {/* Content */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap mb-1.5">
+                            <span className="font-extrabold text-base text-[#1A1A2E] dark:text-[#F1F5F9]">Stage {stage.stageNo}</span>
+                            <code className="text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded">{stage.reqNo}</code>
+                            <span className="text-[11px] font-bold rounded-full px-2 py-0.5" style={{ color: cfg.color, background: cfg.bg, border: `1px solid ${cfg.color}` }}>
+                              {cfg.label}
+                            </span>
+                            {stage.milestoneAchieved && (
+                              <Badge color="orange">🏆 Milestone Achieved</Badge>
+                            )}
+                          </div>
+
+                          {/* Period */}
+                          <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                            📅 Period: {fmtDate(stage.periodFrom)} → {fmtDate(stage.periodTo ?? stage.createdAt)}
+                            {stage.requestedBy?.name && <span> · Submitted by {stage.requestedBy.name}</span>}
+                          </div>
+
+                          {/* Items */}
+                          <div className="flex gap-2 flex-wrap">
+                            {stage.items.map((it, i) => (
+                              <div key={i} className="bg-gray-100 dark:bg-gray-800 rounded-md px-2.5 py-1 text-xs text-gray-700 dark:text-gray-300">
+                                <span className="font-semibold">{it.description}</span>: {fmtQty(it.billedQty)} {it.unit}
+                                {it.amount ? <span className="text-emerald-600 dark:text-emerald-400 ml-1.5">({fmtMoney(it.amount)})</span> : null}
+                              </div>
+                            ))}
+                          </div>
+
+                          {/* Stage lifecycle stepper */}
+                          <StageStepper stage={stage} />
+
+                          {/* Bill info */}
+                          {stage.status === "approved" && stage.billId && (
+                            <div className="bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-300 dark:border-emerald-500/30 rounded-lg px-3 py-2 text-sm mb-2 flex gap-4 flex-wrap text-emerald-800 dark:text-emerald-300">
+                              <span><strong>Bill:</strong> {stage.billId.billNo}</span>
+                              {stageTotal > 0 && <span><strong>Amount:</strong> {fmtMoney(stageTotal)}</span>}
+                              <span><strong>Status:</strong> {stage.billId.status?.toUpperCase()}</span>
+                              {stage.milestoneAchieved && stage.milestoneDate && (
+                                <span className="text-primary"><strong>Payment Released:</strong> {fmtDate(stage.milestoneDate)}</span>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Reject reason */}
+                          {stage.status === "rejected" && stage.rejectReason && (
+                            <div className="bg-red-50 dark:bg-red-500/10 border border-red-300 dark:border-red-500/30 rounded-lg px-2.5 py-1.5 text-xs text-red-700 dark:text-red-300 mb-2">
+                              <strong>Reason:</strong> {stage.rejectReason}
+                            </div>
+                          )}
+
+                          {/* Remarks */}
+                          {stage.remarks && (
+                            <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">Remarks: {stage.remarks}</div>
+                          )}
+
+                          {/* Payment release now happens entirely from the Accounts Payment page. */}
+                          {canManage && stage.status === "approved" && !stage.milestoneAchieved && (
+                            <Btn small outline icon={Trophy} label="Manage in Accounts Payment →" onClick={() => navigate("/accounts-payment")} />
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Recent Daily Entries */}
+              {allEntries.length > 0 && (
+                <>
+                  <div className="px-6 py-4 border-t border-gray-100 dark:border-gray-700/40 font-bold text-[15px] text-[#1A1A2E] dark:text-[#F1F5F9]">
+                    Recent Daily Progress
                   </div>
-                  {idx < stages.length - 1 && (
-                    <div style={{ width: 2, height: 32, background: "#E5E7EB", margin: "4px auto" }} />
-                  )}
-                </div>
-
-                {/* Content */}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 6 }}>
-                    <span style={{ fontWeight: 800, fontSize: 16, color: "#111827" }}>Stage {stage.stageNo}</span>
-                    <code style={{ fontSize: 12, color: "#6B7280", background: "#F3F4F6", padding: "1px 6px", borderRadius: 4 }}>{stage.reqNo}</code>
-                    <span style={{ fontSize: 11, fontWeight: 700, color: cfg.color, background: cfg.bg, border: `1px solid ${cfg.color}`, padding: "2px 8px", borderRadius: 12 }}>
-                      {cfg.label}
-                    </span>
-                    {stage.milestoneAchieved && (
-                      <span style={{ fontSize: 11, fontWeight: 700, color: "#FF7A00", background: "#FFF4E8", border: "1px solid #FF7A00", padding: "2px 8px", borderRadius: 12 }}>
-                        🏆 Milestone Achieved
-                      </span>
+                  <div className="px-6 pb-5">
+                    <Table>
+                      <Thead>
+                        <Tr>
+                          {["Date", "Scope Item", "Qty Added", "Remarks"].map(h => <Th key={h}>{h}</Th>)}
+                        </Tr>
+                      </Thead>
+                      <Tbody>
+                        {allEntries.slice(0, 20).map((e, i) => (
+                          <Tr key={e._id + i}>
+                            <Td className="whitespace-nowrap"><TdText>{fmtDate(e.date)}</TdText></Td>
+                            <Td><span className="font-medium text-[#1A1A2E] dark:text-[#F1F5F9]">{e.description}</span></Td>
+                            <Td><span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">+{fmtQty(e.qtyAdded)} {e.unit}</span></Td>
+                            <Td><TdText>{e.remarks || "—"}</TdText></Td>
+                          </Tr>
+                        ))}
+                      </Tbody>
+                    </Table>
+                    {allEntries.length > 20 && (
+                      <div className="pt-2.5 text-xs text-gray-400 dark:text-gray-500">
+                        Showing last 20 of {allEntries.length} entries.
+                      </div>
                     )}
                   </div>
-
-                  {/* Period */}
-                  <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 8 }}>
-                    📅 Period: {fmtDate(stage.periodFrom)} → {fmtDate(stage.periodTo ?? stage.createdAt)}
-                    {stage.requestedBy?.name && <span> · Submitted by {stage.requestedBy.name}</span>}
-                  </div>
-
-                  {/* Items */}
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 0 }}>
-                    {stage.items.map((it, i) => (
-                      <div key={i} style={{ background: "#F3F4F6", borderRadius: 6, padding: "4px 10px", fontSize: 12 }}>
-                        <span style={{ fontWeight: 600 }}>{it.description}</span>: {fmtQty(it.billedQty)} {it.unit}
-                        {it.amount ? <span style={{ color: "#16a34a", marginLeft: 6 }}>({fmtMoney(it.amount)})</span> : null}
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Stage lifecycle stepper */}
-                  <StageStepper stage={stage} />
-
-                  {/* Bill info */}
-                  {stage.status === "approved" && stage.billId && (
-                    <div style={{ background: "#f0fdf4", border: "1px solid #86efac", borderRadius: 8, padding: "8px 12px", fontSize: 13, marginBottom: 8, display: "flex", gap: 16, flexWrap: "wrap" }}>
-                      <span><strong>Bill:</strong> {stage.billId.billNo}</span>
-                      {stageTotal > 0 && <span><strong>Amount:</strong> {fmtMoney(stageTotal)}</span>}
-                      <span><strong>Status:</strong> {stage.billId.status?.toUpperCase()}</span>
-                      {stage.milestoneAchieved && stage.milestoneDate && (
-                        <span style={{ color: "#FF7A00" }}><strong>Payment Released:</strong> {fmtDate(stage.milestoneDate)}</span>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Reject reason */}
-                  {stage.status === "rejected" && stage.rejectReason && (
-                    <div style={{ background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: 8, padding: "6px 10px", fontSize: 12, color: "#b91c1c", marginBottom: 8 }}>
-                      <strong>Reason:</strong> {stage.rejectReason}
-                    </div>
-                  )}
-
-                  {/* Remarks */}
-                  {stage.remarks && (
-                    <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 8 }}>Remarks: {stage.remarks}</div>
-                  )}
-
-                  {/* Payment release now happens entirely from the Accounts Payment page. */}
-                  {canManage && stage.status === "approved" && !stage.milestoneAchieved && (
-                    <Button
-                      size="small"
-                      icon={<TrophyFilled />}
-                      onClick={() => navigate("/accounts-payment")}
-                    >
-                      Manage in Accounts Payment →
-                    </Button>
-                  )}
-                </div>
-              </div>
-            );
-          })
-        )}
-      </div>
-
-      {/* Recent Daily Entries */}
-      {allEntries.length > 0 && (
-        <div style={{ background: "var(--nx-white)", border: "1px solid #E5E7EB", borderRadius: 12, overflow: "hidden" }}>
-          <div style={{ padding: "16px 20px", borderBottom: "1px solid #E5E7EB", fontWeight: 700, fontSize: 15, color: "#111827" }}>
-            Recent Daily Progress
-          </div>
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
-              <thead>
-                <tr style={{ background: "#F9FAFB" }}>
-                  {["Date", "Scope Item", "Qty Added", "Remarks"].map(h => (
-                    <th key={h} style={{ padding: "9px 16px", fontSize: 11, fontWeight: 700, color: "#6B7280", textAlign: "left", textTransform: "uppercase", letterSpacing: "0.05em", borderBottom: "1px solid #E5E7EB" }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {allEntries.slice(0, 20).map((e, i) => (
-                  <tr key={e._id + i} style={{ borderBottom: "1px solid #F3F4F6", background: i % 2 === 0 ? "#fff" : "#FAFAFA" }}>
-                    <td style={{ padding: "9px 16px", fontSize: 13, color: "#374151", whiteSpace: "nowrap" }}>{fmtDate(e.date)}</td>
-                    <td style={{ padding: "9px 16px", fontSize: 13, fontWeight: 500, color: "#111827" }}>{e.description}</td>
-                    <td style={{ padding: "9px 16px", fontFamily: "monospace", fontSize: 13, color: "#16a34a", fontWeight: 700 }}>
-                      +{fmtQty(e.qtyAdded)} {e.unit}
-                    </td>
-                    <td style={{ padding: "9px 16px", fontSize: 12, color: "#6B7280" }}>{e.remarks || "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {allEntries.length > 20 && (
-            <div style={{ padding: "10px 16px", fontSize: 12, color: "#9CA3AF", borderTop: "1px solid #F3F4F6" }}>
-              Showing last 20 of {allEntries.length} entries.
-            </div>
+                </>
+              )}
+            </>
           )}
         </div>
-      )}
-      </>
-      )}
+      </Card>
 
       <BillDetailModal billRequest={viewBill} open={!!viewBill} onClose={() => setViewBill(null)} />
     </div>

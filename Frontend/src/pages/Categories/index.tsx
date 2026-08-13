@@ -6,6 +6,7 @@ import PageHeader from "../../ui/PageHeader";
 import Btn from "../../ui/Btn";
 import Card from "../../ui/Card";
 import KPICard from "../../ui/KPICard";
+import EmptyState from "../../ui/EmptyState";
 import Badge from "../../ui/Badge";
 import Field from "../../ui/Field";
 import SField from "../../ui/SField";
@@ -209,10 +210,14 @@ export default function Categories() {
 
       {/* ── Category tree ─────────────────────────────────────── */}
       {level1.length === 0 ? (
-        <Card className="text-center py-14 text-gray-400">
-          <LayoutGrid className="w-9 h-9 mx-auto mb-3" />
-          <div className="font-bold text-gray-600 dark:text-gray-300">No categories yet</div>
-          <div className="text-sm mt-1">Click "New Category" to add your first one.</div>
+        <Card padded={false}>
+          <EmptyState
+            icon={LayoutGrid}
+            title="No categories yet"
+            message='Click "New Category" to add your first one.'
+            actionLabel="New Category"
+            onAction={() => openAdd(null)}
+          />
         </Card>
       ) : (
         <div className="flex flex-col gap-2.5">

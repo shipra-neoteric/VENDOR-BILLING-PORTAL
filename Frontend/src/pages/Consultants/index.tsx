@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
-import { Plus, Upload, X, Ruler } from "lucide-react";
+import { Plus, Upload, X, Ruler, Eye, Pencil } from "lucide-react";
 import PageHeader from "../../ui/PageHeader";
 import Btn from "../../ui/Btn";
 import Card from "../../ui/Card";
+import EmptyState from "../../ui/EmptyState";
 import Field from "../../ui/Field";
 import SField from "../../ui/SField";
 import { SearchFilter } from "../../ui/Filters";
@@ -213,10 +214,14 @@ export default function Consultants() {
       {loading ? (
         <Card padded={false} className="p-4"><SkeletonTable rows={6} cols={6} /></Card>
       ) : filtered.length === 0 ? (
-        <Card className="text-center py-14 text-gray-400">
-          <div className="text-2xl mb-2">📐</div>
-          <div className="font-bold text-gray-600 dark:text-gray-300">No consultants yet</div>
-          <div className="text-sm mt-1">Click "Register Consultant" to add your first firm.</div>
+        <Card padded={false}>
+          <EmptyState
+            icon={Ruler}
+            title={search ? "No consultants match your search" : "No consultants yet"}
+            message={!search ? 'Click "Register Consultant" to add your first firm.' : undefined}
+            actionLabel={!search ? "Register Consultant" : undefined}
+            onAction={!search ? openAdd : undefined}
+          />
         </Card>
       ) : (
         <Table>
@@ -249,9 +254,9 @@ export default function Consultants() {
                   </span>
                 </Td>
                 <Td>
-                  <div className="flex gap-1.5">
-                    <button type="button" onClick={() => viewProfile(c)} className="text-xs font-semibold text-primary hover:underline">View Profile</button>
-                    <button type="button" onClick={() => openEdit(c)} className="text-xs font-semibold text-gray-500 dark:text-gray-400 hover:underline">Edit</button>
+                  <div className="flex gap-1">
+                    <Btn small color="blue" icon={Eye} title="View Consultant" onClick={() => viewProfile(c)} />
+                    <Btn small color="amber" icon={Pencil} title="Edit Consultant" onClick={() => openEdit(c)} />
                   </div>
                 </Td>
               </Tr>

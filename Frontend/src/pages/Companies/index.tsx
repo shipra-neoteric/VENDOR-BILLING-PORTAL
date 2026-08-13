@@ -6,6 +6,7 @@ import { useAuth } from "../../context/AuthContext";
 import PageHeader from "../../ui/PageHeader";
 import Btn from "../../ui/Btn";
 import Card from "../../ui/Card";
+import EmptyState from "../../ui/EmptyState";
 import KPICard from "../../ui/KPICard";
 import Badge from "../../ui/Badge";
 import Field from "../../ui/Field";
@@ -196,10 +197,14 @@ export default function Companies() {
 
       {/* Company cards */}
       {filtered.length === 0 ? (
-        <Card className="text-center py-14 text-gray-400">
-          <Landmark className="w-9 h-9 mx-auto mb-3" />
-          <div className="font-bold text-gray-600 dark:text-gray-300">{search ? "No companies match your search" : "No companies yet"}</div>
-          {!search && <div className="text-sm mt-1">Click "Add Company" to get started.</div>}
+        <Card padded={false}>
+          <EmptyState
+            icon={Landmark}
+            title={search ? "No companies match your search" : "No companies yet"}
+            message={!search ? 'Click "Add Company" to get started.' : undefined}
+            actionLabel={!search ? "Add Company" : undefined}
+            onAction={!search ? openAdd : undefined}
+          />
         </Card>
       ) : (
         <div className="grid gap-3.5 [grid-template-columns:repeat(auto-fill,minmax(320px,1fr))]">

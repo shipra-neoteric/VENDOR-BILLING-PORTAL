@@ -23,7 +23,7 @@ export default function Badge({ children, color = "gray", small = false }: Badge
   return (
     <span
       className={[
-        "inline-flex items-center rounded-md font-bold uppercase tracking-wide",
+        "inline-flex items-center rounded-full font-bold uppercase tracking-wide",
         small ? "px-1.5 py-0.5 text-[10px]" : "px-2 py-1 text-[11px]",
         COLOR_CLASSES[color],
       ].join(" ")}
