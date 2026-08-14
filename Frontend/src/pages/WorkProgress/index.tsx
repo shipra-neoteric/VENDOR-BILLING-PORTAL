@@ -1,15 +1,25 @@
 import { Fragment, useState, useEffect, useMemo } from "react";
 import {
-  Select, Button, Modal, Form, Input, InputNumber,
+  Button, Modal, Form, Input, InputNumber,
   Tooltip, message, Spin, Empty, DatePicker, Badge, Popconfirm,
 } from "antd";
 import { ArrowLeftOutlined } from "@ant-design/icons";
+import toast from "react-hot-toast";
+import { HardHat, ClipboardList, TrendingUp, CheckCircle2, Layers, Lock, Pin } from "lucide-react";
 import dayjs from "dayjs";
 import isoWeek from "dayjs/plugin/isoWeek";
 import apiClient from "../../services/apiClient";
 import { SearchFilter } from "../../ui/Filters";
 import { useAuth } from "../../context/AuthContext";
 import { selectableProjects } from "../../utils/projectOptions";
+import SField from "../../ui/SField";
+import Btn from "../../ui/Btn";
+import UIBadge from "../../ui/Badge";
+import Spinner from "../../ui/Spinner";
+import EmptyState from "../../ui/EmptyState";
+import KPICard from "../../ui/KPICard";
+import Card from "../../ui/Card";
+import { Table, Thead, Tbody, Tr, Th, Td, TdText } from "../../ui/Table";
 
 dayjs.extend(isoWeek);
 
@@ -168,7 +178,7 @@ function WorkProgressAdmin() {
   }, [selProject, selCategory, categories]);
 
   const loadProgress = async () => {
-    if (!selProject || !selCategory) { message.warning("Select a Project and Category first"); return; }
+    if (!selProject || !selCategory) { toast.error("Select a Project and Category first"); return; }
     setLoading(true);
     try {
       if (selWorkOrder) {
@@ -189,7 +199,7 @@ function WorkProgressAdmin() {
         setWODetail(null); setBillReqs([]);
         setMode("overview");
       }
-    } catch { message.error("Failed to load progress data"); }
+    } catch { toast.error("Failed to load progress data"); }
     finally  { setLoading(false); }
   };
 
@@ -201,219 +211,218 @@ function WorkProgressAdmin() {
     })))
     .sort((a, b) => dayjs(b.date).valueOf() - dayjs(a.date).valueOf());
 
+  const workOrderOptions = [
+    { value: "", label: "— Any —" },
+    ...workOrders.map(w => ({ value: w._id, label: `${w.workOrderNo} — ${w.vendorName}` })),
+  ];
+
   return (
-    <div style={{ paddingBottom: 40 }}>
-      <div style={{ marginBottom: 24 }}>
-        <h1 style={{ fontSize: 24, fontWeight: 700, margin: 0, color: "var(--nx-text)" }}>Construction Progress</h1>
-        <p style={{ color: "var(--nx-text-2)", marginTop: 4, marginBottom: 0 }}>Track DRI-reported progress, billing stages, and milestone payments.</p>
+    <div className="pb-10">
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-[#1A1A2E] dark:text-[#F1F5F9]">Construction Progress</h1>
+        <p className="text-gray-500 dark:text-gray-400 mt-1">Track DRI-reported progress, billing stages, and milestone payments.</p>
       </div>
 
-      <div style={{ background: "var(--nx-white)", border: "1px solid var(--nx-border)", borderRadius: 12, padding: "16px 20px", marginBottom: 24, display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
-        <div style={{ flex: 1, minWidth: 180 }}>
-          <div style={{ fontSize: 12, fontWeight: 500, color: "var(--nx-text-2)", marginBottom: 4 }}>Project *</div>
-          <Select showSearch placeholder="Select project" style={{ width: "100%" }} value={selProject}
+      <Card className="mb-6 flex gap-3 flex-wrap items-end">
+        <div className="flex-1 min-w-[180px]">
+          <SField
+            label="Project" required placeholder="Select project"
+            value={selProject ?? null}
             onChange={v => { setSelProject(v); setSelWorkOrder(undefined); setMode("idle"); setWODetail(null); setBillReqs([]); setWOList([]); }}
-            filterOption={(i, o) => String(o?.children ?? "").toLowerCase().includes(i.toLowerCase())}>
-            {selectableProjects(projects).map(p => <Select.Option key={p._id} value={p._id}>{p.name}</Select.Option>)}
-          </Select>
+            options={selectableProjects(projects).map(p => ({ value: p._id, label: p.name }))}
+          />
         </div>
-        <div style={{ flex: 1, minWidth: 180 }}>
-          <div style={{ fontSize: 12, fontWeight: 500, color: "var(--nx-text-2)", marginBottom: 4 }}>Category *</div>
-          <Select showSearch placeholder="Select category" style={{ width: "100%" }} value={selCategory}
+        <div className="flex-1 min-w-[180px]">
+          <SField
+            label="Category" required placeholder="Select category"
+            value={selCategory ?? null}
             onChange={v => { setSelCategory(v); setSelWorkOrder(undefined); setMode("idle"); }}
-            filterOption={(i, o) => String(o?.children ?? "").toLowerCase().includes(i.toLowerCase())}>
-            {categories.map(c => <Select.Option key={c._id} value={c._id}>{c.name}</Select.Option>)}
-          </Select>
+            options={categories.map(c => ({ value: c._id, label: c.name }))}
+          />
         </div>
-        <div style={{ flex: 1, minWidth: 200 }}>
-          <div style={{ fontSize: 12, fontWeight: 500, color: "var(--nx-text-2)", marginBottom: 4 }}>Work Order (optional)</div>
-          <Select showSearch allowClear placeholder="Select for detailed view" style={{ width: "100%" }} value={selWorkOrder}
-            onChange={v => { setSelWorkOrder(v); setMode("idle"); }}
-            filterOption={(i, o) => String(o?.children ?? "").toLowerCase().includes(i.toLowerCase())}>
-            {workOrders.map(w => <Select.Option key={w._id} value={w._id}>{w.workOrderNo} — {w.vendorName}</Select.Option>)}
-          </Select>
+        <div className="flex-1 min-w-[200px]">
+          <SField
+            label="Work Order (optional)" placeholder="Select for detailed view"
+            value={selWorkOrder ?? ""}
+            onChange={v => { setSelWorkOrder(v || undefined); setMode("idle"); }}
+            options={workOrderOptions}
+          />
         </div>
-        <Button type="primary" onClick={loadProgress} style={{ background: "#FF7A00", borderColor: "#FF7A00", height: 32 }}>Load Progress</Button>
-      </div>
+        <Btn color="primary" label="Load Progress" onClick={loadProgress} />
+      </Card>
 
       {loading ? (
-        <div style={{ display: "flex", justifyContent: "center", padding: 60 }}><Spin size="large" /></div>
+        <div className="flex justify-center py-16"><Spinner size="large" /></div>
       ) : mode === "idle" ? (
-        <div style={{ background: "var(--nx-white)", border: "1px solid var(--nx-border)", borderRadius: 12, padding: 48, textAlign: "center" }}>
-          <div style={{ fontSize: 40, marginBottom: 12 }}>🏗️</div>
-          <div style={{ fontSize: 15, fontWeight: 600, color: "var(--nx-text-3)" }}>No progress data yet</div>
-          <div style={{ fontSize: 13, color: "var(--nx-text-muted)", marginTop: 4 }}>Select a project and category, then click Load Progress.</div>
-        </div>
+        <Card className="text-center py-12">
+          <HardHat className="w-10 h-10 mx-auto mb-3 text-gray-300 dark:text-gray-600" />
+          <div className="text-[15px] font-semibold text-gray-600 dark:text-gray-300">No progress data yet</div>
+          <div className="text-[13px] text-gray-400 dark:text-gray-500 mt-1">Select a project and category, then click Load Progress.</div>
+        </Card>
       ) : mode === "overview" ? (
-        woList.length === 0 ? <Empty description="No work orders found." /> : (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}>
+        woList.length === 0 ? <EmptyState title="No work orders found." /> : (
+          <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))" }}>
             {woList.map(wo => (
-              <div key={wo._id}
-                style={{ background: "var(--nx-white)", border: "1px solid var(--nx-border)", borderRadius: 12, padding: 20, cursor: "pointer" }}
+              <Card
+                key={wo._id}
+                className="cursor-pointer hover:border-primary/50 transition-colors"
                 onClick={() => { setSelWorkOrder(wo._id); setMode("idle"); }}
-                onMouseEnter={e => (e.currentTarget.style.borderColor = "#FF7A00")}
-                onMouseLeave={e => (e.currentTarget.style.borderColor = "var(--nx-border)")}
               >
-                <div style={{ fontWeight: 700, color: "var(--nx-text)" }}>{wo.workOrderNo}</div>
-                <div style={{ fontSize: 12, color: "var(--nx-text-2)" }}>{wo.vendorName}</div>
-                <div style={{ fontSize: 14, color: "#FF7A00", fontWeight: 700, marginTop: 8 }}>{fmt(wo.contractValue ?? 0)}</div>
-              </div>
+                <div className="font-bold text-[#1A1A2E] dark:text-[#F1F5F9]">{wo.workOrderNo}</div>
+                <div className="text-xs text-gray-500 dark:text-gray-400">{wo.vendorName}</div>
+                <div className="text-sm text-primary font-bold mt-2">{fmt(wo.contractValue ?? 0)}</div>
+              </Card>
             ))}
           </div>
         )
       ) : woDetail ? (
         <>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 12, marginBottom: 20 }}>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
             {(() => {
               const si = woDetail.scopeItems;
               const avgPct = si.length ? Math.round(si.reduce((s, x) => s + pctOf(x.completedQty, x.plannedQty), 0) / si.length) : 0;
               const billedAmt = si.reduce((s, x) => s + (x.lastBilledQty || 0) * (x.rate || 0), 0);
               return [
-                { label: "Contract Value", value: fmt(woDetail.contractValue ?? 0), color: "var(--nx-text)", icon: "📋" },
-                { label: "Progress", value: `${avgPct}%`, color: avgPct >= 100 ? "#16a34a" : "#FF7A00", icon: "📊" },
-                { label: "Billed", value: fmt(billedAmt), color: "#3b82f6", icon: "✅" },
-                { label: "Stages", value: String(billReqs.length), color: "#FF7A00", icon: "🏗" },
-              ].map(({ label, value, color, icon }) => (
-                <div key={label} style={{ background: "var(--nx-white)", border: "1px solid var(--nx-border)", borderRadius: 12, padding: "16px 20px" }}>
-                  <div style={{ fontSize: 20, marginBottom: 6 }}>{icon}</div>
-                  <div style={{ fontSize: 10, color: "var(--nx-text-muted)", textTransform: "uppercase", letterSpacing: "0.07em" }}>{label}</div>
-                  <div style={{ fontSize: 20, fontWeight: 800, color, marginTop: 2 }}>{value}</div>
-                </div>
+                { label: "Contract Value", value: fmt(woDetail.contractValue ?? 0), accent: "#6B7280", icon: ClipboardList },
+                { label: "Progress", value: `${avgPct}%`, accent: avgPct >= 100 ? "#16a34a" : "#FF7A00", icon: TrendingUp },
+                { label: "Billed", value: fmt(billedAmt), accent: "#3b82f6", icon: CheckCircle2 },
+                { label: "Stages", value: String(billReqs.length), accent: "#FF7A00", icon: Layers },
+              ].map(({ label, value, accent, icon }) => (
+                <KPICard key={label} label={label} value={value} accent={accent} icon={icon} />
               ));
             })()}
           </div>
 
-          <div style={{ background: "var(--nx-white)", border: "1px solid var(--nx-border)", borderRadius: 12, overflow: "hidden", marginBottom: 20 }}>
-            <div style={{ background: "#1F2937", padding: "14px 20px" }}>
-              <div style={{ color: "#fff", fontWeight: 700, fontSize: 15 }}>{woDetail.workOrderNo} — {woDetail.vendorName}</div>
-              <div style={{ color: "#9CA3AF", fontSize: 12, marginTop: 2 }}>
+          <Card padded={false} className="overflow-hidden mb-5">
+            <div className="px-5 py-3.5 bg-gray-800 dark:bg-gray-900">
+              <div className="text-white font-bold text-[15px]">{woDetail.workOrderNo} — {woDetail.vendorName}</div>
+              <div className="text-gray-400 text-xs mt-0.5">
                 {woDetail.projectName}{woDetail.category ? ` · ${woDetail.category}` : ""}
               </div>
             </div>
-              {(woDetail.retentionPercent ?? 0) > 0 && (
-                <div style={{ background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 8, padding: "10px 14px", marginBottom: 12, display: "flex", alignItems: "center", gap: 10, fontSize: 13 }}>
-                  <span style={{ fontSize: 18 }}>🔒</span>
-                  <div>
-                    <div style={{ fontWeight: 700, color: "#92400e" }}>Retention Applicable: {woDetail.retentionPercent}%</div>
-                    <div style={{ fontSize: 12, color: "#b45309", marginTop: 2 }}>
-                      {woDetail.retentionPercent}% of each bill amount will be withheld and released on work completion.
-                    </div>
+            {(woDetail.retentionPercent ?? 0) > 0 && (
+              <div className="m-4 mb-0 rounded-lg border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 px-3.5 py-2.5 flex items-center gap-2.5">
+                <Lock className="w-4.5 h-4.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                <div>
+                  <div className="font-bold text-amber-800 dark:text-amber-300 text-sm">Retention Applicable: {woDetail.retentionPercent}%</div>
+                  <div className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
+                    {woDetail.retentionPercent}% of each bill amount will be withheld and released on work completion.
                   </div>
                 </div>
-              )}
-            <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                <thead>
-                  <tr style={{ background: "var(--nx-fill-2)" }}>
-                    {["#", "Description", "Unit", "Planned", "Completed", "Billed", "Unbilled", "Progress"].map(h => (
-                      <th key={h} style={{ padding: "10px 12px", fontSize: 11, fontWeight: 700, color: "var(--nx-table-header-color)", textTransform: "uppercase", letterSpacing: "0.05em", borderBottom: "1px solid var(--nx-border)", textAlign: "left" }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
+              </div>
+            )}
+            <div className="p-4">
+              <Table>
+                <Thead>
+                  <Tr>
+                    {["#", "Description", "Unit", "Planned", "Completed", "Billed", "Unbilled", "Progress"].map(h => <Th key={h}>{h}</Th>)}
+                  </Tr>
+                </Thead>
+                <Tbody>
                   {woDetail.scopeItems.map((si, idx) => {
                     const p = pctOf(si.completedQty, si.plannedQty);
                     const billedPct = pctOf(si.lastBilledQty || 0, si.plannedQty);
                     const unbilledPct = Math.max(0, p - billedPct);
                     return (
-                      <tr key={si._id} style={{ borderBottom: "1px solid var(--nx-border)", background: idx % 2 === 0 ? "var(--nx-white)" : "var(--nx-fill-2)" }}>
-                        <td style={{ padding: "10px 12px", color: "var(--nx-text-muted)", fontSize: 12 }}>{idx + 1}</td>
-                        <td style={{ padding: "10px 12px", fontWeight: 600, color: "var(--nx-text)", fontSize: 13 }}>
-                          {si.description}
-                          {si.remarks && <div style={{ fontSize: 11, fontWeight: 400, color: "#d97706", marginTop: 2 }}>📌 {si.remarks}</div>}
-                        </td>
-                        <td style={{ padding: "10px 12px", color: "var(--nx-text-2)", fontSize: 12 }}>{si.unit}</td>
-                        <td style={{ padding: "10px 12px", fontFamily: "monospace", fontSize: 13, color: "var(--nx-text)" }}>{fmtN(si.plannedQty)}</td>
-                        <td style={{ padding: "10px 12px", fontFamily: "monospace", fontSize: 13, color: si.completedQty > 0 ? "#16a34a" : "var(--nx-text-muted)" }}>{fmtN(si.completedQty)}</td>
-                        <td style={{ padding: "10px 12px", fontFamily: "monospace", fontSize: 13, color: "#3b82f6" }}>{fmtN(si.lastBilledQty || 0)}</td>
-                        <td style={{ padding: "10px 12px", fontFamily: "monospace", fontSize: 13 }}>
+                      <Tr key={si._id}>
+                        <Td><TdText>{idx + 1}</TdText></Td>
+                        <Td>
+                          <span className="font-semibold text-[#1A1A2E] dark:text-[#F1F5F9]">{si.description}</span>
+                          {si.remarks && (
+                            <div className="text-xs text-amber-600 dark:text-amber-400 mt-0.5 flex items-center gap-1">
+                              <Pin className="w-3 h-3" /> {si.remarks}
+                            </div>
+                          )}
+                        </Td>
+                        <Td><TdText>{si.unit}</TdText></Td>
+                        <Td><span className="font-mono"><TdText>{fmtN(si.plannedQty)}</TdText></span></Td>
+                        <Td><span className={`font-mono ${si.completedQty > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-gray-400 dark:text-gray-500"}`}>{fmtN(si.completedQty)}</span></Td>
+                        <Td><span className="font-mono text-blue-600 dark:text-blue-400">{fmtN(si.lastBilledQty || 0)}</span></Td>
+                        <Td>
                           {Math.max(0, si.completedQty - (si.lastBilledQty || 0)) > 0
-                            ? <span style={{ color: "#f59e0b", fontWeight: 700 }}>{fmtN(Math.max(0, si.completedQty - (si.lastBilledQty || 0)))}</span>
-                            : <span style={{ color: "var(--nx-text-muted)" }}>—</span>}
-                        </td>
-                        <td style={{ padding: "10px 12px", minWidth: 180 }}>
-                          <div style={{ position: "relative", height: 10, background: "var(--nx-border)", borderRadius: 5, overflow: "hidden" }}>
-                            <div style={{ position: "absolute", left: 0, top: 0, height: "100%", width: `${billedPct}%`, background: "#16a34a" }} />
-                            <div style={{ position: "absolute", left: `${billedPct}%`, top: 0, height: "100%", width: `${unbilledPct}%`, background: "#FF7A00" }} />
+                            ? <span className="font-mono font-bold text-amber-600 dark:text-amber-400">{fmtN(Math.max(0, si.completedQty - (si.lastBilledQty || 0)))}</span>
+                            : <span className="text-gray-400 dark:text-gray-500">—</span>}
+                        </Td>
+                        <Td className="min-w-[180px]">
+                          <div className="relative h-2.5 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
+                            <div className="absolute left-0 top-0 h-full bg-emerald-600" style={{ width: `${billedPct}%` }} />
+                            <div className="absolute top-0 h-full bg-primary" style={{ left: `${billedPct}%`, width: `${unbilledPct}%` }} />
                           </div>
-                          <div style={{ fontSize: 10, color: "var(--nx-text-2)", marginTop: 3 }}>
-                            <span style={{ color: "#16a34a", fontWeight: 700 }}>{billedPct}% billed</span>
-                            {unbilledPct > 0 && <span style={{ color: "#FF7A00", fontWeight: 700 }}> + {unbilledPct}% unbilled</span>}
+                          <div className="text-[10px] mt-0.5">
+                            <span className="text-emerald-600 dark:text-emerald-400 font-bold">{billedPct}% billed</span>
+                            {unbilledPct > 0 && <span className="text-primary font-bold"> + {unbilledPct}% unbilled</span>}
                           </div>
-                        </td>
-                      </tr>
+                        </Td>
+                      </Tr>
                     );
                   })}
-                </tbody>
-              </table>
+                </Tbody>
+              </Table>
             </div>
-          </div>
+          </Card>
 
           {allEntries.length > 0 && (
-            <div style={{ background: "var(--nx-white)", border: "1px solid var(--nx-border)", borderRadius: 12, overflow: "hidden" }}>
-              <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--nx-border)", fontWeight: 700, fontSize: 14, color: "var(--nx-text)" }}>
+            <Card padded={false} className="overflow-hidden mb-5">
+              <div className="px-5 py-3.5 border-b border-gray-200 dark:border-gray-700/40 font-bold text-sm text-[#1A1A2E] dark:text-[#F1F5F9]">
                 Recent Progress Entries by DRI
               </div>
-              <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                  <thead>
-                    <tr style={{ background: "var(--nx-fill-2)" }}>
-                      {["Date", "Scope Item", "Location", "Qty Added", "Remarks"].map(h => (
-                        <th key={h} style={{ padding: "8px 16px", fontSize: 11, fontWeight: 700, color: "var(--nx-text-2)", textAlign: "left", textTransform: "uppercase", letterSpacing: "0.05em", borderBottom: "1px solid var(--nx-border)" }}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {allEntries.slice(0, 20).map((e, i) => (
-                      <tr key={e._id + i} style={{ borderBottom: "1px solid var(--nx-border)", background: i % 2 === 0 ? "var(--nx-white)" : "var(--nx-fill-2)" }}>
-                        <td style={{ padding: "9px 16px", fontSize: 13, color: "var(--nx-text-3)", whiteSpace: "nowrap" }}>
-                          {dayjs(e.date).format("DD MMM YYYY")}
-                          {dayjs(e.date).format("YYYY-MM-DD") === todayStr && (
-                            <span style={{ background: "#3b82f6", color: "#fff", fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: 8, marginLeft: 6 }}>Today</span>
-                          )}
-                        </td>
-                        <td style={{ padding: "9px 16px", fontSize: 13, fontWeight: 500, color: "var(--nx-text)" }}>{e.description}</td>
-                        <td style={{ padding: "9px 16px", fontSize: 12, color: "var(--nx-text-2)" }}>
-                          {formatLocation(e as unknown as EntryRow, (e as any).projectType || "apartment")}
-                        </td>
-                        <td style={{ padding: "9px 16px", fontFamily: "monospace", fontSize: 13, color: "#16a34a", fontWeight: 700 }}>
-                          +{fmtN(e.qtyAdded)} {e.unit}
-                        </td>
-                        <td style={{ padding: "9px 16px", fontSize: 12, color: "var(--nx-text-2)" }}>{e.remarks || "—"}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+              <Table>
+                <Thead>
+                  <Tr>
+                    {["Date", "Scope Item", "Location", "Qty Added", "Remarks"].map(h => <Th key={h}>{h}</Th>)}
+                  </Tr>
+                </Thead>
+                <Tbody>
+                  {allEntries.slice(0, 20).map((e, i) => (
+                    <Tr key={e._id + i}>
+                      <Td className="whitespace-nowrap">
+                        <span className="inline-flex items-center gap-1.5">
+                          <TdText>{dayjs(e.date).format("DD MMM YYYY")}</TdText>
+                          {dayjs(e.date).format("YYYY-MM-DD") === todayStr && <UIBadge color="blue" small>Today</UIBadge>}
+                        </span>
+                      </Td>
+                      <Td><span className="font-medium text-[#1A1A2E] dark:text-[#F1F5F9]">{e.description}</span></Td>
+                      <Td><TdText>{formatLocation(e as unknown as EntryRow, (e as any).projectType || "apartment")}</TdText></Td>
+                      <Td><span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">+{fmtN(e.qtyAdded)} {e.unit}</span></Td>
+                      <Td><TdText>{e.remarks || "—"}</TdText></Td>
+                    </Tr>
+                  ))}
+                </Tbody>
+              </Table>
+            </Card>
           )}
 
           {billReqs.length > 0 && (
-            <div style={{ background: "var(--nx-white)", border: "1px solid var(--nx-border)", borderRadius: 12, overflow: "hidden", marginTop: 20 }}>
-              <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--nx-border)", fontWeight: 700, fontSize: 15, color: "var(--nx-text)" }}>Billing Stages</div>
-              {billReqs.map(br => {
-                const color = BR_STATUS_COLOR[br.status] ?? "#9CA3AF";
-                return (
-                  <div key={br._id} style={{ padding: "16px 20px", borderBottom: "1px solid var(--nx-border)", display: "flex", gap: 14, alignItems: "flex-start" }}>
-                    <div style={{ background: br.status === "approved" ? "#f0fdf4" : "#FFFBEB", border: `2px solid ${color}`, borderRadius: 10, padding: "8px 12px", minWidth: 64, textAlign: "center", flexShrink: 0 }}>
-                      <div style={{ fontSize: 9, fontWeight: 700, color: "var(--nx-text-muted)", textTransform: "uppercase" }}>Stage</div>
-                      <div style={{ fontSize: 20, fontWeight: 800, color }}>{br.stageNo ?? 1}</div>
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 4, flexWrap: "wrap" }}>
-                        <span style={{ fontWeight: 700, fontFamily: "monospace", color: "var(--nx-text)" }}>{br.reqNo}</span>
-                        <span style={{ background: color, color: "#fff", fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 12 }}>
-                          {BR_STATUS_LABEL[br.status] ?? br.status}
-                        </span>
+            <Card padded={false} className="overflow-hidden">
+              <div className="px-5 py-3.5 border-b border-gray-200 dark:border-gray-700/40 font-bold text-[15px] text-[#1A1A2E] dark:text-[#F1F5F9]">Billing Stages</div>
+              <div className="divide-y divide-gray-100 dark:divide-gray-700/40">
+                {billReqs.map(br => {
+                  const color = BR_STATUS_COLOR[br.status] ?? "#9CA3AF";
+                  return (
+                    <div key={br._id} className="px-5 py-4 flex gap-3.5 items-start">
+                      <div
+                        className="rounded-lg text-center shrink-0"
+                        style={{ background: br.status === "approved" ? "#f0fdf4" : "#FFFBEB", border: `2px solid ${color}`, padding: "8px 12px", minWidth: 64 }}
+                      >
+                        <div className="text-[9px] font-bold text-gray-400 dark:text-gray-500 uppercase">Stage</div>
+                        <div className="text-xl font-extrabold" style={{ color }}>{br.stageNo ?? 1}</div>
                       </div>
-                      <div style={{ fontSize: 11, color: "var(--nx-text-muted)" }}>
-                        {br.items.map(it => `${it.description}: ${fmtN(it.billedQty)} ${it.unit}`).join(" · ")}
+                      <div className="flex-1">
+                        <div className="flex gap-2 items-center mb-1 flex-wrap">
+                          <span className="font-bold font-mono text-[#1A1A2E] dark:text-[#F1F5F9]">{br.reqNo}</span>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full text-white" style={{ background: color }}>
+                            {BR_STATUS_LABEL[br.status] ?? br.status}
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-gray-400 dark:text-gray-500">
+                          {br.items.map(it => `${it.description}: ${fmtN(it.billedQty)} ${it.unit}`).join(" · ")}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            </Card>
           )}
         </>
       ) : null}

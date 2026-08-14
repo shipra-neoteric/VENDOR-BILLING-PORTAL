@@ -14,7 +14,7 @@ const { milestonesExceedContract } = require('../utils/validateMilestones');
 const { documentsExceedLimit } = require('../utils/validateDocuments');
 const { createPublicReport: createLegacyProjectReport } = require('../controllers/dailyProjectReportController');
 const { createPublicReport: createLegacyLabourReport } = require('../controllers/dailyLabourReportController');
-const { createPublicReport: createProgressReport } = require('../controllers/dailyProgressReportController');
+const { createPublicReport: createProgressReport, getReportImage } = require('../controllers/dailyProgressReportController');
 const { createPublicRequest: createDrawingRequest } = require('../controllers/drawingRequestController');
 const { getWorkOrderQuotationContext, submitQuotation } = require('../controllers/contractorQuotationController');
 const { signUpload } = require('../utils/cloudinary');
@@ -63,6 +63,11 @@ router.get('/dri-users', asyncHandler(async (_req, res) => {
 router.post('/uploads/sign', (_req, res) => {
   success(res, signUpload('public-submissions'));
 });
+
+// ── Serve one Daily Progress Report photo (no auth) — Slack's image_url
+// fetch carries no auth of its own; the report's ObjectId is the access
+// control, same pattern as the quotation-comparison links below. ──
+router.get('/daily-progress-reports/:id/images/:index', getReportImage);
 
 // ── Submit new work order (no auth) ────────────────────────────
 router.post('/work-orders', asyncHandler(async (req, res) => {

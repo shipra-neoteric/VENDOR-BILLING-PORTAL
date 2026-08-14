@@ -1,5 +1,6 @@
 const http = require('http');
 const https = require('https');
+const { flattenReportImages } = require('./dprImages');
 
 // POSTs a flat JSON payload to the configured n8n webhook, which routes the
 // notification to the right Slack channel via slackChannelId. Silently
@@ -54,10 +55,21 @@ function postToN8nWebhook(payload) {
   return postOnce(url, JSON.stringify(payload), 3);
 }
 
-// Flat payload — no `{ body: {...} }` wrapper — so n8n's Slack node can
-// reference fields directly as {{ $json.slackChannelId }} etc. with no
-// transformation step.
-function notifyDailyProgressReport(report, project) {
+// Note: n8n's webhook trigger nests whatever this posts under a top-level
+// `body` key in its own output — e.g. this file's `slackWebhookUrl` field
+// shows up in n8n as `{{ $json.body.slackWebhookUrl }}`, not `{{ $json.slackWebhookUrl }}`.
+function notifyDailyProgressReport(report, project, baseUrl) {
+  const images = flattenReportImages(report).map((img, i) => ({
+    // Only buildable when a real public base URL was given (see callers) —
+    // Slack fetches this with no auth of its own, so it must be a real,
+    // internet-reachable link, not a localhost one from a local dev run.
+    url: baseUrl ? `${baseUrl}/api/public/daily-progress-reports/${report._id}/images/${i}` : '',
+    workType: img.workType,
+    // 'images' = general work-in-progress shots, 'beforeImages'/'afterImages'
+    // = the same spot before/after — matches DailyProgressReport's own schema.
+    kind: img.kind,
+    name: img.name,
+  }));
   return postToN8nWebhook({
     reportId: String(report._id),
     projectId: String(report.projectId),
@@ -75,7 +87,16 @@ function notifyDailyProgressReport(report, project) {
     date: new Date(report.date).toISOString().slice(0, 10),
     shiftType: report.shiftType,
     labourCount: report.labourCount,
-    workEntries: report.workEntries,
+    // Per-work-type breakdown without the raw base64 photo data — that would
+    // bloat this payload by megabytes for no reason now that `images` below
+    // carries proper fetchable URLs for the same photos.
+    workEntries: (report.workEntries || []).map(e => ({
+      workType: e.workType,
+      imageCount: (e.images || []).length,
+      beforeImageCount: (e.beforeImages || []).length,
+      afterImageCount: (e.afterImages || []).length,
+    })),
+    images,
     isPublicSubmission: report.isPublicSubmission,
   });
 }

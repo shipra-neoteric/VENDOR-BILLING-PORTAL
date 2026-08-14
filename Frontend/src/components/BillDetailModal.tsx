@@ -1,4 +1,4 @@
-import { Trophy, HardHat } from "lucide-react";
+import { Trophy, HardHat, Check, X } from "lucide-react";
 import dayjs from "dayjs";
 import { billFinancials } from "../shared/utils/billMath";
 import Modal from "../ui/Modal";
@@ -22,6 +22,54 @@ function BillStageCell({ by, at }: { by?: string; at?: string }) {
       {by && <div className="text-[12.5px] font-bold text-gray-900 dark:text-[#F1F5F9]">{by}</div>}
       {at && <div className="text-[11px] text-gray-400">{dayjs(at).format("DD MMM YYYY, hh:mm A")}</div>}
       <div><Badge color="green" small>{by ? "Approved" : "Done"}</Badge></div>
+    </div>
+  );
+}
+
+export interface BillApprovalHistoryEntry {
+  stage: "agm" | "gm";
+  action: "approved" | "rejected";
+  by?: { name: string } | string | null;
+  at?: string;
+  remarks?: string;
+}
+
+// The Site Progress-side sign-off (AGM → GM) that happens BEFORE a bill
+// request ever becomes a RunningBill and reaches Accounts — a separate,
+// earlier chain from BillStageCell's Verification → L1 AGM → L2 Director
+// one above, which only starts once Accounts has the bill. Same append-only
+// shape and rendering convention as SiteProgress's own ApprovalHistoryTimeline.
+function BillApprovalHistoryList({ history }: { history?: BillApprovalHistoryEntry[] }) {
+  if (!history || history.length === 0) return null;
+  const stageLabel = (s: string) => (s === "agm" ? "AGM" : "GM");
+  return (
+    <div className="flex flex-col gap-2.5">
+      {history.map((h, i) => {
+        const isReject = h.action === "rejected";
+        const name = h.by && typeof h.by !== "string" ? h.by.name : undefined;
+        return (
+          <div key={i} className="flex items-start gap-2.5">
+            <div
+              className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 border ${
+                isReject
+                  ? "bg-red-50 dark:bg-red-500/10 border-red-500 text-red-600 dark:text-red-400"
+                  : "bg-emerald-50 dark:bg-emerald-500/10 border-emerald-500 text-emerald-600 dark:text-emerald-400"
+              }`}
+            >
+              {isReject ? <X className="w-3 h-3" /> : <Check className="w-3 h-3" />}
+            </div>
+            <div className="text-[13px]">
+              <span className="font-bold text-[#1A1A2E] dark:text-[#F1F5F9]">
+                {stageLabel(h.stage)} {isReject ? "rejected" : "approved"}
+              </span>
+              <span className="text-gray-400 dark:text-gray-500 ml-1.5">
+                {name ? `${name} · ` : ""}{h.at ? dayjs(h.at).format("DD MMM YYYY, hh:mm A") : ""}
+              </span>
+              {h.remarks && <div className="text-gray-500 dark:text-gray-400 mt-0.5">{h.remarks}</div>}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -54,6 +102,17 @@ export interface BillDetailRequest {
   status: "pending" | "approved" | "rejected";
   rejectReason?: string;
   requestedBy?: { name: string; email: string };
+  // Whoever did the LAST terminal action (gmApprove, or a reject at either
+  // stage) — the closest thing to a "GM approved" actor for bills whose
+  // approvalHistory is empty (see the fallback in the render body below).
+  processedBy?: { name: string } | null;
+  processedAt?: string;
+  // Site Progress's own AGM→GM sign-off, before this request ever becomes a
+  // RunningBill — see BillApprovalHistoryList for why this is a separate
+  // chain from billId's Verification/L1/L2 fields below.
+  agmApprovedBy?: { name: string } | null;
+  agmApprovedAt?: string;
+  approvalHistory?: BillApprovalHistoryEntry[];
   billId?: {
     billNo: string;
     status: string;
@@ -76,6 +135,10 @@ export interface BillDetailRequest {
     l2ApprovedAt?: string;
     tmsSentAt?: string;
     tmsCallbackReceivedAt?: string;
+    // Pre-redesign, RunningBill-level fallback for the AGM stamp — see the
+    // approvalHistory fallback below for why this gets read.
+    agmApprovedBy?: { name: string } | null;
+    agmApprovedAt?: string;
   };
   milestoneAchieved?: boolean;
   milestoneDate?: string;
@@ -94,6 +157,32 @@ export default function BillDetailModal({
   if (!open || !billRequest) return null;
 
   const viewTotal = billRequest.items.reduce((s, it) => s + (it.rate ?? 0) * it.billedQty, 0);
+
+  // Bills created via the normal single-request flow carry a real
+  // approvalHistory. Older/batch-created ones (e.g. a bulk daily-wages run)
+  // never wrote it — they only ever set the plain agmApprovedBy/processedBy
+  // stamps (on the BillRequest itself, or as a last resort the RunningBill's
+  // own pre-redesign agmApprovedBy field). Synthesize an equivalent 2-row
+  // history from whichever of those is actually present, so this section
+  // still shows something for every approved/rejected bill, not just ones
+  // that happened to go through agmApprove/gmApprove individually.
+  const approvalHistory: BillApprovalHistoryEntry[] = billRequest.approvalHistory?.length
+    ? billRequest.approvalHistory
+    : (() => {
+        const agmBy = billRequest.agmApprovedBy ?? billRequest.billId?.agmApprovedBy;
+        const agmAt = billRequest.agmApprovedAt ?? billRequest.billId?.agmApprovedAt;
+        const rows: BillApprovalHistoryEntry[] = [];
+        if (agmBy || agmAt) rows.push({ stage: "agm", action: "approved", by: agmBy, at: agmAt });
+        if (billRequest.status === "approved" && (billRequest.processedBy || billRequest.processedAt)) {
+          rows.push({ stage: "gm", action: "approved", by: billRequest.processedBy, at: billRequest.processedAt });
+        } else if (billRequest.status === "rejected" && (billRequest.processedBy || billRequest.processedAt)) {
+          // No approvalHistory to say which stage actually rejected it — if AGM
+          // had already approved (forwarded to GM), a later reject must be
+          // GM's; if AGM never approved at all, it was rejected at AGM itself.
+          rows.push({ stage: agmBy || agmAt ? "gm" : "agm", action: "rejected", by: billRequest.processedBy, at: billRequest.processedAt, remarks: billRequest.rejectReason });
+        }
+        return rows;
+      })();
 
   const headerRows: [string, React.ReactNode][] = [
     ["Work Order",    billRequest.workOrderNo],
@@ -301,6 +390,19 @@ export default function BillDetailModal({
             </div>
           );
         })()}
+
+        {/* AGM → GM sign-off — happens in Site Progress, before this ever
+            reaches Accounts as a RunningBill. */}
+        {approvalHistory.length > 0 && (
+          <div>
+            <div className="font-bold text-xs text-gray-600 dark:text-gray-300 mb-1.5 uppercase tracking-wide">
+              Approval Chain — Before Accounts
+            </div>
+            <div className="bg-gray-50 dark:bg-gray-800/40 rounded-lg p-3.5">
+              <BillApprovalHistoryList history={approvalHistory} />
+            </div>
+          </div>
+        )}
 
         {billRequest.status === "rejected" && billRequest.rejectReason && (
           <div className="bg-red-50 dark:bg-red-500/10 border border-red-300 dark:border-red-500/30 rounded-md px-2.5 py-2 text-sm text-red-700 dark:text-red-300">

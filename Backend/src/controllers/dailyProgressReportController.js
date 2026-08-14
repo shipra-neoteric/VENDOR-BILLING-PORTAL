@@ -5,6 +5,7 @@ const Project = require('../models/Project');
 const Contractor = require('../models/Contractor');
 const { workEntriesInvalidReason } = require('../utils/validateWorkEntries');
 const { notifyDailyProgressReport } = require('../utils/n8nWebhook');
+const { flattenReportImages } = require('../utils/dprImages');
 
 const REQUIRED_FIELDS = ['projectId', 'driName', 'date', 'vendorCode', 'shiftType', 'labourCount'];
 
@@ -51,7 +52,13 @@ exports.createReport = asyncHandler(async (req, res) => {
   });
 
   // Fire-and-forget — an n8n/webhook outage should never fail the submission itself.
-  notifyDailyProgressReport(report, project).catch(() => {});
+  // Forced https: — this URL is only ever fetched by an external service (Slack,
+  // via n8n), never by this app itself, and always assumed to be the real public
+  // domain (trusting req.protocol here would need `trust proxy` configured to
+  // read past Render's TLS-terminating edge, and getting that wrong silently
+  // hands back an http:// link that then hits the exact redirect-drops-the-
+  // request failure this app already got burned by once with the n8n webhook).
+  notifyDailyProgressReport(report, project, `https://${req.get('host')}`).catch(() => {});
 
   created(res, { report }, 'Daily Progress Report submitted');
 });
@@ -68,9 +75,29 @@ exports.createPublicReport = asyncHandler(async (req, res) => {
   });
 
   // Fire-and-forget — an n8n/webhook outage should never fail the submission itself.
-  notifyDailyProgressReport(report, project).catch(() => {});
+  notifyDailyProgressReport(report, project, `https://${req.get('host')}`).catch(() => {});
 
   created(res, { report }, 'Daily Progress Report submitted');
+});
+
+// GET /api/public/daily-progress-reports/:id/images/:index — no auth, by design:
+// Slack fetches image_url with no custom auth headers at all, so this has to be
+// reachable without a token. The report's Mongo ObjectId is the access control
+// (unguessable, never listed anywhere) — the same pattern this app already uses
+// for its public quotation-comparison links.
+exports.getReportImage = asyncHandler(async (req, res) => {
+  const report = await DailyProgressReport.findById(req.params.id).select('workEntries');
+  if (!report) return notFound(res, 'Report not found');
+
+  const image = flattenReportImages(report)[Number(req.params.index)];
+  const match = image && /^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/.exec(image.url);
+  if (!match) return notFound(res, 'Image not found');
+
+  res.set('Content-Type', match[1]);
+  // Reports (and their photos) are never edited after submission, so this can
+  // never go stale — safe to cache aggressively.
+  res.set('Cache-Control', 'public, max-age=31536000, immutable');
+  res.send(Buffer.from(match[2], 'base64'));
 });
 
 // GET /api/daily-progress-reports — site-dri sees only their own; everyone else sees all

@@ -47,13 +47,20 @@ exports.listBillRequests = asyncHandler(async (req, res) => {
   const requests = await BillRequest.find(filter)
     .populate('requestedBy', 'name email')
     .populate('processedBy', 'name')
+    .populate('agmApprovedBy', 'name')
+    .populate('approvalHistory.by', 'name')
     .populate({
       path: 'billId',
-      select: 'billNo status amount paidAmount retentionPercent retentionAmount advanceRecovery gstPercent tdsPercent tdsAmount paymentDate paymentMode paymentUTR paymentBank paymentReleasedBy verificationBy verificationAt l1ApprovedBy l1ApprovedAt l2ApprovedBy l2ApprovedAt tmsSentAt tmsCallbackReceivedAt',
+      select: 'billNo status amount paidAmount retentionPercent retentionAmount advanceRecovery gstPercent tdsPercent tdsAmount paymentDate paymentMode paymentUTR paymentBank paymentReleasedBy verificationBy verificationAt l1ApprovedBy l1ApprovedAt l2ApprovedBy l2ApprovedAt tmsSentAt tmsCallbackReceivedAt agmApprovedBy agmApprovedAt',
       populate: [
         { path: 'verificationBy', select: 'name' },
         { path: 'l1ApprovedBy', select: 'name' },
         { path: 'l2ApprovedBy', select: 'name' },
+        // Pre-redesign bills (e.g. batch-created ones) never wrote the
+        // BillRequest's own agmApprovedBy/approvalHistory — only this
+        // RunningBill-level field, set by gmApprove at bill-creation time.
+        // BillDetailModal falls back to it when approvalHistory is empty.
+        { path: 'agmApprovedBy', select: 'name' },
       ],
     })
     .sort({ stageNo: 1, createdAt: 1 });

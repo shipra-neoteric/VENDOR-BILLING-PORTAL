@@ -63,9 +63,19 @@ interface BillRequestStage {
     l1ApprovedBy?: { name: string } | null; l1ApprovedAt?: string;
     l2ApprovedBy?: { name: string } | null; l2ApprovedAt?: string;
     tmsSentAt?: string; tmsCallbackReceivedAt?: string;
+    // Pre-redesign, RunningBill-level fallback for the AGM stamp.
+    agmApprovedBy?: { name: string } | null; agmApprovedAt?: string;
   } | null;
   milestoneAchieved: boolean; milestoneDate?: string;
   requestedBy?: { name: string; email: string };
+  // Site Progress's own AGM→GM sign-off, before this ever reaches Accounts.
+  agmApprovedBy?: { name: string } | null;
+  agmApprovedAt?: string;
+  approvalHistory?: { stage: "agm" | "gm"; action: "approved" | "rejected"; by?: { name: string } | string | null; at?: string; remarks?: string }[];
+  // Whoever did the LAST terminal action — the closest thing to "GM approved"
+  // for older/batch-created bills that never got an individual approvalHistory.
+  processedBy?: { name: string } | null;
+  processedAt?: string;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -407,6 +417,9 @@ export default function WorkOrderDashboard() {
               requestedBy: stage.requestedBy, billId: stage.billId ?? undefined,
               milestoneAchieved: stage.milestoneAchieved, milestoneDate: stage.milestoneDate,
               createdAt: stage.createdAt,
+              agmApprovedBy: stage.agmApprovedBy, agmApprovedAt: stage.agmApprovedAt,
+              approvalHistory: stage.approvalHistory,
+              processedBy: stage.processedBy, processedAt: stage.processedAt,
             });
             return (
               <>

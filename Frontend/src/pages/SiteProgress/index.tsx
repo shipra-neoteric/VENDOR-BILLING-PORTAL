@@ -1,14 +1,15 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import {
-  Select, Table, Tag, Button, Modal, Input, InputNumber, Checkbox, Empty, Spin, message, Tooltip,
-  Tabs, Badge, Switch, Popconfirm, Row, Col,
+  Select, Table, Tag, Button, Modal, Input, InputNumber, Checkbox, Spin, message, Tooltip,
+  Row, Col,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
+import { PrinterOutlined, DownOutlined, RightOutlined } from "@ant-design/icons";
+import toast from "react-hot-toast";
 import {
-  CheckCircleOutlined, CloseCircleOutlined, WarningOutlined, EyeOutlined, InboxOutlined,
-  FileTextOutlined, TeamOutlined, ClusterOutlined, ClockCircleOutlined, DownOutlined, RightOutlined,
-  PrinterOutlined,
-} from "@ant-design/icons";
+  Clock, FileText, Users, Building2, AlertTriangle, Eye, Printer, CheckCircle2, XCircle,
+  Archive as ArchiveIcon, Pin, Trophy,
+} from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import dayjs from "dayjs";
 import type { Dayjs } from "dayjs";
@@ -19,13 +20,22 @@ import { useAuth } from "../../context/AuthContext";
 import type { AuthUser } from "../../context/AuthContext";
 import { selectableProjects } from "../../utils/projectOptions";
 import DateRangeFilter, { inDateRange } from "../../components/DateRangeFilter";
-import StatCard from "../../shared/components/StatCard";
+import StatCard from "../../ui/StatCard";
 import WorkflowInstanceStepper from "../../components/WorkflowInstanceStepper";
 import type { WorkflowInstance } from "../../types/Workflow";
 import { printBill } from "../../shared/utils/printBill";
 import type { PrintableBill } from "../../shared/utils/printBill";
 import type { Contractor } from "../../types/VendorBilling";
 import { billFinancials } from "../../shared/utils/billMath";
+import SField from "../../ui/SField";
+import UISwitch from "../../ui/Switch";
+import UIBadge from "../../ui/Badge";
+import Btn from "../../ui/Btn";
+import Card from "../../ui/Card";
+import Segmented from "../../ui/Segmented";
+import EmptyState from "../../ui/EmptyState";
+import ConfirmModal from "../../ui/ConfirmModal";
+import Spinner from "../../ui/Spinner";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface ProgressEntryDetail {
@@ -130,10 +140,10 @@ function itemHasUnapprovedVariance(si: ScopeItemDetail): boolean {
 
 function VarianceTag({ level }: { level: VarianceLevel }) {
   if (level === "none") return null;
-  return level === "yellow" ? (
-    <Tag color="gold" icon={<WarningOutlined />}>Over plan ≤10%</Tag>
-  ) : (
-    <Tag color="red" icon={<WarningOutlined />}>Over plan &gt;10%</Tag>
+  return (
+    <UIBadge color={level === "yellow" ? "amber" : "red"} small>
+      <span className="inline-flex items-center gap-1"><AlertTriangle className="w-2.5 h-2.5" /> Over plan {level === "yellow" ? "≤10%" : ">10%"}</span>
+    </UIBadge>
   );
 }
 
@@ -324,7 +334,7 @@ export default function SiteProgress() {
           projectsActiveToday:  k.projectsActiveToday || 0,
         });
       })
-      .catch(() => message.error("Failed to load Site Progress data"))
+      .catch(() => toast.error("Failed to load Site Progress data"))
       .finally(() => setLoading(false));
   };
   useEffect(load, []);
@@ -582,13 +592,20 @@ export default function SiteProgress() {
     finally { setSaving(false); }
   };
 
+  const [archiveTarget, setArchiveTarget] = useState<BillRequestRow | null>(null);
+  const [archiving, setArchiving] = useState(false);
+
   async function archiveOne(r: BillRequestRow) {
+    setArchiving(true);
     try {
       await apiClient.patch(`/bill-requests/${r._id}/${r.isArchived ? "unarchive" : "archive"}`);
-      message.success(r.isArchived ? `${r.reqNo} unarchived` : `${r.reqNo} archived`);
+      toast.success(r.isArchived ? `${r.reqNo} unarchived` : `${r.reqNo} archived`);
+      setArchiveTarget(null);
       load();
     } catch (e: any) {
-      message.error(e?.response?.data?.message || "Action failed");
+      toast.error(e?.response?.data?.message || "Action failed");
+    } finally {
+      setArchiving(false);
     }
   }
 
@@ -641,7 +658,7 @@ export default function SiteProgress() {
         );
       },
     },
-    { title: "Remarks", dataIndex: "remarks", render: v => v ? <span style={{ color: "#6B7280", fontSize: 12 }}>📌 {v}</span> : <span style={{ color: "#D1D5DB" }}>—</span> },
+    { title: "Remarks", dataIndex: "remarks", render: v => v ? <span className="text-xs text-gray-500 dark:text-gray-400 inline-flex items-center gap-1"><Pin className="w-3 h-3" /> {v}</span> : <span className="text-gray-300 dark:text-gray-600">—</span> },
   ];
 
   // ── Bill Requests tab (full list) ───────────────────────────────────────────
@@ -684,49 +701,46 @@ export default function SiteProgress() {
               {r.reqNo}
             </button>
           </div>
-          {r.milestoneAchieved && <span style={{ fontSize: 10, color: "#FF7A00" }}>🏆 Milestone</span>}
+          {r.milestoneAchieved && (
+            <span className="text-[10px] text-primary inline-flex items-center gap-0.5"><Trophy className="w-2.5 h-2.5" /> Milestone</span>
+          )}
         </div>
       ),
     },
     { title: "Work Order", dataIndex: "workOrderNo", render: (v, r) => (
-      <code style={{ cursor: "pointer", color: "#3b82f6" }} onClick={() => r.workOrderId && navigate(`/work-items/${r.workOrderId}`)}>{v}</code>
+      <code className="cursor-pointer text-blue-600 dark:text-blue-400" onClick={() => r.workOrderId && navigate(`/work-items/${r.workOrderId}`)}>{v}</code>
     )},
     { title: "Project", dataIndex: "projectName" },
     { title: "Contractor", dataIndex: "vendorName" },
     { title: "Items", dataIndex: "items", render: (items: BillItem[]) => <span>{items.length} item{items.length !== 1 ? "s" : ""}</span> },
     { title: "Date", dataIndex: "createdAt", render: d => dayjs(d).format("DD MMM YYYY") },
     { title: "Status", dataIndex: "status", render: (s: string) => {
-      const cfg = STATUS_CFG[s] ?? { color: "default", label: s };
-      return <Tag color={cfg.color}>{cfg.label}</Tag>;
+      const cfg = STATUS_CFG[s] ?? { color: "gray", label: s };
+      return <UIBadge color={cfg.color as any}>{cfg.label}</UIBadge>;
     }},
     {
       title: "Actions",
       render: (_, r) => (
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          <Button size="small" icon={<EyeOutlined />} onClick={() => setViewReq(r)}>View</Button>
-          <Button size="small" icon={<PrinterOutlined />} loading={printingReqId === r._id} onClick={() => handlePrintReq(r)}>Print</Button>
+        <div className="flex gap-1.5 flex-wrap">
+          <Btn small outline icon={Eye} label="View" onClick={() => setViewReq(r)} />
+          <Btn small outline icon={Printer} label="Print" loading={printingReqId === r._id} onClick={() => handlePrintReq(r)} />
           {r.status === "pending" && canAgmApprove && (
-            <Button size="small" type="primary" icon={<CheckCircleOutlined />} onClick={() => openApprove(r._id)}>AGM Approve</Button>
+            <Btn small color="primary" icon={CheckCircle2} label="AGM Approve" onClick={() => openApprove(r._id)} />
           )}
           {r.status === "pending-gm" && canGmApprove && (
-            <Button size="small" type="primary" style={{ background: "#2563eb", borderColor: "#2563eb" }} icon={<CheckCircleOutlined />} onClick={() => openGmApprove(r._id)}>GM Approve</Button>
+            <Btn small color="blue" icon={CheckCircle2} label="GM Approve" onClick={() => openGmApprove(r._id)} />
           )}
           {["pending", "pending-gm"].includes(r.status) && canRejectAny && (
-            <Button size="small" danger icon={<CloseCircleOutlined />} onClick={() => { setRejectTarget(r._id); setRejectModal(true); }}>Reject</Button>
+            <Btn small color="red" icon={XCircle} label="Reject" onClick={() => { setRejectTarget(r._id); setRejectModal(true); }} />
           )}
-          <Popconfirm
-            title={r.isArchived ? `Unarchive ${r.reqNo}?` : `Archive ${r.reqNo}?`}
-            onConfirm={() => archiveOne(r)}
-          >
-            <Button size="small" icon={<InboxOutlined />} style={{ color: "#6B7280" }}>{r.isArchived ? "Unarchive" : "Archive"}</Button>
-          </Popconfirm>
+          <Btn small outline icon={ArchiveIcon} label={r.isArchived ? "Unarchive" : "Archive"} onClick={() => setArchiveTarget(r)} />
         </div>
       ),
     },
   ];
 
   if (loading) {
-    return <div style={{ display: "flex", justifyContent: "center", padding: 80 }}><Spin size="large" /></div>;
+    return <div className="flex justify-center py-20"><Spinner size="large" /></div>;
   }
 
   return (
@@ -735,74 +749,87 @@ export default function SiteProgress() {
       description="See what DRI has been logging, raise bill requests, and carry them through AGM (L1) and GM (L2) approval — all in one place."
     >
       {/* ── KPI flashcards ── */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(178px, 1fr))", gap: 14, marginBottom: 24 }}>
+      <div className="grid gap-3.5 mb-6" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(178px, 1fr))" }}>
         <StatCard
-          label="Pending L1 (AGM)" value={pendingAgmReqs.length} icon={<ClockCircleOutlined />} accent="#d97706"
+          label="Pending L1 (AGM)" value={pendingAgmReqs.length} icon={Clock} iconColorClass="text-amber-500"
           active={mainTab === "requests" && reqTab === "pending"}
           onClick={() => { setMainTab("requests"); setReqTab(mainTab === "requests" && reqTab === "pending" ? "all" : "pending"); }}
         />
         <StatCard
-          label="Pending L2 (GM)" value={pendingGmReqs.length} icon={<ClockCircleOutlined />} accent="#2563eb"
+          label="Pending L2 (GM)" value={pendingGmReqs.length} icon={Clock} iconColorClass="text-blue-500"
           active={mainTab === "requests" && reqTab === "pending-gm"}
           onClick={() => { setMainTab("requests"); setReqTab(mainTab === "requests" && reqTab === "pending-gm" ? "all" : "pending-gm"); }}
         />
-        <StatCard label="Today's Progress Entries" value={kpis.progressEntriesToday} icon={<FileTextOutlined />} accent="#16a34a" />
-        <StatCard label="Active DRIs Today" value={kpis.drisActiveToday} icon={<TeamOutlined />} accent="#7c3aed" />
-        <StatCard label="Active Projects Today" value={kpis.projectsActiveToday} icon={<ClusterOutlined />} accent="#0d9488" />
+        <StatCard label="Today's Progress Entries" value={kpis.progressEntriesToday} icon={FileText} iconColorClass="text-emerald-500" />
+        <StatCard label="Active DRIs Today" value={kpis.drisActiveToday} icon={Users} iconColorClass="text-purple-500" />
+        <StatCard label="Active Projects Today" value={kpis.projectsActiveToday} icon={Building2} iconColorClass="text-teal-500" />
       </div>
 
-      <Tabs
-        activeKey={mainTab}
-        onChange={k => setMainTab(k as "progress" | "requests")}
-        items={[
-          { key: "progress", label: "Progress" },
-          { key: "requests", label: <span>Bill Requests {(pendingAgmReqs.length + pendingGmReqs.length) > 0 && <Badge count={pendingAgmReqs.length + pendingGmReqs.length} style={{ background: "#f59e0b" }} />}</span> },
-        ]}
-        style={{ marginBottom: 12 }}
-      />
+      <div className="mb-4">
+        <Segmented
+          value={mainTab}
+          onChange={setMainTab}
+          options={[
+            { value: "progress", label: "Progress" },
+            {
+              value: "requests",
+              label: (
+                <span className="inline-flex items-center gap-1.5">
+                  Bill Requests
+                  {(pendingAgmReqs.length + pendingGmReqs.length) > 0 && (
+                    <UIBadge color="amber" small>{pendingAgmReqs.length + pendingGmReqs.length}</UIBadge>
+                  )}
+                </span>
+              ),
+            },
+          ]}
+        />
+      </div>
 
       {mainTab === "progress" && (
         <>
           {/* ── Filters ── */}
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 16 }}>
-            <Select
-              allowClear showSearch placeholder="Filter by project…"
-              value={selProjectId} onChange={setSelProjectId}
-              options={projects.map(p => ({ label: p.name, value: p._id }))}
-              filterOption={(input, opt) => (opt?.label ?? "").toLowerCase().includes(input.toLowerCase())}
-              style={{ minWidth: 240 }}
-            />
-            <Select
-              allowClear showSearch placeholder="Filter by DRI…"
-              value={selDriId} onChange={setSelDriId}
-              options={driList.map(d => ({ label: `${d.name} (${d.email})`, value: d._id }))}
-              filterOption={(input, opt) => (opt?.label ?? "").toLowerCase().includes(input.toLowerCase())}
-              style={{ minWidth: 220 }}
-            />
+          <div className="flex gap-2.5 flex-wrap items-center mb-4">
+            <div className="min-w-[240px]">
+              <SField
+                placeholder="Filter by project…"
+                value={selProjectId ?? null} onChange={v => setSelProjectId(v || undefined)}
+                options={[{ value: "", label: "All projects" }, ...projects.map(p => ({ label: p.name, value: p._id }))]}
+              />
+            </div>
+            <div className="min-w-[220px]">
+              <SField
+                placeholder="Filter by DRI…"
+                value={selDriId ?? null} onChange={v => setSelDriId(v || undefined)}
+                options={[{ value: "", label: "All DRIs" }, ...driList.map(d => ({ label: `${d.name} (${d.email})`, value: d._id }))]}
+              />
+            </div>
             <DateRangeFilter onChange={(from, to) => { setDateFrom(from); setDateTo(to); }} />
           </div>
 
           {/* ── Recent DRI Progress ── */}
-          <div style={{ marginBottom: 28 }}>
-            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 10 }}>Recent DRI Progress</div>
+          <div className="mb-7">
+            <div className="font-bold text-[15px] mb-2.5 text-[#1A1A2E] dark:text-[#F1F5F9]">Recent DRI Progress</div>
             {filteredActivity.length === 0 ? (
-              <Empty description="No progress logged for these filters" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+              <EmptyState title="No progress logged for these filters" />
             ) : (
-              <Table dataSource={filteredActivity} columns={activityColumns} rowKey="_id" size="small" pagination={{ pageSize: 8 }} />
+              <Card padded={false} className="overflow-hidden">
+                <Table dataSource={filteredActivity} columns={activityColumns} rowKey="_id" size="small" pagination={{ pageSize: 8 }} />
+              </Card>
             )}
           </div>
 
           {/* ── Project → Work Order drill-down ── */}
           <div>
-            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 12 }}>Work Orders</div>
+            <div className="font-bold text-[15px] mb-3 text-[#1A1A2E] dark:text-[#F1F5F9]">Work Orders</div>
             {!selProjectId ? (
-              <Empty description="Pick a project above to see its work orders and progress" />
+              <EmptyState title="Pick a project above to see its work orders and progress" />
             ) : detailLoading ? (
-              <div style={{ textAlign: "center", padding: 40 }}><Spin /></div>
+              <div className="flex justify-center py-10"><Spinner /></div>
             ) : projectWOs.length === 0 ? (
-              <Empty description="No work orders in this project" />
+              <EmptyState title="No work orders in this project" />
             ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <div className="flex flex-col gap-2">
                 {projectWOs.map(wo => {
                   const detail = woDetails.get(wo._id);
                   const avgPct = detail && detail.scopeItems.length > 0
@@ -811,28 +838,30 @@ export default function SiteProgress() {
                   const anyVariance = detail?.scopeItems.some(si => itemHasUnapprovedVariance(si));
                   const pendingBR = pendingBRForWO(wo._id);
                   return (
-                    <div key={wo._id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "var(--nx-white)", border: "1px solid #e4e7ee", borderRadius: 10, padding: "12px 16px", flexWrap: "wrap", gap: 10 }}>
+                    <Card key={wo._id} className="flex justify-between items-center flex-wrap gap-2.5">
                       <div>
-                        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                          <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#FF7A00" }}>{wo.workOrderNo}</span>
-                          {wo.category && <Tag>{wo.category}</Tag>}
-                          {anyVariance && <Tag color="red" icon={<WarningOutlined />}>Unapproved variance</Tag>}
-                          {pendingBR && <Tag color={pendingBR.status === "pending-gm" ? "blue" : "orange"}>Bill {pendingBR.reqNo} — {STATUS_CFG[pendingBR.status]?.label}</Tag>}
+                        <div className="flex gap-2 items-center flex-wrap">
+                          <span className="font-mono font-bold text-primary">{wo.workOrderNo}</span>
+                          {wo.category && <UIBadge color="gray">{wo.category}</UIBadge>}
+                          {anyVariance && (
+                            <UIBadge color="red"><span className="inline-flex items-center gap-1"><AlertTriangle className="w-2.5 h-2.5" /> Unapproved variance</span></UIBadge>
+                          )}
+                          {pendingBR && <UIBadge color={pendingBR.status === "pending-gm" ? "blue" : "orange"}>Bill {pendingBR.reqNo} — {STATUS_CFG[pendingBR.status]?.label}</UIBadge>}
                         </div>
-                        <div style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }}>
+                        <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                           {wo.vendorName} · {(wo.assignedDRI ?? []).map(d => d.name).join(", ") || "No DRI assigned"}
                         </div>
                       </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          <div style={{ width: 70, height: 6, background: "#E5E7EB", borderRadius: 3, overflow: "hidden" }}>
-                            <div style={{ width: `${avgPct}%`, height: "100%", background: avgPct >= 100 ? "#16a34a" : "#FF7A00" }} />
+                      <div className="flex items-center gap-3.5">
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-[70px] h-1.5 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
+                            <div className={`h-full ${avgPct >= 100 ? "bg-emerald-600" : "bg-primary"}`} style={{ width: `${avgPct}%` }} />
                           </div>
-                          <span style={{ fontSize: 12, fontWeight: 700 }}>{avgPct}%</span>
+                          <span className="text-xs font-bold text-[#1A1A2E] dark:text-[#F1F5F9]">{avgPct}%</span>
                         </div>
-                        <Button size="small" type="primary" onClick={() => openWO(wo._id)}>View & Bill</Button>
+                        <Btn small color="primary" label="View & Bill" onClick={() => openWO(wo._id)} />
                       </div>
-                    </div>
+                    </Card>
                   );
                 })}
               </div>
@@ -843,41 +872,52 @@ export default function SiteProgress() {
 
       {mainTab === "requests" && (
         <>
-          <Tabs
-            activeKey={reqTab}
-            onChange={setReqTab}
-            items={[
-              { key: "pending",    label: <span>Pending L1 {pendingAgmReqs.length > 0 && <Badge count={pendingAgmReqs.length} style={{ background: "#d97706" }} />}</span> },
-              { key: "pending-gm", label: <span>Pending L2 {pendingGmReqs.length > 0 && <Badge count={pendingGmReqs.length} style={{ background: "#2563eb" }} />}</span> },
-              { key: "approved",   label: "Approved" },
-              { key: "rejected",   label: "Rejected" },
-              { key: "all",        label: "All" },
-            ]}
-            style={{ marginBottom: 12 }}
-          />
-          <div style={{ marginBottom: 16, display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <div className="mb-4">
+            <Segmented
+              value={reqTab}
+              onChange={setReqTab}
+              options={[
+                { value: "pending",    label: <span className="inline-flex items-center gap-1.5">Pending L1 {pendingAgmReqs.length > 0 && <UIBadge color="amber" small>{pendingAgmReqs.length}</UIBadge>}</span> },
+                { value: "pending-gm", label: <span className="inline-flex items-center gap-1.5">Pending L2 {pendingGmReqs.length > 0 && <UIBadge color="blue" small>{pendingGmReqs.length}</UIBadge>}</span> },
+                { value: "approved",   label: "Approved" },
+                { value: "rejected",   label: "Rejected" },
+                { value: "all",        label: "All" },
+              ]}
+            />
+          </div>
+          <div className="mb-4 flex gap-2.5 flex-wrap items-center">
             <SearchFilter
               placeholder="Search by request no, work order, contractor, or project…"
               value={reqSearch} onChange={setReqSearch}
             />
-            <Select
-              allowClear showSearch placeholder="Filter by project…"
-              value={reqProjectFilter} onChange={setReqProjectFilter}
-              options={projectOptions}
-              filterOption={(input, option) => (option?.label ?? "").toLowerCase().includes(input.toLowerCase())}
-              style={{ minWidth: 240 }}
-            />
-            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#6B7280" }}>
-              <Switch size="small" checked={showArchived} onChange={setShowArchived} />
-              Show Archived
-            </label>
+            <div className="min-w-[240px]">
+              <SField
+                placeholder="Filter by project…"
+                value={reqProjectFilter ?? null} onChange={v => setReqProjectFilter(v || undefined)}
+                options={[{ value: "", label: "All projects" }, ...projectOptions]}
+              />
+            </div>
+            <UISwitch checked={showArchived} onChange={setShowArchived} onLabel="Archived" offLabel="Show Archived" />
           </div>
           {filteredReqs.length === 0 ? (
-            <Empty description={`No ${reqTab === "all" ? "" : STATUS_CFG[reqTab]?.label.toLowerCase() || reqTab} bill requests`} />
+            <EmptyState title={`No ${reqTab === "all" ? "" : STATUS_CFG[reqTab]?.label.toLowerCase() || reqTab} bill requests`} />
           ) : (
-            <Table dataSource={filteredReqs} columns={reqColumns} rowKey="_id" size="middle" pagination={{ pageSize: 20 }} />
+            <Card padded={false} className="overflow-hidden">
+              <Table dataSource={filteredReqs} columns={reqColumns} rowKey="_id" size="middle" pagination={{ pageSize: 20 }} />
+            </Card>
           )}
         </>
+      )}
+
+      {archiveTarget && (
+        <ConfirmModal
+          title={archiveTarget.isArchived ? `Unarchive ${archiveTarget.reqNo}?` : `Archive ${archiveTarget.reqNo}?`}
+          message={archiveTarget.isArchived ? "This will move it back into the active list." : "This will move it out of the active list — you can unarchive it later."}
+          confirmLabel={archiveTarget.isArchived ? "Unarchive" : "Archive"}
+          loading={archiving}
+          onConfirm={() => archiveOne(archiveTarget)}
+          onCancel={() => setArchiveTarget(null)}
+        />
       )}
 
       {/* ── Work order detail + bill-generation modal ── */}
