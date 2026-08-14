@@ -8,17 +8,28 @@ const asyncHandler = require('../utils/asyncHandler');
 const { success, created, notFound, badRequest, conflict } = require('../utils/responseFormatter');
 const { nextProjectCode } = require('../utils/codeGen');
 
+// Every GET below strips the real slackWebhookUrl before it ever leaves the
+// server — GET /projects and GET /projects/:id have no role restriction (any
+// authenticated user, including the lowest-privilege roles, can call them),
+// so returning the raw webhook URL there would hand out a live Slack posting
+// credential to everyone in the app. `slackWebhookConfigured` is all any
+// caller needs to know from the outside.
+function sanitizeProject(doc) {
+  const { slackWebhookUrl, ...rest } = doc;
+  return { ...rest, slackWebhookConfigured: !!slackWebhookUrl };
+}
+
 exports.listProjects = asyncHandler(async (req, res) => {
   const { status } = req.query;
   const filter = status ? { status } : {};
-  const projects = await Project.find(filter).sort({ createdAt: -1 });
-  success(res, { projects });
+  const projects = await Project.find(filter).sort({ createdAt: -1 }).lean();
+  success(res, { projects: projects.map(sanitizeProject) });
 });
 
 exports.getProject = asyncHandler(async (req, res) => {
-  const project = await Project.findById(req.params.id);
+  const project = await Project.findById(req.params.id).lean();
   if (!project) return notFound(res, 'Project not found');
-  success(res, { project });
+  success(res, { project: sanitizeProject(project) });
 });
 
 exports.createProject = asyncHandler(async (req, res) => {
@@ -27,17 +38,27 @@ exports.createProject = asyncHandler(async (req, res) => {
 
   const code    = await nextProjectCode();
   const project = await Project.create({ ...req.body, code, createdBy: req.user._id });
-  created(res, { project }, 'Project created successfully');
+  created(res, { project: sanitizeProject(project.toObject()) }, 'Project created successfully');
 });
 
 exports.updateProject = asyncHandler(async (req, res) => {
+  const body = { ...req.body };
+  // The edit form's Slack Webhook field is write-only — it's never pre-filled
+  // with the real value, so a blank submission means "left untouched," not
+  // "clear it." Only a non-empty string (a new/replacement URL) or the
+  // explicit `null` sentinel (the form's "Clear" action) changes what's
+  // stored; anything else is dropped from the $set entirely.
+  if ('slackWebhookUrl' in body) {
+    if (body.slackWebhookUrl === '') delete body.slackWebhookUrl;
+    else if (body.slackWebhookUrl === null) body.slackWebhookUrl = '';
+  }
   const project = await Project.findByIdAndUpdate(
     req.params.id,
-    { $set: req.body },
+    { $set: body },
     { new: true, runValidators: true }
-  );
+  ).lean();
   if (!project) return notFound(res, 'Project not found');
-  success(res, { project }, 'Project updated successfully');
+  success(res, { project: sanitizeProject(project) }, 'Project updated successfully');
 });
 
 exports.deleteProject = asyncHandler(async (req, res) => {
@@ -73,7 +94,7 @@ exports.getProjectStats = asyncHandler(async (req, res) => {
   const { id } = req.params;
 
   const [project, wos, runningBills] = await Promise.all([
-    Project.findById(id),
+    Project.findById(id).lean(),
     WorkOrder.find({ projectId: id }),
     RunningBill.find({ projectId: id }),
   ]);
@@ -154,7 +175,7 @@ exports.getProjectStats = asyncHandler(async (req, res) => {
   })).sort((a, b) => b.contractValue - a.contractValue);
 
   success(res, {
-    project,
+    project: sanitizeProject(project),
     stats: {
       projectBudget:       project.budget || 0,
       awardedContractValue,

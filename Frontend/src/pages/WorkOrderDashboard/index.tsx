@@ -59,6 +59,10 @@ interface BillRequestStage {
     billNo: string; status: string; amount: number; paymentDate?: string;
     paidAmount?: number; retentionPercent?: number; retentionAmount?: number;
     advanceRecovery?: number; gstPercent?: number; tdsAmount?: number; paymentUTR?: string;
+    verificationBy?: { name: string } | null; verificationAt?: string;
+    l1ApprovedBy?: { name: string } | null; l1ApprovedAt?: string;
+    l2ApprovedBy?: { name: string } | null; l2ApprovedAt?: string;
+    tmsSentAt?: string; tmsCallbackReceivedAt?: string;
   } | null;
   milestoneAchieved: boolean; milestoneDate?: string;
   requestedBy?: { name: string; email: string };

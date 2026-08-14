@@ -11,6 +11,21 @@ const fmt = (n: number) => "₹" + (n).toLocaleString("en-IN", { minimumFraction
 // them for display (as fmt() does) silently turns 130.5 into 131.
 const fmtRate = (n: number) => "₹" + (n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+// One column of the bill's own Verification → L1 AGM → L2 Director → TMS
+// chain — same fields AccountsPayment's stepper reads, just laid out as a
+// table (matching the Work Order's own "Approval Workflow & Signatures" look)
+// instead of a stepper, since a bill has no re-submission cycles to group.
+function BillStageCell({ by, at }: { by?: string; at?: string }) {
+  if (!by && !at) return <span className="text-gray-300 dark:text-gray-600">—</span>;
+  return (
+    <div className="flex flex-col gap-1 min-w-[110px]">
+      {by && <div className="text-[12.5px] font-bold text-gray-900 dark:text-[#F1F5F9]">{by}</div>}
+      {at && <div className="text-[11px] text-gray-400">{dayjs(at).format("DD MMM YYYY, hh:mm A")}</div>}
+      <div><Badge color="green" small>{by ? "Approved" : "Done"}</Badge></div>
+    </div>
+  );
+}
+
 export interface BillDetailItem {
   scopeItemId?: string;
   description: string;
@@ -51,6 +66,16 @@ export interface BillDetailRequest {
     adjustmentAmount?: number;
     adjustmentRemark?: string;
     paymentUTR?: string;
+    // Verification → L1 AGM → L2 Director sign-off chain, plus the automated
+    // TMS handoff/callback — same fields AccountsPayment's own stepper reads.
+    verificationBy?: { name: string } | null;
+    verificationAt?: string;
+    l1ApprovedBy?: { name: string } | null;
+    l1ApprovedAt?: string;
+    l2ApprovedBy?: { name: string } | null;
+    l2ApprovedAt?: string;
+    tmsSentAt?: string;
+    tmsCallbackReceivedAt?: string;
   };
   milestoneAchieved?: boolean;
   milestoneDate?: string;
@@ -108,6 +133,36 @@ export default function BillDetailModal({
             </div>
           ))}
         </div>
+
+        {/* Bill's own approval chain — Verification → L1 AGM → L2 Director → TMS,
+            same fields AccountsPayment's stepper reads, just as a table. */}
+        {billRequest.billId && (
+          <div>
+            <div className="font-bold text-xs text-gray-600 dark:text-gray-300 mb-1.5 uppercase tracking-wide">
+              Bill Approvals
+            </div>
+            <Table>
+              <Thead>
+                <Tr>
+                  <Th>Verification</Th>
+                  <Th>L1 AGM</Th>
+                  <Th>L2 Director</Th>
+                  <Th>Sent to TMS</Th>
+                  <Th>Paid</Th>
+                </Tr>
+              </Thead>
+              <Tbody>
+                <Tr>
+                  <Td className="align-top"><BillStageCell by={billRequest.billId.verificationBy?.name} at={billRequest.billId.verificationAt} /></Td>
+                  <Td className="align-top"><BillStageCell by={billRequest.billId.l1ApprovedBy?.name} at={billRequest.billId.l1ApprovedAt} /></Td>
+                  <Td className="align-top"><BillStageCell by={billRequest.billId.l2ApprovedBy?.name} at={billRequest.billId.l2ApprovedAt} /></Td>
+                  <Td className="align-top"><BillStageCell at={billRequest.billId.tmsSentAt} /></Td>
+                  <Td className="align-top"><BillStageCell at={billRequest.billId.tmsCallbackReceivedAt} /></Td>
+                </Tr>
+              </Tbody>
+            </Table>
+          </div>
+        )}
 
         {/* Items table */}
         <div>

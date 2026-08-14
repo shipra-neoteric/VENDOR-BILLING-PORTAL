@@ -17,6 +17,13 @@ const projectSchema = new mongoose.Schema(
     // change even if the channel gets renamed. Blank means no Slack posting
     // for this project's reports.
     slackChannelId:     { type: String, trim: true, default: '' },
+    // A Slack Incoming Webhook URL (hooks.slack.com/services/...) is a bearer
+    // credential — anyone holding it can post to that channel with no Slack
+    // membership at all. Never returned by listProjects/getProject (see
+    // projectController) — only used server-side to build the n8n DPR
+    // notification payload. The edit form is write-only: it never echoes this
+    // value back, only a `slackWebhookConfigured` boolean.
+    slackWebhookUrl:    { type: String, trim: true, default: '' },
     parentId:           { type: mongoose.Schema.Types.ObjectId, ref: 'Project', default: null },
     createdBy:          { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },

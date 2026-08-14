@@ -47,7 +47,15 @@ exports.listBillRequests = asyncHandler(async (req, res) => {
   const requests = await BillRequest.find(filter)
     .populate('requestedBy', 'name email')
     .populate('processedBy', 'name')
-    .populate('billId', 'billNo status amount paidAmount retentionPercent retentionAmount advanceRecovery gstPercent tdsPercent tdsAmount paymentDate paymentMode paymentUTR paymentBank paymentReleasedBy')
+    .populate({
+      path: 'billId',
+      select: 'billNo status amount paidAmount retentionPercent retentionAmount advanceRecovery gstPercent tdsPercent tdsAmount paymentDate paymentMode paymentUTR paymentBank paymentReleasedBy verificationBy verificationAt l1ApprovedBy l1ApprovedAt l2ApprovedBy l2ApprovedAt tmsSentAt tmsCallbackReceivedAt',
+      populate: [
+        { path: 'verificationBy', select: 'name' },
+        { path: 'l1ApprovedBy', select: 'name' },
+        { path: 'l2ApprovedBy', select: 'name' },
+      ],
+    })
     .sort({ stageNo: 1, createdAt: 1 });
 
   success(res, { billRequests: requests });

@@ -41,6 +41,9 @@ interface Project {
   expectedCompletion?: string;
   parentId?: string | null;
   slackChannelId?: string;
+  // The real slackWebhookUrl is never sent to the client (see projectController's
+  // sanitizeProject) — this is just "is one set," for the edit form's indicator.
+  slackWebhookConfigured?: boolean;
 }
 
 interface WORow {
@@ -638,6 +641,9 @@ function ProjectDetail({
 const EMPTY_FORM = {
   name: "", client: "", location: "", projectType: "apartment", status: "active",
   startDate: "", expectedCompletion: "", slackChannelId: "",
+  // Write-only — always starts blank, even when editing a project that
+  // already has one set (see Field's hint/indicator below).
+  slackWebhookUrl: "",
 };
 
 export default function Projects() {
@@ -653,6 +659,10 @@ export default function Projects() {
   const [deleteTarget, setDeleteTarget]   = useState<Project | null>(null);
   const [deleting, setDeleting]           = useState(false);
   const [formState, setFormState]         = useState(EMPTY_FORM);
+  // Separate from formState.slackWebhookUrl (which is write-only and always
+  // starts blank) — set only by the "Clear" action, so an explicit removal
+  // is distinguishable from "left the field untouched."
+  const [clearSlackWebhook, setClearSlackWebhook] = useState(false);
 
   // ── Load ──────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -711,6 +721,7 @@ export default function Projects() {
     setEditingProject(null);
     setCreatingUnderParent(null);
     setFormState(EMPTY_FORM);
+    setClearSlackWebhook(false);
     setDrawerOpen(true);
   };
 
@@ -718,6 +729,7 @@ export default function Projects() {
     setEditingProject(null);
     setCreatingUnderParent(parent);
     setFormState(EMPTY_FORM);
+    setClearSlackWebhook(false);
     setDrawerOpen(true);
   };
 
@@ -734,7 +746,9 @@ export default function Projects() {
       startDate: project.startDate ? project.startDate.slice(0, 10) : "",
       expectedCompletion: project.expectedCompletion ? project.expectedCompletion.slice(0, 10) : "",
       slackChannelId: project.slackChannelId || "",
+      slackWebhookUrl: "",
     });
+    setClearSlackWebhook(false);
     setDrawerOpen(true);
   };
 
@@ -751,6 +765,9 @@ export default function Projects() {
       startDate: formState.startDate || undefined,
       expectedCompletion: formState.expectedCompletion || undefined,
       slackChannelId: formState.slackChannelId.trim(),
+      // undefined (dropped by JSON.stringify) = left untouched; a real string
+      // = set/replace; null = explicit "Clear" — see updateProject's handling.
+      slackWebhookUrl: clearSlackWebhook ? null : (formState.slackWebhookUrl.trim() || undefined),
     };
 
     setSaving(true);
@@ -951,6 +968,37 @@ export default function Projects() {
               hint='Daily Progress Reports for this project post here — the channel ID, not its name. In Slack: open the channel → View channel details. Leave blank to skip Slack.'
               value={formState.slackChannelId} onChange={e => setFormState(f => ({ ...f, slackChannelId: e.target.value }))}
             />
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="block text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wide">
+                  Slack Webhook URL
+                </span>
+                {editingProject && (
+                  editingProject.slackWebhookConfigured && !clearSlackWebhook ? (
+                    <span className="flex items-center gap-2 text-[11px]">
+                      <Badge color="green" small>Configured</Badge>
+                      <button
+                        type="button"
+                        className="text-red-500 hover:text-red-600 font-semibold"
+                        onClick={() => { setClearSlackWebhook(true); setFormState(f => ({ ...f, slackWebhookUrl: "" })); }}
+                      >
+                        Clear
+                      </button>
+                    </span>
+                  ) : (
+                    <Badge color="gray" small>{clearSlackWebhook ? "Will be removed" : "Not set"}</Badge>
+                  )
+                )}
+              </div>
+              <Field
+                type="password" autoComplete="new-password"
+                placeholder={editingProject?.slackWebhookConfigured ? "•••••••••••••••••••••••• (leave blank to keep)" : "https://hooks.slack.com/services/…"}
+                hint="A per-project Slack Incoming Webhook posts here directly — no bot-membership issues. Kept write-only: this never shows the saved value, only whether one exists."
+                value={formState.slackWebhookUrl}
+                disabled={clearSlackWebhook}
+                onChange={e => setFormState(f => ({ ...f, slackWebhookUrl: e.target.value }))}
+              />
+            </div>
           </div>
         </Modal>
       )}

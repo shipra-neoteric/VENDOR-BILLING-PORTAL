@@ -15,7 +15,7 @@ async function buildReportDoc(body) {
   const entriesError = workEntriesInvalidReason(body.workEntries);
   if (entriesError) return { error: entriesError };
 
-  const project = await Project.findById(body.projectId).select('name slackChannelId');
+  const project = await Project.findById(body.projectId).select('name slackChannelId slackWebhookUrl');
   if (!project) return { error: 'Project not found' };
 
   const contractor = await Contractor.findOne({ vendorCode: body.vendorCode }).select('companyName');
