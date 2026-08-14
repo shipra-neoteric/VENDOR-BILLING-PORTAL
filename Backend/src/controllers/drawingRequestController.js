@@ -68,9 +68,11 @@ exports.createPublicRequest = asyncHandler(async (req, res) => {
 });
 
 // GET /api/drawing-requests?projectId=&status=&reviewStatus=&priority=&drawingType=&search=&dateFrom=&dateTo=
+// site-dri sees only requests they submitted themselves; every other role sees all.
 exports.listRequests = asyncHandler(async (req, res) => {
   const { projectId, status, reviewStatus, priority, drawingType, search, dateFrom, dateTo } = req.query;
   const filter = {};
+  if (req.user.role === 'site-dri') filter.submittedBy = req.user._id;
   if (projectId)    filter.projectId = projectId;
   if (status)       filter.status = status;
   if (reviewStatus) filter.reviewStatus = reviewStatus;
@@ -104,11 +106,14 @@ exports.listRequests = asyncHandler(async (req, res) => {
 exports.getRequest = asyncHandler(async (req, res) => {
   const request = await populatedRequest(req.params.id);
   if (!request) return notFound(res, 'Drawing request not found');
+  if (req.user.role === 'site-dri' && String(request.submittedBy?._id || request.submittedBy) !== String(req.user._id)) {
+    return notFound(res, 'Drawing request not found');
+  }
   success(res, { request });
 });
 
-// AGM Response / GM Priority / Planning Status / Verification — these are
-// exactly what the dedicated agm-review/gm-review endpoints above decide.
+// AGM/L1 Response / GM/L4 Priority / Planning Status / Verification — these
+// are exactly what the dedicated l1/l2/l3/l4-review endpoints below decide.
 // Letting them through this generic PUT regardless of reviewStatus would
 // make the whole review gate optional: anyone with an edit grant could set
 // `status: 'completed'` and `planningVerified: true` on a request AGM/GM
@@ -149,92 +154,156 @@ exports.updateRequest = asyncHandler(async (req, res) => {
   success(res, { request: await populatedRequest(request._id) }, 'Drawing request updated');
 });
 
-// ── Review chain — AGM then GM ──────────────────────────────────────────────
-// Stage 1 — AGM reviews the request and either forwards it to GM (optionally
-// assigning who'll draft it + a committed date) or returns it to the DRI.
-exports.agmReview = asyncHandler(async (req, res) => {
+// ── Review chain — L1/L3/L4 (GM) + L2 (Architect) ───────────────────────────
+// L1 — screens whether the drawing is even needed. Approve forwards to L2
+// (optionally assigning who'll draw it + a committed date); return sends it
+// all the way back to the DRI (this is the "should this be made at all" gate).
+exports.l1Review = asyncHandler(async (req, res) => {
   const { action, assignedTo, committedDate, remarks } = req.body;
-  if (!['forward', 'return'].includes(action)) return badRequest(res, "action must be 'forward' or 'return'");
-
-  const request = await DrawingRequest.findById(req.params.id);
-  if (!request) return notFound(res, 'Drawing request not found');
-  if (request.reviewStatus !== 'agm-review') {
-    return badRequest(res, `Cannot AGM-review a request with review status '${request.reviewStatus}'`);
-  }
-
-  if (action === 'return') {
-    if (!remarks || !remarks.trim()) return badRequest(res, 'A reason is required to return a drawing request');
-    request.reviewStatus = 'returned';
-    request.reviewHistory.push({ stage: 'agm', action: 'returned', by: req.user._id, remarks: remarks.trim() });
-  } else {
-    if (assignedTo !== undefined) request.assignedTo = assignedTo || null;
-    if (committedDate !== undefined) request.committedDate = committedDate || null;
-    request.reviewStatus = 'gm-review';
-    request.reviewHistory.push({ stage: 'agm', action: 'forwarded', by: req.user._id, remarks: (remarks || '').trim() });
-  }
-  await request.save();
-
-  await logAudit({
-    action: action === 'forward' ? 'APPROVE' : 'REJECT', module: 'drawing-requests', user: req.user,
-    description: `AGM ${action === 'forward' ? 'forwarded' : 'returned'} drawing request ${request.ticketNo}`,
-    entityType: 'DrawingRequest', entityId: request._id, entityLabel: request.ticketNo,
-  });
-
-  success(res, { request: await populatedRequest(request._id) }, action === 'forward' ? 'Forwarded to GM review' : 'Returned to DRI');
-});
-
-// Stage 2 — GM reviews the request and either approves it (optionally setting
-// priority) or returns it to the DRI. Approval is terminal — Planning then
-// takes over via the existing status/verification fields on this same doc.
-exports.gmReview = asyncHandler(async (req, res) => {
-  const { action, priority, remarks } = req.body;
   if (!['approve', 'return'].includes(action)) return badRequest(res, "action must be 'approve' or 'return'");
 
   const request = await DrawingRequest.findById(req.params.id);
   if (!request) return notFound(res, 'Drawing request not found');
-  if (request.reviewStatus !== 'gm-review') {
-    return badRequest(res, `Cannot GM-review a request with review status '${request.reviewStatus}'`);
+  if (request.reviewStatus !== 'l1-gm') {
+    return badRequest(res, `Cannot L1-review a request with review status '${request.reviewStatus}'`);
   }
 
   if (action === 'return') {
     if (!remarks || !remarks.trim()) return badRequest(res, 'A reason is required to return a drawing request');
     request.reviewStatus = 'returned';
-    request.reviewHistory.push({ stage: 'gm', action: 'returned', by: req.user._id, remarks: remarks.trim() });
+    request.reviewHistory.push({ stage: 'l1-gm', action: 'returned', by: req.user._id, remarks: remarks.trim() });
   } else {
-    if (priority) request.priority = priority;
-    request.reviewStatus = 'approved';
-    request.reviewHistory.push({ stage: 'gm', action: 'approved', by: req.user._id, remarks: (remarks || '').trim() });
+    if (assignedTo !== undefined) request.assignedTo = assignedTo || null;
+    if (committedDate !== undefined) request.committedDate = committedDate || null;
+    request.reviewStatus = 'l2-architect';
+    request.reviewHistory.push({ stage: 'l1-gm', action: 'forwarded', by: req.user._id, remarks: (remarks || '').trim() });
   }
   await request.save();
 
   await logAudit({
     action: action === 'approve' ? 'APPROVE' : 'REJECT', module: 'drawing-requests', user: req.user,
-    description: `GM ${action === 'approve' ? 'approved' : 'returned'} drawing request ${request.ticketNo}`,
+    description: `L1 ${action === 'approve' ? 'approved' : 'returned'} drawing request ${request.ticketNo}`,
     entityType: 'DrawingRequest', entityId: request._id, entityLabel: request.ticketNo,
   });
 
-  success(res, { request: await populatedRequest(request._id) }, action === 'approve' ? 'Approved' : 'Returned to DRI');
+  success(res, { request: await populatedRequest(request._id) }, action === 'approve' ? 'Forwarded to Architect' : 'Returned to DRI');
 });
 
-// Returned always goes back to AGM review, never straight to GM — same "always
-// to L1" segregation the Work Order approval chain uses.
+// L2 — the Architect produces the drawing(s) and submits them. No reject path
+// here — the architect produces; only a GM (L3/L4) sends work back.
+exports.l2Drawing = asyncHandler(async (req, res) => {
+  const { drawingFiles } = req.body;
+  if (!Array.isArray(drawingFiles) || drawingFiles.length === 0) {
+    return badRequest(res, 'Attach at least one drawing file');
+  }
+  if (drawingFiles.some((f) => !f || !f.url)) {
+    return badRequest(res, 'Every attached file needs a URL');
+  }
+
+  const request = await DrawingRequest.findById(req.params.id);
+  if (!request) return notFound(res, 'Drawing request not found');
+  if (request.reviewStatus !== 'l2-architect') {
+    return badRequest(res, `Cannot submit a drawing for a request with review status '${request.reviewStatus}'`);
+  }
+
+  request.drawingFiles = drawingFiles.map((f) => ({ name: f.name || '', url: f.url }));
+  request.reviewStatus = 'l3-gm';
+  request.reviewHistory.push({ stage: 'l2-architect', action: 'submitted', by: req.user._id, remarks: '' });
+  await request.save();
+
+  await logAudit({
+    action: 'UPDATE', module: 'drawing-requests', user: req.user,
+    description: `Drawing submitted for drawing request ${request.ticketNo}`,
+    entityType: 'DrawingRequest', entityId: request._id, entityLabel: request.ticketNo,
+  });
+
+  success(res, { request: await populatedRequest(request._id) }, 'Drawing submitted for GM cross-check');
+});
+
+// L3 — a GM cross-checks the uploaded drawing. Approve forwards to L4;
+// return sends it back to L2 — the drawing needs rework, not the request.
+exports.l3Review = asyncHandler(async (req, res) => {
+  const { action, remarks } = req.body;
+  if (!['approve', 'return'].includes(action)) return badRequest(res, "action must be 'approve' or 'return'");
+
+  const request = await DrawingRequest.findById(req.params.id);
+  if (!request) return notFound(res, 'Drawing request not found');
+  if (request.reviewStatus !== 'l3-gm') {
+    return badRequest(res, `Cannot L3-review a request with review status '${request.reviewStatus}'`);
+  }
+
+  if (action === 'return') {
+    if (!remarks || !remarks.trim()) return badRequest(res, 'A reason is required to send a drawing back for rework');
+    request.reviewStatus = 'l2-architect';
+    request.reviewHistory.push({ stage: 'l3-gm', action: 'returned', by: req.user._id, remarks: remarks.trim() });
+  } else {
+    request.reviewStatus = 'l4-gm';
+    request.reviewHistory.push({ stage: 'l3-gm', action: 'forwarded', by: req.user._id, remarks: (remarks || '').trim() });
+  }
+  await request.save();
+
+  await logAudit({
+    action: action === 'approve' ? 'APPROVE' : 'REJECT', module: 'drawing-requests', user: req.user,
+    description: `L3 ${action === 'approve' ? 'approved' : 'sent back for rework'} drawing request ${request.ticketNo}`,
+    entityType: 'DrawingRequest', entityId: request._id, entityLabel: request.ticketNo,
+  });
+
+  success(res, { request: await populatedRequest(request._id) }, action === 'approve' ? 'Forwarded to final approval' : 'Sent back to Architect for rework');
+});
+
+// L4 — final approval by a different GM. Approve is terminal — ready for
+// physical dispatch to the site engineer; Planning then takes over via the
+// existing status/verification fields on this same doc. Return sends it
+// back to L2, same as an L3 rejection.
+exports.l4Review = asyncHandler(async (req, res) => {
+  const { action, priority, remarks } = req.body;
+  if (!['approve', 'return'].includes(action)) return badRequest(res, "action must be 'approve' or 'return'");
+
+  const request = await DrawingRequest.findById(req.params.id);
+  if (!request) return notFound(res, 'Drawing request not found');
+  if (request.reviewStatus !== 'l4-gm') {
+    return badRequest(res, `Cannot L4-review a request with review status '${request.reviewStatus}'`);
+  }
+
+  if (action === 'return') {
+    if (!remarks || !remarks.trim()) return badRequest(res, 'A reason is required to send a drawing back for rework');
+    request.reviewStatus = 'l2-architect';
+    request.reviewHistory.push({ stage: 'l4-gm', action: 'returned', by: req.user._id, remarks: remarks.trim() });
+  } else {
+    if (priority) request.priority = priority;
+    request.reviewStatus = 'approved';
+    request.reviewHistory.push({ stage: 'l4-gm', action: 'approved', by: req.user._id, remarks: (remarks || '').trim() });
+  }
+  await request.save();
+
+  await logAudit({
+    action: action === 'approve' ? 'APPROVE' : 'REJECT', module: 'drawing-requests', user: req.user,
+    description: `L4 ${action === 'approve' ? 'approved' : 'sent back for rework'} drawing request ${request.ticketNo}`,
+    entityType: 'DrawingRequest', entityId: request._id, entityLabel: request.ticketNo,
+  });
+
+  success(res, { request: await populatedRequest(request._id) }, action === 'approve' ? 'Approved' : 'Sent back to Architect for rework');
+});
+
+// Returned (from L1) always goes back to L1, never straight past it — same
+// "always to L1" segregation the Work Order approval chain uses.
 exports.resubmitRequest = asyncHandler(async (req, res) => {
   const request = await DrawingRequest.findById(req.params.id);
   if (!request) return notFound(res, 'Drawing request not found');
   if (request.reviewStatus !== 'returned') {
     return badRequest(res, `Cannot resubmit a request with review status '${request.reviewStatus}'`);
   }
-  request.reviewStatus = 'agm-review';
+  request.reviewStatus = 'l1-gm';
   request.reviewHistory.push({ stage: 'dri', action: 'resubmitted', by: req.user._id, remarks: (req.body.remarks || '').trim() });
   await request.save();
 
   await logAudit({
     action: 'UPDATE', module: 'drawing-requests', user: req.user,
-    description: `Resubmitted drawing request ${request.ticketNo} for AGM review`,
+    description: `Resubmitted drawing request ${request.ticketNo} for L1 review`,
     entityType: 'DrawingRequest', entityId: request._id, entityLabel: request.ticketNo,
   });
 
-  success(res, { request: await populatedRequest(request._id) }, 'Resubmitted for AGM review');
+  success(res, { request: await populatedRequest(request._id) }, 'Resubmitted for review');
 });
 
 // DELETE /api/drawing-requests/:id

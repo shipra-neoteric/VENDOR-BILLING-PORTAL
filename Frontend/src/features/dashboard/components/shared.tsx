@@ -92,7 +92,7 @@ export function DetailListModal({ title, rows, onClose }: { title: string; rows:
                 <span className="font-semibold text-sm text-[#1A1A2E] dark:text-[#F1F5F9]">{r.label}</span>
                 {r.value > 0 && <span className="text-xs font-bold text-primary">₹{r.value.toLocaleString("en-IN")}</span>}
               </div>
-              <div className="text-xs text-gray-400 mt-0.5">{r.project}{r.vendor ? ` · ${r.vendor}` : ""}</div>
+              <div className="text-xs text-gray-400 mt-0.5">{[r.project, r.vendor].filter(Boolean).join(" · ")}</div>
             </div>
           ))}
         </div>

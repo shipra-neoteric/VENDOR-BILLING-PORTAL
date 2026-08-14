@@ -103,8 +103,10 @@ export default function DriHome() {
     const c = data.drawingRequests.counts;
     return [
       { label: "Total Requested", count: data.drawingRequests.total },
-      { label: "AGM Review", count: c["agm-review"] ?? 0 },
-      { label: "GM Review", count: c["gm-review"] ?? 0 },
+      { label: "GM Screening (L1)", count: c["l1-gm"] ?? 0 },
+      { label: "Architect Drawing (L2)", count: c["l2-architect"] ?? 0 },
+      { label: "GM Cross-Check (L3)", count: c["l3-gm"] ?? 0 },
+      { label: "GM Final Approval (L4)", count: c["l4-gm"] ?? 0 },
       { label: "Approved", count: c.approved ?? 0 },
       { label: "Returned", count: c.returned ?? 0 },
     ];

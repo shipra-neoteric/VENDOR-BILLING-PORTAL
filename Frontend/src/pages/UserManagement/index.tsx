@@ -11,6 +11,7 @@ import {
 import PageShell from "../../components/PageShell";
 import apiClient from "../../services/apiClient";
 import { useAuth } from "../../context/AuthContext";
+import { SearchFilter } from "../../ui/Filters";
 import dayjs from "dayjs";
 
 // ── Types ─────────────────────────────────────────────────────────
@@ -583,12 +584,10 @@ export default function UserManagement() {
 
       {/* ── Filters ── */}
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14, alignItems: "center" }}>
-        <Input.Search
+        <SearchFilter
           placeholder="Search by name or email…"
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          allowClear
-          style={{ width: 300 }}
+          onChange={setSearch}
         />
         <Select
           value={roleFilter}

@@ -2,7 +2,7 @@ import type { ButtonHTMLAttributes } from "react";
 import { Loader2 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
-type BtnColor = "primary" | "purple" | "red" | "green" | "amber" | "outline" | "dark";
+type BtnColor = "primary" | "purple" | "red" | "green" | "amber" | "blue" | "outline" | "dark";
 
 // `text` is kept separate from `bg` so it can be skipped when the caller
 // passes their own `style.color` (e.g. an icon-only button tinted to match
@@ -13,6 +13,7 @@ const COLOR_CLASSES: Record<BtnColor, { bg: string; text: string }> = {
   red:     { bg: "bg-[#EF4444] hover:bg-[#dc2626]", text: "text-white!" },
   green:   { bg: "bg-[#10B981] hover:bg-[#059669]", text: "text-white!" },
   amber:   { bg: "bg-amber-500/10 border border-amber-500/20 hover:bg-amber-500/20", text: "text-amber-600!" },
+  blue:    { bg: "bg-blue-500/10 border border-blue-500/20 hover:bg-blue-500/20", text: "text-blue-600!" },
   outline: { bg: "border border-gray-200 dark:border-gray-700 bg-white dark:bg-transparent hover:bg-gray-50 dark:hover:bg-gray-800", text: "text-gray-700! dark:text-[#F1F5F9]!" },
   // A true neutral (no blue undertone) — pairs with the orange brand accent
   // better than gray-800/#1E293B's cool blue-slate tint did.

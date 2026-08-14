@@ -102,40 +102,55 @@ function ProjectPerfTable({ rows }: { rows: DPRProjectPerformance[] }) {
   );
 }
 
-// Only the Bills row has a matching detail list to drill into (details.pendingApprovals
-// is bill requests specifically) — Work Orders and Site Progress rows are counts only,
-// since there's no equivalent per-row detail list available for those yet.
+// Only the Bills row has a matching detail list to drill into — built straight
+// off the same `bills` array the count itself is computed from, so what you
+// see when you click always matches the number on the row (previously this
+// opened the DPR report's own `details.pendingApprovals`, which is bill
+// *requests* pending AGM/GM review — a different collection entirely from
+// the RunningBills counted here, so it routinely showed "No records" even
+// when the badge read 45). Work Orders and Site Progress rows stay counts
+// only, since WORow doesn't carry a bill/WO number or vendor name to list.
 function PendingApprovalsPanel({
-  workOrders, bills, siteProgressCount, onOpenBills,
-}: { workOrders: WORow[]; bills: BillRow[]; siteProgressCount: number; onOpenBills: () => void }) {
+  workOrders, bills, siteProgressCount,
+}: { workOrders: WORow[]; bills: BillRow[]; siteProgressCount: number }) {
+  const [showBills, setShowBills] = useState(false);
   const woPending = workOrders.filter(w => WO_PENDING_APPROVAL_STATUSES.includes(w.approvalStatus || "")).length;
-  const billsPending = bills.filter(b => BILL_PENDING_STATUSES.includes(b.status || "")).length;
+  const pendingBills = bills.filter(b => BILL_PENDING_STATUSES.includes(b.status || ""));
 
   const rows: { icon: LucideIcon; color: string; label: string; sub: string; count: number; onClick?: () => void }[] = [
     { icon: ClipboardList, color: "#2a78d6", label: "Work Orders", sub: "Waiting for approval", count: woPending },
-    { icon: FileText, color: "#eb6834", label: "Bills", sub: "Waiting for approval", count: billsPending, onClick: onOpenBills },
+    { icon: FileText, color: "#eb6834", label: "Bills", sub: "Waiting for approval", count: pendingBills.length, onClick: () => setShowBills(true) },
     { icon: HardHat, color: "#1baf7a", label: "Site Progress Entries", sub: "Logged today", count: siteProgressCount },
   ];
 
   return (
-    <div className="flex flex-col gap-1">
-      {rows.map(r => (
-        <button
-          key={r.label} onClick={r.onClick} disabled={!r.onClick}
-          className={`flex items-center gap-3 px-1.5 py-2.5 rounded-lg text-left w-full ${r.onClick ? "hover:bg-gray-50 dark:hover:bg-gray-800/40 cursor-pointer" : "cursor-default"}`}
-        >
-          <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: `${r.color}18` }}>
-            <r.icon className="w-4 h-4" style={{ color: r.color }} />
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="text-[13px] font-semibold text-[#1A1A2E] dark:text-[#F1F5F9]">{r.label}</div>
-            <div className="text-[11px] text-gray-400">{r.sub}</div>
-          </div>
-          <span className={`text-sm font-bold ${r.count > 0 ? "text-red-500" : "text-gray-300"}`}>{r.count}</span>
-          {r.onClick && <ChevronRight className="w-4 h-4 text-gray-300 shrink-0" />}
-        </button>
-      ))}
-    </div>
+    <>
+      <div className="flex flex-col gap-1">
+        {rows.map(r => (
+          <button
+            key={r.label} onClick={r.onClick} disabled={!r.onClick}
+            className={`flex items-center gap-3 px-1.5 py-2.5 rounded-lg text-left w-full ${r.onClick ? "hover:bg-gray-50 dark:hover:bg-gray-800/40 cursor-pointer" : "cursor-default"}`}
+          >
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: `${r.color}18` }}>
+              <r.icon className="w-4 h-4" style={{ color: r.color }} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-[13px] font-semibold text-[#1A1A2E] dark:text-[#F1F5F9]">{r.label}</div>
+              <div className="text-[11px] text-gray-400">{r.sub}</div>
+            </div>
+            <span className={`text-sm font-bold ${r.count > 0 ? "text-red-500" : "text-gray-300"}`}>{r.count}</span>
+            {r.onClick && <ChevronRight className="w-4 h-4 text-gray-300 shrink-0" />}
+          </button>
+        ))}
+      </div>
+      {showBills && (
+        <DetailListModal
+          title="Bills Waiting for Approval"
+          rows={pendingBills.map(b => ({ id: b._id, label: b.billNo || "—", project: "", vendor: b.vendorName || "", value: b.amount || 0 }))}
+          onClose={() => setShowBills(false)}
+        />
+      )}
+    </>
   );
 }
 
@@ -336,7 +351,6 @@ export default function OperationalView({ data, comparisonMode, projectId }: { d
             <div className="font-bold text-[15px] text-[#1A1A2E] dark:text-[#F1F5F9] mb-2">Pending Approvals</div>
             <PendingApprovalsPanel
               workOrders={scopedWorkOrders} bills={scopedBills} siteProgressCount={siteProgressToday.length}
-              onOpenBills={() => open("Pending Approvals", "pendingApprovals")}
             />
           </Card>
           <Card>

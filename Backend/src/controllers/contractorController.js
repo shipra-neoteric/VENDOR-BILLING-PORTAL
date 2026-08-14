@@ -97,3 +97,14 @@ exports.updateContractor = asyncHandler(async (req, res) => {
   if (!contractor) return notFound(res, 'Contractor not found');
   success(res, { contractor }, 'Contractor updated successfully');
 });
+
+// Existing work orders/bills keep their own snapshotted vendorName/ownerName/
+// mobile regardless of this record's fate (same as Company deletion elsewhere
+// in this codebase) — a deleted contractor's live bank-detail lookup just
+// falls back to "not available" on those older documents, it doesn't break them.
+exports.deleteContractor = asyncHandler(async (req, res) => {
+  const contractor = await Contractor.findById(req.params.id);
+  if (!contractor) return notFound(res, 'Contractor not found');
+  await contractor.deleteOne();
+  success(res, null, `Contractor "${contractor.companyName}" deleted`);
+});

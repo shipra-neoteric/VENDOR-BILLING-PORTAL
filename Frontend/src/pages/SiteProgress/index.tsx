@@ -14,6 +14,7 @@ import dayjs from "dayjs";
 import type { Dayjs } from "dayjs";
 import PageShell from "../../components/PageShell";
 import apiClient from "../../services/apiClient";
+import { SearchFilter } from "../../ui/Filters";
 import { useAuth } from "../../context/AuthContext";
 import type { AuthUser } from "../../context/AuthContext";
 import { selectableProjects } from "../../utils/projectOptions";
@@ -855,10 +856,9 @@ export default function SiteProgress() {
             style={{ marginBottom: 12 }}
           />
           <div style={{ marginBottom: 16, display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <Input
-              allowClear placeholder="Search by request no, work order, contractor, or project…"
-              value={reqSearch} onChange={e => setReqSearch(e.target.value)}
-              style={{ maxWidth: 420 }} prefix={<span style={{ color: "#9ca3af" }}>🔍</span>}
+            <SearchFilter
+              placeholder="Search by request no, work order, contractor, or project…"
+              value={reqSearch} onChange={setReqSearch}
             />
             <Select
               allowClear showSearch placeholder="Filter by project…"

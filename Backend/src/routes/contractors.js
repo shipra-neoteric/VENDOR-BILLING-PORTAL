@@ -2,7 +2,7 @@ const router = require('express').Router();
 const { authenticate, authorizeOr } = require('../middleware/auth');
 const { createContractorRules } = require('../validators/contractor.validator');
 const {
-  listContractors, getContractor, createContractor, bulkImport, updateContractor,
+  listContractors, getContractor, createContractor, bulkImport, updateContractor, deleteContractor,
 } = require('../controllers/contractorController');
 
 router.use(authenticate);
@@ -12,5 +12,6 @@ router.get('/:id',   getContractor);
 router.post('/',     authorizeOr('contractors', 'create', 'owner', 'gm', 'accounts'), createContractorRules, createContractor);
 router.post('/bulk', authorizeOr('contractors', 'create', 'owner', 'gm', 'accounts'), bulkImport);
 router.put('/:id',   authorizeOr('contractors', 'edit',   'owner', 'gm', 'accounts'), updateContractor);
+router.delete('/:id', authorizeOr('contractors', 'delete', 'owner'), deleteContractor);
 
 module.exports = router;

@@ -16,18 +16,18 @@ import {
   Upload,
   message,
 } from "antd";
-import {
-  PlusOutlined,
-  UploadOutlined,
-  DownloadOutlined,
-} from "@ant-design/icons";
-import * as XLSX from "xlsx";
+import { UploadOutlined } from "@ant-design/icons";
+import { Download, Plus, Eye, Pencil, Trash2 } from "lucide-react";
 
 import PageShell from "../../components/PageShell";
 import ContractorDetailView from "../../components/ContractorDetailView";
+import { downloadContractorListPDF } from "../../components/ContractorListPDF";
 import apiClient from "../../services/apiClient";
 import type { Contractor, VendorGroup } from "../../types/VendorBilling";
 import { vendorLabel } from "../../utils/vendorLabel";
+import Btn from "../../ui/Btn";
+import ConfirmModal from "../../ui/ConfirmModal";
+import { SearchFilter } from "../../ui/Filters";
 
 const normalizeId = (obj: any) => ({ ...obj, id: obj._id || obj.id });
 
@@ -72,32 +72,6 @@ function SectionHeading({ children }: { children: React.ReactNode }) {
       {children}
     </div>
   );
-}
-
-// ── Contractor list export ──────────────────────────────────────
-// Same fields shown in the table itself (Vendor Code/Company/Owner/Mobile/
-// Vendor Group/Work Types), exported for every contractor regardless of the
-// current search filter — this is "the list", not "what's on screen".
-
-function downloadContractorList(contractors: Contractor[], vendorGroups: VendorGroup[]) {
-  const headers = ["Vendor Code", "Company", "Owner", "Mobile", "Vendor Group", "Work Types"];
-  const rows = contractors.map((c) => {
-    const group = vendorGroups.find((g) => g.id === c.groupId);
-    return [
-      c.vendorCode,
-      vendorLabel(c.companyName, c.shortCode),
-      c.ownerName || "",
-      c.mobile || "",
-      group ? group.name : "",
-      (c.workTypes || []).join(", "),
-    ];
-  });
-  const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
-  ws["!cols"] = headers.map(() => ({ wch: 24 }));
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Contractors");
-  const today = new Date().toISOString().slice(0, 10);
-  XLSX.writeFile(wb, `contractors_${today}.xlsx`);
 }
 
 // ── Vendor Group select — pick an existing group or type a new name to
@@ -178,6 +152,7 @@ export default function Contractors() {
   const [selected, setSelected]       = useState<Contractor | null>(null);
   const [vendorGroups, setVendorGroups] = useState<VendorGroup[]>([]);
   const [groupId, setGroupId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Contractor | null>(null);
   const [form] = Form.useForm();
 
   // ── Load ──────────────────────────────────────────────────────
@@ -236,6 +211,18 @@ export default function Contractors() {
     setRegisterOpen(true);
   };
 
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    try {
+      await apiClient.delete(`/contractors/${deleteTarget.id}`);
+      setContractors((prev) => prev.filter((c) => c.id !== deleteTarget.id));
+      message.success(`"${vendorLabel(deleteTarget.companyName, deleteTarget.shortCode)}" deleted`);
+      setDeleteTarget(null);
+    } catch (err: any) {
+      message.error(err?.response?.data?.message || "Delete failed");
+    }
+  };
+
   // ── Columns ───────────────────────────────────────────────────
   const columns = [
     {
@@ -284,12 +271,11 @@ export default function Contractors() {
     },
     {
       title: "Actions",
-      width: 170,
+      width: 110,
       render: (_: unknown, record: Contractor) => (
-        <Space size={0}>
-          <Button
-            type="link"
-            size="small"
+        <div style={{ display: "flex", gap: 4 }}>
+          <Btn
+            small color="blue" icon={Eye} title="View Contractor"
             onClick={() => {
               setSelected(record);
               setViewOpen(true);
@@ -302,13 +288,10 @@ export default function Contractors() {
                 setContractors(prev => prev.map(c => c.id === record.id ? full : c));
               }).catch(() => {});
             }}
-          >
-            View Profile
-          </Button>
-          <Button type="link" size="small" onClick={() => openEdit(record)}>
-            Edit
-          </Button>
-        </Space>
+          />
+          <Btn small color="amber" icon={Pencil} title="Edit Contractor" onClick={() => openEdit(record)} />
+          <Btn small color="red" icon={Trash2} title="Delete Contractor" onClick={() => setDeleteTarget(record)} />
+        </div>
       ),
     },
   ];
@@ -318,24 +301,16 @@ export default function Contractors() {
       title="Contractors"
       description="Manage registered vendors and sub-contractors."
       cta={
-        <Space>
-          <Button
-            icon={<DownloadOutlined />}
-            size="large"
-            onClick={() => downloadContractorList(contractors, vendorGroups)}
-          >
-            Download List
-          </Button>
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            size="large"
+        <div style={{ display: "flex", gap: 8 }}>
+          <Btn
+            label="Download List" icon={Download} outline
+            onClick={() => downloadContractorListPDF(contractors, vendorGroups)}
+          />
+          <Btn
+            label="Register Contractor" icon={Plus} color="primary"
             onClick={() => { form.resetFields(); setGroupId(null); setEditingContractor(null); setRegisterOpen(true); }}
-            style={{ background: "#FF7A00", borderColor: "#FF7A00" }}
-          >
-            Register Contractor
-          </Button>
-        </Space>
+          />
+        </div>
       }
     >
       {/* Search */}
@@ -348,12 +323,10 @@ export default function Contractors() {
           marginBottom: 16,
         }}
       >
-        <Input.Search
+        <SearchFilter
           placeholder="Search by vendor code, company name, or mobile…"
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          allowClear
-          style={{ maxWidth: 420 }}
+          onChange={setSearch}
         />
       </div>
 
@@ -601,6 +574,15 @@ export default function Contractors() {
       >
         {selected && <ContractorDetailView contractor={selected} />}
       </Drawer>
+
+      {deleteTarget && (
+        <ConfirmModal
+          title={`Delete "${vendorLabel(deleteTarget.companyName, deleteTarget.shortCode)}"?`}
+          message="This cannot be undone. Work orders and bills already raised against this contractor keep their own record of the name/contact — only the vendor master record itself is removed."
+          confirmLabel="Yes, Delete" danger
+          onConfirm={handleDelete} onCancel={() => setDeleteTarget(null)}
+        />
+      )}
     </PageShell>
   );
 }

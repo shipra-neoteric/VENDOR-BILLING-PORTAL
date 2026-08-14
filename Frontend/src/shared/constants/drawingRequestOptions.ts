@@ -18,25 +18,30 @@ export const STATUS_COLOR: Record<DrawingRequestStatus, "gray" | "blue" | "green
   pending: "amber", committed: "blue", completed: "green", delayed: "red",
 };
 
-// ── Review chain — AGM then GM must approve before Planning can act ─────────
-export const REVIEW_STATUS_OPTIONS = ["agm-review", "gm-review", "approved", "returned"] as const;
+// ── Review chain — L1 (GM screen) → L2 (Architect draws) → L3 (GM
+// cross-check) → L4 (GM final approval) must all clear before Planning can act ──
+export const REVIEW_STATUS_OPTIONS = ["l1-gm", "l2-architect", "l3-gm", "l4-gm", "approved", "returned"] as const;
 export type DrawingReviewStatus = typeof REVIEW_STATUS_OPTIONS[number];
 
 export const REVIEW_STATUS_LABEL: Record<DrawingReviewStatus, string> = {
-  "agm-review": "AGM Review", "gm-review": "GM Review", approved: "Approved", returned: "Returned",
+  "l1-gm": "GM Screening (L1)", "l2-architect": "Architect Drawing (L2)",
+  "l3-gm": "GM Cross-Check (L3)", "l4-gm": "GM Final Approval (L4)",
+  approved: "Approved", returned: "Returned",
 };
 
-export const REVIEW_STATUS_COLOR: Record<DrawingReviewStatus, "gray" | "blue" | "green" | "red" | "amber" | "purple"> = {
-  "agm-review": "amber", "gm-review": "purple", approved: "green", returned: "red",
+export const REVIEW_STATUS_COLOR: Record<DrawingReviewStatus, "gray" | "blue" | "green" | "red" | "amber" | "purple" | "teal"> = {
+  "l1-gm": "amber", "l2-architect": "blue", "l3-gm": "purple", "l4-gm": "teal", approved: "green", returned: "red",
 };
 
 export interface DrawingReviewHistoryEntry {
-  stage: "agm" | "gm" | "dri";
-  action: "forwarded" | "approved" | "returned" | "resubmitted";
+  stage: "l1-gm" | "l2-architect" | "l3-gm" | "l4-gm" | "dri";
+  action: "forwarded" | "submitted" | "approved" | "returned" | "resubmitted";
   by?: { _id: string; name: string } | null;
   at: string;
   remarks?: string;
 }
+
+export interface DrawingRequestFile { name: string; url: string; }
 
 export const PRIORITY_LABEL: Record<string, string> = {
   low: "Low", medium: "Medium", high: "High", urgent: "Urgent",
@@ -59,6 +64,7 @@ export interface DrawingRequest {
   driName: string;
   reviewStatus: DrawingReviewStatus;
   reviewHistory: DrawingReviewHistoryEntry[];
+  drawingFiles: DrawingRequestFile[];
   assignedTo?: DrawingRequestUser | null;
   committedDate?: string | null;
   priority: string;

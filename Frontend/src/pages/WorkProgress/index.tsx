@@ -7,6 +7,7 @@ import { ArrowLeftOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import isoWeek from "dayjs/plugin/isoWeek";
 import apiClient from "../../services/apiClient";
+import { SearchFilter } from "../../ui/Filters";
 import { useAuth } from "../../context/AuthContext";
 import { selectableProjects } from "../../utils/projectOptions";
 
@@ -782,13 +783,10 @@ function DRIDashboard() {
 
       {/* Search bar */}
       <div style={{ marginBottom: 16 }}>
-        <Input
-          allowClear
+        <SearchFilter
           placeholder="Search by vendor name, vendor code or work order no…"
           value={driSearch}
-          onChange={e => setDriSearch(e.target.value)}
-          style={{ maxWidth: 420, borderRadius: 8 }}
-          prefix={<span style={{ color: "var(--nx-text-muted)", marginRight: 4 }}>🔍</span>}
+          onChange={setDriSearch}
         />
       </div>
 

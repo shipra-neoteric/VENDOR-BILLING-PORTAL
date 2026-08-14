@@ -301,7 +301,12 @@ exports.getDPR = asyncHandler(async (req, res) => {
   const billsRaisedToday = runningBills.filter(b => inRange(b.billDate, dayStart, dayEnd));
   const billsRaisedValueToday = sum(billsRaisedToday, b => b.amount);
   const approvedValueToday = sum(rbApprovedToday, b => b.amount);
-  const unpaidBills = runningBills.filter(b => ['draft', 'verify-done', 'l1-approved', 'approved', 'sent-to-tms', 'hold'].includes(b.status));
+  // Scoped by billDate the same way billsRaisedToday is — "Pending Payments"/
+  // "Overdue Payments" for the selected period means "of the bills raised in
+  // that period, how much is still unpaid," not a lifetime running total.
+  const unpaidBills = runningBills.filter(b =>
+    ['draft', 'verify-done', 'l1-approved', 'approved', 'sent-to-tms', 'hold'].includes(b.status)
+    && inRange(b.billDate || b.createdAt, dayStart, dayEnd));
   const pendingValueToday = sum(unpaidBills.filter(b => !['approved', 'sent-to-tms', 'hold'].includes(b.status)), b => b.amount);
   const outstandingLiability = sum(unpaidBills.filter(b => ['approved', 'sent-to-tms', 'hold'].includes(b.status)), b => b.amount);
   const advanceAmountToday = sum(advanceToday, a => a.amount);
@@ -315,7 +320,11 @@ exports.getDPR = asyncHandler(async (req, res) => {
     outstandingLiability: unpaidBills.filter(b => ['approved', 'sent-to-tms', 'hold'].includes(b.status)).map(b => ({ id: b._id, label: b.billNo, project: b.projectName, vendor: b.vendorName, value: b.amount || 0 })),
   };
 
-  const paidBills = runningBills.filter(b => b.status === 'paid');
+  // Same set as rbPaidToday above (paid + paymentDate within the selected
+  // range) — reused here instead of re-filtering unscoped, which previously
+  // made "Total Payments Released"/"Payment Health Score" a lifetime total
+  // that never moved when the date-range preset changed.
+  const paidBills = rbPaidToday;
   const paymentBreakdown = {
     released: sum(paidBills, netReleased),
     retentionHeld: sum(runningBills, b => (b.retentionAmount || 0) - (b.retentionReleased || 0)),

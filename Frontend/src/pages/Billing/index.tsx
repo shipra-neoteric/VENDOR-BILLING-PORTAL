@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Button, Col, Descriptions, Divider, Drawer, Input, Row, Select, Space, Table, Tag } from "antd";
-import { PlusOutlined, SearchOutlined } from "@ant-design/icons";
+import { Button, Col, Descriptions, Divider, Drawer, Row, Select, Space, Table, Tag } from "antd";
+import { PlusOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import type { Dayjs } from "dayjs";
 import PageShell from "../../components/PageShell";
 import apiClient from "../../services/apiClient";
+import { SearchFilter } from "../../ui/Filters";
 import DateRangeFilter, { inDateRange } from "../../components/DateRangeFilter";
 import { selectableProjects } from "../../utils/projectOptions";
 import { useAuth } from "../../context/AuthContext";
@@ -201,12 +202,10 @@ export default function Billing() {
     >
       <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
         <Col flex="1" style={{ minWidth: 220 }}>
-          <Input
-            prefix={<SearchOutlined style={{ color: "#9CA3AF" }} />}
+          <SearchFilter
             placeholder="Search bill no., vendor, WO, project…"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            allowClear
+            onChange={setSearch}
           />
         </Col>
         <Col>

@@ -75,7 +75,7 @@ exports.getDriHome = asyncHandler(async (req, res) => {
   }
 
   // ── This DRI's own drawing requests ──
-  const reviewCounts = { 'agm-review': 0, 'gm-review': 0, approved: 0, returned: 0 };
+  const reviewCounts = { 'l1-gm': 0, 'l2-architect': 0, 'l3-gm': 0, 'l4-gm': 0, approved: 0, returned: 0 };
   for (const r of myRequests) {
     if (reviewCounts[r.reviewStatus] !== undefined) reviewCounts[r.reviewStatus] += 1;
   }
