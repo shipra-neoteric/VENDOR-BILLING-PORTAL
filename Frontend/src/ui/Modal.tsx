@@ -13,18 +13,26 @@ interface ModalProps {
   ultraWide?: boolean;
   footer?: ReactNode;
   children: ReactNode;
+  // Only needed when a second Modal must stack on top of another open one
+  // (e.g. a read-only quick-view drawer opened from within a detail drawer).
+  // Keep both Modals as sibling conditional renders in the page — never
+  // nest one inside another's children, since motion's animate={x} transform
+  // on the outer panel would create a new containing block and break the
+  // inner Modal's position:fixed.
+  zIndex?: number;
 }
 
 // Right-side drawer — the only "modal" shape this design system uses (see
 // ConfirmModal for the one deliberate exception, a centered confirm dialog).
 export default function Modal({
-  title, subtitle, icon: Icon, onClose, wide, extraWide, ultraWide, footer, children,
+  title, subtitle, icon: Icon, onClose, wide, extraWide, ultraWide, footer, children, zIndex,
 }: ModalProps) {
   const widthClass = ultraWide ? "max-w-6xl" : extraWide ? "max-w-4xl" : wide ? "max-w-2xl" : "max-w-lg";
   return (
     <AnimatePresence>
       <motion.div
-        className="fixed inset-0 bg-[#0F172A]/60 z-[200] flex justify-end"
+        className="fixed inset-0 bg-[#0F172A]/60 flex justify-end"
+        style={{ zIndex: zIndex ?? 200 }}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}

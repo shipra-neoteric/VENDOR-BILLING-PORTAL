@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import toast from "react-hot-toast";
 import { CheckCircle2, XCircle, Eye, Trophy, Inbox, FileText } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import dayjs from "dayjs";
 import apiClient from "../../services/apiClient";
 import { selectableProjects } from "../../utils/projectOptions";
@@ -78,9 +78,11 @@ interface BillRequest {
 export default function BillRequests() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
+  const openId = searchParams.get("open");
   const [requests,      setRequests]      = useState<BillRequest[]>([]);
   const [loading,       setLoading]       = useState(false);
-  const [tab,           setTab]           = useState("pending");
+  const [tab,           setTab]           = useState(openId ? "all" : "pending");
 
   const [viewReq,       setViewReq]       = useState<BillRequest | null>(null);
   const [slaInstance,   setSlaInstance]   = useState<WorkflowInstance | null>(null);
@@ -120,6 +122,15 @@ export default function BillRequests() {
   };
 
   useEffect(() => { load(tab === "all" ? undefined : tab, showArchived); }, [tab, showArchived]);
+
+  // Deep link from other pages (e.g. the MIS Dashboard's Ongoing Workflows
+  // table) — ?open=<billRequestId> auto-opens that request's view modal
+  // once the list has loaded.
+  useEffect(() => {
+    if (!openId || requests.length === 0) return;
+    const match = requests.find(r => r._id === openId);
+    if (match) setViewReq(match);
+  }, [openId, requests]);
 
   useEffect(() => {
     apiClient.get("/projects")

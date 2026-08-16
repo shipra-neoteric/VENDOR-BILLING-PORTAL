@@ -10,17 +10,20 @@ interface ConfirmModalProps {
   loading?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
+  // See Modal.tsx's zIndex prop — same stacking rationale.
+  zIndex?: number;
 }
 
 // The one deliberate exception to Modal's right-drawer shape — a small
 // centered dialog, matching the UI.md spec's confirm-dialog pattern.
 export default function ConfirmModal({
-  title, message, confirmLabel = "Confirm", danger = false, loading = false, onConfirm, onCancel,
+  title, message, confirmLabel = "Confirm", danger = false, loading = false, onConfirm, onCancel, zIndex,
 }: ConfirmModalProps) {
   return (
     <AnimatePresence>
       <motion.div
-        className="fixed inset-0 bg-[#0F172A]/60 z-[200] flex items-center justify-center p-4"
+        className="fixed inset-0 bg-[#0F172A]/60 flex items-center justify-center p-4"
+        style={{ zIndex: zIndex ?? 200 }}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}

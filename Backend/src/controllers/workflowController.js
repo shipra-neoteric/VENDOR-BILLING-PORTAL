@@ -189,6 +189,20 @@ exports.getMISReport = asyncHandler(async (req, res) => {
   let pendingAmount = 0, breachedAmount = 0;
 
   for (const inst of instances) {
+    // ── Pipeline funnel skeleton (one entry per template) ── built first so
+    // the in-progress branch below can record the instance's *current* stage
+    // against it — this is the only reliable source for "how many are
+    // genuinely stuck here right now": a stage flag left at 'in-progress' on
+    // an instance that's since been completed/cancelled must never count.
+    const tKey = String(inst.templateId);
+    if (!pipelineGroups.has(tKey)) {
+      pipelineGroups.set(tKey, {
+        templateName: inst.templateName, entityType: inst.entityType,
+        perStage: inst.stages.map(s => ({ name: s.name, reached: 0, completed: 0, durationsHrs: [], withinSla: 0, breached: 0, pendingNow: 0 })),
+      });
+    }
+    const pg = pipelineGroups.get(tKey);
+
     if (inst.status === 'completed') {
       slaCompleted++;
       const anyLate = inst.stages.some(s => s.delayMinutes > 0);
@@ -225,6 +239,7 @@ exports.getMISReport = asyncHandler(async (req, res) => {
         const bKey = `${inst.entityType}:${stage.name}`;
         bottlenecks.set(bKey, (bottlenecks.get(bKey) || 0) + 1);
         financialByStage.set(stage.name, (financialByStage.get(stage.name) || 0) + (inst.amount || 0));
+        if (pg.perStage[inst.currentStageIndex]) pg.perStage[inst.currentStageIndex].pendingNow++;
 
         if (stageBreached) {
           activityEvents.push({
@@ -265,16 +280,6 @@ exports.getMISReport = asyncHandler(async (req, res) => {
         overdueMinutes: stageBreached ? Math.round((now - new Date(stage.dueAt)) / 60000) : 0,
       });
     }
-
-    // ── Pipeline funnel skeleton (one entry per template) ──
-    const tKey = String(inst.templateId);
-    if (!pipelineGroups.has(tKey)) {
-      pipelineGroups.set(tKey, {
-        templateName: inst.templateName, entityType: inst.entityType,
-        perStage: inst.stages.map(s => ({ name: s.name, reached: 0, completed: 0, durationsHrs: [], withinSla: 0, breached: 0 })),
-      });
-    }
-    const pg = pipelineGroups.get(tKey);
 
     for (let i = 0; i < inst.stages.length; i++) {
       const stage = inst.stages[i];
@@ -434,7 +439,10 @@ exports.getMISReport = asyncHandler(async (req, res) => {
       name: s.name, reached: s.reached, completed: s.completed,
       avgHours: avg(s.durationsHrs),
       withinSlaPct: (s.withinSla + s.breached) ? Math.round((s.withinSla / (s.withinSla + s.breached)) * 100) : 0,
-      pending: s.reached - s.completed,
+      // Genuinely-open instances currently sitting at this stage — not
+      // "reached minus completed", which double-counts a stage left stuck
+      // at 'in-progress' on an instance that's since completed/cancelled.
+      pending: s.pendingNow,
     })),
   }));
 

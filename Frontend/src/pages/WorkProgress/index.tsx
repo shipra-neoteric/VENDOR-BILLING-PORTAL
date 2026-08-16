@@ -1,24 +1,24 @@
 import { Fragment, useState, useEffect, useMemo } from "react";
-import {
-  Button, Modal, Form, Input, InputNumber,
-  Tooltip, message, Spin, Empty, DatePicker, Badge, Popconfirm,
-} from "antd";
-import { ArrowLeftOutlined } from "@ant-design/icons";
 import toast from "react-hot-toast";
-import { HardHat, ClipboardList, TrendingUp, CheckCircle2, Layers, Lock, Pin } from "lucide-react";
+import { HardHat, ClipboardList, TrendingUp, CheckCircle2, Layers, Lock, Pin, ArrowLeft } from "lucide-react";
 import dayjs from "dayjs";
 import isoWeek from "dayjs/plugin/isoWeek";
 import apiClient from "../../services/apiClient";
 import { SearchFilter } from "../../ui/Filters";
 import { useAuth } from "../../context/AuthContext";
+import { useFormErrors } from "../../hooks/useFormErrors";
 import { selectableProjects } from "../../utils/projectOptions";
 import SField from "../../ui/SField";
+import Field from "../../ui/Field";
+import { DatePicker } from "../../ui/DatePicker";
 import Btn from "../../ui/Btn";
 import UIBadge from "../../ui/Badge";
 import Spinner from "../../ui/Spinner";
 import EmptyState from "../../ui/EmptyState";
 import KPICard from "../../ui/KPICard";
 import Card from "../../ui/Card";
+import Modal from "../../ui/Modal";
+import ConfirmModal from "../../ui/ConfirmModal";
 import { Table, Thead, Tbody, Tr, Th, Td, TdText } from "../../ui/Table";
 
 dayjs.extend(isoWeek);
@@ -106,42 +106,56 @@ function personName(p?: { _id: string; name: string } | string | null): string {
 // read-only history (reason shown on hover); entries attached to a bill can
 // only be invalidated (not edited/deleted) until that bill is rejected —
 // invalidating clears the attachment and excludes the entry from progress.
+// Entries that would drop completedQty below what's already been billed
+// can't be deleted either — rather than a "confirm dialog with no way to
+// confirm" trick, the delete affordance simply isn't rendered then.
 function EntryActions({
   e, deleting, onEdit, onDelete, onInvalidate,
 }: {
   e: EntryRow; deleting: boolean;
   onEdit: () => void; onDelete: () => void; onInvalidate: () => void;
 }) {
+  const [confirming, setConfirming] = useState(false);
+  const linkCls = "text-[11px] font-semibold hover:underline disabled:opacity-50 disabled:no-underline shrink-0";
+
   if (e.invalidated?.done) {
     const who = personName(e.invalidated.by);
+    const title = `Invalidated${who ? ` by ${who}` : ""}${e.invalidated.at ? ` on ${dayjs(e.invalidated.at).format("DD MMM YYYY")}` : ""}${e.invalidated.reason ? ` — ${e.invalidated.reason}` : ""}`;
     return (
-      <Tooltip title={`Invalidated${who ? ` by ${who}` : ""}${e.invalidated.at ? ` on ${dayjs(e.invalidated.at).format("DD MMM YYYY")}` : ""}${e.invalidated.reason ? ` — ${e.invalidated.reason}` : ""}`}>
-        <span style={{ fontSize: 10, fontWeight: 700, color: "#dc2626", background: "#fef2f2", padding: "2px 8px", borderRadius: 10, border: "1px solid #fecaca", whiteSpace: "nowrap" }}>
-          Invalidated
-        </span>
-      </Tooltip>
+      <span title={title}>
+        <UIBadge color="red" small>Invalidated</UIBadge>
+      </span>
     );
   }
   if (e.billedInRequestId) {
     return (
-      <Button size="small" type="link" style={{ fontSize: 11, padding: "0 4px", color: "#9333ea" }} onClick={onInvalidate}>
+      <button type="button" className={`${linkCls} text-purple-600 dark:text-purple-400`} onClick={onInvalidate}>
         Invalidate
-      </Button>
+      </button>
     );
   }
+
+  const deletable = e.scopeCompleted - e.qtyAdded >= e.scopeLastBilled;
   return (
-    <div style={{ display: "flex", gap: 2 }}>
-      <Button size="small" type="link" style={{ fontSize: 11, padding: "0 4px" }} onClick={onEdit}>Edit</Button>
-      <Popconfirm
-        title="Delete entry?"
-        description={e.scopeCompleted - e.qtyAdded >= e.scopeLastBilled ? "This will be deleted permanently." : "Entry is billed and cannot be deleted."}
-        okText={e.scopeCompleted - e.qtyAdded >= e.scopeLastBilled ? "Delete" : undefined}
-        okType="danger" cancelText="Cancel"
-        onConfirm={e.scopeCompleted - e.qtyAdded >= e.scopeLastBilled ? onDelete : undefined}
-        okButtonProps={e.scopeCompleted - e.qtyAdded < e.scopeLastBilled ? { style: { display: "none" } } : {}}
-      >
-        <Button size="small" type="link" danger loading={deleting} style={{ fontSize: 11, padding: "0 4px" }}>Del</Button>
-      </Popconfirm>
+    <div className="flex items-center gap-2">
+      <button type="button" className={`${linkCls} text-blue-600 dark:text-blue-400`} onClick={onEdit}>Edit</button>
+      {deletable ? (
+        <button type="button" disabled={deleting} className={`${linkCls} text-red-600 dark:text-red-400`} onClick={() => setConfirming(true)}>
+          {deleting ? "Deleting…" : "Del"}
+        </button>
+      ) : (
+        <span className="text-[11px] text-gray-300 dark:text-gray-600" title="Entry is billed and cannot be deleted.">Del</span>
+      )}
+      {confirming && (
+        <ConfirmModal
+          title="Delete entry?"
+          message="This will be deleted permanently."
+          confirmLabel="Delete"
+          danger
+          onConfirm={() => { setConfirming(false); onDelete(); }}
+          onCancel={() => setConfirming(false)}
+        />
+      )}
     </div>
   );
 }
@@ -430,6 +444,42 @@ function WorkProgressAdmin() {
   );
 }
 
+// ── Location fields (Add/Edit Progress modals) ────────────────────────────────
+type LocationField = "tower" | "floor" | "flatNo" | "plotNo" | "locationNote";
+
+function LocationFields({
+  pt, tower, floor, flatNo, plotNo, locationNote, onChange,
+}: {
+  pt: string; tower: string; floor: string; flatNo: string; plotNo: string; locationNote: string;
+  onChange: (field: LocationField, value: string) => void;
+}) {
+  return (
+    <div className="bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700/40 rounded-lg p-3 mb-3.5">
+      <div className="text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2.5">📍 Location (optional)</div>
+      {pt === "apartment" ? (
+        <div className="grid grid-cols-3 gap-2">
+          <Field label="Tower" placeholder="e.g. A, T1" value={tower} onChange={(e) => onChange("tower", e.target.value)} />
+          <Field label="Floor" placeholder="e.g. G, 1, 5" value={floor} onChange={(e) => onChange("floor", e.target.value)} />
+          <Field label="Flat No" placeholder="e.g. 101" value={flatNo} onChange={(e) => onChange("flatNo", e.target.value)} />
+        </div>
+      ) : (
+        <Field label="Plot No" placeholder="e.g. Plot-42" value={plotNo} onChange={(e) => onChange("plotNo", e.target.value)} />
+      )}
+      <div className="mt-2">
+        <Field label="Note" placeholder="Additional location details…" value={locationNote} onChange={(e) => onChange("locationNote", e.target.value)} />
+      </div>
+    </div>
+  );
+}
+
+interface ProgFormValues {
+  date: string; tower: string; floor: string; flatNo: string; plotNo: string;
+  locationNote: string; qtyAdded: string; remarks: string; plannedQty: string;
+}
+const emptyProgForm: ProgFormValues = {
+  date: "", tower: "", floor: "", flatNo: "", plotNo: "", locationNote: "", qtyAdded: "", remarks: "", plannedQty: "",
+};
+
 // ── DRI Dashboard ─────────────────────────────────────────────────────────────
 function DRIDashboard() {
   const { user } = useAuth();
@@ -456,20 +506,23 @@ function DRIDashboard() {
   const [progItem,    setProgItem]    = useState<ScopeItemR | null>(null);
   const [progSubItem, setProgSubItem] = useState<SubItemR | null>(null);
   const [progModal,   setProgModal]   = useState(false);
-  const [progForm]                = Form.useForm();
+  const [progFormValues, setProgFormValues] = useState<ProgFormValues>(emptyProgForm);
+  const progErrors = useFormErrors<"date" | "qtyAdded">();
   const [saving,    setSaving]    = useState(false);
 
   // Edit entry modal
   const [editModal, setEditModal] = useState(false);
   const [editEntry, setEditEntry] = useState<EntryRow | null>(null);
-  const [editForm]                = Form.useForm();
+  const [editFormValues, setEditFormValues] = useState<ProgFormValues>(emptyProgForm);
+  const editErrors = useFormErrors<"qtyAdded">();
   const [deleting,  setDeleting]  = useState<string | null>(null);
 
   // Invalidate entry modal — for entries a rejected bill was made from
   const [invalidateModal, setInvalidateModal] = useState(false);
   const [invalidateEntry, setInvalidateEntry] = useState<EntryRow | null>(null);
   const [invalidateWOId,  setInvalidateWOId]  = useState<string | null>(null);
-  const [invalidateForm]                      = Form.useForm();
+  const [invalidateReason, setInvalidateReason] = useState("");
+  const invalidateErrors = useFormErrors<"reason">();
   const [invalidating,    setInvalidating]    = useState(false);
 
   // View all entries modal
@@ -579,49 +632,80 @@ function DRIDashboard() {
   };
 
   // ── Progress handlers ──────────────────────────────────────────────────────
+  const openAddProgress = (woId: string, item: ScopeItemR, sub: SubItemR | null) => {
+    setProgWOId(woId);
+    setProgItem(item);
+    setProgSubItem(sub);
+    progErrors.clearAll();
+    setProgFormValues({ ...emptyProgForm, date: dayjs().format("YYYY-MM-DD") });
+    setProgModal(true);
+  };
+
   const handleAddProgress = async () => {
     if (!progWOId || !progItem) return;
-    const vals = await progForm.validateFields();
+    progErrors.clearAll();
+    let hasError = false;
+    if (!progFormValues.date) { progErrors.setError("date", "Select date"); hasError = true; }
+    const qty = Number(progFormValues.qtyAdded);
+    if (!progFormValues.qtyAdded || !(qty >= 0.01)) {
+      progErrors.setError("qtyAdded", "Enter a valid quantity (e.g. 13.67)");
+      hasError = true;
+    }
+    if (hasError) return;
+
     const target = progSubItem ?? progItem;
     const path = progSubItem
       ? `/work-orders/${progWOId}/scope-items/${progItem._id}/sub-items/${progSubItem._id}/progress`
       : `/work-orders/${progWOId}/scope-items/${progItem._id}/progress`;
+    const plannedQty = progFormValues.plannedQty ? Number(progFormValues.plannedQty) : undefined;
     setSaving(true);
     try {
       await apiClient.post(path, {
-        date:         vals.date ? dayjs(vals.date).format("YYYY-MM-DD") : dayjs().format("YYYY-MM-DD"),
-        qtyAdded:     vals.qtyAdded,
-        remarks:      vals.remarks || "",
-        tower:        vals.tower || "",
-        floor:        vals.floor || "",
-        flatNo:       vals.flatNo || "",
-        plotNo:       vals.plotNo || "",
-        locationNote: vals.locationNote || "",
-        ...(vals.plannedQty ? { plannedQty: vals.plannedQty } : {}),
+        date: progFormValues.date || dayjs().format("YYYY-MM-DD"),
+        qtyAdded: qty,
+        remarks: progFormValues.remarks || "",
+        tower: progFormValues.tower || "",
+        floor: progFormValues.floor || "",
+        flatNo: progFormValues.flatNo || "",
+        plotNo: progFormValues.plotNo || "",
+        locationNote: progFormValues.locationNote || "",
+        ...(plannedQty ? { plannedQty } : {}),
       });
-      message.success(`+${fmtN(vals.qtyAdded)} ${target.unit} recorded`);
+      toast.success(`+${fmtN(qty)} ${target.unit} recorded`);
       setProgModal(false);
-      progForm.resetFields();
+      setProgSubItem(null);
+      setProgFormValues(emptyProgForm);
       await reloadWODetail(progWOId);
     } catch (e: any) {
-      message.error(e?.response?.data?.message || "Failed to add progress");
+      toast.error(e?.response?.data?.message || "Failed to add progress");
     }
     finally { setSaving(false); }
   };
 
   const handleEditEntry = async () => {
     if (!editEntry) return;
-    const vals = await editForm.validateFields();
+    editErrors.clearAll();
+    const qty = Number(editFormValues.qtyAdded);
+    if (!editFormValues.qtyAdded || !(qty >= 0.01)) { editErrors.setError("qtyAdded", "Required"); return; }
+    const woId = editEntry.scopeId.split("||")[1] || progWOId;
     setSaving(true);
     try {
       await apiClient.patch(
-        `/work-orders/${editEntry.scopeId.split("||")[1] || progWOId}/scope-items/${editEntry.scopeId.split("||")[0]}/progress/${editEntry._id}`,
-        { qtyAdded: vals.qtyAdded, date: vals.date ? dayjs(vals.date).format("YYYY-MM-DD") : undefined, remarks: vals.remarks || "", tower: vals.tower || "", floor: vals.floor || "", flatNo: vals.flatNo || "", plotNo: vals.plotNo || "", locationNote: vals.locationNote || "" }
+        `/work-orders/${woId}/scope-items/${editEntry.scopeId.split("||")[0]}/progress/${editEntry._id}`,
+        {
+          qtyAdded: qty,
+          date: editFormValues.date || undefined,
+          remarks: editFormValues.remarks || "",
+          tower: editFormValues.tower || "", floor: editFormValues.floor || "", flatNo: editFormValues.flatNo || "",
+          plotNo: editFormValues.plotNo || "", locationNote: editFormValues.locationNote || "",
+        }
       );
-      message.success("Entry updated");
-      setEditModal(false); editForm.resetFields();
-      if (editEntry.scopeId.split("||")[1]) await reloadWODetail(editEntry.scopeId.split("||")[1]);
-    } catch { }
+      toast.success("Entry updated");
+      setEditModal(false); setEditFormValues(emptyProgForm);
+      if (woId) await reloadWODetail(woId);
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || "Failed to update entry");
+    }
     finally { setSaving(false); }
   };
 
@@ -629,26 +713,29 @@ function DRIDashboard() {
     setDeleting(entry._id);
     try {
       await apiClient.delete(`/work-orders/${woId}/scope-items/${entry.scopeId.split("||")[0]}/progress/${entry._id}`);
-      message.success("Entry deleted");
+      toast.success("Entry deleted");
       await reloadWODetail(woId);
-    } catch { }
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || "Failed to delete entry");
+    }
     finally { setDeleting(null); }
   };
 
   const handleInvalidateEntry = async () => {
     if (!invalidateEntry || !invalidateWOId) return;
-    const vals = await invalidateForm.validateFields();
+    invalidateErrors.clearAll();
+    if (!invalidateReason.trim()) { invalidateErrors.setError("reason", "Explain why this entry is wrong"); return; }
     setInvalidating(true);
     try {
       await apiClient.patch(
         `/work-orders/${invalidateWOId}/scope-items/${invalidateEntry.scopeId.split("||")[0]}/progress/${invalidateEntry._id}/invalidate`,
-        { reason: vals.reason }
+        { reason: invalidateReason }
       );
-      message.success("Entry invalidated — log correct progress separately");
-      setInvalidateModal(false); invalidateForm.resetFields();
+      toast.success("Entry invalidated — log correct progress separately");
+      setInvalidateModal(false); setInvalidateReason("");
       await reloadWODetail(invalidateWOId);
     } catch (e: any) {
-      message.error(e?.response?.data?.message || "Failed to invalidate entry");
+      toast.error(e?.response?.data?.message || "Failed to invalidate entry");
     }
     finally { setInvalidating(false); }
   };
@@ -658,6 +745,7 @@ function DRIDashboard() {
     return (woDetails.get(progWOId) as any)?.projectId?.projectType || "apartment";
   }, [progWOId, woDetails]);
 
+  const progModalTarget = progSubItem ?? progItem;
   const todayStr = dayjs().format("YYYY-MM-DD");
 
   // Must be above any conditional return (Rules of Hooks)
@@ -678,80 +766,41 @@ function DRIDashboard() {
     return result.sort((a, b) => dayjs(b.items[0].createdAt).valueOf() - dayjs(a.items[0].createdAt).valueOf());
   }, [projectBillReqs]);
 
-  // ── Location form fields component ────────────────────────────────────────
-  const LocationFields = ({ pt }: { pt: string }) => (
-    <div style={{ background: "var(--nx-fill-2)", border: "1px solid var(--nx-border)", borderRadius: 8, padding: 12, marginBottom: 12 }}>
-      <div style={{ fontSize: 11, fontWeight: 700, color: "var(--nx-text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>📍 Location (optional)</div>
-      {pt === "apartment" ? (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
-          <Form.Item label="Tower" name="tower" style={{ marginBottom: 0 }}>
-            <Input placeholder="e.g. A, T1" size="small" />
-          </Form.Item>
-          <Form.Item label="Floor" name="floor" style={{ marginBottom: 0 }}>
-            <Input placeholder="e.g. G, 1, 5" size="small" />
-          </Form.Item>
-          <Form.Item label="Flat No" name="flatNo" style={{ marginBottom: 0 }}>
-            <Input placeholder="e.g. 101" size="small" />
-          </Form.Item>
-        </div>
-      ) : (
-        <Form.Item label="Plot No" name="plotNo" style={{ marginBottom: 0 }}>
-          <Input placeholder="e.g. Plot-42" />
-        </Form.Item>
-      )}
-      <Form.Item label="Note" name="locationNote" style={{ marginBottom: 0, marginTop: 8 }}>
-        <Input placeholder="Additional location details…" size="small" />
-      </Form.Item>
-    </div>
-  );
-
-  if (initialLoading) return (
-    <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "60vh" }}><Spin size="large" /></div>
-  );
+  if (initialLoading) return <Spinner size="large" />;
 
   // ══════════════════════════════════════════════════════════════════════════
   // VIEW 1 — Project Picker
   // ══════════════════════════════════════════════════════════════════════════
   if (view === "select-project") {
     return (
-      <div style={{ padding: "24px", maxWidth: 900, margin: "0 auto" }}>
-        <div style={{ marginBottom: 32 }}>
-          <div style={{ fontSize: 24, fontWeight: 800, color: "var(--nx-text)" }}>Welcome, {user?.name}</div>
-          <div style={{ fontSize: 14, color: "var(--nx-text-2)", marginTop: 4 }}>Select a project to track progress and manage billing</div>
+      <div className="p-6 max-w-[900px] mx-auto">
+        <div className="mb-8">
+          <div className="text-2xl font-extrabold text-[#1A1A2E] dark:text-[#F1F5F9]">Welcome, {user?.name}</div>
+          <div className="text-sm text-gray-500 dark:text-gray-400 mt-1">Select a project to track progress and manage billing</div>
         </div>
 
         {projects.length === 0 ? (
-          <div style={{ textAlign: "center", padding: 60, background: "var(--nx-white)", borderRadius: 12, border: "1px solid var(--nx-border)" }}>
-            <div style={{ fontSize: 40, marginBottom: 12 }}>🏗️</div>
-            <div style={{ fontWeight: 600, color: "var(--nx-text)" }}>No work orders assigned yet</div>
-            <div style={{ color: "var(--nx-text-muted)", marginTop: 4 }}>Ask your admin to assign work orders to you.</div>
+          <div className="bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700/40 rounded-lg">
+            <EmptyState icon={HardHat} title="No work orders assigned yet" message="Ask your admin to assign work orders to you." />
           </div>
         ) : (
           <>
-            <div style={{ fontSize: 12, fontWeight: 700, color: "var(--nx-text-muted)", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 14 }}>
+            <div className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3.5">
               Your Projects ({projects.length})
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 14 }}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
               {projects.map(p => (
                 <div
                   key={p.projectId}
                   onClick={() => { setSelProjectId(p.projectId); setSelProjectName(p.projectName); setView("project-detail"); }}
-                  style={{
-                    background: "var(--nx-white)", border: "1px solid var(--nx-border)",
-                    borderLeft: "4px solid #FF7A00", borderRadius: 12,
-                    padding: "20px 20px 16px", cursor: "pointer",
-                    transition: "box-shadow 0.15s, transform 0.12s",
-                    boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
-                  }}
-                  onMouseEnter={e => { e.currentTarget.style.boxShadow = "0 6px 20px rgba(0,0,0,0.1)"; e.currentTarget.style.transform = "translateY(-2px)"; }}
-                  onMouseLeave={e => { e.currentTarget.style.boxShadow = "0 1px 3px rgba(0,0,0,0.05)"; e.currentTarget.style.transform = "translateY(0)"; }}
+                  className="bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700/40 border-l-4 border-l-primary rounded-lg p-5 pb-4 cursor-pointer hover:shadow-lg transition-shadow shadow-sm"
                 >
-                  <div style={{ fontSize: 17, fontWeight: 700, color: "var(--nx-text)", marginBottom: 8 }}>{p.projectName}</div>
-                  <div style={{ display: "flex", gap: 14, fontSize: 12, color: "var(--nx-text-2)" }}>
+                  <div className="text-[17px] font-bold text-[#1A1A2E] dark:text-[#F1F5F9] mb-2">{p.projectName}</div>
+                  <div className="flex gap-3.5 text-xs text-gray-500 dark:text-gray-400">
                     <span>👷 {p.vendorCodes.size} contractor{p.vendorCodes.size !== 1 ? "s" : ""}</span>
                     <span>📋 {p.woCount} work order{p.woCount !== 1 ? "s" : ""}</span>
                   </div>
-                  <div style={{ marginTop: 12, fontSize: 12, color: "#FF7A00", fontWeight: 600 }}>Open Project →</div>
+                  <div className="mt-3 text-xs text-primary font-semibold">Open Project →</div>
                 </div>
               ))}
             </div>
@@ -767,41 +816,39 @@ function DRIDashboard() {
   const hasPending = pendingWODetails.length > 0;
 
   return (
-    <div style={{ padding: "24px", maxWidth: 1200, margin: "0 auto" }}>
+    <div className="p-6 max-w-[1200px] mx-auto">
       {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24, flexWrap: "wrap", gap: 12 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          <Button icon={<ArrowLeftOutlined />} onClick={() => { setView("select-project"); setSelProjectId(undefined); setSelProjectName(undefined); setWoDetails(new Map()); setProjectBillReqs([]); setDriSearch(""); }}>
-            All Projects
-          </Button>
+      <div className="flex justify-between items-start mb-6 flex-wrap gap-3">
+        <div className="flex items-center gap-3.5">
+          <Btn
+            outline icon={ArrowLeft} label="All Projects"
+            onClick={() => { setView("select-project"); setSelProjectId(undefined); setSelProjectName(undefined); setWoDetails(new Map()); setProjectBillReqs([]); setDriSearch(""); }}
+          />
           <div>
-            <div style={{ fontSize: 20, fontWeight: 800, color: "var(--nx-text)" }}>{selProjectName}</div>
-            <div style={{ fontSize: 12, color: "var(--nx-text-2)", marginTop: 2 }}>
+            <div className="text-xl font-extrabold text-[#1A1A2E] dark:text-[#F1F5F9]">{selProjectName}</div>
+            <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
               {selProjectType === "apartment" ? "🏢 Apartment" : "🏠 Plot"} · {projectWOs.length} work order{projectWOs.length !== 1 ? "s" : ""} · {vendorGroups.length} contractor{vendorGroups.length !== 1 ? "s" : ""}
             </div>
           </div>
         </div>
         {hasPending && (
-          <Tooltip title="AGM/GM review your logged progress and decide when to generate a bill request — not done from here anymore.">
-            <span style={{ background: "#FFF4E8", border: "1px solid #FED7AA", color: "#FF7A00", fontWeight: 600, fontSize: 12, padding: "6px 14px", borderRadius: 8 }}>
-              🧾 {pendingWODetails.reduce((s, d) => s + d.scopeItems.filter(si => Math.max(0, (si.completedQty || 0) - (si.lastBilledQty || 0)) > 0).length, 0)} item(s) awaiting AGM/GM bill review
-            </span>
-          </Tooltip>
+          <span
+            title="AGM/GM review your logged progress and decide when to generate a bill request — not done from here anymore."
+            className="bg-primary/10 border border-primary/30 text-primary font-semibold text-xs px-3.5 py-1.5 rounded-lg"
+          >
+            🧾 {pendingWODetails.reduce((s, d) => s + d.scopeItems.filter(si => Math.max(0, (si.completedQty || 0) - (si.lastBilledQty || 0)) > 0).length, 0)} item(s) awaiting AGM/GM bill review
+          </span>
         )}
       </div>
 
       {/* Search bar */}
-      <div style={{ marginBottom: 16 }}>
-        <SearchFilter
-          placeholder="Search by vendor name, vendor code or work order no…"
-          value={driSearch}
-          onChange={setDriSearch}
-        />
+      <div className="mb-4">
+        <SearchFilter placeholder="Search by vendor name, vendor code or work order no…" value={driSearch} onChange={setDriSearch} />
       </div>
 
       {/* Summary stats */}
       {!woDetailsLoading && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 12, marginBottom: 24 }}>
+        <div className="grid gap-3 mb-6" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))" }}>
           {[
             { label: "Contractors",    value: String(vendorGroups.length),                 color: "#FF7A00" },
             { label: "Work Orders",    value: String(projectWOs.length),                   color: "#2563eb" },
@@ -809,9 +856,9 @@ function DRIDashboard() {
             { label: "Bill Requests",  value: String(projectBillReqs.length),              color: "#7c3aed" },
             { label: "Approved",       value: String(projectBillReqs.filter(b => b.status === "approved").length), color: "#16a34a" },
           ].map(s => (
-            <div key={s.label} style={{ background: "var(--nx-white)", border: "1px solid var(--nx-border)", borderRadius: 12, padding: "14px 18px" }}>
-              <div style={{ fontSize: 10, color: "var(--nx-text-muted)", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 4 }}>{s.label}</div>
-              <div style={{ fontSize: 22, fontWeight: 800, color: s.color, fontFamily: "monospace" }}>{s.value}</div>
+            <div key={s.label} className="bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700/40 rounded-lg px-4.5 py-3.5">
+              <div className="text-[10px] text-gray-400 uppercase tracking-wide mb-1">{s.label}</div>
+              <div className="text-[22px] font-extrabold font-mono" style={{ color: s.color }}>{s.value}</div>
             </div>
           ))}
         </div>
@@ -819,21 +866,21 @@ function DRIDashboard() {
 
       {/* Vendors + WOs */}
       {woDetailsLoading ? (
-        <div style={{ display: "flex", justifyContent: "center", padding: 60 }}><Spin size="large" /></div>
+        <Spinner size="large" />
       ) : vendorGroups.length === 0 ? (
-        <Empty description="No work orders found for this project." />
+        <EmptyState title="No work orders found for this project." />
       ) : filteredVendorGroups.length === 0 ? (
-        <Empty description={`No results for "${driSearch}"`} />
+        <EmptyState title={`No results for "${driSearch}"`} />
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+        <div className="flex flex-col gap-5">
           {filteredVendorGroups.map(vg => (
-            <div key={vg.vendorCode} style={{ background: "var(--nx-white)", border: "1px solid var(--nx-border)", borderRadius: 12, overflow: "hidden" }}>
+            <div key={vg.vendorCode} className="bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700/40 rounded-lg overflow-hidden">
               {/* Vendor header */}
-              <div style={{ background: "#1F2937", padding: "14px 20px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div className="bg-gray-800 dark:bg-gray-900 px-5 py-3.5 flex justify-between items-center">
                 <div>
-                  <div style={{ color: "#fff", fontWeight: 700, fontSize: 16 }}>👷 {vg.vendorName}</div>
-                  <div style={{ color: "#9CA3AF", fontSize: 12, marginTop: 2 }}>
-                    <span style={{ fontFamily: "monospace", color: "#FF7A00" }}>{vg.vendorCode}</span> · {vg.wos.length} work order{vg.wos.length !== 1 ? "s" : ""}
+                  <div className="text-white font-bold text-base">👷 {vg.vendorName}</div>
+                  <div className="text-gray-400 text-xs mt-0.5">
+                    <span className="font-mono text-primary">{vg.vendorCode}</span> · {vg.wos.length} work order{vg.wos.length !== 1 ? "s" : ""}
                   </div>
                 </div>
               </div>
@@ -844,30 +891,22 @@ function DRIDashboard() {
                 const pendingBR = projectBillReqs.find(br => br.workOrderId === woSum._id && br.status === "pending");
 
                 return (
-                  <div key={woSum._id} style={{ borderBottom: "1px solid var(--nx-border)" }}>
+                  <div key={woSum._id} className="border-b border-gray-200 dark:border-gray-700/40">
                     {/* WO sub-header */}
-                    <div style={{ padding: "12px 20px", background: "var(--nx-fill-2)", borderBottom: "1px solid var(--nx-border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                        <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#FF7A00", fontSize: 13 }}>{woSum.workOrderNo}</span>
-                        {woSum.category && (
-                          <span style={{ background: "var(--nx-fill)", color: "var(--nx-text-3)", fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 20 }}>
-                            {woSum.category}
-                          </span>
-                        )}
-                        {pendingBR && (
-                          <span style={{ background: "#fffbeb", color: "#f59e0b", fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 20, border: "1px solid #fde68a" }}>
-                            ⏳ {pendingBR.reqNo} pending
-                          </span>
-                        )}
+                    <div className="px-5 py-3 bg-gray-50 dark:bg-gray-800/40 border-b border-gray-200 dark:border-gray-700/40 flex justify-between items-center">
+                      <div className="flex gap-2.5 items-center flex-wrap">
+                        <span className="font-mono font-bold text-primary text-[13px]">{woSum.workOrderNo}</span>
+                        {woSum.category && <UIBadge color="gray" small>{woSum.category}</UIBadge>}
+                        {pendingBR && <UIBadge color="amber" small>⏳ {pendingBR.reqNo} pending</UIBadge>}
                       </div>
                       {detail && (() => {
                         const avgPct = Math.round(detail.scopeItems.reduce((s, si) => s + pctOf(si.completedQty, si.plannedQty), 0) / (detail.scopeItems.length || 1));
                         return (
-                          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--nx-text-2)" }}>
-                            <div style={{ width: 80, height: 6, background: "var(--nx-border)", borderRadius: 3, overflow: "hidden" }}>
-                              <div style={{ width: `${avgPct}%`, height: "100%", background: avgPct >= 100 ? "#16a34a" : "#FF7A00", borderRadius: 3 }} />
+                          <div className="flex items-center gap-2 text-xs">
+                            <div className="w-20 h-1.5 bg-gray-100 dark:bg-gray-700/40 rounded-full overflow-hidden">
+                              <div className={`h-full rounded-full ${avgPct >= 100 ? "bg-emerald-500" : "bg-primary"}`} style={{ width: `${avgPct}%` }} />
                             </div>
-                            <span style={{ fontWeight: 700, color: avgPct >= 100 ? "#16a34a" : "#FF7A00" }}>{avgPct}%</span>
+                            <span className={`font-bold ${avgPct >= 100 ? "text-emerald-600" : "text-primary"}`}>{avgPct}%</span>
                           </div>
                         );
                       })()}
@@ -875,129 +914,98 @@ function DRIDashboard() {
 
                     {/* Scope items */}
                     {!detail ? (
-                      <div style={{ padding: 24, textAlign: "center" }}><Spin size="small" /></div>
+                      <Spinner size="small" />
                     ) : detail.scopeItems.length === 0 ? (
-                      <div style={{ padding: 24, textAlign: "center", color: "var(--nx-text-muted)", fontSize: 13 }}>No scope items defined for this work order.</div>
+                      <div className="py-5 text-center text-gray-400 text-sm">No scope items defined for this work order.</div>
                     ) : (
-                      <div style={{ overflowX: "auto" }}>
-                        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                          <thead>
-                            <tr style={{ background: "var(--nx-fill-2)" }}>
-                              {["#", "Description", "Unit", "Planned", "Done", "Unbilled", "Remaining", "Progress", ""].map(h => (
-                                <th key={h} style={{ padding: "9px 12px", fontSize: 10, fontWeight: 700, color: "var(--nx-table-header-color)", textAlign: "left", textTransform: "uppercase", letterSpacing: "0.05em", whiteSpace: "nowrap", borderBottom: "1px solid var(--nx-border)" }}>{h}</th>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {detail.scopeItems.map((si, idx) => {
-                              const p = pctOf(si.completedQty, si.plannedQty);
-                              const unbilled = Math.max(0, (si.completedQty ?? 0) - (si.lastBilledQty || 0));
-                              const rem      = Math.max(0, si.plannedQty - (si.completedQty ?? 0));
-                              const isDone   = p >= 100;
-                              const hasSubItems = (si.subItems?.length ?? 0) > 0;
-                              return (
-                                <Fragment key={si._id}>
-                                <tr style={{ borderBottom: hasSubItems ? "none" : "1px solid var(--nx-border)", background: idx % 2 === 0 ? "var(--nx-white)" : "var(--nx-fill-2)" }}>
-                                  <td style={{ padding: "9px 12px", color: "var(--nx-text-muted)", fontSize: 12 }}>{idx + 1}</td>
-                                  <td style={{ padding: "9px 12px", fontWeight: 600, color: "var(--nx-text)", fontSize: 13 }}>
+                      <Table>
+                        <Thead>
+                          <Tr>
+                            {["#", "Description", "Unit", "Planned", "Done", "Unbilled", "Remaining", "Progress", ""].map(h => <Th key={h}>{h}</Th>)}
+                          </Tr>
+                        </Thead>
+                        <Tbody>
+                          {detail.scopeItems.map((si, idx) => {
+                            const p = pctOf(si.completedQty, si.plannedQty);
+                            const unbilled = Math.max(0, (si.completedQty ?? 0) - (si.lastBilledQty || 0));
+                            const rem      = Math.max(0, si.plannedQty - (si.completedQty ?? 0));
+                            const isDone   = p >= 100;
+                            const hasSubItems = (si.subItems?.length ?? 0) > 0;
+                            return (
+                              <Fragment key={si._id}>
+                                <Tr>
+                                  <Td className="text-gray-400 text-xs">{idx + 1}</Td>
+                                  <Td className="font-semibold text-[#1A1A2E] dark:text-[#F1F5F9] text-sm">
                                     {si.description}
                                     {hasSubItems && (
-                                      <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, color: "#9CA3AF", textTransform: "uppercase" }}>
+                                      <span className="ml-1.5 text-[10px] font-bold text-gray-400 uppercase">
                                         {isDone ? "✓ Complete" : `${si.subItems!.length} particulars`}
                                       </span>
                                     )}
-                                    {si.remarks && <div style={{ fontSize: 11, fontWeight: 400, color: "#d97706", marginTop: 2 }}>📌 {si.remarks}</div>}
-                                  </td>
-                                  <td style={{ padding: "9px 12px", color: "var(--nx-text-2)", fontSize: 12 }}>{si.unit}</td>
-                                  <td style={{ padding: "9px 12px", fontFamily: "monospace", fontSize: 12, color: "var(--nx-text)" }}>{fmtN(si.plannedQty)}</td>
-                                  <td style={{ padding: "9px 12px", fontFamily: "monospace", fontSize: 12, color: si.completedQty > 0 ? "#16a34a" : "var(--nx-text-muted)" }}>{fmtN(si.completedQty)}</td>
-                                  <td style={{ padding: "9px 12px", fontFamily: "monospace", fontSize: 12 }}>
-                                    {unbilled > 0 ? <span style={{ color: "#FF7A00", fontWeight: 700 }}>{fmtN(unbilled)}</span> : <span style={{ color: "var(--nx-text-muted)" }}>—</span>}
-                                  </td>
-                                  <td style={{ padding: "9px 12px", fontFamily: "monospace", fontSize: 12, color: rem > 0 ? "var(--nx-text-3)" : "#16a34a" }}>
+                                    {si.remarks && <div className="text-[11px] font-normal text-amber-600 mt-0.5">📌 {si.remarks}</div>}
+                                  </Td>
+                                  <Td className="text-gray-500 dark:text-gray-400 text-xs">{si.unit}</Td>
+                                  <Td className="font-mono text-xs">{fmtN(si.plannedQty)}</Td>
+                                  <Td className={`font-mono text-xs ${si.completedQty > 0 ? "text-emerald-600" : "text-gray-400"}`}>{fmtN(si.completedQty)}</Td>
+                                  <Td className="font-mono text-xs">
+                                    {unbilled > 0 ? <span className="text-primary font-bold">{fmtN(unbilled)}</span> : <span className="text-gray-400">—</span>}
+                                  </Td>
+                                  <Td className={`font-mono text-xs ${rem > 0 ? "text-gray-600 dark:text-gray-300" : "text-emerald-600"}`}>
                                     {rem > 0 ? fmtN(rem) : "✓ Done"}
-                                  </td>
-                                  <td style={{ padding: "9px 12px", minWidth: 100 }}>
-                                    <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                                      <div style={{ flex: 1, height: 6, background: "var(--nx-border)", borderRadius: 3, overflow: "hidden" }}>
-                                        <div style={{ width: `${p}%`, height: "100%", background: isDone ? "#16a34a" : "#FF7A00", borderRadius: 3 }} />
+                                  </Td>
+                                  <Td className="min-w-[110px]">
+                                    <div className="flex items-center gap-1.5">
+                                      <div className="flex-1 h-1.5 bg-gray-100 dark:bg-gray-700/40 rounded-full overflow-hidden">
+                                        <div className={`h-full rounded-full ${isDone ? "bg-emerald-500" : "bg-primary"}`} style={{ width: `${p}%` }} />
                                       </div>
-                                      <span style={{ fontSize: 10, fontWeight: 700, color: isDone ? "#16a34a" : "#FF7A00", minWidth: 26 }}>{p}%</span>
+                                      <span className={`text-[10px] font-bold min-w-[26px] ${isDone ? "text-emerald-600" : "text-primary"}`}>{p}%</span>
                                     </div>
-                                  </td>
-                                  <td style={{ padding: "9px 12px" }}>
+                                  </Td>
+                                  <Td>
                                     {!hasSubItems && (
-                                      <Button
-                                        size="small"
-                                        onClick={() => {
-                                          setProgWOId(woSum._id);
-                                          setProgItem(si);
-                                          setProgSubItem(null);
-                                          progForm.resetFields();
-                                          progForm.setFieldsValue({ date: dayjs() });
-                                          setProgModal(true);
-                                        }}
-                                        style={{ background: "#FF7A00", borderColor: "#FF7A00", color: "#fff", fontWeight: 600, fontSize: 12 }}
-                                      >
-                                        + Progress
-                                      </Button>
+                                      <Btn small color="primary" label="+ Progress" onClick={() => openAddProgress(woSum._id, si, null)} />
                                     )}
-                                  </td>
-                                </tr>
+                                  </Td>
+                                </Tr>
                                 {hasSubItems && si.subItems!.map((sub, subIdx) => {
                                   const sp = pctOf(sub.completedQty, sub.plannedQty);
                                   const subRem = Math.max(0, sub.plannedQty - (sub.completedQty ?? 0));
                                   const subDone = sp >= 100;
-                                  const isLastSub = subIdx === si.subItems!.length - 1;
                                   return (
-                                    <tr key={sub._id} style={{ borderBottom: isLastSub ? "1px solid var(--nx-border)" : "1px solid #F3F4F6", background: "#FCFCFD" }}>
-                                      <td style={{ padding: "6px 12px 6px 28px", color: "var(--nx-text-muted)", fontSize: 11 }}>{idx + 1}.{subIdx + 1}</td>
-                                      <td style={{ padding: "6px 12px", fontWeight: 500, color: "var(--nx-text-2)", fontSize: 12 }}>
+                                    <Tr key={sub._id} className="bg-gray-50/60 dark:bg-gray-800/20">
+                                      <Td className="pl-7 text-gray-400 text-[11px]">{idx + 1}.{subIdx + 1}</Td>
+                                      <Td className="font-medium text-gray-600 dark:text-gray-300 text-xs">
                                         {sub.description}
-                                        {subDone && <span style={{ marginLeft: 6, color: "#16a34a", fontSize: 10, fontWeight: 700 }}>✓</span>}
-                                      </td>
-                                      <td style={{ padding: "6px 12px", color: "var(--nx-text-2)", fontSize: 11 }}>{sub.unit}</td>
-                                      <td style={{ padding: "6px 12px", fontFamily: "monospace", fontSize: 11, color: "var(--nx-text)" }}>{fmtN(sub.plannedQty)}</td>
-                                      <td style={{ padding: "6px 12px", fontFamily: "monospace", fontSize: 11, color: sub.completedQty > 0 ? "#16a34a" : "var(--nx-text-muted)" }}>{fmtN(sub.completedQty)}</td>
+                                        {subDone && <span className="ml-1.5 text-emerald-600 text-[10px] font-bold">✓</span>}
+                                      </Td>
+                                      <Td className="text-gray-500 dark:text-gray-400 text-[11px]">{sub.unit}</Td>
+                                      <Td className="font-mono text-[11px]">{fmtN(sub.plannedQty)}</Td>
+                                      <Td className={`font-mono text-[11px] ${sub.completedQty > 0 ? "text-emerald-600" : "text-gray-400"}`}>{fmtN(sub.completedQty)}</Td>
                                       {/* Billing tracks at the item level (its completedQty rolls up from all
                                           particulars), not per particular — shown blank here on purpose. */}
-                                      <td style={{ padding: "6px 12px", fontSize: 11, color: "var(--nx-text-muted)" }}>—</td>
-                                      <td style={{ padding: "6px 12px", fontFamily: "monospace", fontSize: 11, color: subRem > 0 ? "var(--nx-text-3)" : "#16a34a" }}>
+                                      <Td className="text-[11px] text-gray-400">—</Td>
+                                      <Td className={`font-mono text-[11px] ${subRem > 0 ? "text-gray-600 dark:text-gray-300" : "text-emerald-600"}`}>
                                         {subRem > 0 ? fmtN(subRem) : "✓ Done"}
-                                      </td>
-                                      <td style={{ padding: "6px 12px", minWidth: 100 }}>
-                                        <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                                          <div style={{ flex: 1, height: 5, background: "var(--nx-border)", borderRadius: 3, overflow: "hidden" }}>
-                                            <div style={{ width: `${sp}%`, height: "100%", background: subDone ? "#16a34a" : "#FF7A00", borderRadius: 3 }} />
+                                      </Td>
+                                      <Td className="min-w-[110px]">
+                                        <div className="flex items-center gap-1.5">
+                                          <div className="flex-1 h-[5px] bg-gray-100 dark:bg-gray-700/40 rounded-full overflow-hidden">
+                                            <div className={`h-full rounded-full ${subDone ? "bg-emerald-500" : "bg-primary"}`} style={{ width: `${sp}%` }} />
                                           </div>
-                                          <span style={{ fontSize: 9.5, fontWeight: 700, color: subDone ? "#16a34a" : "#FF7A00", minWidth: 26 }}>{sp}%</span>
+                                          <span className={`text-[9.5px] font-bold min-w-[26px] ${subDone ? "text-emerald-600" : "text-primary"}`}>{sp}%</span>
                                         </div>
-                                      </td>
-                                      <td style={{ padding: "6px 12px" }}>
-                                        <Button
-                                          size="small"
-                                          onClick={() => {
-                                            setProgWOId(woSum._id);
-                                            setProgItem(si);
-                                            setProgSubItem(sub);
-                                            progForm.resetFields();
-                                            progForm.setFieldsValue({ date: dayjs() });
-                                            setProgModal(true);
-                                          }}
-                                          style={{ background: "#FF7A00", borderColor: "#FF7A00", color: "#fff", fontWeight: 600, fontSize: 11 }}
-                                        >
-                                          + Progress
-                                        </Button>
-                                      </td>
-                                    </tr>
+                                      </Td>
+                                      <Td>
+                                        <Btn small color="primary" label="+ Progress" onClick={() => openAddProgress(woSum._id, si, sub)} />
+                                      </Td>
+                                    </Tr>
                                   );
                                 })}
-                                </Fragment>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
+                              </Fragment>
+                            );
+                          })}
+                        </Tbody>
+                      </Table>
                     )}
 
                     {/* Recent entries for this WO */}
@@ -1013,39 +1021,42 @@ function DRIDashboard() {
 
                       if (!entries.length) return null;
                       return (
-                        <div style={{ padding: "10px 20px 14px", borderTop: "1px solid var(--nx-border)" }}>
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                            <div style={{ fontSize: 11, fontWeight: 700, color: "var(--nx-text-muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                        <div className="px-5 pt-2.5 pb-3.5 border-t border-gray-200 dark:border-gray-700/40">
+                          <div className="flex justify-between items-center mb-2">
+                            <div className="text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
                               Recent Entries (last 5)
                             </div>
                             {allEntriesWO.length > 5 && (
-                              <Button type="link" size="small" style={{ fontSize: 11, padding: 0, height: "auto" }} onClick={() => setAllEntriesWOId(detail._id)}>
+                              <button type="button" className="text-[11px] font-semibold text-primary hover:underline" onClick={() => setAllEntriesWOId(detail._id)}>
                                 View All ({allEntriesWO.length})
-                              </Button>
+                              </button>
                             )}
                           </div>
-                          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                          <div className="flex flex-col gap-1.5">
                             {entries.map((e, i) => (
-                              <div key={e._id + i} style={{ display: "flex", gap: 12, alignItems: "center", fontSize: 12, opacity: e.invalidated?.done ? 0.55 : 1 }}>
-                                <span style={{ color: "var(--nx-text-muted)", minWidth: 90, whiteSpace: "nowrap" }}>
+                              <div key={e._id + i} className="flex gap-3 items-center text-xs" style={{ opacity: e.invalidated?.done ? 0.55 : 1 }}>
+                                <span className="text-gray-400 min-w-[90px] whitespace-nowrap flex items-center gap-1">
                                   {dayjs(e.date).format("DD MMM")}
-                                  {dayjs(e.date).format("YYYY-MM-DD") === todayStr && (
-                                    <Badge count="Today" style={{ background: "#3b82f6", marginLeft: 4, fontSize: 9, height: 16, lineHeight: "16px" }} />
-                                  )}
+                                  {dayjs(e.date).format("YYYY-MM-DD") === todayStr && <UIBadge color="blue" small>Today</UIBadge>}
                                 </span>
-                                <span style={{ fontWeight: 600, color: "var(--nx-text)", flex: 1, textDecoration: e.invalidated?.done ? "line-through" : "none" }}>
+                                <span className={`font-semibold text-[#1A1A2E] dark:text-[#F1F5F9] flex-1 ${e.invalidated?.done ? "line-through" : ""}`}>
                                   {e.description}
-                                  {personName(e.enteredBy) && (
-                                    <span style={{ fontWeight: 400, color: "var(--nx-text-muted)", fontSize: 11 }}> · {personName(e.enteredBy)}</span>
-                                  )}
+                                  {personName(e.enteredBy) && <span className="font-normal text-gray-400 text-[11px]"> · {personName(e.enteredBy)}</span>}
                                 </span>
-                                <span style={{ color: "var(--nx-text-2)", minWidth: 80 }}>{formatLocation(e, selProjectType)}</span>
-                                <span style={{ color: "#16a34a", fontWeight: 700, fontFamily: "monospace", minWidth: 60 }}>+{fmtN(e.qtyAdded)} {e.unit}</span>
+                                <span className="text-gray-500 dark:text-gray-400 min-w-[80px]">{formatLocation(e, selProjectType)}</span>
+                                <span className="text-emerald-600 font-bold font-mono min-w-[60px]">+{fmtN(e.qtyAdded)} {e.unit}</span>
                                 <EntryActions
                                   e={e} deleting={deleting === e._id}
                                   onEdit={() => {
                                     setEditEntry(e);
-                                    editForm.setFieldsValue({ qtyAdded: e.qtyAdded, date: dayjs(e.date), remarks: e.remarks, tower: e.tower, floor: e.floor, flatNo: e.flatNo, plotNo: e.plotNo, locationNote: e.locationNote });
+                                    editErrors.clearAll();
+                                    setEditFormValues({
+                                      date: e.date ? dayjs(e.date).format("YYYY-MM-DD") : "",
+                                      qtyAdded: String(e.qtyAdded ?? ""),
+                                      remarks: e.remarks || "",
+                                      tower: e.tower || "", floor: e.floor || "", flatNo: e.flatNo || "",
+                                      plotNo: e.plotNo || "", locationNote: e.locationNote || "", plannedQty: "",
+                                    });
                                     setProgWOId(detail._id);
                                     setEditModal(true);
                                   }}
@@ -1053,7 +1064,8 @@ function DRIDashboard() {
                                   onInvalidate={() => {
                                     setInvalidateEntry(e);
                                     setInvalidateWOId(detail._id);
-                                    invalidateForm.resetFields();
+                                    invalidateErrors.clearAll();
+                                    setInvalidateReason("");
                                     setInvalidateModal(true);
                                   }}
                                 />
@@ -1073,10 +1085,10 @@ function DRIDashboard() {
 
       {/* ── Bill History ────────────────────────────────────────────────────── */}
       {projectBillReqs.length > 0 && (
-        <div style={{ background: "var(--nx-white)", border: "1px solid var(--nx-border)", borderRadius: 12, overflow: "hidden", marginTop: 24 }}>
-          <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--nx-border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <div style={{ fontWeight: 700, fontSize: 15, color: "var(--nx-text)" }}>Billing History — {selProjectName}</div>
-            <div style={{ fontSize: 12, color: "var(--nx-text-muted)" }}>{projectBillReqs.length} request{projectBillReqs.length !== 1 ? "s" : ""}</div>
+        <div className="bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700/40 rounded-lg overflow-hidden mt-6">
+          <div className="px-5 py-3.5 border-b border-gray-200 dark:border-gray-700/40 flex justify-between items-center">
+            <div className="font-bold text-[15px] text-[#1A1A2E] dark:text-[#F1F5F9]">Billing History — {selProjectName}</div>
+            <div className="text-xs text-gray-400">{projectBillReqs.length} request{projectBillReqs.length !== 1 ? "s" : ""}</div>
           </div>
           {billHistory.map((group, gi) => {
             const isBatch = group.type === "batch";
@@ -1087,45 +1099,44 @@ function DRIDashboard() {
             const color = BR_STATUS_COLOR[overallStatus];
 
             return (
-              <div key={gi} style={{ padding: "16px 20px", borderBottom: "1px solid var(--nx-border)" }}>
-                <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+              <div key={gi} className="px-5 py-4 border-b border-gray-200 dark:border-gray-700/40">
+                <div className="flex gap-3 items-start">
                   {isBatch ? (
-                    <div style={{ background: "#FFF4E8", border: "2px solid #FF7A00", borderRadius: 10, padding: "8px 12px", minWidth: 60, textAlign: "center", flexShrink: 0 }}>
-                      <div style={{ fontSize: 14 }}>📦</div>
-                      <div style={{ fontSize: 9, fontWeight: 700, color: "var(--nx-text-muted)", textTransform: "uppercase", marginTop: 2 }}>Batch</div>
-                      <div style={{ fontSize: 13, fontWeight: 800, color: "#FF7A00" }}>{group.items.length}</div>
+                    <div className="rounded-lg border-2 border-primary bg-primary/5 px-3 py-2 min-w-[60px] text-center shrink-0">
+                      <div className="text-sm">📦</div>
+                      <div className="text-[9px] font-bold text-gray-400 uppercase mt-0.5">Batch</div>
+                      <div className="text-[13px] font-extrabold text-primary">{group.items.length}</div>
                     </div>
                   ) : (
-                    <div style={{ background: overallStatus === "approved" ? "#f0fdf4" : "#FFFBEB", border: `2px solid ${color}`, borderRadius: 10, padding: "8px 12px", minWidth: 60, textAlign: "center", flexShrink: 0 }}>
-                      <div style={{ fontSize: 9, fontWeight: 700, color: "var(--nx-text-muted)", textTransform: "uppercase" }}>Stage</div>
-                      <div style={{ fontSize: 18, fontWeight: 800, color }}>{firstBR.stageNo ?? 1}</div>
+                    <div
+                      className="rounded-lg text-center shrink-0"
+                      style={{ background: overallStatus === "approved" ? "#f0fdf4" : "#FFFBEB", border: `2px solid ${color}`, padding: "8px 12px", minWidth: 60 }}
+                    >
+                      <div className="text-[9px] font-bold text-gray-400 uppercase">Stage</div>
+                      <div className="text-lg font-extrabold" style={{ color }}>{firstBR.stageNo ?? 1}</div>
                     </div>
                   )}
 
-                  <div style={{ flex: 1 }}>
-                    <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 4, flexWrap: "wrap" }}>
+                  <div className="flex-1">
+                    <div className="flex gap-2 items-center mb-1 flex-wrap">
                       {isBatch ? (
-                        <span style={{ fontWeight: 700, fontFamily: "monospace", fontSize: 13, color: "var(--nx-text)" }}>
+                        <span className="font-bold font-mono text-[13px] text-[#1A1A2E] dark:text-[#F1F5F9]">
                           {group.items.map(b => b.reqNo).join(", ")}
                         </span>
                       ) : (
-                        <span style={{ fontWeight: 700, fontFamily: "monospace", fontSize: 13, color: "var(--nx-text)" }}>{firstBR.reqNo}</span>
+                        <span className="font-bold font-mono text-[13px] text-[#1A1A2E] dark:text-[#F1F5F9]">{firstBR.reqNo}</span>
                       )}
-                      <span style={{ background: color, color: "#fff", fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 12, textTransform: "uppercase" }}>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full text-white uppercase" style={{ background: color }}>
                         {BR_STATUS_LABEL[overallStatus] ?? overallStatus}
                       </span>
                     </div>
 
                     {isBatch && (
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 4 }}>
+                      <div className="flex flex-wrap gap-1.5 mb-1">
                         {group.items.map(br => (
-                          <span key={br._id} style={{
-                            background: "var(--nx-fill)", padding: "2px 8px", borderRadius: 6,
-                            fontSize: 11, color: "var(--nx-text-3)", border: "1px solid var(--nx-border)"
-                          }}>
-                            {br.vendorName ?? br.workOrderNo ?? br.reqNo}
-                            {" "}
-                            <span style={{ color: BR_STATUS_COLOR[br.status] ?? "#9CA3AF", fontWeight: 700 }}>
+                          <span key={br._id} className="bg-gray-100 dark:bg-gray-800/40 px-2 py-0.5 rounded-md text-[11px] text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700/40">
+                            {br.vendorName ?? br.workOrderNo ?? br.reqNo}{" "}
+                            <span className="font-bold" style={{ color: BR_STATUS_COLOR[br.status] ?? "#9CA3AF" }}>
                               {br.status === "approved" ? "✅" : br.status === "rejected" ? "❌" : "⏳"}
                             </span>
                           </span>
@@ -1133,7 +1144,7 @@ function DRIDashboard() {
                       </div>
                     )}
 
-                    <div style={{ fontSize: 11, color: "var(--nx-text-muted)" }}>
+                    <div className="text-[11px] text-gray-400">
                       {firstBR.vendorName && <span>{firstBR.vendorName} · </span>}
                       {dayjs(firstBR.createdAt).format("DD MMM YYYY")}
                       {firstBR.periodFrom && ` · Period: ${dayjs(firstBR.periodFrom).format("DD MMM")} → ${dayjs(firstBR.periodTo ?? firstBR.createdAt).format("DD MMM")}`}
@@ -1147,177 +1158,194 @@ function DRIDashboard() {
       )}
 
       {/* ── Add Progress Modal ─────────────────────────────────────────────── */}
-      <Modal
-        open={progModal} onCancel={() => { setProgModal(false); setProgSubItem(null); progForm.resetFields(); }}
-        title={progSubItem ? `Add Progress — ${progItem?.description} › ${progSubItem.description}` : `Add Progress — ${progItem?.description}`}
-        onOk={handleAddProgress} okText="Save Progress"
-        okButtonProps={{ loading: saving, style: { background: "#FF7A00", borderColor: "#FF7A00" } }}
-        destroyOnClose
-      >
-        <Form form={progForm} layout="vertical" style={{ marginTop: 8 }}>
-          {(progSubItem ?? progItem)?.remarks && (
-            <div style={{ background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: 8, padding: "10px 14px", marginBottom: 14, fontSize: 12, color: "#92400e" }}>
-              <span style={{ fontWeight: 700 }}>📌 Instruction: </span>{(progSubItem ?? progItem)?.remarks}
+      {progModal && (
+        <Modal
+          title={progSubItem ? `Add Progress — ${progItem?.description} › ${progSubItem.description}` : `Add Progress — ${progItem?.description}`}
+          onClose={() => { setProgModal(false); setProgSubItem(null); setProgFormValues(emptyProgForm); }}
+          footer={
+            <div className="flex justify-end gap-2">
+              <Btn outline label="Cancel" onClick={() => { setProgModal(false); setProgSubItem(null); setProgFormValues(emptyProgForm); }} />
+              <Btn color="primary" label="Save Progress" loading={saving} onClick={handleAddProgress} />
+            </div>
+          }
+        >
+          {progModalTarget?.remarks && (
+            <div className="rounded-lg border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 px-3.5 py-2.5 mb-3.5 text-xs text-amber-800 dark:text-amber-300">
+              <span className="font-bold">📌 Instruction: </span>{progModalTarget.remarks}
             </div>
           )}
-          <Form.Item label="Date" name="date" rules={[{ required: true, message: "Select date" }]}>
-            <DatePicker style={{ width: "100%" }} format="DD/MM/YYYY" disabledDate={d => d.isAfter(dayjs(), "day")} />
-          </Form.Item>
-          <LocationFields pt={progProjectType} />
-          {/* Set planned qty inline when it was never set on work order creation */}
-          {(progSubItem ?? progItem) && !(progSubItem ?? progItem)!.plannedQty && (
-            <div style={{ background: "#FFF8F0", border: "1px solid #FDDCB5", borderRadius: 8, padding: "10px 14px", marginBottom: 14 }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: "#FF7A00", marginBottom: 6 }}>
-                Planned quantity not set for this item
-              </div>
-              <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 10 }}>
-                You can set the total planned quantity now, or leave blank to log progress without a cap.
-              </div>
-              <Form.Item label={`Total Planned Qty (${(progSubItem ?? progItem)!.unit})`} name="plannedQty" style={{ marginBottom: 0 }}>
-                <InputNumber
-                  style={{ width: "100%" }} min={0.00001} step={0.00001} precision={5}
-                  placeholder={(progSubItem ?? progItem)!.unit === "per-hr" ? "e.g. 200.0000" : "e.g. 5000"}
-                />
-              </Form.Item>
+          <div className="mb-3.5">
+            <DatePicker label="Date" value={progFormValues.date} onChange={(v) => setProgFormValues(prev => ({ ...prev, date: v }))} max={dayjs().format("YYYY-MM-DD")} />
+            {progErrors.errors.date && <span className="block text-xs text-red-500 mt-1">{progErrors.errors.date}</span>}
+          </div>
+          <LocationFields
+            pt={progProjectType}
+            tower={progFormValues.tower} floor={progFormValues.floor} flatNo={progFormValues.flatNo}
+            plotNo={progFormValues.plotNo} locationNote={progFormValues.locationNote}
+            onChange={(field, value) => setProgFormValues(prev => ({ ...prev, [field]: value }))}
+          />
+          {progModalTarget && !progModalTarget.plannedQty && (
+            <div className="rounded-lg border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 p-3 mb-3.5">
+              <div className="text-xs font-semibold text-amber-700 dark:text-amber-300 mb-1.5">Planned quantity not set for this item</div>
+              <div className="text-[11px] text-amber-600/80 dark:text-amber-300/70 mb-2.5">You can set the total planned quantity now, or leave blank to log progress without a cap.</div>
+              <Field
+                label={`Total Planned Qty (${progModalTarget.unit})`} type="number" min="0.00001" step="0.00001"
+                placeholder={progModalTarget.unit === "per-hr" ? "e.g. 200.0000" : "e.g. 5000"}
+                value={progFormValues.plannedQty} onChange={(e) => setProgFormValues(prev => ({ ...prev, plannedQty: e.target.value }))}
+              />
             </div>
           )}
-
-          <Form.Item
-            label={`Quantity Added (${(progSubItem ?? progItem)?.unit})`} name="qtyAdded"
-            extra={(progSubItem ?? progItem)?.unit === "per-hr" ? "Tip: enter decimals for minutes — e.g. 13.67 = 13 hr 40 min" : "Progress can exceed the planned qty (e.g. a correction, or ground reality running over) — AGM/GM sign off on the overage before it's billed."}
-            rules={[
-              { required: true, type: "number", min: 0.01, message: "Enter a valid quantity (e.g. 13.67)" },
-            ]}
-          >
-            <InputNumber
-              style={{ width: "100%" }}
-              min={0.00001} step={0.00001} precision={5}
-              placeholder={(progSubItem ?? progItem)?.unit === "per-hr" ? "e.g. 13.6667" : "e.g. 500"}
-            />
-          </Form.Item>
-          <Form.Item label="Remarks (optional)" name="remarks">
-            <Input.TextArea rows={2} placeholder="Notes for today's work…" />
-          </Form.Item>
-          {(progSubItem ?? progItem) && (
-            <div style={{ background: "var(--nx-fill-2)", border: "1px solid var(--nx-border)", borderRadius: 8, padding: 12, fontSize: 12 }}>
+          <Field
+            label={`Quantity Added (${progModalTarget?.unit ?? ""})`} type="number" min="0.00001" step="0.00001"
+            hint={progModalTarget?.unit === "per-hr" ? "Tip: enter decimals for minutes — e.g. 13.67 = 13 hr 40 min" : "Progress can exceed the planned qty (e.g. a correction, or ground reality running over) — AGM/GM sign off on the overage before it's billed."}
+            placeholder={progModalTarget?.unit === "per-hr" ? "e.g. 13.6667" : "e.g. 500"}
+            value={progFormValues.qtyAdded} onChange={(e) => setProgFormValues(prev => ({ ...prev, qtyAdded: e.target.value }))}
+            error={progErrors.errors.qtyAdded}
+          />
+          <div className="mt-3.5">
+            <Field textarea label="Remarks (optional)" placeholder="Notes for today's work…" value={progFormValues.remarks} onChange={(e) => setProgFormValues(prev => ({ ...prev, remarks: e.target.value }))} />
+          </div>
+          {progModalTarget && (
+            <div className="mt-3.5 bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700/40 rounded-lg p-3 text-xs">
               {[
-                { label: "Planned",   value: (progSubItem ?? progItem)!.plannedQty > 0 ? `${fmtN((progSubItem ?? progItem)!.plannedQty)} ${(progSubItem ?? progItem)!.unit}` : "Not set",           color: (progSubItem ?? progItem)!.plannedQty > 0 ? "var(--nx-text)" : "#9ba3b8" },
-                { label: "Done",      value: `${fmtN((progSubItem ?? progItem)!.completedQty)} ${(progSubItem ?? progItem)!.unit}`,                                               color: "#16a34a" },
-                { label: "Remaining", value: (progSubItem ?? progItem)!.plannedQty > 0 ? `${fmtN(Math.max(0, (progSubItem ?? progItem)!.plannedQty - ((progSubItem ?? progItem)!.completedQty ?? 0)))} ${(progSubItem ?? progItem)!.unit}` : "Unlimited", color: "#FF7A00" },
+                { label: "Planned",   value: progModalTarget.plannedQty > 0 ? `${fmtN(progModalTarget.plannedQty)} ${progModalTarget.unit}` : "Not set", color: progModalTarget.plannedQty > 0 ? "text-[#1A1A2E] dark:text-[#F1F5F9]" : "text-gray-400" },
+                { label: "Done",      value: `${fmtN(progModalTarget.completedQty)} ${progModalTarget.unit}`, color: "text-emerald-600" },
+                { label: "Remaining", value: progModalTarget.plannedQty > 0 ? `${fmtN(Math.max(0, progModalTarget.plannedQty - (progModalTarget.completedQty ?? 0)))} ${progModalTarget.unit}` : "Unlimited", color: "text-primary" },
               ].map(r => (
-                <div key={r.label} style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                  <span style={{ color: "var(--nx-text-2)" }}>{r.label}</span>
-                  <strong style={{ color: r.color }}>{r.value}</strong>
+                <div key={r.label} className="flex justify-between mb-1">
+                  <span className="text-gray-500 dark:text-gray-400">{r.label}</span><strong className={r.color}>{r.value}</strong>
                 </div>
               ))}
             </div>
           )}
-        </Form>
-      </Modal>
+        </Modal>
+      )}
 
       {/* ── Edit Entry Modal ───────────────────────────────────────────────── */}
-      <Modal
-        open={editModal} onCancel={() => { setEditModal(false); editForm.resetFields(); }}
-        title="Edit Progress Entry" onOk={handleEditEntry} okText="Save Changes"
-        okButtonProps={{ loading: saving, style: { background: "#FF7A00", borderColor: "#FF7A00" } }}
-        destroyOnClose
-      >
-        <Form form={editForm} layout="vertical" style={{ marginTop: 8 }}>
-          <Form.Item label="Date" name="date">
-            <DatePicker style={{ width: "100%" }} format="DD/MM/YYYY" disabledDate={d => d.isAfter(dayjs(), "day")} />
-          </Form.Item>
-          <LocationFields pt={progProjectType} />
-          <Form.Item label="Quantity Added" name="qtyAdded" rules={[{ required: true, type: "number", min: 0.01, message: "Required" }]}>
-            <InputNumber style={{ width: "100%" }} min={0.00001} step={0.00001} precision={5} placeholder="e.g. 13.6667" />
-          </Form.Item>
-          <Form.Item label="Remarks (optional)" name="remarks">
-            <Input.TextArea rows={2} />
-          </Form.Item>
-        </Form>
-      </Modal>
+      {editModal && (
+        <Modal
+          title="Edit Progress Entry"
+          onClose={() => { setEditModal(false); setEditFormValues(emptyProgForm); }}
+          footer={
+            <div className="flex justify-end gap-2">
+              <Btn outline label="Cancel" onClick={() => { setEditModal(false); setEditFormValues(emptyProgForm); }} />
+              <Btn color="primary" label="Save Changes" loading={saving} onClick={handleEditEntry} />
+            </div>
+          }
+        >
+          <DatePicker label="Date" value={editFormValues.date} onChange={(v) => setEditFormValues(prev => ({ ...prev, date: v }))} max={dayjs().format("YYYY-MM-DD")} />
+          <div className="mt-3.5">
+            <LocationFields
+              pt={progProjectType}
+              tower={editFormValues.tower} floor={editFormValues.floor} flatNo={editFormValues.flatNo}
+              plotNo={editFormValues.plotNo} locationNote={editFormValues.locationNote}
+              onChange={(field, value) => setEditFormValues(prev => ({ ...prev, [field]: value }))}
+            />
+          </div>
+          <Field
+            label="Quantity Added" type="number" min="0.00001" step="0.00001" placeholder="e.g. 13.6667"
+            value={editFormValues.qtyAdded} onChange={(e) => setEditFormValues(prev => ({ ...prev, qtyAdded: e.target.value }))}
+            error={editErrors.errors.qtyAdded}
+          />
+          <div className="mt-3.5">
+            <Field textarea label="Remarks (optional)" value={editFormValues.remarks} onChange={(e) => setEditFormValues(prev => ({ ...prev, remarks: e.target.value }))} />
+          </div>
+        </Modal>
+      )}
 
       {/* ── Invalidate Entry Modal ─────────────────────────────────────────── */}
-      <Modal
-        open={invalidateModal} onCancel={() => { setInvalidateModal(false); invalidateForm.resetFields(); }}
-        title="Invalidate Progress Entry" onOk={handleInvalidateEntry} okText="Invalidate"
-        okButtonProps={{ loading: invalidating, danger: true }}
-        destroyOnClose
-      >
-        <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, padding: "10px 14px", marginBottom: 14, fontSize: 12, color: "#991b1b" }}>
-          This entry stays visible in history (who logged it, when, why it was invalidated) but no longer
-          counts toward progress or future billing. Log the correct progress as a fresh entry afterwards.
-        </div>
-        {invalidateEntry && (
-          <div style={{ fontSize: 12, color: "var(--nx-text-2)", marginBottom: 14 }}>
-            <strong>{invalidateEntry.description}</strong> · +{fmtN(invalidateEntry.qtyAdded)} {invalidateEntry.unit} · {dayjs(invalidateEntry.date).format("DD MMM YYYY")}
+      {invalidateModal && (
+        <Modal
+          title="Invalidate Progress Entry"
+          onClose={() => { setInvalidateModal(false); setInvalidateReason(""); }}
+          footer={
+            <div className="flex justify-end gap-2">
+              <Btn outline label="Cancel" onClick={() => { setInvalidateModal(false); setInvalidateReason(""); }} />
+              <Btn color="red" label="Invalidate" loading={invalidating} onClick={handleInvalidateEntry} />
+            </div>
+          }
+        >
+          <div className="rounded-lg border border-red-200 dark:border-red-500/30 bg-red-50 dark:bg-red-500/10 px-3.5 py-2.5 mb-3.5 text-xs text-red-800 dark:text-red-300">
+            This entry stays visible in history (who logged it, when, why it was invalidated) but no longer
+            counts toward progress or future billing. Log the correct progress as a fresh entry afterwards.
           </div>
-        )}
-        <Form form={invalidateForm} layout="vertical">
-          <Form.Item label="Reason" name="reason" rules={[{ required: true, message: "Explain why this entry is wrong" }]}>
-            <Input.TextArea rows={3} placeholder="e.g. Measurement was wrong, double-counted, wrong item…" />
-          </Form.Item>
-        </Form>
-      </Modal>
+          {invalidateEntry && (
+            <div className="text-xs text-gray-500 dark:text-gray-400 mb-3.5">
+              <strong className="text-[#1A1A2E] dark:text-[#F1F5F9]">{invalidateEntry.description}</strong> · +{fmtN(invalidateEntry.qtyAdded)} {invalidateEntry.unit} · {dayjs(invalidateEntry.date).format("DD MMM YYYY")}
+            </div>
+          )}
+          <Field
+            textarea label="Reason" required placeholder="e.g. Measurement was wrong, double-counted, wrong item…"
+            value={invalidateReason} onChange={(e) => setInvalidateReason(e.target.value)}
+            error={invalidateErrors.errors.reason}
+          />
+        </Modal>
+      )}
 
       {/* ── View All Entries Modal ───────────────────────────────────────────── */}
-      <Modal
-        open={!!allEntriesWOId} onCancel={() => setAllEntriesWOId(null)}
-        title="All Progress Entries"
-        footer={null} width={700}
-      >
-        <div style={{ maxHeight: "60vh", overflowY: "auto", paddingRight: 8 }}>
-          {(() => {
-            const detail = allEntriesWOId ? woDetails.get(allEntriesWOId) : null;
-            if (!detail) return <Empty />;
-            const allEntriesWO: EntryRow[] = detail.scopeItems.flatMap(si =>
+      {allEntriesWOId && (() => {
+        const detail = woDetails.get(allEntriesWOId);
+        const allEntriesWO: EntryRow[] = detail
+          ? detail.scopeItems.flatMap(si =>
               (si.progressEntries ?? []).map(pe => ({
                 ...pe, unit: si.unit, description: si.description,
                 scopeId: `${si._id}||${detail._id}`,
                 scopePlanned: si.plannedQty, scopeCompleted: si.completedQty, scopeLastBilled: si.lastBilledQty || 0,
               }))
-            ).sort((a, b) => dayjs(b.date).valueOf() - dayjs(a.date).valueOf());
+            ).sort((a, b) => dayjs(b.date).valueOf() - dayjs(a.date).valueOf())
+          : [];
 
-            return (
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {allEntriesWO.map((e, i) => (
-                  <div key={e._id + i} style={{ display: "flex", gap: 12, alignItems: "center", fontSize: 12, padding: "8px 0", borderBottom: "1px solid var(--nx-border)", opacity: e.invalidated?.done ? 0.55 : 1 }}>
-                    <span style={{ color: "var(--nx-text-muted)", minWidth: 90, whiteSpace: "nowrap" }}>
-                      {dayjs(e.date).format("DD MMM")}
-                      {dayjs(e.date).format("YYYY-MM-DD") === todayStr && (
-                        <Badge count="Today" style={{ background: "#3b82f6", marginLeft: 4, fontSize: 9, height: 16, lineHeight: "16px" }} />
-                      )}
-                    </span>
-                    <span style={{ fontWeight: 600, color: "var(--nx-text)", flex: 1, textDecoration: e.invalidated?.done ? "line-through" : "none" }}>
-                      {e.description}
-                      {personName(e.enteredBy) && (
-                        <span style={{ fontWeight: 400, color: "var(--nx-text-muted)", fontSize: 11 }}> · {personName(e.enteredBy)}</span>
-                      )}
-                    </span>
-                    <span style={{ color: "var(--nx-text-2)", minWidth: 80 }}>{formatLocation(e, selProjectType)}</span>
-                    <span style={{ color: "#16a34a", fontWeight: 700, fontFamily: "monospace", minWidth: 60 }}>+{fmtN(e.qtyAdded)} {e.unit}</span>
-                    <EntryActions
-                      e={e} deleting={deleting === e._id}
-                      onEdit={() => {
-                        setEditEntry(e);
-                        editForm.setFieldsValue({ qtyAdded: e.qtyAdded, date: dayjs(e.date), remarks: e.remarks, tower: e.tower, floor: e.floor, flatNo: e.flatNo, plotNo: e.plotNo, locationNote: e.locationNote });
-                        setProgWOId(detail._id);
-                        setEditModal(true);
-                      }}
-                      onDelete={() => handleDeleteEntry(e, detail._id)}
-                      onInvalidate={() => {
-                        setInvalidateEntry(e);
-                        setInvalidateWOId(detail._id);
-                        invalidateForm.resetFields();
-                        setInvalidateModal(true);
-                      }}
-                    />
-                  </div>
-                ))}
-              </div>
-            );
-          })()}
-        </div>
-      </Modal>
+        return (
+          <Modal title="All Progress Entries" wide onClose={() => setAllEntriesWOId(null)}>
+            <div className="max-h-[60vh] overflow-y-auto pr-2">
+              {!detail ? (
+                <div className="text-center text-gray-400 py-10 text-sm">No data available.</div>
+              ) : (
+                <div className="flex flex-col gap-1.5">
+                  {allEntriesWO.map((e, i) => (
+                    <div key={e._id + i} className="flex gap-3 items-center text-xs py-2 border-b border-gray-100 dark:border-gray-700/40" style={{ opacity: e.invalidated?.done ? 0.55 : 1 }}>
+                      <span className="text-gray-400 min-w-[90px] whitespace-nowrap flex items-center gap-1">
+                        {dayjs(e.date).format("DD MMM")}
+                        {dayjs(e.date).format("YYYY-MM-DD") === todayStr && <UIBadge color="blue" small>Today</UIBadge>}
+                      </span>
+                      <span className={`font-semibold text-[#1A1A2E] dark:text-[#F1F5F9] flex-1 ${e.invalidated?.done ? "line-through" : ""}`}>
+                        {e.description}
+                        {personName(e.enteredBy) && <span className="font-normal text-gray-400 text-[11px]"> · {personName(e.enteredBy)}</span>}
+                      </span>
+                      <span className="text-gray-500 dark:text-gray-400 min-w-[80px]">{formatLocation(e, selProjectType)}</span>
+                      <span className="text-emerald-600 font-bold font-mono min-w-[60px]">+{fmtN(e.qtyAdded)} {e.unit}</span>
+                      <EntryActions
+                        e={e} deleting={deleting === e._id}
+                        onEdit={() => {
+                          setEditEntry(e);
+                          editErrors.clearAll();
+                          setEditFormValues({
+                            date: e.date ? dayjs(e.date).format("YYYY-MM-DD") : "",
+                            qtyAdded: String(e.qtyAdded ?? ""),
+                            remarks: e.remarks || "",
+                            tower: e.tower || "", floor: e.floor || "", flatNo: e.flatNo || "",
+                            plotNo: e.plotNo || "", locationNote: e.locationNote || "", plannedQty: "",
+                          });
+                          setProgWOId(detail._id);
+                          setEditModal(true);
+                        }}
+                        onDelete={() => handleDeleteEntry(e, detail._id)}
+                        onInvalidate={() => {
+                          setInvalidateEntry(e);
+                          setInvalidateWOId(detail._id);
+                          invalidateErrors.clearAll();
+                          setInvalidateReason("");
+                          setInvalidateModal(true);
+                        }}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </Modal>
+        );
+      })()}
     </div>
   );
 }

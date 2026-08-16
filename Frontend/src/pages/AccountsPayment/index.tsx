@@ -1,55 +1,40 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import type { ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
+import toast from "react-hot-toast";
 import {
-  Alert,
-  Button,
-  Col,
-  Descriptions,
-  Divider,
-  Drawer,
-  Input,
-  InputNumber,
-  Popconfirm,
-  Row,
-  Segmented,
-  Select,
-  Space,
-  Spin,
-  Steps,
-  Switch,
-  Table,
-  Tag,
-  Tooltip,
-  message,
-} from "antd";
-import {
-  ArrowRightOutlined,
-  CheckCircleFilled,
-  CheckCircleOutlined,
-  ClockCircleOutlined,
-  CloseCircleFilled,
-  CloseCircleOutlined,
-  DollarOutlined,
-  ExclamationCircleFilled,
-  FileAddOutlined,
-  InboxOutlined,
-  PauseCircleOutlined,
-  PrinterOutlined,
-  SafetyCertificateOutlined,
-  SendOutlined,
-} from "@ant-design/icons";
+  ArrowRight, CheckCircle2, Clock, XCircle, IndianRupee, AlertCircle, FilePlus, Inbox,
+  PauseCircle, Printer, ShieldCheck, Send, FileText, ClipboardList, Building2, Wallet, Pencil,
+} from "lucide-react";
 import dayjs from "dayjs";
 import type { Dayjs } from "dayjs";
-import PageShell from "../../components/PageShell";
-import { SearchFilter } from "../../ui/Filters";
+import PageHeader from "../../ui/PageHeader";
+import Btn from "../../ui/Btn";
+import Field from "../../ui/Field";
+import SField from "../../ui/SField";
+import UISwitch from "../../ui/Switch";
+import Modal from "../../ui/Modal";
+import ConfirmModal from "../../ui/ConfirmModal";
+import StatCard from "../../ui/StatCard";
+import Badge from "../../ui/Badge";
+import Segmented from "../../ui/Segmented";
+import Steps from "../../ui/Steps";
+import type { StepItem } from "../../ui/Steps";
+import Alert from "../../ui/Alert";
+import EmptyState from "../../ui/EmptyState";
+import Spinner from "../../ui/Spinner";
+import { Descriptions, DescItem } from "../../ui/Descriptions";
+import { Table, Thead, Tbody, Tfoot, Tr, Th, Td } from "../../ui/Table";
+import { usePagination } from "../../ui/usePagination";
+import Pagination from "../../ui/Pagination";
+import { SearchFilter, FilterRow } from "../../ui/Filters";
 import apiClient from "../../services/apiClient";
 import DateRangeFilter, { inDateRange } from "../../components/DateRangeFilter";
 import { selectableProjects } from "../../utils/projectOptions";
 import { vendorLabel } from "../../utils/vendorLabel";
 import { useAuth } from "../../context/AuthContext";
 import type { AuthUser } from "../../context/AuthContext";
-import StatusTag from "../../shared/components/StatusTag";
+import StatusBadge from "../../ui/StatusBadge";
 import WorkOrderDetailView from "../../components/WorkOrderDetailView";
 import ContractorDetailView from "../../components/ContractorDetailView";
 import type { WorkOrder, Contractor } from "../../types/VendorBilling";
@@ -203,76 +188,13 @@ function sameActor(user: AuthUser | null, actor?: BillUser | null): boolean {
 
 // ── Small visual building blocks ──────────────────────────────────
 
-function StatCard({
-  label, value, sub, icon, accent, onClick, active,
-}: {
-  label: string; value: ReactNode; sub?: string; icon: ReactNode; accent: string; onClick?: () => void; active?: boolean;
-}) {
+function InfoCard({ title, accentClass, children, extra }: { title: string; accentClass: string; children: ReactNode; extra?: ReactNode }) {
   return (
-    <div
-      onClick={onClick}
-      style={{
-        background: "#fff", border: `1px solid ${active ? "#FF7A00" : "#E5E7EB"}`, borderRadius: 12, padding: "16px 18px",
-        cursor: onClick ? "pointer" : undefined,
-      }}
-    >
-      <div style={{
-        width: 40, height: 40, borderRadius: 10, background: `${accent}1A`,
-        display: "flex", alignItems: "center", justifyContent: "center", color: accent, fontSize: 18, marginBottom: 12,
-      }}>
-        {icon}
-      </div>
-      <div style={{ fontSize: 11, fontWeight: 700, color: "#9CA3AF", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-        {label}
-      </div>
-      <div style={{ fontSize: 24, fontWeight: 800, color: "#1a1f2e", marginTop: 2, lineHeight: 1.2 }}>{value}</div>
-      {sub && <div style={{ fontSize: 11.5, color: "#9CA3AF", marginTop: 3 }}>{sub}</div>}
-    </div>
-  );
-}
-
-interface TabDef { key: string; label: string; count: number; }
-
-function PillTabs({ tabs, active, onChange }: { tabs: TabDef[]; active: string; onChange: (k: string) => void }) {
-  return (
-    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 18 }}>
-      {tabs.map((t) => {
-        const isActive = t.key === active;
-        return (
-          <button
-            key={t.key}
-            type="button"
-            onClick={() => onChange(t.key)}
-            style={{
-              display: "flex", alignItems: "center", gap: 7,
-              padding: "7px 15px", borderRadius: 20,
-              border: isActive ? "1.5px solid #1a1f2e" : "1px solid transparent",
-              background: isActive ? "#fff" : "transparent",
-              fontWeight: isActive ? 700 : 500,
-              color: isActive ? "#1a1f2e" : "#6B7280",
-              fontSize: 13, cursor: "pointer", outline: "none",
-            }}
-          >
-            {t.label}
-            {t.count > 0 && (
-              <span style={{ background: "#DCFCE7", color: "#15803D", borderRadius: 10, padding: "1px 7px", fontSize: 11, fontWeight: 700 }}>
-                {t.count}
-              </span>
-            )}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-function InfoCard({ title, accent, children, extra }: { title: string; accent: string; children: ReactNode; extra?: ReactNode }) {
-  return (
-    <div style={{ border: "1px solid #E5E7EB", borderRadius: 12, padding: "14px 16px", height: "100%" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <div style={{ width: 4, height: 15, borderRadius: 2, background: accent }} />
-          <div style={{ fontWeight: 700, fontSize: 13, color: "#1a1f2e" }}>{title}</div>
+    <div className="border border-gray-200 dark:border-gray-700/40 rounded-lg p-3.5 h-full bg-white dark:bg-[#1E293B]">
+      <div className="flex items-center justify-between mb-2.5">
+        <div className="flex items-center gap-2">
+          <div className={`w-1 h-[15px] rounded ${accentClass}`} />
+          <div className="font-bold text-[13px] text-[#1A1A2E] dark:text-[#F1F5F9]">{title}</div>
         </div>
         {extra}
       </div>
@@ -283,30 +205,28 @@ function InfoCard({ title, accent, children, extra }: { title: string; accent: s
 
 function InfoRow({ label, value, mono, bold }: { label: string; value: ReactNode; mono?: boolean; bold?: boolean }) {
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "4px 0", fontSize: 12.5 }}>
-      <span style={{ color: "#9CA3AF" }}>{label}</span>
-      <span style={{ fontFamily: mono ? "monospace" : undefined, fontWeight: bold ? 700 : 500, textAlign: "right" }}>{value}</span>
+    <div className="flex justify-between gap-2.5 py-1 text-[12.5px]">
+      <span className="text-gray-400">{label}</span>
+      <span className={`text-right ${mono ? "font-mono" : ""} ${bold ? "font-bold" : "font-medium"}`}>{value}</span>
     </div>
   );
 }
 
 function MutedNote({ text }: { text: string }) {
   return (
-    <div style={{ marginTop: 16, padding: "10px 14px", background: "#F9FAFB", border: "1px dashed #E5E7EB", borderRadius: 8, color: "#9CA3AF", fontSize: 12.5 }}>
+    <div className="mt-4 px-3.5 py-2.5 bg-gray-50 dark:bg-gray-800/30 border border-dashed border-gray-200 dark:border-gray-700/40 rounded-lg text-gray-400 text-[12.5px]">
       {text}
     </div>
   );
 }
 
-const sectionPanelStyle: React.CSSProperties = {
-  border: "1px solid #E5E7EB", borderRadius: 10, padding: "14px 16px", marginTop: 16, background: "#F9FAFB",
-};
+const sectionPanelClass = "border border-gray-200 dark:border-gray-700/40 rounded-lg p-3.5 mt-4 bg-gray-50 dark:bg-gray-800/40";
 
 // Verification → L1 AGM → L2 Director → Sent to TMS → Paid stepper, driven
 // from the real fields on the bill rather than any separately-tracked UI
 // state. A bill on Hold still shows its progress up to the point it was
 // paused (see the Hold banner rendered alongside this in the drawer).
-function buildSteps(bill: Bill): { title: string; content: string; icon: ReactNode; status: "wait" | "process" | "finish" | "error" }[] {
+function buildSteps(bill: Bill): StepItem[] {
   const doneFlags = [
     !!bill.verificationBy,
     !!bill.l1ApprovedBy,
@@ -325,27 +245,27 @@ function buildSteps(bill: Bill): { title: string; content: string; icon: ReactNo
     { title: "Paid",           by: undefined,                 at: bill.tmsCallbackReceivedAt },
   ];
 
-  return meta.map((m, idx) => {
+  return meta.map((m, idx): StepItem => {
     const done = doneFlags[idx];
     const isCurrent = idx === currentIdx;
-    let status: "wait" | "process" | "finish" | "error" = "wait";
-    let icon: ReactNode = <span style={{ fontWeight: 700 }}>{idx + 1}</span>;
+    let status: StepItem["status"] = "wait";
+    let icon: ReactNode = undefined;
     if (done) {
       status = "finish";
-      icon = <CheckCircleFilled style={{ color: "#16A34A" }} />;
+      icon = <CheckCircle2 className="w-3.5 h-3.5" />;
     } else if (bill.status === "rejected" && isCurrent) {
       status = "error";
-      icon = <CloseCircleFilled style={{ color: "#DC2626" }} />;
+      icon = <XCircle className="w-3.5 h-3.5" />;
     } else if (isCurrent) {
       status = "process";
-      icon = <ExclamationCircleFilled style={{ color: "#D97706" }} />;
+      icon = <AlertCircle className="w-3.5 h-3.5" />;
     }
-    const content = done
+    const description = done
       ? `${m.by || "—"}${m.at ? " · " + dayjs(m.at).format("DD MMM") : ""}`
       : bill.status === "rejected" && isCurrent
         ? "Rejected here"
         : "";
-    return { title: m.title, content, icon, status };
+    return { title: m.title, description, icon, status };
   });
 }
 
@@ -361,8 +281,8 @@ const HISTORY_STAGE_LABEL: Record<string, string> = {
 function BillHistoryTimeline({ history }: { history: ApprovalHistoryEntry[] }) {
   if (!history || history.length === 0) return null;
   return (
-    <div style={{ marginTop: 16 }}>
-      <div style={{ fontSize: 11, fontWeight: 700, color: "#6B7280", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 10 }}>
+    <div className="mt-4">
+      <div className="text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2.5">
         History
       </div>
       {history.map((h, i) => {
@@ -375,22 +295,32 @@ function BillHistoryTimeline({ history }: { history: ApprovalHistoryEntry[] }) {
         const verb  = isSentBack ? "sent back" : isHeld ? "held" : isReleased ? "released the hold" : isSendFailed ? "send to TMS failed" : h.action === "sent" ? "sent to TMS" : h.action === "paid" ? "confirmed paid by TMS" : "completed";
         const actorName = typeof h.by === "object" && h.by ? h.by.name : undefined;
         return (
-          <div key={i} style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
-            <div style={{ flexShrink: 0, textAlign: "center" }}>
-              <div style={{ width: 24, height: 24, borderRadius: "50%", background: bg, border: `2px solid ${color}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color }}>
+          <div key={i} className="flex gap-3 items-start">
+            <div className="shrink-0 text-center">
+              <div
+                className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold"
+                style={{ background: bg, border: `2px solid ${color}`, color }}
+              >
                 {isSentBack || isSendFailed ? "✕" : isHeld ? "⏸" : isReleased ? "▶" : "✓"}
               </div>
-              {i < history.length - 1 && <div style={{ width: 2, height: 26, background: "#E5E7EB", margin: "2px auto" }} />}
+              {i < history.length - 1 && <div className="w-0.5 h-[26px] bg-gray-200 dark:bg-gray-700/40 mx-auto my-0.5" />}
             </div>
-            <div style={{ flex: 1, minWidth: 0, paddingBottom: 12 }}>
-              <div style={{ fontSize: 12.5, fontWeight: 700, color: "#111827" }}>
+            <div className="flex-1 min-w-0 pb-3">
+              <div className="text-[12.5px] font-bold text-[#1A1A2E] dark:text-[#F1F5F9]">
                 {HISTORY_STAGE_LABEL[h.stage] || h.stage} {verb}
-                <span style={{ fontWeight: 400, color: "#9CA3AF", marginLeft: 8, fontSize: 11.5 }}>
+                <span className="font-normal text-gray-400 ml-2 text-[11.5px]">
                   {actorName || (h.stage === "tms-callback" ? "TMS" : "—")}{h.at ? ` · ${dayjs(h.at).format("DD MMM YYYY, hh:mm A")}` : ""}
                 </span>
               </div>
               {h.remarks && (
-                <div style={{ fontSize: 12, color: isSentBack || isSendFailed ? "#B91C1C" : "#6B7280", marginTop: 4, background: isSentBack || isSendFailed ? "#FEF2F2" : "#F9FAFB", border: `1px solid ${isSentBack || isSendFailed ? "#FCA5A5" : "#E5E7EB"}`, borderRadius: 6, padding: "5px 9px" }}>
+                <div
+                  className="text-xs mt-1 rounded-md px-2.5 py-1"
+                  style={{
+                    color: isSentBack || isSendFailed ? "#B91C1C" : "#6B7280",
+                    background: isSentBack || isSendFailed ? "#FEF2F2" : "#F9FAFB",
+                    border: `1px solid ${isSentBack || isSendFailed ? "#FCA5A5" : "#E5E7EB"}`,
+                  }}
+                >
                   {h.remarks}
                 </div>
               )}
@@ -405,6 +335,10 @@ function BillHistoryTimeline({ history }: { history: ApprovalHistoryEntry[] }) {
 // Read-only "paid" summary — the payment fields (mode/UTR/bank/released-by/
 // amount) are now populated entirely by TMS's callback, not entered here.
 // Owner keeps an inline deductions editor for post-hoc corrections.
+const PAYMENT_MODE_LABEL: Record<string, string> = {
+  neft: "NEFT", rtgs: "RTGS", imps: "IMPS", internet_banking: "Internet Banking", upi: "UPI", cheque: "Cheque", dd: "DD", cash: "Cash",
+};
+
 function PaidPanel({ bill, isOwner, onUpdated }: { bill: Bill; isOwner: boolean; onUpdated: (b: Bill) => void }) {
   const [editing, setEditing] = useState(false);
   const [retention, setRetention] = useState(bill.retentionAmount ?? 0);
@@ -424,63 +358,43 @@ function PaidPanel({ bill, isOwner, onUpdated }: { bill: Bill; isOwner: boolean;
         advanceRecovery: advance, retentionAmount: retention,
       });
       onUpdated(normalizeId(res.data.bill) as unknown as Bill);
-      message.success("Deductions updated");
+      toast.success("Deductions updated");
       setEditing(false);
     } catch (err: unknown) {
       const e = err as { response?: { data?: { message?: string } } };
-      message.error(e?.response?.data?.message || "Failed to update deductions");
+      toast.error(e?.response?.data?.message || "Failed to update deductions");
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <div style={{ marginTop: 16, background: "#F5F0FF", border: "1px solid #C4B5FD", borderRadius: 10, padding: "14px 16px" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-        <div style={{ fontWeight: 700, fontSize: 13, color: "#7C3AED" }}>Paid — confirmed by TMS</div>
+    <div className="mt-4 bg-purple-50 dark:bg-purple-500/10 border border-purple-200 dark:border-purple-500/30 rounded-lg p-3.5">
+      <div className="flex justify-between items-center mb-2.5">
+        <div className="font-bold text-[13px] text-purple-700 dark:text-purple-300">Paid — confirmed by TMS</div>
         {isOwner && !editing && (
-          <Button size="small" onClick={() => setEditing(true)}>Edit Deductions</Button>
+          <Btn small outline icon={Pencil} label="Edit Deductions" onClick={() => setEditing(true)} />
         )}
       </div>
       {editing ? (
         <div>
-          <Row gutter={12}>
-            <Col span={12}>
-              <div style={{ fontSize: 11, color: "#9CA3AF", marginBottom: 4 }}>Hold / Retention (₹)</div>
-              <InputNumber style={{ width: "100%" }} min={0} value={retention} onChange={(v) => setRetention(Number(v) || 0)} />
-            </Col>
-            <Col span={12}>
-              <div style={{ fontSize: 11, color: "#9CA3AF", marginBottom: 4 }}>Advance Recovery (₹)</div>
-              <InputNumber style={{ width: "100%" }} min={0} value={advance} onChange={(v) => setAdvance(Number(v) || 0)} />
-            </Col>
-          </Row>
-          <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-            <Button type="primary" size="small" loading={saving} style={{ background: "#7C3AED", borderColor: "#7C3AED" }} onClick={save}>Save</Button>
-            <Button size="small" onClick={() => setEditing(false)}>Cancel</Button>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Hold / Retention (₹)" type="number" min="0" value={retention} onChange={(e) => setRetention(Number(e.target.value) || 0)} />
+            <Field label="Advance Recovery (₹)" type="number" min="0" value={advance} onChange={(e) => setAdvance(Number(e.target.value) || 0)} />
+          </div>
+          <div className="flex gap-2 mt-2.5">
+            <Btn small color="purple" loading={saving} label="Save" onClick={save} />
+            <Btn small outline label="Cancel" onClick={() => setEditing(false)} />
           </div>
         </div>
       ) : (
-        <Descriptions column={2} size="small" colon={false}>
-          <Descriptions.Item label={<span style={{ color: "#9ba3b8" }}>Payment Date</span>}>
-            {bill.paymentDate ? dayjs(bill.paymentDate).format("DD MMM YYYY") : "—"}
-          </Descriptions.Item>
-          <Descriptions.Item label={<span style={{ color: "#9ba3b8" }}>Mode</span>}>
-            <Tag color="purple">
-              {({ neft: "NEFT", rtgs: "RTGS", imps: "IMPS", internet_banking: "Internet Banking", upi: "UPI", cheque: "Cheque", dd: "DD", cash: "Cash" } as Record<string, string>)[bill.paymentMode || ""] || bill.paymentMode?.toUpperCase() || "—"}
-            </Tag>
-          </Descriptions.Item>
-          <Descriptions.Item label={<span style={{ color: "#9ba3b8" }}>UTR / Ref</span>}>
-            <span style={{ fontFamily: "monospace", fontWeight: 700 }}>{bill.paymentUTR || "—"}</span>
-          </Descriptions.Item>
-          <Descriptions.Item label={<span style={{ color: "#9ba3b8" }}>Bank</span>}>
-            {bill.paymentBank || "—"}
-          </Descriptions.Item>
-          <Descriptions.Item label={<span style={{ color: "#9ba3b8" }}>Released By</span>}>
-            {bill.paymentReleasedBy || "—"}
-          </Descriptions.Item>
-          <Descriptions.Item label={<span style={{ color: "#9ba3b8" }}>Amount Paid</span>}>
-            <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#16a85a" }}>{bill.paidAmount != null ? fmt(bill.paidAmount) : "—"}</span>
-          </Descriptions.Item>
+        <Descriptions columns={2}>
+          <DescItem label="Payment Date">{bill.paymentDate ? dayjs(bill.paymentDate).format("DD MMM YYYY") : "—"}</DescItem>
+          <DescItem label="Mode"><Badge color="purple">{PAYMENT_MODE_LABEL[bill.paymentMode || ""] || bill.paymentMode?.toUpperCase() || "—"}</Badge></DescItem>
+          <DescItem label="UTR / Ref"><span className="font-mono font-bold">{bill.paymentUTR || "—"}</span></DescItem>
+          <DescItem label="Bank">{bill.paymentBank || "—"}</DescItem>
+          <DescItem label="Released By">{bill.paymentReleasedBy || "—"}</DescItem>
+          <DescItem label="Amount Paid"><span className="font-mono font-bold text-emerald-600">{bill.paidAmount != null ? fmt(bill.paidAmount) : "—"}</span></DescItem>
         </Descriptions>
       )}
     </div>
@@ -511,9 +425,9 @@ export default function AccountsPayment() {
 
   // Filters
   const [search, setSearch]             = useState("");
-  const [projectFilter, setProjectFilter] = useState<string | undefined>(undefined);
-  const [vendorFilter, setVendorFilter]   = useState<string | undefined>(undefined);
-  const [companyFilter, setCompanyFilter] = useState<string | undefined>(undefined);
+  const [projectFilter, setProjectFilter] = useState("");
+  const [vendorFilter, setVendorFilter]   = useState("");
+  const [companyFilter, setCompanyFilter] = useState("");
   const [dateFrom, setDateFrom]         = useState<Dayjs | null>(null);
   const [dateTo, setDateTo]             = useState<Dayjs | null>(null);
   const [showArchived, setShowArchived] = useState(false);
@@ -564,6 +478,10 @@ export default function AccountsPayment() {
   const [woDrawerId, setWoDrawerId]         = useState<string | null>(null);
   const [woDrawerData, setWoDrawerData]     = useState<WorkOrder | null>(null);
   const [vendorDrawerCode, setVendorDrawerCode] = useState<string | null>(null);
+
+  // Archive / unarchive confirm
+  const [archiveTarget, setArchiveTarget] = useState<Bill | null>(null);
+  const [archiving, setArchiving] = useState(false);
 
   // ── Load data ────────────────────────────────────────────────
 
@@ -645,6 +563,9 @@ export default function AccountsPayment() {
     });
   }, [bills, search, activeTab, projectFilter, vendorFilter, companyFilter, dateFrom, dateTo]);
 
+  const { page, totalPages, setPage, pageItems: pagedBills } = usePagination(filteredBills, 10);
+
+  interface TabDef { key: string; label: string; count: number; }
   const tabs: TabDef[] = [
     { key: "all",         label: "All",              count: 0 },
     { key: "draft",       label: "Awaiting Verification", count: draftBills.length },
@@ -752,7 +673,7 @@ export default function AccountsPayment() {
   async function handleVerify() {
     if (!drawerBillId) return;
     if (verifyAdjustmentAmount !== 0 && !verifyAdjustmentRemark.trim()) {
-      message.error("A remark is required when adjusting the net payable amount");
+      toast.error("A remark is required when adjusting the net payable amount");
       return;
     }
     setVerifySaving(true);
@@ -765,10 +686,10 @@ export default function AccountsPayment() {
         remarks: verifyRemarks || undefined,
       });
       updateBillInList(normalizeId(res.data.bill) as unknown as Bill);
-      message.success("Verified — ready for L1 AGM approval");
+      toast.success("Verified — ready for L1 AGM approval");
     } catch (err: unknown) {
       const e = err as { response?: { data?: { message?: string } } };
-      message.error(e?.response?.data?.message || "Verification failed");
+      toast.error(e?.response?.data?.message || "Verification failed");
     } finally {
       setVerifySaving(false);
     }
@@ -782,10 +703,10 @@ export default function AccountsPayment() {
         remarks: l1Remarks || undefined,
       });
       updateBillInList(normalizeId(res.data.bill) as unknown as Bill);
-      message.success("L1 AGM approved — ready for L2 Director approval");
+      toast.success("L1 AGM approved — ready for L2 Director approval");
     } catch (err: unknown) {
       const e = err as { response?: { data?: { message?: string } } };
-      message.error(e?.response?.data?.message || "L1 AGM approval failed");
+      toast.error(e?.response?.data?.message || "L1 AGM approval failed");
     } finally {
       setL1Saving(false);
     }
@@ -799,13 +720,13 @@ export default function AccountsPayment() {
         remarks: l2Remarks || undefined,
       });
       updateBillInList(normalizeId(res.data.bill) as unknown as Bill);
-      message.success("L2 Director approved — sending to TMS…");
+      toast.success("L2 Director approved — sending to TMS…");
       // Fires right after a successful L2 approval so it still feels like one
       // click, while the two backend actions stay independently retryable.
       await handleSendToTms(drawerBillId);
     } catch (err: unknown) {
       const e = err as { response?: { data?: { message?: string } } };
-      message.error(e?.response?.data?.message || "L2 Director approval failed");
+      toast.error(e?.response?.data?.message || "L2 Director approval failed");
     } finally {
       setL2Saving(false);
     }
@@ -818,10 +739,10 @@ export default function AccountsPayment() {
     try {
       const res = await apiClient.patch<{ bill: Record<string, unknown> }>(`/bills/${id}/send-to-tms`, {});
       updateBillInList(normalizeId(res.data.bill) as unknown as Bill);
-      message.success("Sent to TMS — awaiting payment confirmation");
+      toast.success("Sent to TMS — awaiting payment confirmation");
     } catch (err: unknown) {
       const e = err as { response?: { data?: { message?: string; data?: { bill?: Record<string, unknown> } } } };
-      message.error(e?.response?.data?.message || "Failed to send to TMS — you can retry from this bill");
+      toast.error(e?.response?.data?.message || "Failed to send to TMS — you can retry from this bill");
       // Even on failure, the bill's tmsLastError/tmsSendAttempts were updated
       // server-side — refetch it so the drawer shows the retry state.
       try {
@@ -839,12 +760,12 @@ export default function AccountsPayment() {
     try {
       const res = await apiClient.patch<{ bill: Record<string, unknown> }>(`/bills/${drawerBillId}/hold`, { reason: holdReason });
       updateBillInList(normalizeId(res.data.bill) as unknown as Bill);
-      message.success("Payment held");
+      toast.success("Payment held");
       setHolding(false);
       setHoldReason("");
     } catch (err: unknown) {
       const e = err as { response?: { data?: { message?: string } } };
-      message.error(e?.response?.data?.message || "Failed to hold payment");
+      toast.error(e?.response?.data?.message || "Failed to hold payment");
     } finally {
       setHoldSaving(false);
     }
@@ -856,10 +777,10 @@ export default function AccountsPayment() {
     try {
       const res = await apiClient.patch<{ bill: Record<string, unknown> }>(`/bills/${drawerBillId}/release-hold`, {});
       updateBillInList(normalizeId(res.data.bill) as unknown as Bill);
-      message.success("Hold released — ready to send to TMS");
+      toast.success("Hold released — ready to send to TMS");
     } catch (err: unknown) {
       const e = err as { response?: { data?: { message?: string } } };
-      message.error(e?.response?.data?.message || "Failed to release hold");
+      toast.error(e?.response?.data?.message || "Failed to release hold");
     } finally {
       setReleaseHoldSaving(false);
     }
@@ -871,12 +792,12 @@ export default function AccountsPayment() {
     try {
       const res = await apiClient.patch<{ bill: Record<string, unknown> }>(`/bills/${drawerBillId}/reject`, { reason: rejectReason });
       updateBillInList(normalizeId(res.data.bill) as unknown as Bill);
-      message.success("Bill rejected");
+      toast.success("Bill rejected");
       setRejecting(false);
       setRejectReason("");
     } catch (err: unknown) {
       const e = err as { response?: { data?: { message?: string } } };
-      message.error(e?.response?.data?.message || "Failed to reject");
+      toast.error(e?.response?.data?.message || "Failed to reject");
     } finally {
       setRejectSaving(false);
     }
@@ -885,98 +806,18 @@ export default function AccountsPayment() {
   // ── Archive / Unarchive ──────────────────────────────────────────
 
   async function archiveOne(bill: Bill) {
+    setArchiving(true);
     try {
       await apiClient.patch(`/bills/${bill.id}/${showArchived ? "unarchive" : "archive"}`);
-      message.success(showArchived ? `${bill.billNo} unarchived` : `${bill.billNo} archived`);
+      toast.success(showArchived ? `${bill.billNo} unarchived` : `${bill.billNo} archived`);
+      setArchiveTarget(null);
       loadBills(showArchived);
     } catch (e: unknown) {
-      message.error((e as { response?: { data?: { message?: string } } })?.response?.data?.message || "Action failed");
+      toast.error((e as { response?: { data?: { message?: string } } })?.response?.data?.message || "Action failed");
+    } finally {
+      setArchiving(false);
     }
   }
-
-  // ── Table columns ──────────────────────────────────────────────
-
-  const columns = [
-    {
-      title: "Bill No.",
-      dataIndex: "billNo",
-      width: 120,
-      render: (v: string) => <span style={{ fontFamily: "monospace", color: "#2563EB", fontWeight: 700 }}>{v}</span>,
-    },
-    {
-      title: "Work Order",
-      dataIndex: "workOrderNo",
-      width: 140,
-      render: (v?: string, r?: Bill) => v && r?.workOrderId
-        ? (
-          <Tag
-            style={{ fontFamily: "monospace", background: "#EFF6FF", color: "#2563EB", border: "1px solid #BFDBFE", borderRadius: 6, cursor: "pointer" }}
-            onClick={(e) => { e.stopPropagation(); openWODrawer(r.workOrderId!); }}
-          >
-            {v}
-          </Tag>
-        )
-        : <span style={{ color: "#C0C4CC" }}>—</span>,
-    },
-    {
-      title: "Vendor",
-      dataIndex: "vendorName",
-      width: 180,
-      render: (v?: string, r?: Bill) => v && r?.vendorCode
-        ? (
-          <span
-            style={{ color: "#2563EB", cursor: "pointer", textDecoration: "underline", textDecorationColor: "transparent" }}
-            onClick={(e) => { e.stopPropagation(); openVendorDrawer(r.vendorCode!); }}
-            onMouseEnter={(e) => { e.currentTarget.style.textDecorationColor = "#2563EB"; }}
-            onMouseLeave={(e) => { e.currentTarget.style.textDecorationColor = "transparent"; }}
-          >
-            {v}
-          </span>
-        )
-        : (v || <span style={{ color: "#C0C4CC" }}>—</span>),
-    },
-    {
-      title: "Project",
-      dataIndex: "projectName",
-      width: 170,
-      render: (v?: string) => v || <span style={{ color: "#C0C4CC" }}>—</span>,
-    },
-    {
-      title: "Amount",
-      dataIndex: "amount",
-      width: 130,
-      align: "right" as const,
-      render: (_: number, r: Bill) => <span style={{ fontFamily: "monospace", fontWeight: 700 }}>{fmt(netAfterAdvance(r))}</span>,
-    },
-    {
-      title: "Status",
-      dataIndex: "status",
-      width: 150,
-      render: (v: BillStatus) => <StatusTag status={v} />,
-    },
-    {
-      title: "Date",
-      dataIndex: "billDate",
-      width: 110,
-      render: (v: string) => (v ? dayjs(v).format("DD MMM YYYY") : "—"),
-    },
-    {
-      title: "",
-      key: "actions",
-      width: 56,
-      render: (_: unknown, r: Bill) => (
-        <div onClick={(e) => e.stopPropagation()}>
-          <Popconfirm
-            title={showArchived ? `Unarchive ${r.billNo}?` : `Archive ${r.billNo}?`}
-            description={showArchived ? "It will reappear in the normal bill list." : "It will be hidden from the normal bill list, but not deleted."}
-            onConfirm={() => archiveOne(r)}
-          >
-            <Button type="text" size="small" icon={<InboxOutlined />} style={{ color: "#9CA3AF" }} />
-          </Popconfirm>
-        </div>
-      ),
-    },
-  ];
 
   // ── Drawer: contextual action section (per stage + permission) ───
 
@@ -984,40 +825,32 @@ export default function AccountsPayment() {
     if (rejecting) {
       const sendBackTo = bill.status === "approved" ? "L1 AGM" : bill.status === "l1-approved" ? "Verification" : bill.status === "verify-done" ? "Verification" : null;
       return (
-        <div style={{ ...sectionPanelStyle, background: "#FEF2F2", border: "1px solid #FECACA" }}>
-          <div style={{ fontWeight: 700, fontSize: 13, color: "#DC2626", marginBottom: 8 }}>
+        <div className={`${sectionPanelClass} !bg-red-50 dark:!bg-red-500/10 !border-red-200 dark:!border-red-500/30`}>
+          <div className="font-bold text-[13px] text-red-600 mb-2">
             {sendBackTo ? `Send Back to ${sendBackTo}` : "Reject Bill"}
           </div>
-          <Input.TextArea
-            rows={3}
-            placeholder="Explain what needs to be corrected…"
-            value={rejectReason}
-            onChange={(e) => setRejectReason(e.target.value)}
+          <Field
+            textarea placeholder="Explain what needs to be corrected…"
+            value={rejectReason} onChange={(e) => setRejectReason(e.target.value)}
           />
-          <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-            <Button danger type="primary" loading={rejectSaving} disabled={!rejectReason.trim()} onClick={handleRejectConfirm}>
-              {sendBackTo ? "Confirm Send Back" : "Confirm Rejection"}
-            </Button>
-            <Button onClick={() => { setRejecting(false); setRejectReason(""); }}>Cancel</Button>
+          <div className="flex gap-2 mt-2.5">
+            <Btn color="red" loading={rejectSaving} disabled={!rejectReason.trim()} label={sendBackTo ? "Confirm Send Back" : "Confirm Rejection"} onClick={handleRejectConfirm} />
+            <Btn outline label="Cancel" onClick={() => { setRejecting(false); setRejectReason(""); }} />
           </div>
         </div>
       );
     }
     if (holding) {
       return (
-        <div style={{ ...sectionPanelStyle, background: "#F5F3FF", border: "1px solid #DDD6FE" }}>
-          <div style={{ fontWeight: 700, fontSize: 13, color: "#9333EA", marginBottom: 8 }}>Hold Payment</div>
-          <Input.TextArea
-            rows={3}
-            placeholder="Explain why this payment is being held…"
-            value={holdReason}
-            onChange={(e) => setHoldReason(e.target.value)}
+        <div className={`${sectionPanelClass} !bg-purple-50 dark:!bg-purple-500/10 !border-purple-200 dark:!border-purple-500/30`}>
+          <div className="font-bold text-[13px] text-purple-700 mb-2">Hold Payment</div>
+          <Field
+            textarea placeholder="Explain why this payment is being held…"
+            value={holdReason} onChange={(e) => setHoldReason(e.target.value)}
           />
-          <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-            <Button type="primary" style={{ background: "#9333EA", borderColor: "#9333EA" }} loading={holdSaving} disabled={!holdReason.trim()} onClick={handleHoldConfirm}>
-              Confirm Hold
-            </Button>
-            <Button onClick={() => { setHolding(false); setHoldReason(""); }}>Cancel</Button>
+          <div className="flex gap-2 mt-2.5">
+            <Btn color="purple" loading={holdSaving} disabled={!holdReason.trim()} label="Confirm Hold" onClick={handleHoldConfirm} />
+            <Btn outline label="Cancel" onClick={() => { setHolding(false); setHoldReason(""); }} />
           </div>
         </div>
       );
@@ -1027,93 +860,82 @@ export default function AccountsPayment() {
       case "draft": {
         if (!canVerify) return <MutedNote text="Awaiting Verification against its work order and vendor details." />;
         return (
-          <div style={sectionPanelStyle}>
-            <div style={{ fontWeight: 700, fontSize: 13, color: "#FF7A00", marginBottom: 8 }}>Verification</div>
-            <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 10 }}>
+          <div className={sectionPanelClass}>
+            <div className="font-bold text-[13px] text-primary mb-2">Verification</div>
+            <div className="text-xs text-gray-500 dark:text-gray-400 mb-2.5">
               Confirm this bill matches its work order and vendor details, and set TDS. Hold/Retention and Advance
               Recovery are already decided (at bill creation, or by AGM/GM's own Site Progress approval) — not entered here.
             </div>
-            <Row gutter={12}>
-              <Col span={12}>
-                <div style={{ fontSize: 11, color: "#9CA3AF", marginBottom: 4 }}>TDS %</div>
-                <InputNumber
-                  style={{ width: "100%" }} min={0} max={100} value={verifyTdsPercent}
-                  onChange={(v) => {
-                    const pct = Number(v) || 0;
-                    setVerifyTdsPercent(pct);
-                    // TDS applies to what's actually payable now — gross minus Hold
-                    // and Advance Recovery (neither is the contractor's taxable
-                    // value), before GST (a pass-through tax, not the contractor's
-                    // income). Never on the raw gross or the GST-inclusive figure.
-                    const { netBeforeGst } = billFinancials({
-                      gross: bill.amount || 0, retentionAmount: bill.retentionAmount ?? 0, advanceRecovery: bill.advanceRecovery ?? 0,
-                    });
-                    setVerifyTdsAmount(Math.round(netBeforeGst * pct / 100));
-                  }}
-                />
-              </Col>
-              <Col span={12}>
-                <div style={{ fontSize: 11, color: "#9CA3AF", marginBottom: 4 }}>TDS Amount to Deduct (₹)</div>
-                <InputNumber
-                  style={{ width: "100%" }} min={0} value={verifyTdsAmount}
-                  onChange={(v) => {
-                    const amt = Number(v) || 0;
-                    setVerifyTdsAmount(amt);
-                    const { netBeforeGst } = billFinancials({
-                      gross: bill.amount || 0, retentionAmount: bill.retentionAmount ?? 0, advanceRecovery: bill.advanceRecovery ?? 0,
-                    });
-                    setVerifyTdsPercent(netBeforeGst > 0 ? Math.round((amt / netBeforeGst) * 10000) / 100 : 0);
-                  }}
-                />
-              </Col>
-            </Row>
+            <div className="grid grid-cols-2 gap-3">
+              <Field
+                label="TDS %" type="number" min="0" max="100" value={verifyTdsPercent}
+                onChange={(e) => {
+                  const pct = Number(e.target.value) || 0;
+                  setVerifyTdsPercent(pct);
+                  // TDS applies to what's actually payable now — gross minus Hold
+                  // and Advance Recovery (neither is the contractor's taxable
+                  // value), before GST (a pass-through tax, not the contractor's
+                  // income). Never on the raw gross or the GST-inclusive figure.
+                  const { netBeforeGst } = billFinancials({
+                    gross: bill.amount || 0, retentionAmount: bill.retentionAmount ?? 0, advanceRecovery: bill.advanceRecovery ?? 0,
+                  });
+                  setVerifyTdsAmount(Math.round(netBeforeGst * pct / 100));
+                }}
+              />
+              <Field
+                label="TDS Amount to Deduct (₹)" type="number" min="0" value={verifyTdsAmount}
+                onChange={(e) => {
+                  const amt = Number(e.target.value) || 0;
+                  setVerifyTdsAmount(amt);
+                  const { netBeforeGst } = billFinancials({
+                    gross: bill.amount || 0, retentionAmount: bill.retentionAmount ?? 0, advanceRecovery: bill.advanceRecovery ?? 0,
+                  });
+                  setVerifyTdsPercent(netBeforeGst > 0 ? Math.round((amt / netBeforeGst) * 10000) / 100 : 0);
+                }}
+              />
+            </div>
 
-            <Divider style={{ margin: "14px 0 10px" }} />
-            <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 8 }}>
-              <strong style={{ color: "#374151" }}>Adjustment (optional)</strong> — correct the net payable for something
+            <div className="border-t border-gray-200 dark:border-gray-700/40 my-3.5" />
+            <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+              <strong className="text-gray-700 dark:text-gray-300">Adjustment (optional)</strong> — correct the net payable for something
               outside Hold/Advance/GST/TDS, e.g. clawing back a small overpayment from a previous bill.
             </div>
-            <Row gutter={12} align="bottom">
-              <Col span={8}>
-                <div style={{ fontSize: 11, color: "#9CA3AF", marginBottom: 4 }}>Direction</div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
+              <div>
+                <div className="text-[11px] text-gray-400 mb-1">Direction</div>
                 <Segmented
                   value={verifyAdjustmentSign}
-                  onChange={(v) => setVerifyAdjustmentSign(v as "add" | "subtract")}
+                  onChange={(v) => setVerifyAdjustmentSign(v)}
                   options={[
                     { label: "− Subtract", value: "subtract" },
                     { label: "+ Add", value: "add" },
                   ]}
-                  style={{ width: "100%" }}
                 />
-              </Col>
-              <Col span={8}>
-                <div style={{ fontSize: 11, color: "#9CA3AF", marginBottom: 4 }}>Amount (₹)</div>
-                <InputNumber
-                  style={{ width: "100%" }} min={0} placeholder="0"
-                  value={verifyAdjustmentMagnitude}
-                  onChange={(v) => setVerifyAdjustmentMagnitude(v == null ? null : Number(v))}
-                />
-              </Col>
-              <Col span={8}>
-                {!!verifyAdjustmentMagnitude && (
-                  <div style={{ fontSize: 12, color: verifyAdjustmentSign === "subtract" ? "#DC2626" : "#16A34A", fontWeight: 700 }}>
-                    {verifyAdjustmentSign === "subtract" ? "−" : "+"}{fmt(verifyAdjustmentMagnitude)}
-                  </div>
-                )}
-              </Col>
-            </Row>
-            {!!verifyAdjustmentMagnitude && (
-              <Input
-                style={{ marginTop: 8 }}
-                placeholder='Remark — required, e.g. "₹250 overpaid on RA-0198, recovering now"'
-                value={verifyAdjustmentRemark}
-                onChange={(e) => setVerifyAdjustmentRemark(e.target.value)}
-                status={!verifyAdjustmentRemark.trim() ? "warning" : undefined}
+              </div>
+              <Field
+                label="Amount (₹)" type="number" min="0" placeholder="0"
+                value={verifyAdjustmentMagnitude ?? ""}
+                onChange={(e) => setVerifyAdjustmentMagnitude(e.target.value === "" ? null : Number(e.target.value))}
               />
+              {!!verifyAdjustmentMagnitude && (
+                <div className={`text-xs font-bold ${verifyAdjustmentSign === "subtract" ? "text-red-600" : "text-emerald-600"}`}>
+                  {verifyAdjustmentSign === "subtract" ? "−" : "+"}{fmt(verifyAdjustmentMagnitude)}
+                </div>
+              )}
+            </div>
+            {!!verifyAdjustmentMagnitude && (
+              <div className="mt-2">
+                <Field
+                  placeholder='Remark — required, e.g. "₹250 overpaid on RA-0198, recovering now"'
+                  value={verifyAdjustmentRemark}
+                  onChange={(e) => setVerifyAdjustmentRemark(e.target.value)}
+                  error={!verifyAdjustmentRemark.trim() ? "Required" : undefined}
+                />
+              </div>
             )}
 
-            <Divider style={{ margin: "14px 0 10px" }} />
-            <Input.TextArea rows={2} placeholder="Remarks (optional)" value={verifyRemarks} onChange={(e) => setVerifyRemarks(e.target.value)} />
+            <div className="border-t border-gray-200 dark:border-gray-700/40 my-3.5" />
+            <Field textarea placeholder="Remarks (optional)" value={verifyRemarks} onChange={(e) => setVerifyRemarks(e.target.value)} />
           </div>
         );
       }
@@ -1122,27 +944,28 @@ export default function AccountsPayment() {
         if (!canL1Agm) return <MutedNote text="Awaiting L1 AGM approval." />;
         const guard = sameActor(user, bill.verificationBy) ? "You verified this bill — a different user must give L1 AGM approval." : undefined;
         return (
-          <div style={sectionPanelStyle}>
-            <div style={{ fontWeight: 700, fontSize: 13, color: "#0891b2", marginBottom: 8 }}>L1 AGM Approval</div>
-            {guard && <div style={{ fontSize: 12, color: "#d97706", marginBottom: 8 }}>⚠ {guard}</div>}
-            <Descriptions column={2} size="small" colon={false} style={{ marginBottom: 8 }}>
-              <Descriptions.Item label={<span style={{ color: "#9ba3b8" }}>Hold / Retention</span>}>{fmt(bill.retentionAmount ?? 0)}</Descriptions.Item>
-              <Descriptions.Item label={<span style={{ color: "#9ba3b8" }}>Advance Recovery</span>}>{fmt(bill.advanceRecovery ?? 0)}</Descriptions.Item>
-              <Descriptions.Item label={<span style={{ color: "#9ba3b8" }}>TDS %</span>}>{bill.tdsPercent ?? 0}%</Descriptions.Item>
-              <Descriptions.Item label={<span style={{ color: "#9ba3b8" }}>TDS Amount</span>}>{fmt(bill.tdsAmount ?? 0)}</Descriptions.Item>
+          <div className={sectionPanelClass}>
+            <div className="font-bold text-[13px] text-cyan-700 mb-2">L1 AGM Approval</div>
+            {guard && <div className="text-xs text-amber-600 mb-2">⚠ {guard}</div>}
+            <Descriptions columns={2}>
+              <DescItem label="Hold / Retention">{fmt(bill.retentionAmount ?? 0)}</DescItem>
+              <DescItem label="Advance Recovery">{fmt(bill.advanceRecovery ?? 0)}</DescItem>
+              <DescItem label="TDS %">{bill.tdsPercent ?? 0}%</DescItem>
+              <DescItem label="TDS Amount">{fmt(bill.tdsAmount ?? 0)}</DescItem>
             </Descriptions>
-            <Input.TextArea rows={2} placeholder="Remarks (optional)" value={l1Remarks} onChange={(e) => setL1Remarks(e.target.value)} />
+            <div className="mt-2.5">
+              <Field textarea placeholder="Remarks (optional)" value={l1Remarks} onChange={(e) => setL1Remarks(e.target.value)} />
+            </div>
           </div>
         );
       }
 
       case "hold":
         return (
-          <div style={{ marginTop: 16 }}>
+          <div className="mt-4">
             <Alert
               type="warning"
-              showIcon
-              message={<span><strong>Payment held:</strong> {bill.holdReason}{bill.holdBy?.name ? ` — ${bill.holdBy.name}` : ""}{bill.holdAt ? ` · ${dayjs(bill.holdAt).format("DD MMM YYYY")}` : ""}</span>}
+              message={<><strong>Payment held:</strong> {bill.holdReason}{bill.holdBy?.name ? ` — ${bill.holdBy.name}` : ""}{bill.holdAt ? ` · ${dayjs(bill.holdAt).format("DD MMM YYYY")}` : ""}</>}
             />
             {!canReleaseHold && <MutedNote text="Only someone with Release Hold access can resume this bill." />}
           </div>
@@ -1152,13 +975,13 @@ export default function AccountsPayment() {
         if (!canL2Director) return <MutedNote text="Awaiting L2 Director approval." />;
         const guard = sameActor(user, bill.l1ApprovedBy) ? "You gave L1 AGM approval — a different user must give L2 Director approval." : undefined;
         return (
-          <div style={sectionPanelStyle}>
-            <div style={{ fontWeight: 700, fontSize: 13, color: "#3730a3", marginBottom: 8 }}>L2 Director Approval</div>
-            {guard && <div style={{ fontSize: 12, color: "#d97706", marginBottom: 8 }}>⚠ {guard}</div>}
-            <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 8 }}>
+          <div className={sectionPanelClass}>
+            <div className="font-bold text-[13px] text-indigo-700 mb-2">L2 Director Approval</div>
+            {guard && <div className="text-xs text-amber-600 mb-2">⚠ {guard}</div>}
+            <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">
               This is the last internal sign-off — approving sends this bill straight to TMS for payment.
             </div>
-            <Input.TextArea rows={2} placeholder="Remarks (optional)" value={l2Remarks} onChange={(e) => setL2Remarks(e.target.value)} />
+            <Field textarea placeholder="Remarks (optional)" value={l2Remarks} onChange={(e) => setL2Remarks(e.target.value)} />
           </div>
         );
       }
@@ -1166,15 +989,15 @@ export default function AccountsPayment() {
       case "approved": {
         if (!canRetryTms) return <MutedNote text="L2 Director approved — awaiting handoff to TMS." />;
         return (
-          <div style={sectionPanelStyle}>
-            <div style={{ fontWeight: 700, fontSize: 13, color: "#7c3aed", marginBottom: 8 }}>Ready for TMS</div>
-            <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 10 }}>
+          <div className={sectionPanelClass}>
+            <div className="font-bold text-[13px] text-purple-700 mb-2">Ready for TMS</div>
+            <div className="text-xs text-gray-500 dark:text-gray-400 mb-2.5">
               L2 Director approved this bill — send it to the Transaction Management System to process the payment.
             </div>
             {bill.tmsLastError && (
               <Alert
-                type="error" showIcon style={{ marginBottom: 10 }}
-                message={<span><strong>Last attempt failed{bill.tmsSendAttempts ? ` (attempt ${bill.tmsSendAttempts})` : ""}:</strong> {bill.tmsLastError}</span>}
+                type="error"
+                message={<><strong>Last attempt failed{bill.tmsSendAttempts ? ` (attempt ${bill.tmsSendAttempts})` : ""}:</strong> {bill.tmsLastError}</>}
               />
             )}
           </div>
@@ -1183,10 +1006,10 @@ export default function AccountsPayment() {
 
       case "sent-to-tms":
         return (
-          <div style={{ marginTop: 16 }}>
+          <div className="mt-4">
             <Alert
-              type="info" showIcon
-              message={<span><strong>Sent to TMS</strong>{bill.tmsSentAt ? ` on ${dayjs(bill.tmsSentAt).format("DD MMM YYYY, hh:mm A")}` : ""} — awaiting payment confirmation. TMS owns this bill from here; no action is available in this system until it reports back.</span>}
+              type="info"
+              message={<><strong>Sent to TMS</strong>{bill.tmsSentAt ? ` on ${dayjs(bill.tmsSentAt).format("DD MMM YYYY, hh:mm A")}` : ""} — awaiting payment confirmation. TMS owns this bill from here; no action is available in this system until it reports back.</>}
             />
           </div>
         );
@@ -1196,12 +1019,12 @@ export default function AccountsPayment() {
 
       case "rejected":
         return bill.rejectReason ? (
-          <Alert
-            style={{ marginTop: 16 }}
-            type="error"
-            showIcon
-            message={<span><strong>Rejection Reason:</strong> {bill.rejectReason}{bill.rejectedBy?.name ? ` — ${bill.rejectedBy.name}` : ""}</span>}
-          />
+          <div className="mt-4">
+            <Alert
+              type="error"
+              message={<><strong>Rejection Reason:</strong> {bill.rejectReason}{bill.rejectedBy?.name ? ` — ${bill.rejectedBy.name}` : ""}</>}
+            />
+          </div>
         ) : null;
 
       default:
@@ -1209,24 +1032,26 @@ export default function AccountsPayment() {
     }
   }
 
-  function footerPrimary(bill: Bill): { label: string; color: string; onClick: () => void; loading: boolean; disabled?: boolean; tooltip?: string } | null {
+  type BtnColor = "primary" | "purple" | "red" | "green" | "amber" | "blue" | "outline" | "dark";
+
+  function footerPrimary(bill: Bill): { label: string; color: BtnColor; onClick: () => void; loading: boolean; disabled?: boolean; tooltip?: string } | null {
     switch (bill.status) {
       case "draft":
-        return canVerify ? { label: "Verify", color: "#FF7A00", onClick: handleVerify, loading: verifySaving } : null;
+        return canVerify ? { label: "Verify", color: "primary", onClick: handleVerify, loading: verifySaving } : null;
       case "verify-done": {
         if (!canL1Agm) return null;
         const guard = sameActor(user, bill.verificationBy) ? "You verified this bill — a different user must give L1 AGM approval." : undefined;
-        return { label: "L1 AGM Approve", color: "#0891b2", onClick: handleL1AgmApprove, loading: l1Saving, disabled: !!guard, tooltip: guard };
+        return { label: "L1 AGM Approve", color: "blue", onClick: handleL1AgmApprove, loading: l1Saving, disabled: !!guard, tooltip: guard };
       }
       case "hold":
-        return canReleaseHold ? { label: "Release Hold", color: "#9333EA", onClick: handleReleaseHold, loading: releaseHoldSaving } : null;
+        return canReleaseHold ? { label: "Release Hold", color: "purple", onClick: handleReleaseHold, loading: releaseHoldSaving } : null;
       case "l1-approved": {
         if (!canL2Director) return null;
         const guard = sameActor(user, bill.l1ApprovedBy) ? "You gave L1 AGM approval — a different user must give L2 Director approval." : undefined;
-        return { label: "L2 Director Approve & Send to TMS", color: "#3730a3", onClick: handleL2DirectorApprove, loading: l2Saving, disabled: !!guard, tooltip: guard };
+        return { label: "L2 Director Approve & Send to TMS", color: "blue", onClick: handleL2DirectorApprove, loading: l2Saving, disabled: !!guard, tooltip: guard };
       }
       case "approved":
-        return canRetryTms ? { label: bill.tmsLastError ? "Retry Send to TMS" : "Send to TMS", color: "#7c3aed", onClick: () => handleSendToTms(), loading: sendTmsSaving } : null;
+        return canRetryTms ? { label: bill.tmsLastError ? "Retry Send to TMS" : "Send to TMS", color: "purple", onClick: () => handleSendToTms(), loading: sendTmsSaving } : null;
       default:
         return null;
     }
@@ -1237,441 +1062,442 @@ export default function AccountsPayment() {
   const primaryAction = drawerBill ? footerPrimary(drawerBill) : null;
 
   return (
-    <PageShell
-      title="Accounts Payment"
-      description="Verification → L1 AGM → L2 Director — then handed off to TMS for payment"
-      cta={
-        <Space>
-          <Button type="primary" style={{ background: "#FF7A00", borderColor: "#FF7A00" }}>Accounts Payment</Button>
-          <Button onClick={() => navigate("/procurement-tracker")}>Procurement Tracker</Button>
-        </Space>
-      }
-    >
-      <style>{`
-        .ap-table .ant-table-thead > tr > th { background: #F9FAFB !important; font-weight: 600; color: #6B7280; border-bottom: 1px solid #E5E7EB !important; }
-        .ap-table .ant-table-tbody > tr > td { border-bottom: 1px solid #F1F2F4; cursor: pointer; }
-        .ap-table .ant-table-tbody > tr:hover > td { background: #F9FAFB !important; }
-      `}</style>
+    <div>
+      <PageHeader
+        icon={Wallet}
+        title="Accounts Payment"
+        subtitle="Verification → L1 AGM → L2 Director — then handed off to TMS for payment"
+        actions={<Btn outline label="Procurement Tracker" onClick={() => navigate("/procurement-tracker")} />}
+      />
 
       {/* Stat cards — each doubles as a shortcut into the matching pill tab below */}
-      <Row gutter={[12, 12]} style={{ marginBottom: 22 }}>
-        <Col xs={12} sm={8} md={3}>
-          <StatCard label="Awaiting Verification" value={draftBills.length} sub="Draft bills" icon={<FileAddOutlined />} accent="#6B7280"
-            active={activeTab === "draft"} onClick={() => setActiveTab(activeTab === "draft" ? "all" : "draft")} />
-        </Col>
-        <Col xs={12} sm={8} md={3}>
-          <StatCard label="Awaiting L1 AGM" value={verifyDoneBills.length} sub="Verified" icon={<SafetyCertificateOutlined />} accent="#0891b2"
-            active={activeTab === "verifyDone"} onClick={() => setActiveTab(activeTab === "verifyDone" ? "all" : "verifyDone")} />
-        </Col>
-        <Col xs={12} sm={8} md={3}>
-          <StatCard label="Awaiting L2 Director" value={l1ApprovedBills.length} sub="L1 AGM approved" icon={<CheckCircleOutlined />} accent="#7C3AED"
-            active={activeTab === "l1Approved"} onClick={() => setActiveTab(activeTab === "l1Approved" ? "all" : "l1Approved")} />
-        </Col>
-        <Col xs={12} sm={8} md={3}>
-          <StatCard label="Ready for TMS" value={approvedBills.length} sub="L2 Director approved" icon={<ClockCircleOutlined />} accent="#3730a3"
-            active={activeTab === "approved"} onClick={() => setActiveTab(activeTab === "approved" ? "all" : "approved")} />
-        </Col>
-        <Col xs={12} sm={8} md={3}>
-          <StatCard label="Sent to TMS" value={sentToTmsBills.length} sub="Awaiting payment" icon={<SendOutlined />} accent="#1D4ED8"
-            active={activeTab === "sentToTms"} onClick={() => setActiveTab(activeTab === "sentToTms" ? "all" : "sentToTms")} />
-        </Col>
-        <Col xs={12} sm={8} md={3}>
-          <StatCard label="Hold" value={holdBills.length} sub="Paused before TMS" icon={<PauseCircleOutlined />} accent="#9333EA"
-            active={activeTab === "hold"} onClick={() => setActiveTab(activeTab === "hold" ? "all" : "hold")} />
-        </Col>
-        <Col xs={12} sm={8} md={3}>
-          <StatCard label="Paid" value={stats.paidThisMonthCount} sub={`${fmt(stats.paidThisMonthAmt)} this month`} icon={<DollarOutlined />} accent="#16A34A"
-            active={activeTab === "paid"} onClick={() => setActiveTab(activeTab === "paid" ? "all" : "paid")} />
-        </Col>
-        <Col xs={12} sm={8} md={3}>
-          <StatCard label="Rejected" value={rejectedBills.length} sub="Bills rejected" icon={<CloseCircleOutlined />} accent="#DC2626"
-            active={activeTab === "rejected"} onClick={() => setActiveTab(activeTab === "rejected" ? "all" : "rejected")} />
-        </Col>
-      </Row>
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3 mb-5">
+        <StatCard
+          label="Awaiting Verification" value={<>{draftBills.length}<div className="text-[11px] font-normal text-gray-400 mt-0.5">Draft bills</div></>}
+          icon={FilePlus} iconColorClass="text-gray-500"
+          active={activeTab === "draft"} onClick={() => setActiveTab(activeTab === "draft" ? "all" : "draft")}
+        />
+        <StatCard
+          label="Awaiting L1 AGM" value={<>{verifyDoneBills.length}<div className="text-[11px] font-normal text-gray-400 mt-0.5">Verified</div></>}
+          icon={ShieldCheck} iconColorClass="text-cyan-600"
+          active={activeTab === "verifyDone"} onClick={() => setActiveTab(activeTab === "verifyDone" ? "all" : "verifyDone")}
+        />
+        <StatCard
+          label="Awaiting L2 Director" value={<>{l1ApprovedBills.length}<div className="text-[11px] font-normal text-gray-400 mt-0.5">L1 AGM approved</div></>}
+          icon={CheckCircle2} iconColorClass="text-purple-600"
+          active={activeTab === "l1Approved"} onClick={() => setActiveTab(activeTab === "l1Approved" ? "all" : "l1Approved")}
+        />
+        <StatCard
+          label="Ready for TMS" value={<>{approvedBills.length}<div className="text-[11px] font-normal text-gray-400 mt-0.5">L2 Director approved</div></>}
+          icon={Clock} iconColorClass="text-indigo-700"
+          active={activeTab === "approved"} onClick={() => setActiveTab(activeTab === "approved" ? "all" : "approved")}
+        />
+        <StatCard
+          label="Sent to TMS" value={<>{sentToTmsBills.length}<div className="text-[11px] font-normal text-gray-400 mt-0.5">Awaiting payment</div></>}
+          icon={Send} iconColorClass="text-blue-700"
+          active={activeTab === "sentToTms"} onClick={() => setActiveTab(activeTab === "sentToTms" ? "all" : "sentToTms")}
+        />
+        <StatCard
+          label="Hold" value={<>{holdBills.length}<div className="text-[11px] font-normal text-gray-400 mt-0.5">Paused before TMS</div></>}
+          icon={PauseCircle} iconColorClass="text-purple-600"
+          active={activeTab === "hold"} onClick={() => setActiveTab(activeTab === "hold" ? "all" : "hold")}
+        />
+        <StatCard
+          label="Paid" value={<>{stats.paidThisMonthCount}<div className="text-[11px] font-normal text-gray-400 mt-0.5">{fmt(stats.paidThisMonthAmt)} this month</div></>}
+          icon={IndianRupee} iconColorClass="text-emerald-600"
+          active={activeTab === "paid"} onClick={() => setActiveTab(activeTab === "paid" ? "all" : "paid")}
+        />
+        <StatCard
+          label="Rejected" value={<>{rejectedBills.length}<div className="text-[11px] font-normal text-gray-400 mt-0.5">Bills rejected</div></>}
+          icon={XCircle} iconColorClass="text-red-600"
+          active={activeTab === "rejected"} onClick={() => setActiveTab(activeTab === "rejected" ? "all" : "rejected")}
+        />
+      </div>
 
-      <PillTabs tabs={tabs} active={activeTab} onChange={setActiveTab} />
+      <div className="mb-4">
+        <Segmented
+          value={activeTab}
+          onChange={setActiveTab}
+          options={tabs.map((t) => ({
+            value: t.key,
+            label: (
+              <span className="inline-flex items-center gap-1.5">
+                {t.label}
+                {t.count > 0 && <Badge color="green" small>{t.count}</Badge>}
+              </span>
+            ),
+          }))}
+        />
+      </div>
 
       {/* Filter row */}
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16, alignItems: "center" }}>
-        <SearchFilter
-          placeholder="Search by bill no, vendor, work order, project…"
-          value={search}
-          onChange={setSearch}
-        />
+      <FilterRow>
+        <SearchFilter placeholder="Search by bill no, vendor, work order, project…" value={search} onChange={setSearch} />
         <DateRangeFilter onChange={(from, to) => { setDateFrom(from); setDateTo(to); }} />
-        <Select
-          allowClear
-          showSearch
-          placeholder="All Projects"
-          value={projectFilter}
-          onChange={setProjectFilter}
-          options={selectableProjects(projects).map((p) => ({ label: p.name, value: p.id }))}
-          filterOption={(input, opt) => String(opt?.label ?? "").toLowerCase().includes(input.toLowerCase())}
-          style={{ width: 200 }}
-        />
-        <Select
-          allowClear
-          showSearch
-          placeholder="All Vendors"
-          value={vendorFilter}
-          onChange={setVendorFilter}
-          options={contractors.map((c) => ({ label: `${vendorLabel(c.companyName, c.shortCode)} (${c.vendorCode})`, value: c.vendorCode }))}
-          filterOption={(input, opt) => String(opt?.label ?? "").toLowerCase().includes(input.toLowerCase())}
-          style={{ width: 220 }}
-        />
-        <Select
-          allowClear
-          showSearch
-          placeholder="All Companies"
-          value={companyFilter}
-          onChange={setCompanyFilter}
-          options={companies.map((c) => ({ label: c.name, value: c.name }))}
-          filterOption={(input, opt) => String(opt?.label ?? "").toLowerCase().includes(input.toLowerCase())}
-          style={{ width: 200 }}
-        />
-        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#5a6278" }}>
-          <Switch size="small" checked={showArchived} onChange={setShowArchived} />
-          Show Archived
-        </label>
-        <span style={{ marginLeft: "auto", color: "#9ba3b8", fontSize: 12 }}>
+        <div className="w-[200px]">
+          <SField
+            placeholder="All Projects"
+            value={projectFilter}
+            onChange={setProjectFilter}
+            options={[{ value: "", label: "All Projects" }, ...selectableProjects(projects).map((p) => ({ label: p.name, value: p.id }))]}
+          />
+        </div>
+        <div className="w-[220px]">
+          <SField
+            placeholder="All Vendors"
+            value={vendorFilter}
+            onChange={setVendorFilter}
+            options={[{ value: "", label: "All Vendors" }, ...contractors.map((c) => ({ label: `${vendorLabel(c.companyName, c.shortCode)} (${c.vendorCode})`, value: c.vendorCode }))]}
+          />
+        </div>
+        <div className="w-[200px]">
+          <SField
+            placeholder="All Companies"
+            value={companyFilter}
+            onChange={setCompanyFilter}
+            options={[{ value: "", label: "All Companies" }, ...companies.map((c) => ({ label: c.name, value: c.name }))]}
+          />
+        </div>
+        <UISwitch checked={showArchived} onChange={setShowArchived} onLabel="Archived" offLabel="Show Archived" />
+        <span className="ml-auto text-gray-400 text-xs">
           {filteredBills.length} bill{filteredBills.length !== 1 ? "s" : ""}
         </span>
-      </div>
+      </FilterRow>
 
-      <div className="ap-table" style={{ background: "var(--nx-white)", border: "1px solid #E5E7EB", borderRadius: 10, overflow: "hidden" }}>
-        <Spin spinning={loading}>
-          <Table
-            rowKey="id"
-            dataSource={filteredBills}
-            columns={columns}
-            onRow={(record) => ({ onClick: () => openDrawer(record) })}
-            scroll={{ x: 1300 }}
-            pagination={{ pageSize: 10, showSizeChanger: false }}
-            locale={{
-              emptyText: loading ? " " : (
-                <div style={{ padding: "48px", textAlign: "center", color: "#9ba3b8" }}>
-                  <div style={{ fontSize: 32, marginBottom: 10 }}>🧾</div>
-                  <div style={{ fontWeight: 700, color: "#5a6278", fontSize: 15 }}>No bills found</div>
-                  <div style={{ fontSize: 12, marginTop: 4 }}>New bills are created from the Billing module.</div>
-                </div>
-              ),
-            }}
-          />
-        </Spin>
-      </div>
+      {loading ? (
+        <Spinner size="large" />
+      ) : filteredBills.length === 0 ? (
+        <EmptyState icon={FileText} title="No bills found" message="New bills are created from the Billing module." />
+      ) : (
+        <>
+          <Table>
+            <Thead>
+              <Tr>
+                <Th>Bill No.</Th>
+                <Th>Work Order</Th>
+                <Th>Vendor</Th>
+                <Th>Project</Th>
+                <Th className="text-right">Amount</Th>
+                <Th>Status</Th>
+                <Th>Date</Th>
+                <Th></Th>
+              </Tr>
+            </Thead>
+            <Tbody>
+              {pagedBills.map((r) => (
+                <Tr key={r.id} className="cursor-pointer" onClick={() => openDrawer(r)}>
+                  <Td className="font-mono font-bold text-blue-600">{r.billNo}</Td>
+                  <Td>
+                    {r.workOrderNo && r.workOrderId ? (
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); openWODrawer(r.workOrderId!); }}
+                        className="font-mono text-xs bg-blue-50 dark:bg-blue-500/10 text-blue-600 border border-blue-200 dark:border-blue-500/30 rounded px-2 py-0.5"
+                      >
+                        {r.workOrderNo}
+                      </button>
+                    ) : <span className="text-gray-300">—</span>}
+                  </Td>
+                  <Td>
+                    {r.vendorName && r.vendorCode ? (
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); openVendorDrawer(r.vendorCode!); }}
+                        className="text-blue-600 hover:underline"
+                      >
+                        {r.vendorName}
+                      </button>
+                    ) : (r.vendorName || <span className="text-gray-300">—</span>)}
+                  </Td>
+                  <Td>{r.projectName || <span className="text-gray-300">—</span>}</Td>
+                  <Td className="text-right font-mono font-bold">{fmt(netAfterAdvance(r))}</Td>
+                  <Td><StatusBadge status={r.status} /></Td>
+                  <Td>{r.billDate ? dayjs(r.billDate).format("DD MMM YYYY") : "—"}</Td>
+                  <Td>
+                    <button
+                      type="button"
+                      title={showArchived ? "Unarchive" : "Archive"}
+                      onClick={(e) => { e.stopPropagation(); setArchiveTarget(r); }}
+                      className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700/40"
+                    >
+                      <Inbox className="w-4 h-4" />
+                    </button>
+                  </Td>
+                </Tr>
+              ))}
+            </Tbody>
+          </Table>
+          {totalPages > 1 && <div className="mt-4"><Pagination page={page} totalPages={totalPages} onChange={setPage} /></div>}
+        </>
+      )}
+
+      {archiveTarget && (
+        <ConfirmModal
+          title={showArchived ? `Unarchive ${archiveTarget.billNo}?` : `Archive ${archiveTarget.billNo}?`}
+          message={showArchived ? "It will reappear in the normal bill list." : "It will be hidden from the normal bill list, but not deleted."}
+          confirmLabel={showArchived ? "Unarchive" : "Archive"}
+          loading={archiving}
+          onConfirm={() => archiveOne(archiveTarget)}
+          onCancel={() => setArchiveTarget(null)}
+        />
+      )}
 
       {/* ── The one shared Bill Detail Drawer ─────────────────────── */}
-      <Drawer
-        open={drawerOpen}
-        onClose={closeDrawer}
-        placement="right"
-        width={960}
-        destroyOnClose
-        title={
-          drawerBill && (
-            <div>
-              <span style={{ fontFamily: "monospace", color: "#2563EB", fontWeight: 800, fontSize: 16 }}>{drawerBill.billNo}</span>
-              <span style={{ marginLeft: 12 }}><StatusTag status={drawerBill.status} /></span>
-              <div style={{ fontSize: 12, color: "#9ba3b8", fontWeight: 400, marginTop: 4 }}>
+      {drawerOpen && drawerBill && (
+        <Modal
+          icon={FileText}
+          title={<span className="font-mono text-blue-600 font-extrabold">{drawerBill.billNo}</span>}
+          subtitle={
+            <span className="inline-flex items-center gap-2">
+              <StatusBadge status={drawerBill.status} />
+              <span>
                 {drawerBill.vendorName}
                 {drawerBill.workOrderNo ? ` · ${drawerBill.workOrderNo}` : ""}
                 {" · "}{dayjs(drawerBill.billDate).format("DD MMM YYYY")}
-              </div>
-            </div>
-          )
-        }
-        footer={
-          drawerBill && (
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <Button icon={<PrinterOutlined />} onClick={() => downloadBill(drawerBill, drawerBill.status === "paid" ? "post" : "pre")}>
-                Print
-              </Button>
-              <div style={{ display: "flex", gap: 8 }}>
+              </span>
+            </span>
+          }
+          ultraWide
+          onClose={closeDrawer}
+          footer={
+            <div className="flex justify-between items-center">
+              <Btn outline icon={Printer} label="Print" onClick={() => downloadBill(drawerBill, drawerBill.status === "paid" ? "post" : "pre")} />
+              <div className="flex gap-2">
                 {!rejecting && !holding && drawerBill.status === "approved" && canHold && (
-                  <Button style={{ color: "#9333EA", borderColor: "#9333EA" }} onClick={() => setHolding(true)}>Hold Payment</Button>
+                  <Btn color="purple" label="Hold Payment" onClick={() => setHolding(true)} />
                 )}
                 {!rejecting && !holding && canRejectAny && !["paid", "rejected", "hold", "sent-to-tms"].includes(drawerBill.status) && (
-                  <Button danger icon={<CloseCircleOutlined />} onClick={() => setRejecting(true)}>
-                    {drawerBill.status === "draft" ? "Reject" : "Send Back"}
-                  </Button>
+                  <Btn color="red" icon={XCircle} label={drawerBill.status === "draft" ? "Reject" : "Send Back"} onClick={() => setRejecting(true)} />
                 )}
                 {!rejecting && !holding && primaryAction && (
-                  <Tooltip title={primaryAction.tooltip}>
-                    <Button
-                      type="primary"
-                      style={{ background: primaryAction.color, borderColor: primaryAction.color }}
-                      loading={primaryAction.loading}
-                      disabled={primaryAction.disabled}
-                      onClick={primaryAction.onClick}
-                    >
-                      {primaryAction.label}
-                    </Button>
-                  </Tooltip>
+                  <Btn
+                    color={primaryAction.color}
+                    loading={primaryAction.loading}
+                    disabled={primaryAction.disabled}
+                    title={primaryAction.tooltip}
+                    label={primaryAction.label}
+                    onClick={primaryAction.onClick}
+                  />
                 )}
               </div>
             </div>
-          )
-        }
-      >
-        {drawerBill && (
-          <>
-            <Row gutter={16}>
-              <Col span={12}>
-                <InfoCard title="Bill" accent="#FF7A00">
-                  <InfoRow label="Bill No" value={drawerBill.billNo} mono />
-                  <InfoRow label="Vendor" value={drawerBill.vendorName || "—"} />
-                  <InfoRow label="Amount" value={fmt(netAfterAdvance(drawerBill))} mono bold />
-                  <InfoRow label="Bill Date" value={dayjs(drawerBill.billDate).format("DD MMM YYYY")} />
-                  <InfoRow label="Project" value={drawerBill.projectName || "—"} />
-                </InfoCard>
-              </Col>
-              <Col span={12}>
-                <InfoCard title="Work Order" accent="#2563EB">
-                  <InfoRow label="WO No" value={drawerBill.workOrderNo || "—"} mono />
-                  <InfoRow label="Category" value={drawerWOCategory || "—"} />
-                  {drawerBill.workOrderId && (
-                    <Button
-                      type="link"
-                      style={{ padding: 0, marginTop: 8, height: "auto" }}
-                      onClick={() => openWODrawer(drawerBill.workOrderId!)}
-                    >
-                      View Work Order <ArrowRightOutlined />
-                    </Button>
-                  )}
-                </InfoCard>
-              </Col>
-            </Row>
+          }
+        >
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <InfoCard title="Bill" accentClass="bg-primary">
+              <InfoRow label="Bill No" value={drawerBill.billNo} mono />
+              <InfoRow label="Vendor" value={drawerBill.vendorName || "—"} />
+              <InfoRow label="Amount" value={fmt(netAfterAdvance(drawerBill))} mono bold />
+              <InfoRow label="Bill Date" value={dayjs(drawerBill.billDate).format("DD MMM YYYY")} />
+              <InfoRow label="Project" value={drawerBill.projectName || "—"} />
+            </InfoCard>
+            <InfoCard title="Work Order" accentClass="bg-blue-600">
+              <InfoRow label="WO No" value={drawerBill.workOrderNo || "—"} mono />
+              <InfoRow label="Category" value={drawerWOCategory || "—"} />
+              {drawerBill.workOrderId && (
+                <button
+                  type="button"
+                  onClick={() => openWODrawer(drawerBill.workOrderId!)}
+                  className="inline-flex items-center gap-1 text-primary text-sm font-semibold mt-2 hover:underline"
+                >
+                  View Work Order <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </InfoCard>
+          </div>
 
-            <div className="ap-stepper" style={{ marginTop: 22, marginBottom: 6 }}>
-              <style>{`
-                .ap-stepper .ant-steps-item-title,
-                .ap-stepper .ant-steps-item-description {
-                  word-break: keep-all;
-                  overflow-wrap: normal;
-                  white-space: normal;
-                }
-              `}</style>
-              <Steps size="small" items={buildSteps(drawerBill)} />
+          <div className="mt-5 mb-1.5">
+            <Steps items={buildSteps(drawerBill)} />
+          </div>
+
+          <BillHistoryTimeline history={drawerBill.approvalHistory || []} />
+
+          {/* Bill Relationship Chain */}
+          {(drawerBill.billType || drawerBill.linkedBills?.length || drawerBill.supersededBy) && (
+            <div className="border border-gray-200 dark:border-gray-700/40 rounded-lg p-3 mt-4 bg-gray-50/60 dark:bg-gray-800/20">
+              <div className="text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">Billing Chain</div>
+              <div className="flex flex-wrap gap-2.5 items-center">
+                {drawerBill.billType && (
+                  <div>
+                    <span className="text-[11px] text-gray-400">Type: </span>
+                    <Badge color="blue" small>{BILL_TYPE_CFG[drawerBill.billType]?.label || drawerBill.billType}</Badge>
+                  </div>
+                )}
+                {drawerBill.billingCycle && (
+                  <div><span className="text-[11px] text-gray-400">Cycle: </span><Badge color="gray" small>#{drawerBill.billingCycle}</Badge></div>
+                )}
+                {drawerBill.isActive === false && drawerBill.supersededBy && (
+                  <div className="text-purple-600 text-xs font-semibold">
+                    ↩ Superseded by <span className="font-mono">{drawerBill.supersededBy.billNo}</span>
+                  </div>
+                )}
+                {drawerBill.linkedBills && drawerBill.linkedBills.length > 0 && (
+                  <div>
+                    <span className="text-[11px] text-gray-400">Links: </span>
+                    {drawerBill.linkedBills.map((l, i) => (
+                      <span key={i} className="ml-1">
+                        <Badge color="blue" small>{l.billNo}</Badge>
+                        <span className="text-[10px] text-purple-600 ml-1">{l.relationshipType}</span>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
+          )}
 
-            <BillHistoryTimeline history={drawerBill.approvalHistory || []} />
+          {/* Action section — the only place any stage action happens */}
+          {renderActionSection(drawerBill)}
 
-            {/* Bill Relationship Chain */}
-            {(drawerBill.billType || drawerBill.linkedBills?.length || drawerBill.supersededBy) && (
-              <div style={{ border: "1px solid #e4e7ee", borderRadius: 8, padding: "10px 14px", marginTop: 16, background: "#fafbff" }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#5a6278", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Billing Chain</div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
-                  {drawerBill.billType && (
-                    <div>
-                      <span style={{ fontSize: 11, color: "#9ba3b8" }}>Type: </span>
-                      <Tag style={{ fontSize: 11, color: BILL_TYPE_CFG[drawerBill.billType]?.color || "#2563eb", borderColor: BILL_TYPE_CFG[drawerBill.billType]?.color || "#2563eb", background: `${BILL_TYPE_CFG[drawerBill.billType]?.color || "#2563eb"}10` }}>
-                        {BILL_TYPE_CFG[drawerBill.billType]?.label || drawerBill.billType}
-                      </Tag>
+          {/* Line Items */}
+          <div className="font-bold text-[13px] text-[#1A1A2E] dark:text-[#F1F5F9] mt-5 mb-2.5">Line Items</div>
+          <div className="mb-4">
+            <Table>
+              <Thead>
+                <Tr>
+                  <Th>Description</Th>
+                  <Th className="text-right">Unit</Th>
+                  <Th className="text-right">Qty</Th>
+                  <Th className="text-right">Rate (₹)</Th>
+                  <Th className="text-right">Amount</Th>
+                </Tr>
+              </Thead>
+              <Tbody>
+                {(drawerBill.lineItems || []).map((li, i) => (
+                  <Tr key={i}>
+                    <Td className="font-semibold">
+                      {li.description}
+                      {li.remarks && <div className="text-[11px] font-normal text-amber-600 mt-0.5">📌 {li.remarks}</div>}
+                      {li.progressRemarks && <div className="text-[11px] font-normal text-blue-600 mt-0.5">👷 {li.progressRemarks}</div>}
+                    </Td>
+                    <Td className="text-right text-gray-400">{li.unit || "—"}</Td>
+                    <Td className="text-right font-mono font-bold text-primary">{(li.billedQty || 0).toLocaleString("en-IN")}</Td>
+                    <Td className="text-right font-mono">{(li.rate || 0).toLocaleString("en-IN")}</Td>
+                    <Td className="text-right font-mono font-bold text-emerald-600">{fmt(li.amount)}</Td>
+                  </Tr>
+                ))}
+              </Tbody>
+              <Tfoot>
+                <Tr>
+                  <Td colSpan={4} className="text-right font-bold text-gray-500 dark:text-gray-400">Total Billed Amount</Td>
+                  <Td className="text-right font-mono font-bold text-primary text-[14px]">{fmt(drawerBill.amount)}</Td>
+                </Tr>
+              </Tfoot>
+            </Table>
+          </div>
+
+          {/* Financial summary */}
+          {(() => {
+            const bill = drawerBill;
+            // While Verification is actively setting TDS (status draft),
+            // preview against what's being typed above — the saved bill
+            // record still has tdsAmount at 0/unset until they submit.
+            const isVerifyStage = bill.status === "draft";
+            const gross    = bill.amount || 0;
+            const gstPct   = bill.gstPercent ?? 0;
+            const retAmt   = bill.retentionAmount ?? 0;
+            const retPct   = bill.retentionPercent ?? 0;
+            const advRec   = bill.advanceRecovery ?? 0;
+            const paid     = bill.paidAmount;
+            const retRel   = bill.retentionReleased ?? 0;
+            const tdsPctDisplay = isVerifyStage ? verifyTdsPercent : bill.tdsPercent;
+            const tdsAmt = isVerifyStage ? verifyTdsAmount : (bill.tdsAmount ?? 0);
+            const adjAmt = isVerifyStage ? verifyAdjustmentAmount : (bill.adjustmentAmount ?? 0);
+            const adjRemark = isVerifyStage ? verifyAdjustmentRemark : (bill.adjustmentRemark || "");
+
+            // Hold comes off the gross first (it's a deposit against the
+            // contractor's own basic value, not the GST); GST is then calculated
+            // on what's left. Net Payable is the true bottom line — Hold,
+            // Advance Recovery, and TDS all land above it now, not after it.
+            // Adjustment (a manual Verify-time correction) lands last, after TDS.
+            const { gstAmount: gstAmt, netPayable: finalNetPayable } = billFinancials({
+              gross, gstPercent: gstPct, retentionAmount: retAmt, advanceRecovery: advRec, tdsAmount: tdsAmt, adjustmentAmount: adjAmt,
+            });
+            const retReleaseRemark = bill.retentionReleaseRemark;
+
+            type SummaryRow = { label: string; value: string; colorClass: string; bold?: boolean; borderTop?: boolean; bg?: string };
+            const rows: SummaryRow[] = [
+              { label: "Gross Amount", value: fmt(gross), colorClass: "text-[#1A1A2E] dark:text-[#F1F5F9]" },
+            ];
+            if (retAmt > 0) rows.push({ label: `Hold / Retention${retPct > 0 ? ` @ ${retPct}%` : ""}`, value: `− ${fmt(retAmt)}`, colorClass: "text-red-600" });
+            if (advRec > 0) rows.push({ label: "Less: Advance Recovery", value: `− ${fmt(advRec)}`, colorClass: "text-amber-600" });
+            if (gstAmt > 0) rows.push({ label: `GST @ ${gstPct}%`, value: `+ ${fmt(gstAmt)}`, colorClass: "text-emerald-600" });
+            if (tdsAmt > 0) rows.push({ label: `Less: TDS Deducted${tdsPctDisplay ? ` (${tdsPctDisplay}%)` : ""}`, value: `− ${fmt(tdsAmt)}`, colorClass: "text-red-600" });
+            if (adjAmt !== 0) rows.push({ label: `Adjustment${adjRemark ? ` (${adjRemark})` : ""}`, value: `${adjAmt > 0 ? "+" : "−"} ${fmt(Math.abs(adjAmt))}`, colorClass: adjAmt > 0 ? "text-emerald-600" : "text-red-600" });
+            rows.push({ label: "NET PAYABLE", value: fmt(finalNetPayable), colorClass: "text-purple-600", bold: true, borderTop: true });
+            if (retRel > 0) rows.push({ label: `Hold Released${retReleaseRemark ? ` (${retReleaseRemark})` : ""}`, value: `+ ${fmt(retRel)}`, colorClass: "text-blue-700" });
+            if (paid != null) rows.push({ label: "ACTUALLY PAID", value: fmt(paid), colorClass: "text-emerald-600", bold: true, borderTop: true, bg: "bg-emerald-50 dark:bg-emerald-500/10" });
+            return (
+              <div className="border border-gray-200 dark:border-gray-700/40 rounded-lg overflow-hidden font-mono text-[13px] mb-4">
+                <div className="bg-gray-50 dark:bg-gray-800/40 px-3.5 py-2 font-bold text-[11px] text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                  Financial Summary
+                </div>
+                <div className="px-3.5 py-2">
+                  {rows.map((r, i) => (
+                    <div
+                      key={i}
+                      className={`flex justify-between py-1.5 ${r.borderTop ? "border-t-2 border-gray-200 dark:border-gray-700/40 mt-1" : ""} ${r.bg || ""} ${r.colorClass} ${r.bold ? "font-bold text-[14px]" : "font-normal"}`}
+                    >
+                      <span>{r.label}</span><span>{r.value}</span>
                     </div>
-                  )}
-                  {drawerBill.billingCycle && (
-                    <div><span style={{ fontSize: 11, color: "#9ba3b8" }}>Cycle: </span><Tag>#{drawerBill.billingCycle}</Tag></div>
-                  )}
-                  {drawerBill.isActive === false && drawerBill.supersededBy && (
-                    <div style={{ color: "#7c3aed", fontSize: 12, fontWeight: 600 }}>
-                      ↩ Superseded by <span style={{ fontFamily: "monospace" }}>{drawerBill.supersededBy.billNo}</span>
-                    </div>
-                  )}
-                  {drawerBill.linkedBills && drawerBill.linkedBills.length > 0 && (
-                    <div>
-                      <span style={{ fontSize: 11, color: "#9ba3b8" }}>Links: </span>
-                      {drawerBill.linkedBills.map((l, i) => (
-                        <span key={i} style={{ marginLeft: 4 }}>
-                          <Tag color="blue" style={{ fontFamily: "monospace", fontSize: 11 }}>{l.billNo}</Tag>
-                          <span style={{ fontSize: 10, color: "#7c3aed" }}>{l.relationshipType}</span>
-                        </span>
-                      ))}
-                    </div>
-                  )}
+                  ))}
                 </div>
               </div>
-            )}
+            );
+          })()}
 
-            {/* Action section — the only place any stage action happens */}
-            {renderActionSection(drawerBill)}
-
-            {/* Line Items */}
-            <div style={{ fontWeight: 700, fontSize: 13, color: "#1a1f2e", marginTop: 22, marginBottom: 10 }}>Line Items</div>
-            <div style={{ overflowX: "auto", marginBottom: 16 }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-                <thead>
-                  <tr style={{ background: "#f5f6f8" }}>
-                    {["Description", "Unit", "Qty", "Rate (₹)", "Amount"].map((h) => (
-                      <th key={h} style={{ padding: "8px 10px", fontWeight: 700, color: "#5a6278", textAlign: "right", whiteSpace: "nowrap" }}>
-                        {h}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {(drawerBill.lineItems || []).map((li, i) => (
-                    <tr key={i} style={{ borderBottom: "1px solid #f5f6f8" }}>
-                      <td style={{ padding: "8px 10px", fontWeight: 600, color: "#1a1f2e" }}>
-                        {li.description}
-                        {li.remarks && <div style={{ fontSize: 11, fontWeight: 400, color: "#d97706", marginTop: 2 }}>📌 {li.remarks}</div>}
-                        {li.progressRemarks && <div style={{ fontSize: 11, fontWeight: 400, color: "#2563eb", marginTop: 2 }}>👷 {li.progressRemarks}</div>}
-                      </td>
-                      <td style={{ padding: "8px 10px", textAlign: "right", color: "#9ba3b8" }}>{li.unit || "—"}</td>
-                      <td style={{ padding: "8px 10px", textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: "#FF7A00" }}>
-                        {(li.billedQty || 0).toLocaleString("en-IN")}
-                      </td>
-                      <td style={{ padding: "8px 10px", textAlign: "right", fontFamily: "monospace" }}>
-                        {(li.rate || 0).toLocaleString("en-IN")}
-                      </td>
-                      <td style={{ padding: "8px 10px", textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: "#16a85a" }}>
-                        {fmt(li.amount)}
-                      </td>
-                    </tr>
-                  ))}
-                  <tr style={{ background: "#f5f6f8", fontWeight: 700 }}>
-                    <td colSpan={4} style={{ padding: "8px 10px", textAlign: "right", color: "#5a6278" }}>Total Billed Amount</td>
-                    <td style={{ padding: "8px 10px", textAlign: "right", fontFamily: "monospace", color: "#FF7A00", fontSize: 14 }}>
-                      {fmt(drawerBill.amount)}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-
-            {/* Financial summary */}
-            {(() => {
-              const bill = drawerBill;
-              // While Verification is actively setting TDS (status draft),
-              // preview against what's being typed above — the saved bill
-              // record still has tdsAmount at 0/unset until they submit.
-              const isVerifyStage = bill.status === "draft";
-              const gross    = bill.amount || 0;
-              const gstPct   = bill.gstPercent ?? 0;
-              const retAmt   = bill.retentionAmount ?? 0;
-              const retPct   = bill.retentionPercent ?? 0;
-              const advRec   = bill.advanceRecovery ?? 0;
-              const paid     = bill.paidAmount;
-              const retRel   = bill.retentionReleased ?? 0;
-              const tdsPctDisplay = isVerifyStage ? verifyTdsPercent : bill.tdsPercent;
-              const tdsAmt = isVerifyStage ? verifyTdsAmount : (bill.tdsAmount ?? 0);
-              const adjAmt = isVerifyStage ? verifyAdjustmentAmount : (bill.adjustmentAmount ?? 0);
-              const adjRemark = isVerifyStage ? verifyAdjustmentRemark : (bill.adjustmentRemark || "");
-
-              // Hold comes off the gross first (it's a deposit against the
-              // contractor's own basic value, not the GST); GST is then calculated
-              // on what's left. Net Payable is the true bottom line — Hold,
-              // Advance Recovery, and TDS all land above it now, not after it.
-              // Adjustment (a manual Verify-time correction) lands last, after TDS.
-              const { gstAmount: gstAmt, netPayable: finalNetPayable } = billFinancials({
-                gross, gstPercent: gstPct, retentionAmount: retAmt, advanceRecovery: advRec, tdsAmount: tdsAmt, adjustmentAmount: adjAmt,
-              });
-              const retReleaseRemark = bill.retentionReleaseRemark;
-
-              type SummaryRow = { label: string; value: string; color: string; bold?: boolean; borderTop?: boolean; bg?: string };
-              const rows: SummaryRow[] = [
-                { label: "Gross Amount", value: fmt(gross), color: "#1a1f2e" },
-              ];
-              if (retAmt > 0) rows.push({ label: `Hold / Retention${retPct > 0 ? ` @ ${retPct}%` : ""}`, value: `− ${fmt(retAmt)}`, color: "#e03b3b" });
-              if (advRec > 0) rows.push({ label: "Less: Advance Recovery", value: `− ${fmt(advRec)}`, color: "#d97706" });
-              if (gstAmt > 0) rows.push({ label: `GST @ ${gstPct}%`, value: `+ ${fmt(gstAmt)}`, color: "#16a85a" });
-              if (tdsAmt > 0) rows.push({ label: `Less: TDS Deducted${tdsPctDisplay ? ` (${tdsPctDisplay}%)` : ""}`, value: `− ${fmt(tdsAmt)}`, color: "#dc2626" });
-              if (adjAmt !== 0) rows.push({ label: `Adjustment${adjRemark ? ` (${adjRemark})` : ""}`, value: `${adjAmt > 0 ? "+" : "−"} ${fmt(Math.abs(adjAmt))}`, color: adjAmt > 0 ? "#16a85a" : "#dc2626" });
-              rows.push({ label: "NET PAYABLE", value: fmt(finalNetPayable), color: "#7c3aed", bold: true, borderTop: true });
-              if (retRel > 0) rows.push({ label: `Hold Released${retReleaseRemark ? ` (${retReleaseRemark})` : ""}`, value: `+ ${fmt(retRel)}`, color: "#0369a1", bold: false });
-              if (paid != null) rows.push({ label: "ACTUALLY PAID", value: fmt(paid), color: "#16a85a", bold: true, borderTop: true, bg: "#f0fdf4" });
-              return (
-                <div style={{ border: "1px solid #e4e7ee", borderRadius: 8, overflow: "hidden", fontFamily: "monospace", fontSize: 13, marginBottom: 16 }}>
-                  <div style={{ background: "#f5f6f8", padding: "8px 14px", fontWeight: 700, fontSize: 11, color: "#5a6278", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                    Financial Summary
-                  </div>
-                  <div style={{ padding: "8px 14px" }}>
-                    {rows.map((r, i) => (
-                      <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderTop: r.borderTop ? "2px solid #e4e7ee" : undefined, marginTop: r.borderTop ? 4 : 0, background: r.bg, color: r.color, fontWeight: r.bold ? 700 : 400, fontSize: r.bold ? 14 : 13 }}>
-                        <span>{r.label}</span><span>{r.value}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              );
-            })()}
-
-            {drawerBill.remarks && (
-              <>
-                <Divider />
-                <div style={{ color: "#5a6278", fontSize: 13 }}><strong>Remarks:</strong> {drawerBill.remarks}</div>
-              </>
-            )}
-          </>
-        )}
-      </Drawer>
+          {drawerBill.remarks && (
+            <>
+              <div className="border-t border-gray-200 dark:border-gray-700/40 my-4" />
+              <div className="text-gray-500 dark:text-gray-400 text-[13px]"><strong>Remarks:</strong> {drawerBill.remarks}</div>
+            </>
+          )}
+        </Modal>
+      )}
 
       {/* ── Work Order quick-view — opened from a bill row, no navigation away.
           Exact same detail as the Work Orders page's own view, minus any
           editing/approval actions — accounts staff can cross-check everything
-          without leaving this page or being able to act on the work order. */}
-      <Drawer
-        open={!!woDrawerId}
-        onClose={closeWODrawer}
-        placement="right"
-        width={820}
-        // Explicit — this drawer can now open while the bill drawer is still
-        // open underneath it (via "View Work Order →"). They're rendered as
-        // siblings, not nested, so antd's own z-index stacking (which only
-        // increases for a Drawer nested inside another Drawer's own React
-        // subtree) doesn't apply here; both would otherwise land on the same
-        // z-index and stacking would come down to DOM append order.
-        zIndex={1150}
-        title={
-          <Space>
-            <span style={{ fontSize: 20 }}>📋</span>
-            <div>
-              <div style={{ fontWeight: 700, fontSize: 16 }}>{woDrawerData?.workOrderNo || "Work Order"}</div>
-              <div style={{ fontSize: 12, color: "#6B7280", fontWeight: 400 }}>{woDrawerData?.projectName || ""}</div>
+          without leaving this page or being able to act on the work order.
+          Stacks above the bill drawer (via the new zIndex prop) since it can
+          be opened from the "View Work Order →" button inside that drawer. */}
+      {woDrawerId && (
+        <Modal
+          icon={ClipboardList}
+          title={woDrawerData?.workOrderNo || "Work Order"}
+          subtitle={woDrawerData?.projectName || ""}
+          extraWide
+          zIndex={210}
+          onClose={closeWODrawer}
+          footer={
+            <div className="flex justify-end gap-2">
+              <Btn outline label="Close" onClick={closeWODrawer} />
+              <Btn color="primary" label="Open Full Page →" onClick={() => navigate(`/work-items/${woDrawerId}`)} />
             </div>
-          </Space>
-        }
-        footer={
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-            <Button size="large" onClick={closeWODrawer}>Close</Button>
-            {woDrawerId && (
-              <Button size="large" type="primary" style={{ background: "#FF7A00", borderColor: "#FF7A00" }} onClick={() => navigate(`/work-items/${woDrawerId}`)}>
-                Open Full Page →
-              </Button>
-            )}
-          </div>
-        }
-      >
-        {!woDrawerData ? <Spin /> : (
-          <WorkOrderDetailView workOrder={woDrawerData} bills={woDrawerBills} readOnly />
-        )}
-      </Drawer>
+          }
+        >
+          {!woDrawerData ? <Spinner size="large" /> : (
+            <WorkOrderDetailView workOrder={woDrawerData} bills={woDrawerBills} readOnly />
+          )}
+        </Modal>
+      )}
 
       {/* ── Vendor quick-view — opened from a bill row, no navigation away.
           Exact same complete profile as the Contractors page's own view. */}
-      <Drawer
-        open={!!vendorDrawerCode}
-        onClose={closeVendorDrawer}
-        placement="right"
-        width={600}
-        title={
-          <Space>
-            <span style={{ fontSize: 20 }}>👷</span>
-            <div>
-              <div style={{ fontWeight: 700, fontSize: 16 }}>{vendorDrawerContractor?.companyName || vendorDrawerCode}</div>
-              <div style={{ fontSize: 12, color: "#6B7280", fontWeight: 400 }}>{vendorDrawerCode}</div>
-            </div>
-          </Space>
-        }
-        footer={
-          <div style={{ display: "flex", justifyContent: "flex-end" }}>
-            <Button size="large" onClick={closeVendorDrawer}>Close</Button>
-          </div>
-        }
-      >
-        {!vendorDrawerContractor ? <Spin /> : (
-          <ContractorDetailView contractor={vendorDrawerContractor} />
-        )}
-      </Drawer>
-    </PageShell>
+      {vendorDrawerCode && (
+        <Modal
+          icon={Building2}
+          title={vendorDrawerContractor?.companyName || vendorDrawerCode}
+          subtitle={vendorDrawerCode}
+          wide
+          onClose={closeVendorDrawer}
+          footer={<div className="flex justify-end"><Btn outline label="Close" onClick={closeVendorDrawer} /></div>}
+        >
+          {!vendorDrawerContractor ? <Spinner size="large" /> : (
+            <ContractorDetailView contractor={vendorDrawerContractor} />
+          )}
+        </Modal>
+      )}
+    </div>
   );
 }

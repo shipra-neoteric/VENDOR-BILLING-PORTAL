@@ -1,17 +1,27 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import toast from "react-hot-toast";
 import {
-  Table, Button, Tag, Input, Form, Select, Switch,
-  Drawer, Space, message, Row, Col, Popconfirm, Modal,
-  Badge, Descriptions, Avatar,
-} from "antd";
-import {
-  PlusOutlined, EditOutlined, KeyOutlined,
-  UserOutlined, CheckCircleOutlined, StopOutlined, TeamOutlined, PhoneOutlined,
-} from "@ant-design/icons";
-import PageShell from "../../components/PageShell";
+  Plus, Pencil, KeyRound, User, CheckCircle2, Ban, Users,
+} from "lucide-react";
 import apiClient from "../../services/apiClient";
 import { useAuth } from "../../context/AuthContext";
-import { SearchFilter } from "../../ui/Filters";
+import { useFormErrors } from "../../hooks/useFormErrors";
+import { SearchFilter, SelectFilter } from "../../ui/Filters";
+import PageHeader from "../../ui/PageHeader";
+import Btn from "../../ui/Btn";
+import Field from "../../ui/Field";
+import SField from "../../ui/SField";
+import UISwitch from "../../ui/Switch";
+import Modal from "../../ui/Modal";
+import ConfirmModal from "../../ui/ConfirmModal";
+import StatCard from "../../ui/StatCard";
+import Card from "../../ui/Card";
+import Badge from "../../ui/Badge";
+import EmptyState from "../../ui/EmptyState";
+import { Descriptions, DescItem } from "../../ui/Descriptions";
+import { Table, Thead, Tbody, Tr, Th, Td } from "../../ui/Table";
+import { usePagination } from "../../ui/usePagination";
+import Pagination from "../../ui/Pagination";
 import dayjs from "dayjs";
 
 // ── Types ─────────────────────────────────────────────────────────
@@ -105,13 +115,16 @@ function permsToArray(map: Record<string, PermAction[]>): { module: string; acti
 type UserRole = "owner" | "gm" | "agm" | "accounts" | "process-coordinator" | "site-dri";
 
 // ── Role config ───────────────────────────────────────────────────
+// `color` values are ui/Badge color names (not antd Tag color names).
 
-const ROLE_CFG: Record<UserRole, { label: string; color: string; description: string }> = {
+type BadgeColor = "gray" | "orange" | "green" | "red" | "amber" | "blue" | "purple" | "teal";
+
+const ROLE_CFG: Record<UserRole, { label: string; color: BadgeColor; description: string }> = {
   owner:      { label: "Owner / Admin",    color: "red",     description: "Full system access — all modules, user management" },
   gm:         { label: "General Manager",  color: "purple",  description: "Reviews DRI progress, generates bill requests, work order sign-off & Accounts Payment checker stage" },
-  agm:        { label: "AGM",              color: "gold",    description: "Reviews DRI progress, generates bill requests, work order sign-off & first stage of bill approval" },
-  accounts:   { label: "Accounts",         color: "cyan",    description: "Accounts Payment (maker/checker/approver/release), advance payments, ledger — per-user level assigned individually" },
-  "process-coordinator": { label: "Process Coordinator", color: "geekblue", description: "Access assigned individually via the module permissions checklist below" },
+  agm:        { label: "AGM",              color: "amber",   description: "Reviews DRI progress, generates bill requests, work order sign-off & first stage of bill approval" },
+  accounts:   { label: "Accounts",         color: "teal",    description: "Accounts Payment (maker/checker/approver/release), advance payments, ledger — per-user level assigned individually" },
+  "process-coordinator": { label: "Process Coordinator", color: "blue", description: "Access assigned individually via the module permissions checklist below" },
   "site-dri": { label: "Site DRI",         color: "orange",  description: "DRI Work Dashboard — logs daily progress only" },
 };
 
@@ -135,35 +148,6 @@ const AVATAR_COLORS: Record<UserRole, string> = {
 const initials = (name: string) =>
   name.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2);
 
-// ── Stat Card ─────────────────────────────────────────────────────
-
-// onClick makes the card act as a filter for the table below — active gets an
-// orange border (this app's "active = orange, not a fill" convention).
-function StatCard({ label, value, sub, color, onClick, active }: {
-  label: string; value: number | string; sub?: string; color?: string; onClick?: () => void; active?: boolean;
-}) {
-  return (
-    <div
-      onClick={onClick}
-      style={{
-        background: "var(--nx-white)",
-        border: `1px solid ${active ? "#FF7A00" : "var(--nx-border)"}`,
-        borderRadius: 12,
-        padding: "18px 20px",
-        cursor: onClick ? "pointer" : undefined,
-      }}
-    >
-      <div style={{ fontSize: 11, fontWeight: 700, color: "var(--nx-text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-        {label}
-      </div>
-      <div style={{ fontSize: 28, fontWeight: 800, color: color || "var(--nx-text)", marginTop: 4, lineHeight: 1.2 }}>
-        {value}
-      </div>
-      {sub && <div style={{ fontSize: 12, color: "var(--nx-text-muted)", marginTop: 3 }}>{sub}</div>}
-    </div>
-  );
-}
-
 // ── Module Permission Grid ────────────────────────────────────────
 
 function ModulePermsGrid({
@@ -176,30 +160,23 @@ function ModulePermsGrid({
   const groups = [...new Set(MODULE_DEFS.map(m => m.group))];
 
   return (
-    <div style={{ border: "1px solid var(--nx-border)", borderRadius: 10, overflow: "hidden" }}>
+    <div className="border border-gray-200 dark:border-gray-700/40 rounded-lg overflow-hidden">
       {/* Header */}
-      <div style={{
-        padding: "10px 14px", background: "var(--nx-fill-2)",
-        borderBottom: "1px solid var(--nx-border)",
-      }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: "var(--nx-text-muted)", textTransform: "uppercase", letterSpacing: "0.07em" }}>
+      <div className="px-3.5 py-2.5 bg-gray-50 dark:bg-gray-800/40 border-b border-gray-200 dark:border-gray-700/40">
+        <div className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
           Module Permissions
         </div>
-        <div style={{ fontSize: 11.5, color: "var(--nx-text-muted)", marginTop: 3 }}>
+        <div className="text-[11.5px] text-gray-400 mt-0.5">
           Tick exactly what this person should be able to do — nothing is granted automatically by role.
         </div>
       </div>
 
       {/* Module rows grouped */}
-      <div style={{ padding: "4px 0" }}>
+      <div className="py-1">
         {groups.map((group, gi) => (
           <div key={group}>
             {/* Group label */}
-            <div style={{
-              fontSize: 9.5, fontWeight: 700, color: "var(--nx-text-muted)",
-              textTransform: "uppercase", letterSpacing: "0.09em",
-              padding: gi === 0 ? "8px 14px 4px" : "10px 14px 4px",
-            }}>
+            <div className={`text-[9.5px] font-bold text-gray-400 uppercase tracking-wider px-3.5 ${gi === 0 ? "pt-2 pb-1" : "pt-2.5 pb-1"}`}>
               {group}
             </div>
             {MODULE_DEFS.filter(m => m.group === group).map(mod => {
@@ -208,51 +185,34 @@ function ModulePermsGrid({
               return (
                 <div
                   key={mod.id}
-                  style={{
-                    display: "flex", alignItems: "flex-start", gap: 10,
-                    padding: "8px 14px",
-                    background: activeActions.length > 0 ? "var(--nx-white)" : "var(--nx-fill-2)",
-                    borderTop: "1px solid var(--nx-border)",
-                  }}
+                  className={`flex items-start gap-2.5 px-3.5 py-2 border-t border-gray-200 dark:border-gray-700/40 ${activeActions.length > 0 ? "bg-white dark:bg-transparent" : "bg-gray-50 dark:bg-gray-800/20"}`}
                 >
                   {/* Icon + Name */}
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, width: 150, flexShrink: 0, paddingTop: 3 }}>
-                    <span style={{ fontSize: 14, flexShrink: 0 }}>{mod.icon}</span>
-                    <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--nx-text)" }}>
+                  <div className="flex items-center gap-1.5 w-[150px] shrink-0 pt-0.5">
+                    <span className="text-sm shrink-0">{mod.icon}</span>
+                    <span className="text-[12.5px] font-semibold text-[#1A1A2E] dark:text-[#F1F5F9]">
                       {mod.name}
                     </span>
                   </div>
 
                   {/* Checklist of actions — full labels, real checkboxes, never ambiguous */}
-                  <div style={{ display: "flex", gap: "6px 14px", flexWrap: "wrap", flex: 1 }}>
+                  <div className="flex gap-x-3.5 gap-y-1.5 flex-wrap flex-1">
                     {mod.actions.map(action => {
                       const cfg = ACTION_CFG[action];
                       const on  = activeActions.includes(action);
                       return (
-                        <label
-                          key={action}
-                          style={{
-                            display: "flex", alignItems: "center", gap: 5,
-                            cursor: "pointer", userSelect: "none",
-                          }}
-                        >
+                        <label key={action} className="flex items-center gap-1.5 cursor-pointer select-none">
                           <span
                             onClick={() => onToggle(mod.id, action)}
+                            className="w-[15px] h-[15px] rounded flex items-center justify-center shrink-0 text-[10px] text-white font-bold transition-colors"
                             style={{
-                              width: 15, height: 15, borderRadius: 4, border: "1.5px solid",
-                              borderColor: on ? cfg.bg : "var(--nx-border)",
-                              background: on ? cfg.bg : "var(--nx-white)",
-                              display: "flex", alignItems: "center", justifyContent: "center",
-                              flexShrink: 0, fontSize: 10, color: "#fff", fontWeight: 700,
-                              transition: "all 0.12s",
+                              border: `1.5px solid ${on ? cfg.bg : "var(--nx-border, #E5E7EB)"}`,
+                              background: on ? cfg.bg : "transparent",
                             }}
                           >
                             {on ? "✓" : ""}
                           </span>
-                          <span
-                            onClick={() => onToggle(mod.id, action)}
-                            style={{ fontSize: 12, color: on ? "var(--nx-text)" : "var(--nx-text-muted)", fontWeight: on ? 600 : 400 }}
-                          >
+                          <span className={`text-xs ${on ? "text-[#1A1A2E] dark:text-[#F1F5F9] font-semibold" : "text-gray-400 dark:text-gray-500"}`}>
                             {cfg.label}
                           </span>
                         </label>
@@ -280,12 +240,19 @@ export default function UserManagement() {
   const [roleFilter, setRoleFilter] = useState("all");
   const [activeFilter, setActiveFilter] = useState<"all" | "active" | "inactive">("all");
 
-  // Create / Edit drawer
+  // Create / Edit modal
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editUser, setEditUser]     = useState<AppUser | null>(null);
   const [saving, setSaving]         = useState(false);
-  const [form]                      = Form.useForm();
   const [perms, setPerms]           = useState<Record<string, PermAction[]>>({});
+
+  const [nameField, setNameField]     = useState("");
+  const [emailField, setEmailField]   = useState("");
+  const [mobileField, setMobileField] = useState("");
+  const [passwordField, setPasswordField] = useState("");
+  const [roleField, setRoleField]     = useState<UserRole>("site-dri");
+  const [isActiveField, setIsActiveField] = useState(true);
+  const formErrors = useFormErrors<"name" | "email" | "mobile" | "password" | "role">();
 
   function togglePerm(mod: string, action: PermAction) {
     setPerms(prev => {
@@ -298,7 +265,13 @@ export default function UserManagement() {
   const [pwdOpen, setPwdOpen]     = useState(false);
   const [pwdUser, setPwdUser]     = useState<AppUser | null>(null);
   const [pwdSaving, setPwdSaving] = useState(false);
-  const [pwdForm]                 = Form.useForm();
+  const [pwdPassword, setPwdPassword] = useState("");
+  const [pwdConfirm, setPwdConfirm]   = useState("");
+  const pwdErrors = useFormErrors<"password" | "confirm">();
+
+  // Deactivate confirm
+  const [deactivateTarget, setDeactivateTarget] = useState<AppUser | null>(null);
+  const [deactivating, setDeactivating] = useState(false);
 
   // ── Load ──────────────────────────────────────────────────────
 
@@ -307,7 +280,7 @@ export default function UserManagement() {
     apiClient
       .get<{ users: AppUser[] }>("/users")
       .then((r) => setUsers(r.data.users || []))
-      .catch(() => message.error("Failed to load users"))
+      .catch(() => toast.error("Failed to load users"))
       .finally(() => setLoading(false));
   }, []);
 
@@ -332,6 +305,8 @@ export default function UserManagement() {
     });
   }, [users, search, roleFilter, activeFilter]);
 
+  const { page, totalPages, setPage, pageItems: pagedUsers } = usePagination(filtered, 15);
+
   const stats = useMemo(() => ({
     total:    users.length,
     active:   users.filter((u) => u.isActive).length,
@@ -345,39 +320,61 @@ export default function UserManagement() {
 
   function openCreate() {
     setEditUser(null);
-    form.resetFields();
-    form.setFieldsValue({ isActive: true, role: "site-dri" });
+    formErrors.clearAll();
+    setNameField(""); setEmailField(""); setMobileField(""); setPasswordField("");
+    setRoleField("site-dri"); setIsActiveField(true);
     setPerms({});
     setDrawerOpen(true);
   }
 
   function openEdit(u: AppUser) {
     setEditUser(u);
-    form.setFieldsValue({ name: u.name, email: u.email, mobile: u.mobile, role: u.role, isActive: u.isActive });
+    formErrors.clearAll();
+    setNameField(u.name); setEmailField(u.email); setMobileField(u.mobile || "");
+    setPasswordField(""); setRoleField(u.role); setIsActiveField(u.isActive);
     setPerms(u.permissions ? permsToMap(u.permissions) : {});
     setDrawerOpen(true);
   }
 
+  function validateForm(): boolean {
+    formErrors.clearAll();
+    let ok = true;
+    if (!nameField.trim()) { formErrors.setError("name", "Name is required"); ok = false; }
+    if (!emailField.trim()) { formErrors.setError("email", "Email is required"); ok = false; }
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailField.trim())) { formErrors.setError("email", "Enter a valid email"); ok = false; }
+    if (mobileField.trim() && !/^[0-9+\-\s]{6,15}$/.test(mobileField.trim())) { formErrors.setError("mobile", "Enter a valid mobile number"); ok = false; }
+    if (!editUser) {
+      if (!passwordField) { formErrors.setError("password", "Password is required"); ok = false; }
+      else if (passwordField.length < 6) { formErrors.setError("password", "At least 6 characters"); ok = false; }
+    }
+    if (!roleField) { formErrors.setError("role", "Select a role"); ok = false; }
+    return ok;
+  }
+
   async function handleSave() {
-    let values: Record<string, unknown>;
-    try { values = await form.validateFields(); } catch { return; }
+    if (!validateForm()) return;
 
     setSaving(true);
     try {
-      const payload = { ...values, permissions: permsToArray(perms) };
+      const payload: Record<string, unknown> = {
+        name: nameField, email: emailField, mobile: mobileField, role: roleField, isActive: isActiveField,
+        permissions: permsToArray(perms),
+      };
+      if (!editUser) payload.password = passwordField;
+
       if (editUser) {
         const res = await apiClient.put<{ user: AppUser }>(`/users/${editUser._id}`, payload);
         setUsers((prev) => prev.map((u) => u._id === editUser._id ? res.data.user : u));
-        message.success("User updated");
+        toast.success("User updated");
       } else {
         const res = await apiClient.post<{ user: AppUser }>("/users", payload);
         setUsers((prev) => [res.data.user, ...prev]);
-        message.success(`User ${res.data.user.name} created`);
+        toast.success(`User ${res.data.user.name} created`);
       }
       setDrawerOpen(false);
     } catch (err: unknown) {
       const e = err as { response?: { data?: { message?: string } } };
-      message.error(e?.response?.data?.message || "Save failed");
+      toast.error(e?.response?.data?.message || "Save failed");
     } finally {
       setSaving(false);
     }
@@ -385,23 +382,28 @@ export default function UserManagement() {
 
   function openPassword(u: AppUser) {
     setPwdUser(u);
-    pwdForm.resetFields();
+    setPwdPassword(""); setPwdConfirm("");
+    pwdErrors.clearAll();
     setPwdOpen(true);
   }
 
   async function handlePassword() {
-    let values: Record<string, unknown>;
-    try { values = await pwdForm.validateFields(); } catch { return; }
-    if (!pwdUser) return;
+    pwdErrors.clearAll();
+    let ok = true;
+    if (!pwdPassword) { pwdErrors.setError("password", "Password is required"); ok = false; }
+    else if (pwdPassword.length < 6) { pwdErrors.setError("password", "At least 6 characters"); ok = false; }
+    if (!pwdConfirm) { pwdErrors.setError("confirm", "Please confirm the password"); ok = false; }
+    else if (pwdConfirm !== pwdPassword) { pwdErrors.setError("confirm", "Passwords do not match"); ok = false; }
+    if (!ok || !pwdUser) return;
 
     setPwdSaving(true);
     try {
-      await apiClient.patch(`/users/${pwdUser._id}/password`, { password: values.password });
-      message.success(`Password updated for ${pwdUser.name}`);
+      await apiClient.patch(`/users/${pwdUser._id}/password`, { password: pwdPassword });
+      toast.success(`Password updated for ${pwdUser.name}`);
       setPwdOpen(false);
     } catch (err: unknown) {
       const e = err as { response?: { data?: { message?: string } } };
-      message.error(e?.response?.data?.message || "Failed to update password");
+      toast.error(e?.response?.data?.message || "Failed to update password");
     } finally {
       setPwdSaving(false);
     }
@@ -411,440 +413,262 @@ export default function UserManagement() {
     try {
       const res = await apiClient.put<{ user: AppUser }>(`/users/${u._id}`, { isActive: !u.isActive });
       setUsers((prev) => prev.map((x) => x._id === u._id ? res.data.user : x));
-      message.success(`${u.name} ${!u.isActive ? "activated" : "deactivated"}`);
+      toast.success(`${u.name} ${!u.isActive ? "activated" : "deactivated"}`);
     } catch (err: unknown) {
       const e = err as { response?: { data?: { message?: string } } };
-      message.error(e?.response?.data?.message || "Failed");
+      toast.error(e?.response?.data?.message || "Failed");
     }
   }
 
   async function handleDeactivate(u: AppUser) {
+    setDeactivating(true);
     try {
       await apiClient.delete(`/users/${u._id}`);
       setUsers((prev) => prev.map((x) => x._id === u._id ? { ...x, isActive: false } : x));
-      message.success(`${u.name} deactivated`);
+      toast.success(`${u.name} deactivated`);
+      setDeactivateTarget(null);
     } catch (err: unknown) {
       const e = err as { response?: { data?: { message?: string } } };
-      message.error(e?.response?.data?.message || "Failed to deactivate");
+      toast.error(e?.response?.data?.message || "Failed to deactivate");
+    } finally {
+      setDeactivating(false);
     }
   }
-
-  // ── Table columns ─────────────────────────────────────────────
-
-  const columns = [
-    {
-      title: "User",
-      key: "user",
-      render: (_: unknown, u: AppUser) => (
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <Avatar
-            style={{
-              background: AVATAR_COLORS[u.role] || "#9ba3b8",
-              fontWeight: 700,
-              fontSize: 14,
-              flexShrink: 0,
-              opacity: u.isActive ? 1 : 0.5,
-            }}
-            size={40}
-          >
-            {initials(u.name)}
-          </Avatar>
-          <div>
-            <div style={{ fontWeight: 700, color: "var(--nx-text)", fontSize: 15, lineHeight: 1.3 }}>
-              {u.name}
-              {myId === u._id && (
-                <Tag color="orange" style={{ marginLeft: 8, fontSize: 11, fontWeight: 700, verticalAlign: "middle" }}>You</Tag>
-              )}
-            </div>
-            <div style={{ fontSize: 13, color: "var(--nx-text-muted)", marginTop: 1 }}>{u.email}</div>
-          </div>
-        </div>
-      ),
-    },
-    {
-      title: "Role",
-      dataIndex: "role",
-      width: 200,
-      render: (role: UserRole) => (
-        <Tag color={ROLE_CFG[role]?.color || "default"} style={{ fontWeight: 600, fontSize: 12 }}>
-          {ROLE_CFG[role]?.label || role}
-        </Tag>
-      ),
-    },
-    {
-      title: "Status",
-      dataIndex: "isActive",
-      width: 140,
-      render: (active: boolean, u: AppUser) => (
-        <Switch
-          checked={active}
-          checkedChildren="Active"
-          unCheckedChildren="Inactive"
-          onChange={() => handleToggleActive(u)}
-          style={{ background: active ? "#16a85a" : undefined, minWidth: 80 }}
-        />
-      ),
-    },
-    {
-      title: "Joined",
-      dataIndex: "createdAt",
-      width: 130,
-      render: (v: string) => (
-        <span style={{ fontSize: 13, color: "var(--nx-text-muted)" }}>
-          {dayjs(v).format("DD MMM YYYY")}
-        </span>
-      ),
-    },
-    {
-      title: "Actions",
-      key: "actions",
-      width: 200,
-      render: (_: unknown, u: AppUser) => (
-        <Space size={0}>
-          <Button type="link" size="small" icon={<EditOutlined />} onClick={() => openEdit(u)}
-            style={{ fontSize: 13 }}>
-            Edit
-          </Button>
-          <Button type="link" size="small" icon={<KeyOutlined />} onClick={() => openPassword(u)}
-            style={{ fontSize: 13 }}>
-            Password
-          </Button>
-          {myId !== u._id && u.isActive && (
-            <Popconfirm
-              title={`Deactivate ${u.name}?`}
-              description="They will lose access immediately."
-              onConfirm={() => handleDeactivate(u)}
-              okText="Deactivate"
-              okButtonProps={{ danger: true }}
-            >
-              <Button type="link" size="small" danger icon={<StopOutlined />}
-                style={{ fontSize: 13 }}>
-                Disable
-              </Button>
-            </Popconfirm>
-          )}
-        </Space>
-      ),
-    },
-  ];
 
   // ── Render ────────────────────────────────────────────────────
 
   return (
-    <PageShell
-      title="User Management"
-      description="Manage team members, roles, and access levels"
-      cta={
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          size="large"
-          onClick={openCreate}
-          style={{ background: "#FF7A00", borderColor: "#FF7A00" }}
-        >
-          Add User
-        </Button>
-      }
-    >
+    <div>
+      <PageHeader
+        icon={Users}
+        title="User Management"
+        subtitle="Manage team members, roles, and access levels"
+        actions={<Btn color="primary" icon={Plus} label="Add User" onClick={openCreate} />}
+      />
+
       {/* ── Stats ── */}
-      <Row gutter={[14, 14]} style={{ marginBottom: 20 }}>
-        <Col xs={12} sm={6}>
-          <StatCard label="Total Users" value={stats.total} active={activeFilter === "all"} onClick={() => setActiveFilter("all")} />
-        </Col>
-        <Col xs={12} sm={6}>
-          <StatCard label="Active" value={stats.active} color="#16a85a" active={activeFilter === "active"} onClick={() => setActiveFilter(activeFilter === "active" ? "all" : "active")} />
-        </Col>
-        <Col xs={12} sm={6}>
-          <StatCard label="Inactive" value={stats.inactive} color="#e03b3b" active={activeFilter === "inactive"} onClick={() => setActiveFilter(activeFilter === "inactive" ? "all" : "inactive")} />
-        </Col>
-        <Col xs={12} sm={6}>
-          <div style={{
-            background: "var(--nx-white)",
-            border: "1px solid var(--nx-border)",
-            borderRadius: 12,
-            padding: "18px 20px",
-            height: "100%",
-          }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: "var(--nx-text-muted)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>
-              By Role
-            </div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-              {stats.byRole.map((r) => (
-                <Tag
-                  key={r.value} color={ROLE_CFG[r.value]?.color} style={{ fontWeight: 600, fontSize: 12, cursor: "pointer", outline: roleFilter === r.value ? "2px solid #FF7A00" : undefined }}
-                  onClick={() => setRoleFilter(roleFilter === r.value ? "all" : r.value)}
-                >
-                  {r.label.split(" ")[0]} · {r.count}
-                </Tag>
-              ))}
-            </div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5 mb-5">
+        <StatCard label="Total Users" value={stats.total} icon={Users} active={activeFilter === "all"} onClick={() => setActiveFilter("all")} />
+        <StatCard
+          label="Active" value={stats.active} icon={CheckCircle2} iconColorClass="text-emerald-500"
+          active={activeFilter === "active"} onClick={() => setActiveFilter(activeFilter === "active" ? "all" : "active")}
+        />
+        <StatCard
+          label="Inactive" value={stats.inactive} icon={Ban} iconColorClass="text-red-500"
+          active={activeFilter === "inactive"} onClick={() => setActiveFilter(activeFilter === "inactive" ? "all" : "inactive")}
+        />
+        <Card>
+          <div className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-2.5">By Role</div>
+          <div className="flex flex-wrap gap-1.5">
+            {stats.byRole.map((r) => (
+              <button
+                key={r.value}
+                type="button"
+                onClick={() => setRoleFilter(roleFilter === r.value ? "all" : r.value)}
+                className={roleFilter === r.value ? "ring-2 ring-primary rounded-full" : ""}
+              >
+                <Badge color={ROLE_CFG[r.value]?.color}>{r.label.split(" ")[0]} · {r.count}</Badge>
+              </button>
+            ))}
           </div>
-        </Col>
-      </Row>
+        </Card>
+      </div>
 
       {/* ── Filters ── */}
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14, alignItems: "center" }}>
-        <SearchFilter
-          placeholder="Search by name or email…"
-          value={search}
-          onChange={setSearch}
-        />
-        <Select
+      <div className="flex gap-2.5 flex-wrap items-center mb-3.5">
+        <SearchFilter placeholder="Search by name or email…" value={search} onChange={setSearch} />
+        <SelectFilter
           value={roleFilter}
           onChange={setRoleFilter}
-          style={{ width: 200 }}
-          options={[
-            { label: "All Roles", value: "all" },
-            ...ROLE_OPTIONS.map((r) => ({ label: r.label, value: r.value })),
-          ]}
+          placeholder="All Roles"
+          options={ROLE_OPTIONS.map((r) => ({ label: r.label, value: r.value }))}
         />
-        <span style={{ marginLeft: "auto", fontSize: 13, color: "var(--nx-text-muted)" }}>
+        <span className="ml-auto text-[13px] text-gray-400">
           {filtered.length} user{filtered.length !== 1 ? "s" : ""}
         </span>
       </div>
 
       {/* ── Table ── */}
-      <div style={{
-        background: "var(--nx-white)",
-        border: "1px solid var(--nx-border)",
-        borderRadius: 12,
-        overflow: "hidden",
-      }}>
-        <Table
-          rowKey="_id"
-          dataSource={filtered}
-          columns={columns}
-          loading={loading}
-          pagination={{ pageSize: 15, showSizeChanger: false }}
-          rowClassName={(u) => !u.isActive ? "nx-row-inactive" : ""}
-          locale={{
-            emptyText: (
-              <div style={{ padding: 48, textAlign: "center", color: "var(--nx-text-muted)" }}>
-                <TeamOutlined style={{ fontSize: 36, marginBottom: 12, display: "block" }} />
-                <div style={{ fontWeight: 700, fontSize: 15 }}>No users found</div>
-              </div>
-            ),
-          }}
-        />
-      </div>
+      {loading ? (
+        <div className="flex justify-center py-16 text-gray-400 text-sm">Loading…</div>
+      ) : filtered.length === 0 ? (
+        <EmptyState icon={Users} title="No users found" />
+      ) : (
+        <>
+          <Table>
+            <Thead>
+              <Tr>
+                <Th>User</Th>
+                <Th>Role</Th>
+                <Th>Status</Th>
+                <Th>Joined</Th>
+                <Th>Actions</Th>
+              </Tr>
+            </Thead>
+            <Tbody>
+              {pagedUsers.map((u) => (
+                <Tr key={u._id} className={!u.isActive ? "opacity-50" : ""}>
+                  <Td>
+                    <div className="flex items-center gap-3">
+                      <span
+                        className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0"
+                        style={{ background: AVATAR_COLORS[u.role] || "#9ba3b8" }}
+                      >
+                        {initials(u.name)}
+                      </span>
+                      <div>
+                        <div className="font-bold text-[15px] text-[#1A1A2E] dark:text-[#F1F5F9]">
+                          {u.name}
+                          {myId === u._id && <span className="ml-2 align-middle"><Badge color="orange" small>You</Badge></span>}
+                        </div>
+                        <div className="text-[13px] text-gray-400 mt-0.5">{u.email}</div>
+                      </div>
+                    </div>
+                  </Td>
+                  <Td><Badge color={ROLE_CFG[u.role]?.color || "gray"}>{ROLE_CFG[u.role]?.label || u.role}</Badge></Td>
+                  <Td><UISwitch checked={u.isActive} onChange={() => handleToggleActive(u)} onLabel="Active" offLabel="Inactive" /></Td>
+                  <Td className="text-[13px] text-gray-400">{dayjs(u.createdAt).format("DD MMM YYYY")}</Td>
+                  <Td>
+                    <div className="flex items-center gap-1 flex-wrap">
+                      <Btn small outline icon={Pencil} label="Edit" onClick={() => openEdit(u)} />
+                      <Btn small outline icon={KeyRound} label="Password" onClick={() => openPassword(u)} />
+                      {myId !== u._id && u.isActive && (
+                        <Btn small color="red" icon={Ban} label="Disable" onClick={() => setDeactivateTarget(u)} />
+                      )}
+                    </div>
+                  </Td>
+                </Tr>
+              ))}
+            </Tbody>
+          </Table>
+          {totalPages > 1 && <div className="mt-4"><Pagination page={page} totalPages={totalPages} onChange={setPage} /></div>}
+        </>
+      )}
 
-      {/* ── Create / Edit Drawer ── */}
-      <Drawer
-        open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
-        width={640}
-        title={
-          <div>
-            <div style={{ fontWeight: 700, fontSize: 17 }}>
-              {editUser ? "Edit User" : "Add New User"}
+      {/* ── Create / Edit Modal ── */}
+      {drawerOpen && (
+        <Modal
+          icon={User}
+          title={editUser ? "Edit User" : "Add New User"}
+          subtitle={editUser ? `Editing account for ${editUser.name}` : "Create a new team member account"}
+          wide
+          onClose={() => setDrawerOpen(false)}
+          footer={
+            <div className="flex justify-end gap-2">
+              <Btn outline label="Cancel" onClick={() => setDrawerOpen(false)} />
+              <Btn color="primary" label={editUser ? "Save Changes" : "Create User"} loading={saving} onClick={handleSave} />
             </div>
-            <div style={{ fontSize: 13, color: "var(--nx-text-2)", fontWeight: 400, marginTop: 3 }}>
-              {editUser ? `Editing account for ${editUser.name}` : "Create a new team member account"}
-            </div>
-          </div>
-        }
-        footer={
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-            <Button size="large" onClick={() => setDrawerOpen(false)}>Cancel</Button>
-            <Button
-              size="large"
-              type="primary"
-              loading={saving}
-              onClick={handleSave}
-              style={{ background: "#FF7A00", borderColor: "#FF7A00" }}
-            >
-              {editUser ? "Save Changes" : "Create User"}
-            </Button>
-          </div>
-        }
-        destroyOnClose
-      >
-        <Form form={form} layout="vertical">
-          <Form.Item
-            label="Full Name"
-            name="name"
-            rules={[{ required: true, message: "Name is required" }]}
-          >
-            <Input
-              placeholder="e.g. Rahul Sharma"
-              size="large"
-              prefix={<UserOutlined style={{ color: "var(--nx-text-muted)" }} />}
+          }
+        >
+          <div className="flex flex-col gap-4">
+            <Field
+              label="Full Name" required placeholder="e.g. Rahul Sharma"
+              value={nameField} onChange={(e) => setNameField(e.target.value)}
+              error={formErrors.errors.name}
             />
-          </Form.Item>
-
-          <Form.Item
-            label="Email Address"
-            name="email"
-            rules={[
-              { required: true, message: "Email is required" },
-              { type: "email", message: "Enter a valid email" },
-            ]}
-          >
-            <Input placeholder="e.g. rahul@neotericgrp.in" size="large" />
-          </Form.Item>
-
-          <Form.Item
-            label="Mobile"
-            name="mobile"
-            rules={[{ pattern: /^[0-9+\-\s]{6,15}$/, message: "Enter a valid mobile number" }]}
-          >
-            <Input
-              placeholder="e.g. 9876543210"
-              size="large"
-              prefix={<PhoneOutlined style={{ color: "var(--nx-text-muted)" }} />}
+            <Field
+              label="Email Address" required placeholder="e.g. rahul@neotericgrp.in"
+              value={emailField} onChange={(e) => setEmailField(e.target.value)}
+              error={formErrors.errors.email}
             />
-          </Form.Item>
-
-          {!editUser && (
-            <Form.Item
-              label="Password"
-              name="password"
-              rules={[
-                { required: true, message: "Password is required" },
-                { min: 6, message: "At least 6 characters" },
-              ]}
-            >
-              <Input.Password placeholder="Set initial password" size="large" />
-            </Form.Item>
-          )}
-
-          <Form.Item
-            label="Role"
-            name="role"
-            rules={[{ required: true, message: "Select a role" }]}
-          >
-            <Select
-              size="large"
+            <Field
+              label="Mobile" placeholder="e.g. 9876543210"
+              value={mobileField} onChange={(e) => setMobileField(e.target.value)}
+              error={formErrors.errors.mobile}
+            />
+            {!editUser && (
+              <Field
+                label="Password" required type="password" placeholder="Set initial password"
+                value={passwordField} onChange={(e) => setPasswordField(e.target.value)}
+                error={formErrors.errors.password}
+              />
+            )}
+            <SField
+              label="Role" required
               placeholder="Select role…"
-              optionRender={(opt) => (
-                <div style={{ padding: "4px 0" }}>
-                  <Tag color={ROLE_CFG[opt.data.value as UserRole]?.color} style={{ fontWeight: 600, marginBottom: 4 }}>
-                    {ROLE_CFG[opt.data.value as UserRole]?.label}
-                  </Tag>
-                  <div style={{ fontSize: 12, color: "var(--nx-text-muted)", marginTop: 3 }}>
-                    {opt.data.description as string}
+              value={roleField}
+              onChange={(v) => setRoleField(v as UserRole)}
+              options={ROLE_OPTIONS.map((r) => ({ value: r.value, label: ROLE_CFG[r.value]?.label }))}
+              renderOption={(o) => {
+                const role = o.value as UserRole;
+                return (
+                  <div className="py-0.5">
+                    <Badge color={ROLE_CFG[role]?.color}>{ROLE_CFG[role]?.label}</Badge>
+                    <div className="text-xs text-gray-400 mt-1">{ROLE_CFG[role]?.description}</div>
                   </div>
-                </div>
-              )}
-              options={ROLE_OPTIONS.map((r) => ({
-                value: r.value,
-                label: ROLE_CFG[r.value]?.label,
-                description: r.description,
-              }))}
+                );
+              }}
+              error={formErrors.errors.role}
             />
-          </Form.Item>
-
-          <Form.Item label="Account Status" name="isActive" valuePropName="checked">
-            <Switch
-              checkedChildren={<><CheckCircleOutlined /> Active</>}
-              unCheckedChildren={<><StopOutlined /> Inactive</>}
-            />
-          </Form.Item>
-
-          {/* ── Module Permissions ── */}
-          <div style={{ marginTop: 4 }}>
-            <ModulePermsGrid
-              perms={perms}
-              onToggle={togglePerm}
-            />
-          </div>
-
-          {editUser && (
-            <div style={{
-              background: "var(--nx-fill)",
-              border: "1px solid var(--nx-border)",
-              borderRadius: 10,
-              padding: "14px 16px",
-              marginTop: 8,
-            }}>
-              <div style={{ fontSize: 13, color: "#d4620c", fontWeight: 700, marginBottom: 8 }}>
-                Account Info
-              </div>
-              <Descriptions size="small" column={1} colon={false}>
-                <Descriptions.Item label={<span style={{ color: "var(--nx-text-muted)", fontSize: 13 }}>Member Since</span>}>
-                  <span style={{ color: "var(--nx-text)", fontSize: 13 }}>
-                    {dayjs(editUser.createdAt).format("DD MMM YYYY")}
-                  </span>
-                </Descriptions.Item>
-                <Descriptions.Item label={<span style={{ color: "var(--nx-text-muted)", fontSize: 13 }}>Status</span>}>
-                  <Badge
-                    status={editUser.isActive ? "success" : "error"}
-                    text={<span style={{ color: "var(--nx-text)", fontSize: 13 }}>{editUser.isActive ? "Active" : "Inactive"}</span>}
-                  />
-                </Descriptions.Item>
-              </Descriptions>
-              <div style={{ marginTop: 10, fontSize: 13, color: "var(--nx-text-muted)" }}>
-                Use the <strong style={{ color: "var(--nx-text-3)" }}>Password</strong> button on the table to change this user's password.
-              </div>
+            <div>
+              <span className="block text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wide mb-1.5">Account Status</span>
+              <UISwitch
+                checked={isActiveField} onChange={setIsActiveField}
+                onLabel="Active" offLabel="Inactive"
+              />
             </div>
-          )}
-        </Form>
-      </Drawer>
 
-      {/* ── Change Password Modal ── */}
-      <Modal
-        open={pwdOpen}
-        onCancel={() => setPwdOpen(false)}
-        title={
-          <div>
-            <div style={{ fontWeight: 700, fontSize: 16 }}>Change Password</div>
-            {pwdUser && (
-              <div style={{ fontSize: 13, color: "var(--nx-text-muted)", fontWeight: 400, marginTop: 2 }}>
-                {pwdUser.name} · {pwdUser.email}
+            {/* ── Module Permissions ── */}
+            <ModulePermsGrid perms={perms} onToggle={togglePerm} />
+
+            {editUser && (
+              <div className="bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700/40 rounded-lg p-3.5">
+                <div className="text-[13px] text-primary font-bold mb-2">Account Info</div>
+                <Descriptions columns={1}>
+                  <DescItem label="Member Since">{dayjs(editUser.createdAt).format("DD MMM YYYY")}</DescItem>
+                  <DescItem label="Status">
+                    <Badge color={editUser.isActive ? "green" : "red"}>{editUser.isActive ? "Active" : "Inactive"}</Badge>
+                  </DescItem>
+                </Descriptions>
+                <div className="mt-2.5 text-[13px] text-gray-400">
+                  Use the <strong className="text-gray-600 dark:text-gray-300">Password</strong> button on the table to change this user's password.
+                </div>
               </div>
             )}
           </div>
-        }
-        footer={null}
-        destroyOnClose
-        width={440}
-      >
-        <Form form={pwdForm} layout="vertical" style={{ marginTop: 20 }}>
-          <Form.Item
-            label="New Password"
-            name="password"
-            rules={[
-              { required: true, message: "Password is required" },
-              { min: 6, message: "At least 6 characters" },
-            ]}
-          >
-            <Input.Password size="large" placeholder="Enter new password" />
-          </Form.Item>
-          <Form.Item
-            label="Confirm Password"
-            name="confirm"
-            dependencies={["password"]}
-            rules={[
-              { required: true, message: "Please confirm the password" },
-              ({ getFieldValue }) => ({
-                validator(_, value) {
-                  if (!value || getFieldValue("password") === value) return Promise.resolve();
-                  return Promise.reject(new Error("Passwords do not match"));
-                },
-              }),
-            ]}
-          >
-            <Input.Password size="large" placeholder="Re-enter new password" />
-          </Form.Item>
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
-            <Button size="large" onClick={() => setPwdOpen(false)}>Cancel</Button>
-            <Button
-              size="large"
-              type="primary"
-              loading={pwdSaving}
-              onClick={handlePassword}
-              style={{ background: "#7c3aed", borderColor: "#7c3aed" }}
-              icon={<KeyOutlined />}
-            >
-              Update Password
-            </Button>
-          </div>
-        </Form>
-      </Modal>
+        </Modal>
+      )}
 
-      <style>{`
-        .nx-row-inactive { opacity: 0.5; }
-      `}</style>
-    </PageShell>
+      {/* ── Change Password Modal ── */}
+      {pwdOpen && (
+        <Modal
+          icon={KeyRound}
+          title="Change Password"
+          subtitle={pwdUser ? `${pwdUser.name} · ${pwdUser.email}` : undefined}
+          onClose={() => setPwdOpen(false)}
+          footer={
+            <div className="flex justify-end gap-2">
+              <Btn outline label="Cancel" onClick={() => setPwdOpen(false)} />
+              <Btn color="purple" icon={KeyRound} label="Update Password" loading={pwdSaving} onClick={handlePassword} />
+            </div>
+          }
+        >
+          <div className="flex flex-col gap-4">
+            <Field
+              label="New Password" required type="password" placeholder="Enter new password"
+              value={pwdPassword} onChange={(e) => setPwdPassword(e.target.value)}
+              error={pwdErrors.errors.password}
+            />
+            <Field
+              label="Confirm Password" required type="password" placeholder="Re-enter new password"
+              value={pwdConfirm} onChange={(e) => setPwdConfirm(e.target.value)}
+              error={pwdErrors.errors.confirm}
+            />
+          </div>
+        </Modal>
+      )}
+
+      {deactivateTarget && (
+        <ConfirmModal
+          title={`Deactivate ${deactivateTarget.name}?`}
+          message="They will lose access immediately."
+          confirmLabel="Deactivate"
+          danger
+          loading={deactivating}
+          onConfirm={() => handleDeactivate(deactivateTarget)}
+          onCancel={() => setDeactivateTarget(null)}
+        />
+      )}
+    </div>
   );
 }

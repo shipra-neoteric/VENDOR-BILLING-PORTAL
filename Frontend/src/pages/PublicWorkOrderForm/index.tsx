@@ -1,27 +1,22 @@
 import { useEffect, useState } from "react";
-import {
-  Form, Select, DatePicker, Input, InputNumber, Button,
-  Divider, Card, Typography, Space, Spin, Result, Tag, Row, Col, message,
-} from "antd";
-import {
-  CheckCircleOutlined,
-  FileTextOutlined,
-  PlusOutlined,
-  DeleteOutlined,
-  DownOutlined,
-  UpOutlined,
-} from "@ant-design/icons";
 import axios from "axios";
+import toast, { Toaster } from "react-hot-toast";
+import { CheckCircle2, FileText, Plus, Trash2, ChevronDown, ChevronUp } from "lucide-react";
 import dayjs from "dayjs";
 import { selectableProjects } from "../../utils/projectOptions";
+import { useFormErrors } from "../../hooks/useFormErrors";
+import Field from "../../ui/Field";
+import SField from "../../ui/SField";
+import { DatePicker } from "../../ui/DatePicker";
+import Btn from "../../ui/Btn";
+import Badge from "../../ui/Badge";
+import Spinner from "../../ui/Spinner";
 import PaymentMilestonesBuilder, { calcPayable, calcGrandTotal } from "../../components/PaymentMilestonesBuilder";
 import type { MilestoneDraft } from "../../components/PaymentMilestonesBuilder";
 import WarrantyTermsBuilder from "../../components/WarrantyTermsBuilder";
 import GstSelect from "../../components/GstSelect";
 import DocumentsUpload from "../../components/DocumentsUpload";
 import type { WODocument } from "../../components/DocumentsUpload";
-
-const { Title, Text } = Typography;
 
 const BASE = (import.meta.env.VITE_API_URL || "http://localhost:5000/api").replace(/^﻿/, "");
 const pub  = axios.create({ baseURL: BASE.replace(/\/api$/, "/api/public") });
@@ -116,11 +111,7 @@ function newSubItem(): SubItemDraft {
 
 function AmtBox({ value }: { value: number }) {
   return (
-    <div style={{
-      background: "#fff8f3", border: "1px solid #f8c9a0", borderRadius: 6,
-      padding: "5px 10px", fontFamily: "monospace", fontWeight: 700,
-      color: "#d4620c", fontSize: 12, minHeight: 32, display: "flex", alignItems: "center",
-    }}>
+    <div className="bg-primary/5 border border-primary/20 rounded-md px-2.5 py-1.5 font-mono font-bold text-primary text-xs min-h-[36px] flex items-center">
       {value > 0 ? fmt(value) : "—"}
     </div>
   );
@@ -139,33 +130,56 @@ function SubCategorySelect({
   onSelect: (id: string, name: string) => void;
   onClear: () => void;
 }) {
+  const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
-  const CUSTOM_VALUE = "__custom__";
   const trimmed = search.trim();
   const exists = trimmed.length > 0 && options.some(o => o.label.toLowerCase() === trimmed.toLowerCase());
-  const finalOptions = trimmed.length > 0 && !exists
-    ? [...options, { label: `+ Use "${trimmed}" as sub-category`, value: CUSTOM_VALUE }]
-    : options;
+  const filtered = trimmed ? options.filter(o => o.label.toLowerCase().includes(trimmed.toLowerCase())) : options;
+  const selected = options.find(o => o.value === value);
 
   return (
-    <Select
-      placeholder="Select or type to add sub-category"
-      placement="bottomLeft"
-      value={value || undefined}
-      options={finalOptions}
-      onChange={v => {
-        if (v === CUSTOM_VALUE) onSelect("", trimmed);
-        else onSelect(v, options.find(o => o.value === v)?.label ?? "");
-        setSearch("");
-      }}
-      allowClear
-      onClear={() => { onClear(); setSearch(""); }}
-      style={{ width: "100%" }}
-      showSearch
-      searchValue={search}
-      onSearch={setSearch}
-      filterOption={(inp, opt) => String(opt?.label ?? "").toLowerCase().includes(inp.toLowerCase())}
-    />
+    <div className="relative">
+      <button
+        type="button" onClick={() => setOpen(o => !o)}
+        className="w-full h-9 px-2.5 rounded-md border border-gray-200 bg-white text-sm flex items-center justify-between gap-2 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+      >
+        <span className={selected ? "text-[#1A1A2E] truncate" : "text-gray-400 truncate"}>{selected ? selected.label : "Select or type to add sub-category"}</span>
+        {selected && <span onClick={(e) => { e.stopPropagation(); onClear(); setSearch(""); }} className="text-gray-400 hover:text-gray-600 shrink-0">✕</span>}
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
+          <div className="absolute z-30 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden">
+            <div className="px-3 py-2 border-b border-gray-100">
+              <input
+                autoFocus value={search} onChange={e => setSearch(e.target.value)}
+                placeholder="Type a name…" className="w-full text-sm bg-transparent outline-none text-[#1A1A2E] placeholder:text-gray-400"
+              />
+            </div>
+            <div className="max-h-56 overflow-y-auto py-1">
+              {filtered.map(o => (
+                <button
+                  key={o.value} type="button"
+                  onClick={() => { onSelect(o.value, o.label); setSearch(""); setOpen(false); }}
+                  className="w-full flex items-center px-3 py-2 text-sm text-left text-[#1A1A2E]! hover:bg-gray-50"
+                >
+                  {o.label}
+                </button>
+              ))}
+              {trimmed.length > 0 && !exists && (
+                <button
+                  type="button"
+                  onClick={() => { onSelect("", trimmed); setSearch(""); setOpen(false); }}
+                  className="w-full flex items-center gap-1.5 px-3 py-2 text-sm text-left text-primary! hover:bg-primary/5"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Use "{trimmed}" as sub-category
+                </button>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 
@@ -192,38 +206,22 @@ function ScopeItemCard({
     onChange({ subItems: item.subItems.map(s => s.id === subId ? { ...s, ...patch } : s) });
 
   return (
-    <div style={{ border: "1px solid #e4e7ee", borderRadius: 8, marginBottom: 12, overflow: "hidden" }}>
+    <div className="border border-gray-200 rounded-lg mb-3 overflow-hidden">
       {/* Header */}
-      <div style={{
-        background: "#f5f6f8", padding: "9px 14px",
-        display: "flex", alignItems: "center", gap: 8,
-        borderBottom: "1px solid #e4e7ee",
-      }}>
-        <span style={{
-          background: "#f37916", color: "#fff", borderRadius: "50%",
-          width: 22, height: 22, display: "inline-flex", alignItems: "center",
-          justifyContent: "center", fontSize: 11, fontWeight: 700, flexShrink: 0,
-        }}>{idx + 1}</span>
-        <span style={{ fontWeight: 600, fontSize: 13, flex: 1, color: "#1a1f2e" }}>
-          {item.description || `Work Item ${idx + 1}`}
-        </span>
-        {amt > 0 && (
-          <span style={{ fontFamily: "monospace", color: "#d4620c", fontWeight: 700, fontSize: 13 }}>
-            {fmt(amt)}
-          </span>
-        )}
-        <Button type="link" size="small" danger icon={<DeleteOutlined />}
-          onClick={onRemove} style={{ padding: "0 4px" }} />
+      <div className="bg-gray-50 px-3.5 py-2 flex items-center gap-2 border-b border-gray-200">
+        <span className="bg-primary text-white rounded-full w-[22px] h-[22px] inline-flex items-center justify-center text-[11px] font-bold shrink-0">{idx + 1}</span>
+        <span className="font-semibold text-[13px] flex-1 text-[#1A1A2E] truncate">{item.description || `Work Item ${idx + 1}`}</span>
+        {amt > 0 && <span className="font-mono text-primary font-bold text-[13px]">{fmt(amt)}</span>}
+        <button type="button" onClick={onRemove} className="text-red-500 hover:bg-red-50 rounded p-1"><Trash2 className="w-3.5 h-3.5" /></button>
       </div>
 
       {/* Body */}
-      <div style={{ padding: "14px 14px 10px" }}>
-        {/* Row 1: Sub-Category / Description | Unit | Qty | Rate | Amount */}
-        <Row gutter={[10, 10]}>
-          <Col xs={24} sm={8}>
+      <div className="p-3.5 pb-2.5">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+          <div className="col-span-2 sm:col-span-1">
             {subCatOptions.length > 0 ? (
               <>
-                <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Sub-Category *</div>
+                <div className="text-[11px] text-gray-400 mb-1">Sub-Category *</div>
                 <SubCategorySelect
                   value={item.subCategoryId}
                   options={subCatOptions.map(c => ({ label: c.name, value: c._id }))}
@@ -233,143 +231,96 @@ function ScopeItemCard({
               </>
             ) : (
               <>
-                <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Description *</div>
-                <Input
-                  placeholder="e.g. Raft Area, Plaster Works, HT Panel…"
-                  value={item.description}
-                  onChange={e => onChange({ description: e.target.value })}
-                />
+                <div className="text-[11px] text-gray-400 mb-1">Description *</div>
+                <Field placeholder="e.g. Raft Area, Plaster Works, HT Panel…" value={item.description} onChange={e => onChange({ description: e.target.value })} />
               </>
             )}
-          </Col>
-
-          <Col xs={12} sm={4}>
-            <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Unit</div>
-            <Select value={item.unit} options={UNIT_OPTIONS} style={{ width: "100%" }} placement="bottomLeft"
-              onChange={v => onChange({ unit: v })} showSearch
-              filterOption={(inp, opt) =>
-                String(opt?.label ?? "").toLowerCase().includes(inp.toLowerCase())
-              }
-            />
-          </Col>
-
-          <Col xs={12} sm={4}>
-            <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Planned Qty</div>
-            <InputNumber placeholder="Qty" value={item.plannedQty} style={{ width: "100%" }}
-              min={0} step={0.01} precision={2}
-              onChange={v => onChange({ plannedQty: v })} />
-          </Col>
-          <Col xs={12} sm={4}>
-            <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Rate (₹)</div>
-            <InputNumber placeholder="Rate" value={item.rate} style={{ width: "100%" }}
-              min={0} onChange={v => onChange({ rate: v })} />
-          </Col>
-          <Col xs={24} sm={4}>
-            <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Amount</div>
+          </div>
+          <div>
+            <div className="text-[11px] text-gray-400 mb-1">Unit</div>
+            <SField value={item.unit} onChange={v => onChange({ unit: v })} options={UNIT_OPTIONS} />
+          </div>
+          <div>
+            <div className="text-[11px] text-gray-400 mb-1">Planned Qty</div>
+            <Field type="number" min="0" step="0.01" placeholder="Qty" value={item.plannedQty ?? ""} onChange={e => onChange({ plannedQty: e.target.value === "" ? null : Number(e.target.value) })} />
+          </div>
+          <div>
+            <div className="text-[11px] text-gray-400 mb-1">Rate (₹)</div>
+            <Field type="number" min="0" placeholder="Rate" value={item.rate ?? ""} onChange={e => onChange({ rate: e.target.value === "" ? null : Number(e.target.value) })} />
+          </div>
+          <div>
+            <div className="text-[11px] text-gray-400 mb-1">Amount</div>
             <AmtBox value={amt} />
-          </Col>
-        </Row>
+          </div>
+        </div>
 
-        {/* Row 1b: GST + Incl. GST amount */}
-        <Row gutter={[10, 0]} style={{ marginTop: 8 }}>
-          <Col xs={12} sm={6}>
-            <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>GST %</div>
-            <GstSelect value={item.gstPercent} onChange={v => onChange({ gstPercent: v })} style={{ width: "100%" }} />
-          </Col>
-          <Col xs={12} sm={18} style={{ display: "flex", alignItems: "flex-end", paddingBottom: 6 }}>
-            <div style={{ fontSize: 12, color: "#5a6278" }}>
-              Amount incl. GST: <strong style={{ color: "#d4620c", fontFamily: "monospace" }}>{amt > 0 ? fmt(calcItemInclGst(item)) : "—"}</strong>
-            </div>
-          </Col>
-        </Row>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 mt-2 items-end">
+          <div>
+            <div className="text-[11px] text-gray-400 mb-1">GST %</div>
+            <GstSelect value={item.gstPercent} onChange={v => onChange({ gstPercent: v })} />
+          </div>
+          <div className="col-span-3 pb-2 text-xs text-gray-600">
+            Amount incl. GST: <strong className="text-primary font-mono">{amt > 0 ? fmt(calcItemInclGst(item)) : "—"}</strong>
+          </div>
+        </div>
 
-        {/* Row 2: Notes/Remarks */}
-        <Row gutter={[10, 0]} style={{ marginTop: 8 }}>
-          <Col span={24}>
-            <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Notes / Remarks (optional)</div>
-            <Input
-              placeholder="e.g. RCC wall, 1st floor, upto 300MM…"
-              value={item.remarks}
-              onChange={e => onChange({ remarks: e.target.value })}
-            />
-          </Col>
-        </Row>
+        <div className="mt-2">
+          <div className="text-[11px] text-gray-400 mb-1">Notes / Remarks (optional)</div>
+          <Field placeholder="e.g. RCC wall, 1st floor, upto 300MM…" value={item.remarks} onChange={e => onChange({ remarks: e.target.value })} />
+        </div>
 
-        {/* Row 3: Dates + Sub-Items toggle */}
-        <Row gutter={[10, 10]} style={{ marginTop: 10 }}>
-          <Col xs={12} sm={6}>
-            <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Start Date <span style={{ color: "#e03b3b" }}>*</span></div>
-            <DatePicker format="DD/MM/YYYY" style={{ width: "100%" }}
-              status={!item.plannedStart ? "error" : undefined}
-              value={item.plannedStart ? dayjs(item.plannedStart) : null}
-              onChange={d => onChange({ plannedStart: d ? d.format("YYYY-MM-DD") : "" })} />
-          </Col>
-          <Col xs={12} sm={6}>
-            <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>End Date <span style={{ color: "#e03b3b" }}>*</span></div>
-            <DatePicker format="DD/MM/YYYY" style={{ width: "100%" }}
-              status={!item.plannedEnd ? "error" : undefined}
-              value={item.plannedEnd ? dayjs(item.plannedEnd) : null}
-              onChange={d => onChange({ plannedEnd: d ? d.format("YYYY-MM-DD") : "" })} />
-          </Col>
-          <Col xs={24} sm={12} style={{ display: "flex", alignItems: "flex-end", gap: 8 }}>
-            <Button type="link" size="small"
-              icon={item.showSubItems ? <UpOutlined /> : <DownOutlined />}
-              onClick={() => onChange({ showSubItems: !item.showSubItems })}
-              style={{ color: "#5a6278", padding: 0 }}
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5 mt-2.5 items-end">
+          <div>
+            <div className="text-[11px] text-gray-400 mb-1">Start Date <span className="text-red-500">*</span></div>
+            <DatePicker value={item.plannedStart} onChange={v => onChange({ plannedStart: v })} />
+          </div>
+          <div>
+            <div className="text-[11px] text-gray-400 mb-1">End Date <span className="text-red-500">*</span></div>
+            <DatePicker value={item.plannedEnd} onChange={v => onChange({ plannedEnd: v })} />
+          </div>
+          <div className="sm:col-span-2 pb-1">
+            <button
+              type="button" onClick={() => onChange({ showSubItems: !item.showSubItems })}
+              className="text-gray-500 text-xs font-semibold hover:text-gray-700 inline-flex items-center gap-1"
             >
+              {item.showSubItems ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
               {item.showSubItems ? "Hide" : "Add"} Particulars
-              {item.subItems.length > 0 && (
-                <Tag color="blue" style={{ marginLeft: 4, fontSize: 10 }}>{item.subItems.length}</Tag>
-              )}
-            </Button>
-          </Col>
-        </Row>
+              {item.subItems.length > 0 && <span className="ml-1"><Badge color="blue" small>{item.subItems.length}</Badge></span>}
+            </button>
+          </div>
+        </div>
 
-        {/* Sub-items */}
         {item.showSubItems && (
-          <div style={{ marginTop: 12, background: "#f8f9fc", border: "1px solid #dde1ec", borderRadius: 6, padding: 12 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: "#9ba3b8", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 10 }}>
+          <div className="mt-3 bg-gray-50/60 border border-gray-200 rounded-md p-3">
+            <div className="text-[11px] font-bold text-gray-400 uppercase tracking-wide mb-2">
               Particulars — Reference Only, Not Included in Contract Value
             </div>
-            {item.subItems.length === 0 && (
-              <div style={{ color: "#9ba3b8", fontSize: 12, marginBottom: 8 }}>No sub-items yet.</div>
-            )}
+            {item.subItems.length === 0 && <div className="text-gray-400 text-xs mb-2">No sub-items yet.</div>}
             {item.subItems.map((si, siIdx) => (
-              <div key={si.id} style={{
-                display: "flex", gap: 8, alignItems: "center", marginBottom: 8,
-                background: "#fff", border: "1px solid #e4e7ee", borderRadius: 6,
-                padding: "8px 10px", flexWrap: "wrap",
-              }}>
-                <span style={{ fontSize: 11, color: "#9ba3b8", minWidth: 28, fontWeight: 600 }}>
-                  {idx + 1}.{siIdx + 1}
-                </span>
-                <Input placeholder="Sub-item description" value={si.description}
-                  onChange={e => updSub(si.id, { description: e.target.value })}
-                  style={{ flex: 2, minWidth: 180 }} />
-                <Select value={si.unit} options={UNIT_OPTIONS} style={{ width: 130 }} placement="bottomLeft"
-                  onChange={v => updSub(si.id, { unit: v })} showSearch
-                  filterOption={(inp, opt) =>
-                    String(opt?.label ?? "").toLowerCase().includes(inp.toLowerCase())
-                  }
+              <div key={si.id} className="flex gap-2 items-center mb-2 bg-white border border-gray-200 rounded-md p-2.5 flex-wrap">
+                <span className="text-[11px] text-gray-400 min-w-[28px] font-semibold">{idx + 1}.{siIdx + 1}</span>
+                <input
+                  placeholder="Sub-item description" value={si.description} onChange={e => updSub(si.id, { description: e.target.value })}
+                  className="flex-[2] min-w-[180px] h-9 px-2.5 rounded-md border border-gray-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
                 />
-                <InputNumber placeholder="Qty" value={si.plannedQty} style={{ width: 90 }}
-                  min={0} step={0.01} precision={2}
-                  onChange={v => updSub(si.id, { plannedQty: v })} />
-                <InputNumber placeholder="Rate" value={si.rate} style={{ width: 100 }}
-                  min={0} onChange={v => updSub(si.id, { rate: v })} />
-                <div style={{ minWidth: 90 }}>
-                  <AmtBox value={(si.plannedQty || 0) * (si.rate || 0)} />
-                </div>
-                <Button type="link" size="small" danger icon={<DeleteOutlined />}
-                  onClick={() => onChange({ subItems: item.subItems.filter(s => s.id !== si.id) })} />
+                <div className="w-[130px]"><SField value={si.unit} onChange={v => updSub(si.id, { unit: v })} options={UNIT_OPTIONS} /></div>
+                <input
+                  type="number" placeholder="Qty" min={0} step={0.01} value={si.plannedQty ?? ""}
+                  onChange={e => updSub(si.id, { plannedQty: e.target.value === "" ? null : Number(e.target.value) })}
+                  className="w-[90px] h-9 px-2 rounded-md border border-gray-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                />
+                <input
+                  type="number" placeholder="Rate" min={0} value={si.rate ?? ""}
+                  onChange={e => updSub(si.id, { rate: e.target.value === "" ? null : Number(e.target.value) })}
+                  className="w-[100px] h-9 px-2 rounded-md border border-gray-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                />
+                <div className="min-w-[90px]"><AmtBox value={(si.plannedQty || 0) * (si.rate || 0)} /></div>
+                <button type="button" onClick={() => onChange({ subItems: item.subItems.filter(s => s.id !== si.id) })} className="text-red-500 hover:bg-red-50 rounded p-1">
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
               </div>
             ))}
-            <Button type="dashed" size="small" icon={<PlusOutlined />}
-              onClick={() => onChange({ subItems: [...item.subItems, newSubItem()], showSubItems: true })}
-              style={{ borderColor: "#f37916", color: "#f37916" }}
-            >
-              Add Sub-Item
-            </Button>
+            <Btn small outline icon={Plus} label="Add Sub-Item" onClick={() => onChange({ subItems: [...item.subItems, newSubItem()], showSubItems: true })} />
           </div>
         )}
       </div>
@@ -377,11 +328,24 @@ function ScopeItemCard({
   );
 }
 
+interface FormValues {
+  preparedByName: string; preparedByContact: string; companyId: string;
+  projectId: string; projectLocation: string; issueDate: string;
+  vendorCode: string; category: string; status: string; gstPercent: number; scopeOfWork: string;
+}
+
+const blankForm = (): FormValues => ({
+  preparedByName: "", preparedByContact: "", companyId: "",
+  projectId: "", projectLocation: "", issueDate: "",
+  vendorCode: "", category: "", status: "draft", gstPercent: 18, scopeOfWork: "",
+});
+
 // ── Main Component ───────────────────────────────────────────────
 
 export default function PublicWorkOrderForm() {
-  const [form] = Form.useForm();
-  const gstPercent = (Form.useWatch("gstPercent", form) as number | undefined) ?? 18;
+  const [values, setValues] = useState<FormValues>(blankForm());
+  const errors = useFormErrors<"preparedByName" | "preparedByContact" | "projectId" | "issueDate" | "vendorCode">();
+  const patch = (p: Partial<FormValues>) => setValues(prev => ({ ...prev, ...p }));
 
   const [projects,    setProjects]    = useState<Lookup[]>([]);
   const [contractors, setContractors] = useState<Contractor[]>([]);
@@ -419,32 +383,44 @@ export default function PublicWorkOrderForm() {
     setScopeItems(items => items.map(it => it.id === id ? { ...it, ...patch } : it));
   }
 
-  async function onFinish(vals: any) {
+  function validate(): boolean {
+    errors.clearAll();
+    let ok = true;
+    if (!values.preparedByName.trim()) { errors.setError("preparedByName", "Your name is required"); ok = false; }
+    if (!values.preparedByContact.trim()) { errors.setError("preparedByContact", "Your contact is required"); ok = false; }
+    if (!values.projectId) { errors.setError("projectId", "Select a project"); ok = false; }
+    if (!values.issueDate) { errors.setError("issueDate", "Select issue date"); ok = false; }
+    if (!values.vendorCode) { errors.setError("vendorCode", "Select a vendor"); ok = false; }
+    return ok;
+  }
+
+  async function onSubmit() {
+    if (!validate()) return;
     const milestonesTotal = calcGrandTotal(milestones);
     if (milestonesTotal > contractValueInclGst + 1) {
-      message.error(`Payment milestones total (${fmt(milestonesTotal)}) exceeds the scope of work's contract value incl. GST (${fmt(contractValueInclGst)})`);
+      toast.error(`Payment milestones total (${fmt(milestonesTotal)}) exceeds the scope of work's contract value incl. GST (${fmt(contractValueInclGst)})`);
       return;
     }
     if (scopeItems.some(i => (i.description.trim() || i.subCategoryId) && (!i.plannedStart || !i.plannedEnd))) {
-      message.error("Start Date and End Date are required for every work item");
+      toast.error("Start Date and End Date are required for every work item");
       return;
     }
     setSubmitting(true);
     try {
       const validScope = scopeItems.filter(i => i.description.trim() || i.subCategoryId);
       const payload = {
-        projectId:   vals.projectId,
-        projectLocation: vals.projectLocation || "",
-        vendorCode:  vals.vendorCode,
-        issueDate:   (vals.issueDate as dayjs.Dayjs).toISOString(),
-        companyId:   vals.companyId  || null,
-        category:    topCatOptions.find(c => c._id === topCatId)?.name || vals.category || "",
-        scopeOfWork: vals.scopeOfWork || "",
-        status:      vals.status     || "draft",
-        gstPercent:  vals.gstPercent ?? 18,
+        projectId:   values.projectId,
+        projectLocation: values.projectLocation || "",
+        vendorCode:  values.vendorCode,
+        issueDate:   dayjs(values.issueDate).toISOString(),
+        companyId:   values.companyId  || null,
+        category:    topCatOptions.find(c => c._id === topCatId)?.name || values.category || "",
+        scopeOfWork: values.scopeOfWork || "",
+        status:      values.status     || "draft",
+        gstPercent:  values.gstPercent ?? 18,
         documents:   documents,
-        preparedByName:    vals.preparedByName    || "",
-        preparedByContact: vals.preparedByContact || "",
+        preparedByName:    values.preparedByName    || "",
+        preparedByContact: values.preparedByContact || "",
         paymentMilestones: milestones.map(m => ({
           stage: m.stage, date: m.date, type: m.type, mode: m.mode,
           amount: m.amount || 0, amountMode: m.amountMode, amountPercent: m.amountPercent,
@@ -478,15 +454,16 @@ export default function PublicWorkOrderForm() {
       };
       const res = await pub.post("/work-orders", payload);
       setSubmitted({ workOrderNo: res.data?.workOrder?.workOrderNo || "—" });
-    } catch {
-      // axios interceptor shows toast
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || "Couldn't submit work order");
     } finally {
       setSubmitting(false);
     }
   }
 
   function reset() {
-    form.resetFields();
+    setValues(blankForm());
+    errors.clearAll();
     setScopeItems([newScope()]);
     setTopCatId("");
     setDocuments([]);
@@ -497,192 +474,128 @@ export default function PublicWorkOrderForm() {
 
   if (loading) {
     return (
-      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f8f9fb" }}>
-        <Spin size="large" tip="Loading form…" />
+      <div className="min-h-screen flex items-center justify-center bg-[#F8FAFC]">
+        <Spinner size="large" label="Loading form…" />
       </div>
     );
   }
 
   if (submitted) {
     return (
-      <div style={{ minHeight: "100vh", background: "#f8f9fb", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 24 }}>
-        <Card style={{ maxWidth: 480, width: "100%", textAlign: "center", borderRadius: 16, boxShadow: "0 4px 24px rgba(0,0,0,0.08)" }}>
-          <Result
-            icon={<CheckCircleOutlined style={{ color: "#16a85a", fontSize: 64 }} />}
-            title="Work Order Submitted!"
-            subTitle={
-              <Space direction="vertical" size={4}>
-                <Text>Your request has been submitted successfully.</Text>
-                <Text type="secondary">Work Order Number:</Text>
-                <Tag color="orange" style={{ fontSize: 18, padding: "4px 16px", borderRadius: 8 }}>
-                  {submitted.workOrderNo}
-                </Tag>
-              </Space>
-            }
-            extra={
-              <Button type="primary" onClick={reset}
-                style={{ background: "#f37916", borderColor: "#f37916" }}>
-                Submit Another
-              </Button>
-            }
-          />
-        </Card>
+      <div className="min-h-screen bg-[#F8FAFC] flex flex-col items-center justify-center p-6">
+        <Toaster position="top-right" />
+        <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-8 max-w-[480px] w-full text-center">
+          <CheckCircle2 className="w-16 h-16 text-emerald-600 mx-auto mb-4" />
+          <div className="text-xl font-bold text-[#1A1A2E] mb-2">Work Order Submitted!</div>
+          <div className="text-sm text-gray-500 mb-1">Your request has been submitted successfully.</div>
+          <div className="text-xs text-gray-400 mt-3 mb-1.5">Work Order Number</div>
+          <div className="flex justify-center mb-6">
+            <Badge color="orange">{submitted.workOrderNo}</Badge>
+          </div>
+          <Btn color="primary" label="Submit Another" onClick={reset} />
+        </div>
       </div>
     );
   }
 
   return (
-    <div style={{ minHeight: "100vh", background: "#f8f9fb" }}>
+    <div className="min-h-screen bg-[#F8FAFC]">
+      <Toaster position="top-right" />
+
       {/* Top bar */}
-      <div style={{
-        background: "#fff", borderBottom: "1px solid #eaedf2", padding: "0 24px",
-        display: "flex", alignItems: "center", height: 60,
-        position: "sticky", top: 0, zIndex: 100, boxShadow: "0 1px 4px rgba(0,0,0,0.06)",
-      }}>
-        <div style={{
-          width: 36, height: 36, borderRadius: 10, background: "#f37916",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          color: "#fff", fontWeight: 800, fontSize: 18, marginRight: 12,
-        }}>N</div>
+      <div className="sticky top-0 z-10 bg-white border-b border-gray-100 px-6 h-15 flex items-center shadow-sm">
+        <div className="w-9 h-9 rounded-xl bg-primary flex items-center justify-center text-white font-extrabold text-lg mr-3">N</div>
         <div>
-          <div style={{ fontWeight: 700, fontSize: 15, lineHeight: 1.2, color: "#1a1f2e" }}>Neoteric Properties</div>
-          <div style={{ fontSize: 11, color: "#9ba3b8" }}>Project Cost Center</div>
+          <div className="font-bold text-[#1A1A2E] leading-tight">Neoteric Properties</div>
+          <div className="text-xs text-gray-400">Project Cost Center</div>
         </div>
-        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
-          <FileTextOutlined style={{ color: "#f37916", fontSize: 18 }} />
-          <Text style={{ fontWeight: 600, color: "#1a1f2e" }}>New Work Order</Text>
+        <div className="ml-auto flex items-center gap-2 text-gray-700 font-semibold">
+          <FileText className="w-4.5 h-4.5 text-primary" />
+          New Work Order
         </div>
       </div>
 
       {/* Body */}
-      <div style={{ maxWidth: 900, margin: "0 auto", padding: "32px 16px 64px" }}>
-        <div style={{ marginBottom: 28 }}>
-          <Title level={3} style={{ margin: 0, color: "#1a1f2e" }}>Work Order Request</Title>
-          <Text type="secondary">Fill in the details below to create a new work order.</Text>
+      <div className="max-w-[900px] mx-auto px-4 py-8 pb-16">
+        <div className="mb-7">
+          <h1 className="text-xl font-bold text-[#1A1A2E]">Work Order Request</h1>
+          <p className="text-sm text-gray-500 mt-1">Fill in the details below to create a new work order.</p>
         </div>
 
-        <Form form={form} layout="vertical" onFinish={onFinish} requiredMark="optional">
-
+        <div className="flex flex-col gap-5">
           {/* ── Order Details ── */}
-          <Card
-            title={<span style={{ fontWeight: 700 }}>Order Details</span>}
-            style={{ borderRadius: 12, marginBottom: 20, boxShadow: "0 2px 12px rgba(0,0,0,0.05)" }}
-          >
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "0 24px" }}>
-
-              <Form.Item label="Work Order Number">
-                <Input disabled placeholder="Auto-assign on submit"
-                  style={{ background: "#f5f6f8", color: "#9ba3b8" }} />
-              </Form.Item>
-
-              <Form.Item name="preparedByName" label="Your Name"
-                rules={[{ required: true, message: "Your name is required" }]}>
-                <Input placeholder="e.g. Yash Gupta" />
-              </Form.Item>
-
-              <Form.Item name="preparedByContact" label="Your Contact"
-                rules={[{ required: true, message: "Your contact is required" }]}>
-                <Input placeholder="Phone or email" />
-              </Form.Item>
-
-              <Form.Item name="companyId" label="Issuing Company">
-                <Select placeholder="Select company (optional)" allowClear showSearch placement="bottomLeft"
-                  optionFilterProp="label"
-                  options={companies.map(c => ({ label: c.name, value: c._id }))} />
-              </Form.Item>
-
-              <Form.Item name="projectId" label="Project"
-                rules={[{ required: true, message: "Select a project" }]}>
-                <Select placeholder="Select project" showSearch optionFilterProp="label" placement="bottomLeft"
-                  options={selectableProjects(projects).map(p => ({ label: p.name, value: p._id }))} />
-              </Form.Item>
-
-              <Form.Item
-                name="projectLocation"
-                label="Location"
-                tooltip="Exact site location for this work order (e.g. tower, plot no., landmark)"
-              >
-                <Input placeholder="e.g. Tower A, Ground Floor" />
-              </Form.Item>
-
-              <Form.Item name="issueDate" label="Issue Date"
-                rules={[{ required: true, message: "Select issue date" }]}>
-                <DatePicker style={{ width: "100%" }} format="DD MMM YYYY" />
-              </Form.Item>
-
-              <Form.Item name="vendorCode" label="Vendor Code"
-                rules={[{ required: true, message: "Select a vendor" }]}>
-                <Select placeholder="Select vendor" showSearch placement="bottomLeft"
-                  optionFilterProp="label"
-                  options={contractors.map(c => ({
-                    label: `${c.vendorCode} — ${c.companyName}`,
-                    value: c.vendorCode,
-                  }))} />
-              </Form.Item>
-
-              <Form.Item name="category" label="Category">
-                <Select placeholder="Select category (optional)" allowClear showSearch placement="bottomLeft"
-                  optionFilterProp="label"
-                  options={topCatOptions.map(c => ({ label: c.name, value: c._id }))}
-                  onChange={v => setTopCatId(v || "")}
-                />
-              </Form.Item>
-
-              <Form.Item name="status" label="Status" initialValue="draft">
-                <Select options={STATUS_OPTIONS} placement="bottomLeft" />
-              </Form.Item>
-
-              <Form.Item name="gstPercent" label="GST Slab" initialValue={18}>
-                <GstSelect />
-              </Form.Item>
-
+          <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
+            <div className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Order Details</div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Field label="Work Order Number" disabled placeholder="Auto-assign on submit" value="" onChange={() => {}} />
+              <Field label="Your Name" required placeholder="e.g. Yash Gupta" value={values.preparedByName} onChange={e => patch({ preparedByName: e.target.value })} error={errors.errors.preparedByName} />
+              <Field label="Your Contact" required placeholder="Phone or email" value={values.preparedByContact} onChange={e => patch({ preparedByContact: e.target.value })} error={errors.errors.preparedByContact} />
+              <SField
+                label="Issuing Company" placeholder="Select company (optional)"
+                value={values.companyId} onChange={v => patch({ companyId: v })}
+                options={[{ value: "", label: "— None —" }, ...companies.map(c => ({ label: c.name, value: c._id }))]}
+              />
+              <SField
+                label="Project" required placeholder="Select project"
+                value={values.projectId} onChange={v => patch({ projectId: v })}
+                options={selectableProjects(projects).map(p => ({ label: p.name, value: p._id }))}
+                error={errors.errors.projectId}
+              />
+              <Field
+                label="Location" placeholder="e.g. Tower A, Ground Floor"
+                value={values.projectLocation} onChange={e => patch({ projectLocation: e.target.value })}
+                hint="Exact site location for this work order (e.g. tower, plot no., landmark)"
+              />
+              <div>
+                <DatePicker label="Issue Date *" value={values.issueDate} onChange={v => patch({ issueDate: v })} />
+                {errors.errors.issueDate && <span className="block text-xs text-red-500 mt-1">{errors.errors.issueDate}</span>}
+              </div>
+              <SField
+                label="Vendor Code" required placeholder="Select vendor"
+                value={values.vendorCode} onChange={v => patch({ vendorCode: v })}
+                options={contractors.map(c => ({ label: `${c.vendorCode} — ${c.companyName}`, value: c.vendorCode }))}
+                error={errors.errors.vendorCode}
+              />
+              <SField
+                label="Category" placeholder="Select category (optional)"
+                value={values.category} onChange={v => { patch({ category: v }); setTopCatId(v || ""); }}
+                options={[{ value: "", label: "— None —" }, ...topCatOptions.map(c => ({ label: c.name, value: c._id }))]}
+              />
+              <SField label="Status" value={values.status} onChange={v => patch({ status: v })} options={STATUS_OPTIONS} />
+              <div>
+                <span className="block text-xs font-bold text-gray-600 uppercase tracking-wide mb-1.5">GST Slab</span>
+                <GstSelect value={values.gstPercent} onChange={v => patch({ gstPercent: v })} />
+              </div>
             </div>
 
-            <Form.Item
-              name="scopeOfWork"
-              label="Overall Description / Scope of Work"
-              tooltip="Describe the full scope of this work order"
-            >
-              <Input.TextArea
-                rows={3}
+            <div className="mt-3">
+              <Field
+                textarea label="Overall Description / Scope of Work"
                 placeholder="e.g. Supply and installation of false ceiling including framework, boarding and finishing as per approved drawings..."
+                value={values.scopeOfWork} onChange={e => patch({ scopeOfWork: e.target.value })}
+                hint="Describe the full scope of this work order"
               />
-            </Form.Item>
+            </div>
 
-            <Form.Item label="Upload Work Order Documents">
+            <div className="mt-3">
+              <span className="block text-xs font-bold text-gray-600 uppercase tracking-wide mb-1.5">Upload Work Order Documents</span>
               <DocumentsUpload value={documents} onChange={setDocuments} uploadClient={pub} />
-            </Form.Item>
-          </Card>
+            </div>
+          </div>
 
           {/* ── Scope of Work ── */}
-          <Card
-            style={{ borderRadius: 12, marginBottom: 20, boxShadow: "0 2px 12px rgba(0,0,0,0.05)" }}
-            bodyStyle={{ paddingTop: 0 }}
-          >
-            {/* Section header matching internal system */}
-            <div style={{
-              display: "flex", alignItems: "center", justifyContent: "space-between",
-              padding: "16px 0 12px", marginBottom: 4,
-              borderBottom: "1px solid #f0f0f0",
-            }}>
-              <div style={{ fontWeight: 700, fontSize: 14, color: "#1a1f2e" }}>Scope of Work</div>
-              <Button type="dashed" icon={<PlusOutlined />} size="small"
-                onClick={() => setScopeItems(s => [...s, newScope(gstPercent)])}
-                style={{ borderColor: "#f37916", color: "#f37916" }}
-              >
-                Add Work Item
-              </Button>
+          <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
+            <div className="flex items-center justify-between pb-3 mb-1 border-b border-gray-100">
+              <div className="font-bold text-sm text-[#1A1A2E]">Scope of Work</div>
+              <Btn small outline icon={Plus} label="Add Work Item" onClick={() => setScopeItems(s => [...s, newScope(values.gstPercent)])} />
             </div>
 
-            <div style={{ paddingTop: 14 }}>
+            <div className="pt-3.5">
               {scopeItems.length === 0 && (
-                <div style={{
-                  border: "2px dashed #e4e7ee", borderRadius: 8, padding: "32px 20px",
-                  textAlign: "center", color: "#9ba3b8", marginBottom: 12,
-                }}>
-                  <div style={{ fontSize: 28, marginBottom: 8 }}>📐</div>
-                  <div style={{ fontWeight: 600, color: "#5a6278" }}>No work items yet</div>
-                  <div style={{ fontSize: 12, marginTop: 4 }}>Click "Add Work Item" to define the scope.</div>
+                <div className="border-2 border-dashed border-gray-200 rounded-lg py-8 px-5 text-center text-gray-400 mb-3">
+                  <div className="text-3xl mb-2">📐</div>
+                  <div className="font-semibold text-gray-600">No work items yet</div>
+                  <div className="text-xs mt-1">Click "Add Work Item" to define the scope.</div>
                 </div>
               )}
 
@@ -693,53 +606,47 @@ export default function PublicWorkOrderForm() {
                   idx={idx}
                   allCategories={allCats}
                   topCatId={topCatId}
-                  onChange={patch => patchItem(item.id, patch)}
+                  onChange={p => patchItem(item.id, p)}
                   onRemove={() => setScopeItems(s => s.filter(x => x.id !== item.id))}
                 />
               ))}
 
               {contractValue > 0 && (
                 <>
-                  <Divider style={{ margin: "8px 0 12px" }} />
-                  <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 12 }}>
-                    <Text type="secondary">Contract Value ({scopeItems.length} item{scopeItems.length !== 1 ? "s" : ""}) — Excl. GST:</Text>
-                    <Text style={{ fontWeight: 600, fontSize: 14 }}>{fmt(contractValue)}</Text>
+                  <div className="border-t border-gray-200 my-2" />
+                  <div className="flex justify-end items-center gap-3">
+                    <span className="text-gray-400 text-sm">Contract Value ({scopeItems.length} item{scopeItems.length !== 1 ? "s" : ""}) — Excl. GST:</span>
+                    <span className="font-semibold text-[14px]">{fmt(contractValue)}</span>
                   </div>
-                  <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 12, marginTop: 6 }}>
-                    <Text type="secondary">GST (per work item, see above):</Text>
-                    <Text style={{ fontSize: 13 }}>{fmt(contractValueInclGst - contractValue)}</Text>
+                  <div className="flex justify-end items-center gap-3 mt-1.5">
+                    <span className="text-gray-400 text-sm">GST (per work item, see above):</span>
+                    <span className="text-[13px]">{fmt(contractValueInclGst - contractValue)}</span>
                   </div>
-                  <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 12, marginTop: 6 }}>
-                    <Text strong>Total Contract Value — Incl. GST:</Text>
-                    <Text style={{ fontWeight: 700, fontSize: 18, color: "#f37916" }}>
-                      {fmt(contractValueInclGst)}
-                    </Text>
+                  <div className="flex justify-end items-center gap-3 mt-1.5">
+                    <span className="font-bold">Total Contract Value — Incl. GST:</span>
+                    <span className="font-bold text-lg text-primary">{fmt(contractValueInclGst)}</span>
                   </div>
                 </>
               )}
             </div>
-          </Card>
-
-          {/* ── Payment Milestones ── */}
-          <Card style={{ borderRadius: 12, marginBottom: 20, boxShadow: "0 2px 12px rgba(0,0,0,0.05)" }}>
-            <PaymentMilestonesBuilder items={milestones} onChange={setMilestones} contractValue={contractValue} contractValueInclGst={contractValueInclGst} />
-          </Card>
-
-          {/* ── Warranty / Guarantee Terms ── */}
-          <Card style={{ borderRadius: 12, marginBottom: 20, boxShadow: "0 2px 12px rgba(0,0,0,0.05)" }}>
-            <WarrantyTermsBuilder items={warrantyTerms} onChange={setWarrantyTerms} />
-          </Card>
-
-          {/* ── Submit ── */}
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 12, flexWrap: "wrap" }}>
-            <Button onClick={reset} style={{ flex: "1 1 auto" }}>Reset</Button>
-            <Button type="primary" htmlType="submit" loading={submitting}
-              style={{ background: "#f37916", borderColor: "#f37916", minWidth: 160, height: 42, fontWeight: 600, flex: "2 1 auto" }}>
-              Save Work Order
-            </Button>
           </div>
 
-        </Form>
+          {/* ── Payment Milestones ── */}
+          <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
+            <PaymentMilestonesBuilder items={milestones} onChange={setMilestones} contractValue={contractValue} contractValueInclGst={contractValueInclGst} />
+          </div>
+
+          {/* ── Warranty / Guarantee Terms ── */}
+          <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
+            <WarrantyTermsBuilder items={warrantyTerms} onChange={setWarrantyTerms} />
+          </div>
+
+          {/* ── Submit ── */}
+          <div className="flex justify-end gap-3 flex-wrap">
+            <Btn outline label="Reset" onClick={reset} />
+            <Btn color="primary" loading={submitting} label="Save Work Order" onClick={onSubmit} />
+          </div>
+        </div>
       </div>
     </div>
   );

@@ -1,54 +1,36 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import {
-  Table,
-  Button,
-  Tag,
-  Input,
-  Form,
-  Select,
-  DatePicker,
-  Drawer,
-  Space,
-  message,
-  Row,
-  Col,
-  InputNumber,
-  Progress,
-  Tooltip,
-  Spin,
-  Dropdown,
-  Modal,
-  Alert,
-  Radio,
-  Segmented,
-} from "antd";
-import type { FormInstance, MenuProps } from "antd";
+import toast from "react-hot-toast";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
-  PlusOutlined,
-  EditOutlined,
-  LinkOutlined,
-  DeleteOutlined,
-  DownOutlined,
-  UpOutlined,
-  ExclamationCircleOutlined,
-  HistoryOutlined,
-  FilePdfOutlined,
-  LockOutlined,
-  UnlockOutlined,
-  ThunderboltOutlined,
-} from "@ant-design/icons";
-import {
   Plus, Pencil, Eye, Paperclip, Trash2, Ban, Lock, Unlock, AlertTriangle,
-  MoreHorizontal, FileText, ClipboardList, BarChart3,
+  FileText, ClipboardList, BarChart3, Link2, Zap, Briefcase, Search, Check, Loader2,
 } from "lucide-react";
 import dayjs from "dayjs";
 import type { Dayjs } from "dayjs";
 
-import PageShell from "../../components/PageShell";
 import apiClient from "../../services/apiClient";
-import { SearchFilter } from "../../ui/Filters";
+import PageHeader from "../../ui/PageHeader";
+import Btn from "../../ui/Btn";
+import Field from "../../ui/Field";
+import SField from "../../ui/SField";
+import MultiSelect from "../../ui/MultiSelect";
+import { DatePicker } from "../../ui/DatePicker";
+import Modal from "../../ui/Modal";
+import ConfirmModal from "../../ui/ConfirmModal";
+import DropdownMenu from "../../ui/DropdownMenu";
+import type { DropdownMenuItem } from "../../ui/DropdownMenu";
+import Badge from "../../ui/Badge";
+import EmptyState from "../../ui/EmptyState";
+import Spinner from "../../ui/Spinner";
+import Segmented from "../../ui/Segmented";
+import Alert from "../../ui/Alert";
+import { Table, Thead, Tbody, Tfoot, Tr, Th, Td } from "../../ui/Table";
+import { usePagination } from "../../ui/usePagination";
+import Pagination from "../../ui/Pagination";
+import { SearchFilter, SelectFilter } from "../../ui/Filters";
+import { useFormErrors } from "../../hooks/useFormErrors";
+
 import { useAuth } from "../../context/AuthContext";
 import type { AuthUser } from "../../context/AuthContext";
 import { useCategories } from "../../hooks/useCategories";
@@ -75,19 +57,20 @@ import type {
   WorkOrderStatus,
   WorkOrderApprovalStatus,
   ScopeItem,
-  ScopeItemStatus,
   PaymentMilestone,
   SecurityDeposit,
 } from "../../types/VendorBilling";
 
 // ── Constants ─────────────────────────────────────────────────
 
-const STATUS_CFG: Record<WorkOrderStatus, { color: string; label: string }> = {
-  draft:         { color: "default", label: "Draft" },
-  issued:        { color: "blue",    label: "Issued" },
-  "in-progress": { color: "orange",  label: "In Progress" },
-  completed:     { color: "green",   label: "Completed" },
-  cancelled:     { color: "red",     label: "Cancelled" },
+type BadgeColor = "gray" | "orange" | "green" | "red" | "amber" | "blue" | "purple" | "teal";
+
+const STATUS_CFG: Record<WorkOrderStatus, { color: BadgeColor; label: string }> = {
+  draft:         { color: "gray",   label: "Draft" },
+  issued:        { color: "blue",   label: "Issued" },
+  "in-progress": { color: "orange", label: "In Progress" },
+  completed:     { color: "green",  label: "Completed" },
+  cancelled:     { color: "red",    label: "Cancelled" },
 };
 
 const STATUS_OPTIONS = [
@@ -158,78 +141,21 @@ function ApprovalStatusPill({ wo }: { wo: WorkOrder }) {
   const sub = approvalSubline(wo);
   return (
     <div>
-      <Tag
-        style={{
-          background: "#F9FAFB",
-          border: `1px solid ${cfg.color}`,
-          color: cfg.color,
-          fontWeight: 600,
-          fontSize: 11,
-          borderRadius: 6,
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 5,
-        }}
+      <span
+        className="inline-flex items-center gap-1.5 rounded-md px-1.5 py-0.5 text-[11px] font-semibold bg-gray-50 dark:bg-transparent"
+        style={{ border: `1px solid ${cfg.color}`, color: cfg.color }}
       >
         {cfg.level && (
-          <span style={{ background: cfg.color, color: "#fff", borderRadius: 4, padding: "0 4px", fontSize: 9, fontWeight: 700, lineHeight: "14px" }}>
+          <span className="rounded text-white text-[9px] font-bold px-1 leading-[14px]" style={{ background: cfg.color }}>
             {cfg.level}
           </span>
         )}
         {cfg.label}
-      </Tag>
-      {sub && <div style={{ fontSize: 11, color: "#9CA3AF", marginTop: 3 }}>{sub}</div>}
+      </span>
+      {sub && <div className="text-[11px] text-gray-400 mt-0.5">{sub}</div>}
     </div>
   );
 }
-
-// ── Pill tab bar ───────────────────────────────────────────────
-// Same visual pattern as AccountsPayment's tab bar (pill buttons, soft green
-// count badge) — kept local here since that component isn't exported.
-interface WOTabDef { key: "all" | "pending"; label: string; count: number; }
-
-function PillTabs({ tabs, active, onChange }: { tabs: WOTabDef[]; active: string; onChange: (k: "all" | "pending") => void }) {
-  return (
-    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
-      {tabs.map(t => {
-        const isActive = t.key === active;
-        return (
-          <button
-            key={t.key}
-            type="button"
-            onClick={() => onChange(t.key)}
-            style={{
-              display: "flex", alignItems: "center", gap: 7,
-              padding: "7px 15px", borderRadius: 20,
-              border: isActive ? "1.5px solid #1a1f2e" : "1px solid transparent",
-              background: isActive ? "var(--nx-white)" : "transparent",
-              fontWeight: isActive ? 700 : 500,
-              color: isActive ? "#1a1f2e" : "#6B7280",
-              fontSize: 13, cursor: "pointer", outline: "none",
-            }}
-          >
-            {t.label}
-            {t.count > 0 && (
-              <span style={{ background: "#DCFCE7", color: "#15803D", borderRadius: 10, padding: "1px 7px", fontSize: 11, fontWeight: 700 }}>
-                {t.count}
-              </span>
-            )}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-const SCOPE_STATUS_CFG: Record<ScopeItemStatus, { color: string; bg: string; label: string }> = {
-  pending:   { color: "#9ba3b8", bg: "#f5f6f8", label: "Pending" },
-  running:   { color: "#f37916", bg: "#fff8f3", label: "Running" },
-  completed: { color: "#16a85a", bg: "#f0faf4", label: "Completed" },
-};
-
-// ── Work Categories ───────────────────────────────────────────
-
-// Categories are now loaded from API via useCategories() hook inside the component.
 
 const UNIT_OPTIONS = [
   { label: "Sq.Ft (Square Feet)",  value: "sq.ft" },
@@ -356,9 +282,6 @@ const isItemDelayed = (item: ScopeItem): boolean => {
   if (item.status === "completed" || !item.plannedEnd) return false;
   return dayjs().isAfter(dayjs(item.plannedEnd), "day");
 };
-
-const delayDays = (item: ScopeItem): number =>
-  Math.max(0, dayjs().diff(dayjs(item.plannedEnd), "day"));
 
 const countDelays = (wo: WorkOrder) =>
   (wo.scopeItems || []).filter(isItemDelayed).length;
@@ -570,34 +493,24 @@ function UnitCell({
 }) {
   if (unit === "custom") {
     return (
-      <Input
-        placeholder="Type unit (e.g. bags, trips)"
-        value={customUnit}
-        onChange={e => onChange({ customUnit: e.target.value })}
-        addonAfter={
-          <Button
-            type="link"
-            size="small"
-            style={{ padding: 0, height: "auto", lineHeight: 1 }}
-            onClick={() => onChange({ unit: "sq.ft", customUnit: "" })}
-          >
-            ✕
-          </Button>
-        }
-      />
+      <div className="flex items-center gap-1">
+        <input
+          placeholder="Type unit (e.g. bags, trips)"
+          value={customUnit}
+          onChange={e => onChange({ customUnit: e.target.value })}
+          className="w-full h-9 px-2.5 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0F172A] text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+        />
+        <button type="button" onClick={() => onChange({ unit: "sq.ft", customUnit: "" })} className="text-gray-400 hover:text-gray-600 shrink-0 px-1">
+          ✕
+        </button>
+      </div>
     );
   }
   return (
-    <Select
+    <SField
       value={unit}
-      options={UNIT_OPTIONS}
       onChange={v => onChange({ unit: v, customUnit: "" })}
-      style={{ width: "100%" }}
-      showSearch
-      filterOption={(inp, opt) =>
-        String(opt?.label ?? "").toLowerCase().includes(inp.toLowerCase())
-      }
-      placement="bottomLeft" getPopupContainer={(trigger) => trigger.parentElement || document.body}
+      options={UNIT_OPTIONS}
     />
   );
 }
@@ -608,9 +521,11 @@ interface CatOption {
   _id: string; name: string; parentId?: string | null; isActive: boolean; color?: string;
 }
 
-// Sub-category / sub-sub-category Select that lets the user type a name that
+// Sub-category / sub-sub-category picker that lets the user type a name that
 // isn't in the default list and add it on the fly (POST /categories) instead
 // of being limited to whatever an admin pre-configured on the Categories page.
+// SField's plain search-and-pick doesn't support this "create new" affordance,
+// so this stays a bespoke local widget rather than forcing it onto SField.
 function CategoryCreatableSelect({
   value, placeholder, options, parentId, parentColor, onSelect, onClear, onCreated,
 }: {
@@ -623,24 +538,19 @@ function CategoryCreatableSelect({
   onClear: () => void;
   onCreated: (cat: CatOption) => void;
 }) {
+  const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [creating, setCreating] = useState(false);
 
   const trimmed = search.trim();
+  const filtered = trimmed
+    ? options.filter(o => o.label.toLowerCase().includes(trimmed.toLowerCase()))
+    : options;
   const exists = trimmed.length > 0 && options.some(o => o.label.toLowerCase() === trimmed.toLowerCase());
   const showCreateOption = trimmed.length > 0 && !exists;
-  const CREATE_VALUE = "__create_new__";
+  const selected = options.find(o => o.value === value);
 
-  const finalOptions = showCreateOption
-    ? [...options, { label: `+ Add "${trimmed}" as new option`, value: CREATE_VALUE }]
-    : options;
-
-  async function handleChange(v: string) {
-    if (v !== CREATE_VALUE) {
-      onSelect(v, options.find(o => o.value === v)?.label ?? "");
-      setSearch("");
-      return;
-    }
+  async function handleCreate() {
     setCreating(true);
     try {
       const res = await createCategory({ name: trimmed, color: parentColor || "#6B7280", parentId });
@@ -650,32 +560,78 @@ function CategoryCreatableSelect({
       // via onCreated() above is a state update, so any lookup by id in the
       // caller's onSelect would still see the pre-update array on this render.
       onSelect(newCat._id, newCat.name);
-      message.success(`Added "${newCat.name}"`);
+      toast.success(`Added "${newCat.name}"`);
+      setOpen(false);
+      setSearch("");
     } catch (err: any) {
-      message.error(err?.response?.data?.message || "Failed to add new option");
+      toast.error(err?.response?.data?.message || "Failed to add new option");
     } finally {
       setCreating(false);
-      setSearch("");
     }
   }
 
   return (
-    <Select
-      placeholder={placeholder}
-      value={value || undefined}
-      options={finalOptions}
-      onChange={handleChange}
-      allowClear
-      onClear={() => { onClear(); setSearch(""); }}
-      style={{ width: "100%" }}
-      showSearch
-      searchValue={search}
-      onSearch={setSearch}
-      filterOption={(inp, opt) => String(opt?.label ?? "").toLowerCase().includes(inp.toLowerCase())}
-      placement="bottomLeft" getPopupContainer={(trigger) => trigger.parentElement || document.body}
-      loading={creating}
-      notFoundContent={creating ? "Adding..." : "Type a name to add it"}
-    />
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className="w-full h-9 px-2.5 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0F172A] text-sm flex items-center justify-between gap-2 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+      >
+        <span className={selected ? "text-[#1A1A2E] dark:text-[#F1F5F9] truncate" : "text-gray-400 truncate"}>
+          {selected ? selected.label : placeholder}
+        </span>
+        {selected ? (
+          <span onClick={(e) => { e.stopPropagation(); onClear(); setSearch(""); }} className="text-gray-400 hover:text-gray-600 shrink-0">✕</span>
+        ) : (
+          <Search className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+        )}
+      </button>
+
+      {open && (
+        <>
+          <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
+          <div className="absolute z-30 mt-1 w-full min-w-[220px] bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700/40 rounded-lg shadow-lg overflow-hidden">
+            <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-100 dark:border-gray-700/40">
+              <Search className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+              <input
+                autoFocus
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Type a name…"
+                className="w-full text-sm bg-transparent outline-none text-[#1A1A2E] dark:text-[#F1F5F9] placeholder:text-gray-400"
+              />
+            </div>
+            <div className="max-h-56 overflow-y-auto py-1">
+              {filtered.map(o => (
+                <button
+                  key={o.value}
+                  type="button"
+                  onClick={() => { onSelect(o.value, o.label); setSearch(""); setOpen(false); }}
+                  className="w-full flex items-center justify-between gap-2 px-3 py-2 text-sm text-left text-[#1A1A2E]! dark:text-[#F1F5F9]! hover:bg-gray-50 dark:hover:bg-gray-700/40"
+                >
+                  {o.label}
+                  {o.value === value && <Check className="w-3.5 h-3.5 text-primary shrink-0" />}
+                </button>
+              ))}
+              {filtered.length === 0 && !showCreateOption && (
+                <div className="px-3 py-2 text-sm text-gray-400">Type a name to add it</div>
+              )}
+              {showCreateOption && (
+                <button
+                  type="button"
+                  disabled={creating}
+                  onClick={handleCreate}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left text-primary! hover:bg-primary/5 disabled:opacity-50"
+                >
+                  {creating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+                  Add "{trimmed}" as new option
+                </button>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 
@@ -725,171 +681,96 @@ function ScopeItemsBuilder({ items, onChange, allCategories = [], topCatId = nul
 
   return (
     <div>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          marginBottom: 12,
-        }}
-      >
-        <div style={{ fontWeight: 700, fontSize: 14, color: "#1a1f2e" }}>
-          Scope of Work
-        </div>
-        <Button
-          type="dashed"
-          icon={<PlusOutlined />}
-          size="small"
-          onClick={() => onChange([...items, newItemDraft(gstPercent)])}
-          style={{ borderColor: "#f37916", color: "#f37916" }}
-        >
-          Add Work Item
-        </Button>
+      <div className="flex items-center justify-between mb-3">
+        <div className="font-bold text-sm text-[#1A1A2E] dark:text-[#F1F5F9]">Scope of Work</div>
+        <Btn small outline icon={Plus} label="Add Work Item" onClick={() => onChange([...items, newItemDraft(gstPercent)])} />
       </div>
 
       {items.length === 0 && (
-        <div
-          style={{
-            border: "2px dashed #e4e7ee",
-            borderRadius: 8,
-            padding: "32px 20px",
-            textAlign: "center",
-            color: "#9ba3b8",
-            marginBottom: 12,
-          }}
-        >
-          <div style={{ fontSize: 28, marginBottom: 8 }}>📐</div>
-          <div style={{ fontWeight: 600, color: "#5a6278" }}>No work items yet</div>
-          <div style={{ fontSize: 12, marginTop: 4 }}>
-            Click "Add Work Item" to define the scope.
-          </div>
-        </div>
+        <EmptyState icon={ClipboardList} title="No work items yet" message='Click "Add Work Item" to define the scope.' />
       )}
 
       {items.map((item, idx) => (
-        <div
-          key={item.id}
-          style={{
-            border: "1px solid #e4e7ee",
-            borderRadius: 8,
-            marginBottom: 12,
-            overflow: "hidden",
-          }}
-        >
-          <div
-            style={{
-              background: "#f5f6f8",
-              padding: "9px 14px",
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              borderBottom: "1px solid #e4e7ee",
-            }}
-          >
-            <span
-              style={{
-                background: "#f37916",
-                color: "#fff",
-                borderRadius: "50%",
-                width: 22,
-                height: 22,
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: 11,
-                fontWeight: 700,
-                flexShrink: 0,
-              }}
-            >
+        <div key={item.id} className="border border-gray-200 dark:border-gray-700/40 rounded-lg mb-3 overflow-hidden">
+          <div className="bg-gray-50 dark:bg-gray-800/40 px-3.5 py-2 flex items-center gap-2 border-b border-gray-200 dark:border-gray-700/40">
+            <span className="bg-primary text-white rounded-full w-[22px] h-[22px] inline-flex items-center justify-center text-[11px] font-bold shrink-0">
               {idx + 1}
             </span>
-            <span style={{ fontWeight: 600, fontSize: 13, flex: 1, color: "#1a1f2e" }}>
+            <span className="font-semibold text-[13px] flex-1 text-[#1A1A2E] dark:text-[#F1F5F9] truncate">
               {item.description || `Work Item ${idx + 1}`}
             </span>
             {calcDraftItemAmt(item) > 0 && (
-              <span style={{ fontFamily: "monospace", color: "#d4620c", fontWeight: 700, fontSize: 13 }}>
-                {fmt(calcDraftItemAmt(item))}
-              </span>
+              <span className="font-mono text-primary font-bold text-[13px]">{fmt(calcDraftItemAmt(item))}</span>
             )}
-            <Tooltip title="Insert a new work item below this one">
-              <Button
-                type="link"
-                size="small"
-                icon={<PlusOutlined />}
-                onClick={() => {
-                  const idx = items.findIndex(it => it.id === item.id);
-                  const next = [...items];
-                  next.splice(idx + 1, 0, newItemDraft(gstPercent));
-                  onChange(next);
-                }}
-                style={{ padding: "0 4px", color: "#f37916" }}
-              />
-            </Tooltip>
-            <Button
-              type="link"
-              size="small"
-              danger
-              icon={<DeleteOutlined />}
-              onClick={() => onChange(items.filter(it => it.id !== item.id))}
-              style={{ padding: "0 4px" }}
-            />
+            <button
+              type="button"
+              title="Insert a new work item below this one"
+              onClick={() => {
+                const i = items.findIndex(it => it.id === item.id);
+                const next = [...items];
+                next.splice(i + 1, 0, newItemDraft(gstPercent));
+                onChange(next);
+              }}
+              className="text-primary hover:bg-primary/10 rounded p-1"
+            >
+              <Plus className="w-3.5 h-3.5" />
+            </button>
+            <button type="button" onClick={() => onChange(items.filter(it => it.id !== item.id))} className="text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded p-1">
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
           </div>
 
-          <div style={{ padding: "14px 14px 10px" }}>
+          <div className="p-3.5 pb-2.5">
             {(() => {
               const hasSubSub = subCatOptions.length > 0 && !!item.subCategoryId &&
                 getSubSubCatOptions(item.subCategoryId).length > 0;
 
-              const amtBox = (fontSize = 12) => (
-                <div style={{ background: "#fff8f3", border: "1px solid #f8c9a0", borderRadius: 6, padding: "5px 10px", fontFamily: "monospace", fontWeight: 700, color: "#d4620c", fontSize, minHeight: 32, display: "flex", alignItems: "center" }}>
+              const amtBox = () => (
+                <div className="bg-primary/5 border border-primary/20 rounded-md px-2.5 py-1.5 font-mono font-bold text-primary text-xs min-h-[36px] flex items-center">
                   {calcDraftItemAmt(item) > 0 ? fmt(calcDraftItemAmt(item)) : "—"}
                 </div>
               );
 
               const unitQtyRateCols = (
                 <>
-                  <Col span={4}>
-                    <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Unit</div>
+                  <div>
+                    <div className="text-[11px] text-gray-400 mb-1">Unit</div>
                     <UnitCell unit={item.unit} customUnit={item.customUnit} onChange={patch => upd(item.id, patch)} />
-                  </Col>
-                  <Col span={4}>
-                    <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Planned Qty</div>
-                    <InputNumber placeholder="Qty" value={item.plannedQty} onChange={v => upd(item.id, { plannedQty: v })} style={{ width: "100%" }} min={0} />
-                  </Col>
-                  <Col span={4}>
-                    <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Rate (₹)</div>
-                    <InputNumber placeholder="Rate" value={item.rate} onChange={v => upd(item.id, { rate: v })} style={{ width: "100%" }} min={0} />
-                  </Col>
-                  <Col span={4}>
-                    <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Amount</div>
+                  </div>
+                  <div>
+                    <div className="text-[11px] text-gray-400 mb-1">Planned Qty</div>
+                    <Field type="number" min="0" placeholder="Qty" value={item.plannedQty ?? ""} onChange={e => upd(item.id, { plannedQty: e.target.value === "" ? null : Number(e.target.value) })} />
+                  </div>
+                  <div>
+                    <div className="text-[11px] text-gray-400 mb-1">Rate (₹)</div>
+                    <Field type="number" min="0" placeholder="Rate" value={item.rate ?? ""} onChange={e => upd(item.id, { rate: e.target.value === "" ? null : Number(e.target.value) })} />
+                  </div>
+                  <div>
+                    <div className="text-[11px] text-gray-400 mb-1">Amount</div>
                     {amtBox()}
-                  </Col>
+                  </div>
                 </>
               );
 
               if (hasSubSub) {
                 return (
                   <>
-                    {/* Row 1: Sub-Category full width */}
-                    <Row gutter={[10, 0]}>
-                      <Col span={24}>
-                        <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Sub-Category *</div>
-                        <CategoryCreatableSelect
-                          placeholder="Select or type to add sub-category"
-                          value={item.subCategoryId || undefined}
-                          options={subCatOptions.map(c => ({ label: c.name, value: c._id }))}
-                          parentId={topCatId || ""}
-                          parentColor={allCategories.find(c => c._id === topCatId)?.color}
-                          onSelect={(v, name) => upd(item.id, { subCategoryId: v, subSubCategoryId: "", description: name })}
-                          onClear={() => upd(item.id, { subCategoryId: "", subSubCategoryId: "", description: "" })}
-                          onCreated={onCategoryCreated}
-                        />
-                      </Col>
-                    </Row>
-                    {/* Row 2: Sub-Sub-Category + Unit + Qty + Rate + Amount */}
-                    <Row gutter={[10, 0]} style={{ marginTop: 8 }}>
-                      <Col span={8}>
-                        <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Sub-Sub-Category</div>
+                    <div>
+                      <div className="text-[11px] text-gray-400 mb-1">Sub-Category *</div>
+                      <CategoryCreatableSelect
+                        placeholder="Select or type to add sub-category"
+                        value={item.subCategoryId || undefined}
+                        options={subCatOptions.map(c => ({ label: c.name, value: c._id }))}
+                        parentId={topCatId || ""}
+                        parentColor={allCategories.find(c => c._id === topCatId)?.color}
+                        onSelect={(v, name) => upd(item.id, { subCategoryId: v, subSubCategoryId: "", description: name })}
+                        onClear={() => upd(item.id, { subCategoryId: "", subSubCategoryId: "", description: "" })}
+                        onCreated={onCategoryCreated}
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 mt-2">
+                      <div>
+                        <div className="text-[11px] text-gray-400 mb-1">Sub-Sub-Category</div>
                         <CategoryCreatableSelect
                           placeholder="Select or type to add (optional)"
                           value={item.subSubCategoryId || undefined}
@@ -900,20 +781,19 @@ function ScopeItemsBuilder({ items, onChange, allCategories = [], topCatId = nul
                           onClear={() => { const subCat = allCategories.find(c => c._id === item.subCategoryId); upd(item.id, { subSubCategoryId: "", description: subCat?.name ?? "" }); }}
                           onCreated={onCategoryCreated}
                         />
-                      </Col>
+                      </div>
                       {unitQtyRateCols}
-                    </Row>
+                    </div>
                   </>
                 );
               }
 
-              // Standard layout: description/sub-cat + unit/qty/rate on same row
               return (
-                <Row gutter={[10, 0]}>
-                  <Col span={8}>
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+                  <div>
                     {subCatOptions.length > 0 ? (
                       <>
-                        <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Sub-Category *</div>
+                        <div className="text-[11px] text-gray-400 mb-1">Sub-Category *</div>
                         <CategoryCreatableSelect
                           placeholder="Select or type to add sub-category"
                           value={item.subCategoryId || undefined}
@@ -927,238 +807,124 @@ function ScopeItemsBuilder({ items, onChange, allCategories = [], topCatId = nul
                       </>
                     ) : (
                       <>
-                        <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Description *</div>
-                        <Input
-                          placeholder="e.g. Raft Area, Plaster Works, HT Panel..."
-                          value={item.description}
-                          onChange={e => upd(item.id, { description: e.target.value })}
-                        />
+                        <div className="text-[11px] text-gray-400 mb-1">Description *</div>
+                        <Field placeholder="e.g. Raft Area, Plaster Works, HT Panel..." value={item.description} onChange={e => upd(item.id, { description: e.target.value })} />
                       </>
                     )}
-                  </Col>
+                  </div>
                   {unitQtyRateCols}
-                </Row>
+                </div>
               );
             })()}
 
-            <Row gutter={[10, 0]} style={{ marginTop: 8 }}>
-              <Col span={6}>
-                <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>GST %</div>
-                <GstSelect value={item.gstPercent} onChange={v => upd(item.id, { gstPercent: v })} style={{ width: "100%" }} />
-              </Col>
-              <Col span={18} style={{ display: "flex", alignItems: "flex-end", paddingBottom: 6 }}>
-                <div style={{ fontSize: 12, color: "#5a6278" }}>
-                  Amount incl. GST: <strong style={{ color: "#d4620c", fontFamily: "monospace" }}>
-                    {calcDraftItemAmt(item) > 0 ? fmt(calcDraftItemInclGst(item)) : "—"}
-                  </strong>
-                </div>
-              </Col>
-            </Row>
+            <div className="grid grid-cols-1 sm:grid-cols-5 gap-2.5 mt-2 items-end">
+              <div>
+                <div className="text-[11px] text-gray-400 mb-1">GST %</div>
+                <GstSelect value={item.gstPercent} onChange={v => upd(item.id, { gstPercent: v })} />
+              </div>
+              <div className="sm:col-span-4 pb-2 text-xs text-gray-600 dark:text-gray-300">
+                Amount incl. GST: <strong className="text-primary font-mono">
+                  {calcDraftItemAmt(item) > 0 ? fmt(calcDraftItemInclGst(item)) : "—"}
+                </strong>
+              </div>
+            </div>
 
-            <Row gutter={[10, 0]} style={{ marginTop: 8 }}>
-              <Col span={24}>
-                <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Notes / Remarks (optional)</div>
-                <Input
-                  placeholder="e.g. RCC wall, 1st floor, upto 300MM…"
-                  value={item.remarks}
-                  onChange={e => upd(item.id, { remarks: e.target.value })}
-                />
-              </Col>
-            </Row>
+            <div className="mt-2">
+              <div className="text-[11px] text-gray-400 mb-1">Notes / Remarks (optional)</div>
+              <Field placeholder="e.g. RCC wall, 1st floor, upto 300MM…" value={item.remarks} onChange={e => upd(item.id, { remarks: e.target.value })} />
+            </div>
 
-            <Row gutter={[10, 0]} style={{ marginTop: 10 }}>
-              <Col span={6}>
-                <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Start Date <span style={{ color: "#e03b3b" }}>*</span></div>
-                <DatePicker
-                  format="DD/MM/YYYY"
-                  style={{ width: "100%" }}
-                  status={!item.plannedStart ? "error" : undefined}
-                  value={item.plannedStart ? dayjs(item.plannedStart) : null}
-                  onChange={d => upd(item.id, { plannedStart: d ? d.format("YYYY-MM-DD") : "" })}
-                />
-              </Col>
-              <Col span={6}>
-                <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>End Date <span style={{ color: "#e03b3b" }}>*</span></div>
-                <DatePicker
-                  format="DD/MM/YYYY"
-                  style={{ width: "100%" }}
-                  status={!item.plannedEnd ? "error" : undefined}
-                  value={item.plannedEnd ? dayjs(item.plannedEnd) : null}
-                  onChange={d => upd(item.id, { plannedEnd: d ? d.format("YYYY-MM-DD") : "" })}
-                />
-              </Col>
-              <Col
-                span={12}
-                style={{ display: "flex", alignItems: "flex-end", gap: 8, paddingBottom: 0 }}
-              >
-                <Button
-                  type="link"
-                  size="small"
-                  icon={item.showSubItems ? <UpOutlined /> : <DownOutlined />}
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5 mt-2.5 items-end">
+              <div>
+                <div className="text-[11px] text-gray-400 mb-1">Start Date <span className="text-red-500">*</span></div>
+                <DatePicker value={item.plannedStart} onChange={v => upd(item.id, { plannedStart: v })} />
+              </div>
+              <div>
+                <div className="text-[11px] text-gray-400 mb-1">End Date <span className="text-red-500">*</span></div>
+                <DatePicker value={item.plannedEnd} onChange={v => upd(item.id, { plannedEnd: v })} />
+              </div>
+              <div className="sm:col-span-2 pb-1">
+                <button
+                  type="button"
                   onClick={() => upd(item.id, { showSubItems: !item.showSubItems })}
-                  style={{ color: "#5a6278", padding: 0 }}
+                  className="text-gray-500 dark:text-gray-400 text-xs font-semibold hover:text-gray-700 dark:hover:text-gray-200"
                 >
                   {item.showSubItems ? "Hide" : "Add"} Particulars
-                  {item.subItems.length > 0 && (
-                    <Tag color="blue" style={{ marginLeft: 4, fontSize: 10 }}>
-                      {item.subItems.length}
-                    </Tag>
-                  )}
-                </Button>
-              </Col>
-            </Row>
+                  {item.subItems.length > 0 && <span className="ml-1.5"><Badge color="blue" small>{item.subItems.length}</Badge></span>}
+                </button>
+              </div>
+            </div>
 
             {item.showSubItems && (
-              <div
-                style={{
-                  marginTop: 12,
-                  background: "#f8f9fc",
-                  border: "1px solid #dde1ec",
-                  borderRadius: 6,
-                  padding: 12,
-                }}
-              >
-                <div
-                  style={{
-                    fontSize: 11,
-                    fontWeight: 700,
-                    color: "#9ba3b8",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.07em",
-                    marginBottom: 10,
-                  }}
-                >
+              <div className="mt-3 bg-gray-50/60 dark:bg-gray-800/20 border border-gray-200 dark:border-gray-700/40 rounded-md p-3">
+                <div className="text-[11px] font-bold text-gray-400 uppercase tracking-wide mb-1">
                   Particulars — Reference Only, Not Included in Contract Value
                 </div>
-                <div style={{ color: "#9ba3b8", fontSize: 11, marginTop: -6, marginBottom: 10 }}>
+                <div className="text-gray-400 text-[11px] mb-2.5">
                   The main item's own Qty/Rate/Amount above drive the contract value. Particulars are just a descriptive breakdown for this item.
                 </div>
 
                 {item.subItems.length === 0 && (
-                  <div style={{ color: "#9ba3b8", fontSize: 12, marginBottom: 8 }}>
-                    No sub-items yet.
-                  </div>
+                  <div className="text-gray-400 text-xs mb-2">No sub-items yet.</div>
                 )}
 
                 {item.subItems.map((si, siIdx) => (
-                  <div
-                    key={si.id}
-                    style={{
-                      marginBottom: 8,
-                      background: "var(--nx-white)",
-                      border: "1px solid #e4e7ee",
-                      borderRadius: 6,
-                      padding: "8px 10px",
-                    }}
-                  >
-                  <div
-                    style={{
-                      display: "flex",
-                      gap: 8,
-                      alignItems: "center",
-                      flexWrap: "wrap",
-                    }}
-                  >
-                    <span style={{ fontSize: 11, color: "#9ba3b8", minWidth: 22, fontWeight: 600 }}>
-                      {idx + 1}.{siIdx + 1}
-                    </span>
-                    <Input
-                      placeholder="Sub-item description"
-                      value={si.description}
-                      onChange={e => updSub(item.id, si.id, { description: e.target.value })}
-                      style={{ flex: 2, minWidth: 200 }}
-                    />
-                    {si.unit === "custom" ? (
-                      <Input
-                        placeholder="Type unit"
-                        value={si.customUnit}
-                        onChange={e => updSub(item.id, si.id, { customUnit: e.target.value })}
-                        style={{ width: 100 }}
+                  <div key={si.id} className="mb-2 bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700/40 rounded-md p-2.5">
+                    <div className="flex gap-2 items-center flex-wrap">
+                      <span className="text-[11px] text-gray-400 min-w-[22px] font-semibold">{idx + 1}.{siIdx + 1}</span>
+                      <input
+                        placeholder="Sub-item description"
+                        value={si.description}
+                        onChange={e => updSub(item.id, si.id, { description: e.target.value })}
+                        className="flex-[2] min-w-[200px] h-9 px-2.5 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0F172A] text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
                       />
-                    ) : (
-                      <Select
-                        value={si.unit}
-                        options={UNIT_OPTIONS}
-                        onChange={v => updSub(item.id, si.id, { unit: v, customUnit: "" })}
-                        style={{ width: 130 }}
-                        showSearch
-                        filterOption={(inp, opt) =>
-                          String(opt?.label ?? "").toLowerCase().includes(inp.toLowerCase())
-                        }
+                      {si.unit === "custom" ? (
+                        <input
+                          placeholder="Type unit"
+                          value={si.customUnit}
+                          onChange={e => updSub(item.id, si.id, { customUnit: e.target.value })}
+                          className="w-[100px] h-9 px-2.5 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0F172A] text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                        />
+                      ) : (
+                        <div className="w-[140px]">
+                          <SField value={si.unit} onChange={v => updSub(item.id, si.id, { unit: v, customUnit: "" })} options={UNIT_OPTIONS} />
+                        </div>
+                      )}
+                      <input
+                        type="number" placeholder="Qty" min={0}
+                        value={si.plannedQty ?? ""}
+                        onChange={e => updSub(item.id, si.id, { plannedQty: e.target.value === "" ? null : Number(e.target.value) })}
+                        className="w-[85px] h-9 px-2 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0F172A] text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
                       />
-                    )}
-                    <InputNumber
-                      placeholder="Qty"
-                      value={si.plannedQty}
-                      onChange={v => updSub(item.id, si.id, { plannedQty: v })}
-                      style={{ width: 85 }}
-                      min={0}
-                    />
-                    <InputNumber
-                      placeholder="Rate ₹"
-                      value={si.rate}
-                      onChange={v => updSub(item.id, si.id, { rate: v })}
-                      style={{ width: 95 }}
-                      min={0}
-                    />
-                    <div
-                      style={{
-                        fontFamily: "monospace",
-                        fontWeight: 700,
-                        color: "#d4620c",
-                        fontSize: 12,
-                        minWidth: 85,
-                        textAlign: "right",
-                      }}
-                    >
-                      {calcSubItemAmt(si) > 0 ? fmt(calcSubItemAmt(si)) : "—"}
+                      <input
+                        type="number" placeholder="Rate ₹" min={0}
+                        value={si.rate ?? ""}
+                        onChange={e => updSub(item.id, si.id, { rate: e.target.value === "" ? null : Number(e.target.value) })}
+                        className="w-[95px] h-9 px-2 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0F172A] text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                      />
+                      <div className="font-mono font-bold text-primary text-xs min-w-[85px] text-right">
+                        {calcSubItemAmt(si) > 0 ? fmt(calcSubItemAmt(si)) : "—"}
+                      </div>
+                      <button type="button" onClick={() => removeSub(item.id, si.id)} className="text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded p-1 shrink-0">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
                     </div>
-                    <Button
-                      type="link"
-                      size="small"
-                      danger
-                      icon={<DeleteOutlined />}
-                      onClick={() => removeSub(item.id, si.id)}
-                      style={{ padding: 0 }}
+                    <div className="flex gap-2 items-center mt-1.5 flex-wrap">
+                      <span className="text-[11px] text-gray-400 min-w-[60px]">Start Date</span>
+                      <div className="w-[140px]"><DatePicker value={si.plannedStart} onChange={v => updSub(item.id, si.id, { plannedStart: v })} /></div>
+                      <span className="text-[11px] text-gray-400 min-w-[50px]">End Date</span>
+                      <div className="w-[140px]"><DatePicker value={si.plannedEnd} onChange={v => updSub(item.id, si.id, { plannedEnd: v })} /></div>
+                    </div>
+                    <input
+                      placeholder="Remarks (optional)"
+                      value={si.remarks}
+                      onChange={e => updSub(item.id, si.id, { remarks: e.target.value })}
+                      className="w-full mt-1.5 h-8 px-2.5 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0F172A] text-xs focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
                     />
-                  </div>
-                  <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 6, flexWrap: "wrap" }}>
-                    <span style={{ fontSize: 11, color: "#9ba3b8", minWidth: 60 }}>Start Date</span>
-                    <DatePicker
-                      size="small"
-                      format="DD/MM/YYYY"
-                      style={{ width: 130 }}
-                      value={si.plannedStart ? dayjs(si.plannedStart) : null}
-                      onChange={d => updSub(item.id, si.id, { plannedStart: d ? d.format("YYYY-MM-DD") : "" })}
-                    />
-                    <span style={{ fontSize: 11, color: "#9ba3b8", minWidth: 50 }}>End Date</span>
-                    <DatePicker
-                      size="small"
-                      format="DD/MM/YYYY"
-                      style={{ width: 130 }}
-                      value={si.plannedEnd ? dayjs(si.plannedEnd) : null}
-                      onChange={d => updSub(item.id, si.id, { plannedEnd: d ? d.format("YYYY-MM-DD") : "" })}
-                    />
-                  </div>
-                  <Input
-                    placeholder="Remarks (optional)"
-                    value={si.remarks}
-                    onChange={e => updSub(item.id, si.id, { remarks: e.target.value })}
-                    style={{ marginTop: 6 }}
-                    size="small"
-                  />
                   </div>
                 ))}
 
-                <Button
-                  type="dashed"
-                  size="small"
-                  icon={<PlusOutlined />}
-                  onClick={() => addSub(item.id)}
-                  style={{ borderColor: "#9ba3b8", color: "#5a6278", marginTop: 4 }}
-                >
-                  Add Sub-Item
-                </Button>
+                <Btn small outline icon={Plus} label="Add Sub-Item" onClick={() => addSub(item.id)} />
               </div>
             )}
           </div>
@@ -1166,33 +932,20 @@ function ScopeItemsBuilder({ items, onChange, allCategories = [], topCatId = nul
       ))}
 
       {items.length > 0 && (
-        <div
-          style={{
-            background: "#fff8f3",
-            border: "1px solid #f8c9a0",
-            borderRadius: 8,
-            padding: "12px 16px",
-          }}
-        >
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span style={{ fontWeight: 600, color: "#5a6278" }}>
+        <div className="bg-primary/5 border border-primary/20 rounded-lg p-3.5">
+          <div className="flex justify-between items-center">
+            <span className="font-semibold text-gray-600 dark:text-gray-300">
               Contract Value ({items.length} item{items.length !== 1 ? "s" : ""}) — Excl. GST
             </span>
-            <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#5a6278", fontSize: 14 }}>
-              {total > 0 ? fmt(total) : "—"}
-            </span>
+            <span className="font-mono font-bold text-gray-600 dark:text-gray-300 text-sm">{total > 0 ? fmt(total) : "—"}</span>
           </div>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10 }}>
-            <span style={{ fontWeight: 600, color: "#5a6278" }}>GST (per work item, see above)</span>
-            <span style={{ fontFamily: "monospace", color: "#5a6278", fontSize: 13 }}>
-              {total > 0 ? fmt(totalInclGst - total) : "—"}
-            </span>
+          <div className="flex justify-between items-center mt-2.5">
+            <span className="font-semibold text-gray-600 dark:text-gray-300">GST (per work item, see above)</span>
+            <span className="font-mono text-gray-600 dark:text-gray-300 text-[13px]">{total > 0 ? fmt(totalInclGst - total) : "—"}</span>
           </div>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10, paddingTop: 10, borderTop: "1px solid #f8c9a0" }}>
-            <span style={{ fontWeight: 700, color: "#1a1f2e" }}>Total Contract Value — Incl. GST</span>
-            <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#d4620c", fontSize: 16 }}>
-              {total > 0 ? fmt(totalInclGst) : "—"}
-            </span>
+          <div className="flex justify-between items-center mt-2.5 pt-2.5 border-t border-primary/20">
+            <span className="font-bold text-[#1A1A2E] dark:text-[#F1F5F9]">Total Contract Value — Incl. GST</span>
+            <span className="font-mono font-bold text-primary text-base">{total > 0 ? fmt(totalInclGst) : "—"}</span>
           </div>
         </div>
       )}
@@ -1222,359 +975,60 @@ function DeliverablesBuilder({ items, onChange, gstPercent = 18 }: {
 
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-        <div style={{ fontWeight: 700, fontSize: 14, color: "#1a1f2e" }}>Deliverables</div>
-        <Button
-          type="dashed"
-          icon={<PlusOutlined />}
-          size="small"
-          onClick={() => onChange([...items, newDeliverableDraft(gstPercent)])}
-          style={{ borderColor: "#f37916", color: "#f37916" }}
-        >
-          Add Deliverable
-        </Button>
+      <div className="flex items-center justify-between mb-3">
+        <div className="font-bold text-sm text-[#1A1A2E] dark:text-[#F1F5F9]">Deliverables</div>
+        <Btn small outline icon={Plus} label="Add Deliverable" onClick={() => onChange([...items, newDeliverableDraft(gstPercent)])} />
       </div>
 
       {items.length === 0 && (
-        <div style={{ border: "2px dashed #e4e7ee", borderRadius: 8, padding: "32px 20px", textAlign: "center", color: "#9ba3b8", marginBottom: 12 }}>
-          <div style={{ fontSize: 28, marginBottom: 8 }}>📋</div>
-          <div style={{ fontWeight: 600, color: "#5a6278" }}>No deliverables yet</div>
-          <div style={{ fontSize: 12, marginTop: 4 }}>Click "Add Deliverable" to define the scope of this engagement.</div>
-        </div>
+        <EmptyState icon={ClipboardList} title="No deliverables yet" message='Click "Add Deliverable" to define the scope of this engagement.' />
       )}
 
       {items.map((item, idx) => (
-        <div key={item.id} style={{ border: "1px solid #e4e7ee", borderRadius: 8, marginBottom: 10, padding: "12px 14px" }}>
-          <Row gutter={[10, 10]} align="middle">
-            <Col flex="0 0 24px">
-              <span style={{ background: "#7c3aed", color: "#fff", borderRadius: "50%", width: 22, height: 22, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700 }}>
-                {idx + 1}
-              </span>
-            </Col>
-            <Col flex="2 1 220px">
-              <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Deliverable *</div>
-              <Input
-                placeholder="e.g. Façade Concept Design"
-                value={item.description}
-                onChange={e => upd(item.id, { description: e.target.value })}
-              />
-            </Col>
-            <Col flex="1 1 160px">
-              <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Stage</div>
-              <Select
+        <div key={item.id} className="border border-gray-200 dark:border-gray-700/40 rounded-lg mb-2.5 p-3.5">
+          <div className="grid grid-cols-2 sm:grid-cols-[24px_2fr_1fr_140px_130px_28px] gap-2.5 items-end">
+            <div className="hidden sm:flex items-center pb-2">
+              <span className="bg-purple-600 text-white rounded-full w-[22px] h-[22px] inline-flex items-center justify-center text-[11px] font-bold">{idx + 1}</span>
+            </div>
+            <div>
+              <div className="text-[11px] text-gray-400 mb-1">Deliverable *</div>
+              <Field placeholder="e.g. Façade Concept Design" value={item.description} onChange={e => upd(item.id, { description: e.target.value })} />
+            </div>
+            <div>
+              <div className="text-[11px] text-gray-400 mb-1">Stage</div>
+              <SField
                 placeholder="Select or type a stage"
-                value={item.stage || undefined}
+                value={item.stage || ""}
                 onChange={v => upd(item.id, { stage: v })}
                 options={STAGE_SUGGESTIONS.map(s => ({ label: s, value: s }))}
-                allowClear
-                showSearch
-                onSearch={(v) => { if (v && !STAGE_SUGGESTIONS.includes(v)) upd(item.id, { stage: v }); }}
-                filterOption={(inp, opt) => String(opt?.label ?? "").toLowerCase().includes(inp.toLowerCase())}
-                style={{ width: "100%" }}
-                placement="bottomLeft" getPopupContainer={(trigger) => trigger.parentElement || document.body}
               />
-            </Col>
-            <Col flex="0 0 150px">
-              <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Due Date</div>
-              <DatePicker
-                format="DD/MM/YYYY"
-                style={{ width: "100%" }}
-                value={item.plannedEnd ? dayjs(item.plannedEnd) : null}
-                onChange={d => upd(item.id, { plannedEnd: d ? d.format("YYYY-MM-DD") : "" })}
-              />
-            </Col>
-            <Col flex="0 0 140px">
-              <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Amount (₹) *</div>
-              <InputNumber
-                placeholder="Fee"
-                value={item.rate}
-                onChange={v => upd(item.id, { rate: v })}
-                style={{ width: "100%" }}
-                min={0}
-              />
-            </Col>
-            <Col flex="0 0 32px">
-              <Button
-                type="link" size="small" danger icon={<DeleteOutlined />}
-                onClick={() => onChange(items.filter(it => it.id !== item.id))}
-              />
-            </Col>
-          </Row>
+            </div>
+            <div>
+              <div className="text-[11px] text-gray-400 mb-1">Due Date</div>
+              <DatePicker value={item.plannedEnd} onChange={v => upd(item.id, { plannedEnd: v })} />
+            </div>
+            <div>
+              <div className="text-[11px] text-gray-400 mb-1">Amount (₹) *</div>
+              <Field type="number" min="0" placeholder="Fee" value={item.rate ?? ""} onChange={e => upd(item.id, { rate: e.target.value === "" ? null : Number(e.target.value) })} />
+            </div>
+            <button type="button" onClick={() => onChange(items.filter(it => it.id !== item.id))} className="text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded p-1.5 justify-self-end">
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
       ))}
 
       {items.length > 0 && (
-        <div style={{ background: "#f5f3ff", border: "1px solid #ddd6fe", borderRadius: 8, padding: "12px 16px" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span style={{ fontWeight: 600, color: "#5a6278" }}>
+        <div className="bg-purple-50 dark:bg-purple-500/10 border border-purple-200 dark:border-purple-500/30 rounded-lg p-3.5">
+          <div className="flex justify-between items-center">
+            <span className="font-semibold text-gray-600 dark:text-gray-300">
               Total Fee ({items.length} deliverable{items.length !== 1 ? "s" : ""}) — Excl. GST
             </span>
-            <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#5a6278", fontSize: 14 }}>
-              {total > 0 ? fmt(total) : "—"}
-            </span>
+            <span className="font-mono font-bold text-gray-600 dark:text-gray-300 text-sm">{total > 0 ? fmt(total) : "—"}</span>
           </div>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10, paddingTop: 10, borderTop: "1px solid #ddd6fe" }}>
-            <span style={{ fontWeight: 700, color: "#1a1f2e" }}>Total Fee — Incl. GST</span>
-            <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#7c3aed", fontSize: 16 }}>
-              {total > 0 ? fmt(totalInclGst) : "—"}
-            </span>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── ScopeItemsViewer (removed — progress entered via Work Progress module) ──
-// @ts-ignore -- dead code, kept for reference
-function _ScopeItemsViewer_UNUSED({ scopeItems }: { scopeItems: ScopeItem[] }) {
-  const totalPlanned  = scopeItems.reduce((s, it) => s + it.amount, 0);
-  const totalBillable = scopeItems.reduce((s, it) => {
-    if (it.subItems.length > 0) return s;
-    return s + it.completedQty * it.rate;
-  }, 0);
-  const delayedCount = scopeItems.filter(isItemDelayed).length;
-
-  return (
-    <div>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          marginBottom: 12,
-        }}
-      >
-        <div style={{ fontWeight: 700, fontSize: 14, color: "#1a1f2e" }}>
-          Scope of Work — Live Progress
-        </div>
-        {delayedCount > 0 && (
-          <Tag color="red" icon={<ExclamationCircleOutlined />} style={{ fontWeight: 600 }}>
-            {delayedCount} item{delayedCount > 1 ? "s" : ""} overdue
-          </Tag>
-        )}
-      </div>
-
-      {scopeItems.map((item, idx) => {
-        const delayed = isItemDelayed(item);
-        const days = delayDays(item);
-        const pct = getCompletionPct(item);
-        const cfg = SCOPE_STATUS_CFG[item.status];
-
-        return (
-          <div
-            key={item.id}
-            style={{
-              border: `1px solid ${delayed ? "#ffcdd2" : "#e4e7ee"}`,
-              borderLeft: `4px solid ${delayed ? "#e03b3b" : cfg.color}`,
-              borderRadius: 8,
-              marginBottom: 14,
-              overflow: "hidden",
-              background: delayed ? "#fff9f9" : "#fff",
-            }}
-          >
-            <div style={{ padding: "12px 14px" }}>
-              <div style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 10 }}>
-                <span
-                  style={{
-                    background: cfg.color,
-                    color: "#fff",
-                    borderRadius: "50%",
-                    width: 22,
-                    height: 22,
-                    display: "inline-flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: 11,
-                    fontWeight: 700,
-                    flexShrink: 0,
-                    marginTop: 1,
-                  }}
-                >
-                  {idx + 1}
-                </span>
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                    <span style={{ fontWeight: 700, fontSize: 14, color: "#1a1f2e" }}>
-                      {item.description}
-                    </span>
-                    <Tag
-                      style={{
-                        background: cfg.bg,
-                        border: `1px solid ${cfg.color}`,
-                        color: cfg.color,
-                        fontWeight: 600,
-                        fontSize: 11,
-                      }}
-                    >
-                      {cfg.label}
-                    </Tag>
-                    {delayed && (
-                      <Tooltip title={`Was due ${dayjs(item.plannedEnd).format("DD MMM YYYY")}`}>
-                        <Tag color="red" icon={<ExclamationCircleOutlined />} style={{ fontWeight: 600 }}>
-                          Overdue {days} day{days > 1 ? "s" : ""}
-                        </Tag>
-                      </Tooltip>
-                    )}
-                  </div>
-                  {(item.plannedStart || item.plannedEnd) && (
-                    <div style={{ fontSize: 12, color: "#9ba3b8", marginTop: 3 }}>
-                      {item.plannedStart && dayjs(item.plannedStart).format("DD MMM YYYY")}
-                      {item.plannedStart && item.plannedEnd && " → "}
-                      {item.plannedEnd && (
-                        <span style={{ color: delayed ? "#e03b3b" : "#9ba3b8", fontWeight: delayed ? 600 : 400 }}>
-                          {dayjs(item.plannedEnd).format("DD MMM YYYY")}
-                        </span>
-                      )}
-                    </div>
-                  )}
-                </div>
-                {/* Progress is entered via the Work Progress module */}
-              </div>
-
-              {item.status !== "pending" && (
-                <div style={{ marginBottom: 10 }}>
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      fontSize: 12,
-                      marginBottom: 4,
-                    }}
-                  >
-                    <span style={{ color: "#5a6278" }}>
-                      Completed:{" "}
-                      <strong style={{ color: "#1a1f2e" }}>
-                        {item.completedQty.toLocaleString("en-IN")} {item.unit}
-                      </strong>
-                    </span>
-                    <span style={{ color: "#5a6278" }}>
-                      Remaining:{" "}
-                      <strong>
-                        {Math.max(0, item.plannedQty - (item.completedQty ?? 0)).toLocaleString("en-IN")} {item.unit}
-                      </strong>
-                    </span>
-                    <strong style={{ color: pct >= 100 ? "#16a85a" : delayed ? "#e03b3b" : "#f37916" }}>
-                      {pct}%
-                    </strong>
-                  </div>
-                  <Progress
-                    percent={pct}
-                    size="small"
-                    strokeColor={pct >= 100 ? "#16a85a" : delayed ? "#e03b3b" : "#f37916"}
-                    trailColor="#f0f0f0"
-                    showInfo={false}
-                  />
-                </div>
-              )}
-
-              <div
-                style={{
-                  display: "flex",
-                  gap: 20,
-                  flexWrap: "wrap",
-                  fontSize: 12,
-                  color: "#9ba3b8",
-                  borderTop: "1px solid #f0f0f0",
-                  paddingTop: 8,
-                  marginTop: 6,
-                }}
-              >
-                {item.subItems.length === 0 ? (
-                  <>
-                    <span>Scope: <strong style={{ color: "#1a1f2e" }}>{item.plannedQty.toLocaleString("en-IN")} {item.unit}</strong></span>
-                    <span>Rate: <strong style={{ color: "#1a1f2e" }}>₹{item.rate.toLocaleString("en-IN")}/{item.unit}</strong></span>
-                    <span>Contract: <strong style={{ fontFamily: "monospace", color: "#2563eb" }}>{fmt(item.amount)}</strong></span>
-                    {item.status !== "pending" && (
-                      <span>Billable now: <strong style={{ fontFamily: "monospace", color: "#16a85a" }}>{fmt(item.completedQty * item.rate)}</strong></span>
-                    )}
-                  </>
-                ) : (
-                  <span>Contract value (sub-items): <strong style={{ fontFamily: "monospace", color: "#2563eb" }}>{fmt(item.amount)}</strong></span>
-                )}
-              </div>
-
-              {item.subItems.length > 0 && (
-                <div style={{ marginTop: 10, border: "1px solid #e4e7ee", borderRadius: 6, overflow: "hidden" }}>
-                  <div style={{ padding: "6px 12px", fontSize: 11, fontWeight: 700, color: "#9ba3b8", textTransform: "uppercase", letterSpacing: "0.07em", background: "#f5f6f8", borderBottom: "1px solid #e4e7ee" }}>
-                    Sub-Items
-                  </div>
-                  <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
-                    <thead>
-                      <tr style={{ background: "#fafafa" }}>
-                        {["#", "Description", "Unit", "Qty", "Rate (₹)", "Amount"].map(h => (
-                          <th key={h} style={{ padding: "6px 10px", textAlign: ["Amount", "Rate (₹)", "Qty"].includes(h) ? "right" : "left", color: "#5a6278", fontWeight: 600, fontSize: 11, borderBottom: "1px solid #e4e7ee" }}>
-                            {h}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {item.subItems.map((si, siIdx) => (
-                        <tr key={si.id} style={{ borderBottom: "1px solid #f5f6f8" }}>
-                          <td style={{ padding: "6px 10px", color: "#9ba3b8", fontSize: 11 }}>{idx + 1}.{siIdx + 1}</td>
-                          <td style={{ padding: "6px 10px", color: "#1a1f2e" }}>{si.description}</td>
-                          <td style={{ padding: "6px 10px", color: "#5a6278" }}>{si.unit}</td>
-                          <td style={{ padding: "6px 10px", textAlign: "right", fontFamily: "monospace" }}>{si.plannedQty.toLocaleString("en-IN")}</td>
-                          <td style={{ padding: "6px 10px", textAlign: "right", fontFamily: "monospace" }}>₹{si.rate.toLocaleString("en-IN")}</td>
-                          <td style={{ padding: "6px 10px", textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: "#d4620c" }}>{fmt(si.amount)}</td>
-                        </tr>
-                      ))}
-                      <tr style={{ background: "#fff8f3" }}>
-                        <td colSpan={5} style={{ padding: "8px 10px", fontWeight: 700, color: "#5a6278" }}>Sub-Total</td>
-                        <td style={{ padding: "8px 10px", textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: "#d4620c", fontSize: 13 }}>{fmt(item.amount)}</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              )}
-
-              {item.progressEntries.length > 0 && (
-                <div style={{ marginTop: 12 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: "#9ba3b8", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 6, display: "flex", alignItems: "center", gap: 6 }}>
-                    <HistoryOutlined /> Progress History
-                  </div>
-                  {item.progressEntries.map((pe, peIdx) => (
-                    <div
-                      key={pe.id}
-                      style={{ display: "flex", gap: 12, alignItems: "center", padding: "5px 0", borderBottom: peIdx < item.progressEntries.length - 1 ? "1px solid #f5f6f8" : "none", fontSize: 12 }}
-                    >
-                      <span style={{ color: "#9ba3b8", minWidth: 95 }}>{dayjs(pe.date).format("DD MMM YYYY")}</span>
-                      <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#16a85a", minWidth: 80 }}>
-                        +{pe.qtyAdded.toLocaleString("en-IN")} {item.unit}
-                      </span>
-                      {pe.remarks && <span style={{ color: "#5a6278", flex: 1 }}>{pe.remarks}</span>}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        );
-      })}
-
-      {scopeItems.length > 0 && (
-        <div style={{ border: "1px solid #e4e7ee", borderRadius: 8, overflow: "hidden", marginTop: 4 }}>
-          <div style={{ background: "#f5f6f8", padding: "8px 14px", fontWeight: 700, fontSize: 11, color: "#5a6278", textTransform: "uppercase", letterSpacing: "0.07em", borderBottom: "1px solid #e4e7ee" }}>
-            Financial Summary
-          </div>
-          <div style={{ padding: "12px 14px" }}>
-            {scopeItems.map(it => (
-              <div key={it.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, padding: "4px 0", borderBottom: "1px solid #f5f6f8" }}>
-                <span style={{ color: "#5a6278" }}>{it.description}</span>
-                <span style={{ fontFamily: "monospace", color: "#1a1f2e" }}>{fmt(it.amount)}</span>
-              </div>
-            ))}
-            <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700, fontSize: 15, color: "#d4620c", padding: "10px 0 4px", marginTop: 6, borderTop: "2px solid #e4e7ee" }}>
-              <span>Total Contract Value</span>
-              <span style={{ fontFamily: "monospace" }}>{fmt(totalPlanned)}</span>
-            </div>
-            {totalBillable > 0 && (
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "#16a85a", fontWeight: 600, padding: "4px 0" }}>
-                <span>Billable (executed so far)</span>
-                <span style={{ fontFamily: "monospace" }}>{fmt(totalBillable)}</span>
-              </div>
-            )}
+          <div className="flex justify-between items-center mt-2.5 pt-2.5 border-t border-purple-200 dark:border-purple-500/30">
+            <span className="font-bold text-[#1A1A2E] dark:text-[#F1F5F9]">Total Fee — Incl. GST</span>
+            <span className="font-mono font-bold text-purple-600 text-base">{total > 0 ? fmt(totalInclGst) : "—"}</span>
           </div>
         </div>
       )}
@@ -1588,10 +1042,8 @@ function _ScopeItemsViewer_UNUSED({ scopeItems }: { scopeItems: ScopeItem[] }) {
 // Attachments) as the reference layout, without touching what's inside.
 function FormSection({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div style={{ border: "1px solid #E5E7EB", borderRadius: 10, padding: "16px 18px 4px", marginBottom: 16 }}>
-      <div style={{ fontSize: 11, fontWeight: 700, color: "#9ba3b8", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 14 }}>
-        {title}
-      </div>
+    <div className="border border-gray-200 dark:border-gray-700/40 rounded-lg px-4 pt-4 pb-1 mb-4">
+      <div className="text-[11px] font-bold text-gray-400 uppercase tracking-wide mb-3.5">{title}</div>
       {children}
     </div>
   );
@@ -1614,7 +1066,7 @@ function BankDetailsPanel({ vendorCode, contractType, contractorsList, consultan
   if (!party) {
     return (
       <FormSection title={`Bank Details (${isProfessionalServices ? "Consultant" : "Contractor"})`}>
-        <div style={{ fontSize: 13, color: "#9ba3b8", paddingBottom: 14 }}>
+        <div className="text-sm text-gray-400 pb-3.5">
           Select a {isProfessionalServices ? "consultant" : "vendor"} above to see their bank details.
         </div>
       </FormSection>
@@ -1629,11 +1081,11 @@ function BankDetailsPanel({ vendorCode, contractType, contractorsList, consultan
   ];
   return (
     <FormSection title={`Bank Details (${isProfessionalServices ? "Consultant" : "Contractor"})`}>
-      <div style={{ display: "flex", flexDirection: "column", gap: 10, paddingBottom: 14 }}>
+      <div className="flex flex-col gap-2.5 pb-3.5">
         {rows.map(([label, value]) => (
-          <div key={label} style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 13 }}>
-            <span style={{ color: "#9ba3b8" }}>{label}</span>
-            <span style={{ fontWeight: 600, color: "#1a1f2e", fontFamily: label.includes("Number") || label.includes("IFSC") ? "monospace" : undefined }}>
+          <div key={label} className="flex justify-between gap-3 text-sm">
+            <span className="text-gray-400">{label}</span>
+            <span className={`font-semibold text-[#1A1A2E] dark:text-[#F1F5F9] ${label.includes("Number") || label.includes("IFSC") ? "font-mono" : ""}`}>
               {value || "—"}
             </span>
           </div>
@@ -1644,23 +1096,51 @@ function BankDetailsPanel({ vendorCode, contractType, contractorsList, consultan
 }
 
 // ── WOFormFields ──────────────────────────────────────────────
+// A single controlled form-values object replaces the antd Form instance this
+// used to share with its parent — `values`/`onChange` here play exactly the
+// role `form`'s watches/setFieldsValue/getFieldValue used to.
+
+interface WOFormValues {
+  contractType: string;
+  workOrderNo: string;
+  companyId: string;
+  projectId: string;
+  projectName: string;
+  projectLocation: string;
+  issueDate: string;
+  vendorCode: string;
+  category: string;
+  subCategory: string;
+  status: string;
+  gstPercent: number;
+  retentionPercent: number;
+  assignedDRI: string[];
+  vendorName: string;
+  ownerName: string;
+  mobile: string;
+  issuedUnder: string;
+  description: string;
+  totalTenure: string;
+  documents: WODocument[];
+  internalRemark: string;
+}
+
+const blankWOForm = (): WOFormValues => ({
+  contractType: "execution", workOrderNo: "", companyId: "", projectId: "", projectName: "",
+  projectLocation: "", issueDate: "", vendorCode: "", category: "", subCategory: "",
+  status: "draft", gstPercent: 18, retentionPercent: 0, assignedDRI: [], vendorName: "",
+  ownerName: "", mobile: "", issuedUnder: "company", description: "", totalTenure: "",
+  documents: [], internalRemark: "",
+});
 
 function WOFormFields({
-  form,
-  isEdit = false,
-  nextWONo,
-  nextCWONo,
-  contractorsList,
-  consultantsList,
-  projectsList,
-  categoriesList,
-  companiesList = [],
-  driList = [],
-  preparedByName,
-  preparedByContact,
-  onExtracted,
+  values, onChange, errors, isEdit = false, nextWONo, nextCWONo,
+  contractorsList, consultantsList, projectsList, categoriesList, companiesList = [],
+  driList = [], preparedByName, preparedByContact, onExtracted,
 }: {
-  form: FormInstance;
+  values: WOFormValues;
+  onChange: (patch: Partial<WOFormValues>) => void;
+  errors?: Partial<Record<"projectId" | "issueDate" | "vendorCode" | "status", string>>;
   isEdit?: boolean;
   nextWONo: string;
   nextCWONo: string;
@@ -1679,16 +1159,12 @@ function WOFormFields({
 }) {
   const [extracting, setExtracting] = useState(false);
   const [extractNote, setExtractNote] = useState("");
-  const watchedVendorName = Form.useWatch("vendorName", form) as string | undefined;
-  const watchedOwnerName  = Form.useWatch("ownerName", form) as string | undefined;
-  const contractType = (Form.useWatch("contractType", form) as string | undefined) ?? "execution";
-  const isProfessionalServices = contractType === "professional-services";
+  const isProfessionalServices = values.contractType === "professional-services";
 
   const handleExtract = async () => {
-    const docs: WODocument[] = form.getFieldValue("documents") || [];
-    const target = [...docs].reverse().find(d => /\.(pdf|jpe?g|png)$/i.test(d.name));
+    const target = [...values.documents].reverse().find(d => /\.(pdf|jpe?g|png)$/i.test(d.name));
     if (!target) {
-      message.warning("Upload a PDF or image document above first");
+      toast.error("Upload a PDF or image document above first");
       return;
     }
     setExtracting(true);
@@ -1699,21 +1175,21 @@ function WOFormFields({
         fileName: target.name,
       });
       const data = res.data.extracted;
-      form.setFieldsValue({
-        description:      data.scopeOfWork || undefined,
-        totalTenure:       data.totalTenure || undefined,
-        issueDate:         data.issueDate ? dayjs(data.issueDate) : undefined,
-        retentionPercent: data.retentionPercent ?? undefined,
-        gstPercent:        data.gstPercent ?? undefined,
+      onChange({
+        description:      data.scopeOfWork || values.description,
+        totalTenure:       data.totalTenure || values.totalTenure,
+        issueDate:         data.issueDate ? dayjs(data.issueDate).format("YYYY-MM-DD") : values.issueDate,
+        retentionPercent: data.retentionPercent ?? values.retentionPercent,
+        gstPercent:        data.gstPercent ?? values.gstPercent,
       });
       onExtracted?.(data);
       if (data.extractionNotes) setExtractNote(data.extractionNotes);
-      message.success(
+      toast.success(
         `Extracted ${data.scopeItems?.length ?? 0} scope item(s) and ${data.paymentMilestones?.length ?? 0} payment milestone(s) — review before saving`
       );
     } catch (err: unknown) {
       const e = err as { response?: { data?: { message?: string } } };
-      message.error(e?.response?.data?.message || "AI extraction failed");
+      toast.error(e?.response?.data?.message || "AI extraction failed");
     } finally {
       setExtracting(false);
     }
@@ -1721,343 +1197,226 @@ function WOFormFields({
 
   const fillVendor = (vendorCode: string) => {
     const c = contractorsList.find(x => x.vendorCode === vendorCode);
-    if (c) {
-      form.setFieldsValue({
-        vendorName: c.companyName,
-        ownerName:  c.ownerName,
-        mobile:     c.mobile,
-      });
-    }
+    onChange({ vendorCode, ...(c ? { vendorName: c.companyName, ownerName: c.ownerName, mobile: c.mobile } : {}) });
   };
 
   const fillConsultant = (consultantCode: string) => {
     const c = consultantsList.find(x => x.consultantCode === consultantCode);
-    if (c) {
-      form.setFieldsValue({
-        vendorName: c.firmName,
-        ownerName:  c.principalName,
-        mobile:     c.mobile,
-      });
-    }
+    onChange({ vendorCode: consultantCode, ...(c ? { vendorName: c.firmName, ownerName: c.principalName, mobile: c.mobile } : {}) });
   };
 
   const fillProject = (projectId: string) => {
     const p = projectsList.find(x => (x as any)._id === projectId || x.id === projectId);
-    if (p) form.setFieldsValue({ projectName: p.name });
+    onChange({ projectId, ...(p ? { projectName: p.name } : {}) });
   };
 
   return (
     <>
       {preparedByName && (
-        <div style={{ display: "flex", gap: 20, flexWrap: "wrap", marginBottom: 16, fontSize: 12, color: "#5a6278", background: "#f5f6f8", border: "1px solid #e4e7ee", borderRadius: 8, padding: "8px 14px" }}>
-          <span>Prepared By: <strong style={{ color: "#1a1f2e" }}>{preparedByName}</strong></span>
-          {preparedByContact && <span>Contact: <strong style={{ color: "#1a1f2e" }}>{preparedByContact}</strong></span>}
+        <div className="flex gap-5 flex-wrap mb-4 text-xs text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700/40 rounded-lg px-3.5 py-2">
+          <span>Prepared By: <strong className="text-[#1A1A2E] dark:text-[#F1F5F9]">{preparedByName}</strong></span>
+          {preparedByContact && <span>Contact: <strong className="text-[#1A1A2E] dark:text-[#F1F5F9]">{preparedByContact}</strong></span>}
         </div>
       )}
 
-      <Form.Item label="Contract Type" name="contractType" initialValue="execution" style={{ marginBottom: 16 }}>
+      <div className="mb-4">
+        <span className="block text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wide mb-1.5">Contract Type</span>
         {isEdit ? (
-          <Tag color={isProfessionalServices ? "purple" : "blue"} style={{ fontSize: 12, padding: "4px 10px" }}>
+          <Badge color={isProfessionalServices ? "purple" : "blue"}>
             {isProfessionalServices ? "Professional Services Contract" : "Execution Contract"}
-          </Tag>
+          </Badge>
         ) : (
-          <Radio.Group
-            onChange={() => form.setFieldsValue({ vendorCode: undefined, vendorName: "", ownerName: "", mobile: "" })}
-          >
-            <Radio.Button value="execution">Execution Contract</Radio.Button>
-            <Radio.Button value="professional-services">Professional Services Contract</Radio.Button>
-          </Radio.Group>
+          <Segmented
+            value={values.contractType}
+            onChange={(v) => onChange({ contractType: v, vendorCode: "", vendorName: "", ownerName: "", mobile: "" })}
+            options={[
+              { value: "execution", label: "Execution Contract" },
+              { value: "professional-services", label: "Professional Services Contract" },
+            ]}
+          />
         )}
-      </Form.Item>
-
-      <Row gutter={16} style={{ marginBottom: 4 }}>
-        <Col span={12}>
-          <Form.Item
-            label={isProfessionalServices ? "Consultancy Order Number" : "Work Order Number"}
-            name="workOrderNo"
-            tooltip={!isEdit ? `Leave blank to auto-assign (${isProfessionalServices ? nextCWONo : nextWONo})` : undefined}
-          >
-            <Input
-              placeholder={isEdit ? undefined : `Auto-assign: ${isProfessionalServices ? nextCWONo : nextWONo}`}
-              disabled={isEdit}
-              style={{ fontFamily: "monospace" }}
-              maxLength={20}
-            />
-          </Form.Item>
-        </Col>
-        <Col span={12}>
-          <Form.Item
-            label="Issuing Company"
-            name="companyId"
-            tooltip="Which Neoteric entity is issuing this work order? (printed on the WO PDF)"
-          >
-            <Select
-              placeholder="Select company (optional)"
-              allowClear
-              showSearch
-              filterOption={(inp, opt) =>
-                String(opt?.label ?? "").toLowerCase().includes(inp.toLowerCase())
-              }
-              options={companiesList.filter((c: any) => c.isActive).map((c: any) => ({
-                label: `${c.shortCode} – ${c.name}`,
-                value: c._id,
-              }))}
-              placement="bottomLeft" getPopupContainer={(trigger) => trigger.parentElement || document.body}
-            />
-          </Form.Item>
-        </Col>
-      </Row>
-
-      <Row gutter={16}>
-        <Col span={12}>
-          <Form.Item
-            label="Project"
-            name="projectId"
-            rules={[{ required: true, message: "Select a project" }]}
-          >
-            <Select
-              placeholder="Select project"
-              onChange={fillProject}
-              showSearch
-              filterOption={(inp, opt) =>
-                String(opt?.label ?? "").toLowerCase().includes(inp.toLowerCase())
-              }
-              options={selectableProjects(projectsList).map(p => ({
-                label: p.name,
-                value: (p as any)._id || p.id,
-              }))}
-              placement="bottomLeft" getPopupContainer={(trigger) => trigger.parentElement || document.body}
-            />
-          </Form.Item>
-          <Form.Item name="projectName" hidden><Input /></Form.Item>
-          <Form.Item
-            label="Location"
-            name="projectLocation"
-            tooltip="Exact site location for this work order (e.g. tower, plot no., landmark)"
-          >
-            <Input placeholder="e.g. Tower A, Ground Floor" />
-          </Form.Item>
-        </Col>
-        <Col span={12}>
-          <Form.Item
-            label="Issue Date"
-            name="issueDate"
-            rules={[{ required: true, message: "Select issue date" }]}
-          >
-            <DatePicker style={{ width: "100%" }} format="DD/MM/YYYY" />
-          </Form.Item>
-        </Col>
-      </Row>
-
-      <Row gutter={16}>
-        <Col span={12}>
-          <Form.Item
-            label={isProfessionalServices ? "Consultant" : "Vendor Code"}
-            name="vendorCode"
-            rules={[{ required: true, message: isProfessionalServices ? "Select a consultant" : "Select a vendor" }]}
-          >
-            {isProfessionalServices ? (
-              <Select
-                placeholder="Select consultant"
-                showSearch
-                filterOption={(input, opt) =>
-                  String(opt?.label ?? "").toLowerCase().includes(input.toLowerCase())
-                }
-                onChange={fillConsultant}
-                options={consultantsList.map(c => ({
-                  label: `${c.consultantCode} — ${c.firmName}`,
-                  value: c.consultantCode,
-                }))}
-                placement="bottomLeft" getPopupContainer={(trigger) => trigger.parentElement || document.body}
-              />
-            ) : (
-              <Select
-                placeholder="Select vendor"
-                showSearch
-                filterOption={(input, opt) =>
-                  String(opt?.label ?? "").toLowerCase().includes(input.toLowerCase())
-                }
-                onChange={fillVendor}
-                options={contractorsList.map(c => ({
-                  label: `${c.vendorCode} — ${vendorLabel(c.companyName, c.shortCode)}`,
-                  value: c.vendorCode,
-                }))}
-                placement="bottomLeft" getPopupContainer={(trigger) => trigger.parentElement || document.body}
-              />
-            )}
-          </Form.Item>
-        </Col>
-        <Col span={12}>
-          <Form.Item label="Category" name="category">
-            <Select
-              placeholder="Select category (optional)"
-              allowClear
-              options={categoriesList.filter(c => c.isActive && !c.parentId).map(c => ({
-                label: c.name,
-                value: c.name,
-              }))}
-              placement="bottomLeft" getPopupContainer={(trigger) => trigger.parentElement || document.body}
-            />
-          </Form.Item>
-        </Col>
-      </Row>
-      <Row gutter={16}>
-        <Col span={12}>
-          <Form.Item label="Status" name="status" rules={[{ required: true }]}>
-            <Select
-              options={STATUS_OPTIONS}
-              placement="bottomLeft" getPopupContainer={(trigger) => trigger.parentElement || document.body}
-            />
-          </Form.Item>
-        </Col>
-      </Row>
-
-      <Row gutter={16}>
-        <Col span={isProfessionalServices ? 24 : 12}>
-          <Form.Item label="GST Slab" name="gstPercent" initialValue={18} tooltip="GST % applicable on billing for this work order">
-            <GstSelect />
-          </Form.Item>
-        </Col>
-        {/* No retention/hold for a professional-services engagement — there's
-            no defect-liability-period measurement concept to hold security
-            against. Field stays registered (hidden) so it keeps saving 0. */}
-        <Col span={12} style={isProfessionalServices ? { display: "none" } : undefined}>
-          <Form.Item label="Retention / Hold %" name="retentionPercent" initialValue={0} tooltip="% of each bill withheld until work completion (e.g. 5%)">
-            <Select
-              options={[
-                { label: "0% — No retention", value: 0 },
-                { label: "2.5%", value: 2.5 },
-                { label: "5%", value: 5 },
-                { label: "10%", value: 10 },
-                { label: "15%", value: 15 },
-                { label: "20%", value: 20 },
-              ]}
-              placement="bottomLeft" getPopupContainer={(trigger) => trigger.parentElement || document.body}
-            />
-          </Form.Item>
-        </Col>
-      </Row>
-
-      {driList.length > 0 && (
-        <Row gutter={16}>
-          <Col span={24}>
-            <Form.Item label="Assign DRI (Site Engineer)" name="assignedDRI" tooltip="Site engineers who will track progress on this work order">
-              <Select
-                mode="multiple"
-                placeholder="Select DRI(s) to assign (optional)"
-                allowClear
-                options={driList.map(d => ({ label: `${d.name} (${d.email})`, value: d._id }))}
-                placement="bottomLeft" getPopupContainer={(trigger) => trigger.parentElement || document.body}
-              />
-            </Form.Item>
-          </Col>
-        </Row>
-      )}
-
-      <div
-        style={{
-          background: "#f5f6f8",
-          border: "1px solid #e4e7ee",
-          borderRadius: 8,
-          padding: "14px 16px",
-          marginBottom: 16,
-        }}
-      >
-        <div
-          style={{
-            fontSize: 10,
-            fontWeight: 700,
-            color: "#9ba3b8",
-            textTransform: "uppercase",
-            letterSpacing: "0.07em",
-            marginBottom: 12,
-          }}
-        >
-          {isProfessionalServices ? "Auto-filled from Consultant Master" : "Auto-filled from Contractor Master"}
-        </div>
-        <Row gutter={16}>
-          <Col span={12}>
-            <Form.Item label={isProfessionalServices ? "Firm Name" : "Company Name"} name="vendorName" style={{ marginBottom: 10 }}>
-              <Input disabled />
-            </Form.Item>
-          </Col>
-          <Col span={12}>
-            <Form.Item label={isProfessionalServices ? "Principal Name" : "Owner Name"} name="ownerName" style={{ marginBottom: 10 }}>
-              <Input disabled />
-            </Form.Item>
-          </Col>
-        </Row>
-        <Form.Item label="Mobile" name="mobile" style={{ marginBottom: 0 }}>
-          <Input disabled />
-        </Form.Item>
       </div>
 
-      <Form.Item
-        label="Work Order Issued Under"
-        name="issuedUnder"
-        initialValue="company"
-        tooltip="Whether this work order is drawn up in the contractor's company/firm name or their personal (owner) name — affects the printed WO PDF only, not the contractor record itself"
-      >
-        <Radio.Group>
-          <Radio value="company">Company Name{watchedVendorName ? ` (${watchedVendorName})` : ""}</Radio>
-          <Radio value="owner">Owner Name{watchedOwnerName ? ` (${watchedOwnerName})` : ""}</Radio>
-        </Radio.Group>
-      </Form.Item>
-
-      <Form.Item
-        label="Overall Description / Scope of Work"
-        name="description"
-        tooltip="Describe the full scope of this work order — shown in the downloaded PDF before the item list"
-      >
-        <Input.TextArea
-          rows={3}
-          placeholder="e.g. Supply and installation of false ceiling including framework, boarding and finishing as per approved drawings..."
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+        <Field
+          label={isProfessionalServices ? "Consultancy Order Number" : "Work Order Number"}
+          placeholder={isEdit ? undefined : `Auto-assign: ${isProfessionalServices ? nextCWONo : nextWONo}`}
+          disabled={isEdit}
+          maxLength={20}
+          className="font-mono"
+          value={values.workOrderNo}
+          onChange={e => onChange({ workOrderNo: e.target.value })}
+          hint={!isEdit ? `Leave blank to auto-assign (${isProfessionalServices ? nextCWONo : nextWONo})` : undefined}
         />
-      </Form.Item>
+        <SField
+          label="Issuing Company"
+          placeholder="Select company (optional)"
+          value={values.companyId}
+          onChange={v => onChange({ companyId: v })}
+          options={[{ value: "", label: "— None —" }, ...companiesList.filter((c: any) => c.isActive).map((c: any) => ({ label: `${c.shortCode} – ${c.name}`, value: c._id }))]}
+          hint="Which Neoteric entity is issuing this work order? (printed on the WO PDF)"
+        />
+      </div>
 
-      <Form.Item
-        label="Total Tenure of Entire Work"
-        name="totalTenure"
-        tooltip="Overall time allotted to complete this work order — shown in the PDF under Project Details"
-      >
-        <Input placeholder="e.g. 45 Days, 3 Months" />
-      </Form.Item>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <SField
+            label="Project" required
+            placeholder="Select project"
+            value={values.projectId}
+            onChange={fillProject}
+            options={selectableProjects(projectsList).map(p => ({ label: p.name, value: (p as any)._id || p.id }))}
+            error={errors?.projectId}
+          />
+          <div className="mt-4">
+            <Field
+              label="Location" placeholder="e.g. Tower A, Ground Floor"
+              value={values.projectLocation} onChange={e => onChange({ projectLocation: e.target.value })}
+              hint="Exact site location for this work order (e.g. tower, plot no., landmark)"
+            />
+          </div>
+        </div>
+        <div>
+          <DatePicker label="Issue Date *" value={values.issueDate} onChange={v => onChange({ issueDate: v })} />
+          {errors?.issueDate && <span className="block text-xs text-red-500 mt-1">{errors.issueDate}</span>}
+        </div>
+      </div>
 
-      <Form.Item label="Upload Work Order Documents" name="documents">
-        <DocumentsUpload />
-      </Form.Item>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+        <SField
+          label={isProfessionalServices ? "Consultant" : "Vendor Code"} required
+          placeholder={isProfessionalServices ? "Select consultant" : "Select vendor"}
+          value={values.vendorCode}
+          onChange={isProfessionalServices ? fillConsultant : fillVendor}
+          options={isProfessionalServices
+            ? consultantsList.map(c => ({ label: `${c.consultantCode} — ${c.firmName}`, value: c.consultantCode }))
+            : contractorsList.map(c => ({ label: `${c.vendorCode} — ${vendorLabel(c.companyName, c.shortCode)}`, value: c.vendorCode }))}
+          error={errors?.vendorCode}
+        />
+        <SField
+          label="Category"
+          placeholder="Select category (optional)"
+          value={values.category}
+          onChange={v => onChange({ category: v })}
+          options={[{ value: "", label: "— None —" }, ...categoriesList.filter(c => c.isActive && !c.parentId).map(c => ({ label: c.name, value: c.name }))]}
+        />
+      </div>
 
-      <Form.Item
-        label="Remarks"
-        name="internalRemark"
-        tooltip="A general note on this work order — shown in the detail view and printed on the WO PDF under Project Details"
-      >
-        <Input.TextArea rows={2} placeholder="e.g. Site access via rear gate only, coordinate with security…" />
-      </Form.Item>
+      <div className="mt-4">
+        <SField
+          label="Status" required
+          value={values.status}
+          onChange={v => onChange({ status: v })}
+          options={STATUS_OPTIONS}
+          error={errors?.status}
+        />
+      </div>
+
+      <div className={`grid grid-cols-1 ${isProfessionalServices ? "" : "sm:grid-cols-2"} gap-4 mt-4`}>
+        <div>
+          <span className="block text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wide mb-1.5">GST Slab</span>
+          <GstSelect value={values.gstPercent} onChange={v => onChange({ gstPercent: v })} />
+        </div>
+        {/* No retention/hold for a professional-services engagement — there's
+            no defect-liability-period measurement concept to hold security
+            against. Value stays in state (still saved as 0/whatever it last
+            was) even while not rendered here. */}
+        {!isProfessionalServices && (
+          <SField
+            label="Retention / Hold %"
+            value={String(values.retentionPercent)}
+            onChange={v => onChange({ retentionPercent: Number(v) })}
+            options={[
+              { label: "0% — No retention", value: "0" },
+              { label: "2.5%", value: "2.5" },
+              { label: "5%", value: "5" },
+              { label: "10%", value: "10" },
+              { label: "15%", value: "15" },
+              { label: "20%", value: "20" },
+            ]}
+            hint="% of each bill withheld until work completion (e.g. 5%)"
+          />
+        )}
+      </div>
+
+      {driList.length > 0 && (
+        <div className="mt-4">
+          <MultiSelect
+            label="Assign DRI (Site Engineer)"
+            placeholder="Select DRI(s) to assign (optional)"
+            values={values.assignedDRI}
+            onChange={v => onChange({ assignedDRI: v })}
+            options={driList.map(d => ({ label: `${d.name} (${d.email})`, value: d._id }))}
+          />
+        </div>
+      )}
+
+      <div className="bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700/40 rounded-lg p-3.5 my-4">
+        <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-3">
+          {isProfessionalServices ? "Auto-filled from Consultant Master" : "Auto-filled from Contractor Master"}
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-2.5">
+          <Field label={isProfessionalServices ? "Firm Name" : "Company Name"} disabled value={values.vendorName} onChange={() => {}} />
+          <Field label={isProfessionalServices ? "Principal Name" : "Owner Name"} disabled value={values.ownerName} onChange={() => {}} />
+        </div>
+        <Field label="Mobile" disabled value={values.mobile} onChange={() => {}} />
+      </div>
+
+      <div className="mb-4">
+        <span className="block text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wide mb-1.5">Work Order Issued Under</span>
+        <Segmented
+          value={values.issuedUnder}
+          onChange={v => onChange({ issuedUnder: v })}
+          options={[
+            { value: "company", label: `Company Name${values.vendorName ? ` (${values.vendorName})` : ""}` },
+            { value: "owner", label: `Owner Name${values.ownerName ? ` (${values.ownerName})` : ""}` },
+          ]}
+        />
+        <span className="block text-[11px] text-gray-400 mt-1">
+          Whether this work order is drawn up in the contractor's company/firm name or their personal (owner) name — affects the printed WO PDF only, not the contractor record itself.
+        </span>
+      </div>
+
+      <div className="mb-4">
+        <Field
+          textarea label="Overall Description / Scope of Work"
+          placeholder="e.g. Supply and installation of false ceiling including framework, boarding and finishing as per approved drawings..."
+          value={values.description} onChange={e => onChange({ description: e.target.value })}
+          hint="Describe the full scope of this work order — shown in the downloaded PDF before the item list"
+        />
+      </div>
+
+      <div className="mb-4">
+        <Field
+          label="Total Tenure of Entire Work" placeholder="e.g. 45 Days, 3 Months"
+          value={values.totalTenure} onChange={e => onChange({ totalTenure: e.target.value })}
+          hint="Overall time allotted to complete this work order — shown in the PDF under Project Details"
+        />
+      </div>
+
+      <div className="mb-4">
+        <span className="block text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wide mb-1.5">Upload Work Order Documents</span>
+        <DocumentsUpload value={values.documents} onChange={docs => onChange({ documents: docs })} />
+      </div>
+
+      <div className="mb-4">
+        <Field
+          textarea label="Remarks" placeholder="e.g. Site access via rear gate only, coordinate with security…"
+          value={values.internalRemark} onChange={e => onChange({ internalRemark: e.target.value })}
+          hint="A general note on this work order — shown in the detail view and printed on the WO PDF under Project Details"
+        />
+      </div>
 
       {!isEdit && (
-        <div style={{ marginBottom: 20 }}>
-          <Button
-            icon={<ThunderboltOutlined />}
-            loading={extracting}
-            onClick={handleExtract}
-            style={{ borderColor: "#f37916", color: "#f37916" }}
-          >
-            Extract with AI
-          </Button>
-          <span style={{ marginLeft: 10, fontSize: 11.5, color: "#9ba3b8" }}>
-            Reads an uploaded PDF/image and auto-fills scope, dates, BOQ items &amp; payment milestones below — always review before saving.
+        <div className="mb-5">
+          <Btn outline icon={Zap} loading={extracting} label="Extract with AI" onClick={handleExtract} />
+          <span className="ml-2.5 text-[11.5px] text-gray-400">
+            Reads an uploaded PDF/image and auto-fills scope, dates, BOQ items & payment milestones below — always review before saving.
           </span>
           {extractNote && (
-            <Alert
-              style={{ marginTop: 10 }}
-              type="warning"
-              showIcon
-              message="AI extraction notes — please verify"
-              description={extractNote}
-              closable
-              onClose={() => setExtractNote("")}
-            />
+            <div className="mt-2.5">
+              <Alert type="warning" message="AI extraction notes — please verify" description={extractNote} />
+            </div>
           )}
         </div>
       )}
@@ -2104,11 +1463,7 @@ export default function WorkItems() {
   function CategoryBadge({ cat }: { cat?: string }) {
     if (!cat) return null;
     const { color } = getCatColor(cat);
-    return (
-      <span style={{ color, fontSize: 12, fontWeight: 600, whiteSpace: "nowrap" }}>
-        {cat}
-      </span>
-    );
+    return <span style={{ color }} className="text-xs font-semibold whitespace-nowrap">{cat}</span>;
   }
 
   const [workOrders,   setWorkOrders]   = useState<WorkOrder[]>([]);
@@ -2140,6 +1495,10 @@ export default function WorkItems() {
   const [cancelRecord,    setCancelRecord]    = useState<WorkOrder | null>(null);
   const [cancelRemark,    setCancelRemark]    = useState("");
   const [cancelSubmitting, setCancelSubmitting] = useState(false);
+  const [lockTarget, setLockTarget] = useState<WorkOrder | null>(null);
+  const [lockSaving, setLockSaving] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<WorkOrder | null>(null);
+  const [deleteSaving, setDeleteSaving] = useState(false);
   const currentSelectedWO = useMemo(
     () => workOrders.find(wo => wo.id === selectedWOId) || null,
     [workOrders, selectedWOId]
@@ -2154,8 +1513,16 @@ export default function WorkItems() {
   );
 
   const [createScopeItems, setCreateScopeItems] = useState<ScopeItemDraft[]>([]);
+  // Kept for parity — currently unreachable in this file's own UI (nothing
+  // sets progressItem/progressModalOpen truthy; progress is recorded via the
+  // separate Work Progress module now), but left wired rather than removed
+  // since nothing marks this dead the way the old ScopeItemsViewer was.
   const [progressItem,     setProgressItem]     = useState<ScopeItem | null>(null);
   const [progressModalOpen, setProgressModalOpen] = useState(false);
+  const [progressDate, setProgressDate] = useState("");
+  const [progressQty, setProgressQty] = useState<number | null>(null);
+  const [progressRemarks, setProgressRemarks] = useState("");
+  const progressErrors = useFormErrors<"date" | "qtyAdded">();
 
   const [createMilestones, setCreateMilestones] = useState<MilestoneDraft[]>([]);
   const [editMilestones,   setEditMilestones]   = useState<MilestoneDraft[]>([]);
@@ -2167,17 +1534,21 @@ export default function WorkItems() {
   const [createWarranty,   setCreateWarranty]   = useState<string[]>([]);
   const [editWarranty,     setEditWarranty]     = useState<string[]>([]);
 
-  const [editForm]     = Form.useForm();
-  const [createForm]   = Form.useForm();
-  const [progressForm] = Form.useForm();
+  const [createValues, setCreateValues] = useState<WOFormValues>(blankWOForm());
+  const [editValues,   setEditValues]   = useState<WOFormValues>(blankWOForm());
+  const createErrors = useFormErrors<"projectId" | "issueDate" | "vendorCode" | "status">();
+  const editErrors   = useFormErrors<"projectId" | "issueDate" | "vendorCode" | "status">();
 
-  const createCatName = Form.useWatch("category", createForm) as string | undefined;
-  const editCatName   = Form.useWatch("category", editForm)   as string | undefined;
-  const createGstPercent = (Form.useWatch("gstPercent", createForm) as number | undefined) ?? 18;
-  const editGstPercent   = (Form.useWatch("gstPercent", editForm)   as number | undefined) ?? 18;
-  const createContractType = (Form.useWatch("contractType", createForm) as string | undefined) ?? "execution";
-  const editContractType   = (Form.useWatch("contractType", editForm)   as string | undefined) ?? "execution";
-  const createVendorCode = Form.useWatch("vendorCode", createForm) as string | undefined;
+  const patchCreate = (patch: Partial<WOFormValues>) => setCreateValues(prev => ({ ...prev, ...patch }));
+  const patchEdit    = (patch: Partial<WOFormValues>) => setEditValues(prev => ({ ...prev, ...patch }));
+
+  const createCatName = createValues.category;
+  const editCatName   = editValues.category;
+  const createGstPercent = createValues.gstPercent ?? 18;
+  const editGstPercent   = editValues.gstPercent ?? 18;
+  const createContractType = createValues.contractType ?? "execution";
+  const editContractType   = editValues.contractType ?? "execution";
+  const createVendorCode = createValues.vendorCode;
 
   // ── Load all data ─────────────────────────────────────────────
   // Each fetch settles independently — one endpoint failing (e.g. a role
@@ -2223,9 +1594,8 @@ export default function WorkItems() {
   );
 
   // AI Document Intelligence — applies the parts of an extraction result that
-  // live outside the antd Form (scope items / milestones / warranty terms are
-  // their own component state, unlike description/dates/etc. which WOFormFields
-  // already writes straight onto the form).
+  // live outside WOFormFields' own controlled values (scope items / milestones
+  // / warranty terms are their own component state).
   function applyAiExtraction(data: AiExtractedWorkOrder) {
     if (data.scopeItems?.length) {
       setCreateScopeItems(data.scopeItems.map(item => {
@@ -2408,62 +1778,73 @@ export default function WorkItems() {
 
   // ── Handlers ─────────────────────────────────────────────────
 
+  function validateWOForm(values: WOFormValues, errs: ReturnType<typeof useFormErrors<"projectId" | "issueDate" | "vendorCode" | "status">>): boolean {
+    errs.clearAll();
+    let ok = true;
+    if (!values.projectId) { errs.setError("projectId", "Select a project"); ok = false; }
+    if (!values.issueDate) { errs.setError("issueDate", "Select issue date"); ok = false; }
+    if (!values.vendorCode) { errs.setError("vendorCode", values.contractType === "professional-services" ? "Select a consultant" : "Select a vendor"); ok = false; }
+    if (!values.status) { errs.setError("status", "Required"); ok = false; }
+    return ok;
+  }
+
   const handleCreate = async () => {
+    if (!validateWOForm(createValues, createErrors)) return;
+    const values = createValues;
+    const totalAmt  = calcTotalAmt(createScopeItems);
+    const contractValueInclGst = calcTotalInclGst(createScopeItems);
+    const milestonesTotal = calcGrandTotal(createMilestones);
+    if (milestonesTotal > contractValueInclGst + 1) {
+      toast.error(`Payment milestones total (${fmt(milestonesTotal)}) exceeds the scope of work's contract value incl. GST (${fmt(contractValueInclGst)})`);
+      return;
+    }
+    if (values.contractType !== "professional-services" && createScopeItems.some(it => it.description.trim() && (!it.plannedStart || !it.plannedEnd))) {
+      toast.error("Start Date and End Date are required for every work item");
+      return;
+    }
+    const scopeOfWork = values.description?.trim()
+      || createScopeItems.map(it => it.description).filter(Boolean).join(", ");
+
+    const body: Record<string, unknown> = {
+      contractType: values.contractType || "execution",
+      issueDate:    values.issueDate || dayjs().format("YYYY-MM-DD"),
+      projectId:    values.projectId,
+      projectName:  values.projectName || "",
+      projectLocation: values.projectLocation || "",
+      vendorCode:   values.vendorCode,
+      vendorName:   values.vendorName  || "",
+      ownerName:    values.ownerName   || "",
+      mobile:       values.mobile      || "",
+      issuedUnder:  values.issuedUnder || "company",
+      category:     values.category    || "",
+      subCategory:  values.subCategory  || "",
+      companyId:    values.companyId   || null,
+      assignedDRI:  values.assignedDRI || [],
+      description:  values.description?.trim() || "",
+      totalTenure:  values.totalTenure?.trim() || "",
+      internalRemark: values.internalRemark?.trim() || "",
+      scopeOfWork,
+      scopeItems:   createScopeItems.map(draftToNewItem),
+      contractValue: totalAmt,
+      discount:          createDiscount || 0,
+      gstPercent:        values.gstPercent ?? 18,
+      retentionPercent:  values.retentionPercent ?? 0,
+      status:            values.status || "draft",
+      preparedByName:    user?.name  || "",
+      preparedByContact: user?.email || "",
+      documents:         values.documents || [],
+      paymentMilestones: createMilestones.map(milestoneDraftToPayload),
+      securityDeposits:  createSecurityDeposits.map(d => securityDepositDraftToPayload(d, createScopeItems)),
+      warrantyTerms:     createWarranty.filter(t => t.trim()),
+    };
+    if (values.workOrderNo?.trim()) body.workOrderNo = values.workOrderNo.trim();
+
+    setSaving(true);
     try {
-      const values = await createForm.validateFields();
-      const totalAmt  = calcTotalAmt(createScopeItems);
-      const contractValueInclGst = calcTotalInclGst(createScopeItems);
-      const milestonesTotal = calcGrandTotal(createMilestones);
-      if (milestonesTotal > contractValueInclGst + 1) {
-        message.error(`Payment milestones total (${fmt(milestonesTotal)}) exceeds the scope of work's contract value incl. GST (${fmt(contractValueInclGst)})`);
-        return;
-      }
-      if (values.contractType !== "professional-services" && createScopeItems.some(it => it.description.trim() && (!it.plannedStart || !it.plannedEnd))) {
-        message.error("Start Date and End Date are required for every work item");
-        return;
-      }
-      const scopeOfWork = values.description?.trim()
-        || createScopeItems.map(it => it.description).filter(Boolean).join(", ");
-
-      const body: Record<string, unknown> = {
-        contractType: values.contractType || "execution",
-        issueDate:    values.issueDate ? dayjs(values.issueDate).format("YYYY-MM-DD") : dayjs().format("YYYY-MM-DD"),
-        projectId:    values.projectId,
-        projectName:  values.projectName || "",
-        projectLocation: values.projectLocation || "",
-        vendorCode:   values.vendorCode,
-        vendorName:   values.vendorName  || "",
-        ownerName:    values.ownerName   || "",
-        mobile:       values.mobile      || "",
-        issuedUnder:  values.issuedUnder || "company",
-        category:     values.category    || "",
-        subCategory:  values.subCategory  || "",
-        companyId:    values.companyId   || null,
-        assignedDRI:  values.assignedDRI || [],
-        description:  values.description?.trim() || "",
-        totalTenure:  values.totalTenure?.trim() || "",
-        internalRemark: values.internalRemark?.trim() || "",
-        scopeOfWork,
-        scopeItems:   createScopeItems.map(draftToNewItem),
-        contractValue: totalAmt,
-        discount:          createDiscount || 0,
-        gstPercent:        values.gstPercent ?? 18,
-        retentionPercent:  values.retentionPercent ?? 0,
-        status:            values.status || "draft",
-        preparedByName:    user?.name  || "",
-        preparedByContact: user?.email || "",
-        documents:         values.documents || [],
-        paymentMilestones: createMilestones.map(milestoneDraftToPayload),
-        securityDeposits:  createSecurityDeposits.map(d => securityDepositDraftToPayload(d, createScopeItems)),
-        warrantyTerms:     createWarranty.filter(t => t.trim()),
-      };
-      if (values.workOrderNo?.trim()) body.workOrderNo = values.workOrderNo.trim();
-
-      setSaving(true);
       const res = await apiClient.post<{ workOrder: WorkOrder }>("/work-orders", body);
       setWorkOrders(prev => [normalizeWO(res.data.workOrder), ...prev]);
-      message.success(`Work order ${res.data.workOrder.workOrderNo} created`);
-      createForm.resetFields();
+      toast.success(`Work order ${res.data.workOrder.workOrderNo} created`);
+      setCreateValues(blankWOForm());
       setCreateScopeItems([]);
       setCreateMilestones([]);
       setCreateSecurityDeposits([]);
@@ -2471,7 +1852,8 @@ export default function WorkItems() {
       setCreateWarranty([]);
       setCreateDrawerOpen(false);
     } catch (err: unknown) {
-      if (err && typeof err === "object" && "errorFields" in err) return;
+      const e = err as { response?: { data?: { message?: string } } };
+      toast.error(e?.response?.data?.message || "Failed to create work order");
     } finally {
       setSaving(false);
     }
@@ -2483,7 +1865,31 @@ export default function WorkItems() {
     // out the actual attached files on this work order.
     const wo = await ensureFullWorkOrder(woIn);
     setEditWOId(wo.id);
-    editForm.setFieldsValue({ ...wo, issueDate: dayjs(wo.issueDate), projectId: getWorkOrderProjectId(wo.projectId), category: wo.category || "", subCategory: wo.subCategory || "", assignedDRI: ((wo as any).assignedDRI || []).map((d: any) => d._id || d), gstPercent: wo.gstPercent ?? 18, retentionPercent: (wo as any).retentionPercent ?? 0, issuedUnder: wo.issuedUnder || "company", contractType: wo.contractType || "execution" });
+    editErrors.clearAll();
+    setEditValues({
+      contractType: wo.contractType || "execution",
+      workOrderNo: wo.workOrderNo || "",
+      companyId: (wo as any).companyId || "",
+      projectId: getWorkOrderProjectId(wo.projectId) || "",
+      projectName: wo.projectName || "",
+      projectLocation: wo.projectLocation || "",
+      issueDate: wo.issueDate ? dayjs(wo.issueDate).format("YYYY-MM-DD") : "",
+      vendorCode: wo.vendorCode || "",
+      category: wo.category || "",
+      subCategory: wo.subCategory || "",
+      status: wo.status || "draft",
+      gstPercent: wo.gstPercent ?? 18,
+      retentionPercent: (wo as any).retentionPercent ?? 0,
+      assignedDRI: ((wo as any).assignedDRI || []).map((d: any) => d._id || d),
+      vendorName: wo.vendorName || "",
+      ownerName: wo.ownerName || "",
+      mobile: wo.mobile || "",
+      issuedUnder: wo.issuedUnder || "company",
+      description: (wo as any).description || "",
+      totalTenure: (wo as any).totalTenure || "",
+      documents: wo.documents || [],
+      internalRemark: (wo as any).internalRemark || "",
+    });
     setEditScopeItems((wo.scopeItems || []).map(toDraft));
     setEditMilestones((wo.paymentMilestones || []).map(toMilestoneDraft));
     setEditSecurityDeposits((wo.securityDeposits || []).map(toSecurityDepositDraft));
@@ -2493,95 +1899,101 @@ export default function WorkItems() {
   };
 
   const handleSaveEdit = async () => {
+    if (!currentEditWO) return;
+    if (!validateWOForm(editValues, editErrors)) return;
+    const values = editValues;
+
+    const totalAmt    = calcTotalAmt(editScopeItems);
+    const contractValueInclGst = calcTotalInclGst(editScopeItems);
+    const milestonesTotal = calcGrandTotal(editMilestones);
+    if (milestonesTotal > contractValueInclGst + 1) {
+      toast.error(`Payment milestones total (${fmt(milestonesTotal)}) exceeds the scope of work's contract value incl. GST (${fmt(contractValueInclGst)})`);
+      return;
+    }
+    if (values.contractType !== "professional-services" && editScopeItems.some(it => it.description.trim() && (!it.plannedStart || !it.plannedEnd))) {
+      toast.error("Start Date and End Date are required for every work item");
+      return;
+    }
+    const scopeOfWork = values.description?.trim()
+      || editScopeItems.map(it => it.description).filter(Boolean).join(", ");
+    const savedItems  = editScopeItems.map(d => {
+      const existing = currentEditWO.scopeItems.find(si => si.id === d.id);
+      return mergeWithExisting(d, existing);
+    });
+
+    const body = {
+      contractType: values.contractType || currentEditWO.contractType || "execution",
+      projectId:    values.projectId,
+      projectName:  values.projectName  || currentEditWO.projectName,
+      projectLocation: values.projectLocation ?? currentEditWO.projectLocation ?? "",
+      vendorCode:   values.vendorCode,
+      vendorName:   values.vendorName   || currentEditWO.vendorName,
+      ownerName:    values.ownerName    || currentEditWO.ownerName,
+      mobile:       values.mobile       || currentEditWO.mobile,
+      issuedUnder:  values.issuedUnder  || currentEditWO.issuedUnder || "company",
+      category:     values.category     ?? currentEditWO.category ?? "",
+      subCategory:  values.subCategory  ?? currentEditWO.subCategory ?? "",
+      companyId:    values.companyId    ?? (currentEditWO as any).companyId ?? null,
+      assignedDRI:  values.assignedDRI  ?? (currentEditWO as any).assignedDRI ?? [],
+      issueDate:    values.issueDate || currentEditWO.issueDate,
+      description:  values.description?.trim() || "",
+      totalTenure:  values.totalTenure?.trim() || "",
+      internalRemark: values.internalRemark?.trim() || "",
+      scopeOfWork,
+      scopeItems:   savedItems,
+      contractValue: totalAmt,
+      discount:          editDiscount || 0,
+      gstPercent:        values.gstPercent ?? currentEditWO.gstPercent ?? 18,
+      retentionPercent:  values.retentionPercent ?? (currentEditWO as any).retentionPercent ?? 0,
+      status:            values.status,
+      documents:         values.documents ?? currentEditWO.documents ?? [],
+      paymentMilestones: editMilestones.map(milestoneDraftToPayload),
+      securityDeposits:  editSecurityDeposits.map(d => securityDepositDraftToPayload(d, editScopeItems)),
+      warrantyTerms:     editWarranty.filter(t => t.trim()),
+    };
+
+    setSaving(true);
     try {
-      const values = await editForm.validateFields();
-      if (!currentEditWO) return;
-
-      const totalAmt    = calcTotalAmt(editScopeItems);
-      const contractValueInclGst = calcTotalInclGst(editScopeItems);
-      const milestonesTotal = calcGrandTotal(editMilestones);
-      if (milestonesTotal > contractValueInclGst + 1) {
-        message.error(`Payment milestones total (${fmt(milestonesTotal)}) exceeds the scope of work's contract value incl. GST (${fmt(contractValueInclGst)})`);
-        return;
-      }
-      if (values.contractType !== "professional-services" && editScopeItems.some(it => it.description.trim() && (!it.plannedStart || !it.plannedEnd))) {
-        message.error("Start Date and End Date are required for every work item");
-        return;
-      }
-      const scopeOfWork = values.description?.trim()
-        || editScopeItems.map(it => it.description).filter(Boolean).join(", ");
-      const savedItems  = editScopeItems.map(d => {
-        const existing = currentEditWO.scopeItems.find(si => si.id === d.id);
-        return mergeWithExisting(d, existing);
-      });
-
-      const body = {
-        contractType: values.contractType || currentEditWO.contractType || "execution",
-        projectId:    values.projectId,
-        projectName:  values.projectName  || currentEditWO.projectName,
-        projectLocation: values.projectLocation ?? currentEditWO.projectLocation ?? "",
-        vendorCode:   values.vendorCode,
-        vendorName:   values.vendorName   || currentEditWO.vendorName,
-        ownerName:    values.ownerName    || currentEditWO.ownerName,
-        mobile:       values.mobile       || currentEditWO.mobile,
-        issuedUnder:  values.issuedUnder  || currentEditWO.issuedUnder || "company",
-        category:     values.category     ?? currentEditWO.category ?? "",
-        subCategory:  values.subCategory  ?? currentEditWO.subCategory ?? "",
-        companyId:    values.companyId    ?? (currentEditWO as any).companyId ?? null,
-        assignedDRI:  values.assignedDRI  ?? (currentEditWO as any).assignedDRI ?? [],
-        issueDate:    values.issueDate ? dayjs(values.issueDate).format("YYYY-MM-DD") : currentEditWO.issueDate,
-        description:  values.description?.trim() || "",
-        totalTenure:  values.totalTenure?.trim() || "",
-        internalRemark: values.internalRemark?.trim() || "",
-        scopeOfWork,
-        scopeItems:   savedItems,
-        contractValue: totalAmt,
-        discount:          editDiscount || 0,
-        gstPercent:        values.gstPercent ?? currentEditWO.gstPercent ?? 18,
-        retentionPercent:  values.retentionPercent ?? (currentEditWO as any).retentionPercent ?? 0,
-        status:            values.status,
-        documents:         values.documents ?? currentEditWO.documents ?? [],
-        paymentMilestones: editMilestones.map(milestoneDraftToPayload),
-        securityDeposits:  editSecurityDeposits.map(d => securityDepositDraftToPayload(d, editScopeItems)),
-        warrantyTerms:     editWarranty.filter(t => t.trim()),
-      };
-
-      setSaving(true);
       const res = await apiClient.put<{ workOrder: WorkOrder }>(`/work-orders/${currentEditWO.id}`, body);
       setWorkOrders(prev => prev.map(wo => wo.id === currentEditWO.id ? normalizeWO(res.data.workOrder) : wo));
-      message.success("Work order updated");
+      toast.success("Work order updated");
       setEditModalOpen(false);
       setEditWOId(null);
     } catch (err: unknown) {
-      if (err && typeof err === "object" && "errorFields" in err) return;
+      const e = err as { response?: { data?: { message?: string } } };
+      toast.error(e?.response?.data?.message || "Failed to update work order");
     } finally {
       setSaving(false);
     }
   };
 
   const handleAddProgress = async () => {
+    progressErrors.clearAll();
+    let ok = true;
+    if (!progressDate) { progressErrors.setError("date", "Select date"); ok = false; }
+    if (!progressQty || progressQty <= 0) { progressErrors.setError("qtyAdded", "Enter a valid quantity"); ok = false; }
+    if (!ok || !currentSelectedWO || !progressItem) return;
+
+    const body = {
+      date:     progressDate || dayjs().format("YYYY-MM-DD"),
+      qtyAdded: progressQty,
+      remarks:  progressRemarks.trim() || undefined,
+    };
+
+    setSaving(true);
     try {
-      const values = await progressForm.validateFields();
-      if (!currentSelectedWO || !progressItem) return;
-
-      const body = {
-        date:     values.date ? dayjs(values.date).format("YYYY-MM-DD") : dayjs().format("YYYY-MM-DD"),
-        qtyAdded: values.qtyAdded,
-        remarks:  values.remarks?.trim() || undefined,
-      };
-
-      setSaving(true);
       const res = await apiClient.post<{ workOrder: WorkOrder }>(
         `/work-orders/${currentSelectedWO.id}/scope-items/${progressItem.id}/progress`,
         body
       );
       setWorkOrders(prev => prev.map(wo => wo.id === currentSelectedWO.id ? normalizeWO(res.data.workOrder) : wo));
-      message.success(`Progress recorded: +${values.qtyAdded.toLocaleString("en-IN")} ${progressItem.unit}`);
+      toast.success(`Progress recorded: +${(progressQty ?? 0).toLocaleString("en-IN")} ${progressItem.unit}`);
       setProgressModalOpen(false);
       setProgressItem(null);
-      progressForm.resetFields();
+      setProgressDate(""); setProgressQty(null); setProgressRemarks("");
     } catch (err: unknown) {
-      if (err && typeof err === "object" && "errorFields" in err) return;
+      const e = err as { response?: { data?: { message?: string } } };
+      toast.error(e?.response?.data?.message || "Failed to record progress");
     } finally {
       setSaving(false);
     }
@@ -2621,7 +2033,7 @@ export default function WorkItems() {
       const userMap    = await fetchUserMap();
       await downloadWorkOrderPDF({ ...wo, approvals: buildApprovals(wo, userMap) } as any, company, contractor as any);
     } catch {
-      message.error("Failed to generate PDF");
+      toast.error("Failed to generate PDF");
     } finally {
       setPdfLoading(false);
     }
@@ -2629,16 +2041,16 @@ export default function WorkItems() {
 
   const handleDownloadPDFHindi = async (wo: WorkOrder) => {
     setPdfLoading(true);
-    const hide = message.loading("Translating to Hindi…", 0);
+    const toastId = toast.loading("Translating to Hindi…");
     try {
       const company    = companies.find((c: any) => c._id === (wo as any).companyId) ?? null;
       const contractor = contractors.find(c => c.vendorCode === wo.vendorCode) ?? null;
       const userMap    = await fetchUserMap();
       await downloadWorkOrderPDFHindi({ ...wo, approvals: buildApprovals(wo, userMap) } as any, company, contractor as any);
     } catch {
-      message.error("Failed to generate Hindi PDF");
+      toast.error("Failed to generate Hindi PDF");
     } finally {
-      hide();
+      toast.dismiss(toastId);
       setPdfLoading(false);
     }
   };
@@ -2646,239 +2058,56 @@ export default function WorkItems() {
   const handleCancelWorkOrder = async () => {
     if (!cancelRecord) return;
     if (!cancelRemark.trim()) {
-      message.error("Please enter a remark for cancellation");
+      toast.error("Please enter a remark for cancellation");
       return;
     }
     setCancelSubmitting(true);
     try {
       const res = await apiClient.patch<{ workOrder: WorkOrder }>(`/work-orders/${cancelRecord.id}/cancel`, { remark: cancelRemark.trim() });
       setWorkOrders(prev => prev.map(w => w.id === cancelRecord.id ? normalizeWO(res.data.workOrder) : w));
-      message.success(`Work order ${cancelRecord.workOrderNo} cancelled`);
+      toast.success(`Work order ${cancelRecord.workOrderNo} cancelled`);
       setCancelRecord(null);
       setCancelRemark("");
     } catch (e: unknown) {
       const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message || "Failed to cancel work order";
-      message.error(msg);
+      toast.error(msg);
     } finally {
       setCancelSubmitting(false);
     }
   };
 
-  const handleLockToggle = (wo: WorkOrder) => {
-    const locking = !wo.isLocked;
-    Modal.confirm({
-      title: locking ? `Lock ${wo.workOrderNo}?` : `Unlock ${wo.workOrderNo}?`,
-      icon: locking ? <LockOutlined /> : <UnlockOutlined />,
-      content: locking
-        ? "Once locked, its rates, scope items, milestones, and contract value can no longer be edited until it's unlocked again."
-        : "This will allow rates, scope items, milestones, and contract value to be edited again.",
-      okText: locking ? "Lock" : "Unlock",
-      cancelText: "Cancel",
-      onOk: async () => {
-        try {
-          const res = await apiClient.patch<{ workOrder: WorkOrder }>(`/work-orders/${wo.id}/${locking ? "lock" : "unlock"}`);
-          setWorkOrders(prev => prev.map(w => w.id === wo.id ? normalizeWO(res.data.workOrder) : w));
-          message.success(`Work order ${wo.workOrderNo} ${locking ? "locked" : "unlocked"}`);
-        } catch (e: unknown) {
-          const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message || "Failed to update lock status";
-          message.error(msg);
-        }
-      },
-    });
-  };
-
-  const handleDelete = async (wo: WorkOrder) => {
+  async function confirmLockToggle() {
+    if (!lockTarget) return;
+    const locking = !lockTarget.isLocked;
+    setLockSaving(true);
     try {
-      await apiClient.delete(`/work-orders/${wo.id}`);
-      setWorkOrders(prev => prev.filter(w => w.id !== wo.id));
-      message.success(`Work order ${wo.workOrderNo} deleted`);
+      const res = await apiClient.patch<{ workOrder: WorkOrder }>(`/work-orders/${lockTarget.id}/${locking ? "lock" : "unlock"}`);
+      setWorkOrders(prev => prev.map(w => w.id === lockTarget.id ? normalizeWO(res.data.workOrder) : w));
+      toast.success(`Work order ${lockTarget.workOrderNo} ${locking ? "locked" : "unlocked"}`);
+      setLockTarget(null);
+    } catch (e: unknown) {
+      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message || "Failed to update lock status";
+      toast.error(msg);
+    } finally {
+      setLockSaving(false);
+    }
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    setDeleteSaving(true);
+    try {
+      await apiClient.delete(`/work-orders/${deleteTarget.id}`);
+      setWorkOrders(prev => prev.filter(w => w.id !== deleteTarget.id));
+      toast.success(`Work order ${deleteTarget.workOrderNo} deleted`);
+      setDeleteTarget(null);
     } catch (e: unknown) {
       const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message || "Delete failed";
-      message.error(msg);
+      toast.error(msg);
+    } finally {
+      setDeleteSaving(false);
     }
-  };
-
-  // ── Columns ───────────────────────────────────────────────────
-
-  const columns = [
-    {
-      title: "WO No",
-      dataIndex: "workOrderNo",
-      width: 100,
-      render: (t: string, record: WorkOrder) => (
-        <span
-          onClick={e => { e.stopPropagation(); navigate(`/work-items/${record.id}`); }}
-          style={{ fontFamily: "monospace", fontWeight: 700, color: "#f37916", cursor: "pointer" }}
-        >
-          {t}
-        </span>
-      ),
-    },
-    {
-      title: "Date",
-      dataIndex: "issueDate",
-      width: 95,
-      render: (d: string) => dayjs(d).format("DD MMM YYYY"),
-    },
-    {
-      title: "Project",
-      dataIndex: "projectName",
-      width: 150,
-      render: (name: string, wo: WorkOrder) => (
-        <div>
-          <div>{name}</div>
-          {wo.projectLocation && (
-            <div style={{ fontSize: 11, color: "#9ba3b8" }}>{wo.projectLocation}</div>
-          )}
-        </div>
-      ),
-    },
-    {
-      title: "Category",
-      dataIndex: "category",
-      width: 125,
-      render: (cat: string) => <CategoryBadge cat={cat} />,
-    },
-    {
-      title: "Vendor Code",
-      dataIndex: "vendorCode",
-      width: 95,
-      render: (t: string) => (
-        <span style={{ fontFamily: "monospace", color: "#2563eb", fontSize: 12, fontWeight: 600 }}>
-          {t}
-        </span>
-      ),
-    },
-    { title: "Company Name", dataIndex: "vendorName", width: 140 },
-    {
-      title: "Contract Value",
-      dataIndex: "contractValue",
-      width: 125,
-      render: (v: number) =>
-        v ? (
-          <span style={{ fontFamily: "monospace", color: "#f37916", fontWeight: 600 }}>{fmt(v)}</span>
-        ) : (
-          <span style={{ color: "#9ba3b8" }}>—</span>
-        ),
-    },
-    {
-      title: "Status",
-      dataIndex: "status",
-      width: 110,
-      render: (s: WorkOrderStatus, record: WorkOrder) => {
-        const delays = countDelays(record);
-        return (
-          <div>
-            <ApprovalStatusPill wo={record} />
-            <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 5 }}>
-              <Tag color={STATUS_CFG[s]?.color} style={{ fontSize: 11 }}>{STATUS_CFG[s]?.label ?? s}</Tag>
-              {record.isLocked && (
-                <Tooltip title="Rates, scope items, milestones, and contract value are locked">
-                  <Tag color="gold" icon={<Lock className="w-3 h-3" style={{ display: "inline" }} />} style={{ fontSize: 11, cursor: "default" }}>
-                    Locked
-                  </Tag>
-                </Tooltip>
-              )}
-              {delays > 0 && (
-                <Tooltip title={`${delays} scope item${delays > 1 ? "s" : ""} past their planned end date`}>
-                  <Tag color="red" icon={<AlertTriangle className="w-3 h-3" style={{ display: "inline" }} />} style={{ fontSize: 11, cursor: "default" }}>
-                    {delays} overdue
-                  </Tag>
-                </Tooltip>
-              )}
-            </div>
-          </div>
-        );
-      },
-    },
-    {
-      title: "Created At",
-      dataIndex: "createdAt",
-      width: 95,
-      render: (d: string) => d ? dayjs(d).format("DD MMM YYYY") : <span style={{ color: "#9ba3b8" }}>—</span>,
-    },
-    {
-      title: "Created By",
-      width: 90,
-      render: (_: unknown, record: WorkOrder) => {
-        const cb = record.createdBy;
-        const name = cb && typeof cb === "object" ? cb.name : undefined;
-        return name || <span style={{ color: "#9ba3b8" }}>—</span>;
-      },
-    },
-    {
-      title: "Actions",
-      width: 105,
-      render: (_: unknown, record: WorkOrder) => {
-        const docCount = getWorkOrderDocuments(record).length;
-        const canCancel = record.status !== "cancelled" && record.status !== "completed";
-        const menuItems: MenuProps["items"] = [
-          { key: "edit", label: "Edit", icon: <Pencil className="w-3.5 h-3.5" />, disabled: record.isLocked, ...(record.isLocked ? { title: "Locked — unlock to edit" } : {}) },
-          { key: "pdf-hindi", label: "Download PDF (Hindi)", icon: <FileText className="w-3.5 h-3.5" /> },
-          ...(docCount > 0 ? [{ key: "doc", label: `Documents (${docCount})`, icon: <Paperclip className="w-3.5 h-3.5" /> }] : []),
-          ...(isOwner ? [{
-            key: "lock-toggle",
-            label: record.isLocked ? "Unlock Work Order" : "Lock Work Order",
-            icon: record.isLocked ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />,
-          }] : []),
-          ...(canCancel ? [{ key: "cancel", label: "Cancel Work Order", icon: <Ban className="w-3.5 h-3.5" />, danger: true }] : []),
-          ...(isOwner ? [{ key: "delete", label: "Delete", icon: <Trash2 className="w-3.5 h-3.5" />, danger: true }] : []),
-        ];
-        const onMenuClick: MenuProps["onClick"] = ({ key }) => {
-          if (key === "edit") {
-            openEdit(record);
-          } else if (key === "pdf-hindi") {
-            handleDownloadPDFHindi(record);
-          } else if (key === "doc") {
-            ensureFullWorkOrder(record).then(setDocsRecord);
-          } else if (key === "lock-toggle") {
-            handleLockToggle(record);
-          } else if (key === "cancel") {
-            setCancelRemark("");
-            setCancelRecord(record);
-          } else if (key === "delete") {
-            Modal.confirm({
-              title: `Delete ${record.workOrderNo}?`,
-              icon: <ExclamationCircleOutlined />,
-              content: "This permanently removes the work order and cannot be undone.",
-              okText: "Yes, Delete",
-              okType: "danger",
-              cancelText: "Cancel",
-              onOk: () => handleDelete(record),
-            });
-          }
-        };
-        return (
-          <div onClick={e => e.stopPropagation()}>
-            <Space size={4}>
-              <Tooltip title="View">
-                <Button
-                  type="text"
-                  size="small"
-                  icon={<Eye className="w-4 h-4" />}
-                  onClick={() => { setSelectedWOId(record.id); setDrawerOpen(true); }}
-                />
-              </Tooltip>
-              <Tooltip title="Download PDF">
-                <Button
-                  type="text"
-                  size="small"
-                  loading={pdfLoading}
-                  icon={<FileText className="w-4 h-4" />}
-                  onClick={() => handleDownloadPDF(record)}
-                />
-              </Tooltip>
-              {menuItems.length > 0 && (
-                <Dropdown menu={{ items: menuItems, onClick: onMenuClick }} trigger={["click"]}>
-                  <Button type="text" size="small" icon={<MoreHorizontal className="w-4 h-4" />} />
-                </Dropdown>
-              )}
-            </Space>
-          </div>
-        );
-      },
-    },
-  ];
+  }
 
   const hasActiveFilters =
     statusFilter !== "all" || categoryFilter !== "all" ||
@@ -2889,405 +2118,372 @@ export default function WorkItems() {
     setCategoryFilter("all"); setSubCategoryFilter("all"); setProgressFilter("all"); setProjectFilter("all");
   };
 
+  const listPager = usePagination(filtered, 10);
+
   // ── Render ────────────────────────────────────────────────────
 
   return (
-    <PageShell
-      title="Work Orders"
-      description="Define scope of work items, track progress per item, and flag overdue milestones."
-      cta={
-        <Button
-          type="primary"
-          icon={<Plus className="w-4 h-4" />}
-          size="large"
-          onClick={() => {
-            createForm.resetFields();
-            createForm.setFieldsValue({
-              status: "draft", assignedDRI: defaultDRIIds,
-              // Default to whichever type the list is currently filtered to
-              // (e.g. clicking "New" while viewing Consultancy Orders).
-              contractType: contractTypeFilter === "professional-services" ? "professional-services" : "execution",
-            });
-            setCreateScopeItems([]);
-            setCreateMilestones([]);
-            setCreateSecurityDeposits([]);
-            setCreateDiscount(null);
-            setCreateWarranty([]);
-            setCreateDrawerOpen(true);
-          }}
-          style={{ background: "#FF7A00", borderColor: "#FF7A00" }}
-        >
-          {contractTypeFilter === "professional-services" ? "New Consultancy Order" : "New Work Order"}
-        </Button>
-      }
-    >
+    <div>
+      <PageHeader
+        icon={Briefcase}
+        title="Work Orders"
+        subtitle="Define scope of work items, track progress per item, and flag overdue milestones."
+        actions={
+          <Btn
+            color="primary" icon={Plus}
+            label={contractTypeFilter === "professional-services" ? "New Consultancy Order" : "New Work Order"}
+            onClick={() => {
+              setCreateValues({
+                ...blankWOForm(),
+                status: "draft",
+                assignedDRI: defaultDRIIds,
+                // Default to whichever type the list is currently filtered to
+                // (e.g. clicking "New" while viewing Consultancy Orders).
+                contractType: contractTypeFilter === "professional-services" ? "professional-services" : "execution",
+              });
+              createErrors.clearAll();
+              setCreateScopeItems([]);
+              setCreateMilestones([]);
+              setCreateSecurityDeposits([]);
+              setCreateDiscount(null);
+              setCreateWarranty([]);
+              setCreateDrawerOpen(true);
+            }}
+          />
+        }
+      />
+
       {/* Entire list surface — tabs, filters and the table itself — in one glass-panel
-          shell, matching the app's sidebar/header treatment. Only the table body
-          scrolls internally (via Table's own `scroll.y`); everything above it stays put. */}
+          shell, matching the app's sidebar/header treatment. */}
       <div className="bg-white/90 dark:bg-gray-800/95 backdrop-blur-xl border border-gray-100 dark:border-gray-700/50 rounded-xl shadow-sm p-5">
-      {/* ── Tabs ────────────────────────────────────────────── */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10, marginBottom: 12 }}>
-        <PillTabs
-          active={activeTab}
-          onChange={setActiveTab}
-          tabs={[
-            { key: "all",     label: "All Work Orders",    count: 0 },
-            { key: "pending", label: "Pending Approvals",  count: pendingApprovals.length },
-          ]}
-        />
-        <Space size={12}>
+        {/* ── Tabs ────────────────────────────────────────────── */}
+        <div className="flex items-center justify-between flex-wrap gap-2.5 mb-3">
           <Segmented
-            value={contractTypeFilter}
-            onChange={(v) => setContractTypeFilter(v as typeof contractTypeFilter)}
+            value={activeTab}
+            onChange={setActiveTab}
             options={[
-              { label: "All", value: "all" },
-              { label: "Execution", value: "execution" },
-              { label: "Professional Services", value: "professional-services" },
+              { value: "all", label: "All Work Orders" },
+              { value: "pending", label: <span className="inline-flex items-center gap-1.5">Pending Approvals {pendingApprovals.length > 0 && <Badge color="green" small>{pendingApprovals.length}</Badge>}</span> },
             ]}
           />
-          <Segmented
-            value={viewMode}
-            onChange={(v) => setViewMode(v as typeof viewMode)}
-            options={[
-              { label: "List View", value: "list" },
-              { label: "Monthly Report", value: "monthly" },
-            ]}
-          />
-        </Space>
-      </div>
-
-      {/* ── Filters ─────────────────────────────────────────── */}
-      <div
-        style={{
-          background: "var(--nx-white)",
-          border: "1px solid #E5E7EB",
-          borderRadius: 10,
-          padding: "14px 16px",
-          marginBottom: 16,
-        }}
-      >
-        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-          {/* Search */}
-          <SearchFilter
-            placeholder="Search by WO No, project, vendor…"
-            value={search}
-            onChange={setSearch}
-          />
-
-          {/* Status */}
-          <Select
-            value={statusFilter}
-            onChange={val => setStatusFilter(val)}
-            style={{ width: 148 }}
-            suffixIcon={<span style={{ fontSize: 11, color: "#9CA3AF" }}>Status ▾</span>}
-            options={[
-              { label: "All Statuses",  value: "all" },
-              { label: "Draft",         value: "draft" },
-              { label: "Issued",        value: "issued" },
-              { label: "In Progress",   value: "in-progress" },
-              { label: "Completed",     value: "completed" },
-              { label: "Cancelled",     value: "cancelled" },
-            ]}
-          />
-
-          {/* Category */}
-          <Select
-            value={categoryFilter}
-            onChange={val => { setCategoryFilter(val); setSubCategoryFilter("all"); }}
-            style={{ width: 170 }}
-            suffixIcon={<span style={{ fontSize: 11, color: "#9CA3AF" }}>Category ▾</span>}
-            options={[
-              { label: "All Categories", value: "all" },
-              ...topLevelCats.filter(c => c.isActive).map(c => ({
-                label: c.name,
-                value: c.name,
-              })),
-            ]}
-          />
-
-          {/* Sub-category — only enabled when a category with subcats is selected */}
-          <Select
-            value={subCategoryFilter}
-            onChange={setSubCategoryFilter}
-            disabled={subCatsOfSelected.length === 0}
-            style={{ width: 180 }}
-            suffixIcon={<span style={{ fontSize: 11, color: "#9CA3AF" }}>Sub-category ▾</span>}
-            options={[
-              { label: subCatsOfSelected.length === 0 ? "No sub-categories" : "All Sub-categories", value: "all" },
-              ...subCatsOfSelected.map(c => ({ label: c.name, value: c.name })),
-            ]}
-          />
-
-          {/* Progress */}
-          <Select
-            value={progressFilter}
-            onChange={setProgressFilter}
-            style={{ width: 152 }}
-            suffixIcon={<span style={{ fontSize: 11, color: "#9CA3AF" }}>Progress ▾</span>}
-            options={[
-              { label: "All Progress",  value: "all" },
-              { label: "Not Started",   value: "not-started" },
-              { label: "In Progress",   value: "running" },
-              { label: "Completed",     value: "completed" },
-              { label: "⚠ Overdue",     value: "overdue" },
-            ]}
-          />
-
-          {/* Project */}
-          <Select
-            value={projectFilter}
-            onChange={setProjectFilter}
-            showSearch
-            style={{ width: 180 }}
-            suffixIcon={<span style={{ fontSize: 11, color: "#9CA3AF" }}>Project ▾</span>}
-            filterOption={(input, opt) => String(opt?.label ?? "").toLowerCase().includes(input.toLowerCase())}
-            options={[
-              { label: "All Projects", value: "all" },
-              ...selectableProjects(projects).map(p => ({ label: p.name, value: p.id })),
-            ]}
-          />
-
-          {/* Date */}
-          <DateRangeFilter onChange={(from, to) => { setDateFrom(from); setDateTo(to); }} />
-
-          {/* Clear */}
-          {hasActiveFilters && (
-            <Button size="small" onClick={clearAllFilters} style={{ color: "#6B7280" }}>
-              Clear all
-            </Button>
-          )}
-
-          <span style={{ marginLeft: "auto", color: "#9CA3AF", fontSize: 12, whiteSpace: "nowrap" }}>
-            {filtered.length} work order{filtered.length !== 1 ? "s" : ""}
-          </span>
-        </div>
-
-        {/* Active filter chips */}
-        {hasActiveFilters && (
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
-            {statusFilter !== "all" && (
-              <span style={{ background: "#FFF4E8", border: "1px solid #f37916", color: "#f37916", fontSize: 11, padding: "2px 8px", borderRadius: 5, display: "flex", alignItems: "center", gap: 4 }}>
-                Status: {statusFilter}
-                <button type="button" onClick={() => setStatusFilter("all")} style={{ background: "none", border: "none", cursor: "pointer", color: "#f37916", padding: 0, fontSize: 12, lineHeight: 1 }}>×</button>
-              </span>
-            )}
-            {categoryFilter !== "all" && (
-              <span style={{ background: "#EFF6FF", border: "1px solid #2563eb", color: "#2563eb", fontSize: 11, padding: "2px 8px", borderRadius: 5, display: "flex", alignItems: "center", gap: 4 }}>
-                Category: {categoryFilter}
-                <button type="button" onClick={() => { setCategoryFilter("all"); setSubCategoryFilter("all"); }} style={{ background: "none", border: "none", cursor: "pointer", color: "#2563eb", padding: 0, fontSize: 12, lineHeight: 1 }}>×</button>
-              </span>
-            )}
-            {subCategoryFilter !== "all" && (
-              <span style={{ background: "#F5F3FF", border: "1px solid #7c3aed", color: "#7c3aed", fontSize: 11, padding: "2px 8px", borderRadius: 5, display: "flex", alignItems: "center", gap: 4 }}>
-                Sub-cat: {subCategoryFilter}
-                <button type="button" onClick={() => setSubCategoryFilter("all")} style={{ background: "none", border: "none", cursor: "pointer", color: "#7c3aed", padding: 0, fontSize: 12, lineHeight: 1 }}>×</button>
-              </span>
-            )}
-            {progressFilter !== "all" && (
-              <span style={{ background: "#F0FDF4", border: "1px solid #16a85a", color: "#16a85a", fontSize: 11, padding: "2px 8px", borderRadius: 5, display: "flex", alignItems: "center", gap: 4 }}>
-                Progress: {progressFilter === "not-started" ? "Not Started" : progressFilter === "running" ? "In Progress" : progressFilter === "completed" ? "Completed" : "Overdue"}
-                <button type="button" onClick={() => setProgressFilter("all")} style={{ background: "none", border: "none", cursor: "pointer", color: "#16a85a", padding: 0, fontSize: 12, lineHeight: 1 }}>×</button>
-              </span>
-            )}
-            {projectFilter !== "all" && (
-              <span style={{ background: "#FFF7ED", border: "1px solid #FF7A00", color: "#FF7A00", fontSize: 11, padding: "2px 8px", borderRadius: 5, display: "flex", alignItems: "center", gap: 4 }}>
-                Project: {selectableProjects(projects).find(p => p.id === projectFilter)?.name ?? projectFilter}
-                <button type="button" onClick={() => setProjectFilter("all")} style={{ background: "none", border: "none", cursor: "pointer", color: "#FF7A00", padding: 0, fontSize: 12, lineHeight: 1 }}>×</button>
-              </span>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Table — the only internally-scrollable region; header/pagination stay fixed via antd's own scroll.y */}
-      {viewMode === "list" ? (
-        <div style={{ background: "var(--nx-white)", border: "1px solid #E5E7EB", borderRadius: 10, overflow: "hidden" }}>
-          <Spin spinning={loadingData}>
-            <Table
-              rowKey="id"
-              dataSource={filtered}
-              columns={columns}
-              onRow={record => ({
-                onClick: () => { setSelectedWOId(record.id); setDrawerOpen(true); },
-                style: { cursor: "pointer" },
-              })}
-              pagination={{ pageSize: 10, showSizeChanger: false }}
-              scroll={{ x: 1230, y: 440 }}
-              locale={{
-                emptyText: loadingData ? " " : (
-                  <div style={{ padding: "40px 20px", color: "#9CA3AF", textAlign: "center" }}>
-                    <ClipboardList className="w-7 h-7 mx-auto mb-2.5 text-gray-300" />
-                    <div style={{ fontWeight: 600, color: "#374151" }}>No work orders yet</div>
-                    <div style={{ fontSize: 12, marginTop: 4 }}>
-                      Click "New Work Order" to create your first one.
-                    </div>
-                  </div>
-                ),
-              }}
-            />
-          </Spin>
-        </div>
-      ) : (
-        <div style={{ background: "var(--nx-white)", border: "1px solid #E5E7EB", borderRadius: 10, overflow: "hidden" }}>
-          <Spin spinning={loadingData}>
-            <Table
-              rowKey="key"
-              dataSource={monthlyReport}
-              pagination={false}
-              scroll={{ x: 1100, y: 440 }}
-              summary={() => (
-                <Table.Summary fixed>
-                  <Table.Summary.Row style={{ background: "#FFF8F3", fontWeight: 700 }}>
-                    <Table.Summary.Cell index={0}>Total</Table.Summary.Cell>
-                    <Table.Summary.Cell index={1}>{monthlyReportTotals.count}</Table.Summary.Cell>
-                    <Table.Summary.Cell index={2}>{fmt(monthlyReportTotals.contractValue)}</Table.Summary.Cell>
-                    <Table.Summary.Cell index={3}>{fmt(monthlyReportTotals.billed)}</Table.Summary.Cell>
-                    <Table.Summary.Cell index={4}>{monthlyReportTotals.draft}</Table.Summary.Cell>
-                    <Table.Summary.Cell index={5}>{monthlyReportTotals.issued}</Table.Summary.Cell>
-                    <Table.Summary.Cell index={6}>{monthlyReportTotals.inProgress}</Table.Summary.Cell>
-                    <Table.Summary.Cell index={7}>{monthlyReportTotals.completed}</Table.Summary.Cell>
-                    <Table.Summary.Cell index={8}>{monthlyReportTotals.cancelled}</Table.Summary.Cell>
-                  </Table.Summary.Row>
-                </Table.Summary>
-              )}
-              columns={[
-                { title: "Month", dataIndex: "label", fixed: "left", width: 150, render: (v: string) => <strong>{v}</strong> },
-                { title: "WOs", dataIndex: "count", width: 70, align: "right" as const },
-                { title: "Contract Value", dataIndex: "contractValue", width: 150, align: "right" as const, render: fmt },
-                { title: "Billed", dataIndex: "billed", width: 150, align: "right" as const, render: (v: number) => <span style={{ color: "#16a85a", fontWeight: 600 }}>{fmt(v)}</span> },
-                { title: "Draft", dataIndex: "draft", width: 80, align: "right" as const },
-                { title: "Issued", dataIndex: "issued", width: 80, align: "right" as const },
-                { title: "In Progress", dataIndex: "inProgress", width: 100, align: "right" as const },
-                { title: "Completed", dataIndex: "completed", width: 100, align: "right" as const },
-                { title: "Cancelled", dataIndex: "cancelled", width: 100, align: "right" as const },
+          <div className="flex items-center gap-3">
+            <Segmented
+              value={contractTypeFilter}
+              onChange={(v) => setContractTypeFilter(v)}
+              options={[
+                { label: "All", value: "all" },
+                { label: "Execution", value: "execution" },
+                { label: "Professional Services", value: "professional-services" },
               ]}
-              locale={{
-                emptyText: loadingData ? " " : (
-                  <div style={{ padding: "40px 20px", color: "#9CA3AF", textAlign: "center" }}>
-                    <BarChart3 className="w-7 h-7 mx-auto mb-2.5 text-gray-300" />
-                    <div style={{ fontWeight: 600, color: "#374151" }}>No work orders match the current filters</div>
-                  </div>
-                ),
-              }}
             />
-          </Spin>
+            <Segmented
+              value={viewMode}
+              onChange={(v) => setViewMode(v)}
+              options={[
+                { label: "List View", value: "list" },
+                { label: "Monthly Report", value: "monthly" },
+              ]}
+            />
+          </div>
         </div>
-      )}
+
+        {/* ── Filters ─────────────────────────────────────────── */}
+        <div className="bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700/40 rounded-lg p-3.5 mb-4">
+          <div className="flex gap-2.5 items-center flex-wrap">
+            <SearchFilter placeholder="Search by WO No, project, vendor…" value={search} onChange={setSearch} />
+
+            <div className="w-[148px]">
+              <SelectFilter
+                value={statusFilter} onChange={v => setStatusFilter(v as WorkOrderStatus | "all")} placeholder="All Statuses"
+                options={[
+                  { label: "Draft", value: "draft" }, { label: "Issued", value: "issued" },
+                  { label: "In Progress", value: "in-progress" }, { label: "Completed", value: "completed" },
+                  { label: "Cancelled", value: "cancelled" },
+                ]}
+              />
+            </div>
+            <div className="w-[170px]">
+              <SelectFilter
+                value={categoryFilter} onChange={v => { setCategoryFilter(v); setSubCategoryFilter("all"); }} placeholder="All Categories"
+                options={topLevelCats.filter(c => c.isActive).map(c => ({ label: c.name, value: c.name }))}
+              />
+            </div>
+            <div className="w-[180px]">
+              <SelectFilter
+                value={subCategoryFilter} onChange={setSubCategoryFilter} disabled={subCatsOfSelected.length === 0}
+                placeholder={subCatsOfSelected.length === 0 ? "No sub-categories" : "All Sub-categories"}
+                options={subCatsOfSelected.map(c => ({ label: c.name, value: c.name }))}
+              />
+            </div>
+            <div className="w-[152px]">
+              <SelectFilter
+                value={progressFilter} onChange={setProgressFilter} placeholder="All Progress"
+                options={[
+                  { label: "Not Started", value: "not-started" }, { label: "In Progress", value: "running" },
+                  { label: "Completed", value: "completed" }, { label: "⚠ Overdue", value: "overdue" },
+                ]}
+              />
+            </div>
+            <div className="w-[180px]">
+              <SelectFilter
+                value={projectFilter} onChange={setProjectFilter} placeholder="All Projects"
+                options={selectableProjects(projects).map(p => ({ label: p.name, value: p.id }))}
+              />
+            </div>
+
+            <DateRangeFilter onChange={(from, to) => { setDateFrom(from); setDateTo(to); }} />
+
+            {hasActiveFilters && <Btn small outline label="Clear all" onClick={clearAllFilters} />}
+
+            <span className="ml-auto text-gray-400 text-xs whitespace-nowrap">
+              {filtered.length} work order{filtered.length !== 1 ? "s" : ""}
+            </span>
+          </div>
+
+          {/* Active filter chips */}
+          {hasActiveFilters && (
+            <div className="flex gap-1.5 flex-wrap mt-2.5">
+              {statusFilter !== "all" && (
+                <span className="bg-primary/10 border border-primary text-primary text-[11px] px-2 py-0.5 rounded flex items-center gap-1">
+                  Status: {statusFilter}
+                  <button type="button" onClick={() => setStatusFilter("all")} className="text-primary">×</button>
+                </span>
+              )}
+              {categoryFilter !== "all" && (
+                <span className="bg-blue-50 dark:bg-blue-500/10 border border-blue-600 text-blue-600 text-[11px] px-2 py-0.5 rounded flex items-center gap-1">
+                  Category: {categoryFilter}
+                  <button type="button" onClick={() => { setCategoryFilter("all"); setSubCategoryFilter("all"); }} className="text-blue-600">×</button>
+                </span>
+              )}
+              {subCategoryFilter !== "all" && (
+                <span className="bg-purple-50 dark:bg-purple-500/10 border border-purple-600 text-purple-600 text-[11px] px-2 py-0.5 rounded flex items-center gap-1">
+                  Sub-cat: {subCategoryFilter}
+                  <button type="button" onClick={() => setSubCategoryFilter("all")} className="text-purple-600">×</button>
+                </span>
+              )}
+              {progressFilter !== "all" && (
+                <span className="bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-600 text-emerald-600 text-[11px] px-2 py-0.5 rounded flex items-center gap-1">
+                  Progress: {progressFilter === "not-started" ? "Not Started" : progressFilter === "running" ? "In Progress" : progressFilter === "completed" ? "Completed" : "Overdue"}
+                  <button type="button" onClick={() => setProgressFilter("all")} className="text-emerald-600">×</button>
+                </span>
+              )}
+              {projectFilter !== "all" && (
+                <span className="bg-primary/10 border border-primary text-primary text-[11px] px-2 py-0.5 rounded flex items-center gap-1">
+                  Project: {selectableProjects(projects).find(p => p.id === projectFilter)?.name ?? projectFilter}
+                  <button type="button" onClick={() => setProjectFilter("all")} className="text-primary">×</button>
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Table */}
+        {viewMode === "list" ? (
+          loadingData ? (
+            <Spinner size="large" />
+          ) : filtered.length === 0 ? (
+            <EmptyState icon={ClipboardList} title="No work orders yet" message='Click "New Work Order" to create your first one.' />
+          ) : (
+            <>
+              <Table>
+                <Thead>
+                  <Tr>
+                    <Th>WO No</Th>
+                    <Th>Date</Th>
+                    <Th>Project</Th>
+                    <Th>Category</Th>
+                    <Th>Vendor Code</Th>
+                    <Th>Company Name</Th>
+                    <Th>Contract Value</Th>
+                    <Th>Status</Th>
+                    <Th>Created At</Th>
+                    <Th>Created By</Th>
+                    <Th>Actions</Th>
+                  </Tr>
+                </Thead>
+                <Tbody>
+                  {listPager.pageItems.map(record => {
+                    const docCount = getWorkOrderDocuments(record).length;
+                    const canCancel = record.status !== "cancelled" && record.status !== "completed";
+                    const menuItems: DropdownMenuItem[] = [
+                      { key: "edit", label: "Edit", icon: Pencil, disabled: record.isLocked, title: record.isLocked ? "Locked — unlock to edit" : undefined, onClick: () => openEdit(record) },
+                      { key: "pdf-hindi", label: "Download PDF (Hindi)", icon: FileText, onClick: () => handleDownloadPDFHindi(record) },
+                      ...(docCount > 0 ? [{ key: "doc", label: `Documents (${docCount})`, icon: Paperclip, onClick: () => { ensureFullWorkOrder(record).then(setDocsRecord); } }] : []),
+                      ...(isOwner ? [{ key: "lock-toggle", label: record.isLocked ? "Unlock Work Order" : "Lock Work Order", icon: record.isLocked ? Unlock : Lock, onClick: () => setLockTarget(record) }] : []),
+                      ...(canCancel ? [{ key: "cancel", label: "Cancel Work Order", icon: Ban, danger: true, onClick: () => { setCancelRemark(""); setCancelRecord(record); } }] : []),
+                      ...(isOwner ? [{ key: "delete", label: "Delete", icon: Trash2, danger: true, onClick: () => setDeleteTarget(record) }] : []),
+                    ];
+                    const delays = countDelays(record);
+                    return (
+                      <Tr key={record.id} className="cursor-pointer" onClick={() => { setSelectedWOId(record.id); setDrawerOpen(true); }}>
+                        <Td>
+                          <button
+                            type="button"
+                            onClick={e => { e.stopPropagation(); navigate(`/work-items/${record.id}`); }}
+                            className="font-mono font-bold text-primary"
+                          >
+                            {record.workOrderNo}
+                          </button>
+                        </Td>
+                        <Td>{dayjs(record.issueDate).format("DD MMM YYYY")}</Td>
+                        <Td>
+                          <div>{record.projectName}</div>
+                          {record.projectLocation && <div className="text-[11px] text-gray-400">{record.projectLocation}</div>}
+                        </Td>
+                        <Td><CategoryBadge cat={record.category} /></Td>
+                        <Td><span className="font-mono text-blue-600 text-xs font-semibold">{record.vendorCode}</span></Td>
+                        <Td>{record.vendorName}</Td>
+                        <Td>
+                          {record.contractValue ? <span className="font-mono text-primary font-semibold">{fmt(record.contractValue)}</span> : <span className="text-gray-300">—</span>}
+                        </Td>
+                        <Td>
+                          <ApprovalStatusPill wo={record} />
+                          <div className="flex gap-1 flex-wrap mt-1.5">
+                            <Badge color={STATUS_CFG[record.status]?.color} small>{STATUS_CFG[record.status]?.label ?? record.status}</Badge>
+                            {record.isLocked && (
+                              <span title="Rates, scope items, milestones, and contract value are locked">
+                                <Badge color="amber" small><span className="inline-flex items-center gap-1"><Lock className="w-2.5 h-2.5" /> Locked</span></Badge>
+                              </span>
+                            )}
+                            {delays > 0 && (
+                              <span title={`${delays} scope item${delays > 1 ? "s" : ""} past their planned end date`}>
+                                <Badge color="red" small><span className="inline-flex items-center gap-1"><AlertTriangle className="w-2.5 h-2.5" /> {delays} overdue</span></Badge>
+                              </span>
+                            )}
+                          </div>
+                        </Td>
+                        <Td>{record.createdAt ? dayjs(record.createdAt).format("DD MMM YYYY") : <span className="text-gray-300">—</span>}</Td>
+                        <Td>{(record.createdBy && typeof record.createdBy === "object" ? record.createdBy.name : undefined) || <span className="text-gray-300">—</span>}</Td>
+                        <Td>
+                          <div onClick={e => e.stopPropagation()} className="flex items-center gap-0.5">
+                            <button title="View" onClick={() => { setSelectedWOId(record.id); setDrawerOpen(true); }} className="w-7 h-7 rounded-md flex items-center justify-center text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700/50">
+                              <Eye className="w-4 h-4" />
+                            </button>
+                            <button title="Download PDF" disabled={pdfLoading} onClick={() => handleDownloadPDF(record)} className="w-7 h-7 rounded-md flex items-center justify-center text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700/50 disabled:opacity-50">
+                              <FileText className="w-4 h-4" />
+                            </button>
+                            {menuItems.length > 0 && <DropdownMenu items={menuItems} />}
+                          </div>
+                        </Td>
+                      </Tr>
+                    );
+                  })}
+                </Tbody>
+              </Table>
+              {listPager.totalPages > 1 && <div className="mt-4"><Pagination page={listPager.page} totalPages={listPager.totalPages} onChange={listPager.setPage} /></div>}
+            </>
+          )
+        ) : (
+          loadingData ? (
+            <Spinner size="large" />
+          ) : monthlyReport.length === 0 ? (
+            <EmptyState icon={BarChart3} title="No work orders match the current filters" />
+          ) : (
+            <Table>
+              <Thead>
+                <Tr>
+                  <Th stickyLeft>Month</Th>
+                  <Th className="text-right">WOs</Th>
+                  <Th className="text-right">Contract Value</Th>
+                  <Th className="text-right">Billed</Th>
+                  <Th className="text-right">Draft</Th>
+                  <Th className="text-right">Issued</Th>
+                  <Th className="text-right">In Progress</Th>
+                  <Th className="text-right">Completed</Th>
+                  <Th className="text-right">Cancelled</Th>
+                </Tr>
+              </Thead>
+              <Tbody>
+                {monthlyReport.map(r => (
+                  <Tr key={r.key}>
+                    <Td stickyLeft><strong>{r.label}</strong></Td>
+                    <Td className="text-right">{r.count}</Td>
+                    <Td className="text-right font-mono">{fmt(r.contractValue)}</Td>
+                    <Td className="text-right font-mono text-emerald-600 font-semibold">{fmt(r.billed)}</Td>
+                    <Td className="text-right">{r.draft}</Td>
+                    <Td className="text-right">{r.issued}</Td>
+                    <Td className="text-right">{r.inProgress}</Td>
+                    <Td className="text-right">{r.completed}</Td>
+                    <Td className="text-right">{r.cancelled}</Td>
+                  </Tr>
+                ))}
+              </Tbody>
+              <Tfoot>
+                <Tr className="!bg-primary/5 font-bold">
+                  <Td stickyLeft className="!bg-primary/5">Total</Td>
+                  <Td className="text-right">{monthlyReportTotals.count}</Td>
+                  <Td className="text-right font-mono">{fmt(monthlyReportTotals.contractValue)}</Td>
+                  <Td className="text-right font-mono">{fmt(monthlyReportTotals.billed)}</Td>
+                  <Td className="text-right">{monthlyReportTotals.draft}</Td>
+                  <Td className="text-right">{monthlyReportTotals.issued}</Td>
+                  <Td className="text-right">{monthlyReportTotals.inProgress}</Td>
+                  <Td className="text-right">{monthlyReportTotals.completed}</Td>
+                  <Td className="text-right">{monthlyReportTotals.cancelled}</Td>
+                </Tr>
+              </Tfoot>
+            </Table>
+          )
+        )}
       </div>
 
       {/* ── View Drawer ──────────────────────────────────────── */}
-      <Drawer
-        open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
-        placement="right"
-        title={
-          <Space>
-            <span style={{ fontSize: 20 }}>📋</span>
-            <div>
-              <div style={{ fontWeight: 700, fontSize: 16 }}>
-                Work Order —{" "}
-                <span style={{ color: "#FF7A00", fontFamily: "monospace" }}>
-                  {currentSelectedWO?.workOrderNo}
-                </span>
+      {drawerOpen && (
+        <Modal
+          icon={ClipboardList}
+          title={<>Work Order — <span className="text-primary font-mono">{currentSelectedWO?.workOrderNo}</span></>}
+          subtitle={`${currentSelectedWO?.projectName ?? ""}${currentSelectedWO?.projectLocation ? ` — ${currentSelectedWO.projectLocation}` : ""}`}
+          extraWide
+          onClose={() => setDrawerOpen(false)}
+          footer={
+            <div className="flex justify-between gap-2 flex-wrap">
+              <div className="flex gap-2">
+                <Btn outline icon={FileText} loading={pdfLoading} label="Download PDF" onClick={() => currentSelectedWO && handleDownloadPDF(currentSelectedWO)} />
+                <Btn outline icon={FileText} loading={pdfLoading} label="Download PDF (Hindi)" onClick={() => currentSelectedWO && handleDownloadPDFHindi(currentSelectedWO)} />
               </div>
-              <div style={{ fontSize: 12, color: "#6B7280", fontWeight: 400 }}>
-                {currentSelectedWO?.projectName}
-                {currentSelectedWO?.projectLocation && ` — ${currentSelectedWO.projectLocation}`}
+              <div className="flex gap-2">
+                {currentSelectedWO && <Btn outline label="Open Full Page →" onClick={() => { setDrawerOpen(false); navigate(`/work-items/${currentSelectedWO.id}`); }} />}
+                {currentSelectedWO && <Btn outline icon={Pencil} label="Edit Work Order" onClick={() => { setDrawerOpen(false); openEdit(currentSelectedWO); }} />}
+                <Btn outline label="Close" onClick={() => setDrawerOpen(false)} />
               </div>
             </div>
-          </Space>
-        }
-        width={820}
-        footer={
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-            <div style={{ display: "flex", gap: 8 }}>
-              <Button
-                icon={<FilePdfOutlined />}
-                loading={pdfLoading}
-                onClick={() => currentSelectedWO && handleDownloadPDF(currentSelectedWO)}
-                style={{ borderColor: "#e03b3b", color: "#e03b3b" }}
-              >
-                Download PDF
-              </Button>
-              <Button
-                icon={<FilePdfOutlined />}
-                loading={pdfLoading}
-                onClick={() => currentSelectedWO && handleDownloadPDFHindi(currentSelectedWO)}
-                style={{ borderColor: "#FF7A00", color: "#FF7A00" }}
-              >
-                Download PDF (Hindi)
-              </Button>
-            </div>
-            <div style={{ display: "flex", gap: 8 }}>
-              {currentSelectedWO && (
-                <Button onClick={() => { setDrawerOpen(false); navigate(`/work-items/${currentSelectedWO.id}`); }}>
-                  Open Full Page →
-                </Button>
-              )}
-              {currentSelectedWO && (
-                <Button
-                  icon={<EditOutlined />}
-                  onClick={() => { setDrawerOpen(false); openEdit(currentSelectedWO); }}
-                >
-                  Edit Work Order
-                </Button>
-              )}
-              <Button size="large" onClick={() => setDrawerOpen(false)}>Close</Button>
-            </div>
-          </div>
-        }
-      >
-        {currentSelectedWO && (
-          <WorkOrderDetailView
-            workOrder={currentSelectedWO}
-            bills={woBillsMap[currentSelectedWO.id] ?? []}
-            onUpdated={(updated) => {
-              const normalized = normalizeWO(updated as any);
-              setWorkOrders(prev => prev.map(w => w.id === currentSelectedWO.id ? normalized : w));
-            }}
-          />
-        )}
-      </Drawer>
+          }
+        >
+          {currentSelectedWO && (
+            <WorkOrderDetailView
+              workOrder={currentSelectedWO}
+              bills={woBillsMap[currentSelectedWO.id] ?? []}
+              onUpdated={(updated) => {
+                const normalized = normalizeWO(updated as any);
+                setWorkOrders(prev => prev.map(w => w.id === currentSelectedWO.id ? normalized : w));
+              }}
+            />
+          )}
+        </Modal>
+      )}
 
       {/* ── Create Drawer ────────────────────────────────────── */}
-      <Drawer
-        open={createDrawerOpen}
-        onClose={() => setCreateDrawerOpen(false)}
-        placement="right"
-        width={900}
-        title={
-          <Space>
-            <span style={{ fontSize: 20 }}>📋</span>
-            <div>
-              <div style={{ fontWeight: 700, fontSize: 16 }}>New Work Order</div>
-              <div style={{ fontSize: 12, color: "#6B7280", fontWeight: 400 }}>
-                Select project & vendor, then define the scope of work
-              </div>
+      {createDrawerOpen && (
+        <Modal
+          icon={ClipboardList}
+          title="New Work Order"
+          subtitle="Select project & vendor, then define the scope of work"
+          ultraWide
+          onClose={() => setCreateDrawerOpen(false)}
+          footer={
+            <div className="flex justify-end gap-2">
+              <Btn
+                outline label="Cancel"
+                onClick={() => { setCreateValues(blankWOForm()); setCreateScopeItems([]); setCreateMilestones([]); setCreateSecurityDeposits([]); setCreateDiscount(null); setCreateWarranty([]); setCreateDrawerOpen(false); }}
+              />
+              <Btn color="primary" loading={saving} label="Save Work Order" onClick={handleCreate} />
             </div>
-          </Space>
-        }
-        footer={
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-            <Button size="large" onClick={() => { createForm.resetFields(); setCreateScopeItems([]); setCreateMilestones([]); setCreateSecurityDeposits([]); setCreateDiscount(null); setCreateWarranty([]); setCreateDrawerOpen(false); }}>
-              Cancel
-            </Button>
-            <Button
-              size="large"
-              type="primary"
-              loading={saving}
-              onClick={handleCreate}
-              style={{ background: "#FF7A00", borderColor: "#FF7A00" }}
-            >
-              Save Work Order
-            </Button>
-          </div>
-        }
-        destroyOnClose
-      >
-        <FormSection title="Work Order Information">
-          <Form form={createForm} layout="vertical" initialValues={{ status: "draft" }}>
+          }
+        >
+          <FormSection title="Work Order Information">
             <WOFormFields
-              form={createForm}
+              values={createValues}
+              onChange={patchCreate}
+              errors={createErrors.errors}
               nextWONo={nextWONo}
               nextCWONo={nextCWONo}
               contractorsList={contractors}
@@ -3300,104 +2496,64 @@ export default function WorkItems() {
               preparedByContact={user?.email}
               onExtracted={applyAiExtraction}
             />
-          </Form>
-        </FormSection>
-        <FormSection title="Work Items">
-          {createContractType === "professional-services" ? (
-            <DeliverablesBuilder
-              items={createScopeItems}
-              onChange={setCreateScopeItems}
-              gstPercent={createGstPercent}
-            />
-          ) : (
-            <ScopeItemsBuilder
-              items={createScopeItems}
-              onChange={setCreateScopeItems}
-              allCategories={apiCategories}
-              topCatId={createTopCatId}
-              onCategoryCreated={handleCategoryCreated}
-              gstPercent={createGstPercent}
-            />
-          )}
-        </FormSection>
-        <div style={{ display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
-          <div style={{ flex: "2 1 420px", minWidth: 0 }}>
-            <FormSection title="Payment Terms">
-              <PaymentMilestonesBuilder
-                items={createMilestones}
-                onChange={setCreateMilestones}
-                contractValue={calcTotalAmt(createScopeItems)}
-                contractValueInclGst={calcTotalInclGst(createScopeItems)}
-                discount={createDiscount}
-                onDiscountChange={setCreateDiscount}
+          </FormSection>
+          <FormSection title="Work Items">
+            {createContractType === "professional-services" ? (
+              <DeliverablesBuilder items={createScopeItems} onChange={setCreateScopeItems} gstPercent={createGstPercent} />
+            ) : (
+              <ScopeItemsBuilder
+                items={createScopeItems} onChange={setCreateScopeItems}
+                allCategories={apiCategories} topCatId={createTopCatId}
+                onCategoryCreated={handleCategoryCreated} gstPercent={createGstPercent}
               />
-            </FormSection>
+            )}
+          </FormSection>
+          <div className="flex gap-4 items-start flex-wrap">
+            <div className="flex-[2] min-w-[320px]">
+              <FormSection title="Payment Terms">
+                <PaymentMilestonesBuilder
+                  items={createMilestones} onChange={setCreateMilestones}
+                  contractValue={calcTotalAmt(createScopeItems)} contractValueInclGst={calcTotalInclGst(createScopeItems)}
+                  discount={createDiscount} onDiscountChange={setCreateDiscount}
+                />
+              </FormSection>
+            </div>
+            <div className="flex-1 min-w-[260px]">
+              <BankDetailsPanel vendorCode={createVendorCode} contractType={createContractType} contractorsList={contractors} consultantsList={consultants} />
+            </div>
           </div>
-          <div style={{ flex: "1 1 260px", minWidth: 260 }}>
-            <BankDetailsPanel
-              vendorCode={createVendorCode}
-              contractType={createContractType}
-              contractorsList={contractors}
-              consultantsList={consultants}
+          <FormSection title="Security Deposit & Terms">
+            <SecurityDepositBuilder
+              items={createSecurityDeposits} onChange={setCreateSecurityDeposits}
+              scopeItems={createScopeItems.map(si => ({ id: si.id, description: si.description, plannedQty: si.plannedQty, amount: calcDraftItemAmt(si) }))}
             />
-          </div>
-        </div>
-        <FormSection title="Security Deposit & Terms">
-          <SecurityDepositBuilder
-            items={createSecurityDeposits}
-            onChange={setCreateSecurityDeposits}
-            scopeItems={createScopeItems.map(si => ({ id: si.id, description: si.description, plannedQty: si.plannedQty, amount: calcDraftItemAmt(si) }))}
-          />
-          <div style={{ borderTop: "1px solid #E5E7EB", marginTop: 16, paddingTop: 16 }}>
-            <WarrantyTermsBuilder items={createWarranty} onChange={setCreateWarranty} />
-          </div>
-        </FormSection>
-      </Drawer>
+            <div className="border-t border-gray-200 dark:border-gray-700/40 mt-4 pt-4">
+              <WarrantyTermsBuilder items={createWarranty} onChange={setCreateWarranty} />
+            </div>
+          </FormSection>
+        </Modal>
+      )}
 
       {/* ── Edit Drawer ───────────────────────────────────────── */}
-      <Drawer
-        open={editModalOpen}
-        onClose={() => { setEditModalOpen(false); setEditWOId(null); }}
-        placement="right"
-        width={900}
-        title={
-          <Space>
-            <span style={{ fontSize: 20 }}>✏️</span>
-            <div>
-              <div style={{ fontWeight: 700, fontSize: 16 }}>
-                Edit Work Order —{" "}
-                <span style={{ color: "#FF7A00", fontFamily: "monospace" }}>
-                  {currentEditWO?.workOrderNo}
-                </span>
-              </div>
-              <div style={{ fontSize: 12, color: "#6B7280", fontWeight: 400 }}>
-                Changes preserve existing progress data
-              </div>
+      {editModalOpen && (
+        <Modal
+          icon={Pencil}
+          title={<>Edit Work Order — <span className="text-primary font-mono">{currentEditWO?.workOrderNo}</span></>}
+          subtitle="Changes preserve existing progress data"
+          ultraWide
+          onClose={() => { setEditModalOpen(false); setEditWOId(null); }}
+          footer={
+            <div className="flex justify-end gap-2">
+              <Btn outline label="Cancel" onClick={() => { setEditModalOpen(false); setEditWOId(null); }} />
+              <Btn color="primary" loading={saving} label="Save Changes" onClick={handleSaveEdit} />
             </div>
-          </Space>
-        }
-        footer={
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-            <Button size="large" onClick={() => { setEditModalOpen(false); setEditWOId(null); }}>
-              Cancel
-            </Button>
-            <Button
-              size="large"
-              type="primary"
-              loading={saving}
-              onClick={handleSaveEdit}
-              style={{ background: "#FF7A00", borderColor: "#FF7A00" }}
-            >
-              Save Changes
-            </Button>
-          </div>
-        }
-        destroyOnClose
-      >
-        <FormSection title="Work Order Information">
-          <Form form={editForm} layout="vertical">
+          }
+        >
+          <FormSection title="Work Order Information">
             <WOFormFields
-              form={editForm}
+              values={editValues}
+              onChange={patchEdit}
+              errors={editErrors.errors}
               isEdit
               nextWONo={nextWONo}
               nextCWONo={nextCWONo}
@@ -3410,178 +2566,142 @@ export default function WorkItems() {
               preparedByName={currentEditWO?.preparedByName}
               preparedByContact={currentEditWO?.preparedByContact}
             />
-          </Form>
-        </FormSection>
-        <FormSection title="Work Items">
-          {editContractType === "professional-services" ? (
-            <DeliverablesBuilder
-              items={editScopeItems}
-              onChange={setEditScopeItems}
-              gstPercent={editGstPercent}
-            />
-          ) : (
-            <ScopeItemsBuilder
-              items={editScopeItems}
-              onChange={setEditScopeItems}
-              allCategories={apiCategories}
-              topCatId={editTopCatId}
-              onCategoryCreated={handleCategoryCreated}
-              gstPercent={editGstPercent}
-            />
-          )}
-        </FormSection>
-        <FormSection title="Payment Terms">
-          <PaymentMilestonesBuilder
-            items={editMilestones}
-            onChange={setEditMilestones}
-            contractValue={calcTotalAmt(editScopeItems)}
-            contractValueInclGst={calcTotalInclGst(editScopeItems)}
-            discount={editDiscount}
-            onDiscountChange={setEditDiscount}
-          />
-        </FormSection>
-        <FormSection title="Security Deposit & Terms">
-          <SecurityDepositBuilder
-            items={editSecurityDeposits}
-            onChange={setEditSecurityDeposits}
-            scopeItems={editScopeItems.map(si => ({ id: si.id, description: si.description, plannedQty: si.plannedQty, amount: calcDraftItemAmt(si) }))}
-          />
-          <div style={{ borderTop: "1px solid #E5E7EB", marginTop: 16, paddingTop: 16 }}>
-            <WarrantyTermsBuilder items={editWarranty} onChange={setEditWarranty} />
-          </div>
-        </FormSection>
-      </Drawer>
-
-      {/* ── Progress Drawer ──────────────────────────────────── */}
-      <Drawer
-        open={progressModalOpen}
-        onClose={() => { setProgressModalOpen(false); setProgressItem(null); progressForm.resetFields(); }}
-        placement="right"
-        width={480}
-        title={
-          <Space>
-            <span style={{ fontSize: 20 }}>📈</span>
-            <div>
-              <div style={{ fontWeight: 700, fontSize: 16 }}>Record Progress</div>
-              {progressItem && (
-                <div style={{ fontSize: 12, color: "#6B7280", fontWeight: 400 }}>
-                  {progressItem.description}
-                </div>
-              )}
-            </div>
-          </Space>
-        }
-        footer={
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-            <Button size="large" onClick={() => { setProgressModalOpen(false); setProgressItem(null); progressForm.resetFields(); }}>
-              Cancel
-            </Button>
-            <Button
-              size="large"
-              type="primary"
-              loading={saving}
-              onClick={handleAddProgress}
-              style={{ background: "#16a85a", borderColor: "#16a85a" }}
-            >
-              Record Progress
-            </Button>
-          </div>
-        }
-        destroyOnClose
-      >
-        {progressItem && (
-          <>
-            <div
-              style={{
-                background: "#f0faf4",
-                border: "1px solid #b7e8c8",
-                borderRadius: 8,
-                padding: "10px 14px",
-                marginBottom: 20,
-                fontSize: 12,
-              }}
-            >
-              <div style={{ display: "flex", gap: 20, flexWrap: "wrap", marginBottom: 8 }}>
-                <span><span style={{ color: "#9ba3b8" }}>Planned: </span><strong>{(progressItem.plannedQty ?? 0).toLocaleString("en-IN")} {progressItem.unit}</strong></span>
-                <span><span style={{ color: "#9ba3b8" }}>Completed: </span><strong style={{ color: "#16a85a" }}>{(progressItem.completedQty ?? 0).toLocaleString("en-IN")} {progressItem.unit}</strong></span>
-                <span><span style={{ color: "#9ba3b8" }}>Remaining: </span><strong>{Math.max(0, progressItem.plannedQty - (progressItem.completedQty ?? 0)).toLocaleString("en-IN")} {progressItem.unit}</strong></span>
-              </div>
-              <Progress
-                percent={getCompletionPct(progressItem)}
-                size="small"
-                strokeColor={isItemDelayed(progressItem) ? "#e03b3b" : "#16a85a"}
-                showInfo
+          </FormSection>
+          <FormSection title="Work Items">
+            {editContractType === "professional-services" ? (
+              <DeliverablesBuilder items={editScopeItems} onChange={setEditScopeItems} gstPercent={editGstPercent} />
+            ) : (
+              <ScopeItemsBuilder
+                items={editScopeItems} onChange={setEditScopeItems}
+                allCategories={apiCategories} topCatId={editTopCatId}
+                onCategoryCreated={handleCategoryCreated} gstPercent={editGstPercent}
               />
+            )}
+          </FormSection>
+          <FormSection title="Payment Terms">
+            <PaymentMilestonesBuilder
+              items={editMilestones} onChange={setEditMilestones}
+              contractValue={calcTotalAmt(editScopeItems)} contractValueInclGst={calcTotalInclGst(editScopeItems)}
+              discount={editDiscount} onDiscountChange={setEditDiscount}
+            />
+          </FormSection>
+          <FormSection title="Security Deposit & Terms">
+            <SecurityDepositBuilder
+              items={editSecurityDeposits} onChange={setEditSecurityDeposits}
+              scopeItems={editScopeItems.map(si => ({ id: si.id, description: si.description, plannedQty: si.plannedQty, amount: calcDraftItemAmt(si) }))}
+            />
+            <div className="border-t border-gray-200 dark:border-gray-700/40 mt-4 pt-4">
+              <WarrantyTermsBuilder items={editWarranty} onChange={setEditWarranty} />
             </div>
+          </FormSection>
+        </Modal>
+      )}
 
-            <Form form={progressForm} layout="vertical">
-              <Row gutter={16}>
-                <Col span={12}>
-                  <Form.Item label="Date" name="date" rules={[{ required: true, message: "Select date" }]}>
-                    <DatePicker style={{ width: "100%" }} format="DD/MM/YYYY" />
-                  </Form.Item>
-                </Col>
-                <Col span={12}>
-                  <Form.Item
-                    label={`Qty Completed (${progressItem.unit})`}
-                    name="qtyAdded"
-                    extra={progressItem.unit === "per-hr" ? "e.g. 13.67 = 13 hr 40 min" : undefined}
-                    rules={[
-                      { required: true, message: "Enter quantity" },
-                      { validator: (_, v) => v > 0 ? Promise.resolve() : Promise.reject("Must be > 0") },
-                    ]}
-                  >
-                    <InputNumber style={{ width: "100%" }} min={0.01} step={0.01} precision={2} placeholder={progressItem.unit === "per-hr" ? "e.g. 13.67" : "e.g. 3000"} />
-                  </Form.Item>
-                </Col>
-              </Row>
-              <Form.Item label="Remarks (optional)" name="remarks">
-                <Input.TextArea rows={3} placeholder="e.g. Zone B concrete poured, curing in progress…" />
-              </Form.Item>
-            </Form>
-          </>
-        )}
-      </Drawer>
+      {/* ── Progress Drawer (see note at progressItem's declaration — currently
+          unreachable in this file's own UI, kept wired rather than removed) ── */}
+      {progressModalOpen && (
+        <Modal
+          title="Record Progress"
+          subtitle={progressItem?.description}
+          onClose={() => { setProgressModalOpen(false); setProgressItem(null); setProgressDate(""); setProgressQty(null); setProgressRemarks(""); }}
+          footer={
+            <div className="flex justify-end gap-2">
+              <Btn outline label="Cancel" onClick={() => { setProgressModalOpen(false); setProgressItem(null); setProgressDate(""); setProgressQty(null); setProgressRemarks(""); }} />
+              <Btn color="green" loading={saving} label="Record Progress" onClick={handleAddProgress} />
+            </div>
+          }
+        >
+          {progressItem && (
+            <>
+              <div className="bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/30 rounded-lg px-3.5 py-2.5 mb-5 text-xs">
+                <div className="flex gap-5 flex-wrap mb-2">
+                  <span><span className="text-gray-400">Planned: </span><strong>{(progressItem.plannedQty ?? 0).toLocaleString("en-IN")} {progressItem.unit}</strong></span>
+                  <span><span className="text-gray-400">Completed: </span><strong className="text-emerald-600">{(progressItem.completedQty ?? 0).toLocaleString("en-IN")} {progressItem.unit}</strong></span>
+                  <span><span className="text-gray-400">Remaining: </span><strong>{Math.max(0, progressItem.plannedQty - (progressItem.completedQty ?? 0)).toLocaleString("en-IN")} {progressItem.unit}</strong></span>
+                </div>
+                <div className="w-full h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                  <div className={`h-full ${isItemDelayed(progressItem) ? "bg-red-500" : "bg-emerald-500"}`} style={{ width: `${getCompletionPct(progressItem)}%` }} />
+                </div>
+              </div>
 
-      <Modal
-        open={!!docsRecord}
-        onCancel={() => setDocsRecord(null)}
-        footer={null}
-        title={`Documents — ${docsRecord?.workOrderNo ?? ""}`}
-      >
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {docsRecord && getWorkOrderDocuments(docsRecord).map((d, i) => (
-            <a
-              key={i} href={d.url} target="_blank" rel="noreferrer" download={d.name}
-              style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", background: "#f5f6f8", border: "1px solid #e4e7ee", borderRadius: 6 }}
-            >
-              <LinkOutlined /> {d.name}
-            </a>
-          ))}
-        </div>
-      </Modal>
+              <div className="grid grid-cols-2 gap-4 mb-4">
+                <div>
+                  <DatePicker label="Date *" value={progressDate} onChange={setProgressDate} />
+                  {progressErrors.errors.date && <span className="block text-xs text-red-500 mt-1">{progressErrors.errors.date}</span>}
+                </div>
+                <Field
+                  label={`Qty Completed (${progressItem.unit})`} type="number" min="0.01" step="0.01"
+                  hint={progressItem.unit === "per-hr" ? "e.g. 13.67 = 13 hr 40 min" : undefined}
+                  placeholder={progressItem.unit === "per-hr" ? "e.g. 13.67" : "e.g. 3000"}
+                  value={progressQty ?? ""} onChange={e => setProgressQty(e.target.value === "" ? null : Number(e.target.value))}
+                  error={progressErrors.errors.qtyAdded}
+                />
+              </div>
+              <Field textarea label="Remarks (optional)" placeholder="e.g. Zone B concrete poured, curing in progress…" value={progressRemarks} onChange={e => setProgressRemarks(e.target.value)} />
+            </>
+          )}
+        </Modal>
+      )}
 
-      <Modal
-        open={!!cancelRecord}
-        onCancel={() => { setCancelRecord(null); setCancelRemark(""); }}
-        onOk={handleCancelWorkOrder}
-        okText="Cancel Work Order"
-        okType="danger"
-        okButtonProps={{ loading: cancelSubmitting, disabled: !cancelRemark.trim() }}
-        cancelText="Back"
-        title={`Cancel Work Order — ${cancelRecord?.workOrderNo ?? ""}`}
-      >
-        <p style={{ color: "#5a6278", marginBottom: 10 }}>
-          This marks the work order as <strong>Cancelled</strong>. Existing bills/progress are not deleted, but no further
-          progress or billing should be added against it. A remark is required.
-        </p>
-        <Input.TextArea
-          rows={3}
-          placeholder="Reason for cancelling this work order…"
-          value={cancelRemark}
-          onChange={e => setCancelRemark(e.target.value)}
+      {docsRecord && (
+        <Modal title={`Documents — ${docsRecord.workOrderNo ?? ""}`} onClose={() => setDocsRecord(null)}>
+          <div className="flex flex-col gap-2">
+            {getWorkOrderDocuments(docsRecord).map((d, i) => (
+              <a
+                key={i} href={d.url} target="_blank" rel="noreferrer" download={d.name}
+                className="flex items-center gap-2 px-2.5 py-2 bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700/40 rounded-md text-sm text-[#1A1A2E] dark:text-[#F1F5F9]"
+              >
+                <Link2 className="w-4 h-4 text-gray-400" /> {d.name}
+              </a>
+            ))}
+          </div>
+        </Modal>
+      )}
+
+      {cancelRecord && (
+        <Modal
+          icon={Ban}
+          title={`Cancel Work Order — ${cancelRecord.workOrderNo ?? ""}`}
+          onClose={() => { setCancelRecord(null); setCancelRemark(""); }}
+          footer={
+            <div className="flex justify-end gap-2">
+              <Btn outline label="Back" onClick={() => { setCancelRecord(null); setCancelRemark(""); }} />
+              <Btn color="red" loading={cancelSubmitting} disabled={!cancelRemark.trim()} label="Cancel Work Order" onClick={handleCancelWorkOrder} />
+            </div>
+          }
+        >
+          <p className="text-gray-600 dark:text-gray-300 mb-2.5 text-sm">
+            This marks the work order as <strong>Cancelled</strong>. Existing bills/progress are not deleted, but no further
+            progress or billing should be added against it. A remark is required.
+          </p>
+          <Field textarea placeholder="Reason for cancelling this work order…" value={cancelRemark} onChange={e => setCancelRemark(e.target.value)} />
+        </Modal>
+      )}
+
+      {lockTarget && (
+        <ConfirmModal
+          title={lockTarget.isLocked ? `Unlock ${lockTarget.workOrderNo}?` : `Lock ${lockTarget.workOrderNo}?`}
+          message={lockTarget.isLocked
+            ? "This will allow rates, scope items, milestones, and contract value to be edited again."
+            : "Once locked, its rates, scope items, milestones, and contract value can no longer be edited until it's unlocked again."}
+          confirmLabel={lockTarget.isLocked ? "Unlock" : "Lock"}
+          loading={lockSaving}
+          onConfirm={confirmLockToggle}
+          onCancel={() => setLockTarget(null)}
         />
-      </Modal>
-    </PageShell>
+      )}
+
+      {deleteTarget && (
+        <ConfirmModal
+          title={`Delete ${deleteTarget.workOrderNo}?`}
+          message="This permanently removes the work order and cannot be undone."
+          confirmLabel="Yes, Delete"
+          danger
+          loading={deleteSaving}
+          onConfirm={confirmDelete}
+          onCancel={() => setDeleteTarget(null)}
+        />
+      )}
+    </div>
   );
 }

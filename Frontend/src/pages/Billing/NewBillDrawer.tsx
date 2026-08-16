@@ -1,27 +1,23 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import {
-  Button,
-  Col,
-  DatePicker,
-  Drawer,
-  Form,
-  Input,
-  InputNumber,
-  Popconfirm,
-  Radio,
-  Row,
-  Select,
-  Space,
-  Tag,
-  message,
-} from "antd";
-import { DeleteOutlined, PlusOutlined } from "@ant-design/icons";
+import toast from "react-hot-toast";
+import { FileText, Plus, Trash2 } from "lucide-react";
 import dayjs from "dayjs";
 import apiClient from "../../services/apiClient";
 import { selectableProjects } from "../../utils/projectOptions";
 import { vendorLabel } from "../../utils/vendorLabel";
-import StatusTag from "../../shared/components/StatusTag";
+import { formatThousands, parseThousands, formatPercent, parsePercent } from "../../utils/numberFormat";
+import { useFormErrors } from "../../hooks/useFormErrors";
+import Modal from "../../ui/Modal";
+import ConfirmModal from "../../ui/ConfirmModal";
+import Btn from "../../ui/Btn";
+import Field from "../../ui/Field";
+import SField from "../../ui/SField";
+import { DatePicker } from "../../ui/DatePicker";
+import Segmented from "../../ui/Segmented";
+import StatusBadge from "../../ui/StatusBadge";
+import Badge from "../../ui/Badge";
+import { Table, Thead, Tbody, Tr, Th, Td } from "../../ui/Table";
 import type { Contractor } from "../../types/VendorBilling";
 import { BILL_TYPE_CFG, RELATIONSHIP_OPTIONS } from "../../shared/constants/billOptions";
 import { billFinancials, holdAmountFromPercent } from "../../shared/utils/billMath";
@@ -82,6 +78,14 @@ function remainingPercent(li: LineItem): number | null {
   return Math.max(0, Math.round((remaining / li.plannedQty) * 10000) / 100);
 }
 
+const GST_SLABS = [
+  { value: "0", label: "0% — Exempt / Nil" },
+  { value: "5", label: "5%" },
+  { value: "12", label: "12%" },
+  { value: "18", label: "18% (Standard)" },
+  { value: "-1", label: "Custom…" },
+];
+
 export default function NewBillDrawer({
   open,
   onClose,
@@ -91,8 +95,8 @@ export default function NewBillDrawer({
   onClose: () => void;
   onCreated: (bill: Record<string, unknown>) => void;
 }) {
-  const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);
+  const formErrors = useFormErrors<"contractorId" | "billDate" | "generatedBy">();
 
   const [projects, setProjects] = useState<ProjectOpt[]>([]);
   const [contractors, setContractors] = useState<Contractor[]>([]);
@@ -120,6 +124,14 @@ export default function NewBillDrawer({
   // Scope items with particulars are collapsed by default — the arrow next
   // to their group header reveals the particulars to bill against.
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const [importWOPick, setImportWOPick] = useState("");
+  const [confirmRemoveKey, setConfirmRemoveKey] = useState<number | null>(null);
+
+  // Bill Information fields (previously an antd Form)
+  const [billDate, setBillDate] = useState("");
+  const [generatedBy, setGeneratedBy] = useState("");
+  const [contractorRefNo, setContractorRefNo] = useState("");
+  const [remarksInput, setRemarksInput] = useState("");
 
   // Hold (retention) decided at creation time — either a % or a flat amount.
   const [holdMode, setHoldMode] = useState<"percent" | "amount">("percent");
@@ -134,7 +146,7 @@ export default function NewBillDrawer({
 
   useEffect(() => {
     if (!open) return;
-    form.resetFields();
+    formErrors.clearAll();
     setProjectId("");
     setContractorId("");
     setPayeeVendorCode("");
@@ -149,6 +161,11 @@ export default function NewBillDrawer({
     setWoExistingBills([]);
     setImportedFromWOId("");
     setExpandedGroups(new Set());
+    setImportWOPick("");
+    setBillDate(dayjs().format("YYYY-MM-DD"));
+    setGeneratedBy("");
+    setContractorRefNo("");
+    setRemarksInput("");
     setHoldMode("percent");
     setHoldPercent(0);
     setHoldAmountInput(0);
@@ -282,7 +299,7 @@ export default function NewBillDrawer({
     });
     setLineItems((prev) => [...prev.filter((li) => li.description.trim()), ...imported]);
     setImportedFromWOId(woId);
-    message.success(`${imported.length} item${imported.length === 1 ? "" : "s"} imported — enter % complete or quantity`);
+    toast.success(`${imported.length} item${imported.length === 1 ? "" : "s"} imported — enter % complete or quantity`);
   }
 
   async function handleWOSelectForLinking(woId: string) {
@@ -311,15 +328,15 @@ export default function NewBillDrawer({
   async function handleSubmit() {
     const validItems = lineItems.filter((li) => li.description.trim() && li.billedQty > 0);
     if (validItems.length === 0) {
-      message.error("Add at least one work item with a description and quantity > 0");
+      toast.error("Add at least one work item with a description and quantity > 0");
       return;
     }
-    let values: Record<string, unknown>;
-    try {
-      values = await form.validateFields();
-    } catch {
-      return;
-    }
+    formErrors.clearAll();
+    let hasError = false;
+    if (!contractorId) { formErrors.setError("contractorId", "Select a contractor"); hasError = true; }
+    if (!billDate) { formErrors.setError("billDate", "Required"); hasError = true; }
+    if (!generatedBy.trim()) { formErrors.setError("generatedBy", "Required"); hasError = true; }
+    if (hasError) return;
 
     const project = projects.find((p) => p.id === projectId);
     const contractor = selectedContractor;
@@ -344,14 +361,14 @@ export default function NewBillDrawer({
     const linkedToScopeItems = validItems.some((li) => li.scopeItemId);
 
     const payload = {
-      billDate:          dayjs(values.billDate as string).toISOString(),
+      billDate:          dayjs(billDate).toISOString(),
       projectId:         projectId || undefined,
       projectName:       project?.name ?? "",
       vendorCode:        selectedPayee?.vendorCode ?? contractor?.vendorCode ?? "",
       vendorName:        selectedPayee?.companyName ?? contractor?.companyName ?? "",
-      generatedBy:       values.generatedBy ?? "",
-      contractorRefNo:   values.contractorRefNo ?? "",
-      remarks:           values.remarks ?? "",
+      generatedBy:       generatedBy ?? "",
+      contractorRefNo:   contractorRefNo ?? "",
+      remarks:           remarksInput ?? "",
       gstPercent,
       tdsPercent:        0,
       billType,
@@ -370,211 +387,162 @@ export default function NewBillDrawer({
     setSaving(true);
     try {
       const res = await apiClient.post<{ bill: Record<string, unknown> }>("/bills", payload);
-      message.success(`Bill ${res.data.bill.billNo} created — awaiting maker confirmation`);
+      toast.success(`Bill ${res.data.bill.billNo} created — awaiting maker confirmation`);
       onCreated(res.data.bill);
       onClose();
     } catch (err: unknown) {
       const e = err as { response?: { data?: { message?: string } } };
-      message.error(e?.response?.data?.message || "Failed to create bill");
+      toast.error(e?.response?.data?.message || "Failed to create bill");
     } finally {
       setSaving(false);
     }
   }
 
+  if (!open) return null;
+
+  // Bare, borderless inline-editable table-cell input — matches antd's
+  // `bordered={false}` Input/InputNumber look used throughout this table
+  // (as opposed to ui/Field's always-bordered, labeled form-field look).
+  const cellInputClass = "w-full bg-transparent text-sm px-1 py-1 outline-none focus:ring-1 focus:ring-primary/30 rounded";
+
   return (
-    <Drawer
-      open={open}
-      onClose={onClose}
-      placement="right"
-      width={880}
-      title={
-        <Space>
-          <div>
-            <div style={{ fontWeight: 700, fontSize: 16 }}>New Bill</div>
-            <div style={{ fontSize: 12, color: "#6B7280", fontWeight: 400 }}>
-              Select project → contractor → add work items → submit — lands in Draft, awaiting maker confirmation
-            </div>
+    <>
+      <Modal
+        icon={FileText}
+        title="New Bill"
+        subtitle="Select project → contractor → add work items → submit — lands in Draft, awaiting maker confirmation"
+        extraWide
+        onClose={onClose}
+        footer={
+          <div className="flex justify-end gap-2">
+            <Btn outline label="Cancel" onClick={onClose} />
+            <Btn color="primary" label="Save as Draft" loading={saving} onClick={handleSubmit} />
           </div>
-        </Space>
-      }
-      footer={
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-          <Button size="large" onClick={onClose}>Cancel</Button>
-          <Button
-            size="large"
-            type="primary"
-            loading={saving}
-            onClick={handleSubmit}
-            style={{ background: "#FF7A00", borderColor: "#FF7A00" }}
-          >
-            Save as Draft
-          </Button>
-        </div>
-      }
-      destroyOnClose
-    >
-      {/* Step 1 — Project, Contractor, Date */}
-      <div style={{ background: "#f5f6f8", borderRadius: 8, padding: "14px 16px", marginBottom: 20 }}>
-        <div style={{ fontWeight: 700, fontSize: 13, color: "#1a1f2e", marginBottom: 12 }}>
-          Bill Information
-        </div>
-        <Form form={form} layout="vertical">
-          <Row gutter={16}>
-            <Col span={8}>
-              <Form.Item label="Site / Project" name="projectId">
-                <Select
-                  showSearch
-                  allowClear
-                  placeholder="Select project…"
-                  style={{ width: "100%" }}
-                  onChange={(v) => { setProjectId(v || ""); setWoList([]); }}
-                  filterOption={(input, opt) => String(opt?.label ?? "").toLowerCase().includes(input.toLowerCase())}
-                  options={selectableProjects(projects).map((p) => ({ value: p.id, label: `${p.code ? p.code + " — " : ""}${p.name}` }))}
-                />
-              </Form.Item>
-            </Col>
-            <Col span={10}>
-              <Form.Item label="Contractor *" name="contractorId" rules={[{ required: true, message: "Select a contractor" }]}>
-                <Select
-                  showSearch
-                  placeholder="Search by name or vendor code…"
-                  style={{ width: "100%" }}
-                  onChange={(v) => setContractorId(v || "")}
-                  filterOption={(input, opt) => String(opt?.label ?? "").toLowerCase().includes(input.toLowerCase())}
-                  options={contractors.map((c) => ({
-                    value: c.id,
-                    label: `${vendorLabel(c.companyName, c.shortCode)}  (${c.vendorCode})`,
-                  }))}
-                />
-              </Form.Item>
-            </Col>
-            <Col span={6}>
-              <Form.Item label="Vendor Code">
-                <Input
-                  value={selectedContractor?.vendorCode || ""}
-                  disabled
-                  style={{ background: "var(--nx-white)", color: "#FF7A00", fontWeight: 700, fontFamily: "monospace" }}
-                  placeholder="Auto-filled"
-                />
-              </Form.Item>
-            </Col>
-          </Row>
+        }
+      >
+        {/* Step 1 — Project, Contractor, Date */}
+        <div className="bg-gray-50 dark:bg-gray-800/40 rounded-lg p-4 mb-5">
+          <div className="font-bold text-[13px] text-[#1A1A2E] dark:text-[#F1F5F9] mb-3">Bill Information</div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+            <SField
+              label="Site / Project"
+              placeholder="Select project…"
+              value={projectId || ""}
+              onChange={(v) => { setProjectId(v); setWoList([]); }}
+              options={[{ value: "", label: "— No project —" }, ...selectableProjects(projects).map((p) => ({ value: p.id, label: `${p.code ? p.code + " — " : ""}${p.name}` }))]}
+            />
+            <SField
+              label="Contractor" required
+              placeholder="Search by name or vendor code…"
+              value={contractorId || ""}
+              onChange={(v) => setContractorId(v)}
+              options={contractors.map((c) => ({ value: c.id, label: `${vendorLabel(c.companyName, c.shortCode)}  (${c.vendorCode})` }))}
+              error={formErrors.errors.contractorId}
+            />
+            <Field
+              label="Vendor Code"
+              value={selectedContractor?.vendorCode || ""}
+              disabled
+              placeholder="Auto-filled"
+              className="text-primary font-bold font-mono"
+            />
+          </div>
 
           {groupSiblings.length > 1 && (
-            <Row gutter={16}>
-              <Col span={16}>
-                <Form.Item
-                  label="Pay To (Vendor Group)"
-                  tooltip={`${selectedContractor?.companyName} is part of a Vendor Group — this bill's payment can go to any member, not just the one whose Work Order this is.`}
-                >
-                  <Select
-                    style={{ width: "100%" }}
-                    value={payeeVendorCode}
-                    onChange={(v) => setPayeeVendorCode(v)}
-                    options={groupSiblings.map((c) => ({
-                      value: c.vendorCode,
-                      label: `${vendorLabel(c.companyName, c.shortCode)}  (${c.vendorCode})${c.vendorCode === selectedContractor?.vendorCode ? " — this work order's own vendor" : ""}`,
-                    }))}
-                  />
-                </Form.Item>
-              </Col>
-            </Row>
+            <div className="mb-4 max-w-md">
+              <SField
+                label="Pay To (Vendor Group)"
+                hint={`${selectedContractor?.companyName} is part of a Vendor Group — this bill's payment can go to any member, not just the one whose Work Order this is.`}
+                value={payeeVendorCode}
+                onChange={setPayeeVendorCode}
+                options={groupSiblings.map((c) => ({
+                  value: c.vendorCode,
+                  label: `${vendorLabel(c.companyName, c.shortCode)}  (${c.vendorCode})${c.vendorCode === selectedContractor?.vendorCode ? " — this work order's own vendor" : ""}`,
+                }))}
+              />
+            </div>
           )}
 
-          <Row gutter={16}>
-            <Col span={8}>
-              <Form.Item label="Bill Date *" name="billDate" rules={[{ required: true, message: "Required" }]}>
-                <DatePicker style={{ width: "100%" }} format="DD/MM/YYYY" defaultValue={dayjs()} />
-              </Form.Item>
-            </Col>
-            <Col span={8}>
-              <Form.Item label="Generated By *" name="generatedBy" rules={[{ required: true, message: "Required" }]}>
-                <Input placeholder="Full name of person generating bill" />
-              </Form.Item>
-            </Col>
-            <Col span={8}>
-              <Form.Item label="Contractor Ref. No." name="contractorRefNo">
-                <Input placeholder="e.g. ABCI/2026/003" />
-              </Form.Item>
-            </Col>
-          </Row>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+            <DatePicker label="Bill Date *" value={billDate} onChange={setBillDate} />
+            <Field
+              label="Generated By *" placeholder="Full name of person generating bill"
+              value={generatedBy} onChange={(e) => setGeneratedBy(e.target.value)}
+              error={formErrors.errors.generatedBy}
+            />
+            <Field
+              label="Contractor Ref. No." placeholder="e.g. ABCI/2026/003"
+              value={contractorRefNo} onChange={(e) => setContractorRefNo(e.target.value)}
+            />
+          </div>
+          {formErrors.errors.billDate && <div className="text-xs text-red-500 -mt-3 mb-3">{formErrors.errors.billDate}</div>}
 
-          <Row gutter={16}>
-            <Col span={isCustomGst ? 4 : 8}>
-              <Form.Item label="GST Slab" name="gstPercent" initialValue={18} tooltip="GST % applicable on this bill. TDS deduction is handled at payment time.">
-                <Select
-                  onChange={(v) => {
-                    if (v === -1) { setIsCustomGst(true); return; }
-                    setIsCustomGst(false);
-                    setGstPercent(Number(v));
-                  }}
-                  options={[
-                    { label: "0% — Exempt / Nil", value: 0 },
-                    { label: "5%", value: 5 },
-                    { label: "12%", value: 12 },
-                    { label: "18% (Standard)", value: 18 },
-                    { label: "Custom…", value: -1 },
-                  ]}
-                />
-              </Form.Item>
-            </Col>
+          <div className="flex flex-wrap gap-4 mb-4">
+            <div className="w-40">
+              <SField
+                label="GST Slab"
+                hint="GST % applicable on this bill. TDS deduction is handled at payment time."
+                value={isCustomGst ? "-1" : String(gstPercent)}
+                onChange={(v) => {
+                  if (v === "-1") { setIsCustomGst(true); return; }
+                  setIsCustomGst(false);
+                  setGstPercent(Number(v));
+                }}
+                options={GST_SLABS}
+              />
+            </div>
             {isCustomGst && (
-              <Col span={4}>
-                <Form.Item label="Custom %">
-                  <InputNumber style={{ width: "100%" }} min={0} max={100} value={gstPercent} onChange={(v) => setGstPercent(Number(v) || 0)} />
-                </Form.Item>
-              </Col>
-            )}
-            <Col span={8}>
-              <Form.Item label="Bill Type" tooltip="Categorise what kind of bill this is for the billing chain">
-                <Select
-                  value={billType}
-                  onChange={v => setBillType(v)}
-                  options={Object.entries(BILL_TYPE_CFG).map(([k, v]) => ({ value: k, label: v.label }))}
+              <div className="w-28">
+                <Field
+                  label="Custom %" type="number" min="0" max="100"
+                  value={gstPercent} onChange={(e) => setGstPercent(Number(e.target.value) || 0)}
                 />
-              </Form.Item>
-            </Col>
-          </Row>
+              </div>
+            )}
+            <div className="flex-1 min-w-[200px]">
+              <SField
+                label="Bill Type"
+                hint="Categorise what kind of bill this is for the billing chain"
+                value={billType}
+                onChange={setBillType}
+                options={Object.entries(BILL_TYPE_CFG).map(([k, v]) => ({ value: k, label: v.label }))}
+              />
+            </div>
+          </div>
 
           {/* Bill Relationship — link to existing bills on this WO */}
-          <div style={{ background: "#f0f6ff", border: "1px solid #bfdbfe", borderRadius: 8, padding: "12px 14px", marginBottom: 12 }}>
-            <div style={{ fontWeight: 700, fontSize: 12, color: "#1d4ed8", marginBottom: 10 }}>
+          <div className="rounded-lg border border-blue-200 dark:border-blue-500/30 bg-blue-50 dark:bg-blue-500/10 p-3.5 mb-3">
+            <div className="font-bold text-xs text-blue-700 dark:text-blue-300 mb-2.5">
               Bill Relationship (optional)
-              <span style={{ fontWeight: 400, color: "#6b7280", marginLeft: 8 }}>Link this bill to existing bills in a Work Order</span>
+              <span className="font-normal text-gray-500 dark:text-gray-400 ml-2">Link this bill to existing bills in a Work Order</span>
             </div>
-            <Row gutter={12}>
-              <Col span={10}>
-                <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 4 }}>Select Work Order</div>
-                <Select
-                  showSearch allowClear placeholder="Search work order…"
-                  style={{ width: "100%" }}
-                  value={selectedWOId || undefined}
-                  onChange={(v) => { handleWOSelectForLinking(v || ""); setLinkedBillIds([]); }}
-                  filterOption={(input, opt) => String(opt?.label ?? "").toLowerCase().includes(input.toLowerCase())}
-                  options={woList.map(wo => ({ value: wo.id, label: `${wo.workOrderNo}` }))}
-                />
-              </Col>
-              <Col span={14}>
-                <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 4 }}>Relationship Type</div>
-                <Select
-                  value={relType}
-                  onChange={v => setRelType(v)}
-                  style={{ width: "100%" }}
-                  options={RELATIONSHIP_OPTIONS}
-                />
-              </Col>
-            </Row>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <SField
+                label="Select Work Order"
+                placeholder="Search work order…"
+                value={selectedWOId}
+                onChange={(v) => { handleWOSelectForLinking(v); setLinkedBillIds([]); }}
+                options={[{ value: "", label: "— None —" }, ...woList.map(wo => ({ value: wo.id, label: wo.workOrderNo }))]}
+              />
+              <SField
+                label="Relationship Type"
+                value={relType}
+                onChange={setRelType}
+                options={RELATIONSHIP_OPTIONS}
+              />
+            </div>
             {woExistingBills.length > 0 && (
-              <div style={{ marginTop: 10 }}>
-                <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 6 }}>
+              <div className="mt-2.5">
+                <div className="text-xs text-gray-500 dark:text-gray-400 mb-1.5">
                   Select bills this new bill relates to:
                   {["SUPERSEDES", "REVISION_OF", "CORRECTION_OF"].includes(relType) && (
-                    <span style={{ color: "#dc2626", marginLeft: 6, fontWeight: 600 }}>
+                    <span className="text-red-600 ml-1.5 font-semibold">
                       ⚠ Selected bills will be marked inactive (superseded)
                     </span>
                   )}
                 </div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                <div className="flex flex-wrap gap-1.5">
                   {woExistingBills.map(b => {
                     const isSelected = linkedBillIds.includes(b.id);
                     const isSuperseded = b.isActive === false;
@@ -587,22 +555,18 @@ export default function NewBillDrawer({
                             prev.includes(b.id) ? prev.filter(x => x !== b.id) : [...prev, b.id]
                           );
                         }}
-                        style={{
-                          border: `1.5px solid ${isSelected ? "#2563eb" : "#e4e7ee"}`,
-                          borderRadius: 6, padding: "6px 10px", cursor: isSuperseded ? "not-allowed" : "pointer",
-                          background: isSelected ? "#eff6ff" : isSuperseded ? "#f9fafb" : "#fff",
-                          opacity: isSuperseded ? 0.5 : 1, fontSize: 12, userSelect: "none",
-                        }}
+                        className={[
+                          "rounded-md border px-2.5 py-1.5 text-xs select-none",
+                          isSuperseded ? "cursor-not-allowed opacity-50 bg-gray-50 dark:bg-gray-800/40 border-gray-200 dark:border-gray-700/40"
+                            : isSelected ? "cursor-pointer bg-blue-50 dark:bg-blue-500/10 border-blue-600"
+                            : "cursor-pointer bg-white dark:bg-transparent border-gray-200 dark:border-gray-700/40",
+                        ].join(" ")}
                       >
-                        <span style={{ fontFamily: "monospace", fontWeight: 700, color: isSelected ? "#2563eb" : "#FF7A00" }}>
-                          {b.billNo}
-                        </span>
-                        <span style={{ color: "#9ba3b8", marginLeft: 6 }}>
-                          ₹{b.amount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </span>
-                        <span style={{ marginLeft: 6 }}><StatusTag status={b.status} /></span>
-                        {isSuperseded && <Tag color="default" style={{ fontSize: 10 }}>Superseded</Tag>}
-                        {isSelected && <span style={{ color: "#2563eb", marginLeft: 4 }}>✓</span>}
+                        <span className={`font-mono font-bold ${isSelected ? "text-blue-600" : "text-primary"}`}>{b.billNo}</span>
+                        <span className="text-gray-400 ml-1.5">{fmt(b.amount)}</span>
+                        <span className="ml-1.5"><StatusBadge status={b.status} /></span>
+                        {isSuperseded && <Badge color="gray" small>Superseded</Badge>}
+                        {isSelected && <span className="text-blue-600 ml-1">✓</span>}
                       </div>
                     );
                   })}
@@ -613,56 +577,47 @@ export default function NewBillDrawer({
 
           {/* Work order import (optional) */}
           {woList.length > 0 && (
-            <div style={{ background: "#fff7ed", border: "1px solid #ffd591", borderRadius: 6, padding: "10px 14px", marginBottom: 4 }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: "#d4620c", marginBottom: 8 }}>
+            <div className="rounded-lg border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 p-3">
+              <div className="font-semibold text-xs text-amber-700 dark:text-amber-300 mb-2">
                 Work orders found — import scope items (optional)
               </div>
-              <Row gutter={12} align="middle">
-                <Col flex="1">
-                  <Select
-                    placeholder="Select a work order to import its scope items…"
-                    style={{ width: "100%" }}
-                    onChange={(v) => { if (v) importFromWO(v as string); }}
-                    options={woList.map((wo) => ({
-                      value: wo.id,
-                      label: wo.workOrderNo + (wo.projectName ? " — " + wo.projectName : ""),
-                    }))}
-                  />
-                </Col>
-              </Row>
+              <SField
+                placeholder="Select a work order to import its scope items…"
+                value={importWOPick}
+                onChange={(v) => { if (v) { importFromWO(v); setImportWOPick(""); } }}
+                options={woList.map((wo) => ({ value: wo.id, label: wo.workOrderNo + (wo.projectName ? " — " + wo.projectName : "") }))}
+              />
             </div>
           )}
-        </Form>
-      </div>
-
-      {/* Step 2 — Work Items table */}
-      <div style={{ marginBottom: 20 }}>
-        <div style={{ fontWeight: 700, fontSize: 13, color: "#1a1f2e", marginBottom: 10 }}>
-          Work Items
-          <span style={{ fontWeight: 400, fontSize: 11, color: "#9ba3b8", marginLeft: 8 }}>
-            Items imported from a work order show a Master Qty + % of Work Done — quantity auto-computes from the percent
-          </span>
         </div>
 
-        <div style={{ border: "1px solid #e4e7ee", borderRadius: 8, overflow: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 900 }}>
-            <thead>
-              <tr style={{ background: "#f5f6f8" }}>
-                <th style={{ padding: "8px 10px", fontWeight: 700, fontSize: 11, color: "#5a6278", textAlign: "left" }}>Description of Work *</th>
-                <th style={{ padding: "8px 10px", fontWeight: 700, fontSize: 11, color: "#5a6278", textAlign: "center", width: 70 }}>Unit</th>
-                <th style={{ padding: "8px 10px", fontWeight: 700, fontSize: 11, color: "#5a6278", textAlign: "right", width: 90 }}>Master Qty</th>
-                <th style={{ padding: "8px 10px", fontWeight: 700, fontSize: 11, color: "#5a6278", textAlign: "right", width: 110 }}>% of Work</th>
-                <th style={{ padding: "8px 10px", fontWeight: 700, fontSize: 11, color: "#5a6278", textAlign: "right", width: 100 }}>Quantity *</th>
-                <th style={{ padding: "8px 10px", fontWeight: 700, fontSize: 11, color: "#5a6278", textAlign: "right", width: 120 }}>Rate (₹) *</th>
-                <th style={{ padding: "8px 10px", fontWeight: 700, fontSize: 11, color: "#5a6278", textAlign: "right", width: 130 }}>Amount (₹)</th>
-                <th style={{ width: 36 }}></th>
-              </tr>
-            </thead>
-            <tbody>
+        {/* Step 2 — Work Items table */}
+        <div className="mb-5">
+          <div className="font-bold text-[13px] text-[#1A1A2E] dark:text-[#F1F5F9] mb-2.5">
+            Work Items
+            <span className="font-normal text-[11px] text-gray-400 ml-2">
+              Items imported from a work order show a Master Qty + % of Work Done — quantity auto-computes from the percent
+            </span>
+          </div>
+
+          <Table>
+            <Thead>
+              <Tr>
+                <Th>Description of Work *</Th>
+                <Th className="text-center">Unit</Th>
+                <Th className="text-right">Master Qty</Th>
+                <Th className="text-right">% of Work</Th>
+                <Th className="text-right">Quantity *</Th>
+                <Th className="text-right">Rate (₹) *</Th>
+                <Th className="text-right">Amount (₹)</Th>
+                <Th></Th>
+              </Tr>
+            </Thead>
+            <Tbody>
               {(() => {
                 const rows: ReactNode[] = [];
                 const seenGroups = new Set<string>();
-                lineItems.forEach((item, i) => {
+                lineItems.forEach((item) => {
                   const groupKey = item.scopeItemId && item.subItemId ? item.scopeItemId : null;
 
                   if (groupKey && !seenGroups.has(groupKey)) {
@@ -671,27 +626,27 @@ export default function NewBillDrawer({
                     const particulars = lineItems.filter((li) => li.scopeItemId === groupKey && li.subItemId);
                     const groupAmount = particulars.reduce((s, li) => s + (li.amount || 0), 0);
                     rows.push(
-                      <tr
+                      <Tr
                         key={`group-${groupKey}`}
                         onClick={() => setExpandedGroups((prev) => {
                           const next = new Set(prev);
                           if (next.has(groupKey)) next.delete(groupKey); else next.add(groupKey);
                           return next;
                         })}
-                        style={{ background: "#f0f6ff", borderBottom: "1px solid #dbeafe", cursor: "pointer" }}
+                        className="cursor-pointer bg-blue-50 dark:bg-blue-500/10"
                       >
-                        <td colSpan={6} style={{ padding: "8px 10px", fontWeight: 700, fontSize: 12, color: "#1d4ed8" }}>
-                          <span style={{ display: "inline-block", transform: isExpanded ? "rotate(90deg)" : "none", transition: "transform 0.15s", marginRight: 8 }}>▶</span>
+                        <Td colSpan={6} className="font-bold text-blue-700 dark:text-blue-300">
+                          <span className={`inline-block mr-2 transition-transform ${isExpanded ? "rotate-90" : ""}`}>▶</span>
                           {item.groupLabel}
-                          <span style={{ fontWeight: 400, color: "#6b7280", marginLeft: 8 }}>
+                          <span className="font-normal text-gray-500 dark:text-gray-400 ml-2">
                             {particulars.length} particular{particulars.length === 1 ? "" : "s"} — click to {isExpanded ? "collapse" : "add % of work done per particular"}
                           </span>
-                        </td>
-                        <td style={{ padding: "8px 10px", textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: groupAmount > 0 ? "#16a85a" : "#c0c4cc" }}>
+                        </Td>
+                        <Td className={`text-right font-mono font-bold ${groupAmount > 0 ? "text-emerald-600" : "text-gray-300"}`}>
                           {groupAmount > 0 ? fmt(groupAmount) : "—"}
-                        </td>
-                        <td></td>
-                      </tr>
+                        </Td>
+                        <Td></Td>
+                      </Tr>
                     );
                   }
 
@@ -699,204 +654,190 @@ export default function NewBillDrawer({
 
                   const cap = remainingPercent(item);
                   rows.push(
-                    <tr key={item.key} style={{ background: groupKey ? "#fafcff" : i % 2 === 0 ? "#fff" : "#fafafa", borderBottom: "1px solid #f0f0f0" }}>
-                      <td style={{ padding: "6px 8px", paddingLeft: groupKey ? 26 : 8 }}>
-                        <Input
+                    <Tr key={item.key} className={groupKey ? "bg-gray-50/60 dark:bg-gray-800/20" : ""}>
+                      <Td style={groupKey ? { paddingLeft: 26 } : undefined}>
+                        <input
                           value={item.description}
                           placeholder="e.g. RCC work, Plastering, Tile fixing…"
                           onChange={(e) => updateLineItem(item.key, "description", e.target.value)}
-                          bordered={false}
-                          style={{ padding: "2px 4px" }}
+                          className={cellInputClass}
                         />
-                      </td>
-                      <td style={{ padding: "6px 8px", textAlign: "center" }}>
-                        <Input
+                      </Td>
+                      <Td className="text-center">
+                        <input
                           value={item.unit}
                           placeholder="sqft"
                           onChange={(e) => updateLineItem(item.key, "unit", e.target.value)}
-                          bordered={false}
-                          style={{ padding: "2px 4px", textAlign: "center" }}
+                          className={`${cellInputClass} text-center`}
                         />
-                      </td>
-                      <td style={{ padding: "6px 10px", textAlign: "right", fontFamily: "monospace", color: "#6b7280" }}>
+                      </Td>
+                      <Td className="text-right font-mono text-gray-500 dark:text-gray-400">
                         {item.scopeItemId ? item.plannedQty : "—"}
-                      </td>
-                      <td style={{ padding: "6px 8px" }}>
+                      </Td>
+                      <Td>
                         {item.scopeItemId ? (
                           <div>
-                            <InputNumber
-                              min={0}
-                              max={cap ?? 100}
-                              value={item.percentComplete || undefined}
+                            <input
+                              value={formatPercent(item.percentComplete)}
                               placeholder="0"
-                              onChange={(v) => updateLineItem(item.key, "percentComplete", Number(v) || 0)}
-                              style={{ width: "100%" }}
-                              bordered={false}
-                              formatter={(v) => (v ? `${v}%` : "")}
-                              parser={(v) => (v ?? "").replace("%", "") as unknown as number}
+                              onChange={(e) => updateLineItem(item.key, "percentComplete", parsePercent(e.target.value))}
+                              className={`${cellInputClass} text-right`}
                             />
-                            {cap != null && <div style={{ fontSize: 10, color: "#9ba3b8", textAlign: "right" }}>{cap}% remaining</div>}
+                            {cap != null && <div className="text-[10px] text-gray-400 text-right">{cap}% remaining</div>}
                           </div>
                         ) : (
-                          <span style={{ color: "#c0c4cc", fontSize: 11, display: "block", textAlign: "right" }}>—</span>
+                          <span className="text-gray-300 text-[11px] block text-right">—</span>
                         )}
-                      </td>
-                      <td style={{ padding: "6px 8px" }}>
-                        <InputNumber
-                          min={0}
-                          value={item.billedQty || undefined}
+                      </Td>
+                      <Td>
+                        <input
+                          type="number" min="0"
+                          value={item.billedQty || ""}
                           placeholder="0"
-                          onChange={(v) => updateLineItem(item.key, "billedQty", Number(v) || 0)}
-                          style={{ width: "100%" }}
-                          bordered={false}
+                          onChange={(e) => updateLineItem(item.key, "billedQty", Number(e.target.value) || 0)}
+                          className={`${cellInputClass} text-right`}
                         />
-                      </td>
-                      <td style={{ padding: "6px 8px" }}>
-                        <InputNumber
-                          min={0}
-                          value={item.rate || undefined}
+                      </Td>
+                      <Td>
+                        <input
+                          value={formatThousands(item.rate || "")}
                           placeholder="0.00"
-                          onChange={(v) => updateLineItem(item.key, "rate", Number(v) || 0)}
-                          style={{ width: "100%" }}
-                          bordered={false}
-                          formatter={(v) => `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ",")}
-                          parser={(v) => (v ?? "").replace(/,/g, "") as unknown as 0}
+                          onChange={(e) => updateLineItem(item.key, "rate", parseThousands(e.target.value))}
+                          className={`${cellInputClass} text-right`}
                         />
-                      </td>
-                      <td style={{ padding: "6px 10px", textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: item.amount > 0 ? "#16a85a" : "#c0c4cc", whiteSpace: "nowrap" }}>
+                      </Td>
+                      <Td className={`text-right font-mono font-bold whitespace-nowrap ${item.amount > 0 ? "text-emerald-600" : "text-gray-300"}`}>
                         {item.amount > 0 ? fmt(item.amount) : "—"}
-                      </td>
-                      <td style={{ padding: "6px 4px", textAlign: "center" }}>
-                        <Popconfirm
-                          title="Remove this row?"
-                          onConfirm={() => removeLineItem(item.key)}
+                      </Td>
+                      <Td className="text-center">
+                        <button
+                          type="button"
                           disabled={lineItems.length === 1}
+                          onClick={() => setConfirmRemoveKey(item.key)}
+                          className="text-red-500 hover:text-red-700 disabled:opacity-30 disabled:pointer-events-none p-1"
                         >
-                          <Button type="text" danger size="small" icon={<DeleteOutlined />} disabled={lineItems.length === 1} />
-                        </Popconfirm>
-                      </td>
-                    </tr>
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </Td>
+                    </Tr>
                   );
                 });
                 return rows;
               })()}
-            </tbody>
-          </table>
-        </div>
+            </Tbody>
+          </Table>
 
-        <Button
-          type="dashed"
-          icon={<PlusOutlined />}
-          onClick={() => setLineItems((prev) => [...prev, blankRow()])}
-          style={{ width: "100%", marginTop: 8 }}
-        >
-          Add Work Item
-        </Button>
-
-        {/* Financial Summary — Gross/GST, then Hold and Advance Recovery both
-            decided right here at creation time, both live-reducing what's shown
-            as actually payable. */}
-        <div style={{ border: "1px solid #e4e7ee", borderRadius: 8, overflow: "hidden", marginTop: 12 }}>
-          <div style={{ background: "#fff8f3", borderBottom: "1px solid #f8c9a0", padding: "8px 14px" }}>
-            <span style={{ fontWeight: 700, fontSize: 12, color: "#d4620c", textTransform: "uppercase", letterSpacing: "0.06em" }}>Financial Summary</span>
-          </div>
-          <div style={{ fontFamily: "monospace", fontSize: 13 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", padding: "7px 14px", borderBottom: "1px solid #f5f6f8", color: "#1a1f2e" }}>
-              <span>Gross Amount</span><span>{fmt(gross)}</span>
-            </div>
+          <div className="mt-2">
+            <Btn outline icon={Plus} label="Add Work Item" className="w-full" onClick={() => setLineItems((prev) => [...prev, blankRow()])} />
           </div>
 
-          {/* Hold — taken off the gross first, since it's a security deposit on the
-              contractor's own basic value, not on the GST they merely collect on
-              the government's behalf. GST below is calculated on what's left. */}
-          <div style={{ padding: "10px 14px", borderBottom: "1px solid #f5f6f8", background: "#fefce8" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-              <span style={{ fontWeight: 700, fontSize: 12, color: "#92400e" }}>Hold (Retention)</span>
-              <Radio.Group size="small" value={holdMode} onChange={(e) => setHoldMode(e.target.value)}>
-                <Radio.Button value="percent">%</Radio.Button>
-                <Radio.Button value="amount">₹</Radio.Button>
-              </Radio.Group>
+          {/* Financial Summary — Gross/GST, then Hold and Advance Recovery both
+              decided right here at creation time, both live-reducing what's shown
+              as actually payable. */}
+          <div className="border border-gray-200 dark:border-gray-700/40 rounded-lg overflow-hidden mt-3">
+            <div className="bg-primary/5 border-b border-primary/20 px-3.5 py-2">
+              <span className="font-bold text-xs text-primary uppercase tracking-wide">Financial Summary</span>
             </div>
-            {holdMode === "percent" ? (
-              <InputNumber<number>
-                style={{ width: "100%" }} min={0} max={100} suffix="%"
-                value={holdPercent}
-                onChange={(v) => setHoldPercent(Number(v) || 0)}
-                placeholder="0 — leave blank to skip"
-              />
-            ) : (
-              <InputNumber<number>
-                style={{ width: "100%" }} min={0} max={gross} prefix="₹"
-                value={holdAmountInput}
-                onChange={(v) => setHoldAmountInput(Number(v) || 0)}
-                placeholder="0 — leave blank to skip"
-              />
-            )}
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginTop: 6, color: "#b45309", fontFamily: "monospace" }}>
-              <span>Held this bill</span><span>− {fmt(holdAmount)}</span>
-            </div>
-          </div>
-
-          {/* Advance Recovery — deducted (along with Hold, above) BEFORE GST is
-              calculated, not after, so it's shown here rather than below. */}
-          {!advancesUnavailable && (
-            <div style={{ padding: "10px 14px", borderBottom: "1px solid #f5f6f8", background: "#fff7ed" }}>
-              <div style={{ fontWeight: 700, fontSize: 12, color: "#92400e", marginBottom: 8 }}>Advance Recovery</div>
-              {advancesLoading && <div style={{ fontSize: 12, color: "#9CA3AF", marginBottom: 8 }}>Checking pending advances…</div>}
-              {!advancesLoading && pendingAdvances.length > 0 && (
-                <div style={{ marginBottom: 10 }}>
-                  {pendingAdvances.map(slip => (
-                    <div key={slip._id} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, padding: "3px 0", borderBottom: "1px solid #fde68a" }}>
-                      <span style={{ color: "#78350f" }}>{slip.slipNo}{slip.reference ? ` — ${slip.reference}` : ""}</span>
-                      <span style={{ fontFamily: "monospace", fontWeight: 600, color: "#b45309" }}>Balance: {fmt(slip.balance)}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {!advancesLoading && pendingAdvances.length === 0 && (
-                <div style={{ fontSize: 12, color: "#9CA3AF", marginBottom: 8 }}>No outstanding advance slips for this vendor on this project.</div>
-              )}
-              <InputNumber<number>
-                style={{ width: "100%" }}
-                prefix="− ₹"
-                value={recoveryAmount}
-                onChange={setRecoveryAmount}
-                min={0}
-                max={maxRecovery > 0 ? maxRecovery : undefined}
-                precision={0}
-                placeholder="0 — leave blank to skip recovery"
-                disabled={pendingAdvances.length === 0}
-              />
-              <div style={{ fontSize: 11, color: "#92400e", marginTop: 6 }}>
-                Recovered right now, real-time — the advance slip's own balance updates immediately.
+            <div className="font-mono text-[13px]">
+              <div className="flex justify-between px-3.5 py-1.5 border-b border-gray-100 dark:border-gray-700/40">
+                <span>Gross Amount</span><span>{fmt(gross)}</span>
               </div>
             </div>
-          )}
 
-          <div style={{ fontFamily: "monospace", fontSize: 13 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", padding: "7px 14px", borderBottom: "1px solid #f5f6f8", color: "#1a1f2e" }}>
-              <span>Net Before GST</span><span>{fmt(gross - holdAmount - (recoveryAmount || 0))}</span>
+            {/* Hold — taken off the gross first, since it's a security deposit on the
+                contractor's own basic value, not on the GST they merely collect on
+                the government's behalf. GST below is calculated on what's left. */}
+            <div className="p-3.5 border-b border-gray-100 dark:border-gray-700/40 bg-amber-50 dark:bg-amber-500/10">
+              <div className="flex justify-between items-center mb-2">
+                <span className="font-bold text-xs text-amber-800 dark:text-amber-300">Hold (Retention)</span>
+                <Segmented
+                  value={holdMode}
+                  onChange={setHoldMode}
+                  options={[{ value: "percent", label: "%" }, { value: "amount", label: "₹" }]}
+                />
+              </div>
+              {holdMode === "percent" ? (
+                <Field
+                  type="number" min="0" max="100" placeholder="0 — leave blank to skip"
+                  value={holdPercent || ""} onChange={(e) => setHoldPercent(Number(e.target.value) || 0)}
+                />
+              ) : (
+                <Field
+                  type="number" min="0" max={gross} placeholder="0 — leave blank to skip"
+                  value={holdAmountInput || ""} onChange={(e) => setHoldAmountInput(Number(e.target.value) || 0)}
+                />
+              )}
+              <div className="flex justify-between text-xs mt-1.5 text-amber-700 dark:text-amber-400 font-mono">
+                <span>Held this bill</span><span>− {fmt(holdAmount)}</span>
+              </div>
             </div>
-            <div style={{ display: "flex", justifyContent: "space-between", padding: "7px 14px", borderBottom: "1px solid #f5f6f8", color: "#16a85a" }}>
-              <span>+ GST @ {gstPercent}%</span><span>{fmt(gstAmt)}</span>
-            </div>
-          </div>
 
-          <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 14px", background: "#fff8f3", fontWeight: 800, fontSize: 15, color: "#d4620c" }}>
-            <span>Payable Now</span>
-            <span>{fmt(payableNow)}</span>
-          </div>
-          <div style={{ padding: "6px 14px", fontSize: 11, color: "#9ba3b8", borderTop: "1px solid #f5f6f8" }}>
-            TDS deduction is recorded at payment initiation time
+            {/* Advance Recovery — deducted (along with Hold, above) BEFORE GST is
+                calculated, not after, so it's shown here rather than below. */}
+            {!advancesUnavailable && (
+              <div className="p-3.5 border-b border-gray-100 dark:border-gray-700/40 bg-amber-50/60 dark:bg-amber-500/5">
+                <div className="font-bold text-xs text-amber-800 dark:text-amber-300 mb-2">Advance Recovery</div>
+                {advancesLoading && <div className="text-xs text-gray-400 mb-2">Checking pending advances…</div>}
+                {!advancesLoading && pendingAdvances.length > 0 && (
+                  <div className="mb-2.5">
+                    {pendingAdvances.map(slip => (
+                      <div key={slip._id} className="flex justify-between text-xs py-0.5 border-b border-amber-200/60 dark:border-amber-500/20">
+                        <span className="text-amber-900 dark:text-amber-200">{slip.slipNo}{slip.reference ? ` — ${slip.reference}` : ""}</span>
+                        <span className="font-mono font-semibold text-amber-700 dark:text-amber-400">Balance: {fmt(slip.balance)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {!advancesLoading && pendingAdvances.length === 0 && (
+                  <div className="text-xs text-gray-400 mb-2">No outstanding advance slips for this vendor on this project.</div>
+                )}
+                <Field
+                  type="number" min="0" max={maxRecovery > 0 ? maxRecovery : undefined} step="1"
+                  placeholder="0 — leave blank to skip recovery"
+                  value={recoveryAmount ?? ""}
+                  onChange={(e) => setRecoveryAmount(e.target.value ? Number(e.target.value) : null)}
+                  disabled={pendingAdvances.length === 0}
+                  hint="Recovered right now, real-time — the advance slip's own balance updates immediately."
+                />
+              </div>
+            )}
+
+            <div className="font-mono text-[13px]">
+              <div className="flex justify-between px-3.5 py-1.5 border-b border-gray-100 dark:border-gray-700/40">
+                <span>Net Before GST</span><span>{fmt(gross - holdAmount - (recoveryAmount || 0))}</span>
+              </div>
+              <div className="flex justify-between px-3.5 py-1.5 border-b border-gray-100 dark:border-gray-700/40 text-emerald-600">
+                <span>+ GST @ {gstPercent}%</span><span>{fmt(gstAmt)}</span>
+              </div>
+            </div>
+
+            <div className="flex justify-between px-3.5 py-2.5 bg-primary/5 font-extrabold text-[15px] text-primary">
+              <span>Payable Now</span>
+              <span>{fmt(payableNow)}</span>
+            </div>
+            <div className="px-3.5 py-1.5 text-[11px] text-gray-400 border-t border-gray-100 dark:border-gray-700/40">
+              TDS deduction is recorded at payment initiation time
+            </div>
           </div>
         </div>
-      </div>
 
-      <Form form={form} layout="vertical">
-        <Form.Item label="Remarks" name="remarks">
-          <Input.TextArea rows={2} placeholder="Describe the scope of work covered in this bill…" />
-        </Form.Item>
-      </Form>
-    </Drawer>
+        <Field
+          textarea label="Remarks" placeholder="Describe the scope of work covered in this bill…"
+          value={remarksInput} onChange={(e) => setRemarksInput(e.target.value)}
+        />
+      </Modal>
+
+      {confirmRemoveKey != null && (
+        <ConfirmModal
+          title="Remove this row?"
+          message="This work item row will be removed from the bill."
+          confirmLabel="Remove"
+          danger
+          onConfirm={() => { removeLineItem(confirmRemoveKey); setConfirmRemoveKey(null); }}
+          onCancel={() => setConfirmRemoveKey(null)}
+          zIndex={210}
+        />
+      )}
+    </>
   );
 }

@@ -1,19 +1,12 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
-import {
-  Select, Table, Tag, Button, Modal, Input, InputNumber, Checkbox, Spin, message, Tooltip,
-  Row, Col,
-} from "antd";
-import type { ColumnsType } from "antd/es/table";
-import { PrinterOutlined, DownOutlined, RightOutlined } from "@ant-design/icons";
 import toast from "react-hot-toast";
 import {
   Clock, FileText, Users, Building2, AlertTriangle, Eye, Printer, CheckCircle2, XCircle,
-  Archive as ArchiveIcon, Pin, Trophy,
+  Archive as ArchiveIcon, Pin, Trophy, ChevronDown, ChevronRight, TrendingUp,
 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import dayjs from "dayjs";
 import type { Dayjs } from "dayjs";
-import PageShell from "../../components/PageShell";
 import apiClient from "../../services/apiClient";
 import { SearchFilter } from "../../ui/Filters";
 import { useAuth } from "../../context/AuthContext";
@@ -36,6 +29,14 @@ import Segmented from "../../ui/Segmented";
 import EmptyState from "../../ui/EmptyState";
 import ConfirmModal from "../../ui/ConfirmModal";
 import Spinner from "../../ui/Spinner";
+import PageHeader from "../../ui/PageHeader";
+import Modal from "../../ui/Modal";
+import Field from "../../ui/Field";
+import Checkbox from "../../ui/Checkbox";
+import { Descriptions, DescItem } from "../../ui/Descriptions";
+import { Table, Thead, Tbody, Tfoot, Tr, Th, Td } from "../../ui/Table";
+import { usePagination } from "../../ui/usePagination";
+import Pagination from "../../ui/Pagination";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface ProgressEntryDetail {
@@ -171,15 +172,15 @@ function hasPerm(user: AuthUser | null, action: string): boolean {
 // the data already exists on the WorkOrder document, this just surfaces it.
 function ProgressEntryLog({ entries }: { entries?: ProgressEntryDetail[] }) {
   if (!entries || entries.length === 0) {
-    return <div style={{ padding: "8px 10px", fontSize: 12, color: "#9CA3AF" }}>No individual entries recorded.</div>;
+    return <div className="px-2.5 py-2 text-xs text-gray-400">No individual entries recorded.</div>;
   }
   const sorted = [...entries].sort((a, b) => (b.date || "").localeCompare(a.date || ""));
   return (
-    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+    <table className="w-full border-collapse text-xs">
       <thead>
-        <tr style={{ background: "#F3F4F6" }}>
+        <tr className="bg-gray-100 dark:bg-gray-800/40">
           {["Date", "Qty Added", "Location", "Remarks", ""].map(h => (
-            <th key={h} style={{ padding: "4px 8px", textAlign: "left", fontSize: 10, color: "#6B7280", textTransform: "uppercase" }}>{h}</th>
+            <th key={h} className="px-2 py-1 text-left text-[10px] text-gray-500 dark:text-gray-400 uppercase">{h}</th>
           ))}
         </tr>
       </thead>
@@ -187,13 +188,17 @@ function ProgressEntryLog({ entries }: { entries?: ProgressEntryDetail[] }) {
         {sorted.map(e => {
           const loc = [e.tower && `Tower ${e.tower}`, e.floor && `Floor ${e.floor}`, e.flatNo && `Flat ${e.flatNo}`, e.plotNo && `Plot ${e.plotNo}`, e.locationNote].filter(Boolean).join(" · ");
           return (
-            <tr key={e._id} style={{ borderBottom: "1px solid #E5E7EB", textDecoration: e.invalidated?.done ? "line-through" : undefined, opacity: e.invalidated?.done ? 0.55 : 1 }}>
-              <td style={{ padding: "4px 8px" }}>{dayjs(e.date).format("DD MMM YYYY")}</td>
-              <td style={{ padding: "4px 8px", fontFamily: "monospace", color: "#16a34a", fontWeight: 600 }}>+{fmtN(e.qtyAdded)}</td>
-              <td style={{ padding: "4px 8px", color: "#6B7280" }}>{loc || "—"}</td>
-              <td style={{ padding: "4px 8px", color: "#6B7280" }}>{e.remarks || "—"}</td>
-              <td style={{ padding: "4px 8px" }}>
-                {e.invalidated?.done && <Tag color="red">Invalidated{e.invalidated.reason ? `: ${e.invalidated.reason}` : ""}</Tag>}
+            <tr
+              key={e._id}
+              className="border-b border-gray-200 dark:border-gray-700/40"
+              style={{ textDecoration: e.invalidated?.done ? "line-through" : undefined, opacity: e.invalidated?.done ? 0.55 : 1 }}
+            >
+              <td className="px-2 py-1">{dayjs(e.date).format("DD MMM YYYY")}</td>
+              <td className="px-2 py-1 font-mono text-emerald-600 font-semibold">+{fmtN(e.qtyAdded)}</td>
+              <td className="px-2 py-1 text-gray-500 dark:text-gray-400">{loc || "—"}</td>
+              <td className="px-2 py-1 text-gray-500 dark:text-gray-400">{e.remarks || "—"}</td>
+              <td className="px-2 py-1">
+                {e.invalidated?.done && <UIBadge color="red" small>Invalidated{e.invalidated.reason ? `: ${e.invalidated.reason}` : ""}</UIBadge>}
               </td>
             </tr>
           );
@@ -209,20 +214,20 @@ function ApprovalHistoryTimeline({ history }: { history?: ApprovalHistoryEntry[]
   if (!history || history.length === 0) return null;
   const stageLabel = (s: string) => (s === "agm" ? "AGM" : "GM");
   return (
-    <div style={{ marginTop: 4 }}>
+    <div className="mt-1">
       {history.map((h, i) => {
         const isReject = h.action === "rejected";
         return (
-          <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-start", padding: "4px 0" }}>
-            <span style={{ width: 20, height: 20, borderRadius: "50%", background: isReject ? "#FEF2F2" : "#F0FDF4", border: `1.5px solid ${isReject ? "#DC2626" : "#16A34A"}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700, color: isReject ? "#DC2626" : "#16A34A", flexShrink: 0 }}>
+          <div key={i} className="flex gap-2 items-start py-1">
+            <span className={`w-5 h-5 rounded-full border-[1.5px] flex items-center justify-center text-[10px] font-bold shrink-0 ${isReject ? "bg-red-50 dark:bg-red-500/10 border-red-600 text-red-600" : "bg-emerald-50 dark:bg-emerald-500/10 border-emerald-600 text-emerald-600"}`}>
               {isReject ? "✕" : "✓"}
             </span>
-            <div style={{ fontSize: 12.5 }}>
+            <div className="text-[12.5px]">
               <strong>{stageLabel(h.stage)} {isReject ? "rejected" : "approved"}</strong>
-              <span style={{ color: "#9CA3AF", marginLeft: 6 }}>
+              <span className="text-gray-400 ml-1.5">
                 {actorName(h.by) || ""}{h.at ? ` · ${dayjs(h.at).format("DD MMM YYYY, hh:mm a")}` : ""}
               </span>
-              {h.remarks && <div style={{ color: "#6B7280", marginTop: 1 }}>{h.remarks}</div>}
+              {h.remarks && <div className="text-gray-500 dark:text-gray-400 mt-0.5">{h.remarks}</div>}
             </div>
           </div>
         );
@@ -281,7 +286,7 @@ async function printBillRequest(br: BillRequestRow) {
     const statusLabel = br.status === "rejected" ? "Rejected" : br.status === "pending-gm" ? "Awaiting GM Approval" : "Awaiting AGM Approval";
     printBill(pseudoBill, contractor, "pre", statusLabel);
   } catch {
-    message.error("Failed to prepare print view");
+    toast.error("Failed to prepare print view");
   }
 }
 
@@ -289,6 +294,8 @@ async function printBillRequest(br: BillRequestRow) {
 export default function SiteProgress() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const openReqId = searchParams.get("open");
 
   const canAgmApprove = user?.role === "agm" || hasPerm(user, "agm-approve");
   const canGmApprove  = user?.role === "gm"  || hasPerm(user, "gm-approve");
@@ -421,10 +428,10 @@ export default function SiteProgress() {
         ? `/work-orders/${viewWO._id}/scope-items/${item._id}/sub-items/${subItem._id}/approve-variance`
         : `/work-orders/${viewWO._id}/scope-items/${item._id}/approve-variance`;
       await apiClient.patch(path);
-      message.success("Variance approved");
+      toast.success("Variance approved");
       await reloadWODetail(viewWO._id);
     } catch (e: any) {
-      message.error(e?.response?.data?.message || "Failed to approve variance");
+      toast.error(e?.response?.data?.message || "Failed to approve variance");
     } finally {
       setApprovingVariance(null);
     }
@@ -439,13 +446,13 @@ export default function SiteProgress() {
         scopeItemIds: Array.from(checked),
         remarks: billRemarks,
       });
-      message.success(res.data?.message || "Bill request submitted");
+      toast.success(res.data?.message || "Bill request submitted");
       setViewWOId(null);
       setChecked(new Set());
       setBillRemarks("");
       load();
     } catch (e: any) {
-      message.error(e?.response?.data?.message || "Failed to generate bill request");
+      toast.error(e?.response?.data?.message || "Failed to generate bill request");
     } finally {
       setGenerating(false);
     }
@@ -456,6 +463,15 @@ export default function SiteProgress() {
   // ── Bill request view / approve / reject ────────────────────────────────────
   const [viewReq, setViewReq] = useState<BillRequestRow | null>(null);
   const [printingReqId, setPrintingReqId] = useState<string | null>(null);
+
+  // Deep link from other pages (e.g. the MIS Dashboard's Ongoing Workflows
+  // table) — ?open=<billRequestId> switches to the Requests tab and opens
+  // that request's view modal once the list has loaded.
+  useEffect(() => {
+    if (!openReqId || billReqs.length === 0) return;
+    const match = billReqs.find(r => r._id === openReqId);
+    if (match) { setMainTab("requests"); setViewReq(match); }
+  }, [openReqId, billReqs]);
 
   async function handlePrintReq(r: BillRequestRow) {
     setPrintingReqId(r._id);
@@ -545,11 +561,11 @@ export default function SiteProgress() {
         if (recoveries.length) body.advanceRecoveries = recoveries;
       }
       const res = await apiClient.put(`/bill-requests/${approveTarget}/agm-approve`, body);
-      message.success(res.data.message || "AGM approved — forwarded to GM");
+      toast.success(res.data.message || "AGM approved — forwarded to GM");
       setApproveModal(false); setApproveTarget(null); setViewReq(null);
       load();
     } catch (e: any) {
-      message.error(e?.response?.data?.message || "Failed to approve");
+      toast.error(e?.response?.data?.message || "Failed to approve");
     } finally { setSaving(false); }
   };
   const openGmApprove = async (id: string) => {
@@ -573,11 +589,11 @@ export default function SiteProgress() {
       const body: Record<string, unknown> = { remarks: gmRemarks };
       if (gmPayeeCode) body.payeeVendorCode = gmPayeeCode;
       const res = await apiClient.put(`/bill-requests/${gmTarget}/gm-approve`, body);
-      message.success(res.data.message || "Approved & bill generated");
+      toast.success(res.data.message || "Approved & bill generated");
       setGmModal(false); setGmTarget(null); setViewReq(null);
       load();
     } catch (e: any) {
-      message.error(e?.response?.data?.message || "Failed to approve");
+      toast.error(e?.response?.data?.message || "Failed to approve");
     } finally { setSaving(false); }
   };
   const handleReject = async () => {
@@ -585,10 +601,10 @@ export default function SiteProgress() {
     setSaving(true);
     try {
       await apiClient.put(`/bill-requests/${rejectTarget}/reject`, { rejectReason });
-      message.success("Request rejected");
+      toast.success("Request rejected");
       setRejectModal(false); setRejectReason(""); setRejectTarget(null); setViewReq(null);
       load();
-    } catch { message.error("Failed to reject"); }
+    } catch { toast.error("Failed to reject"); }
     finally { setSaving(false); }
   };
 
@@ -629,37 +645,7 @@ export default function SiteProgress() {
     return true;
   }), [activity, selProjectId, selDriId, driList, dateFrom, dateTo]);
 
-  const activityColumns: ColumnsType<ActivityEvent> = [
-    { title: "When", dataIndex: "createdAt", width: 130, render: d => dayjs(d).format("DD MMM, hh:mm a") },
-    {
-      title: "Project / Work Order", render: (_, ev) => (
-        <div>
-          <div style={{ fontWeight: 600 }}>{typeof ev.projectId === "object" ? ev.projectId?.name : "—"}</div>
-          <button
-            type="button"
-            onClick={() => openFromActivity(ev)}
-            style={{ background: "none", border: "none", padding: 0, cursor: "pointer", color: "#FF7A00", fontFamily: "monospace", fontSize: 12 }}
-          >
-            {ev.workOrderNo}
-          </button>
-        </div>
-      ),
-    },
-    { title: "DRI", dataIndex: "performedByName", width: 130, render: v => v || "—" },
-    {
-      title: "Progress", render: (_, ev) => {
-        const m = ev.metadata || {};
-        const level = m.plannedQty != null && m.completedQty != null ? varianceLevel(m.plannedQty, m.completedQty) : "none";
-        return (
-          <div>
-            <div style={{ fontSize: 13 }}>{m.scopeItem} <span style={{ fontFamily: "monospace", color: "#16a34a", fontWeight: 700 }}>+{fmtN(m.qtyAdded || 0)} {m.unit}</span></div>
-            {level !== "none" && <VarianceTag level={level} />}
-          </div>
-        );
-      },
-    },
-    { title: "Remarks", dataIndex: "remarks", render: v => v ? <span className="text-xs text-gray-500 dark:text-gray-400 inline-flex items-center gap-1"><Pin className="w-3 h-3" /> {v}</span> : <span className="text-gray-300 dark:text-gray-600">—</span> },
-  ];
+  const activityPager = usePagination(filteredActivity, 8);
 
   // ── Bill Requests tab (full list) ───────────────────────────────────────────
   const [reqTab, setReqTab] = useState("pending");
@@ -688,66 +674,20 @@ export default function SiteProgress() {
     return [...list].sort((a, b) => parseInt(b.reqNo.replace(/\D/g, ""), 10) - parseInt(a.reqNo.replace(/\D/g, ""), 10));
   }, [billReqs, reqTab, reqProjectFilter, reqSearch, showArchived]);
 
-  const reqColumns: ColumnsType<BillRequestRow> = [
-    {
-      title: "Stage / Request", width: 150,
-      render: (_, r) => (
-        <div>
-          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-            {r.stageNo && (
-              <span style={{ background: "#FFF4E8", border: "1px solid #FF7A00", color: "#FF7A00", fontSize: 10, fontWeight: 800, padding: "1px 6px", borderRadius: 6 }}>S{r.stageNo}</span>
-            )}
-            <button type="button" onClick={() => setViewReq(r)} style={{ background: "none", border: "none", cursor: "pointer", color: "#FF7A00", fontWeight: 700, fontFamily: "monospace", fontSize: 13, padding: 0 }}>
-              {r.reqNo}
-            </button>
-          </div>
-          {r.milestoneAchieved && (
-            <span className="text-[10px] text-primary inline-flex items-center gap-0.5"><Trophy className="w-2.5 h-2.5" /> Milestone</span>
-          )}
-        </div>
-      ),
-    },
-    { title: "Work Order", dataIndex: "workOrderNo", render: (v, r) => (
-      <code className="cursor-pointer text-blue-600 dark:text-blue-400" onClick={() => r.workOrderId && navigate(`/work-items/${r.workOrderId}`)}>{v}</code>
-    )},
-    { title: "Project", dataIndex: "projectName" },
-    { title: "Contractor", dataIndex: "vendorName" },
-    { title: "Items", dataIndex: "items", render: (items: BillItem[]) => <span>{items.length} item{items.length !== 1 ? "s" : ""}</span> },
-    { title: "Date", dataIndex: "createdAt", render: d => dayjs(d).format("DD MMM YYYY") },
-    { title: "Status", dataIndex: "status", render: (s: string) => {
-      const cfg = STATUS_CFG[s] ?? { color: "gray", label: s };
-      return <UIBadge color={cfg.color as any}>{cfg.label}</UIBadge>;
-    }},
-    {
-      title: "Actions",
-      render: (_, r) => (
-        <div className="flex gap-1.5 flex-wrap">
-          <Btn small outline icon={Eye} label="View" onClick={() => setViewReq(r)} />
-          <Btn small outline icon={Printer} label="Print" loading={printingReqId === r._id} onClick={() => handlePrintReq(r)} />
-          {r.status === "pending" && canAgmApprove && (
-            <Btn small color="primary" icon={CheckCircle2} label="AGM Approve" onClick={() => openApprove(r._id)} />
-          )}
-          {r.status === "pending-gm" && canGmApprove && (
-            <Btn small color="blue" icon={CheckCircle2} label="GM Approve" onClick={() => openGmApprove(r._id)} />
-          )}
-          {["pending", "pending-gm"].includes(r.status) && canRejectAny && (
-            <Btn small color="red" icon={XCircle} label="Reject" onClick={() => { setRejectTarget(r._id); setRejectModal(true); }} />
-          )}
-          <Btn small outline icon={ArchiveIcon} label={r.isArchived ? "Unarchive" : "Archive"} onClick={() => setArchiveTarget(r)} />
-        </div>
-      ),
-    },
-  ];
+  const reqPager = usePagination(filteredReqs, 20);
 
   if (loading) {
     return <div className="flex justify-center py-20"><Spinner size="large" /></div>;
   }
 
   return (
-    <PageShell
-      title="Site Progress"
-      description="See what DRI has been logging, raise bill requests, and carry them through AGM (L1) and GM (L2) approval — all in one place."
-    >
+    <div>
+      <PageHeader
+        icon={TrendingUp}
+        title="Site Progress"
+        subtitle="See what DRI has been logging, raise bill requests, and carry them through AGM (L1) and GM (L2) approval — all in one place."
+      />
+
       {/* ── KPI flashcards ── */}
       <div className="grid gap-3.5 mb-6" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(178px, 1fr))" }}>
         <StatCard
@@ -813,9 +753,49 @@ export default function SiteProgress() {
             {filteredActivity.length === 0 ? (
               <EmptyState title="No progress logged for these filters" />
             ) : (
-              <Card padded={false} className="overflow-hidden">
-                <Table dataSource={filteredActivity} columns={activityColumns} rowKey="_id" size="small" pagination={{ pageSize: 8 }} />
-              </Card>
+              <>
+                <Table>
+                  <Thead>
+                    <Tr>
+                      <Th>When</Th>
+                      <Th>Project / Work Order</Th>
+                      <Th>DRI</Th>
+                      <Th>Progress</Th>
+                      <Th>Remarks</Th>
+                    </Tr>
+                  </Thead>
+                  <Tbody>
+                    {activityPager.pageItems.map(ev => {
+                      const m = ev.metadata || {};
+                      const level = m.plannedQty != null && m.completedQty != null ? varianceLevel(m.plannedQty, m.completedQty) : "none";
+                      return (
+                        <Tr key={ev._id}>
+                          <Td>{dayjs(ev.createdAt).format("DD MMM, hh:mm a")}</Td>
+                          <Td>
+                            <div className="font-semibold">{typeof ev.projectId === "object" ? ev.projectId?.name : "—"}</div>
+                            <button type="button" onClick={() => openFromActivity(ev)} className="text-primary font-mono text-xs hover:underline">
+                              {ev.workOrderNo}
+                            </button>
+                          </Td>
+                          <Td>{ev.performedByName || "—"}</Td>
+                          <Td>
+                            <div className="text-[13px]">{m.scopeItem} <span className="font-mono text-emerald-600 font-bold">+{fmtN(m.qtyAdded || 0)} {m.unit}</span></div>
+                            {level !== "none" && <VarianceTag level={level} />}
+                          </Td>
+                          <Td>
+                            {ev.remarks
+                              ? <span className="text-xs text-gray-500 dark:text-gray-400 inline-flex items-center gap-1"><Pin className="w-3 h-3" /> {ev.remarks}</span>
+                              : <span className="text-gray-300 dark:text-gray-600">—</span>}
+                          </Td>
+                        </Tr>
+                      );
+                    })}
+                  </Tbody>
+                </Table>
+                {activityPager.totalPages > 1 && (
+                  <div className="mt-3"><Pagination page={activityPager.page} totalPages={activityPager.totalPages} onChange={activityPager.setPage} /></div>
+                )}
+              </>
             )}
           </div>
 
@@ -902,9 +882,65 @@ export default function SiteProgress() {
           {filteredReqs.length === 0 ? (
             <EmptyState title={`No ${reqTab === "all" ? "" : STATUS_CFG[reqTab]?.label.toLowerCase() || reqTab} bill requests`} />
           ) : (
-            <Card padded={false} className="overflow-hidden">
-              <Table dataSource={filteredReqs} columns={reqColumns} rowKey="_id" size="middle" pagination={{ pageSize: 20 }} />
-            </Card>
+            <>
+              <Table>
+                <Thead>
+                  <Tr>
+                    <Th>Stage / Request</Th>
+                    <Th>Work Order</Th>
+                    <Th>Project</Th>
+                    <Th>Contractor</Th>
+                    <Th>Items</Th>
+                    <Th>Date</Th>
+                    <Th>Status</Th>
+                    <Th>Actions</Th>
+                  </Tr>
+                </Thead>
+                <Tbody>
+                  {reqPager.pageItems.map(r => {
+                    const cfg = STATUS_CFG[r.status] ?? { color: "gray", label: r.status };
+                    return (
+                      <Tr key={r._id}>
+                        <Td>
+                          <div className="flex gap-1.5 items-center">
+                            {r.stageNo && <UIBadge color="orange" small>S{r.stageNo}</UIBadge>}
+                            <button type="button" onClick={() => setViewReq(r)} className="text-primary font-bold font-mono text-[13px] hover:underline">{r.reqNo}</button>
+                          </div>
+                          {r.milestoneAchieved && (
+                            <span className="text-[10px] text-primary inline-flex items-center gap-0.5"><Trophy className="w-2.5 h-2.5" /> Milestone</span>
+                          )}
+                        </Td>
+                        <Td><code className="cursor-pointer text-blue-600 dark:text-blue-400" onClick={() => r.workOrderId && navigate(`/work-items/${r.workOrderId}`)}>{r.workOrderNo}</code></Td>
+                        <Td>{r.projectName}</Td>
+                        <Td>{r.vendorName}</Td>
+                        <Td>{r.items.length} item{r.items.length !== 1 ? "s" : ""}</Td>
+                        <Td>{dayjs(r.createdAt).format("DD MMM YYYY")}</Td>
+                        <Td><UIBadge color={cfg.color as any}>{cfg.label}</UIBadge></Td>
+                        <Td>
+                          <div className="flex gap-1.5 flex-wrap">
+                            <Btn small outline icon={Eye} label="View" onClick={() => setViewReq(r)} />
+                            <Btn small outline icon={Printer} label="Print" loading={printingReqId === r._id} onClick={() => handlePrintReq(r)} />
+                            {r.status === "pending" && canAgmApprove && (
+                              <Btn small color="primary" icon={CheckCircle2} label="AGM Approve" onClick={() => openApprove(r._id)} />
+                            )}
+                            {r.status === "pending-gm" && canGmApprove && (
+                              <Btn small color="blue" icon={CheckCircle2} label="GM Approve" onClick={() => openGmApprove(r._id)} />
+                            )}
+                            {["pending", "pending-gm"].includes(r.status) && canRejectAny && (
+                              <Btn small color="red" icon={XCircle} label="Reject" onClick={() => { setRejectTarget(r._id); setRejectModal(true); }} />
+                            )}
+                            <Btn small outline icon={ArchiveIcon} label={r.isArchived ? "Unarchive" : "Archive"} onClick={() => setArchiveTarget(r)} />
+                          </div>
+                        </Td>
+                      </Tr>
+                    );
+                  })}
+                </Tbody>
+              </Table>
+              {reqPager.totalPages > 1 && (
+                <div className="mt-3"><Pagination page={reqPager.page} totalPages={reqPager.totalPages} onChange={reqPager.setPage} /></div>
+              )}
+            </>
           )}
         </>
       )}
@@ -921,329 +957,297 @@ export default function SiteProgress() {
       )}
 
       {/* ── Work order detail + bill-generation modal ── */}
-      <Modal
-        open={!!viewWOId}
-        onCancel={() => { setViewWOId(null); setChecked(new Set()); }}
-        title={`Work Order — ${viewWO?.workOrderNo ?? ""}`}
-        width={860}
-        footer={
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span style={{ fontSize: 12, color: "#6B7280" }}>
-              {checked.size > 0 ? `${checked.size} item${checked.size !== 1 ? "s" : ""} selected` : "Select items below to bill"}
-            </span>
-            <div style={{ display: "flex", gap: 8 }}>
-              <Button onClick={() => setViewWOId(null)}>Close</Button>
-              <Button
-                type="primary"
-                disabled={checked.size === 0}
-                loading={generating}
-                onClick={handleGenerateBill}
-                style={{ background: checked.size > 0 ? "#FF7A00" : undefined, borderColor: checked.size > 0 ? "#FF7A00" : undefined }}
-              >
-                Generate Bill Request
-              </Button>
+      {viewWOId && (
+        <Modal
+          icon={FileText}
+          title={`Work Order — ${viewWO?.workOrderNo ?? ""}`}
+          extraWide
+          onClose={() => { setViewWOId(null); setChecked(new Set()); }}
+          footer={
+            <div className="flex justify-between items-center w-full">
+              <span className="text-xs text-gray-500 dark:text-gray-400">
+                {checked.size > 0 ? `${checked.size} item${checked.size !== 1 ? "s" : ""} selected` : "Select items below to bill"}
+              </span>
+              <div className="flex gap-2">
+                <Btn outline label="Close" onClick={() => setViewWOId(null)} />
+                <Btn color="primary" label="Generate Bill Request" disabled={checked.size === 0} loading={generating} onClick={handleGenerateBill} />
+              </div>
             </div>
-          </div>
-        }
-      >
-        {!viewWO ? (
-          <div style={{ textAlign: "center", padding: 40 }}><Spin /></div>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, background: "#f9fafb", padding: 14, borderRadius: 8 }}>
-              {[
-                ["Project", viewWO.projectName],
-                ["Contractor", `${viewWO.vendorName ?? ""} (${viewWO.vendorCode ?? ""})`],
-                ["Category", viewWO.category || "—"],
-                ["Contract Value", viewWO.contractValue ? fmt(viewWO.contractValue) : "—"],
-                ["Assigned DRI", (viewWO.assignedDRI ?? []).map(d => d.name).join(", ") || "—"],
-                ["Status", viewWO.status],
-              ].map(([label, val]) => (
-                <div key={label}>
-                  <div style={{ fontSize: 10, color: "#6B7280", textTransform: "uppercase", letterSpacing: "0.06em" }}>{label}</div>
-                  <div style={{ fontWeight: 600, color: "#111827", fontSize: 13 }}>{val}</div>
-                </div>
-              ))}
-            </div>
+          }
+        >
+          {!viewWO ? (
+            <Spinner size="large" />
+          ) : (
+            <div className="flex flex-col gap-3.5">
+              <Descriptions columns={2}>
+                <DescItem label="Project">{viewWO.projectName}</DescItem>
+                <DescItem label="Contractor">{`${viewWO.vendorName ?? ""} (${viewWO.vendorCode ?? ""})`}</DescItem>
+                <DescItem label="Category">{viewWO.category || "—"}</DescItem>
+                <DescItem label="Contract Value">{viewWO.contractValue ? fmt(viewWO.contractValue) : "—"}</DescItem>
+                <DescItem label="Assigned DRI">{(viewWO.assignedDRI ?? []).map(d => d.name).join(", ") || "—"}</DescItem>
+                <DescItem label="Status">{viewWO.status}</DescItem>
+              </Descriptions>
 
-            {slaInstance && (
+              {slaInstance && (
+                <div>
+                  <div className="text-[11px] text-gray-400 mb-0.5">
+                    Work order sign-off chain (informational — not related to progress variance below)
+                  </div>
+                  <WorkflowInstanceStepper
+                    instance={slaInstance}
+                    userRole={user?.role}
+                    userId={user?.id}
+                    onChanged={() => {
+                      apiClient.get("/workflows/instances", { params: { entityType: "WorkOrder", entityId: viewWO._id } })
+                        .then(res => setSlaInstance(res.data.instances?.[0] ?? null))
+                        .catch(() => {});
+                    }}
+                    compact
+                  />
+                </div>
+              )}
+
               <div>
-                <div style={{ fontSize: 11, color: "#9CA3AF", marginBottom: 2 }}>
-                  Work order sign-off chain (informational — not related to progress variance below)
+                <div className="font-bold text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wide mb-1.5">
+                  Scope Items — select which ones to bill this cycle
                 </div>
-                <WorkflowInstanceStepper
-                  instance={slaInstance}
-                  userRole={user?.role}
-                  userId={user?.id}
-                  onChanged={() => {
-                    apiClient.get("/workflows/instances", { params: { entityType: "WorkOrder", entityId: viewWO._id } })
-                      .then(res => setSlaInstance(res.data.instances?.[0] ?? null))
-                      .catch(() => {});
-                  }}
-                  compact
-                />
-              </div>
-            )}
-
-            <div>
-              <div style={{ fontWeight: 700, fontSize: 12, color: "#374151", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                Scope Items — select which ones to bill this cycle
-              </div>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                <thead>
-                  <tr style={{ background: "#1F2937", color: "#fff" }}>
-                    {["", "Description", "Unit", "Planned", "Done", "Unbilled", "Variance", ""].map(h => (
-                      <th key={h} style={{ padding: "6px 10px", textAlign: "left", fontSize: 11 }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {viewWO.scopeItems.map((si, idx) => {
-                    const hasSubItems = (si.subItems?.length ?? 0) > 0;
-                    // A parent's own completedQty/lastBilledQty are a display
-                    // rollup, not a billable quantity (see
-                    // recomputeParentFromSubItems) — the real unbilled total
-                    // is the sum of what's actually unbilled on each particular.
-                    const unbilled = hasSubItems
-                      ? si.subItems!.reduce((s, sub) => s + Math.max(0, (sub.completedQty || 0) - (sub.lastBilledQty || 0)), 0)
-                      : Math.max(0, si.completedQty - (si.lastBilledQty || 0));
-                    const level = varianceLevel(si.plannedQty, si.completedQty);
-                    const blocked = itemHasUnapprovedVariance(si);
-                    const canBill = unbilled > 0 && !blocked;
-                    const entryCount = si.progressEntries?.length ?? 0;
-                    const isExpanded = expandedEntries.has(si._id);
-                    return (
-                      <Fragment key={si._id}>
-                        <tr style={{ borderBottom: hasSubItems || isExpanded ? "none" : "1px solid #E5E7EB", background: idx % 2 === 0 ? "#fff" : "#F9FAFB" }}>
-                          <td style={{ padding: "6px 10px" }}>
-                            {unbilled > 0 && (
-                              <Tooltip title={blocked ? `Approve the variance${hasSubItems ? " on every particular" : ""} below first` : undefined}>
-                                <Checkbox checked={checked.has(si._id)} disabled={!canBill} onChange={() => toggleCheck(si._id)} />
-                              </Tooltip>
-                            )}
-                          </td>
-                          <td style={{ padding: "6px 10px", fontWeight: 600 }}>
-                            {!hasSubItems && entryCount > 0 && (
-                              <button type="button" onClick={() => toggleEntries(si._id)} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, marginRight: 6, color: "#6B7280" }}>
-                                {isExpanded ? <DownOutlined /> : <RightOutlined />}
-                              </button>
-                            )}
-                            {si.description}
-                            {!hasSubItems && entryCount > 0 && (
-                              <span style={{ fontSize: 11, color: "#9CA3AF", fontWeight: 400, marginLeft: 6 }}>({entryCount} entr{entryCount !== 1 ? "ies" : "y"})</span>
-                            )}
-                            {si.remarks && <div style={{ fontSize: 11, color: "#d97706", fontWeight: 400 }}>📌 {si.remarks}</div>}
-                          </td>
-                          <td style={{ padding: "6px 10px" }}>{si.unit}</td>
-                          <td style={{ padding: "6px 10px", fontFamily: "monospace" }}>{fmtN(si.plannedQty)}</td>
-                          <td style={{ padding: "6px 10px", fontFamily: "monospace" }}>{fmtN(si.completedQty)}</td>
-                          <td style={{ padding: "6px 10px", fontFamily: "monospace", color: unbilled > 0 ? "#FF7A00" : "#9CA3AF", fontWeight: unbilled > 0 ? 700 : 400 }}>{fmtN(unbilled)}</td>
-                          <td style={{ padding: "6px 10px" }}>
-                            {!hasSubItems && level !== "none" && (
-                              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                                <VarianceTag level={level} />
-                                {!si.varianceApproved && (
-                                  <Button size="small" loading={approvingVariance === si._id} onClick={() => handleApproveVariance(si)}>Approve</Button>
-                                )}
-                              </div>
-                            )}
-                            {hasSubItems && itemHasUnapprovedVariance(si) && <Tag color="red">See particulars</Tag>}
-                          </td>
-                          <td />
-                        </tr>
-                        {!hasSubItems && isExpanded && (
-                          <tr style={{ borderBottom: "1px solid #E5E7EB", background: "#FCFCFD" }}>
-                            <td />
-                            <td colSpan={7} style={{ padding: "4px 10px 10px" }}>
-                              <ProgressEntryLog entries={si.progressEntries} />
-                            </td>
-                          </tr>
-                        )}
-                        {hasSubItems && si.subItems!.map(sub => {
-                          const subUnbilled = Math.max(0, (sub.completedQty || 0) - (sub.lastBilledQty || 0));
-                          const subLevel = varianceLevel(sub.plannedQty, sub.completedQty);
-                          const subEntryCount = sub.progressEntries?.length ?? 0;
-                          const subExpanded = expandedEntries.has(sub._id);
-                          return (
-                            <Fragment key={sub._id}>
-                              <tr style={{ borderBottom: subExpanded ? "none" : "1px solid #F3F4F6", background: "#FCFCFD" }}>
-                                <td />
-                                <td style={{ padding: "5px 10px 5px 26px", fontSize: 12, color: "#6B7280" }}>
-                                  {subEntryCount > 0 && (
-                                    <button type="button" onClick={() => toggleEntries(sub._id)} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, marginRight: 6, color: "#9CA3AF" }}>
-                                      {subExpanded ? <DownOutlined /> : <RightOutlined />}
-                                    </button>
-                                  )}
-                                  {sub.description}
-                                  {subEntryCount > 0 && <span style={{ fontSize: 10, color: "#9CA3AF", marginLeft: 6 }}>({subEntryCount})</span>}
-                                </td>
-                                <td style={{ padding: "5px 10px", fontSize: 12 }}>{sub.unit}</td>
-                                <td style={{ padding: "5px 10px", fontFamily: "monospace", fontSize: 12 }}>{fmtN(sub.plannedQty)}</td>
-                                <td style={{ padding: "5px 10px", fontFamily: "monospace", fontSize: 12 }}>{fmtN(sub.completedQty)}</td>
-                                <td style={{ padding: "5px 10px", fontFamily: "monospace", fontSize: 12, color: subUnbilled > 0 ? "#FF7A00" : "#9CA3AF", fontWeight: subUnbilled > 0 ? 700 : 400 }}>{fmtN(subUnbilled)}</td>
-                                <td style={{ padding: "5px 10px" }}>
-                                  {subLevel !== "none" && (
-                                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                                      <VarianceTag level={subLevel} />
-                                      {!sub.varianceApproved && (
-                                        <Button size="small" loading={approvingVariance === sub._id} onClick={() => handleApproveVariance(si, sub)}>Approve</Button>
-                                      )}
-                                    </div>
-                                  )}
-                                </td>
-                                <td />
-                              </tr>
-                              {subExpanded && (
-                                <tr style={{ borderBottom: "1px solid #F3F4F6", background: "#FCFCFD" }}>
-                                  <td /><td />
-                                  <td colSpan={6} style={{ padding: "0 10px 10px 26px" }}>
-                                    <ProgressEntryLog entries={sub.progressEntries} />
-                                  </td>
-                                </tr>
+                <Table>
+                  <Thead>
+                    <Tr>
+                      <Th></Th>
+                      <Th>Description</Th>
+                      <Th>Unit</Th>
+                      <Th>Planned</Th>
+                      <Th>Done</Th>
+                      <Th>Unbilled</Th>
+                      <Th>Variance</Th>
+                      <Th></Th>
+                    </Tr>
+                  </Thead>
+                  <Tbody>
+                    {viewWO.scopeItems.map((si) => {
+                      const hasSubItems = (si.subItems?.length ?? 0) > 0;
+                      // A parent's own completedQty/lastBilledQty are a display
+                      // rollup, not a billable quantity (see
+                      // recomputeParentFromSubItems) — the real unbilled total
+                      // is the sum of what's actually unbilled on each particular.
+                      const unbilled = hasSubItems
+                        ? si.subItems!.reduce((s, sub) => s + Math.max(0, (sub.completedQty || 0) - (sub.lastBilledQty || 0)), 0)
+                        : Math.max(0, si.completedQty - (si.lastBilledQty || 0));
+                      const level = varianceLevel(si.plannedQty, si.completedQty);
+                      const blocked = itemHasUnapprovedVariance(si);
+                      const canBill = unbilled > 0 && !blocked;
+                      const entryCount = si.progressEntries?.length ?? 0;
+                      const isExpanded = expandedEntries.has(si._id);
+                      return (
+                        <Fragment key={si._id}>
+                          <Tr>
+                            <Td>
+                              {unbilled > 0 && (
+                                <span title={blocked ? `Approve the variance${hasSubItems ? " on every particular" : ""} below first` : undefined}>
+                                  <Checkbox checked={checked.has(si._id)} disabled={!canBill} onChange={() => toggleCheck(si._id)} />
+                                </span>
                               )}
-                            </Fragment>
-                          );
-                        })}
-                      </Fragment>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                            </Td>
+                            <Td className="font-semibold">
+                              {!hasSubItems && entryCount > 0 && (
+                                <button type="button" onClick={() => toggleEntries(si._id)} className="mr-1.5 text-gray-500 dark:text-gray-400 align-middle">
+                                  {isExpanded ? <ChevronDown className="w-3.5 h-3.5 inline" /> : <ChevronRight className="w-3.5 h-3.5 inline" />}
+                                </button>
+                              )}
+                              {si.description}
+                              {!hasSubItems && entryCount > 0 && (
+                                <span className="text-[11px] text-gray-400 font-normal ml-1.5">({entryCount} entr{entryCount !== 1 ? "ies" : "y"})</span>
+                              )}
+                              {si.remarks && <div className="text-[11px] text-amber-600 font-normal">📌 {si.remarks}</div>}
+                            </Td>
+                            <Td>{si.unit}</Td>
+                            <Td className="font-mono">{fmtN(si.plannedQty)}</Td>
+                            <Td className="font-mono">{fmtN(si.completedQty)}</Td>
+                            <Td className={`font-mono ${unbilled > 0 ? "text-primary font-bold" : "text-gray-400"}`}>{fmtN(unbilled)}</Td>
+                            <Td>
+                              {!hasSubItems && level !== "none" && (
+                                <div className="flex items-center gap-1.5">
+                                  <VarianceTag level={level} />
+                                  {!si.varianceApproved && (
+                                    <Btn small outline loading={approvingVariance === si._id} label="Approve" onClick={() => handleApproveVariance(si)} />
+                                  )}
+                                </div>
+                              )}
+                              {hasSubItems && itemHasUnapprovedVariance(si) && <UIBadge color="red" small>See particulars</UIBadge>}
+                            </Td>
+                            <Td></Td>
+                          </Tr>
+                          {!hasSubItems && isExpanded && (
+                            <Tr>
+                              <Td></Td>
+                              <Td colSpan={7} className="!py-0 pb-2.5">
+                                <ProgressEntryLog entries={si.progressEntries} />
+                              </Td>
+                            </Tr>
+                          )}
+                          {hasSubItems && si.subItems!.map(sub => {
+                            const subUnbilled = Math.max(0, (sub.completedQty || 0) - (sub.lastBilledQty || 0));
+                            const subLevel = varianceLevel(sub.plannedQty, sub.completedQty);
+                            const subEntryCount = sub.progressEntries?.length ?? 0;
+                            const subExpanded = expandedEntries.has(sub._id);
+                            return (
+                              <Fragment key={sub._id}>
+                                <Tr className="bg-gray-50/60 dark:bg-gray-800/20">
+                                  <Td></Td>
+                                  <Td className="pl-6 text-xs text-gray-500 dark:text-gray-400">
+                                    {subEntryCount > 0 && (
+                                      <button type="button" onClick={() => toggleEntries(sub._id)} className="mr-1.5 text-gray-400 align-middle">
+                                        {subExpanded ? <ChevronDown className="w-3 h-3 inline" /> : <ChevronRight className="w-3 h-3 inline" />}
+                                      </button>
+                                    )}
+                                    {sub.description}
+                                    {subEntryCount > 0 && <span className="text-[10px] text-gray-400 ml-1.5">({subEntryCount})</span>}
+                                  </Td>
+                                  <Td className="text-xs">{sub.unit}</Td>
+                                  <Td className="font-mono text-xs">{fmtN(sub.plannedQty)}</Td>
+                                  <Td className="font-mono text-xs">{fmtN(sub.completedQty)}</Td>
+                                  <Td className={`font-mono text-xs ${subUnbilled > 0 ? "text-primary font-bold" : "text-gray-400"}`}>{fmtN(subUnbilled)}</Td>
+                                  <Td>
+                                    {subLevel !== "none" && (
+                                      <div className="flex items-center gap-1.5">
+                                        <VarianceTag level={subLevel} />
+                                        {!sub.varianceApproved && (
+                                          <Btn small outline loading={approvingVariance === sub._id} label="Approve" onClick={() => handleApproveVariance(si, sub)} />
+                                        )}
+                                      </div>
+                                    )}
+                                  </Td>
+                                  <Td></Td>
+                                </Tr>
+                                {subExpanded && (
+                                  <Tr className="bg-gray-50/60 dark:bg-gray-800/20">
+                                    <Td></Td><Td></Td>
+                                    <Td colSpan={6} className="pl-6">
+                                      <ProgressEntryLog entries={sub.progressEntries} />
+                                    </Td>
+                                  </Tr>
+                                )}
+                              </Fragment>
+                            );
+                          })}
+                        </Fragment>
+                      );
+                    })}
+                  </Tbody>
+                </Table>
+              </div>
 
-            <div>
-              <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Remarks for this bill request (optional)</div>
-              <Input.TextArea rows={2} value={billRemarks} onChange={e => setBillRemarks(e.target.value)} placeholder="Notes for whoever approves this…" />
+              <Field
+                textarea label="Remarks for this bill request (optional)" placeholder="Notes for whoever approves this…"
+                value={billRemarks} onChange={e => setBillRemarks(e.target.value)}
+              />
             </div>
-          </div>
-        )}
-      </Modal>
+          )}
+        </Modal>
+      )}
 
       {/* ── Bill request view modal ── */}
-      <Modal
-        open={!!viewReq}
-        onCancel={() => setViewReq(null)}
-        title={
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span>Bill Request — {viewReq?.reqNo}</span>
-            {viewReq && <Tag color={STATUS_CFG[viewReq.status]?.color}>{STATUS_CFG[viewReq.status]?.label}</Tag>}
-            {viewReq?.milestoneAchieved && (
-              <span style={{ background: "#FF7A00", color: "#fff", fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 6 }}>🏆 Milestone</span>
-            )}
-          </div>
-        }
-        width={760}
-        footer={
-          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-            <Button onClick={() => setViewReq(null)}>Close</Button>
-            {viewReq && (
-              <Button
-                icon={<PrinterOutlined />}
-                loading={printingReqId === viewReq._id}
-                onClick={() => handlePrintReq(viewReq)}
-              >
-                Print
-              </Button>
-            )}
-            {viewReq?.status === "pending" && (
-              <>
-                {canRejectAny && <Button danger onClick={() => { setRejectTarget(viewReq._id); setRejectModal(true); setViewReq(null); }}>Reject</Button>}
-                {canAgmApprove && <Button type="primary" onClick={() => { openApprove(viewReq._id); setViewReq(null); }}>AGM Approve →</Button>}
-              </>
-            )}
-            {viewReq?.status === "pending-gm" && (
-              <>
-                {canRejectAny && <Button danger onClick={() => { setRejectTarget(viewReq._id); setRejectModal(true); setViewReq(null); }}>Reject</Button>}
-                {canGmApprove && <Button type="primary" style={{ background: "#2563eb", borderColor: "#2563eb" }} onClick={() => { openGmApprove(viewReq._id); setViewReq(null); }}>GM Approve →</Button>}
-              </>
-            )}
-          </div>
-        }
-      >
-        {viewReq && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, background: "#f9fafb", padding: 14, borderRadius: 8 }}>
-              {[
-                ["Work Order", viewReq.workOrderNo],
-                ["Project", viewReq.projectLocation ? `${viewReq.projectName} — ${viewReq.projectLocation}` : viewReq.projectName],
-                ["Contractor", viewReq.vendorName],
-                ["Requested By", viewReq.requestedBy?.name || "—"],
-                ["Date", dayjs(viewReq.createdAt).format("DD MMM YYYY")],
-                ...(viewReq.periodFrom ? [["Period", `${dayjs(viewReq.periodFrom).format("DD MMM YYYY")} → ${dayjs(viewReq.periodTo ?? viewReq.createdAt).format("DD MMM YYYY")}`]] : []),
-                ...(viewReq.billId ? [["Bill No.", viewReq.billId.billNo + " — " + fmt(viewReq.billId.amount)]] : []),
-              ].map(([label, val]) => (
-                <div key={label}>
-                  <div style={{ fontSize: 10, color: "#6B7280", textTransform: "uppercase", letterSpacing: "0.06em" }}>{label}</div>
-                  <div style={{ fontWeight: 600, color: "#111827", fontSize: 13 }}>{val}</div>
-                </div>
-              ))}
+      {viewReq && (
+        <Modal
+          icon={FileText}
+          title={
+            <span className="inline-flex items-center gap-2">
+              <span>Bill Request — {viewReq.reqNo}</span>
+              <UIBadge color={STATUS_CFG[viewReq.status]?.color as any}>{STATUS_CFG[viewReq.status]?.label}</UIBadge>
+              {viewReq.milestoneAchieved && <UIBadge color="orange" small>🏆 Milestone</UIBadge>}
+            </span>
+          }
+          extraWide
+          onClose={() => setViewReq(null)}
+          footer={
+            <div className="flex gap-2 justify-end flex-wrap">
+              <Btn outline label="Close" onClick={() => setViewReq(null)} />
+              <Btn outline icon={Printer} label="Print" loading={printingReqId === viewReq._id} onClick={() => handlePrintReq(viewReq)} />
+              {viewReq.status === "pending" && (
+                <>
+                  {canRejectAny && <Btn color="red" label="Reject" onClick={() => { setRejectTarget(viewReq._id); setRejectModal(true); setViewReq(null); }} />}
+                  {canAgmApprove && <Btn color="primary" label="AGM Approve →" onClick={() => { openApprove(viewReq._id); setViewReq(null); }} />}
+                </>
+              )}
+              {viewReq.status === "pending-gm" && (
+                <>
+                  {canRejectAny && <Btn color="red" label="Reject" onClick={() => { setRejectTarget(viewReq._id); setRejectModal(true); setViewReq(null); }} />}
+                  {canGmApprove && <Btn color="blue" label="GM Approve →" onClick={() => { openGmApprove(viewReq._id); setViewReq(null); }} />}
+                </>
+              )}
             </div>
+          }
+        >
+          <div className="flex flex-col gap-3.5">
+            <Descriptions columns={2}>
+              <DescItem label="Work Order">{viewReq.workOrderNo}</DescItem>
+              <DescItem label="Project">{viewReq.projectLocation ? `${viewReq.projectName} — ${viewReq.projectLocation}` : viewReq.projectName}</DescItem>
+              <DescItem label="Contractor">{viewReq.vendorName}</DescItem>
+              <DescItem label="Requested By">{viewReq.requestedBy?.name || "—"}</DescItem>
+              <DescItem label="Date">{dayjs(viewReq.createdAt).format("DD MMM YYYY")}</DescItem>
+              {viewReq.periodFrom && (
+                <DescItem label="Period">{`${dayjs(viewReq.periodFrom).format("DD MMM YYYY")} → ${dayjs(viewReq.periodTo ?? viewReq.createdAt).format("DD MMM YYYY")}`}</DescItem>
+              )}
+              {viewReq.billId && (
+                <DescItem label="Bill No.">{viewReq.billId.billNo + " — " + fmt(viewReq.billId.amount)}</DescItem>
+              )}
+            </Descriptions>
 
             {viewReq.status === "pending-gm" && (
-              <div style={{ background: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: 8, padding: 12 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#1D4ED8", marginBottom: 8, textTransform: "uppercase" }}>AGM already set (read-only)</div>
-                <Row gutter={12}>
-                  <Col span={8}>
-                    <div style={{ fontSize: 10, color: "#6B7280" }}>Hold / Retention</div>
-                    <div style={{ fontWeight: 700 }}>{fmt(viewReq.retentionAmount ?? 0)}</div>
-                  </Col>
-                  <Col span={8}>
-                    <div style={{ fontSize: 10, color: "#6B7280" }}>Advance Recovery</div>
-                    <div style={{ fontWeight: 700 }}>{fmt(viewReq.advanceRecovery ?? 0)}</div>
-                  </Col>
-                  <Col span={8}>
-                    <div style={{ fontSize: 10, color: "#6B7280" }}>GST %</div>
-                    <div style={{ fontWeight: 700 }}>
-                      {viewReq.gstPercentOverride != null ? `${viewReq.gstPercentOverride}%` : <span style={{ color: "#9CA3AF", fontWeight: 400 }}>Work order default</span>}
-                    </div>
-                  </Col>
-                </Row>
+              <div className="rounded-lg border border-blue-200 dark:border-blue-500/30 bg-blue-50 dark:bg-blue-500/10 p-3">
+                <div className="text-[11px] font-bold text-blue-700 dark:text-blue-300 mb-2 uppercase">AGM already set (read-only)</div>
+                <Descriptions columns={3}>
+                  <DescItem label="Hold / Retention"><span className="font-bold">{fmt(viewReq.retentionAmount ?? 0)}</span></DescItem>
+                  <DescItem label="Advance Recovery"><span className="font-bold">{fmt(viewReq.advanceRecovery ?? 0)}</span></DescItem>
+                  <DescItem label="GST %">
+                    {viewReq.gstPercentOverride != null ? <span className="font-bold">{viewReq.gstPercentOverride}%</span> : <span className="text-gray-400">Work order default</span>}
+                  </DescItem>
+                </Descriptions>
                 {viewReq.payeeVendorCode && (
-                  <div style={{ marginTop: 8, fontSize: 12 }}>
-                    <span style={{ color: "#6B7280" }}>Pay To: </span>
-                    <span style={{ fontWeight: 700 }}>{viewReq.payeeVendorName} ({viewReq.payeeVendorCode})</span>
+                  <div className="mt-2 text-xs">
+                    <span className="text-gray-500 dark:text-gray-400">Pay To: </span>
+                    <span className="font-bold">{viewReq.payeeVendorName} ({viewReq.payeeVendorCode})</span>
                   </div>
                 )}
-                <div style={{ fontSize: 11, color: "#6B7280", marginTop: 6 }}>
+                <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-1.5">
                   {actorName(viewReq.agmApprovedBy) || "AGM"}{viewReq.agmApprovedAt ? ` · ${dayjs(viewReq.agmApprovedAt).format("DD MMM YYYY")}` : ""}
                 </div>
               </div>
             )}
 
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-              <thead>
-                <tr style={{ background: "#1F2937", color: "#fff" }}>
-                  {["Description", "Unit", "Qty Billed", "Rate", "Amount"].map(h => (
-                    <th key={h} style={{ padding: "6px 10px", textAlign: "left", fontSize: 11 }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
+            <Table>
+              <Thead>
+                <Tr>
+                  <Th>Description</Th><Th>Unit</Th><Th className="text-right">Qty Billed</Th><Th className="text-right">Rate</Th><Th className="text-right">Amount</Th>
+                </Tr>
+              </Thead>
+              <Tbody>
                 {viewReq.items.map((it, i) => {
                   const amt = (it.rate ?? 0) * it.billedQty;
                   return (
-                    <tr key={i} style={{ borderBottom: "1px solid #E5E7EB", background: i % 2 === 0 ? "#fff" : "#F9FAFB" }}>
-                      <td style={{ padding: "6px 10px" }}>
+                    <Tr key={i}>
+                      <Td>
                         {it.description}
-                        {it.progressRemarks && <div style={{ fontSize: 11, color: "#2563eb", marginTop: 2 }}>👷 {it.progressRemarks}</div>}
-                      </td>
-                      <td style={{ padding: "6px 10px" }}>{it.unit}</td>
-                      <td style={{ padding: "6px 10px", textAlign: "right", fontFamily: "monospace" }}>{it.billedQty.toLocaleString("en-IN")}</td>
-                      <td style={{ padding: "6px 10px", textAlign: "right" }}>{it.rate ? fmtRate(it.rate) : <span style={{ color: "#9CA3AF" }}>pending</span>}</td>
-                      <td style={{ padding: "6px 10px", textAlign: "right", fontWeight: 600 }}>{it.rate ? fmt(amt) : <span style={{ color: "#9CA3AF" }}>—</span>}</td>
-                    </tr>
+                        {it.progressRemarks && <div className="text-[11px] text-blue-600 mt-0.5">👷 {it.progressRemarks}</div>}
+                      </Td>
+                      <Td>{it.unit}</Td>
+                      <Td className="text-right font-mono">{it.billedQty.toLocaleString("en-IN")}</Td>
+                      <Td className="text-right">{it.rate ? fmtRate(it.rate) : <span className="text-gray-400">pending</span>}</Td>
+                      <Td className="text-right font-semibold">{it.rate ? fmt(amt) : <span className="text-gray-400">—</span>}</Td>
+                    </Tr>
                   );
                 })}
-              </tbody>
+              </Tbody>
               {viewTotal > 0 && (
-                <tfoot>
-                  <tr style={{ borderTop: "2px solid #FF7A00", background: "#FFF8F3" }}>
-                    <td colSpan={4} style={{ padding: "8px 10px", fontWeight: 700, textAlign: "right", color: "#FF7A00" }}>Gross Total</td>
-                    <td style={{ padding: "8px 10px", fontWeight: 700, textAlign: "right" }}>{fmt(viewTotal)}</td>
-                  </tr>
-                </tfoot>
+                <Tfoot>
+                  <Tr className="!bg-primary/5">
+                    <Td colSpan={4} className="font-bold text-right text-primary">Gross Total</Td>
+                    <Td className="font-bold text-right">{fmt(viewTotal)}</Td>
+                  </Tr>
+                </Tfoot>
               )}
-            </table>
+            </Table>
 
             {viewTotal > 0 && (() => {
               const retAmt = viewReq.retentionAmount ?? 0;
@@ -1251,26 +1255,26 @@ export default function SiteProgress() {
               const gstPct = viewReq.gstPercentOverride ?? 0;
               const { gstAmount, netAfterHold } = billFinancials({ gross: viewTotal, gstPercent: gstPct, retentionAmount: retAmt, advanceRecovery: advRec });
               return (
-                <div style={{ background: "#FFF8F3", border: "1px solid #FED7AA", borderRadius: 8, padding: 12, fontFamily: "monospace", fontSize: 13 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", color: "#6B7280" }}>
+                <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 font-mono text-[13px]">
+                  <div className="flex justify-between text-gray-500 dark:text-gray-400">
                     <span>Gross Total</span><span>{fmt(viewTotal)}</span>
                   </div>
                   {retAmt > 0 && (
-                    <div style={{ display: "flex", justifyContent: "space-between", color: "#dc2626" }}>
+                    <div className="flex justify-between text-red-600">
                       <span>Hold / Retention</span><span>− {fmt(retAmt)}</span>
                     </div>
                   )}
                   {advRec > 0 && (
-                    <div style={{ display: "flex", justifyContent: "space-between", color: "#d97706" }}>
+                    <div className="flex justify-between text-amber-600">
                       <span>Less: Advance Recovery</span><span>− {fmt(advRec)}</span>
                     </div>
                   )}
                   {gstAmount > 0 && (
-                    <div style={{ display: "flex", justifyContent: "space-between", color: "#16a34a" }}>
+                    <div className="flex justify-between text-emerald-600">
                       <span>GST @ {gstPct}%</span><span>+ {fmt(gstAmount)}</span>
                     </div>
                   )}
-                  <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700, color: "#FF7A00", borderTop: "1px solid #FED7AA", paddingTop: 4, marginTop: 4 }}>
+                  <div className="flex justify-between font-bold text-primary border-t border-primary/20 pt-1 mt-1">
                     <span>Final Amount</span><span>{fmt(netAfterHold)}</span>
                   </div>
                 </div>
@@ -1278,123 +1282,130 @@ export default function SiteProgress() {
             })()}
 
             {viewReq.remarks && (
-              <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 6, padding: 10, fontSize: 13 }}>
+              <div className="rounded-md border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 p-2.5 text-[13px]">
                 <strong>Remarks:</strong> {viewReq.remarks}
               </div>
             )}
 
             {viewReq.rejectReason && (
-              <div style={{ background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: 6, padding: 10, fontSize: 13 }}>
+              <div className="rounded-md border border-red-200 dark:border-red-500/30 bg-red-50 dark:bg-red-500/10 p-2.5 text-[13px]">
                 <strong>Reject Reason:</strong> {viewReq.rejectReason}
               </div>
             )}
 
             {(viewReq.approvalHistory?.length ?? 0) > 0 && (
               <div>
-                <div style={{ fontWeight: 700, fontSize: 11, color: "#6B7280", textTransform: "uppercase", marginBottom: 6 }}>History</div>
+                <div className="font-bold text-[11px] text-gray-500 dark:text-gray-400 uppercase mb-1.5">History</div>
                 <ApprovalHistoryTimeline history={viewReq.approvalHistory} />
               </div>
             )}
           </div>
-        )}
-      </Modal>
+        </Modal>
+      )}
 
       {/* ── AGM approve modal (L1) — hold/retention + advance, both optional ── */}
-      <Modal
-        open={approveModal}
-        onCancel={() => { setApproveModal(false); setApproveTarget(null); }}
-        onOk={handleAgmApprove}
-        title="AGM Approve — Stage 1"
-        okText="Approve & Forward to GM"
-        okButtonProps={{ loading: saving }}
-        destroyOnClose
-      >
-        <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 14 }}>
-          Sets the hold/advance figures GM will see at Stage 2. Leave a field blank to use the work order's automatic retention calculation.
-        </div>
-        {approveGroupSiblings.length > 1 && (
-          <div style={{ marginBottom: 12 }}>
-            <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>
-              Pay To (Vendor Group)
+      {approveModal && (
+        <Modal
+          icon={CheckCircle2}
+          title="AGM Approve — Stage 1"
+          onClose={() => { setApproveModal(false); setApproveTarget(null); }}
+          footer={
+            <div className="flex justify-end gap-2">
+              <Btn outline label="Cancel" onClick={() => { setApproveModal(false); setApproveTarget(null); }} />
+              <Btn color="primary" label="Approve & Forward to GM" loading={saving} onClick={handleAgmApprove} />
             </div>
-            <Select
-              style={{ width: "100%" }}
-              value={approvePayeeCode}
-              onChange={selectApprovePayee}
-              options={approveGroupSiblings.map(c => ({
-                value: c.vendorCode,
-                label: `${c.companyName} (${c.vendorCode})`,
-              }))}
+          }
+        >
+          <div className="text-xs text-gray-500 dark:text-gray-400 mb-3.5">
+            Sets the hold/advance figures GM will see at Stage 2. Leave a field blank to use the work order's automatic retention calculation.
+          </div>
+          {approveGroupSiblings.length > 1 && (
+            <div className="mb-3">
+              <SField
+                label="Pay To (Vendor Group)"
+                value={approvePayeeCode}
+                onChange={selectApprovePayee}
+                options={approveGroupSiblings.map(c => ({ value: c.vendorCode, label: `${c.companyName} (${c.vendorCode})` }))}
+              />
+            </div>
+          )}
+          <div className="mb-3">
+            <Field
+              label="Hold / Retention Amount (₹, optional)"
+              type="number" min="0"
+              placeholder="Auto-calculated from work order retention %"
+              value={approveRetention ?? ""}
+              onChange={(e) => setApproveRetention(e.target.value ? Number(e.target.value) : null)}
             />
           </div>
-        )}
-        <div style={{ marginBottom: 12 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Hold / Retention Amount (₹, optional)</div>
-          <InputNumber style={{ width: "100%" }} min={0} placeholder="Auto-calculated from work order retention %" value={approveRetention} onChange={setApproveRetention} />
-        </div>
-        <div style={{ marginBottom: 12 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Advance Recovery Amount (₹, optional)</div>
-          <InputNumber
-            style={{ width: "100%" }} min={0}
-            max={approvePendingAdvances.length ? approvePendingAdvances.reduce((s, sl) => s + sl.balance, 0) : undefined}
-            placeholder="0" value={approveAdvance} onChange={setApproveAdvance}
+          <div className="mb-3">
+            <Field
+              label="Advance Recovery Amount (₹, optional)"
+              type="number" min="0"
+              max={approvePendingAdvances.length ? approvePendingAdvances.reduce((s, sl) => s + sl.balance, 0) : undefined}
+              placeholder="0"
+              value={approveAdvance ?? ""}
+              onChange={(e) => setApproveAdvance(e.target.value ? Number(e.target.value) : null)}
+              hint={approvePendingAdvances.length > 0
+                ? `Outstanding for this payee: ${approvePendingAdvances.map(sl => `${sl.slipNo} (${fmt(sl.balance)})`).join(", ")} — settled oldest-first.`
+                : "No outstanding advance slips for this payee on this project."}
+            />
+          </div>
+          <Field
+            label="GST % (optional)"
+            type="number" min="0" max="100"
+            placeholder="Leave blank to use the work order's GST%"
+            value={approveGst ?? ""}
+            onChange={(e) => setApproveGst(e.target.value ? Number(e.target.value) : null)}
           />
-          {approvePendingAdvances.length > 0 ? (
-            <div style={{ marginTop: 6, fontSize: 11, color: "#6B7280" }}>
-              Outstanding for this payee: {approvePendingAdvances.map(sl => `${sl.slipNo} (${fmt(sl.balance)})`).join(", ")} — settled oldest-first.
-            </div>
-          ) : (
-            <div style={{ marginTop: 6, fontSize: 11, color: "#9CA3AF" }}>No outstanding advance slips for this payee on this project.</div>
-          )}
-        </div>
-        <div>
-          <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>GST % (optional)</div>
-          <InputNumber style={{ width: "100%" }} min={0} max={100} placeholder="Leave blank to use the work order's GST%" value={approveGst} onChange={setApproveGst} />
-        </div>
-      </Modal>
+        </Modal>
+      )}
 
       {/* ── GM approve modal (L2) — final, creates the RunningBill ── */}
-      <Modal
-        open={gmModal}
-        onCancel={() => { setGmModal(false); setGmTarget(null); }}
-        onOk={handleGmApprove}
-        title="GM Approve — Stage 2 (Final)"
-        okText="Approve & Generate Bill"
-        okButtonProps={{ loading: saving, style: { background: "#2563eb", borderColor: "#2563eb" } }}
-        destroyOnClose
-      >
-        <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 14 }}>
-          This creates the running bill using the retention/advance/GST AGM already set. It then moves to Accounts Payment.
-        </div>
-        {gmGroupSiblings.length > 1 && (
-          <div style={{ marginBottom: 12 }}>
-            <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>
-              Pay To (Vendor Group) — final confirmation
+      {gmModal && (
+        <Modal
+          icon={CheckCircle2}
+          title="GM Approve — Stage 2 (Final)"
+          onClose={() => { setGmModal(false); setGmTarget(null); }}
+          footer={
+            <div className="flex justify-end gap-2">
+              <Btn outline label="Cancel" onClick={() => { setGmModal(false); setGmTarget(null); }} />
+              <Btn color="blue" label="Approve & Generate Bill" loading={saving} onClick={handleGmApprove} />
             </div>
-            <Select
-              style={{ width: "100%" }}
-              value={gmPayeeCode}
-              onChange={setGmPayeeCode}
-              options={gmGroupSiblings.map(c => ({
-                value: c.vendorCode,
-                label: `${c.companyName} (${c.vendorCode})`,
-              }))}
-            />
+          }
+        >
+          <div className="text-xs text-gray-500 dark:text-gray-400 mb-3.5">
+            This creates the running bill using the retention/advance/GST AGM already set. It then moves to Accounts Payment.
           </div>
-        )}
-        <Input.TextArea rows={2} placeholder="Remarks (optional)" value={gmRemarks} onChange={e => setGmRemarks(e.target.value)} />
-      </Modal>
+          {gmGroupSiblings.length > 1 && (
+            <div className="mb-3">
+              <SField
+                label="Pay To (Vendor Group) — final confirmation"
+                value={gmPayeeCode}
+                onChange={setGmPayeeCode}
+                options={gmGroupSiblings.map(c => ({ value: c.vendorCode, label: `${c.companyName} (${c.vendorCode})` }))}
+              />
+            </div>
+          )}
+          <Field textarea label="Remarks (optional)" placeholder="Remarks (optional)" value={gmRemarks} onChange={(e) => setGmRemarks(e.target.value)} />
+        </Modal>
+      )}
 
-      <Modal
-        open={rejectModal}
-        onCancel={() => { setRejectModal(false); setRejectReason(""); setRejectTarget(null); }}
-        onOk={handleReject}
-        title="Reject Bill Request"
-        okText="Confirm Rejection"
-        okButtonProps={{ danger: true, loading: saving }}
-      >
-        <Input.TextArea rows={3} placeholder="Reason for rejection (optional)" value={rejectReason} onChange={e => setRejectReason(e.target.value)} />
-      </Modal>
-    </PageShell>
+      {rejectModal && (
+        <Modal
+          icon={XCircle}
+          title="Reject Bill Request"
+          onClose={() => { setRejectModal(false); setRejectReason(""); setRejectTarget(null); }}
+          footer={
+            <div className="flex justify-end gap-2">
+              <Btn outline label="Cancel" onClick={() => { setRejectModal(false); setRejectReason(""); setRejectTarget(null); }} />
+              <Btn color="red" label="Confirm Rejection" loading={saving} onClick={handleReject} />
+            </div>
+          }
+        >
+          <Field textarea label="Reason for rejection (optional)" placeholder="Reason for rejection (optional)" value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} />
+        </Modal>
+      )}
+    </div>
   );
 }

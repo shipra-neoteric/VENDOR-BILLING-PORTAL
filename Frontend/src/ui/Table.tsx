@@ -42,11 +42,18 @@ export function Tr({ children, className = "", ...rest }: HTMLAttributes<HTMLTab
   );
 }
 
-export function Th({ children, className = "", ...rest }: ThHTMLAttributes<HTMLTableCellElement>) {
+interface ThProps extends ThHTMLAttributes<HTMLTableCellElement> {
+  /** Pins this column while the table scrolls horizontally — only needed for
+   *  a wide table's leftmost column (see WorkItems' Monthly Report tab). */
+  stickyLeft?: boolean;
+}
+
+export function Th({ children, className = "", stickyLeft = false, ...rest }: ThProps) {
   return (
     <th
       className={[
         "px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 whitespace-nowrap",
+        stickyLeft ? "sticky left-0 z-10 bg-gray-50 dark:bg-[#1E293B]" : "",
         className,
       ].join(" ")}
       {...rest}
@@ -56,9 +63,20 @@ export function Th({ children, className = "", ...rest }: ThHTMLAttributes<HTMLT
   );
 }
 
-export function Td({ children, className = "", ...rest }: TdHTMLAttributes<HTMLTableCellElement>) {
+interface TdProps extends TdHTMLAttributes<HTMLTableCellElement> {
+  stickyLeft?: boolean;
+}
+
+export function Td({ children, className = "", stickyLeft = false, ...rest }: TdProps) {
   return (
-    <td className={["px-4 py-3 align-middle", className].join(" ")} {...rest}>
+    <td
+      className={[
+        "px-4 py-3 align-middle",
+        stickyLeft ? "sticky left-0 z-10 bg-white dark:bg-[#0F172A]" : "",
+        className,
+      ].join(" ")}
+      {...rest}
+    >
       {children}
     </td>
   );

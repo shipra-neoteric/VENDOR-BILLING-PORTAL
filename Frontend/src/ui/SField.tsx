@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { Check, ChevronDown, Search } from "lucide-react";
 
 export interface SFieldOption {
@@ -11,14 +12,18 @@ interface SFieldProps {
   required?: boolean;
   placeholder?: string;
   hint?: string;
+  error?: string;
   value: string | null;
   onChange: (value: string) => void;
   options: SFieldOption[];
   disabled?: boolean;
+  // Rich per-option JSX (e.g. bold name + muted email, or a colored badge +
+  // description) — falls back to the plain option.label row when omitted.
+  renderOption?: (option: SFieldOption) => ReactNode;
 }
 
 // Searchable single-select — click to open, type to filter, click an option to pick.
-export default function SField({ label, required, placeholder = "Select…", hint, value, onChange, options, disabled }: SFieldProps) {
+export default function SField({ label, required, placeholder = "Select…", hint, error, value, onChange, options, disabled, renderOption }: SFieldProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const rootRef = useRef<HTMLDivElement>(null);
@@ -51,7 +56,10 @@ export default function SField({ label, required, placeholder = "Select…", hin
         type="button"
         disabled={disabled}
         onClick={() => setOpen((o) => !o)}
-        className="w-full h-10 px-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0F172A] text-sm flex items-center justify-between gap-2 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+        className={[
+          "w-full h-10 px-3 rounded-lg border bg-white dark:bg-[#0F172A] text-sm flex items-center justify-between gap-2 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary",
+          error ? "border-red-400" : "border-gray-200 dark:border-gray-700",
+        ].join(" ")}
       >
         <span className={selected ? "text-[#1A1A2E] dark:text-[#F1F5F9]" : "text-gray-400 dark:text-gray-500"}>
           {selected ? selected.label : placeholder}
@@ -86,14 +94,18 @@ export default function SField({ label, required, placeholder = "Select…", hin
                 }}
                 className="w-full flex items-center justify-between gap-2 px-3 py-2 text-sm text-left text-[#1A1A2E]! dark:text-[#F1F5F9]! hover:bg-gray-50 dark:hover:bg-gray-700/40"
               >
-                {o.label}
+                {renderOption ? renderOption(o) : o.label}
                 {o.value === value && <Check className="w-3.5 h-3.5 text-primary shrink-0" />}
               </button>
             ))}
           </div>
         </div>
       )}
-      {hint && <span className="block text-xs text-gray-400 dark:text-gray-500 mt-1">{hint}</span>}
+      {error ? (
+        <span className="block text-xs text-red-500 mt-1">{error}</span>
+      ) : (
+        hint && <span className="block text-xs text-gray-400 dark:text-gray-500 mt-1">{hint}</span>
+      )}
     </div>
   );
 }

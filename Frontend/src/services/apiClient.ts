@@ -1,5 +1,5 @@
 import axios from "axios";
-import { message } from "antd";
+import toast from "react-hot-toast";
 
 // Strip BOM (﻿) that PowerShell can inject into env vars
 const rawApiUrl = (import.meta.env.VITE_API_URL || "http://localhost:5000/api").replace(/^﻿/, "");
@@ -32,7 +32,7 @@ function forceReLogin(msg: string) {
   sessionExpiredPending = true;
   sessionStorage.removeItem("token");
   sessionStorage.removeItem("user");
-  message.error(msg);
+  toast.error(msg);
   setTimeout(() => {
     sessionExpiredPending = false;
     window.location.replace("/login");
@@ -74,9 +74,9 @@ apiClient.interceptors.response.use(
 
     if (!error.response) {
       if (error.code === "ECONNABORTED") {
-        message.error("Server is taking longer than usual to respond. Please try again in a moment.");
+        toast.error("Server is taking longer than usual to respond. Please try again in a moment.");
       } else {
-        message.error("Cannot connect to the server. Please check your internet connection and try again.");
+        toast.error("Cannot connect to the server. Please check your internet connection and try again.");
       }
     } else {
       const status = error.response.status;
@@ -88,7 +88,7 @@ apiClient.interceptors.response.use(
         return Promise.reject(error);
       }
 
-      message.error(msg);
+      toast.error(msg);
     }
     return Promise.reject(error);
   }
