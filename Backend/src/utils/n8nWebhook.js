@@ -1,6 +1,6 @@
 const http = require('http');
 const https = require('https');
-const { flattenReportImages } = require('./dprImages');
+const { flattenReportImages, uploadReportImagesToCloudinary } = require('./dprImages');
 
 // POSTs a flat JSON payload to the configured n8n webhook, which routes the
 // notification to the right Slack channel via slackChannelId. Silently
@@ -58,12 +58,10 @@ function postToN8nWebhook(payload) {
 // Note: n8n's webhook trigger nests whatever this posts under a top-level
 // `body` key in its own output — e.g. this file's `slackWebhookUrl` field
 // shows up in n8n as `{{ $json.body.slackWebhookUrl }}`, not `{{ $json.slackWebhookUrl }}`.
-function notifyDailyProgressReport(report, project, baseUrl) {
-  const images = flattenReportImages(report).map((img, i) => ({
-    // Only buildable when a real public base URL was given (see callers) —
-    // Slack fetches this with no auth of its own, so it must be a real,
-    // internet-reachable link, not a localhost one from a local dev run.
-    url: baseUrl ? `${baseUrl}/api/public/daily-progress-reports/${report._id}/images/${i}` : '',
+async function notifyDailyProgressReport(report, project) {
+  const uploaded = await uploadReportImagesToCloudinary(flattenReportImages(report), report._id);
+  const images = uploaded.map((img) => ({
+    url: img.url, // a real Cloudinary secure_url — Slack fetches this with no auth of its own
     workType: img.workType,
     // 'images' = general work-in-progress shots, 'beforeImages'/'afterImages'
     // = the same spot before/after — matches DailyProgressReport's own schema.

@@ -52,13 +52,7 @@ exports.createReport = asyncHandler(async (req, res) => {
   });
 
   // Fire-and-forget — an n8n/webhook outage should never fail the submission itself.
-  // Forced https: — this URL is only ever fetched by an external service (Slack,
-  // via n8n), never by this app itself, and always assumed to be the real public
-  // domain (trusting req.protocol here would need `trust proxy` configured to
-  // read past Render's TLS-terminating edge, and getting that wrong silently
-  // hands back an http:// link that then hits the exact redirect-drops-the-
-  // request failure this app already got burned by once with the n8n webhook).
-  notifyDailyProgressReport(report, project, `https://${req.get('host')}`).catch(() => {});
+  notifyDailyProgressReport(report, project).catch(() => {});
 
   created(res, { report }, 'Daily Progress Report submitted');
 });
@@ -75,7 +69,7 @@ exports.createPublicReport = asyncHandler(async (req, res) => {
   });
 
   // Fire-and-forget — an n8n/webhook outage should never fail the submission itself.
-  notifyDailyProgressReport(report, project, `https://${req.get('host')}`).catch(() => {});
+  notifyDailyProgressReport(report, project).catch(() => {});
 
   created(res, { report }, 'Daily Progress Report submitted');
 });
