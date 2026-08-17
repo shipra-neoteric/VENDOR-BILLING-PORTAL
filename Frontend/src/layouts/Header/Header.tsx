@@ -131,19 +131,17 @@ export default function Header({ onToggleSidebar }: HeaderProps) {
           style={{
             width: 36,
             height: 36,
-            background: "var(--nx-orange)",
+            background: "#fff",
+            border: "1px solid var(--nx-border)",
             borderRadius: 8,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            fontWeight: 800,
-            fontSize: 15,
-            color: "#fff",
-            letterSpacing: "-0.5px",
             flexShrink: 0,
+            padding: 5,
           }}
         >
-          N
+          <img src="/neoteric-logo.png" alt="Neoteric" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
         </div>
         {!isMobile && (
           <div style={{ minWidth: 0 }}>

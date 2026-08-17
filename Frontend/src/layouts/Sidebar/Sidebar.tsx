@@ -228,16 +228,16 @@ export default function Sidebar({ open = false, onClose }: SidebarProps) {
           <div
             style={{
               width: 40, height: 40,
-              background: "linear-gradient(135deg, var(--nx-orange) 0%, var(--color-primary-light) 100%)",
+              background: "#fff",
+              border: "1px solid var(--nx-sidebar-logo-border)",
               borderRadius: 11,
               display: "flex", alignItems: "center", justifyContent: "center",
-              fontWeight: 900, fontSize: 20, color: "#fff",
-              boxShadow: "0 2px 8px rgba(255,122,0,0.35)",
+              boxShadow: "0 2px 8px rgba(255,122,0,0.2)",
               flexShrink: 0,
-              letterSpacing: "-1px",
+              padding: 6,
             }}
           >
-            N
+            <img src="/neoteric-logo.png" alt="Neoteric" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
           </div>
           {!collapsed && (
             <div>
