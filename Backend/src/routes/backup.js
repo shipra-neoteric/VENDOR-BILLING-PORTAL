@@ -1,7 +1,13 @@
 const express = require('express');
 const router = express.Router();
 const { authenticate, authorize } = require('../middleware/auth');
-const { exportBackup, importBackup } = require('../controllers/backupController');
+const { exportBackup, importBackup, scheduledBackupEmail } = require('../controllers/backupController');
+
+// No JWT session exists when this fires from an external daily cron trigger
+// (e.g. cron-job.org) — mounted ahead of router.use(authenticate) below so it
+// stays reachable with no login. Protected instead by its own shared-secret
+// header, checked inside the controller.
+router.get('/scheduled', scheduledBackupEmail);
 
 router.use(authenticate);
 
