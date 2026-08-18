@@ -7,7 +7,7 @@ import {
   BookOpen, UserPlus, Monitor,
   Share2, Settings, Clock, History,
   FileSearch, CalendarClock, CreditCard,
-  Workflow, GitCompare, Ruler, Network, PenLine,
+  Workflow, GitCompare, Ruler, Network, PenLine, Database,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import type { PermEntry } from "../../context/AuthContext";
@@ -80,6 +80,7 @@ const ADMIN_GROUPS: NavGroup[] = [
       { name: "Audit Logs",         path: "/audit-logs",    icon: <History className="w-4 h-4" />,         moduleId: "audit-logs" },
       { name: "Users",              path: "/users",         icon: <UserPlus className="w-4 h-4" />,   moduleId: "user-management" },
       { name: "SLA Settings",       path: "/sla-settings",  icon: <Settings className="w-4 h-4" />,         moduleId: "sla-settings" },
+      { name: "Backup",             path: "/backup",        icon: <Database className="w-4 h-4" />,         moduleId: "backup" },
     ],
   },
 ];
@@ -96,6 +97,10 @@ const DRI_OWN_ITEMS: NavItem[] = [
 // existing Owner accounts until someone remembers to backfill their permissions,
 // even though the backend already lets Owner bypass every authorizeOr check.
 function canView(moduleId: string, perms: PermEntry[] | undefined, role?: string): boolean {
+  // Whole-database export/wipe-and-replace — never leak this to a role that
+  // simply hasn't been assigned granular permissions yet (canView's own
+  // fallback below treats an empty perms array as "can see everything").
+  if (moduleId === "backup") return role === "owner";
   if (role === "owner") return true;
   if (!perms || perms.length === 0) return true;
   const entry = perms.find(p => p.module === moduleId);
