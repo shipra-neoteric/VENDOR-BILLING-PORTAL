@@ -301,21 +301,25 @@ const normalizeWO = (wo: any): WorkOrder => ({
 // `xBy` fields only ever come back as a raw ObjectId string from the workflow
 // endpoints (matches WorkOrderApprovalWorkflow's own note on this) — resolves
 // against a fresh id->name map so the PDF can print the real approver's name.
-function actorName(by: WorkOrder["makerBy"], userMap: Record<string, string>): string | undefined {
+function actorName(by: WorkOrder["makerBy"], userMap: Record<string, string>, at?: string | Date | null, roleKey?: "checker" | "approver" | "final"): string | undefined {
   if (!by) return undefined;
-  if (typeof by === "string") return userMap[by];
-  return by.name;
+  const resolved = typeof by === "string" ? userMap[by] : (by as any)?.name;
+  if (!at) {
+    if (roleKey === "checker" || resolved === "Sagar Gupta" || resolved === "Akhilesh Bhadoriya") {
+      return "Sagar Gupta / Akhilesh Bhadoriya";
+    }
+    if (roleKey === "approver" || resolved === "Rakesh Bhargava" || resolved === "Jalaj Gupta") {
+      return "Rakesh Bhargava / Jalaj Gupta";
+    }
+  }
+  return resolved;
 }
 
-// No "maker" here, deliberately — the Maker is Neoteric staff entering the
-// work order on the contractor's behalf, not the contractor themselves, so
-// it's never bound to the PDF's Contractor signature slot (that stays a
-// blank line for the contractor's own physical signature).
 function buildApprovals(wo: WorkOrder, userMap: Record<string, string>) {
   return {
-    checker:  wo.checkerBy       ? { name: actorName(wo.checkerBy, userMap),       at: wo.checkerAt }       : null,
-    approver: wo.approverBy      ? { name: actorName(wo.approverBy, userMap),      at: wo.approverAt }      : null,
-    final:    wo.finalApprovedBy ? { name: actorName(wo.finalApprovedBy, userMap), at: wo.finalApprovedAt } : null,
+    checker:  wo.checkerBy       ? { name: actorName(wo.checkerBy, userMap, wo.checkerAt, "checker"),       at: wo.checkerAt }       : null,
+    approver: wo.approverBy      ? { name: actorName(wo.approverBy, userMap, wo.approverAt, "approver"),      at: wo.approverAt }      : null,
+    final:    wo.finalApprovedBy ? { name: actorName(wo.finalApprovedBy, userMap, wo.finalApprovedAt, "final"), at: wo.finalApprovedAt } : null,
   };
 }
 
