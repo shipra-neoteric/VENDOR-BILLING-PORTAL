@@ -1140,7 +1140,7 @@ function WOFormFields({
 }: {
   values: WOFormValues;
   onChange: (patch: Partial<WOFormValues>) => void;
-  errors?: Partial<Record<"projectId" | "issueDate" | "vendorCode" | "status", string>>;
+  errors?: Partial<Record<"projectId" | "issueDate" | "vendorCode" | "status" | "description", string>>;
   isEdit?: boolean;
   nextWONo: string;
   nextCWONo: string;
@@ -1379,10 +1379,11 @@ function WOFormFields({
 
       <div className="mb-4">
         <Field
-          textarea label="Overall Description / Scope of Work"
+          textarea required label="Overall Description / Scope of Work"
           placeholder="e.g. Supply and installation of false ceiling including framework, boarding and finishing as per approved drawings..."
           value={values.description} onChange={e => onChange({ description: e.target.value })}
-          hint="Describe the full scope of this work order — shown in the downloaded PDF before the item list"
+          error={errors?.description}
+          hint="Describe the full scope of this work order — printed as the Work Title / Scope on the downloaded PDF"
         />
       </div>
 
@@ -1536,8 +1537,8 @@ export default function WorkItems() {
 
   const [createValues, setCreateValues] = useState<WOFormValues>(blankWOForm());
   const [editValues,   setEditValues]   = useState<WOFormValues>(blankWOForm());
-  const createErrors = useFormErrors<"projectId" | "issueDate" | "vendorCode" | "status">();
-  const editErrors   = useFormErrors<"projectId" | "issueDate" | "vendorCode" | "status">();
+  const createErrors = useFormErrors<"projectId" | "issueDate" | "vendorCode" | "status" | "description">();
+  const editErrors   = useFormErrors<"projectId" | "issueDate" | "vendorCode" | "status" | "description">();
 
   const patchCreate = (patch: Partial<WOFormValues>) => setCreateValues(prev => ({ ...prev, ...patch }));
   const patchEdit    = (patch: Partial<WOFormValues>) => setEditValues(prev => ({ ...prev, ...patch }));
@@ -1778,13 +1779,14 @@ export default function WorkItems() {
 
   // ── Handlers ─────────────────────────────────────────────────
 
-  function validateWOForm(values: WOFormValues, errs: ReturnType<typeof useFormErrors<"projectId" | "issueDate" | "vendorCode" | "status">>): boolean {
+  function validateWOForm(values: WOFormValues, errs: ReturnType<typeof useFormErrors<"projectId" | "issueDate" | "vendorCode" | "status" | "description">>): boolean {
     errs.clearAll();
     let ok = true;
     if (!values.projectId) { errs.setError("projectId", "Select a project"); ok = false; }
     if (!values.issueDate) { errs.setError("issueDate", "Select issue date"); ok = false; }
     if (!values.vendorCode) { errs.setError("vendorCode", values.contractType === "professional-services" ? "Select a consultant" : "Select a vendor"); ok = false; }
     if (!values.status) { errs.setError("status", "Required"); ok = false; }
+    if (!values.description?.trim()) { errs.setError("description", "Required — this is printed as the Work Title / Scope on the WO PDF"); ok = false; }
     return ok;
   }
 
@@ -1802,8 +1804,7 @@ export default function WorkItems() {
       toast.error("Start Date and End Date are required for every work item");
       return;
     }
-    const scopeOfWork = values.description?.trim()
-      || createScopeItems.map(it => it.description).filter(Boolean).join(", ");
+    const scopeOfWork = values.description!.trim();
 
     const body: Record<string, unknown> = {
       contractType: values.contractType || "execution",
@@ -1914,8 +1915,7 @@ export default function WorkItems() {
       toast.error("Start Date and End Date are required for every work item");
       return;
     }
-    const scopeOfWork = values.description?.trim()
-      || editScopeItems.map(it => it.description).filter(Boolean).join(", ");
+    const scopeOfWork = values.description!.trim();
     const savedItems  = editScopeItems.map(d => {
       const existing = currentEditWO.scopeItems.find(si => si.id === d.id);
       return mergeWithExisting(d, existing);
