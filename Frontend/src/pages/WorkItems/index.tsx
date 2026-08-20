@@ -73,13 +73,6 @@ const STATUS_CFG: Record<WorkOrderStatus, { color: BadgeColor; label: string }> 
   cancelled:     { color: "red",    label: "Cancelled" },
 };
 
-const STATUS_OPTIONS = [
-  { label: "Draft",       value: "draft" },
-  { label: "Issued",      value: "issued" },
-  { label: "In Progress", value: "in-progress" },
-  { label: "Completed",   value: "completed" },
-];
-
 // A grant for module 'work-orders' with the given action name — Owner always
 // bypasses, matching the identical pattern used on AccountsPayment's hasPerm.
 function hasPerm(user: AuthUser | null, action: string): boolean {
@@ -1144,7 +1137,7 @@ function WOFormFields({
 }: {
   values: WOFormValues;
   onChange: (patch: Partial<WOFormValues>) => void;
-  errors?: Partial<Record<"projectId" | "issueDate" | "vendorCode" | "status" | "description", string>>;
+  errors?: Partial<Record<"projectId" | "issueDate" | "vendorCode" | "description", string>>;
   isEdit?: boolean;
   nextWONo: string;
   nextCWONo: string;
@@ -1303,16 +1296,6 @@ function WOFormFields({
           value={values.category}
           onChange={v => onChange({ category: v })}
           options={[{ value: "", label: "— None —" }, ...categoriesList.filter(c => c.isActive && !c.parentId).map(c => ({ label: c.name, value: c.name }))]}
-        />
-      </div>
-
-      <div className="mt-4">
-        <SField
-          label="Status" required
-          value={values.status}
-          onChange={v => onChange({ status: v })}
-          options={STATUS_OPTIONS}
-          error={errors?.status}
         />
       </div>
 
@@ -1483,9 +1466,7 @@ export default function WorkItems() {
 
   const [createDrawerOpen,    setCreateDrawerOpen]    = useState(false);
   const [search,              setSearch]              = useState("");
-  const [statusFilter,        setStatusFilter]        = useState<WorkOrderStatus | "all">("all");
   const [categoryFilter,      setCategoryFilter]      = useState<string>("all");
-  const [subCategoryFilter,   setSubCategoryFilter]   = useState<string>("all");
   const [progressFilter,      setProgressFilter]      = useState<string>("all");
   const [projectFilter,       setProjectFilter]       = useState<string>("all");
   const [dateFrom,            setDateFrom]            = useState<Dayjs | null>(null);
@@ -1541,8 +1522,8 @@ export default function WorkItems() {
 
   const [createValues, setCreateValues] = useState<WOFormValues>(blankWOForm());
   const [editValues,   setEditValues]   = useState<WOFormValues>(blankWOForm());
-  const createErrors = useFormErrors<"projectId" | "issueDate" | "vendorCode" | "status" | "description">();
-  const editErrors   = useFormErrors<"projectId" | "issueDate" | "vendorCode" | "status" | "description">();
+  const createErrors = useFormErrors<"projectId" | "issueDate" | "vendorCode" | "description">();
+  const editErrors   = useFormErrors<"projectId" | "issueDate" | "vendorCode" | "description">();
 
   const patchCreate = (patch: Partial<WOFormValues>) => setCreateValues(prev => ({ ...prev, ...patch }));
   const patchEdit    = (patch: Partial<WOFormValues>) => setEditValues(prev => ({ ...prev, ...patch }));
@@ -1680,14 +1661,9 @@ export default function WorkItems() {
         wo.vendorCode.toLowerCase().includes(q) ||
         wo.vendorName.toLowerCase().includes(q);
 
-      // Status
-      const matchStatus = statusFilter === "all" || wo.status === statusFilter;
-
-      // Category + SubCategory
+      // Category (matches the parent category or any of its sub-categories)
       let matchCategory = true;
-      if (subCategoryFilter !== "all") {
-        matchCategory = wo.subCategory === subCategoryFilter;
-      } else if (categoryFilter !== "all") {
+      if (categoryFilter !== "all") {
         const childNames = subCatsOfSelected.map(c => c.name);
         matchCategory = wo.category === categoryFilter || childNames.includes(wo.subCategory ?? "");
       }
@@ -1714,13 +1690,13 @@ export default function WorkItems() {
       const matchProject = projectFilter === "all" || getWorkOrderProjectId(wo.projectId) === projectFilter;
       const matchTab      = activeTab === "all" || isPendingForMe(wo);
       const matchContractType = contractTypeFilter === "all" || (wo.contractType || "execution") === contractTypeFilter;
-      return matchSearch && matchStatus && matchCategory && matchProgress && matchDate && matchProject && matchTab && matchContractType;
+      return matchSearch && matchCategory && matchProgress && matchDate && matchProject && matchTab && matchContractType;
     }).sort((a, b) => {
       const numA = parseInt(a.workOrderNo.replace(/\D/g, ""), 10) || 0;
       const numB = parseInt(b.workOrderNo.replace(/\D/g, ""), 10) || 0;
       return numB - numA;
     });
-  }, [workOrders, search, statusFilter, categoryFilter, subCategoryFilter, progressFilter, projectFilter, subCatsOfSelected, dateFrom, dateTo, activeTab, contractTypeFilter, user?.role, canMaker, canChecker, canApprover, canFinal]);
+  }, [workOrders, search, categoryFilter, progressFilter, projectFilter, subCatsOfSelected, dateFrom, dateTo, activeTab, contractTypeFilter, user?.role, canMaker, canChecker, canApprover, canFinal]);
 
   // Rolls the currently-filtered work orders up by issue month — respects
   // every filter above (project/category/date-range/contract type/etc.) so
@@ -1785,13 +1761,12 @@ export default function WorkItems() {
 
   // ── Handlers ─────────────────────────────────────────────────
 
-  function validateWOForm(values: WOFormValues, errs: ReturnType<typeof useFormErrors<"projectId" | "issueDate" | "vendorCode" | "status" | "description">>): boolean {
+  function validateWOForm(values: WOFormValues, errs: ReturnType<typeof useFormErrors<"projectId" | "issueDate" | "vendorCode" | "description">>): boolean {
     errs.clearAll();
     let ok = true;
     if (!values.projectId) { errs.setError("projectId", "Select a project"); ok = false; }
     if (!values.issueDate) { errs.setError("issueDate", "Select issue date"); ok = false; }
     if (!values.vendorCode) { errs.setError("vendorCode", values.contractType === "professional-services" ? "Select a consultant" : "Select a vendor"); ok = false; }
-    if (!values.status) { errs.setError("status", "Required"); ok = false; }
     if (!values.description?.trim()) { errs.setError("description", "Required — this is printed as the Work Title / Scope on the WO PDF"); ok = false; }
     return ok;
   }
@@ -2116,12 +2091,11 @@ export default function WorkItems() {
   }
 
   const hasActiveFilters =
-    statusFilter !== "all" || categoryFilter !== "all" ||
-    subCategoryFilter !== "all" || progressFilter !== "all" || projectFilter !== "all" || search !== "";
+    categoryFilter !== "all" || progressFilter !== "all" || projectFilter !== "all" || search !== "";
 
   const clearAllFilters = () => {
-    setSearch(""); setStatusFilter("all");
-    setCategoryFilter("all"); setSubCategoryFilter("all"); setProgressFilter("all"); setProjectFilter("all");
+    setSearch("");
+    setCategoryFilter("all"); setProgressFilter("all"); setProjectFilter("all");
   };
 
   const listPager = usePagination(filtered, 10);
@@ -2198,26 +2172,10 @@ export default function WorkItems() {
           <div className="flex gap-2.5 items-center flex-wrap">
             <SearchFilter placeholder="Search by WO No, project, vendor…" value={search} onChange={setSearch} />
 
-            <div className="w-[148px]">
-              <SelectFilter
-                value={statusFilter} onChange={v => setStatusFilter(v as WorkOrderStatus | "all")} placeholder="All Statuses"
-                options={[
-                  { label: "Draft", value: "draft" }, { label: "Issued", value: "issued" },
-                  { label: "In Progress", value: "in-progress" }, { label: "Completed", value: "completed" },
-                ]}
-              />
-            </div>
             <div className="w-[170px]">
               <SelectFilter
-                value={categoryFilter} onChange={v => { setCategoryFilter(v); setSubCategoryFilter("all"); }} placeholder="All Categories"
+                value={categoryFilter} onChange={setCategoryFilter} placeholder="All Categories"
                 options={topLevelCats.filter(c => c.isActive).map(c => ({ label: c.name, value: c.name }))}
-              />
-            </div>
-            <div className="w-[180px]">
-              <SelectFilter
-                value={subCategoryFilter} onChange={setSubCategoryFilter} disabled={subCatsOfSelected.length === 0}
-                placeholder={subCatsOfSelected.length === 0 ? "No sub-categories" : "All Sub-categories"}
-                options={subCatsOfSelected.map(c => ({ label: c.name, value: c.name }))}
               />
             </div>
             <div className="w-[152px]">
@@ -2249,22 +2207,10 @@ export default function WorkItems() {
           {/* Active filter chips */}
           {hasActiveFilters && (
             <div className="flex gap-1.5 flex-wrap mt-2.5">
-              {statusFilter !== "all" && (
-                <span className="bg-primary/10 border border-primary text-primary text-[11px] px-2 py-0.5 rounded flex items-center gap-1">
-                  Status: {statusFilter}
-                  <button type="button" onClick={() => setStatusFilter("all")} className="text-primary">×</button>
-                </span>
-              )}
               {categoryFilter !== "all" && (
                 <span className="bg-blue-50 dark:bg-blue-500/10 border border-blue-600 text-blue-600 text-[11px] px-2 py-0.5 rounded flex items-center gap-1">
                   Category: {categoryFilter}
-                  <button type="button" onClick={() => { setCategoryFilter("all"); setSubCategoryFilter("all"); }} className="text-blue-600">×</button>
-                </span>
-              )}
-              {subCategoryFilter !== "all" && (
-                <span className="bg-purple-50 dark:bg-purple-500/10 border border-purple-600 text-purple-600 text-[11px] px-2 py-0.5 rounded flex items-center gap-1">
-                  Sub-cat: {subCategoryFilter}
-                  <button type="button" onClick={() => setSubCategoryFilter("all")} className="text-purple-600">×</button>
+                  <button type="button" onClick={() => setCategoryFilter("all")} className="text-blue-600">×</button>
                 </span>
               )}
               {progressFilter !== "all" && (
