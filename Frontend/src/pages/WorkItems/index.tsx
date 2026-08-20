@@ -1705,6 +1705,8 @@ export default function WorkItems() {
             (items.length > 0 && items.every(i => i.status === "completed"));
         } else if (progressFilter === "overdue") {
           matchProgress = countDelays(wo) > 0;
+        } else if (progressFilter === "cancelled") {
+          matchProgress = wo.status === "cancelled";
         }
       }
 
@@ -2202,7 +2204,6 @@ export default function WorkItems() {
                 options={[
                   { label: "Draft", value: "draft" }, { label: "Issued", value: "issued" },
                   { label: "In Progress", value: "in-progress" }, { label: "Completed", value: "completed" },
-                  { label: "Cancelled", value: "cancelled" },
                 ]}
               />
             </div>
@@ -2225,6 +2226,7 @@ export default function WorkItems() {
                 options={[
                   { label: "Not Started", value: "not-started" }, { label: "In Progress", value: "running" },
                   { label: "Completed", value: "completed" }, { label: "⚠ Overdue", value: "overdue" },
+                  { label: "Cancelled", value: "cancelled" },
                 ]}
               />
             </div>
@@ -2267,7 +2269,7 @@ export default function WorkItems() {
               )}
               {progressFilter !== "all" && (
                 <span className="bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-600 text-emerald-600 text-[11px] px-2 py-0.5 rounded flex items-center gap-1">
-                  Progress: {progressFilter === "not-started" ? "Not Started" : progressFilter === "running" ? "In Progress" : progressFilter === "completed" ? "Completed" : "Overdue"}
+                  Progress: {progressFilter === "not-started" ? "Not Started" : progressFilter === "running" ? "In Progress" : progressFilter === "completed" ? "Completed" : progressFilter === "cancelled" ? "Cancelled" : "Overdue"}
                   <button type="button" onClick={() => setProgressFilter("all")} className="text-emerald-600">×</button>
                 </span>
               )}
