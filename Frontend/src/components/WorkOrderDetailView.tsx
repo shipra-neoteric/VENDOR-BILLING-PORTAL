@@ -121,8 +121,10 @@ export default function WorkOrderDetailView({
   const pendPct = contractVal > 0 ? (pendingAmt / contractVal) * 100 : 0;
 
   const itemsSubtotal = wo.scopeItems.reduce((s, si) => s + (si.amount || 0), 0);
-  const gstPercent = wo.gstPercent ?? 18;
-  const gstAmount = itemsSubtotal * (gstPercent / 100);
+  // Each work item carries its own gstPercent (some are 0%/exempt) — sum GST
+  // per item rather than applying one flat rate to the whole subtotal, so
+  // this matches the same per-item calculation the create/edit form uses.
+  const gstAmount = wo.scopeItems.reduce((s, si) => s + (si.amount || 0) * ((si.gstPercent ?? 0) / 100), 0);
   const grandTotal = itemsSubtotal + gstAmount - (wo.discount || 0);
 
   const securityDepositTotal = (wo.securityDeposits ?? []).reduce((s, d) => s + (d.amount || 0), 0);
@@ -214,7 +216,7 @@ export default function WorkOrderDetailView({
           items={[
             { label: "WO Value", value: <span className="font-mono font-bold text-primary text-[15px]">{fmt(contractVal)}</span> },
             { label: "Retention %", value: `${wo.retentionPercent ?? 0}%` },
-            { label: "GST %", value: `${gstPercent}%` },
+            { label: "GST %", value: `${wo.gstPercent ?? 18}%` },
             {
               label: "Status",
               value: (
@@ -331,7 +333,7 @@ export default function WorkOrderDetailView({
                 <Td><span className="font-mono font-semibold text-gray-700 dark:text-gray-300">{fmt(itemsSubtotal)}</span></Td>
               </Tr>
               <Tr className="hover:bg-transparent dark:hover:bg-transparent">
-                <Td colSpan={5} className="text-right font-semibold text-gray-500 dark:text-gray-400">GST {gstPercent}%</Td>
+                <Td colSpan={5} className="text-right font-semibold text-gray-500 dark:text-gray-400">GST (per work item)</Td>
                 <Td><span className="font-mono font-semibold text-gray-700 dark:text-gray-300">{fmt(gstAmount)}</span></Td>
               </Tr>
               <Tr className="hover:bg-transparent dark:hover:bg-transparent">
