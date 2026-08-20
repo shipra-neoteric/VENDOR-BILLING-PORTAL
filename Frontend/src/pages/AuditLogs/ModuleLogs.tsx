@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import dayjs from "dayjs";
-import { ArrowLeft, Search } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import apiClient from "../../services/apiClient";
 import PageHeader from "../../ui/PageHeader";
-import { FilterRow, SelectFilter } from "../../ui/Filters";
+import { FilterRow, SearchFilter, SelectFilter } from "../../ui/Filters";
 import DateRangeFilter from "../../components/DateRangeFilter";
 import { Table, Thead, Tbody, Tr, Th, Td, TdText } from "../../ui/Table";
 import Badge from "../../ui/Badge";
@@ -124,18 +124,14 @@ export default function ModuleLogs() {
       <PageHeader title={meta?.label ?? module ?? ""} subtitle={meta?.subtitle} icon={meta?.icon} />
 
       <FilterRow>
-        <div className="relative flex-1 min-w-[220px]">
-          <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-          <input
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              setPage(1);
-            }}
-            placeholder="Search description, user, or record…"
-            className="w-full h-10 pl-9 pr-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0F172A] text-sm text-[#1A1A2E] dark:text-[#F1F5F9] placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-          />
-        </div>
+        <SearchFilter
+          value={search}
+          onChange={(v) => {
+            setSearch(v);
+            setPage(1);
+          }}
+          placeholder="Search description, user, or record…"
+        />
         <SelectFilter
           value={actionFilter}
           onChange={(v) => {

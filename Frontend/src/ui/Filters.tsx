@@ -14,7 +14,7 @@ interface SearchFilterProps {
 
 export function SearchFilter({ value, onChange, placeholder = "Search…" }: SearchFilterProps) {
   return (
-    <div className="relative w-full sm:w-64">
+    <div className="relative flex-1 min-w-[220px]">
       <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
       <input
         value={value}

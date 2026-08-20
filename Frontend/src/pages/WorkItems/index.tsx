@@ -2172,28 +2172,22 @@ export default function WorkItems() {
           <div className="flex gap-2.5 items-center flex-wrap">
             <SearchFilter placeholder="Search by WO No, project, vendor…" value={search} onChange={setSearch} />
 
-            <div className="w-[170px]">
-              <SelectFilter
-                value={categoryFilter} onChange={setCategoryFilter} placeholder="All Categories"
-                options={topLevelCats.filter(c => c.isActive).map(c => ({ label: c.name, value: c.name }))}
-              />
-            </div>
-            <div className="w-[152px]">
-              <SelectFilter
-                value={progressFilter} onChange={setProgressFilter} placeholder="All Progress"
-                options={[
-                  { label: "Not Started", value: "not-started" }, { label: "In Progress", value: "running" },
-                  { label: "Completed", value: "completed" }, { label: "⚠ Overdue", value: "overdue" },
-                  { label: "Cancelled", value: "cancelled" },
-                ]}
-              />
-            </div>
-            <div className="w-[180px]">
-              <SelectFilter
-                value={projectFilter} onChange={setProjectFilter} placeholder="All Projects"
-                options={selectableProjects(projects).map(p => ({ label: p.name, value: p.id }))}
-              />
-            </div>
+            <SelectFilter
+              value={categoryFilter} onChange={setCategoryFilter} placeholder="All Categories"
+              options={topLevelCats.filter(c => c.isActive).map(c => ({ label: c.name, value: c.name }))}
+            />
+            <SelectFilter
+              value={progressFilter} onChange={setProgressFilter} placeholder="All Progress"
+              options={[
+                { label: "Not Started", value: "not-started" }, { label: "In Progress", value: "running" },
+                { label: "Completed", value: "completed" }, { label: "⚠ Overdue", value: "overdue" },
+                { label: "Cancelled", value: "cancelled" },
+              ]}
+            />
+            <SelectFilter
+              value={projectFilter} onChange={setProjectFilter} placeholder="All Projects"
+              options={selectableProjects(projects).map(p => ({ label: p.name, value: p.id }))}
+            />
 
             <DateRangeFilter onChange={(from, to) => { setDateFrom(from); setDateTo(to); }} />
 
