@@ -206,6 +206,12 @@ exports.createBillRequest = asyncHandler(async (req, res) => {
     projectId: wo.projectId, projectName: wo.projectName, vendorName: wo.vendorName, amount: estimatedAmount,
   });
 
+  await logAudit({
+    action: 'CREATE', module: 'bill-requests', user: req.user,
+    description: `Bill request ${reqNo} created`,
+    entityType: 'BillRequest', entityId: billRequest._id, entityLabel: reqNo,
+  });
+
   created(res, { billRequest }, `Stage ${stageNo} bill request ${reqNo} submitted successfully`);
 });
 
@@ -629,6 +635,12 @@ exports.createBatchBillRequest = asyncHandler(async (req, res) => {
       projectId: wo.projectId, projectName: wo.projectName, vendorName: wo.vendorName, amount: batchEstimatedAmount,
     });
 
+    await logAudit({
+      action: 'CREATE', module: 'bill-requests', user: req.user,
+      description: `Bill request ${reqNo} created`,
+      entityType: 'BillRequest', entityId: br._id, entityLabel: reqNo,
+    });
+
     created.push(br);
   }
 
@@ -654,6 +666,13 @@ exports.archiveBillRequest = asyncHandler(async (req, res) => {
   br.archivedAt = new Date();
   await br.save();
   if (br.billId) await RunningBill.findByIdAndUpdate(br.billId, { isArchived: true, archivedAt: new Date() });
+
+  await logAudit({
+    action: 'UPDATE', module: 'bill-requests', user: req.user,
+    description: `Bill request ${br.reqNo} archived`,
+    entityType: 'BillRequest', entityId: br._id, entityLabel: br.reqNo,
+  });
+
   success(res, { billRequest: br }, 'Bill request archived');
 });
 
@@ -664,6 +683,13 @@ exports.unarchiveBillRequest = asyncHandler(async (req, res) => {
   br.archivedAt = null;
   await br.save();
   if (br.billId) await RunningBill.findByIdAndUpdate(br.billId, { isArchived: false, archivedAt: null });
+
+  await logAudit({
+    action: 'UPDATE', module: 'bill-requests', user: req.user,
+    description: `Bill request ${br.reqNo} unarchived`,
+    entityType: 'BillRequest', entityId: br._id, entityLabel: br.reqNo,
+  });
+
   success(res, { billRequest: br }, 'Bill request unarchived');
 });
 

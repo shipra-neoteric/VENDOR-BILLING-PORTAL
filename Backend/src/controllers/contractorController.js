@@ -3,6 +3,16 @@ const Contractor   = require('../models/Contractor');
 const asyncHandler = require('../utils/asyncHandler');
 const { success, created, notFound, badRequest } = require('../utils/responseFormatter');
 const { nextVendorCode } = require('../utils/codeGen');
+const { logAudit, diffFields } = require('../utils/auditLog');
+
+// Business fields only — `documents` holds KYC data URIs and must never be
+// diffed/logged.
+const CONTRACTOR_DIFF_FIELDS = [
+  'vendorCode', 'companyName', 'shortCode', 'ownerName', 'address', 'mobile',
+  'alternateMobile', 'email', 'accountHolderName', 'bankName', 'accountNumber',
+  'ifscCode', 'branchName', 'gstNumber', 'panNumber', 'aadhaarNumber',
+  'workTypes', 'reference1', 'reference2', 'averageTurnover', 'status', 'groupId',
+];
 
 exports.listContractors = asyncHandler(async (req, res) => {
   const { status, search } = req.query;
@@ -40,6 +50,13 @@ exports.createContractor = asyncHandler(async (req, res) => {
 
   const vendorCode  = await nextVendorCode();
   const contractor  = await Contractor.create({ ...req.body, vendorCode, createdBy: req.user._id });
+
+  await logAudit({
+    action: 'CREATE', module: 'contractors', user: req.user,
+    description: `Created contractor ${contractor.companyName} (${contractor.vendorCode})`,
+    entityType: 'Contractor', entityId: contractor._id, entityLabel: contractor.companyName,
+  });
+
   created(res, { contractor }, 'Contractor created successfully');
 });
 
@@ -85,16 +102,36 @@ exports.bulkImport = asyncHandler(async (req, res) => {
     }
   }
 
+  await logAudit({
+    action: 'CREATE', module: 'contractors', user: req.user,
+    description: `Bulk-imported ${results.created.length} contractors`,
+    entityType: 'Contractor',
+  });
+
   res.status(201).json(results);
 });
 
 exports.updateContractor = asyncHandler(async (req, res) => {
+  const before = await Contractor.findById(req.params.id).lean();
+  if (!before) return notFound(res, 'Contractor not found');
+
   const contractor = await Contractor.findByIdAndUpdate(
     req.params.id,
     { $set: req.body },
     { new: true, runValidators: true }
   );
   if (!contractor) return notFound(res, 'Contractor not found');
+
+  const changes = diffFields(before, contractor.toObject(), CONTRACTOR_DIFF_FIELDS);
+  if (changes) {
+    await logAudit({
+      action: 'UPDATE', module: 'contractors', user: req.user,
+      description: `Updated contractor ${contractor.companyName} (${contractor.vendorCode})`,
+      entityType: 'Contractor', entityId: contractor._id, entityLabel: contractor.companyName,
+      changes,
+    });
+  }
+
   success(res, { contractor }, 'Contractor updated successfully');
 });
 
@@ -106,5 +143,12 @@ exports.deleteContractor = asyncHandler(async (req, res) => {
   const contractor = await Contractor.findById(req.params.id);
   if (!contractor) return notFound(res, 'Contractor not found');
   await contractor.deleteOne();
+
+  await logAudit({
+    action: 'DELETE', module: 'contractors', user: req.user,
+    description: `Deleted contractor ${contractor.companyName} (${contractor.vendorCode})`,
+    entityType: 'Contractor', entityId: contractor._id, entityLabel: contractor.companyName,
+  });
+
   success(res, null, `Contractor "${contractor.companyName}" deleted`);
 });

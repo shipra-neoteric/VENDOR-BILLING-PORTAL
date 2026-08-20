@@ -224,6 +224,12 @@ exports.createBill = asyncHandler(async (req, res) => {
     if (applied.length) await bill.save();
   }
 
+  await logAudit({
+    action: 'CREATE', module: MODULE, user: req.user,
+    description: `Bill ${bill.billNo} created`,
+    entityType: 'RunningBill', entityId: bill._id, entityLabel: bill.billNo,
+  });
+
   created(res, { bill }, 'Bill created — awaiting maker confirmation');
 });
 
@@ -265,8 +271,18 @@ exports.updateBill = asyncHandler(async (req, res) => {
     }
   }
 
+  const before = bill.toObject();
   Object.assign(bill, req.body);
   await bill.save();
+
+  const changes = diffFields(before, bill.toObject(), Object.keys(req.body));
+  await logAudit({
+    action: 'UPDATE', module: MODULE, user: req.user,
+    description: `Bill ${bill.billNo} updated`,
+    entityType: 'RunningBill', entityId: bill._id, entityLabel: bill.billNo,
+    ...(changes ? { changes } : {}),
+  });
+
   success(res, { bill }, 'Bill updated successfully');
 });
 
@@ -712,6 +728,13 @@ exports.archiveBill = asyncHandler(async (req, res) => {
   bill.archivedAt = new Date();
   await bill.save();
   await BillRequest.updateMany({ billId: bill._id }, { isArchived: true, archivedAt: new Date() });
+
+  await logAudit({
+    action: 'UPDATE', module: MODULE, user: req.user,
+    description: `Bill ${bill.billNo} archived`,
+    entityType: 'RunningBill', entityId: bill._id, entityLabel: bill.billNo,
+  });
+
   success(res, { bill }, 'Bill archived');
 });
 
@@ -722,6 +745,13 @@ exports.unarchiveBill = asyncHandler(async (req, res) => {
   bill.archivedAt = null;
   await bill.save();
   await BillRequest.updateMany({ billId: bill._id }, { isArchived: false, archivedAt: null });
+
+  await logAudit({
+    action: 'UPDATE', module: MODULE, user: req.user,
+    description: `Bill ${bill.billNo} unarchived`,
+    entityType: 'RunningBill', entityId: bill._id, entityLabel: bill.billNo,
+  });
+
   success(res, { bill }, 'Bill unarchived');
 });
 

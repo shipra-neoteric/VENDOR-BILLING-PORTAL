@@ -34,6 +34,13 @@ exports.register = asyncHandler(async (req, res) => {
   const user  = await User.create({ name, email, password, role, vendorCode });
   const token = signToken(user._id);
 
+  await logAudit({
+    action: 'CREATE', module: 'user-management', user,
+    description: 'User self-registered',
+    entityType: 'User', entityId: user._id, entityLabel: user.email,
+    ip: clientIp(req),
+  });
+
   created(res, { token, user: userPayload(user) }, 'Registration successful');
 });
 
@@ -104,5 +111,13 @@ exports.changePassword = asyncHandler(async (req, res) => {
 
   user.password = newPassword;
   await user.save();
+
+  await logAudit({
+    action: 'UPDATE', module: 'user-management', user: req.user,
+    description: 'User changed their own password',
+    entityType: 'User', entityId: req.user._id, entityLabel: req.user.email,
+    ip: clientIp(req),
+  });
+
   success(res, null, 'Password changed successfully');
 });

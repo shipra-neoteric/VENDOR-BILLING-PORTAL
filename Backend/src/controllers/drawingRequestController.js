@@ -3,7 +3,7 @@ const { success, created, notFound, badRequest } = require('../utils/responseFor
 const DrawingRequest = require('../models/DrawingRequest');
 const Project = require('../models/Project');
 const { nextDrawingRequestTicketNo } = require('../utils/codeGen');
-const { logAudit } = require('../utils/auditLog');
+const { logAudit, diffFields } = require('../utils/auditLog');
 
 async function populatedRequest(id) {
   return DrawingRequest.findById(id)
@@ -49,6 +49,12 @@ exports.createRequest = asyncHandler(async (req, res) => {
     isPublicSubmission: false,
   });
 
+  await logAudit({
+    action: 'CREATE', module: 'drawing-requests', user: req.user,
+    description: `Drawing request ${request.ticketNo} created`,
+    entityType: 'DrawingRequest', entityId: request._id, entityLabel: request.ticketNo,
+  });
+
   created(res, { request }, 'Drawing request submitted');
 });
 
@@ -62,6 +68,13 @@ exports.createPublicRequest = asyncHandler(async (req, res) => {
     ticketNo: await nextDrawingRequestTicketNo(),
     submittedBy: null,
     isPublicSubmission: true,
+  });
+
+  await logAudit({
+    action: 'CREATE', module: 'drawing-requests',
+    user: { _id: null, name: doc.driName, role: 'public' },
+    description: `Drawing request ${request.ticketNo} submitted publicly`,
+    entityType: 'DrawingRequest', entityId: request._id, entityLabel: request.ticketNo,
   });
 
   created(res, { request }, 'Drawing request submitted');
@@ -138,6 +151,7 @@ exports.updateRequest = asyncHandler(async (req, res) => {
     return badRequest(res, 'This request must clear AGM and GM review first — use the Review Workflow actions, not a direct edit, to move it forward.');
   }
 
+  const before = request.toObject();
   for (const field of UPDATABLE_FIELDS) {
     if (!(field in req.body)) continue;
     const val = req.body[field];
@@ -150,6 +164,14 @@ exports.updateRequest = asyncHandler(async (req, res) => {
     }
   }
   await request.save();
+
+  const changes = diffFields(before, request.toObject(), UPDATABLE_FIELDS);
+  await logAudit({
+    action: 'UPDATE', module: 'drawing-requests', user: req.user,
+    description: `Drawing request ${request.ticketNo} updated`,
+    entityType: 'DrawingRequest', entityId: request._id, entityLabel: request.ticketNo,
+    ...(changes ? { changes } : {}),
+  });
 
   success(res, { request: await populatedRequest(request._id) }, 'Drawing request updated');
 });
@@ -310,5 +332,12 @@ exports.resubmitRequest = asyncHandler(async (req, res) => {
 exports.deleteRequest = asyncHandler(async (req, res) => {
   const request = await DrawingRequest.findByIdAndDelete(req.params.id);
   if (!request) return notFound(res, 'Drawing request not found');
+
+  await logAudit({
+    action: 'DELETE', module: 'drawing-requests', user: req.user,
+    description: `Drawing request ${request.ticketNo} deleted`,
+    entityType: 'DrawingRequest', entityId: request._id, entityLabel: request.ticketNo,
+  });
+
   success(res, {}, 'Drawing request deleted');
 });

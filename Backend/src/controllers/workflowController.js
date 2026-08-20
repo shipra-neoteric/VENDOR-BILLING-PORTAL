@@ -4,6 +4,7 @@ const MISSnapshot       = require('../models/MISSnapshot');
 const asyncHandler = require('../utils/asyncHandler');
 const { success, created, notFound, badRequest, conflict, forbidden } = require('../utils/responseFormatter');
 const { completeStageById, isStageBreached, captureDailySnapshotIfNeeded } = require('../utils/slaEngine');
+const { logAudit, diffFields } = require('../utils/auditLog');
 
 // ── Templates ────────────────────────────────────────────────────
 
@@ -28,6 +29,13 @@ exports.createTemplate = asyncHandler(async (req, res) => {
     stages: stages.map((s, i) => ({ ...s, order: i })),
     createdBy: req.user._id,
   });
+
+  await logAudit({
+    action: 'CREATE', module: 'workflows', user: req.user,
+    description: `Workflow template "${template.name}" created`,
+    entityType: 'WorkflowTemplate', entityId: template._id, entityLabel: template.name,
+  });
+
   created(res, { template }, 'Workflow template created');
 });
 
@@ -35,6 +43,7 @@ exports.updateTemplate = asyncHandler(async (req, res) => {
   const { name, description, entityType, isActive, stages } = req.body;
   const template = await WorkflowTemplate.findById(req.params.id);
   if (!template) return notFound(res, 'Template not found');
+  const before = template.toObject();
 
   if (name !== undefined) template.name = name;
   if (description !== undefined) template.description = description;
@@ -43,6 +52,17 @@ exports.updateTemplate = asyncHandler(async (req, res) => {
   if (Array.isArray(stages)) template.stages = stages.map((s, i) => ({ ...s, order: i }));
 
   await template.save();
+
+  const changes = diffFields(before, template.toObject(), ['name', 'description', 'entityType', 'isActive']);
+  if (changes) {
+    await logAudit({
+      action: 'UPDATE', module: 'workflows', user: req.user,
+      description: `Workflow template "${template.name}" updated`,
+      entityType: 'WorkflowTemplate', entityId: template._id, entityLabel: template.name,
+      changes,
+    });
+  }
+
   success(res, { template }, 'Workflow template updated');
 });
 
@@ -54,6 +74,13 @@ exports.deleteTemplate = asyncHandler(async (req, res) => {
   if (inUse) return conflict(res, `Cannot delete "${template.name}" — it has running or past workflow instances.`);
 
   await template.deleteOne();
+
+  await logAudit({
+    action: 'DELETE', module: 'workflows', user: req.user,
+    description: `Workflow template "${template.name}" deleted`,
+    entityType: 'WorkflowTemplate', entityId: template._id, entityLabel: template.name,
+  });
+
   success(res, null, 'Workflow template deleted');
 });
 
@@ -120,6 +147,12 @@ exports.completeStage = asyncHandler(async (req, res) => {
   if (result.error === 'not_in_progress') return badRequest(res, 'This workflow is not in progress');
   if (result.error === 'stage_not_found') return notFound(res, 'Stage not found');
   if (result.error === 'not_current_stage') return badRequest(res, 'Only the current active stage can be completed');
+
+  await logAudit({
+    action: 'UPDATE', module: 'workflows', user: req.user,
+    description: `Completed stage "${stage.name}" on ${result.instance.entityLabel || result.instance._id}`,
+    entityType: 'WorkflowInstance', entityId: result.instance._id, entityLabel: result.instance.entityLabel || '',
+  });
 
   success(res, { instance: decorateInstance(result.instance) }, 'Stage marked complete');
 });

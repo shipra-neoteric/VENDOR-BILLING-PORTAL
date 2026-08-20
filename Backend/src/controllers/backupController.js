@@ -2,6 +2,7 @@ const asyncHandler = require('../utils/asyncHandler');
 const { success, badRequest } = require('../utils/responseFormatter');
 const { exportBackupZip, restoreFromZip } = require('../utils/backup');
 const { sendMail } = require('../utils/mailer');
+const { logAudit } = require('../utils/auditLog');
 
 const CONFIRM_HEADER = 'x-confirm-restore';
 const CONFIRM_VALUE = 'RESTORE';
@@ -19,6 +20,13 @@ const MAX_EMAIL_ATTACHMENT_BYTES = 20 * 1024 * 1024;
 exports.exportBackup = asyncHandler(async (req, res) => {
   const buffer = await exportBackupZip();
   const filename = `vbp-backup-${new Date().toISOString().replace(/[:.]/g, '-')}.zip`;
+
+  await logAudit({
+    action: 'CREATE', module: 'backup', user: req.user,
+    entityType: 'Database', entityId: null, entityLabel: filename,
+    description: 'Full database backup exported',
+  });
+
   res.set('Content-Type', 'application/zip');
   res.set('Content-Disposition', `attachment; filename="${filename}"`);
   res.set('Content-Length', String(buffer.length));
@@ -47,6 +55,13 @@ exports.importBackup = asyncHandler(async (req, res) => {
     // touched yet, so this is safely a 400, not a partial-restore 500.
     return badRequest(res, err.message);
   }
+
+  const successCount = results.filter((r) => !r.error).length;
+  await logAudit({
+    action: 'UPDATE', module: 'backup', user: req.user,
+    entityType: 'Database', entityId: null, entityLabel: 'restore',
+    description: `Database restored from backup — ${successCount}/${results.length} collections restored successfully`,
+  });
 
   success(res, { results }, 'Restore complete');
 });
@@ -78,6 +93,13 @@ exports.scheduledBackupEmail = asyncHandler(async (req, res) => {
       ? `Today's backup is ${(buffer.length / (1024 * 1024)).toFixed(1)}MB, too large to send by email. Log into the app and download it from the Backup page instead.`
       : `Attached is today's full database backup (${filename}).`,
     attachments: tooLarge ? [] : [{ filename, content: buffer }],
+  });
+
+  await logAudit({
+    action: 'CREATE', module: 'backup',
+    user: { _id: null, name: 'Scheduled Cron', role: 'system' },
+    entityType: 'Database', entityId: null, entityLabel: filename,
+    description: 'Scheduled daily backup emailed',
   });
 
   success(res, { sentTo: process.env.BACKUP_EMAIL_TO, sizeBytes: buffer.length, attached: !tooLarge }, 'Scheduled backup email sent');

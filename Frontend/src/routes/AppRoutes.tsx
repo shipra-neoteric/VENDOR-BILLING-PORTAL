@@ -36,6 +36,7 @@ const SlaSettings       = lazy(() => import("../pages/SlaSettings"));
 const SlaSettingsDetail = lazy(() => import("../pages/SlaSettings/Detail"));
 const SlaDashboard      = lazy(() => import("../pages/SlaDashboard"));
 const AuditLogs         = lazy(() => import("../pages/AuditLogs"));
+const AuditLogModule    = lazy(() => import("../pages/AuditLogs/ModuleLogs"));
 const DailyProgressReport = lazy(() => import("../pages/DailyProgressReport"));
 const DrawingRequests    = lazy(() => import("../pages/DrawingRequests"));
 const DriHome            = lazy(() => import("../pages/DriHome"));
@@ -129,6 +130,7 @@ function AdminRoutes() {
             <Route path="/sla-settings/:id" element={<SlaSettingsDetail />} />
             <Route path="/sla-dashboard"   element={<SlaDashboard />} />
             <Route path="/audit-logs"      element={<AuditLogs />} />
+            <Route path="/audit-logs/:module" element={<AuditLogModule />} />
             <Route path="/backup"          element={<Backup />} />
             <Route path="/daily-progress-report" element={<DailyProgressReport />} />
             <Route path="/drawing-requests" element={<DrawingRequests />} />

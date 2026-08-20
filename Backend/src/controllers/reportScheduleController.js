@@ -1,6 +1,7 @@
 const ReportSchedule = require('../models/ReportSchedule');
 const asyncHandler    = require('../utils/asyncHandler');
 const { success, created, notFound, badRequest } = require('../utils/responseFormatter');
+const { logAudit } = require('../utils/auditLog');
 
 const TIME_RE = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
@@ -34,6 +35,13 @@ exports.createSchedule = asyncHandler(async (req, res) => {
     projectName: projectName || 'All Projects',
     timeOfDay,
   });
+
+  await logAudit({
+    action: 'CREATE', module: 'report-schedules', user: req.user,
+    description: `Report schedule created — ${viewType} report for ${schedule.projectName} daily at ${timeOfDay}`,
+    entityType: 'ReportSchedule', entityId: schedule._id, entityLabel: schedule.projectName,
+  });
+
   created(res, { schedule });
 });
 
@@ -42,6 +50,13 @@ exports.deleteSchedule = asyncHandler(async (req, res) => {
   const schedule = await ReportSchedule.findOne({ _id: req.params.id, createdBy: req.user._id });
   if (!schedule) return notFound(res, 'Schedule not found');
   await schedule.deleteOne();
+
+  await logAudit({
+    action: 'DELETE', module: 'report-schedules', user: req.user,
+    description: `Report schedule deleted — ${schedule.viewType} report for ${schedule.projectName}`,
+    entityType: 'ReportSchedule', entityId: schedule._id, entityLabel: schedule.projectName,
+  });
+
   success(res, null, 'Schedule deleted');
 });
 

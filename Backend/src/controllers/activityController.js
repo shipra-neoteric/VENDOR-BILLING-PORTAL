@@ -6,6 +6,7 @@ const RunningBill       = require('../models/RunningBill');
 const asyncHandler      = require('../utils/asyncHandler');
 const { success, created, notFound, badRequest } = require('../utils/responseFormatter');
 const { nextBillNo } = require('../utils/codeGen');
+const { logAudit, diffFields } = require('../utils/auditLog');
 
 exports.listActivities = asyncHandler(async (req, res) => {
   const { stageId, projectId, workOrderId } = req.query;
@@ -32,16 +33,37 @@ exports.createActivity = asyncHandler(async (req, res) => {
     createdBy:  req.user._id,
     updatedBy:  req.user._id,
   });
+
+  await logAudit({
+    action: 'CREATE', module: 'stages', user: req.user,
+    description: `Activity ${activity.name} created`,
+    entityType: 'Activity', entityId: activity._id, entityLabel: activity.name,
+  });
+
   created(res, { activity }, 'Activity created');
 });
 
 exports.updateActivity = asyncHandler(async (req, res) => {
+  const before = await Activity.findById(req.params.id).lean();
+  if (!before) return notFound(res, 'Activity not found');
+
   const activity = await Activity.findByIdAndUpdate(
     req.params.id,
     { $set: { ...req.body, updatedBy: req.user._id } },
     { new: true, runValidators: true }
   );
   if (!activity) return notFound(res, 'Activity not found');
+
+  const changes = diffFields(before, activity.toObject(), ['name', 'unit', 'plannedQty', 'remarks', 'status']);
+  if (changes) {
+    await logAudit({
+      action: 'UPDATE', module: 'stages', user: req.user,
+      description: `Updated activity ${activity.name}`,
+      entityType: 'Activity', entityId: activity._id, entityLabel: activity.name,
+      changes,
+    });
+  }
+
   success(res, { activity });
 });
 
@@ -58,12 +80,24 @@ exports.updateProgress = asyncHandler(async (req, res) => {
     return badRequest(res, `completedQty (${completedQty}) cannot exceed plannedQty (${activity.plannedQty})`);
   }
 
+  const previousCompletedQty = activity.completedQty;
+  const previousStatus = activity.status;
   const pct = activity.plannedQty > 0 ? (Number(completedQty) / activity.plannedQty) * 100 : 0;
   activity.completedQty = Number(completedQty);
   activity.status       = pct >= 100 ? 'completed' : pct > 0 ? 'in-progress' : 'not-started';
   activity.updatedBy    = req.user._id;
   if (remarks !== undefined) activity.remarks = remarks;
   await activity.save();
+
+  await logAudit({
+    action: 'UPDATE', module: 'stages', user: req.user,
+    description: `Progress updated for activity ${activity.name} (${previousCompletedQty} → ${activity.completedQty}${activity.unit ? ' ' + activity.unit : ''})`,
+    entityType: 'Activity', entityId: activity._id, entityLabel: activity.name,
+    changes: {
+      completedQty: { from: previousCompletedQty, to: activity.completedQty },
+      status: { from: previousStatus, to: activity.status },
+    },
+  });
 
   // ── Milestone engine ──────────────────────────────────────────
   const linkedMAs = await MilestoneActivity.find({ activityId: activity._id });
@@ -128,5 +162,12 @@ exports.deleteActivity = asyncHandler(async (req, res) => {
   const activity = await Activity.findByIdAndDelete(req.params.id);
   if (!activity) return notFound(res, 'Activity not found');
   await MilestoneActivity.deleteMany({ activityId: req.params.id });
+
+  await logAudit({
+    action: 'DELETE', module: 'stages', user: req.user,
+    description: `Deleted activity ${activity.name}`,
+    entityType: 'Activity', entityId: activity._id, entityLabel: activity.name,
+  });
+
   success(res, null, 'Activity deleted');
 });

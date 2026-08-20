@@ -7,6 +7,7 @@ const ProjectEvent = require('../models/ProjectEvent');
 const asyncHandler = require('../utils/asyncHandler');
 const { success, created, notFound, badRequest, conflict } = require('../utils/responseFormatter');
 const { nextProjectCode } = require('../utils/codeGen');
+const { logAudit, diffFields } = require('../utils/auditLog');
 
 // Every GET below strips the real slackWebhookUrl before it ever leaves the
 // server — GET /projects and GET /projects/:id have no role restriction (any
@@ -38,6 +39,13 @@ exports.createProject = asyncHandler(async (req, res) => {
 
   const code    = await nextProjectCode();
   const project = await Project.create({ ...req.body, code, createdBy: req.user._id });
+
+  await logAudit({
+    action: 'CREATE', module: 'projects', user: req.user,
+    description: `Created project ${project.name} (${project.code})`,
+    entityType: 'Project', entityId: project._id, entityLabel: project.name,
+  });
+
   created(res, { project: sanitizeProject(project.toObject()) }, 'Project created successfully');
 });
 
@@ -52,12 +60,31 @@ exports.updateProject = asyncHandler(async (req, res) => {
     if (body.slackWebhookUrl === '') delete body.slackWebhookUrl;
     else if (body.slackWebhookUrl === null) body.slackWebhookUrl = '';
   }
+  const before = await Project.findById(req.params.id).lean();
+  if (!before) return notFound(res, 'Project not found');
+
   const project = await Project.findByIdAndUpdate(
     req.params.id,
     { $set: body },
     { new: true, runValidators: true }
   ).lean();
   if (!project) return notFound(res, 'Project not found');
+
+  // slackWebhookUrl is a bearer credential (see model) — never diffed/logged.
+  const changes = diffFields(before, project, [
+    'code', 'name', 'location', 'contractValue', 'budget', 'client',
+    'startDate', 'expectedCompletion', 'projectType', 'status',
+    'slackChannelId', 'parentId',
+  ]);
+  if (changes) {
+    await logAudit({
+      action: 'UPDATE', module: 'projects', user: req.user,
+      description: `Updated project ${project.name} (${project.code})`,
+      entityType: 'Project', entityId: project._id, entityLabel: project.name,
+      changes,
+    });
+  }
+
   success(res, { project: sanitizeProject(project) }, 'Project updated successfully');
 });
 
@@ -86,6 +113,13 @@ exports.deleteProject = asyncHandler(async (req, res) => {
   }
 
   await project.deleteOne();
+
+  await logAudit({
+    action: 'DELETE', module: 'projects', user: req.user,
+    description: `Deleted project ${project.name} (${project.code})`,
+    entityType: 'Project', entityId: project._id, entityLabel: project.name,
+  });
+
   success(res, null, 'Project deleted');
 });
 

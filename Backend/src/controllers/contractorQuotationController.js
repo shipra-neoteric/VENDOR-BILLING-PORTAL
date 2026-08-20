@@ -4,6 +4,7 @@ const ContractorQuotation = require('../models/ContractorQuotation');
 const WorkOrder  = require('../models/WorkOrder');
 const Contractor = require('../models/Contractor');
 const { nextQuotationNo } = require('../utils/codeGen');
+const { logAudit } = require('../utils/auditLog');
 
 function computeTotal(items) {
   return items.reduce((sum, i) => sum + (Number(i.plannedQty) || 0) * (Number(i.rate) || 0), 0);
@@ -48,6 +49,12 @@ exports.submitQuotation = asyncHandler(async (req, res) => {
     quotedItems: items,
     totalQuoted: computeTotal(items),
     remarks:     remarks || '',
+  });
+
+  await logAudit({
+    action: 'CREATE', module: 'quotations', user: req.user,
+    description: `Quotation ${quotationNo} submitted by ${contractorName} for ${workOrder.workOrderNo} (₹${quotation.totalQuoted.toLocaleString('en-IN')})`,
+    entityType: 'ContractorQuotation', entityId: quotation._id, entityLabel: quotation.quotationNo,
   });
 
   created(res, { quotation }, `Quotation ${quotationNo} submitted successfully`);
@@ -159,6 +166,12 @@ exports.approveQuotation = asyncHandler(async (req, res) => {
     { status: 'rejected', rejectedBy: req.user._id, rejectedAt: new Date(), rejectReason: 'Another quotation was approved for this work order' }
   );
 
+  await logAudit({
+    action: 'APPROVE', module: 'quotations', user: req.user,
+    description: `Quotation ${quotation.quotationNo} approved and applied to work order ${workOrder.workOrderNo}`,
+    entityType: 'ContractorQuotation', entityId: quotation._id, entityLabel: quotation.quotationNo,
+  });
+
   success(res, { quotation, workOrder }, 'Quotation approved and applied to the work order');
 });
 
@@ -172,6 +185,12 @@ exports.rejectQuotation = asyncHandler(async (req, res) => {
   quotation.rejectedAt    = new Date();
   quotation.rejectReason  = req.body.reason || '';
   await quotation.save();
+
+  await logAudit({
+    action: 'REJECT', module: 'quotations', user: req.user,
+    description: `Quotation ${quotation.quotationNo} rejected${quotation.rejectReason ? ` — ${quotation.rejectReason}` : ''}`,
+    entityType: 'ContractorQuotation', entityId: quotation._id, entityLabel: quotation.quotationNo,
+  });
 
   success(res, { quotation }, 'Quotation rejected');
 });

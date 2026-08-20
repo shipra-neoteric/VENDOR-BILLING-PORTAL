@@ -2,6 +2,7 @@ const AdvanceSlip   = require('../models/AdvanceSlip');
 const asyncHandler  = require('../utils/asyncHandler');
 const { success, notFound, badRequest } = require('../utils/responseFormatter');
 const { nextCode } = require('../utils/sequence');
+const { logAudit } = require('../utils/auditLog');
 
 const nextSlipNo = () => nextCode('advanceSlipNo', 'ADV-', 4);
 
@@ -45,6 +46,13 @@ exports.createAdvanceSlip = asyncHandler(async (req, res) => {
     slipNo, contractorCode, contractorName, projectId, projectName,
     amount, date, reference, notes, createdBy: req.user._id,
   });
+
+  await logAudit({
+    action: 'CREATE', module: 'advance-slips', user: req.user,
+    description: `Advance slip ${slipNo} created for ${contractorName || contractorCode} (₹${Number(amount).toLocaleString('en-IN')})`,
+    entityType: 'AdvanceSlip', entityId: slip._id, entityLabel: slip.slipNo,
+  });
+
   success(res, { advanceSlip: slip }, `Advance slip ${slipNo} created`);
 });
 
@@ -54,6 +62,13 @@ exports.deleteAdvanceSlip = asyncHandler(async (req, res) => {
   if (!slip) return notFound(res, 'Advance slip not found');
   if (slip.amountRecovered > 0) return badRequest(res, 'Cannot delete a slip with recorded recoveries');
   await slip.deleteOne();
+
+  await logAudit({
+    action: 'DELETE', module: 'advance-slips', user: req.user,
+    description: `Advance slip ${slip.slipNo} deleted`,
+    entityType: 'AdvanceSlip', entityId: slip._id, entityLabel: slip.slipNo,
+  });
+
   success(res, {}, 'Advance slip deleted');
 });
 
@@ -64,6 +79,13 @@ exports.archiveAdvanceSlip = asyncHandler(async (req, res) => {
   slip.isArchived = true;
   slip.archivedAt = new Date();
   await slip.save();
+
+  await logAudit({
+    action: 'UPDATE', module: 'advance-slips', user: req.user,
+    description: `Advance slip ${slip.slipNo} archived`,
+    entityType: 'AdvanceSlip', entityId: slip._id, entityLabel: slip.slipNo,
+  });
+
   success(res, { advanceSlip: slip }, 'Advance slip archived');
 });
 
@@ -73,6 +95,13 @@ exports.unarchiveAdvanceSlip = asyncHandler(async (req, res) => {
   slip.isArchived = false;
   slip.archivedAt = null;
   await slip.save();
+
+  await logAudit({
+    action: 'UPDATE', module: 'advance-slips', user: req.user,
+    description: `Advance slip ${slip.slipNo} unarchived`,
+    entityType: 'AdvanceSlip', entityId: slip._id, entityLabel: slip.slipNo,
+  });
+
   success(res, { advanceSlip: slip }, 'Advance slip unarchived');
 });
 

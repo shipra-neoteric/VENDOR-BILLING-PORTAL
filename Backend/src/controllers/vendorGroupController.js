@@ -5,6 +5,7 @@ const RunningBill  = require('../models/RunningBill');
 const asyncHandler = require('../utils/asyncHandler');
 const { success, created, notFound, badRequest } = require('../utils/responseFormatter');
 const { nextVendorGroupCode } = require('../utils/codeGen');
+const { logAudit, diffFields } = require('../utils/auditLog');
 
 exports.listVendorGroups = asyncHandler(async (req, res) => {
   const groups = await VendorGroup.find().sort({ name: 1 }).lean();
@@ -30,14 +31,35 @@ exports.createVendorGroup = asyncHandler(async (req, res) => {
   if (!req.body.name) return badRequest(res, 'Group name is required');
   const groupCode = await nextVendorGroupCode();
   const group = await VendorGroup.create({ groupCode, name: req.body.name, createdBy: req.user._id });
+
+  await logAudit({
+    action: 'CREATE', module: 'vendor-groups', user: req.user,
+    description: `Vendor group ${group.groupCode} (${group.name}) created`,
+    entityType: 'VendorGroup', entityId: group._id, entityLabel: `${group.groupCode} — ${group.name}`,
+  });
+
   created(res, { group }, `Vendor group ${groupCode} created`);
 });
 
 exports.updateVendorGroup = asyncHandler(async (req, res) => {
+  const before = await VendorGroup.findById(req.params.id).lean();
+  if (!before) return notFound(res, 'Vendor group not found');
+
   const group = await VendorGroup.findByIdAndUpdate(
     req.params.id, { $set: { name: req.body.name } }, { new: true, runValidators: true }
   );
   if (!group) return notFound(res, 'Vendor group not found');
+
+  const changes = diffFields(before, group.toObject(), ['name']);
+  if (changes) {
+    await logAudit({
+      action: 'UPDATE', module: 'vendor-groups', user: req.user,
+      description: `Updated vendor group ${group.groupCode}`,
+      entityType: 'VendorGroup', entityId: group._id, entityLabel: `${group.groupCode} — ${group.name}`,
+      changes,
+    });
+  }
+
   success(res, { group }, 'Vendor group updated');
 });
 

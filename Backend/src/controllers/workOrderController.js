@@ -233,6 +233,12 @@ exports.createWorkOrder = asyncHandler(async (req, res) => {
     vendorName: workOrder.vendorName, amount: workOrder.contractValue,
   });
 
+  await logAudit({
+    action: 'CREATE', module: 'work-orders', user: req.user,
+    description: `Work order ${workOrder.workOrderNo} created`,
+    entityType: 'WorkOrder', entityId: workOrder._id, entityLabel: workOrder.workOrderNo,
+  });
+
   created(res, { workOrder }, 'Work order created successfully');
 });
 
@@ -310,26 +316,54 @@ exports.updateWorkOrder = asyncHandler(async (req, res) => {
     });
   }
 
-  // Keep already-generated bills/bill-requests in sync when a work order's project
-  // assignment (or just its location label) changes — otherwise the old project keeps
-  // showing stale paid/certified amounts for money that's actually moved elsewhere.
+  // Keep already-generated bills/bill-requests in sync when work order header details change
+  // (company, vendor, category, project/location) — ensuring changing these non-approval fields
+  // reflects everywhere in the system, including pre-existing bills and bill requests.
   const projectChanged = String(before.projectId || '') !== String(after.projectId || '');
   const locationChanged = (before.projectLocation || '') !== (after.projectLocation || '');
-  if (projectChanged || locationChanged) {
-    const projectUpdate = {
-      projectId: after.projectId,
-      projectName: after.projectName,
-      projectLocation: after.projectLocation,
-    };
+  const companyChanged = (before.companyName || '') !== (after.companyName || '');
+  const vendorChanged = (before.vendorCode || '') !== (after.vendorCode || '') || (before.vendorName || '') !== (after.vendorName || '');
+  const categoryChanged = (before.category || '') !== (after.category || '') || (before.subCategory || '') !== (after.subCategory || '');
+
+  if (projectChanged || locationChanged || companyChanged || vendorChanged || categoryChanged) {
+    const syncUpdate = {};
+    if (projectChanged || locationChanged) {
+      syncUpdate.projectId = after.projectId;
+      syncUpdate.projectName = after.projectName;
+      syncUpdate.projectLocation = after.projectLocation;
+    }
+    if (companyChanged) {
+      syncUpdate.companyName = after.companyName;
+    }
+    if (vendorChanged) {
+      syncUpdate.vendorCode = after.vendorCode;
+      syncUpdate.vendorName = after.vendorName;
+    }
+    if (categoryChanged) {
+      syncUpdate.category = after.category;
+      syncUpdate.subCategory = after.subCategory;
+    }
+
+    const brUpdate = { ...syncUpdate };
+    const rbUpdate = { ...syncUpdate };
+    delete rbUpdate.category;
+    delete rbUpdate.subCategory;
+
     const [brResult, rbResult] = await Promise.all([
-      BillRequest.updateMany({ workOrderId: workOrder._id }, projectUpdate),
-      RunningBill.updateMany({ workOrderId: workOrder._id }, projectUpdate),
+      BillRequest.updateMany({ workOrderId: workOrder._id }, brUpdate),
+      RunningBill.updateMany({ workOrderId: workOrder._id }, rbUpdate),
     ]);
     const totalSynced = (brResult.modifiedCount || 0) + (rbResult.modifiedCount || 0);
     if (totalSynced > 0) {
+      const changedDesc = [];
+      if (companyChanged) changedDesc.push(`company (${before.companyName || '—'} → ${after.companyName || '—'})`);
+      if (projectChanged || locationChanged) changedDesc.push(`project/location (${before.projectName || '—'} → ${after.projectName || '—'})`);
+      if (vendorChanged) changedDesc.push(`vendor (${before.vendorCode || '—'} → ${after.vendorCode || '—'})`);
+      if (categoryChanged) changedDesc.push(`category (${before.category || '—'} → ${after.category || '—'})`);
+
       await logAudit({
         action: 'UPDATE', module: 'work-orders', user: req.user,
-        description: `Synced project reassignment (${before.projectName || '—'} → ${after.projectName || '—'}) to ${totalSynced} existing bill(s)/request(s) for ${workOrder.workOrderNo}`,
+        description: `Synced updated ${changedDesc.join(', ')} to ${totalSynced} existing bill(s)/request(s) for ${workOrder.workOrderNo}`,
         entityType: 'WorkOrder', entityId: workOrder._id, entityLabel: workOrder.workOrderNo,
       });
     }
@@ -626,6 +660,12 @@ exports.addScopeProgress = asyncHandler(async (req, res) => {
     },
   });
 
+  await logAudit({
+    action: 'UPDATE', module: 'work-orders', user: req.user,
+    description: `Progress entry added for scope item "${item.description}" (${workOrder.workOrderNo}) — ${qtyAdded} ${item.unit}`,
+    entityType: 'WorkOrder', entityId: workOrder._id, entityLabel: workOrder.workOrderNo,
+  });
+
   success(res, { workOrder });
 });
 
@@ -673,6 +713,13 @@ exports.editProgressEntry = asyncHandler(async (req, res) => {
   applyVarianceGate(item);
 
   await workOrder.save();
+
+  await logAudit({
+    action: 'UPDATE', module: 'work-orders', user: req.user,
+    description: `Progress entry edited for scope item "${item.description}" (${workOrder.workOrderNo})`,
+    entityType: 'WorkOrder', entityId: workOrder._id, entityLabel: workOrder.workOrderNo,
+  });
+
   success(res, { workOrder }, 'Progress entry updated');
 });
 
@@ -707,6 +754,13 @@ exports.deleteProgressEntry = asyncHandler(async (req, res) => {
   applyVarianceGate(item);
 
   await workOrder.save();
+
+  await logAudit({
+    action: 'UPDATE', module: 'work-orders', user: req.user,
+    description: `Progress entry deleted for scope item "${item.description}" (${workOrder.workOrderNo})`,
+    entityType: 'WorkOrder', entityId: workOrder._id, entityLabel: workOrder.workOrderNo,
+  });
+
   success(res, { workOrder }, 'Progress entry deleted');
 });
 
@@ -791,6 +845,12 @@ exports.addSubItemProgress = asyncHandler(async (req, res) => {
     },
   });
 
+  await logAudit({
+    action: 'UPDATE', module: 'work-orders', user: req.user,
+    description: `Progress entry added for particular "${item.description} — ${subItem.description}" (${workOrder.workOrderNo}) — ${qtyAdded} ${subItem.unit}`,
+    entityType: 'WorkOrder', entityId: workOrder._id, entityLabel: workOrder.workOrderNo,
+  });
+
   success(res, { workOrder });
 });
 
@@ -838,6 +898,13 @@ exports.editSubItemProgressEntry = asyncHandler(async (req, res) => {
 
   recomputeParentFromSubItems(item);
   await workOrder.save();
+
+  await logAudit({
+    action: 'UPDATE', module: 'work-orders', user: req.user,
+    description: `Progress entry edited for particular "${item.description} — ${subItem.description}" (${workOrder.workOrderNo})`,
+    entityType: 'WorkOrder', entityId: workOrder._id, entityLabel: workOrder.workOrderNo,
+  });
+
   success(res, { workOrder }, 'Progress entry updated');
 });
 
@@ -874,6 +941,13 @@ exports.deleteSubItemProgressEntry = asyncHandler(async (req, res) => {
 
   recomputeParentFromSubItems(item);
   await workOrder.save();
+
+  await logAudit({
+    action: 'UPDATE', module: 'work-orders', user: req.user,
+    description: `Progress entry deleted for particular "${item.description} — ${subItem.description}" (${workOrder.workOrderNo})`,
+    entityType: 'WorkOrder', entityId: workOrder._id, entityLabel: workOrder.workOrderNo,
+  });
+
   success(res, { workOrder }, 'Progress entry deleted');
 });
 
