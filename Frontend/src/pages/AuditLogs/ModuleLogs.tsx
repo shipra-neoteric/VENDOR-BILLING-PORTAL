@@ -1,14 +1,13 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import dayjs from "dayjs";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Search } from "lucide-react";
 import apiClient from "../../services/apiClient";
 import PageHeader from "../../ui/PageHeader";
-import { FilterRow, SearchFilter, SelectFilter } from "../../ui/Filters";
-import { DatePicker } from "../../ui/DatePicker";
+import { FilterRow, SelectFilter } from "../../ui/Filters";
+import DateRangeFilter from "../../components/DateRangeFilter";
 import { Table, Thead, Tbody, Tr, Th, Td, TdText } from "../../ui/Table";
 import Badge from "../../ui/Badge";
-import Btn from "../../ui/Btn";
 import Pagination from "../../ui/Pagination";
 import { Skeleton } from "../../ui/Skeleton";
 import Modal from "../../ui/Modal";
@@ -51,14 +50,19 @@ function ResourceCell({ row }: { row: LogRow }) {
     return (
       <Link
         to={`/work-items/${row.entityId}`}
-        className="text-primary font-semibold hover:underline"
+        className="block truncate text-primary font-semibold hover:underline"
         onClick={(e) => e.stopPropagation()}
+        title={label}
       >
         {label}
       </Link>
     );
   }
-  return <span className="font-semibold text-[#1A1A2E] dark:text-[#F1F5F9]">{label}</span>;
+  return (
+    <span className="block truncate font-semibold text-[#1A1A2E] dark:text-[#F1F5F9]" title={label}>
+      {label}
+    </span>
+  );
 }
 
 export default function ModuleLogs() {
@@ -120,6 +124,18 @@ export default function ModuleLogs() {
       <PageHeader title={meta?.label ?? module ?? ""} subtitle={meta?.subtitle} icon={meta?.icon} />
 
       <FilterRow>
+        <div className="relative flex-1 min-w-[220px]">
+          <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <input
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setPage(1);
+            }}
+            placeholder="Search description, user, or record…"
+            className="w-full h-10 pl-9 pr-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0F172A] text-sm text-[#1A1A2E] dark:text-[#F1F5F9] placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+          />
+        </div>
         <SelectFilter
           value={actionFilter}
           onChange={(v) => {
@@ -141,27 +157,12 @@ export default function ModuleLogs() {
             { label: "System", value: "system" },
           ]}
         />
-        <DatePicker
-          value={dateFrom}
-          onChange={(v) => {
-            setDateFrom(v);
+        <DateRangeFilter
+          onChange={(from, to) => {
+            setDateFrom(from ? from.format("YYYY-MM-DD") : "");
+            setDateTo(to ? to.format("YYYY-MM-DD") : "");
             setPage(1);
           }}
-        />
-        <DatePicker
-          value={dateTo}
-          onChange={(v) => {
-            setDateTo(v);
-            setPage(1);
-          }}
-        />
-        <SearchFilter
-          value={search}
-          onChange={(v) => {
-            setSearch(v);
-            setPage(1);
-          }}
-          placeholder="Search description, user, or record…"
         />
       </FilterRow>
 
@@ -172,15 +173,15 @@ export default function ModuleLogs() {
           ))}
         </div>
       ) : (
-        <Table>
+        <Table className="table-fixed">
           <Thead>
             <Tr>
-              <Th>Performed By</Th>
-              <Th>Resource</Th>
-              <Th>Action</Th>
-              <Th>Description</Th>
-              <Th>Date</Th>
-              <Th>Details</Th>
+              <Th className="w-[15%]">Performed By</Th>
+              <Th className="w-[16%]">Resource</Th>
+              <Th className="w-[9%]">Action</Th>
+              <Th className="w-[38%]">Description</Th>
+              <Th className="w-[13%]">Date</Th>
+              <Th className="w-[9%]">Details</Th>
             </Tr>
           </Thead>
           <Tbody>
@@ -212,7 +213,13 @@ export default function ModuleLogs() {
                   <div className="text-sm text-[#1A1A2E] dark:text-[#F1F5F9]">{dayjs(row.createdAt).format("DD MMM YYYY, hh:mm a")}</div>
                 </Td>
                 <Td>
-                  <Btn small outline label="View Details" onClick={() => setSelected(row)} />
+                  <button
+                    type="button"
+                    onClick={() => setSelected(row)}
+                    className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:underline"
+                  >
+                    View Details
+                  </button>
                 </Td>
               </Tr>
             ))}
