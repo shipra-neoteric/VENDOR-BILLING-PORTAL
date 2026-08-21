@@ -48,7 +48,12 @@ const S = StyleSheet.create({
   particularsLbl: { fontSize: 7, color: "#9CA3AF", textTransform: "uppercase", letterSpacing: 0.3, marginBottom: 2, paddingLeft: 8, marginTop: 2 },
   colDesc:      { flex: 2.2, paddingRight: 6 },
   colDescText:  { fontSize: 8.5 },
-  colRemarks:   { fontSize: 7.5, color: GRAY, fontFamily: "Helvetica-Oblique", marginTop: 1.5, lineHeight: 1.3 },
+  colRemarks:   { fontSize: 7.5, color: GRAY, fontFamily: "Helvetica-Oblique", lineHeight: 1.4 },
+  // Rendered as its own block below the row rather than inside colDesc, so a
+  // long multi-line remark can wrap/paginate freely without being confined
+  // to the description column's width or dragging the row's other cells
+  // along when it splits across a page.
+  remarksBlock: { paddingHorizontal: 8, paddingBottom: 4, borderTopWidth: 0.5, borderTopColor: "#F1F2F4" },
   colUnit:   { width: 40, fontSize: 8.5, textAlign: "center", paddingRight: 6 },
   colQty:    { width: 42, fontSize: 8.5, textAlign: "right", paddingRight: 8 },
   colDate:   { width: 60, fontSize: 8.5, textAlign: "center", paddingRight: 4 },
@@ -386,19 +391,20 @@ export function WorkOrderDocument({ wo, company, contractor }: Props) {
               const rowStyle = item.isChild ? S.scopeChild : (groupIdx % 2 === 0 ? S.scopeRow : S.scopeAlt);
               return (
                 <View key={i}>
-                  {/* No wrap={false} here: a deliverable's remarks can now run
-                      to several bullet lines, and forcing the whole row to
-                      stay unbroken pushes it entirely onto the next page —
-                      leaving a large blank gap under the table header on the
-                      page it didn't fit on. Letting it split naturally is the
-                      lesser visual cost. */}
-                  <View style={rowStyle}>
+                  {/* The row itself stays wrap={false} — it's a short,
+                      single/two-line strip of aligned columns, and letting a
+                      *row* split mid-page scatters its cells (react-pdf
+                      doesn't keep a flex-row's siblings aligned across a
+                      page break). Long remarks are rendered as their own
+                      block below instead, outside this row, free to wrap and
+                      paginate on their own without dragging the row's other
+                      columns along with them. */}
+                  <View style={rowStyle} wrap={false}>
                     {item.isChild && <View style={S.scopeChildRule} />}
                     <View style={S.colDesc}>
                       <Text style={[S.colDescText, item.isChild ? { color: GRAY } : { fontFamily: "Helvetica-Bold", color: MID }]}>
                         {item.desc}
                       </Text>
-                      {item.remarks ? <Text style={S.colRemarks}>{item.remarks}</Text> : null}
                     </View>
                     <Text style={[S.colUnit, item.isChild ? { color: GRAY } : {}]}>
                       {isProfessionalServices ? (item.stage || "—") : (item.unit || "—")}
@@ -416,6 +422,11 @@ export function WorkOrderDocument({ wo, company, contractor }: Props) {
                       {item.amount ? fmtAmt(item.amount) : "—"}
                     </Text>
                   </View>
+                  {item.remarks ? (
+                    <View style={[S.remarksBlock, item.isChild ? { paddingLeft: 24 } : {}]}>
+                      <Text style={S.colRemarks}>{item.remarks}</Text>
+                    </View>
+                  ) : null}
                 </View>
               );
             }); })()}
