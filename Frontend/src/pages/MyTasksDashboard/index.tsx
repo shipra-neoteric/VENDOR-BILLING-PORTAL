@@ -6,8 +6,8 @@ import apiClient from "../../services/apiClient";
 import { useAuth } from "../../context/AuthContext";
 import PageHeader from "../../ui/PageHeader";
 import KPICard from "../../ui/KPICard";
-import Card from "../../ui/Card";
-import Badge from "../../ui/Badge";
+import NxCard from "../../ui/nexora/Card";
+import NxBadge from "../../ui/nexora/Badge";
 import Btn from "../../ui/Btn";
 import Spinner from "../../ui/Spinner";
 
@@ -42,7 +42,7 @@ function QueueSection({
   onOpen: (key: string) => void;
 }) {
   return (
-    <Card padded={false} className="overflow-hidden mb-5">
+    <NxCard padded={false} className="overflow-hidden mb-5">
       <div className="px-5 py-3.5 border-b border-gray-100 dark:border-gray-700/40 flex items-center gap-2.5">
         <span className="font-bold text-sm text-[#1A1A2E] dark:text-[#F1F5F9]">{title}</span>
         <span className="text-xs font-bold px-2.5 py-0.5 rounded-full" style={{ background: `${color}1a`, color }}>{rows.length}</span>
@@ -68,7 +68,7 @@ function QueueSection({
           ))}
         </div>
       )}
-    </Card>
+    </NxCard>
   );
 }
 
@@ -177,7 +177,7 @@ export default function MyTasksDashboard() {
             <KPICard label="Active Projects Today" value={kpis.projectsActiveToday} icon={Network} accent="#0d9488" />
           </div>
 
-          <Card className="mb-5 flex items-center justify-between flex-wrap gap-2.5">
+          <NxCard className="mb-5 flex items-center justify-between flex-wrap gap-2.5">
             <div>
               <div className="font-bold text-sm text-[#1A1A2E] dark:text-[#F1F5F9]">Site Progress</div>
               <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
@@ -185,7 +185,7 @@ export default function MyTasksDashboard() {
               </div>
             </div>
             <Btn label="Open Site Progress →" color="primary" onClick={() => navigate("/site-progress")} />
-          </Card>
+          </NxCard>
         </>
       )}
 
@@ -251,7 +251,7 @@ export default function MyTasksDashboard() {
 
       {!role && (
         <div className="text-center py-16 text-gray-400">
-          <Badge color="gray">No task queues configured for your role</Badge>
+          <NxBadge color="gray">No task queues configured for your role</NxBadge>
         </div>
       )}
     </div>

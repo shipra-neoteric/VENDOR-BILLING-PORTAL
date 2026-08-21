@@ -1,7 +1,10 @@
 import { useEffect } from "react";
-import { Button, Input, InputNumber, Select, Segmented, DatePicker, Row, Col } from "antd";
-import { PlusOutlined, DeleteOutlined } from "@ant-design/icons";
-import dayjs from "dayjs";
+import { Plus, Trash2 } from "lucide-react";
+import Btn from "../ui/Btn";
+import Field from "../ui/Field";
+import SField from "../ui/SField";
+import Segmented from "../ui/Segmented";
+import { DatePicker } from "../ui/DatePicker";
 import GstSelect from "./GstSelect";
 
 export interface MilestoneDraft {
@@ -96,52 +99,40 @@ export default function PaymentMilestonesBuilder({
 
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-        <div style={{ fontWeight: 700, fontSize: 14, color: "#1a1f2e" }}>Payment Milestones</div>
-        <Button
-          type="dashed" icon={<PlusOutlined />} size="small"
-          onClick={() => onChange([...items, newMilestone()])}
-          style={{ borderColor: "#f37916", color: "#f37916" }}
-        >
-          Add Milestone
-        </Button>
+      <div className="flex items-center justify-between mb-3">
+        <div className="font-bold text-sm text-[#1A1A2E] dark:text-[#F1F5F9]">Payment Milestones</div>
+        <Btn small outline icon={Plus} label="Add Milestone" onClick={() => onChange([...items, newMilestone()])} />
       </div>
 
       {items.length === 0 && (
-        <div style={{ border: "2px dashed #e4e7ee", borderRadius: 8, padding: "24px 20px", textAlign: "center", color: "#9ba3b8", marginBottom: 12 }}>
-          <div style={{ fontSize: 12 }}>No payment milestones yet — e.g. "At the time of Order", "On Dispatch", "On Delivery".</div>
+        <div className="border-2 border-dashed border-gray-200 dark:border-gray-700/40 rounded-lg py-6 px-5 text-center text-gray-400 dark:text-gray-500 mb-3">
+          <div className="text-xs">No payment milestones yet — e.g. "At the time of Order", "On Dispatch", "On Delivery".</div>
         </div>
       )}
 
       {items.map((m, idx) => (
-        <div key={m.id} style={{ border: "1px solid #e4e7ee", borderRadius: 8, marginBottom: 10, padding: "12px 14px" }}>
-          <Row gutter={[10, 10]}>
-            <Col xs={24} sm={6}>
-              <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Stage / Type</div>
-              <Input
+        <div key={m.id} className="border border-gray-200 dark:border-gray-700/40 rounded-lg mb-2.5 p-3.5">
+          <div className="grid grid-cols-2 sm:grid-cols-[2fr_140px_130px_160px_90px_28px] gap-2.5 items-end">
+            <div>
+              <div className="text-[11px] text-gray-400 mb-1">Stage / Type</div>
+              <Field
                 placeholder='e.g. "At the time of Order"'
                 value={m.type}
                 onChange={e => upd(m.id, { type: e.target.value, stage: m.stage || `Milestone ${idx + 1}` })}
               />
-            </Col>
-            <Col xs={12} sm={4}>
-              <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Date</div>
-              <DatePicker
-                format="DD/MM/YYYY" style={{ width: "100%" }}
-                value={m.date ? dayjs(m.date) : null}
-                onChange={d => upd(m.id, { date: d ? d.format("YYYY-MM-DD") : "" })}
-              />
-            </Col>
-            <Col xs={12} sm={3}>
-              <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>Mode</div>
-              <Select value={m.mode} options={MODE_OPTIONS} style={{ width: "100%" }}
-                onChange={v => upd(m.id, { mode: v })} />
-            </Col>
-            <Col xs={12} sm={6}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-                <span style={{ fontSize: 11, color: "#9ba3b8" }}>Amount</span>
+            </div>
+            <div>
+              <div className="text-[11px] text-gray-400 mb-1">Date</div>
+              <DatePicker value={m.date} onChange={v => upd(m.id, { date: v })} />
+            </div>
+            <div>
+              <div className="text-[11px] text-gray-400 mb-1">Mode</div>
+              <SField placeholder="Mode" value={m.mode} onChange={v => upd(m.id, { mode: v })} options={MODE_OPTIONS} />
+            </div>
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-[11px] text-gray-400">Amount</span>
                 <Segmented
-                  size="small"
                   value={m.amountMode}
                   onChange={v => upd(m.id, { amountMode: v as "fixed" | "percent" })}
                   options={[{ label: "₹", value: "fixed" }, { label: "%", value: "percent" }]}
@@ -149,70 +140,71 @@ export default function PaymentMilestonesBuilder({
               </div>
               {m.amountMode === "percent" ? (
                 <>
-                  <InputNumber
+                  <Field
+                    type="number" min="0" max="100" step="0.1"
                     placeholder="% of contract"
-                    value={m.amountPercent}
-                    style={{ width: "100%" }}
-                    min={0} max={100} step={0.1}
-                    formatter={v => (v === undefined || v === null ? "" : `${v}%`)}
-                    parser={v => Number(String(v ?? "").replace("%", "")) as unknown as number}
-                    onChange={v => {
-                      const pct = typeof v === "number" ? v : 0;
+                    value={m.amountPercent ?? ""}
+                    onChange={e => {
+                      const pct = e.target.value === "" ? 0 : Number(e.target.value);
                       const resolved = contractValue ? Math.round((pct / 100) * contractValue) : 0;
                       upd(m.id, { amountPercent: pct, amount: resolved });
                     }}
                   />
-                  <div style={{ fontSize: 10.5, color: "#9ba3b8", marginTop: 2 }}>
+                  <div className="text-[10.5px] text-gray-400 mt-0.5">
                     {contractValue ? `= ${fmt(m.amount || 0)} + GST` : "Add scope of work items first"}
                   </div>
                 </>
               ) : (
-                <InputNumber placeholder="Amount" value={m.amount} style={{ width: "100%" }}
-                  min={0} onChange={v => upd(m.id, { amount: v })} />
+                <Field
+                  type="number" min="0"
+                  placeholder="Amount"
+                  value={m.amount ?? ""}
+                  onChange={e => upd(m.id, { amount: e.target.value === "" ? null : Number(e.target.value) })}
+                />
               )}
-            </Col>
-            <Col xs={12} sm={5}>
-              <div style={{ fontSize: 11, color: "#9ba3b8", marginBottom: 4 }}>GST</div>
-              <GstSelect value={m.gstPercent} onChange={v => upd(m.id, { gstPercent: v })} style={{ width: "100%" }} />
-            </Col>
-          </Row>
-          <Row gutter={[10, 0]} style={{ marginTop: 8 }}>
-            <Col flex="auto">
-              <div style={{ fontSize: 12, color: "#5a6278" }}>
-                Payable: <strong style={{ fontFamily: "monospace", color: "#d4620c" }}>{fmt(calcPayable(m))}</strong>
-              </div>
-            </Col>
-            <Col>
-              <Button type="link" size="small" danger icon={<DeleteOutlined />}
-                onClick={() => onChange(items.filter(x => x.id !== m.id))} style={{ padding: 0 }} />
-            </Col>
-          </Row>
+            </div>
+            <div>
+              <div className="text-[11px] text-gray-400 mb-1">GST</div>
+              <GstSelect value={m.gstPercent} onChange={v => upd(m.id, { gstPercent: v })} />
+            </div>
+            <button type="button" onClick={() => onChange(items.filter(x => x.id !== m.id))} className="text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded p-1.5 justify-self-end">
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          </div>
+          <div className="flex items-center justify-between mt-2">
+            <div className="text-xs text-gray-500 dark:text-gray-400">
+              Payable: <strong className="font-mono text-primary">{fmt(calcPayable(m))}</strong>
+            </div>
+          </div>
         </div>
       ))}
 
       {items.length > 0 && (
-        <div style={{ background: exceeds ? "#fef2f2" : "#fff8f3", border: `1px solid ${exceeds ? "#fca5a5" : "#f8c9a0"}`, borderRadius: 8, padding: "10px 16px" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span style={{ fontWeight: 600, color: "#5a6278" }}>{(discount || 0) > 0 ? "Subtotal" : "Grand Total Payable"}</span>
-            <span style={{ fontFamily: "monospace", fontWeight: 700, color: exceeds ? "#dc2626" : "#d4620c", fontSize: 15 }}>{fmt(grandTotal)}</span>
+        <div className={exceeds
+          ? "bg-red-50 dark:bg-red-500/10 border border-red-300 dark:border-red-500/40 rounded-lg py-2.5 px-4"
+          : "bg-primary/5 border border-primary/20 rounded-lg py-2.5 px-4"}>
+          <div className="flex justify-between items-center">
+            <span className="font-semibold text-gray-600 dark:text-gray-300">{(discount || 0) > 0 ? "Subtotal" : "Grand Total Payable"}</span>
+            <span className={`font-mono font-bold text-[15px] ${exceeds ? "text-red-600 dark:text-red-400" : "text-primary"}`}>{fmt(grandTotal)}</span>
           </div>
           {exceeds && (
-            <div style={{ fontSize: 12, color: "#dc2626", marginTop: 6, fontWeight: 600 }}>
+            <div className="text-xs text-red-600 dark:text-red-400 mt-1.5 font-semibold">
               ⚠ Exceeds the scope of work's contract value (incl. GST) of {fmt(contractValueInclGst!)} by {fmt(grandTotal - contractValueInclGst!)}
             </div>
           )}
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 10, paddingTop: 10, borderTop: "1px dashed #f8c9a0" }}>
-            <span style={{ fontSize: 12, color: "#5a6278" }}>Overall Discount on Contract Value (₹)</span>
-            <InputNumber
-              placeholder="0" value={discount} min={0} size="small"
-              style={{ width: 130 }}
-              onChange={v => onDiscountChange?.(v)}
+          <div className="flex items-center justify-between mt-2.5 pt-2.5 border-t border-dashed border-primary/20">
+            <span className="text-xs text-gray-500 dark:text-gray-400">Overall Discount on Contract Value (₹)</span>
+            <input
+              type="number" min="0" placeholder="0"
+              value={discount ?? ""}
+              onChange={e => onDiscountChange?.(e.target.value === "" ? null : Number(e.target.value))}
+              className="w-[130px] h-8 px-2.5 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0F172A] text-sm text-[#1A1A2E] dark:text-[#F1F5F9] focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
             />
           </div>
           {(discount || 0) > 0 && (
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10, paddingTop: 10, borderTop: "1px solid #f8c9a0" }}>
-              <span style={{ fontWeight: 700, color: "#1a1f2e" }}>Final Payable (after discount)</span>
-              <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#16a34a", fontSize: 16 }}>
+            <div className="flex justify-between items-center mt-2.5 pt-2.5 border-t border-primary/20">
+              <span className="font-bold text-[#1A1A2E] dark:text-[#F1F5F9]">Final Payable (after discount)</span>
+              <span className="font-mono font-bold text-base text-green-600 dark:text-green-400">
                 {fmt(Math.max(0, grandTotal - (discount || 0)))}
               </span>
             </div>

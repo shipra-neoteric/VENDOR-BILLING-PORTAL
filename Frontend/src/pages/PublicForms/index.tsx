@@ -2,9 +2,9 @@ import toast from "react-hot-toast";
 import { Copy, ExternalLink, FileText, Users, ClipboardList, GitCompare, BookOpen, PenTool, Link2, Share2 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import PageHeader from "../../ui/PageHeader";
-import Btn from "../../ui/Btn";
+import NxBtn from "../../ui/nexora/Btn";
 import Card from "../../ui/Card";
-import Badge from "../../ui/Badge";
+import NxBadge from "../../ui/nexora/Badge";
 
 interface PublicFormDef {
   key: string;
@@ -105,7 +105,7 @@ export default function PublicForms() {
                 >
                   <Icon className="w-5 h-5" />
                 </div>
-                <Badge color="green" small>● Live</Badge>
+                <NxBadge color="green">● Live</NxBadge>
               </div>
 
               <div className="font-bold text-[17px] text-[#1A1A2E] dark:text-[#F1F5F9] mb-1.5">{f.name}</div>
@@ -121,26 +121,28 @@ export default function PublicForms() {
               </div>
 
               {f.perRecord ? (
-                <Btn
+                <NxBtn
+                  color="primary"
                   label="Go to Quotation Comparison"
                   icon={ExternalLink}
                   className="w-full"
-                  style={{ background: f.color, borderColor: f.color }}
+                  style={{ backgroundColor: f.color }}
                   onClick={() => window.open(f.path, "_blank", "noopener,noreferrer")}
                 />
               ) : (
                 <div className="flex gap-2">
-                  <Btn
+                  <NxBtn
+                    color="primary"
                     label="Copy Link"
                     icon={Copy}
                     className="flex-[2_1_auto]"
-                    style={{ background: f.color, borderColor: f.color }}
+                    style={{ backgroundColor: f.color }}
                     onClick={() => copyLink(f.path)}
                   />
-                  <Btn
+                  <NxBtn
+                    color="secondary"
                     label="Open"
                     icon={ExternalLink}
-                    outline
                     className="flex-[1_1_auto]"
                     onClick={() => window.open(f.path, "_blank", "noopener,noreferrer")}
                   />

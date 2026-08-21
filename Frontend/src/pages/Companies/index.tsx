@@ -1,14 +1,12 @@
 import { useEffect, useState, useCallback } from "react";
 import toast from "react-hot-toast";
-import { Plus, Pencil, Trash2, RotateCw, Landmark } from "lucide-react";
+import { Plus, Pencil, Trash2, RotateCw, Landmark, Building2, CheckCircle2, Layers } from "lucide-react";
 import apiClient from "../../services/apiClient";
 import { useAuth } from "../../context/AuthContext";
 import PageHeader from "../../ui/PageHeader";
 import Btn from "../../ui/Btn";
 import Card from "../../ui/Card";
 import EmptyState from "../../ui/EmptyState";
-import KPICard from "../../ui/KPICard";
-import Badge from "../../ui/Badge";
 import Field from "../../ui/Field";
 import SField from "../../ui/SField";
 import { SearchFilter } from "../../ui/Filters";
@@ -16,6 +14,9 @@ import Modal from "../../ui/Modal";
 import ConfirmModal from "../../ui/ConfirmModal";
 import Spinner from "../../ui/Spinner";
 import Alert from "../../ui/Alert";
+import NxBtn from "../../ui/nexora/Btn";
+import NxBadge from "../../ui/nexora/Badge";
+import NxStatCard from "../../ui/nexora/StatCard";
 
 // ── Types ──────────────────────────────────────────────────────
 interface Company {
@@ -46,15 +47,6 @@ const COMPANY_TYPES = [
   "Other",
 ];
 
-const TYPE_COLORS: Record<string, string> = {
-  "Private Limited": "#2563eb",
-  "LLP":             "#7c3aed",
-  "Proprietorship":  "#16a85a",
-  "Partnership":     "#0d9488",
-  "Company":         "#f37916",
-  "Other":           "#6B7280",
-};
-
 const PALETTE = [
   "#2563eb","#7c3aed","#16a85a","#f37916","#0d9488","#e03b3b",
   "#0ea5e9","#d97706","#6366f1","#ec4899","#14b8a6","#84cc16",
@@ -83,6 +75,7 @@ export default function Companies() {
   const [loading, setLoading]         = useState(true);
   const [error, setError]             = useState("");
   const [search, setSearch]           = useState("");
+  const [quickFilter, setQuickFilter] = useState<"all" | "active" | "private-limited" | "other">("all");
   const [drawerOpen, setDrawerOpen]   = useState(false);
   const [editing, setEditing]         = useState<Company | null>(null);
   const [saving, setSaving]           = useState(false);
@@ -103,11 +96,21 @@ export default function Companies() {
   useEffect(() => { load(); }, [load]);
 
   const filtered = companies.filter(c =>
-    c.name.toLowerCase().includes(search.toLowerCase()) ||
-    c.shortCode.toLowerCase().includes(search.toLowerCase()) ||
-    (c.city ?? "").toLowerCase().includes(search.toLowerCase()) ||
-    (c.contactPerson ?? "").toLowerCase().includes(search.toLowerCase())
+    (c.name.toLowerCase().includes(search.toLowerCase()) ||
+      c.shortCode.toLowerCase().includes(search.toLowerCase()) ||
+      (c.city ?? "").toLowerCase().includes(search.toLowerCase()) ||
+      (c.contactPerson ?? "").toLowerCase().includes(search.toLowerCase())) &&
+    (quickFilter === "all" ||
+      (quickFilter === "active" && c.isActive) ||
+      (quickFilter === "private-limited" && c.type === "Private Limited") ||
+      (quickFilter === "other" && c.type !== "Private Limited"))
   );
+
+  const activeCount = companies.filter(c => c.isActive).length;
+  const privateLimitedCount = companies.filter(c => c.type === "Private Limited").length;
+  const otherTypeCount = companies.length - privateLimitedCount;
+  const hasActiveFilters = search !== "" || quickFilter !== "all";
+  const clearAllFilters = () => { setSearch(""); setQuickFilter("all"); };
 
   function openAdd() {
     setEditing(null);
@@ -176,36 +179,52 @@ export default function Companies() {
         subtitle="All entities under the Neoteric Group umbrella. Each project can be tagged to a company for billing and reporting."
         icon={Landmark}
         actions={
-          <>
-            <Btn outline icon={RotateCw} onClick={load} />
-            <Btn label="Add Company" icon={Plus} color="primary" onClick={openAdd} />
-          </>
+          <div className="flex items-center gap-2">
+            <NxBtn color="icon" icon={RotateCw} title="Refresh" onClick={load} />
+            <NxBtn label="Add Company" icon={Plus} color="primary" onClick={openAdd} />
+          </div>
         }
       />
 
       {/* Stats */}
-      <div className="flex gap-3 mb-6 flex-wrap">
-        <KPICard label="Total Companies" value={companies.length} accent="#FF7A00" />
-        <KPICard label="Active" value={companies.filter(c => c.isActive).length} accent="#16a85a" />
-        <KPICard label="Private Limited" value={companies.filter(c => c.type === "Private Limited").length} accent="#2563eb" />
-        <KPICard label="LLP / Other" value={companies.filter(c => c.type !== "Private Limited").length} accent="#7c3aed" />
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-5">
+        <NxStatCard
+          label="Total Companies" value={companies.length} icon={Building2}
+          active={quickFilter === "all"} onClick={() => setQuickFilter("all")}
+        />
+        <NxStatCard
+          label="Active" value={activeCount} icon={CheckCircle2}
+          active={quickFilter === "active"} onClick={() => setQuickFilter(quickFilter === "active" ? "all" : "active")}
+        />
+        <NxStatCard
+          label="Private Limited" value={privateLimitedCount} icon={Landmark}
+          active={quickFilter === "private-limited"} onClick={() => setQuickFilter(quickFilter === "private-limited" ? "all" : "private-limited")}
+        />
+        <NxStatCard
+          label="LLP / Other" value={otherTypeCount} icon={Layers}
+          active={quickFilter === "other"} onClick={() => setQuickFilter(quickFilter === "other" ? "all" : "other")}
+        />
       </div>
 
-      <div className="mb-5">
-        <SearchFilter value={search} onChange={setSearch} placeholder="Search by name, code, city, or contact…" />
+      <div className="bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700/40 rounded-lg p-3.5 mb-5">
+        <div className="flex gap-2.5 items-center flex-wrap">
+          <SearchFilter value={search} onChange={setSearch} placeholder="Search by name, code, city, or contact…" />
+          {hasActiveFilters && <Btn small outline label="Clear all" onClick={clearAllFilters} />}
+          <span className="ml-auto text-gray-400 text-xs whitespace-nowrap">
+            {filtered.length} compan{filtered.length !== 1 ? "ies" : "y"}
+          </span>
+        </div>
       </div>
 
       {/* Company cards */}
       {filtered.length === 0 ? (
-        <Card padded={false}>
-          <EmptyState
-            icon={Landmark}
-            title={search ? "No companies match your search" : "No companies yet"}
-            message={!search ? 'Click "Add Company" to get started.' : undefined}
-            actionLabel={!search ? "Add Company" : undefined}
-            onAction={!search ? openAdd : undefined}
-          />
-        </Card>
+        <EmptyState
+          icon={Landmark}
+          title={search || quickFilter !== "all" ? "No companies match your filters" : "No companies yet"}
+          message={!search && quickFilter === "all" ? 'Click "Add Company" to get started.' : undefined}
+          actionLabel={!search && quickFilter === "all" ? "Add Company" : undefined}
+          onAction={!search && quickFilter === "all" ? openAdd : undefined}
+        />
       ) : (
         <div className="grid gap-3.5 [grid-template-columns:repeat(auto-fill,minmax(320px,1fr))]">
           {filtered.map(co => (
@@ -214,28 +233,21 @@ export default function Companies() {
               <div className="flex items-start justify-between gap-2.5 mb-2.5">
                 <div className="flex-1 min-w-0">
                   <span
-                    className="inline-block font-mono font-bold text-[11px] px-2 py-0.5 rounded mb-1.5"
+                    className="inline-block font-bold text-[11px] px-2 py-0.5 rounded mb-1.5"
                     style={{ background: lighten(co.color), color: co.color }}
                   >
                     {co.shortCode}
                   </span>
-                  {!co.isActive && <Badge color="gray" small>Inactive</Badge>}
+                  {!co.isActive && <NxBadge color="red">Inactive</NxBadge>}
 
                   <div className="font-bold text-sm text-[#1A1A2E] dark:text-[#F1F5F9] leading-snug">{co.name}</div>
 
-                  <div className="mt-1">
-                    <span
-                      className="text-[11px] font-semibold px-1.5 py-0.5 rounded"
-                      style={{ background: `${TYPE_COLORS[co.type] ?? "#6B7280"}15`, color: TYPE_COLORS[co.type] ?? "#6B7280" }}
-                    >
-                      {co.type}
-                    </span>
-                  </div>
+                  <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">{co.type}</div>
                 </div>
 
                 <div className="flex gap-1 shrink-0">
-                  <Btn small outline icon={Pencil} onClick={() => openEdit(co)} />
-                  {isOwner && <Btn small color="red" icon={Trash2} onClick={() => setDeleteTarget(co)} />}
+                  <NxBtn color="icon" title="Edit Company" icon={Pencil} onClick={() => openEdit(co)} />
+                  {isOwner && <NxBtn color="icon" title="Delete Company" icon={Trash2} onClick={() => setDeleteTarget(co)} />}
                 </div>
               </div>
 
@@ -247,12 +259,12 @@ export default function Companies() {
                 {co.email && <div><span className="text-gray-400">Email: </span><span className="text-gray-700 dark:text-gray-300">{co.email}</span></div>}
                 {co.gstNumber && (
                   <div className="mt-0.5">
-                    <span className="font-mono bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700 rounded px-1.5 py-0.5 text-[11px]">GST: {co.gstNumber}</span>
+                    <span className="bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700 rounded px-1.5 py-0.5 text-[11px]">GST: {co.gstNumber}</span>
                   </div>
                 )}
                 {co.panNumber && (
                   <div>
-                    <span className="font-mono bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700 rounded px-1.5 py-0.5 text-[11px]">PAN: {co.panNumber}</span>
+                    <span className="bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700 rounded px-1.5 py-0.5 text-[11px]">PAN: {co.panNumber}</span>
                   </div>
                 )}
               </div>
@@ -278,7 +290,7 @@ export default function Companies() {
               value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
 
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Short Code" required maxLength={8} placeholder="e.g. GLR" className="uppercase font-mono"
+              <Field label="Short Code" required maxLength={8} placeholder="e.g. GLR" className="uppercase"
                 hint="A short abbreviation used in reports and badges (e.g. GLR, NPL)"
                 value={form.shortCode} onChange={e => setForm(f => ({ ...f, shortCode: e.target.value }))} />
               <SField label="Company Type" required value={form.type}
@@ -305,13 +317,13 @@ export default function Companies() {
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-              <Field label="GST Number" maxLength={15} placeholder="23ABCDE1234F1Z5" className="font-mono"
+              <Field label="GST Number" maxLength={15} placeholder="23ABCDE1234F1Z5"
                 value={form.gstNumber} onChange={e => setForm(f => ({ ...f, gstNumber: e.target.value }))} />
-              <Field label="PAN Number" maxLength={10} placeholder="ABCDE1234F" className="font-mono"
+              <Field label="PAN Number" maxLength={10} placeholder="ABCDE1234F"
                 value={form.panNumber} onChange={e => setForm(f => ({ ...f, panNumber: e.target.value }))} />
             </div>
 
-            <Field label="CIN / LLPIN" maxLength={21} placeholder="U74999MP2020PTC123456" className="font-mono"
+            <Field label="CIN / LLPIN" maxLength={21} placeholder="U74999MP2020PTC123456"
               hint="Company Identification Number or LLP Identification Number"
               value={form.cin} onChange={e => setForm(f => ({ ...f, cin: e.target.value }))} />
 

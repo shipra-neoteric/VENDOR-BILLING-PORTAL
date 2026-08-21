@@ -49,15 +49,17 @@ export default function AuditLogs() {
             <Card
               key={m.key}
               onClick={() => navigate(`/audit-logs/${m.key}`)}
-              className="cursor-pointer hover:shadow-lg transition-shadow"
+              className="cursor-pointer hover:shadow-lg transition-all duration-200"
             >
-              <div className="flex items-center gap-2 mb-1.5">
-                <Icon className="w-4 h-4 text-primary shrink-0" />
+              <div className="flex items-center gap-2.5 mb-1.5">
+                <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                  <Icon className="w-4 h-4 text-primary" />
+                </div>
                 <div className="font-bold text-[15px] text-[#1A1A2E] dark:text-[#F1F5F9] truncate">{m.label}</div>
               </div>
               <div className="text-xs text-gray-500 dark:text-gray-400 mb-3 line-clamp-2">{m.subtitle}</div>
-              <div className="flex items-center justify-between text-xs text-gray-400">
-                <span>{loading ? "…" : `${count} log${count !== 1 ? "s" : ""}`}</span>
+              <div className="flex items-center justify-between text-xs text-gray-400 dark:text-gray-500">
+                <span className="font-medium text-gray-600 dark:text-gray-300">{loading ? "…" : `${count} log${count !== 1 ? "s" : ""}`}</span>
                 {row?.lastActivityAt && <span>{dayjs(row.lastActivityAt).format("DD MMM, hh:mm a")}</span>}
               </div>
             </Card>

@@ -10,14 +10,17 @@ import { firstMissingProgressField, MIN_IMAGES_PER_CATEGORY } from "../../shared
 import type { DailyProgressReportFormValues, WorkEntry } from "../../shared/constants/dailyProgressReportOptions";
 import PageHeader from "../../ui/PageHeader";
 import Btn from "../../ui/Btn";
+import NxBtn from "../../ui/nexora/Btn";
 import Card from "../../ui/Card";
-import Badge from "../../ui/Badge";
+import NxBadge from "../../ui/nexora/Badge";
 import SField from "../../ui/SField";
 import { DatePicker } from "../../ui/DatePicker";
 import Field from "../../ui/Field";
 import Modal from "../../ui/Modal";
 import { SectionHeading } from "../../ui/Descriptions";
 import { Table, Thead, Tbody, Tr, Th, Td, TdText } from "../../ui/Table";
+import { usePagination } from "../../ui/usePagination";
+import Pagination from "../../ui/Pagination";
 import { SkeletonTable } from "../../ui/Skeleton";
 
 interface ProjectOption { _id: string; name: string; }
@@ -46,6 +49,7 @@ export default function DailyProgressReport() {
   const [showForm, setShowForm]       = useState(false);
   const [viewReport, setViewReport]   = useState<ProgressReportRow | null>(null);
   const [form, setForm] = useState(emptyForm);
+  const pager = usePagination(reports, 10);
 
   const load = () => {
     setLoading(true);
@@ -110,7 +114,7 @@ export default function DailyProgressReport() {
         actions={
           <>
             <DrawingRequestButton projectId={form.projectId} projectOptions={projectOptions} driName={form.driName} />
-            <Btn label="New Report" icon={Plus} color="primary" onClick={openNew} />
+            <NxBtn color="primary" label="New Report" icon={Plus} onClick={openNew} />
           </>
         }
       />
@@ -124,34 +128,41 @@ export default function DailyProgressReport() {
         ) : reports.length === 0 ? (
           <div className="py-12 text-center text-gray-400">No reports submitted yet</div>
         ) : (
-          <Table>
-            <Thead>
-              <Tr>
-                <Th>Date</Th>
-                <Th>Project</Th>
-                <Th>Contractor</Th>
-                <Th>DRI</Th>
-                <Th>Shift</Th>
-                <Th className="text-right">Labourers</Th>
-                <Th>Categories</Th>
-                <Th></Th>
-              </Tr>
-            </Thead>
-            <Tbody>
-              {reports.map(r => (
-                <Tr key={r._id}>
-                  <Td><TdText>{dayjs(r.date).format("DD MMM YYYY")}</TdText></Td>
-                  <Td><TdText>{r.projectName}</TdText></Td>
-                  <Td><TdText>{r.vendorName}</TdText></Td>
-                  <Td><TdText>{r.driName}</TdText></Td>
-                  <Td><TdText>{r.shiftType}</TdText></Td>
-                  <Td className="text-right"><TdText>{r.labourCount}</TdText></Td>
-                  <Td><Badge color="blue" small>{r.workEntries.length} categor{r.workEntries.length === 1 ? "y" : "ies"}</Badge></Td>
-                  <Td><Btn small outline icon={Eye} onClick={() => setViewReport(r)} /></Td>
+          <>
+            <Table>
+              <Thead>
+                <Tr>
+                  <Th>Date</Th>
+                  <Th>Project</Th>
+                  <Th>Contractor</Th>
+                  <Th>DRI</Th>
+                  <Th>Shift</Th>
+                  <Th className="text-right">Labourers</Th>
+                  <Th>Categories</Th>
+                  <Th></Th>
                 </Tr>
-              ))}
-            </Tbody>
-          </Table>
+              </Thead>
+              <Tbody>
+                {pager.pageItems.map(r => (
+                  <Tr key={r._id}>
+                    <Td><TdText>{dayjs(r.date).format("DD MMM YYYY")}</TdText></Td>
+                    <Td><TdText>{r.projectName}</TdText></Td>
+                    <Td><TdText>{r.vendorName}</TdText></Td>
+                    <Td><TdText>{r.driName}</TdText></Td>
+                    <Td><TdText>{r.shiftType}</TdText></Td>
+                    <Td className="text-right"><TdText>{r.labourCount}</TdText></Td>
+                    <Td><NxBadge color="blue">{r.workEntries.length} categor{r.workEntries.length === 1 ? "y" : "ies"}</NxBadge></Td>
+                    <Td><NxBtn color="icon" title="View" icon={Eye} onClick={() => setViewReport(r)} /></Td>
+                  </Tr>
+                ))}
+              </Tbody>
+            </Table>
+            {pager.totalPages > 1 && (
+              <div className="px-5 py-3.5 border-t border-gray-100 dark:border-gray-700/40">
+                <Pagination page={pager.page} totalPages={pager.totalPages} onChange={pager.setPage} />
+              </div>
+            )}
+          </>
         )}
       </Card>
 

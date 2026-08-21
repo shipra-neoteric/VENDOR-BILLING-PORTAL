@@ -1,6 +1,6 @@
 import { Fragment, useState, useEffect, useMemo } from "react";
 import toast from "react-hot-toast";
-import { HardHat, ClipboardList, TrendingUp, CheckCircle2, Layers, Lock, Pin, ArrowLeft } from "lucide-react";
+import { HardHat, ClipboardList, TrendingUp, CheckCircle2, Layers, Lock, Pin, ArrowLeft, Users, Briefcase, Clock, FileText } from "lucide-react";
 import dayjs from "dayjs";
 import isoWeek from "dayjs/plugin/isoWeek";
 import apiClient from "../../services/apiClient";
@@ -15,11 +15,14 @@ import Btn from "../../ui/Btn";
 import UIBadge from "../../ui/Badge";
 import Spinner from "../../ui/Spinner";
 import EmptyState from "../../ui/EmptyState";
-import KPICard from "../../ui/KPICard";
 import Card from "../../ui/Card";
 import Modal from "../../ui/Modal";
 import ConfirmModal from "../../ui/ConfirmModal";
 import { Table, Thead, Tbody, Tr, Th, Td, TdText } from "../../ui/Table";
+import PageHeader from "../../ui/PageHeader";
+import NxBadge from "../../ui/nexora/Badge";
+import NxBtn from "../../ui/nexora/Btn";
+import NxStatCard from "../../ui/nexora/StatCard";
 
 dayjs.extend(isoWeek);
 
@@ -80,6 +83,20 @@ const pctOf = (c: number, p: number) => p > 0 ? Math.min(100, Math.round(((c ?? 
 
 const BR_STATUS_COLOR: Record<string, string> = { pending: "#f59e0b", approved: "#16a34a", rejected: "#ef4444" };
 const BR_STATUS_LABEL: Record<string, string> = { pending: "Pending Review", approved: "Approved", rejected: "Rejected" };
+// NxBadge color + light/dark-aware "Stage N" box classes for the same three
+// statuses, used by both the admin and DRI billing-stage lists in place of
+// the old inline hex-styled pill (which had no dark-mode variant).
+const BR_STATUS_NX_COLOR: Record<string, "amber" | "green" | "red"> = { pending: "amber", approved: "green", rejected: "red" };
+const STAGE_BOX_CLS: Record<string, string> = {
+  pending:  "border-amber-500 bg-amber-50 dark:bg-amber-500/10",
+  approved: "border-emerald-600 bg-emerald-50 dark:bg-emerald-500/10",
+  rejected: "border-red-600 bg-red-50 dark:bg-red-500/10",
+};
+const STAGE_TEXT_CLS: Record<string, string> = {
+  pending:  "text-amber-600 dark:text-amber-400",
+  approved: "text-emerald-600 dark:text-emerald-400",
+  rejected: "text-red-600 dark:text-red-400",
+};
 
 function getProjId(wo: WOSummary): string | undefined {
   if (!wo.projectId) return undefined;
@@ -123,7 +140,7 @@ function EntryActions({
     const title = `Invalidated${who ? ` by ${who}` : ""}${e.invalidated.at ? ` on ${dayjs(e.invalidated.at).format("DD MMM YYYY")}` : ""}${e.invalidated.reason ? ` — ${e.invalidated.reason}` : ""}`;
     return (
       <span title={title}>
-        <UIBadge color="red" small>Invalidated</UIBadge>
+        <NxBadge color="red">Invalidated</NxBadge>
       </span>
     );
   }
@@ -232,10 +249,11 @@ function WorkProgressAdmin() {
 
   return (
     <div className="pb-10">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-[#1A1A2E] dark:text-[#F1F5F9]">Construction Progress</h1>
-        <p className="text-gray-500 dark:text-gray-400 mt-1">Track DRI-reported progress, billing stages, and milestone payments.</p>
-      </div>
+      <PageHeader
+        icon={ClipboardList}
+        title="Construction Progress"
+        subtitle="Track DRI-reported progress, billing stages, and milestone payments."
+      />
 
       <Card className="mb-6 flex gap-3 flex-wrap items-end">
         <div className="flex-1 min-w-[180px]">
@@ -262,7 +280,7 @@ function WorkProgressAdmin() {
             options={workOrderOptions}
           />
         </div>
-        <Btn color="primary" label="Load Progress" onClick={loadProgress} />
+        <NxBtn color="primary" label="Load Progress" onClick={loadProgress} />
       </Card>
 
       {loading ? (
@@ -291,18 +309,18 @@ function WorkProgressAdmin() {
         )
       ) : woDetail ? (
         <>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-5">
             {(() => {
               const si = woDetail.scopeItems;
               const avgPct = si.length ? Math.round(si.reduce((s, x) => s + pctOf(x.completedQty, x.plannedQty), 0) / si.length) : 0;
               const billedAmt = si.reduce((s, x) => s + (x.lastBilledQty || 0) * (x.rate || 0), 0);
               return [
-                { label: "Contract Value", value: fmt(woDetail.contractValue ?? 0), accent: "#6B7280", icon: ClipboardList },
-                { label: "Progress", value: `${avgPct}%`, accent: avgPct >= 100 ? "#16a34a" : "#FF7A00", icon: TrendingUp },
-                { label: "Billed", value: fmt(billedAmt), accent: "#3b82f6", icon: CheckCircle2 },
-                { label: "Stages", value: String(billReqs.length), accent: "#FF7A00", icon: Layers },
-              ].map(({ label, value, accent, icon }) => (
-                <KPICard key={label} label={label} value={value} accent={accent} icon={icon} />
+                { label: "Contract Value", value: fmt(woDetail.contractValue ?? 0), icon: ClipboardList },
+                { label: "Progress", value: `${avgPct}%`, icon: TrendingUp },
+                { label: "Billed", value: fmt(billedAmt), icon: CheckCircle2 },
+                { label: "Stages", value: String(billReqs.length), icon: Layers },
+              ].map(({ label, value, icon }) => (
+                <NxStatCard key={label} label={label} value={value} icon={icon} />
               ));
             })()}
           </div>
@@ -392,7 +410,7 @@ function WorkProgressAdmin() {
                       <Td className="whitespace-nowrap">
                         <span className="inline-flex items-center gap-1.5">
                           <TdText>{dayjs(e.date).format("DD MMM YYYY")}</TdText>
-                          {dayjs(e.date).format("YYYY-MM-DD") === todayStr && <UIBadge color="blue" small>Today</UIBadge>}
+                          {dayjs(e.date).format("YYYY-MM-DD") === todayStr && <NxBadge color="blue">Today</NxBadge>}
                         </span>
                       </Td>
                       <Td><span className="font-medium text-[#1A1A2E] dark:text-[#F1F5F9]">{e.description}</span></Td>
@@ -411,22 +429,18 @@ function WorkProgressAdmin() {
               <div className="px-5 py-3.5 border-b border-gray-200 dark:border-gray-700/40 font-bold text-[15px] text-[#1A1A2E] dark:text-[#F1F5F9]">Billing Stages</div>
               <div className="divide-y divide-gray-100 dark:divide-gray-700/40">
                 {billReqs.map(br => {
-                  const color = BR_STATUS_COLOR[br.status] ?? "#9CA3AF";
+                  const boxCls = STAGE_BOX_CLS[br.status] ?? "border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/40";
+                  const textCls = STAGE_TEXT_CLS[br.status] ?? "text-gray-500 dark:text-gray-400";
                   return (
                     <div key={br._id} className="px-5 py-4 flex gap-3.5 items-start">
-                      <div
-                        className="rounded-lg text-center shrink-0"
-                        style={{ background: br.status === "approved" ? "#f0fdf4" : "#FFFBEB", border: `2px solid ${color}`, padding: "8px 12px", minWidth: 64 }}
-                      >
+                      <div className={`rounded-lg text-center shrink-0 border-2 px-3 py-2 min-w-[64px] ${boxCls}`}>
                         <div className="text-[9px] font-bold text-gray-400 dark:text-gray-500 uppercase">Stage</div>
-                        <div className="text-xl font-extrabold" style={{ color }}>{br.stageNo ?? 1}</div>
+                        <div className={`text-xl font-extrabold ${textCls}`}>{br.stageNo ?? 1}</div>
                       </div>
                       <div className="flex-1">
                         <div className="flex gap-2 items-center mb-1 flex-wrap">
-                          <span className="font-bold font-mono text-[#1A1A2E] dark:text-[#F1F5F9]">{br.reqNo}</span>
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full text-white" style={{ background: color }}>
-                            {BR_STATUS_LABEL[br.status] ?? br.status}
-                          </span>
+                          <span className="font-bold text-[#1A1A2E] dark:text-[#F1F5F9]">{br.reqNo}</span>
+                          <NxBadge color={BR_STATUS_NX_COLOR[br.status] ?? "gray"}>{BR_STATUS_LABEL[br.status] ?? br.status}</NxBadge>
                         </div>
                         <div className="text-[11px] text-gray-400 dark:text-gray-500">
                           {br.items.map(it => `${it.description}: ${fmtN(it.billedQty)} ${it.unit}`).join(" · ")}
@@ -820,8 +834,8 @@ function DRIDashboard() {
       {/* Header */}
       <div className="flex justify-between items-start mb-6 flex-wrap gap-3">
         <div className="flex items-center gap-3.5">
-          <Btn
-            outline icon={ArrowLeft} label="All Projects"
+          <NxBtn
+            color="secondary" icon={ArrowLeft} label="All Projects"
             onClick={() => { setView("select-project"); setSelProjectId(undefined); setSelProjectName(undefined); setWoDetails(new Map()); setProjectBillReqs([]); setDriSearch(""); }}
           />
           <div>
@@ -842,24 +856,21 @@ function DRIDashboard() {
       </div>
 
       {/* Search bar */}
-      <div className="mb-4">
+      <div className="bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700/40 rounded-lg p-3.5 mb-4">
         <SearchFilter placeholder="Search by vendor name, vendor code or work order no…" value={driSearch} onChange={setDriSearch} />
       </div>
 
       {/* Summary stats */}
       {!woDetailsLoading && (
-        <div className="grid gap-3 mb-6" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))" }}>
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 sm:gap-4 mb-5">
           {[
-            { label: "Contractors",    value: String(vendorGroups.length),                 color: "#FF7A00" },
-            { label: "Work Orders",    value: String(projectWOs.length),                   color: "#2563eb" },
-            { label: "Pending Items",  value: String(pendingWODetails.reduce((s, d) => s + d.scopeItems.filter(si => Math.max(0, (si.completedQty || 0) - (si.lastBilledQty || 0)) > 0).length, 0)), color: pendingWODetails.length > 0 ? "#FF7A00" : "#16a34a" },
-            { label: "Bill Requests",  value: String(projectBillReqs.length),              color: "#7c3aed" },
-            { label: "Approved",       value: String(projectBillReqs.filter(b => b.status === "approved").length), color: "#16a34a" },
+            { label: "Contractors",   value: vendorGroups.length,   icon: Users },
+            { label: "Work Orders",   value: projectWOs.length,     icon: Briefcase },
+            { label: "Pending Items", value: pendingWODetails.reduce((s, d) => s + d.scopeItems.filter(si => Math.max(0, (si.completedQty || 0) - (si.lastBilledQty || 0)) > 0).length, 0), icon: Clock },
+            { label: "Bill Requests", value: projectBillReqs.length, icon: FileText },
+            { label: "Approved",      value: projectBillReqs.filter(b => b.status === "approved").length, icon: CheckCircle2 },
           ].map(s => (
-            <div key={s.label} className="bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700/40 rounded-lg px-4.5 py-3.5">
-              <div className="text-[10px] text-gray-400 uppercase tracking-wide mb-1">{s.label}</div>
-              <div className="text-[22px] font-extrabold font-mono" style={{ color: s.color }}>{s.value}</div>
-            </div>
+            <NxStatCard key={s.label} label={s.label} value={s.value} icon={s.icon} />
           ))}
         </div>
       )}
@@ -880,7 +891,7 @@ function DRIDashboard() {
                 <div>
                   <div className="text-white font-bold text-base">👷 {vg.vendorName}</div>
                   <div className="text-gray-400 text-xs mt-0.5">
-                    <span className="font-mono text-primary">{vg.vendorCode}</span> · {vg.wos.length} work order{vg.wos.length !== 1 ? "s" : ""}
+                    <span className="text-primary">{vg.vendorCode}</span> · {vg.wos.length} work order{vg.wos.length !== 1 ? "s" : ""}
                   </div>
                 </div>
               </div>
@@ -895,9 +906,9 @@ function DRIDashboard() {
                     {/* WO sub-header */}
                     <div className="px-5 py-3 bg-gray-50 dark:bg-gray-800/40 border-b border-gray-200 dark:border-gray-700/40 flex justify-between items-center">
                       <div className="flex gap-2.5 items-center flex-wrap">
-                        <span className="font-mono font-bold text-primary text-[13px]">{woSum.workOrderNo}</span>
-                        {woSum.category && <UIBadge color="gray" small>{woSum.category}</UIBadge>}
-                        {pendingBR && <UIBadge color="amber" small>⏳ {pendingBR.reqNo} pending</UIBadge>}
+                        <span className="font-bold text-primary text-[13px]">{woSum.workOrderNo}</span>
+                        {woSum.category && <NxBadge color="gray">{woSum.category}</NxBadge>}
+                        {pendingBR && <NxBadge color="amber">⏳ {pendingBR.reqNo} pending</NxBadge>}
                       </div>
                       {detail && (() => {
                         const avgPct = Math.round(detail.scopeItems.reduce((s, si) => s + pctOf(si.completedQty, si.plannedQty), 0) / (detail.scopeItems.length || 1));
@@ -963,7 +974,7 @@ function DRIDashboard() {
                                   </Td>
                                   <Td>
                                     {!hasSubItems && (
-                                      <Btn small color="primary" label="+ Progress" onClick={() => openAddProgress(woSum._id, si, null)} />
+                                      <NxBtn color="primary" label="+ Progress" onClick={() => openAddProgress(woSum._id, si, null)} />
                                     )}
                                   </Td>
                                 </Tr>
@@ -996,7 +1007,7 @@ function DRIDashboard() {
                                         </div>
                                       </Td>
                                       <Td>
-                                        <Btn small color="primary" label="+ Progress" onClick={() => openAddProgress(woSum._id, si, sub)} />
+                                        <NxBtn color="primary" label="+ Progress" onClick={() => openAddProgress(woSum._id, si, sub)} />
                                       </Td>
                                     </Tr>
                                   );
@@ -1037,7 +1048,7 @@ function DRIDashboard() {
                               <div key={e._id + i} className="flex gap-3 items-center text-xs" style={{ opacity: e.invalidated?.done ? 0.55 : 1 }}>
                                 <span className="text-gray-400 min-w-[90px] whitespace-nowrap flex items-center gap-1">
                                   {dayjs(e.date).format("DD MMM")}
-                                  {dayjs(e.date).format("YYYY-MM-DD") === todayStr && <UIBadge color="blue" small>Today</UIBadge>}
+                                  {dayjs(e.date).format("YYYY-MM-DD") === todayStr && <NxBadge color="blue">Today</NxBadge>}
                                 </span>
                                 <span className={`font-semibold text-[#1A1A2E] dark:text-[#F1F5F9] flex-1 ${e.invalidated?.done ? "line-through" : ""}`}>
                                   {e.description}
@@ -1096,7 +1107,8 @@ function DRIDashboard() {
             const statusCounts = { pending: 0, approved: 0, rejected: 0 };
             group.items.forEach(br => { if (br.status in statusCounts) (statusCounts as any)[br.status]++; });
             const overallStatus = statusCounts.rejected > 0 ? "rejected" : statusCounts.pending > 0 ? "pending" : "approved";
-            const color = BR_STATUS_COLOR[overallStatus];
+            const boxCls = STAGE_BOX_CLS[overallStatus] ?? "border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/40";
+            const textCls = STAGE_TEXT_CLS[overallStatus] ?? "text-gray-500 dark:text-gray-400";
 
             return (
               <div key={gi} className="px-5 py-4 border-b border-gray-200 dark:border-gray-700/40">
@@ -1108,27 +1120,22 @@ function DRIDashboard() {
                       <div className="text-[13px] font-extrabold text-primary">{group.items.length}</div>
                     </div>
                   ) : (
-                    <div
-                      className="rounded-lg text-center shrink-0"
-                      style={{ background: overallStatus === "approved" ? "#f0fdf4" : "#FFFBEB", border: `2px solid ${color}`, padding: "8px 12px", minWidth: 60 }}
-                    >
+                    <div className={`rounded-lg text-center shrink-0 border-2 px-3 py-2 min-w-[60px] ${boxCls}`}>
                       <div className="text-[9px] font-bold text-gray-400 uppercase">Stage</div>
-                      <div className="text-lg font-extrabold" style={{ color }}>{firstBR.stageNo ?? 1}</div>
+                      <div className={`text-lg font-extrabold ${textCls}`}>{firstBR.stageNo ?? 1}</div>
                     </div>
                   )}
 
                   <div className="flex-1">
                     <div className="flex gap-2 items-center mb-1 flex-wrap">
                       {isBatch ? (
-                        <span className="font-bold font-mono text-[13px] text-[#1A1A2E] dark:text-[#F1F5F9]">
+                        <span className="font-bold text-[13px] text-[#1A1A2E] dark:text-[#F1F5F9]">
                           {group.items.map(b => b.reqNo).join(", ")}
                         </span>
                       ) : (
-                        <span className="font-bold font-mono text-[13px] text-[#1A1A2E] dark:text-[#F1F5F9]">{firstBR.reqNo}</span>
+                        <span className="font-bold text-[13px] text-[#1A1A2E] dark:text-[#F1F5F9]">{firstBR.reqNo}</span>
                       )}
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full text-white uppercase" style={{ background: color }}>
-                        {BR_STATUS_LABEL[overallStatus] ?? overallStatus}
-                      </span>
+                      <NxBadge color={BR_STATUS_NX_COLOR[overallStatus] ?? "gray"}>{BR_STATUS_LABEL[overallStatus] ?? overallStatus}</NxBadge>
                     </div>
 
                     {isBatch && (

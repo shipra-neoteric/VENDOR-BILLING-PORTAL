@@ -5,13 +5,22 @@ import { Plus, Pencil, Trash2, Clock } from "lucide-react";
 import apiClient from "../../services/apiClient";
 import type { WorkflowTemplate } from "../../types/Workflow";
 import PageHeader from "../../ui/PageHeader";
-import Btn from "../../ui/Btn";
+import NxBtn from "../../ui/nexora/Btn";
+import NxBadge from "../../ui/nexora/Badge";
+import type { NxBadgeColor } from "../../ui/nexora/Badge";
 import Card from "../../ui/Card";
-import Badge from "../../ui/Badge";
+import EmptyState from "../../ui/EmptyState";
 import Switch from "../../ui/Switch";
 import Spinner from "../../ui/Spinner";
 import Alert from "../../ui/Alert";
 import ConfirmModal from "../../ui/ConfirmModal";
+
+// NxBadge (see ui/nexora/Badge.tsx) has no "purple", so BillRequest maps onto
+// the closest allowed Nexora color instead.
+const ENTITY_BADGE_COLOR: Record<string, NxBadgeColor> = {
+  WorkOrder: "blue",
+  BillRequest: "indigo",
+};
 
 export default function SlaSettings() {
   const navigate = useNavigate();
@@ -68,14 +77,12 @@ export default function SlaSettings() {
         title="SLA Settings"
         subtitle="Define multi-stage approval workflows with per-stage SLA timers, so real approvals in your system are tracked and timed automatically."
         icon={Clock}
-        actions={<Btn label="New Workflow" icon={Plus} color="primary" onClick={() => navigate("/sla-settings/new")} />}
+        actions={<NxBtn label="New Workflow" icon={Plus} color="primary" onClick={() => navigate("/sla-settings/new")} />}
       />
 
       {templates.length === 0 ? (
-        <Card className="text-center py-14 text-gray-400">
-          <Clock className="w-9 h-9 mx-auto mb-3" />
-          <div className="font-bold text-gray-600 dark:text-gray-300">No SLA workflows yet</div>
-          <div className="text-sm mt-1">Click "New Workflow" to define your first approval chain.</div>
+        <Card padded={false}>
+          <EmptyState icon={Clock} title="No SLA workflows yet" message='Click "New Workflow" to define your first approval chain.' />
         </Card>
       ) : (
         <div className="flex flex-col gap-3">
@@ -89,24 +96,28 @@ export default function SlaSettings() {
                 <div>
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-bold text-[15px] text-[#1A1A2E] dark:text-[#F1F5F9]">{t.name}</span>
-                    <Badge color={t.entityType === "WorkOrder" ? "blue" : t.entityType === "BillRequest" ? "purple" : "gray"}>
+                    <NxBadge color={ENTITY_BADGE_COLOR[t.entityType] || "gray"}>
                       {t.entityType}
-                    </Badge>
-                    <Badge color="gray">{t.stages.length} stage{t.stages.length !== 1 ? "s" : ""}</Badge>
+                    </NxBadge>
+                    <NxBadge color="gray">{t.stages.length} stage{t.stages.length !== 1 ? "s" : ""}</NxBadge>
                   </div>
                   {t.description && <div className="text-sm text-gray-500 dark:text-gray-400 mt-1">{t.description}</div>}
                   <div className="flex gap-1.5 flex-wrap mt-2">
                     {t.stages.map(s => (
-                      <Badge key={s.name + s.order} color="gray" small>
+                      <NxBadge key={s.name + s.order} color="gray">
                         {s.name} · {s.slaHours}h{s.assignedRole !== "any" ? ` · ${s.assignedRole}` : ""}
-                      </Badge>
+                      </NxBadge>
                     ))}
                   </div>
                 </div>
                 <div onClick={e => e.stopPropagation()} className="flex items-center gap-2.5 shrink-0">
                   <Switch checked={t.isActive} onLabel="Active" offLabel="Inactive" onChange={v => toggleActive(t, v)} />
-                  <Btn small outline icon={Pencil} label="Edit" onClick={() => navigate(`/sla-settings/${t._id}`)} />
-                  <Btn small color="red" icon={Trash2} onClick={() => setDeleteTarget(t)} />
+                  <NxBtn color="icon" title="Edit" icon={Pencil} onClick={() => navigate(`/sla-settings/${t._id}`)} />
+                  <NxBtn
+                    color="icon" title="Delete" icon={Trash2}
+                    className="text-red-500! hover:text-red-600! hover:bg-red-50! dark:hover:bg-red-500/10!"
+                    onClick={() => setDeleteTarget(t)}
+                  />
                 </div>
               </div>
             </Card>

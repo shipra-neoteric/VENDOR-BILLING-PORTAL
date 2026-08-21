@@ -6,18 +6,23 @@ import {
 import apiClient from "../../services/apiClient";
 import { useAuth } from "../../context/AuthContext";
 import { useFormErrors } from "../../hooks/useFormErrors";
-import { SearchFilter, SelectFilter } from "../../ui/Filters";
+import { SearchFilter, DropdownSelectFilter } from "../../ui/Filters";
 import PageHeader from "../../ui/PageHeader";
 import Btn from "../../ui/Btn";
+import NxBtn from "../../ui/nexora/Btn";
+import NxBadge from "../../ui/nexora/Badge";
+import type { NxBadgeColor } from "../../ui/nexora/Badge";
+import NxStatCard from "../../ui/nexora/StatCard";
 import Field from "../../ui/Field";
 import SField from "../../ui/SField";
 import UISwitch from "../../ui/Switch";
 import Modal from "../../ui/Modal";
 import ConfirmModal from "../../ui/ConfirmModal";
-import StatCard from "../../ui/StatCard";
 import Card from "../../ui/Card";
 import Badge from "../../ui/Badge";
 import EmptyState from "../../ui/EmptyState";
+import DropdownMenu from "../../ui/DropdownMenu";
+import type { DropdownMenuItem } from "../../ui/DropdownMenu";
 import { Descriptions, DescItem } from "../../ui/Descriptions";
 import { Table, Thead, Tbody, Tr, Th, Td } from "../../ui/Table";
 import { usePagination } from "../../ui/usePagination";
@@ -133,6 +138,19 @@ const ROLE_OPTIONS = Object.entries(ROLE_CFG).map(([value, { label, description 
   label,
   description,
 }));
+
+// NxBadge's palette (see ui/nexora/Badge.tsx) doesn't include "purple", so this
+// maps each role onto the closest allowed Nexora badge color for the list-view
+// pills below — ROLE_CFG itself (and its "purple" for gm) stays untouched since
+// the create/edit modal's own role picker still renders through the old Badge.
+const NX_ROLE_COLOR: Record<UserRole, NxBadgeColor> = {
+  owner: "red",
+  gm: "indigo",
+  agm: "amber",
+  accounts: "teal",
+  "process-coordinator": "blue",
+  "site-dri": "orange",
+};
 
 const AVATAR_COLORS: Record<UserRole, string> = {
   owner:      "#f37916",
@@ -443,18 +461,18 @@ export default function UserManagement() {
         icon={Users}
         title="User Management"
         subtitle="Manage team members, roles, and access levels"
-        actions={<Btn color="primary" icon={Plus} label="Add User" onClick={openCreate} />}
+        actions={<NxBtn color="primary" icon={Plus} label="Add User" onClick={openCreate} />}
       />
 
       {/* ── Stats ── */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5 mb-5">
-        <StatCard label="Total Users" value={stats.total} icon={Users} active={activeFilter === "all"} onClick={() => setActiveFilter("all")} />
-        <StatCard
-          label="Active" value={stats.active} icon={CheckCircle2} iconColorClass="text-emerald-500"
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-5">
+        <NxStatCard label="Total Users" value={stats.total} icon={Users} active={activeFilter === "all"} onClick={() => setActiveFilter("all")} />
+        <NxStatCard
+          label="Active" value={stats.active} icon={CheckCircle2}
           active={activeFilter === "active"} onClick={() => setActiveFilter(activeFilter === "active" ? "all" : "active")}
         />
-        <StatCard
-          label="Inactive" value={stats.inactive} icon={Ban} iconColorClass="text-red-500"
+        <NxStatCard
+          label="Inactive" value={stats.inactive} icon={Ban}
           active={activeFilter === "inactive"} onClick={() => setActiveFilter(activeFilter === "inactive" ? "all" : "inactive")}
         />
         <Card>
@@ -467,7 +485,7 @@ export default function UserManagement() {
                 onClick={() => setRoleFilter(roleFilter === r.value ? "all" : r.value)}
                 className={roleFilter === r.value ? "ring-2 ring-primary rounded-full" : ""}
               >
-                <Badge color={ROLE_CFG[r.value]?.color}>{r.label.split(" ")[0]} · {r.count}</Badge>
+                <NxBadge color={NX_ROLE_COLOR[r.value]}>{r.label.split(" ")[0]} · {r.count}</NxBadge>
               </button>
             ))}
           </div>
@@ -477,7 +495,7 @@ export default function UserManagement() {
       {/* ── Filters ── */}
       <div className="flex gap-2.5 flex-wrap items-center mb-3.5">
         <SearchFilter placeholder="Search by name or email…" value={search} onChange={setSearch} />
-        <SelectFilter
+        <DropdownSelectFilter
           value={roleFilter}
           onChange={setRoleFilter}
           placeholder="All Roles"
@@ -506,39 +524,44 @@ export default function UserManagement() {
               </Tr>
             </Thead>
             <Tbody>
-              {pagedUsers.map((u) => (
-                <Tr key={u._id} className={!u.isActive ? "opacity-50" : ""}>
-                  <Td>
-                    <div className="flex items-center gap-3">
-                      <span
-                        className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0"
-                        style={{ background: AVATAR_COLORS[u.role] || "#9ba3b8" }}
-                      >
-                        {initials(u.name)}
-                      </span>
-                      <div>
-                        <div className="font-bold text-[15px] text-[#1A1A2E] dark:text-[#F1F5F9]">
-                          {u.name}
-                          {myId === u._id && <span className="ml-2 align-middle"><Badge color="orange" small>You</Badge></span>}
+              {pagedUsers.map((u) => {
+                const menuItems: DropdownMenuItem[] = [
+                  ...(myId !== u._id && u.isActive
+                    ? [{ key: "disable", label: "Disable", icon: Ban, danger: true, onClick: () => setDeactivateTarget(u) }]
+                    : []),
+                ];
+                return (
+                  <Tr key={u._id} className={!u.isActive ? "opacity-50" : ""}>
+                    <Td>
+                      <div className="flex items-center gap-3">
+                        <span
+                          className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0"
+                          style={{ background: AVATAR_COLORS[u.role] || "#9ba3b8" }}
+                        >
+                          {initials(u.name)}
+                        </span>
+                        <div>
+                          <div className="font-bold text-[15px] text-[#1A1A2E] dark:text-[#F1F5F9]">
+                            {u.name}
+                            {myId === u._id && <span className="ml-2 align-middle"><NxBadge color="orange">You</NxBadge></span>}
+                          </div>
+                          <div className="text-[13px] text-gray-400 mt-0.5">{u.email}</div>
                         </div>
-                        <div className="text-[13px] text-gray-400 mt-0.5">{u.email}</div>
                       </div>
-                    </div>
-                  </Td>
-                  <Td><Badge color={ROLE_CFG[u.role]?.color || "gray"}>{ROLE_CFG[u.role]?.label || u.role}</Badge></Td>
-                  <Td><UISwitch checked={u.isActive} onChange={() => handleToggleActive(u)} onLabel="Active" offLabel="Inactive" /></Td>
-                  <Td className="text-[13px] text-gray-400">{dayjs(u.createdAt).format("DD MMM YYYY")}</Td>
-                  <Td>
-                    <div className="flex items-center gap-1 flex-wrap">
-                      <Btn small outline icon={Pencil} label="Edit" onClick={() => openEdit(u)} />
-                      <Btn small outline icon={KeyRound} label="Password" onClick={() => openPassword(u)} />
-                      {myId !== u._id && u.isActive && (
-                        <Btn small color="red" icon={Ban} label="Disable" onClick={() => setDeactivateTarget(u)} />
-                      )}
-                    </div>
-                  </Td>
-                </Tr>
-              ))}
+                    </Td>
+                    <Td><NxBadge color={NX_ROLE_COLOR[u.role] || "gray"}>{ROLE_CFG[u.role]?.label || u.role}</NxBadge></Td>
+                    <Td><UISwitch checked={u.isActive} onChange={() => handleToggleActive(u)} onLabel="Active" offLabel="Inactive" /></Td>
+                    <Td className="text-[13px] text-gray-400">{dayjs(u.createdAt).format("DD MMM YYYY")}</Td>
+                    <Td>
+                      <div className="flex items-center gap-1">
+                        <NxBtn color="icon" title="Edit" icon={Pencil} onClick={() => openEdit(u)} />
+                        <NxBtn color="icon" title="Change Password" icon={KeyRound} onClick={() => openPassword(u)} />
+                        {menuItems.length > 0 && <DropdownMenu items={menuItems} />}
+                      </div>
+                    </Td>
+                  </Tr>
+                );
+              })}
             </Tbody>
           </Table>
           {totalPages > 1 && <div className="mt-4"><Pagination page={page} totalPages={totalPages} onChange={setPage} /></div>}

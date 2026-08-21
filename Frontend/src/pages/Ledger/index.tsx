@@ -1,19 +1,26 @@
 import { useEffect, useState, useMemo, useCallback } from "react";
 import type { Dayjs } from "dayjs";
-import { ArrowLeft, BookOpen, RotateCw } from "lucide-react";
+import { ArrowLeft, BookOpen, RotateCw, Wallet, Receipt, CheckCircle2, FileText, Landmark, Scale } from "lucide-react";
 import dayjs from "dayjs";
 import apiClient from "../../services/apiClient";
 import DateRangeFilter, { inDateRange } from "../../components/DateRangeFilter";
 import { selectableProjects, getWorkOrderProjectId } from "../../utils/projectOptions";
 import { vendorLabel } from "../../utils/vendorLabel";
-import Btn from "../../ui/Btn";
-import Badge from "../../ui/Badge";
-import { SelectFilter } from "../../ui/Filters";
+import PageHeader from "../../ui/PageHeader";
+import NxBtn from "../../ui/nexora/Btn";
+import NxBadge from "../../ui/nexora/Badge";
+import type { NxBadgeColor } from "../../ui/nexora/Badge";
+import NxStatCard from "../../ui/nexora/StatCard";
+import { DropdownSelectFilter } from "../../ui/Filters";
 import SField from "../../ui/SField";
 import { Descriptions, DescItem } from "../../ui/Descriptions";
 import Switch from "../../ui/Switch";
 import Spinner from "../../ui/Spinner";
 import Alert from "../../ui/Alert";
+import EmptyState from "../../ui/EmptyState";
+import { Table, Thead, Tbody, Tfoot, Tr, Th, Td } from "../../ui/Table";
+import { usePagination } from "../../ui/usePagination";
+import Pagination from "../../ui/Pagination";
 
 // ── Types ─────────────────────────────────────────────────────
 type BillStatus = "draft" | "verify-done" | "l1-approved" | "approved" | "sent-to-tms" | "hold" | "rejected" | "paid";
@@ -64,15 +71,23 @@ function calcBill(b: Bill) {
   return { gst, gross, tds, retention, advance, net };
 }
 
-const STATUS_CFG: Record<BillStatus, { color: "gray" | "blue" | "amber" | "purple" | "red"; label: string }> = {
+// Maps each bill stage onto the fixed Nexora badge palette — gray=draft,
+// amber/cyan=pending stages, blue/indigo=approved-and-moving-on, orange=hold
+// (a warning/paused state), green=paid, red=rejected.
+const STATUS_CFG: Record<BillStatus, { color: NxBadgeColor; label: string }> = {
   draft:         { color: "gray",   label: "Draft" },
-  "verify-done": { color: "blue",   label: "Awaiting L1 AGM" },
-  "l1-approved": { color: "blue",   label: "Awaiting L2 Director" },
-  approved:      { color: "amber",  label: "Ready for TMS" },
-  "sent-to-tms": { color: "amber",  label: "Sent to TMS" },
-  hold:          { color: "purple", label: "On Hold" },
+  "verify-done": { color: "amber",  label: "Awaiting L1 AGM" },
+  "l1-approved": { color: "cyan",   label: "Awaiting L2 Director" },
+  approved:      { color: "blue",   label: "Ready for TMS" },
+  "sent-to-tms": { color: "indigo", label: "Sent to TMS" },
+  hold:          { color: "orange", label: "On Hold" },
   rejected:      { color: "red",    label: "Rejected" },
-  paid:          { color: "purple", label: "Paid" },
+  paid:          { color: "green",  label: "Paid" },
+};
+
+// Work order's own lifecycle status (distinct from a bill's status above).
+const WO_STATUS_COLOR: Record<string, NxBadgeColor> = {
+  draft: "gray", issued: "amber", "in-progress": "amber", completed: "green", cancelled: "red",
 };
 
 const BILL_TYPE_LABEL: Record<string, string> = {
@@ -89,53 +104,46 @@ const BILL_TYPE_LABEL: Record<string, string> = {
   retention_release:    "Retention Release",
 };
 
-const CATEGORY_COLOR: Record<string, string> = {
-  "Civil / RCC": "#2563eb", Finishing: "#7c3aed", MEP: "#16a85a",
-  Interior: "#f37916", "External Works": "#0d9488", Hospitality: "#e03b3b",
-};
-
-// ── Stat card ─────────────────────────────────────────────────
-function StatCard({ label, value, sub, color = "#1a1f2e" }: { label: string; value: string; sub?: string; color?: string }) {
-  return (
-    <div style={{ background: "var(--nx-white)", border: "1px solid #e4e7ee", borderRadius: 12, padding: "16px 18px", boxShadow: "0 1px 3px rgba(0,0,0,0.04)", height: "100%" }}>
-      <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", color: "#9ba3b8", marginBottom: 6 }}>{label}</div>
-      <div style={{ fontFamily: "monospace", fontSize: 20, fontWeight: 700, color }}>{value}</div>
-      {sub && <div style={{ fontSize: 11, color: "#5a6278", marginTop: 3 }}>{sub}</div>}
-    </div>
-  );
-}
-
 // ── Tape bar ──────────────────────────────────────────────────
 function TapeBar({ contract, certified, pending }: { contract: number; certified: number; pending: number }) {
   const certPct = contract ? Math.min((certified / contract) * 100, 100) : 0;
   const pendPct = contract ? Math.min((pending   / contract) * 100, 100 - certPct) : 0;
   const remaining = contract - certified - pending;
   return (
-    <div style={{ background: "var(--nx-white)", border: "1px solid #e4e7ee", borderRadius: 12, padding: "16px 18px", boxShadow: "0 1px 3px rgba(0,0,0,0.04)", marginBottom: 20 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#9ba3b8", marginBottom: 6, fontFamily: "monospace" }}>
+    <div className="bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700/40 rounded-lg p-4 mb-5">
+      <div className="flex justify-between flex-wrap gap-2 text-[11px] font-mono text-gray-400 dark:text-gray-500 mb-1.5">
         <span>₹0</span>
-        <span style={{ color: "#16a85a" }}>{fmt(certified)} certified</span>
-        {pending > 0 && <span style={{ color: "#f37916" }}>{fmt(pending)} pending</span>}
+        <span className="text-emerald-600 dark:text-emerald-400">{fmt(certified)} certified</span>
+        {pending > 0 && <span className="text-primary">{fmt(pending)} pending</span>}
         <span>{fmt(contract)} contract</span>
       </div>
-      <div style={{ height: 10, background: "#edf0f7", borderRadius: 5, overflow: "hidden", display: "flex" }}>
-        <div style={{ width: `${certPct}%`, background: "#16a85a", transition: "width 0.4s" }} />
-        <div style={{ width: `${pendPct}%`, background: "#f37916", opacity: 0.5, transition: "width 0.4s" }} />
+      <div className="h-2.5 bg-gray-100 dark:bg-gray-700/40 rounded-full overflow-hidden flex">
+        <div className="bg-emerald-500 transition-[width] duration-300" style={{ width: `${certPct}%` }} />
+        <div className="bg-primary/50 transition-[width] duration-300" style={{ width: `${pendPct}%` }} />
       </div>
-      <div style={{ display: "flex", gap: 20, marginTop: 10, fontSize: 11, color: "#5a6278", flexWrap: "wrap" }}>
-        {[
-          { dot: "#16a85a", opacity: 1,   label: "Certified (Approved)" },
-          { dot: "#f37916", opacity: 0.5, label: "Pending Approval" },
-          { dot: "#edf0f7", opacity: 1,   label: "Remaining", border: "1px solid #cdd1dd" },
-        ].map(l => (
-          <span key={l.label} style={{ display: "flex", alignItems: "center", gap: 5 }}>
-            <span style={{ width: 10, height: 10, borderRadius: 2, background: l.dot, opacity: l.opacity, border: l.border, flexShrink: 0 }} />
-            {l.label}
-          </span>
-        ))}
-        <span style={{ marginLeft: "auto", fontFamily: "monospace", color: remaining < 0 ? "#e03b3b" : "#5a6278" }}>
+      <div className="flex gap-5 flex-wrap mt-2.5 text-[11px] text-gray-500 dark:text-gray-400">
+        <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-emerald-500 shrink-0" />Certified (Approved)</span>
+        <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-primary/50 shrink-0" />Pending Approval</span>
+        <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-gray-100 dark:bg-gray-700/40 border border-gray-300 dark:border-gray-600 shrink-0" />Remaining</span>
+        <span className={`ml-auto font-mono ${remaining < 0 ? "text-red-600 dark:text-red-400" : "text-gray-500 dark:text-gray-400"}`}>
           {fmt(Math.max(remaining, 0))} remaining{remaining < 0 ? " ⚠️ over-billed" : ""}
         </span>
+      </div>
+    </div>
+  );
+}
+
+// ── Mini progress bar (summary table row) ──────────────────────
+function ProgressCell({ certifiedPct, billedPct }: { certifiedPct: number; billedPct: number }) {
+  return (
+    <div className="min-w-[100px]">
+      <div className="flex justify-between text-[10px] mb-1">
+        <span className="text-emerald-600 dark:text-emerald-400">{certifiedPct.toFixed(0)}%</span>
+        <span className="text-gray-400">{billedPct.toFixed(0)}%</span>
+      </div>
+      <div className="h-1.5 bg-gray-100 dark:bg-gray-700/40 rounded-full overflow-hidden flex">
+        <div className="bg-emerald-500" style={{ width: `${Math.min(certifiedPct, 100)}%` }} />
+        <div className="bg-primary/50" style={{ width: `${Math.min(billedPct - certifiedPct, 100 - certifiedPct)}%` }} />
       </div>
     </div>
   );
@@ -206,6 +214,8 @@ export default function Ledger() {
     return { wo, woBills, activeBills, supersededCount, contract, totalGross, certifiedNet, pendingGross, balance, billedPct, certifiedPct };
   }), [filteredWOs, bills]);
 
+  const pager = usePagination(woSummaries, 10);
+
   // ── Detail for selected WO ────────────────────────────────
   const detail = useMemo(() => {
     if (!selectedWOId) return null;
@@ -245,163 +255,167 @@ export default function Ledger() {
   const portfolioActuallyPaid  = bills
     .filter(b => b.status === "paid" && woSummaries.some(r => r.wo._id === b.workOrderId))
     .reduce((s, b) => s + calcBill(b).net, 0);
+  const portfolioTotalBillAmountPaid = bills
+    .filter(b => b.status === "paid" && woSummaries.some(r => r.wo._id === b.workOrderId))
+    .reduce((s, b) => s + (b.amount ?? 0), 0);
 
   // ═══════════════════════════════════════════════════════════
   //  DETAIL VIEW
   // ═══════════════════════════════════════════════════════════
   if (selectedWOId && detail) {
     return (
-      <>
-        <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 24 }}>
-          <Btn outline icon={ArrowLeft} label="All Work Orders" onClick={() => setSelectedWOId(null)} />
-          <div>
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>
-                Ledger — <span style={{ fontFamily: "monospace", color: "#f37916" }}>{detail.wo.workOrderNo}</span>
-              </h1>
-              <Badge color="blue"><span style={{ fontFamily: "monospace" }}>{detail.wo.vendorCode}</span></Badge>
-              {detail.wo.category && (
-                <span style={{ background: CATEGORY_COLOR[detail.wo.category] ? `${CATEGORY_COLOR[detail.wo.category]}20` : "#f5f6f8", color: CATEGORY_COLOR[detail.wo.category] || "#5a6278", fontWeight: 600, fontSize: 12, padding: "2px 8px", borderRadius: 6 }}>
-                  {detail.wo.category}
-                </span>
-              )}
-            </div>
-            <p style={{ color: "#5a6278", marginTop: 4, marginBottom: 0, fontSize: 12 }}>
-              {detail.wo.vendorName} · {detail.wo.projectName}
-            </p>
-          </div>
-        </div>
+      <div>
+        <PageHeader
+          icon={BookOpen}
+          title={<>Ledger — <span className="text-primary">{detail.wo.workOrderNo}</span></>}
+          subtitle={
+            <span className="inline-flex items-center gap-1.5 flex-wrap">
+              <span>{detail.wo.vendorCode}</span>
+              {detail.wo.category && <span>· {detail.wo.category}</span>}
+              <span>· {detail.wo.vendorName} · {detail.wo.projectName}</span>
+            </span>
+          }
+          actions={<NxBtn color="secondary" icon={ArrowLeft} label="All Work Orders" onClick={() => setSelectedWOId(null)} />}
+        />
 
         {/* Stat cards */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-5">
-          {[
-            { label: "Contract Value", value: fmt(detail.contract), sub: "opening balance", color: "#2563eb" },
-            { label: "Total Billed", value: detail.totalGross > 0 ? fmt(detail.totalGross) : "—", sub: `${detail.rows.length} bill${detail.rows.length !== 1 ? "s" : ""} · incl. GST`, color: "#f37916" },
-            { label: "Certified (Net)", value: detail.certifiedNet > 0 ? fmt(detail.certifiedNet) : "—", sub: detail.contract ? `${pctStr(detail.certifiedNet, detail.contract)} of contract` : "approved bills only", color: "#16a85a" },
-            { label: "Total Bill Amount", value: fmt(detail.rows.filter(r => r.b.status === "paid").reduce((s, r) => s + r.gross, 0)), sub: "gross billed (paid bills)", color: "#0d9488" },
-            { label: "Cash Released (Net TDS)", value: fmt(detail.rows.filter(r => r.b.status === "paid").reduce((s, r) => s + r.net, 0)), sub: "actual bank transfer", color: "#1d4ed8" },
-            { label: "Balance Remaining", value: fmt(Math.max(detail.balance, 0)), sub: detail.balance < 0 ? "⚠️ over-billed" : "uncertified contract value", color: detail.balance < 0 ? "#e03b3b" : "#5a6278" },
-          ].map(s => <StatCard key={s.label} {...s} />)}
+          <NxStatCard
+            label="Contract Value" icon={Wallet}
+            value={<>{fmt(detail.contract)}<div className="text-[11px] font-normal text-gray-400 mt-0.5">opening balance</div></>}
+          />
+          <NxStatCard
+            label="Total Billed" icon={Receipt}
+            value={<>{detail.totalGross > 0 ? fmt(detail.totalGross) : "—"}<div className="text-[11px] font-normal text-gray-400 mt-0.5">{detail.rows.length} bill{detail.rows.length !== 1 ? "s" : ""} · incl. GST</div></>}
+          />
+          <NxStatCard
+            label="Certified (Net)" icon={CheckCircle2}
+            value={<>{detail.certifiedNet > 0 ? fmt(detail.certifiedNet) : "—"}<div className="text-[11px] font-normal text-gray-400 mt-0.5">{detail.contract ? `${pctStr(detail.certifiedNet, detail.contract)} of contract` : "approved bills only"}</div></>}
+          />
+          <NxStatCard
+            label="Total Bill Amount" icon={FileText}
+            value={<>{fmt(detail.rows.filter(r => r.b.status === "paid").reduce((s, r) => s + r.gross, 0))}<div className="text-[11px] font-normal text-gray-400 mt-0.5">gross billed (paid bills)</div></>}
+          />
+          <NxStatCard
+            label="Cash Released (Net TDS)" icon={Landmark}
+            value={<>{fmt(detail.rows.filter(r => r.b.status === "paid").reduce((s, r) => s + r.net, 0))}<div className="text-[11px] font-normal text-gray-400 mt-0.5">actual bank transfer</div></>}
+          />
+          <NxStatCard
+            label="Balance Remaining" icon={Scale}
+            value={
+              <>
+                <span className={detail.balance < 0 ? "text-red-600 dark:text-red-400" : ""}>{fmt(Math.max(detail.balance, 0))}</span>
+                <div className="text-[11px] font-normal text-gray-400 mt-0.5">{detail.balance < 0 ? "⚠️ over-billed" : "uncertified contract value"}</div>
+              </>
+            }
+          />
         </div>
 
         <TapeBar contract={detail.contract} certified={detail.certifiedNet} pending={detail.pendingGross} />
 
         {/* WO meta */}
-        <div style={{ background: "var(--nx-white)", border: "1px solid #e4e7ee", borderRadius: 12, padding: "14px 18px", marginBottom: 20 }}>
+        <div className="bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700/40 rounded-lg p-4 mb-5">
           <Descriptions columns={3}>
             {detail.wo.issueDate && <DescItem label="Issue Date">{dayjs(detail.wo.issueDate).format("DD MMM YYYY")}</DescItem>}
             <DescItem label="Project">{detail.wo.projectName}</DescItem>
-            <DescItem label="Status"><Badge color="gray">{(detail.wo.status || "").toUpperCase()}</Badge></DescItem>
+            <DescItem label="Status">
+              <NxBadge color={WO_STATUS_COLOR[detail.wo.status || ""] ?? "gray"}>{(detail.wo.status || "").toUpperCase()}</NxBadge>
+            </DescItem>
             {detail.wo.scopeOfWork && <DescItem label="Scope" span={3}>{detail.wo.scopeOfWork}</DescItem>}
           </Descriptions>
         </div>
 
         {/* Ledger table */}
-        <div style={{ background: "var(--nx-white)", border: "1px solid #e4e7ee", borderRadius: 12, overflow: "hidden" }}>
-          <div style={{ padding: "12px 16px", borderBottom: "1px solid #e4e7ee", fontSize: 12, fontWeight: 600, color: "#5a6278", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-            Quantity Ledger — {detail.wo.workOrderNo}
+        {detail.rows.length === 0 ? (
+          <div className="bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700/40 rounded-lg">
+            <EmptyState icon={FileText} title="No running bills for this work order yet" />
           </div>
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 780 }}>
-              <thead>
-                <tr style={{ background: "#eff4ff" }}>
-                  <th style={{ padding: "8px 12px", fontFamily: "monospace", fontSize: 10, color: "#9ba3b8", width: 40 }}>#</th>
-                  <th style={{ padding: "8px 12px", textAlign: "left", fontSize: 11, fontWeight: 600, color: "#2563eb" }}>Bill No. / Date</th>
-                  <th style={{ padding: "8px 12px", textAlign: "left", fontSize: 11, fontWeight: 600, color: "#9ba3b8" }}>Ref / Remarks</th>
-                  <th style={{ padding: "8px 12px", textAlign: "right", fontSize: 11, fontWeight: 600, color: "#9ba3b8" }}>Base Amt</th>
-                  <th style={{ padding: "8px 12px", textAlign: "right", fontSize: 11, fontWeight: 600, color: "#16a34a" }}>GST</th>
-                  <th style={{ padding: "8px 12px", textAlign: "right", fontSize: 11, fontWeight: 600, color: "#f37916" }}>Gross</th>
-                  <th style={{ padding: "8px 12px", textAlign: "right", fontSize: 11, fontWeight: 600, color: "#dc2626" }}>TDS</th>
-                  <th style={{ padding: "8px 12px", textAlign: "right", fontSize: 11, fontWeight: 600, color: "#7c3aed" }}>Retention</th>
-                  <th style={{ padding: "8px 12px", textAlign: "right", fontSize: 11, fontWeight: 600, color: "#b45309" }}>Advance Recovery</th>
-                  <th style={{ padding: "8px 12px", textAlign: "right", fontSize: 11, fontWeight: 600, color: "#16a85a" }}>Net Payable</th>
-                  <th style={{ padding: "8px 12px", textAlign: "center", fontSize: 11, fontWeight: 600, color: "#9ba3b8" }}>Status</th>
-                  <th style={{ padding: "8px 12px", textAlign: "right", fontSize: 11, fontWeight: 600, color: "#5a6278" }}>Running Balance</th>
-                </tr>
-                {/* Opening balance row */}
-                <tr style={{ background: "#eff4ff", borderBottom: "2px solid #e4e7ee" }}>
-                  <td style={{ padding: "8px 12px", fontFamily: "monospace", color: "#9ba3b8", fontSize: 11 }}>OB</td>
-                  <td style={{ padding: "8px 12px", fontWeight: 600, color: "#2563eb", fontSize: 12 }} colSpan={2}>Opening Balance — Contract Value</td>
-                  <td style={{ padding: "8px 12px", textAlign: "right", fontFamily: "monospace", color: "#2563eb", fontWeight: 700 }} colSpan={8}>{fmt(detail.contract)}</td>
-                  <td style={{ padding: "8px 12px", textAlign: "right", fontFamily: "monospace", color: "#2563eb", fontWeight: 700 }}>{fmt(detail.contract)}</td>
-                </tr>
-              </thead>
-              <tbody>
-                {detail.rows.map(r => (
-                  <tr key={r.b._id}
-                    style={{
-                      borderBottom: "1px solid #f0f0f0",
-                      background: r.isSuperseded ? "#f9fafb" : undefined,
-                      opacity:    r.isSuperseded ? 0.65 : 1,
-                    }}
-                    onMouseEnter={e => { if (!r.isSuperseded) e.currentTarget.style.background = "#fffaf6"; }}
-                    onMouseLeave={e => { e.currentTarget.style.background = r.isSuperseded ? "#f9fafb" : ""; }}
-                  >
-                    <td style={{ padding: "10px 12px", fontFamily: "monospace", color: "#9ba3b8", fontSize: 11 }}>{r.seq}</td>
-                    <td style={{ padding: "10px 12px" }}>
-                      <div style={{ fontFamily: "monospace", fontWeight: 600, color: r.isSuperseded ? "#9ba3b8" : "#f37916", textDecoration: r.isSuperseded ? "line-through" : undefined }}>
-                        {r.b.billNo}
+        ) : (
+          <Table>
+            <Thead>
+              <Tr>
+                <Th>#</Th>
+                <Th>Bill No. / Date</Th>
+                <Th>Ref / Remarks</Th>
+                <Th className="text-right">Base Amt</Th>
+                <Th className="text-right">GST</Th>
+                <Th className="text-right">Gross</Th>
+                <Th className="text-right">TDS</Th>
+                <Th className="text-right">Retention</Th>
+                <Th className="text-right">Advance Recovery</Th>
+                <Th className="text-right">Net Payable</Th>
+                <Th>Status</Th>
+                <Th className="text-right">Running Balance</Th>
+              </Tr>
+            </Thead>
+            <Tbody>
+              <Tr className="bg-blue-50/60 dark:bg-blue-500/10">
+                <Td className="font-mono text-gray-400 text-xs">OB</Td>
+                <Td className="font-bold text-primary" colSpan={2}>Opening Balance — Contract Value</Td>
+                <Td className="text-right font-mono font-bold text-primary" colSpan={8}>{fmt(detail.contract)}</Td>
+                <Td className="text-right font-mono font-bold text-primary">{fmt(detail.contract)}</Td>
+              </Tr>
+              {detail.rows.map(r => (
+                <Tr key={r.b._id} className={r.isSuperseded ? "opacity-60 bg-gray-50 dark:bg-gray-800/30" : undefined}>
+                  <Td className="font-mono text-gray-400 text-xs">{r.seq}</Td>
+                  <Td>
+                    <div className={`font-bold ${r.isSuperseded ? "text-gray-400 line-through" : "text-primary"}`}>
+                      {r.b.billNo}
+                    </div>
+                    <div className="text-[11px] text-gray-400">{dayjs(r.b.billDate).format("DD MMM YYYY")}</div>
+                    {r.b.supersededBy && (
+                      <div className="text-[10px] text-purple-600 dark:text-purple-400 font-semibold mt-0.5">
+                        ↩ Superseded by {r.b.supersededBy.billNo}
                       </div>
-                      <div style={{ fontSize: 11, color: "#9ba3b8" }}>{dayjs(r.b.billDate).format("DD MMM YYYY")}</div>
-                      {r.b.supersededBy && (
-                        <div style={{ fontSize: 10, color: "#7c3aed", marginTop: 2, fontWeight: 600 }}>
-                          ↩ Superseded by {r.b.supersededBy.billNo}
-                        </div>
-                      )}
-                    </td>
-                    <td style={{ padding: "10px 12px", fontSize: 12, color: "#5a6278" }}>
-                      {r.b.billRefNo && <div style={{ fontFamily: "monospace" }}>{r.b.billRefNo}</div>}
-                      {r.b.billType && r.b.billType !== "running" && (
-                        <div style={{ fontSize: 10, color: "#2563eb", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                          {BILL_TYPE_LABEL[r.b.billType] ?? r.b.billType}
-                        </div>
-                      )}
-                      {r.b.remarks && <div style={{ fontSize: 11, color: "#9ba3b8", fontStyle: "italic" }}>{r.b.remarks}</div>}
-                    </td>
-                    <td style={{ padding: "10px 12px", textAlign: "right", fontFamily: "monospace" }}>{fmt(r.b.amount)}</td>
-                    <td style={{ padding: "10px 12px", textAlign: "right", fontFamily: "monospace", color: "#16a34a" }}>{fmt(r.gst)}</td>
-                    <td style={{ padding: "10px 12px", textAlign: "right", fontFamily: "monospace", color: r.isSuperseded ? "#9ba3b8" : "#f37916", fontWeight: 600 }}>{fmt(r.gross)}</td>
-                    <td style={{ padding: "10px 12px", textAlign: "right", fontFamily: "monospace", color: "#dc2626" }}>({fmt(r.tds)})</td>
-                    <td style={{ padding: "10px 12px", textAlign: "right", fontFamily: "monospace", color: "#7c3aed" }}>{r.retention > 0 ? `(${fmt(r.retention)})` : "—"}</td>
-                    <td style={{ padding: "10px 12px", textAlign: "right", fontFamily: "monospace", color: "#b45309" }}>{r.advance > 0 ? `(${fmt(r.advance)})` : "—"}</td>
-                    <td style={{ padding: "10px 12px", textAlign: "right", fontFamily: "monospace", color: r.isSuperseded ? "#9ba3b8" : "#16a85a", fontWeight: 600 }}>{fmt(r.net)}</td>
-                    <td style={{ padding: "10px 12px", textAlign: "center" }}>
-                      {r.isSuperseded
-                        ? <Badge color="gray" small>SUPERSEDED</Badge>
-                        : <Badge color={STATUS_CFG[r.b.status].color}>{STATUS_CFG[r.b.status].label.toUpperCase()}</Badge>
-                      }
-                    </td>
-                    <td style={{ padding: "10px 12px", textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: r.balanceAfter !== null ? (r.balanceAfter < 0 ? "#e03b3b" : "#16a85a") : "#9ba3b8" }}>
-                      {r.balanceAfter !== null ? fmt(r.balanceAfter) : "—"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-              {detail.rows.length > 0 && (
-                <tfoot>
-                  <tr style={{ background: "#f5f6f8", borderTop: "2px solid #e4e7ee" }}>
-                    <td colSpan={3} style={{ padding: "10px 12px", fontWeight: 700, color: "var(--nx-text)", fontSize: 12 }}>CLOSING BALANCE</td>
-                    <td style={{ padding: "10px 12px", textAlign: "right", fontFamily: "monospace", fontWeight: 600 }}>{fmt(detail.rows.reduce((s, r) => s + r.b.amount, 0))}</td>
-                    <td style={{ padding: "10px 12px", textAlign: "right", fontFamily: "monospace", color: "#16a34a" }}>{fmt(detail.rows.reduce((s, r) => s + r.gst, 0))}</td>
-                    <td style={{ padding: "10px 12px", textAlign: "right", fontFamily: "monospace", color: "#f37916", fontWeight: 700 }}>{fmt(detail.totalGross)}</td>
-                    <td style={{ padding: "10px 12px", textAlign: "right", fontFamily: "monospace", color: "#dc2626" }}>({fmt(detail.rows.reduce((s, r) => s + r.tds, 0))})</td>
-                    <td style={{ padding: "10px 12px", textAlign: "right", fontFamily: "monospace", color: "#7c3aed" }}>({fmt(detail.rows.reduce((s, r) => s + r.retention, 0))})</td>
-                    <td style={{ padding: "10px 12px", textAlign: "right", fontFamily: "monospace", color: "#b45309" }}>({fmt(detail.rows.reduce((s, r) => s + r.advance, 0))})</td>
-                    <td style={{ padding: "10px 12px", textAlign: "right", fontFamily: "monospace", color: "#16a85a", fontWeight: 700 }}>{fmt(detail.totalNet)}</td>
-                    <td />
-                    <td style={{ padding: "10px 12px", textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: detail.balance < 0 ? "#e03b3b" : "#f37916" }}>
-                      {fmt(Math.max(detail.balance, 0))} left
-                    </td>
-                  </tr>
-                </tfoot>
-              )}
-            </table>
-          </div>
-          {detail.rows.length === 0 && (
-            <div className="text-center py-10 text-gray-400">No running bills for this work order yet</div>
-          )}
-        </div>
-      </>
+                    )}
+                  </Td>
+                  <Td className="text-gray-500 dark:text-gray-400 text-xs">
+                    {r.b.billRefNo && <div>{r.b.billRefNo}</div>}
+                    {r.b.billType && r.b.billType !== "running" && (
+                      <div className="text-[10px] text-blue-600 dark:text-blue-400 font-semibold uppercase tracking-wide">
+                        {BILL_TYPE_LABEL[r.b.billType] ?? r.b.billType}
+                      </div>
+                    )}
+                    {r.b.remarks && <div className="text-[11px] text-gray-400 italic">{r.b.remarks}</div>}
+                  </Td>
+                  <Td className="text-right font-mono">{fmt(r.b.amount)}</Td>
+                  <Td className="text-right font-mono text-emerald-600 dark:text-emerald-400">{fmt(r.gst)}</Td>
+                  <Td className={`text-right font-mono font-bold ${r.isSuperseded ? "text-gray-400" : "text-primary"}`}>{fmt(r.gross)}</Td>
+                  <Td className="text-right font-mono text-red-600 dark:text-red-400">({fmt(r.tds)})</Td>
+                  <Td className="text-right font-mono text-purple-600 dark:text-purple-400">{r.retention > 0 ? `(${fmt(r.retention)})` : "—"}</Td>
+                  <Td className="text-right font-mono text-amber-700 dark:text-amber-400">{r.advance > 0 ? `(${fmt(r.advance)})` : "—"}</Td>
+                  <Td className={`text-right font-mono font-bold ${r.isSuperseded ? "text-gray-400" : "text-emerald-600 dark:text-emerald-400"}`}>{fmt(r.net)}</Td>
+                  <Td>
+                    {r.isSuperseded
+                      ? <NxBadge color="gray">Superseded</NxBadge>
+                      : <NxBadge color={STATUS_CFG[r.b.status].color}>{STATUS_CFG[r.b.status].label}</NxBadge>
+                    }
+                  </Td>
+                  <Td className={`text-right font-mono font-bold ${r.balanceAfter !== null ? (r.balanceAfter < 0 ? "text-red-600 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400") : "text-gray-400"}`}>
+                    {r.balanceAfter !== null ? fmt(r.balanceAfter) : "—"}
+                  </Td>
+                </Tr>
+              ))}
+            </Tbody>
+            <Tfoot>
+              <Tr>
+                <Td colSpan={3} className="font-bold text-[#1A1A2E] dark:text-[#F1F5F9]">CLOSING BALANCE</Td>
+                <Td className="text-right font-mono font-semibold">{fmt(detail.rows.reduce((s, r) => s + r.b.amount, 0))}</Td>
+                <Td className="text-right font-mono text-emerald-600 dark:text-emerald-400">{fmt(detail.rows.reduce((s, r) => s + r.gst, 0))}</Td>
+                <Td className="text-right font-mono font-bold text-primary">{fmt(detail.totalGross)}</Td>
+                <Td className="text-right font-mono text-red-600 dark:text-red-400">({fmt(detail.rows.reduce((s, r) => s + r.tds, 0))})</Td>
+                <Td className="text-right font-mono text-purple-600 dark:text-purple-400">({fmt(detail.rows.reduce((s, r) => s + r.retention, 0))})</Td>
+                <Td className="text-right font-mono text-amber-700 dark:text-amber-400">({fmt(detail.rows.reduce((s, r) => s + r.advance, 0))})</Td>
+                <Td className="text-right font-mono font-bold text-emerald-600 dark:text-emerald-400">{fmt(detail.totalNet)}</Td>
+                <Td />
+                <Td className={`text-right font-mono font-bold ${detail.balance < 0 ? "text-red-600 dark:text-red-400" : "text-primary"}`}>
+                  {fmt(Math.max(detail.balance, 0))} left
+                </Td>
+              </Tr>
+            </Tfoot>
+          </Table>
+        )}
+      </div>
     );
   }
 
@@ -409,120 +423,119 @@ export default function Ledger() {
   //  SUMMARY VIEW
   // ═══════════════════════════════════════════════════════════
   return (
-    <>
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 24 }}>
-        <div>
-          <h1 style={{ fontSize: 26, fontWeight: 700, margin: 0, color: "var(--nx-text)" }}>Ledger</h1>
-          <p style={{ color: "#5a6278", marginTop: 4, marginBottom: 0, fontSize: 13 }}>
-            Work Order billing summary — click "View Ledger" for a full statement.
-          </p>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-          <Switch checked={includeArchived} onChange={setIncludeArchived} offLabel="Include archived bills" onLabel="Including archived bills" />
-          <Btn outline icon={RotateCw} label="Refresh" onClick={() => load(includeArchived)} />
-        </div>
-      </div>
+    <div>
+      <PageHeader
+        icon={BookOpen}
+        title="Ledger"
+        subtitle='Work Order billing summary — click "View Ledger" for a full statement.'
+        actions={
+          <div className="flex items-center gap-3">
+            <Switch checked={includeArchived} onChange={setIncludeArchived} offLabel="Include archived bills" onLabel="Including archived bills" />
+            <NxBtn color="secondary" icon={RotateCw} label="Refresh" onClick={() => load(includeArchived)} />
+          </div>
+        }
+      />
 
       {/* Portfolio stat cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-5">
-        {[
-          { label: "Total Contract Value", value: fmt(portfolioContract), sub: `${woSummaries.length} work orders`, color: "#2563eb" },
-          { label: "Total Billed (Gross)", value: fmt(portfolioGross), sub: "all running bills incl. GST", color: "#f37916" },
-          { label: "Total Certified (Net)", value: fmt(portfolioCertified), sub: "approved bills net payable", color: "#16a85a" },
-          { label: "Total Bill Amount", value: fmt(bills.filter(b => b.status === "paid" && woSummaries.some(r => r.wo._id === b.workOrderId)).reduce((s, b) => s + (b.amount ?? 0), 0)), sub: "gross billed (paid bills)", color: "#0d9488" },
-          { label: "Cash Released (Net TDS)", value: fmt(portfolioActuallyPaid), sub: "actual bank transfer", color: "#1d4ed8" },
-          { label: "Balance Remaining", value: fmt(portfolioBalance), sub: "uncertified contract value", color: "#5a6278" },
-        ].map(s => <StatCard key={s.label} {...s} />)}
+        <NxStatCard
+          label="Total Contract Value" icon={Wallet}
+          value={<>{fmt(portfolioContract)}<div className="text-[11px] font-normal text-gray-400 mt-0.5">{woSummaries.length} work orders</div></>}
+        />
+        <NxStatCard
+          label="Total Billed (Gross)" icon={Receipt}
+          value={<>{fmt(portfolioGross)}<div className="text-[11px] font-normal text-gray-400 mt-0.5">all running bills incl. GST</div></>}
+        />
+        <NxStatCard
+          label="Total Certified (Net)" icon={CheckCircle2}
+          value={<>{fmt(portfolioCertified)}<div className="text-[11px] font-normal text-gray-400 mt-0.5">approved bills net payable</div></>}
+        />
+        <NxStatCard
+          label="Total Bill Amount" icon={FileText}
+          value={<>{fmt(portfolioTotalBillAmountPaid)}<div className="text-[11px] font-normal text-gray-400 mt-0.5">gross billed (paid bills)</div></>}
+        />
+        <NxStatCard
+          label="Cash Released (Net TDS)" icon={Landmark}
+          value={<>{fmt(portfolioActuallyPaid)}<div className="text-[11px] font-normal text-gray-400 mt-0.5">actual bank transfer</div></>}
+        />
+        <NxStatCard
+          label="Balance Remaining" icon={Scale}
+          value={<>{fmt(portfolioBalance)}<div className="text-[11px] font-normal text-gray-400 mt-0.5">uncertified contract value</div></>}
+        />
       </div>
 
       {/* Filters */}
-      <div style={{ display: "flex", gap: 10, marginBottom: 20, flexWrap: "wrap", alignItems: "center" }}>
-        <div style={{ width: 220 }}>
-          <SelectFilter
-            value={projectFilter} onChange={setProjectFilter}
-            options={[{ value: "all", label: "All Projects" }, ...selectableProjects(projects).map(p => ({ value: p._id, label: p.name || p._id }))]}
+      <div className="bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700/40 rounded-lg p-3.5 mb-4">
+        <div className="flex gap-2.5 items-center flex-wrap">
+          <DropdownSelectFilter
+            value={projectFilter} onChange={setProjectFilter} placeholder="All Projects"
+            options={selectableProjects(projects).map(p => ({ value: p._id, label: p.name || p._id }))}
           />
-        </div>
-        <div style={{ width: 240 }}>
-          <SelectFilter
-            value={vendorFilter} onChange={setVendorFilter}
-            options={[{ value: "all", label: "All Vendors" }, ...contractors.map(c => ({ value: c.vendorCode, label: `${c.vendorCode} — ${vendorLabel(c.companyName || "", c.shortCode)}` }))]}
+          <DropdownSelectFilter
+            value={vendorFilter} onChange={setVendorFilter} placeholder="All Vendors"
+            options={contractors.map(c => ({ value: c.vendorCode, label: `${c.vendorCode} — ${vendorLabel(c.companyName || "", c.shortCode)}` }))}
           />
-        </div>
-        <DateRangeFilter onChange={(from, to) => { setDateFrom(from); setDateTo(to); }} />
-        <div style={{ width: 280 }}>
-          <SField
-            value={null} placeholder="Jump to Work Order…"
-            onChange={id => { if (id) setSelectedWOId(id); }}
-            options={workOrders.map(wo => ({ value: wo._id, label: `${wo.workOrderNo} — ${wo.vendorName}` }))}
-          />
+          <DateRangeFilter onChange={(from, to) => { setDateFrom(from); setDateTo(to); }} />
+          <div className="w-64">
+            <SField
+              value={null} placeholder="Jump to Work Order…"
+              onChange={id => { if (id) setSelectedWOId(id); }}
+              options={workOrders.map(wo => ({ value: wo._id, label: `${wo.workOrderNo} — ${wo.vendorName}` }))}
+            />
+          </div>
+          <span className="ml-auto text-gray-400 text-xs whitespace-nowrap">
+            {woSummaries.length} work order{woSummaries.length !== 1 ? "s" : ""}
+          </span>
         </div>
       </div>
 
       {/* Summary table */}
       {woSummaries.length === 0 ? (
-        <div className="text-center py-14 text-gray-400">No work orders match the selected filters</div>
+        <EmptyState icon={BookOpen} title="No work orders match the selected filters" />
       ) : (
-        <div style={{ background: "var(--nx-white)", border: "1px solid #e4e7ee", borderRadius: 12, overflow: "hidden" }}>
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 900 }}>
-              <thead>
-                <tr style={{ background: "#f5f6f8" }}>
-                  {["Work Order", "Project", "Vendor", "Category", "Contract Value", "Total Billed", "Certified (Net)", "Balance", "Progress", "Bills", ""].map(h => (
-                    <th key={h} style={{ padding: "10px 12px", textAlign: h === "" || h === "Bills" ? "center" : "left", fontSize: 11, fontWeight: 600, color: "#9ba3b8", textTransform: "uppercase", letterSpacing: "0.05em", borderBottom: "1px solid #e4e7ee", whiteSpace: "nowrap" }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {woSummaries.map(r => (
-                  <tr key={r.wo._id} style={{ borderBottom: "1px solid #f0f0f0", cursor: "pointer" }}
-                    onMouseEnter={e => (e.currentTarget.style.background = "#fffaf6")}
-                    onMouseLeave={e => (e.currentTarget.style.background = "")}
-                    onClick={() => setSelectedWOId(r.wo._id)}
-                  >
-                    <td style={{ padding: "10px 12px", fontFamily: "monospace", color: "#f37916", fontWeight: 600 }}>{r.wo.workOrderNo}</td>
-                    <td style={{ padding: "10px 12px", color: "#5a6278" }}>{r.wo.projectName || "—"}</td>
-                    <td style={{ padding: "10px 12px" }}>
-                      <div style={{ fontWeight: 600, fontSize: 12 }}>{r.wo.vendorName || "—"}</div>
-                      <Badge color="blue" small><span style={{ fontFamily: "monospace" }}>{r.wo.vendorCode}</span></Badge>
-                    </td>
-                    <td style={{ padding: "10px 12px" }}>
-                      {r.wo.category ? (
-                        <span style={{ background: `${CATEGORY_COLOR[r.wo.category] || "#9ba3b8"}20`, color: CATEGORY_COLOR[r.wo.category] || "#9ba3b8", fontSize: 11, fontWeight: 600, padding: "3px 8px", borderRadius: 5 }}>
-                          {r.wo.category}
-                        </span>
-                      ) : <span style={{ color: "#9ba3b8" }}>—</span>}
-                    </td>
-                    <td style={{ padding: "10px 12px", fontFamily: "monospace", color: "#2563eb", fontWeight: 600 }}>{fmt(r.contract)}</td>
-                    <td style={{ padding: "10px 12px", fontFamily: "monospace", color: r.totalGross > 0 ? "#f37916" : "#9ba3b8" }}>{r.totalGross > 0 ? fmt(r.totalGross) : "—"}</td>
-                    <td style={{ padding: "10px 12px", fontFamily: "monospace", color: r.certifiedNet > 0 ? "#16a85a" : "#9ba3b8", fontWeight: 600 }}>{r.certifiedNet > 0 ? fmt(r.certifiedNet) : "—"}</td>
-                    <td style={{ padding: "10px 12px", fontFamily: "monospace", color: r.balance < 0 ? "#e03b3b" : "#5a6278" }}>{fmt(r.balance)}</td>
-                    <td style={{ padding: "10px 12px", minWidth: 100 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, marginBottom: 3 }}>
-                        <span style={{ color: "#16a85a" }}>{r.certifiedPct.toFixed(0)}%</span>
-                        <span style={{ color: "#9ba3b8" }}>{r.billedPct.toFixed(0)}%</span>
-                      </div>
-                      <div style={{ height: 5, background: "#edf0f7", borderRadius: 3, overflow: "hidden", display: "flex" }}>
-                        <div style={{ width: `${Math.min(r.certifiedPct, 100)}%`, background: "#16a85a" }} />
-                        <div style={{ width: `${Math.min(r.billedPct - r.certifiedPct, 100 - r.certifiedPct)}%`, background: "#f37916", opacity: 0.5 }} />
-                      </div>
-                    </td>
-                    <td style={{ padding: "10px 12px", textAlign: "center", color: r.woBills.length ? "#1a1f2e" : "#9ba3b8" }}>
-                      {r.woBills.length || "—"}
-                    </td>
-                    <td style={{ padding: "10px 12px", textAlign: "center" }}>
-                      <button type="button" onClick={e => { e.stopPropagation(); setSelectedWOId(r.wo._id); }}
-                        style={{ display: "inline-flex", alignItems: "center", gap: 5, background: "none", border: "none", color: "#f37916", fontWeight: 600, fontSize: 13, cursor: "pointer", padding: 0 }}>
-                        <BookOpen size={14} /> View Ledger
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <>
+          <Table>
+            <Thead>
+              <Tr>
+                <Th>Work Order</Th>
+                <Th>Project</Th>
+                <Th>Vendor</Th>
+                <Th>Category</Th>
+                <Th className="text-right">Contract Value</Th>
+                <Th className="text-right">Total Billed</Th>
+                <Th className="text-right">Certified (Net)</Th>
+                <Th className="text-right">Balance</Th>
+                <Th>Progress</Th>
+                <Th className="text-center">Bills</Th>
+                <Th></Th>
+              </Tr>
+            </Thead>
+            <Tbody>
+              {pager.pageItems.map(r => (
+                <Tr key={r.wo._id} className="cursor-pointer" onClick={() => setSelectedWOId(r.wo._id)}>
+                  <Td className="font-bold text-primary">{r.wo.workOrderNo}</Td>
+                  <Td className="text-gray-500 dark:text-gray-400">{r.wo.projectName || "—"}</Td>
+                  <Td>
+                    <div className="font-semibold text-sm">{r.wo.vendorName || "—"}</div>
+                    <div className="text-[11px] text-gray-400">{r.wo.vendorCode}</div>
+                  </Td>
+                  <Td>{r.wo.category || <span className="text-gray-300 dark:text-gray-600">—</span>}</Td>
+                  <Td className="text-right font-mono font-bold">{fmt(r.contract)}</Td>
+                  <Td className="text-right font-mono">{r.totalGross > 0 ? fmt(r.totalGross) : <span className="text-gray-300 dark:text-gray-600">—</span>}</Td>
+                  <Td className="text-right font-mono font-semibold text-emerald-600 dark:text-emerald-400">{r.certifiedNet > 0 ? fmt(r.certifiedNet) : <span className="text-gray-300 dark:text-gray-600">—</span>}</Td>
+                  <Td className={`text-right font-mono ${r.balance < 0 ? "text-red-600 dark:text-red-400" : ""}`}>{fmt(r.balance)}</Td>
+                  <Td><ProgressCell certifiedPct={r.certifiedPct} billedPct={r.billedPct} /></Td>
+                  <Td className="text-center text-gray-500 dark:text-gray-400">{r.woBills.length || "—"}</Td>
+                  <Td onClick={e => e.stopPropagation()}>
+                    <NxBtn color="secondary" icon={BookOpen} label="View Ledger" onClick={() => setSelectedWOId(r.wo._id)} />
+                  </Td>
+                </Tr>
+              ))}
+            </Tbody>
+          </Table>
+          {pager.totalPages > 1 && <div className="mt-4"><Pagination page={pager.page} totalPages={pager.totalPages} onChange={pager.setPage} /></div>}
+        </>
       )}
-    </>
+    </div>
   );
 }

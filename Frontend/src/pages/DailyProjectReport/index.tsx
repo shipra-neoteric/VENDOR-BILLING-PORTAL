@@ -9,12 +9,15 @@ import { isAlert, firstMissingDprField } from "../../shared/constants/dprOptions
 import type { DprFormValues } from "../../shared/constants/dprOptions";
 import PageHeader from "../../ui/PageHeader";
 import Btn from "../../ui/Btn";
+import NxBtn from "../../ui/nexora/Btn";
 import Card from "../../ui/Card";
-import Badge from "../../ui/Badge";
+import NxBadge from "../../ui/nexora/Badge";
 import SField from "../../ui/SField";
 import { DatePicker } from "../../ui/DatePicker";
 import Modal from "../../ui/Modal";
 import { Table, Thead, Tbody, Tr, Th, Td, TdText } from "../../ui/Table";
+import { usePagination } from "../../ui/usePagination";
+import Pagination from "../../ui/Pagination";
 import { SkeletonTable } from "../../ui/Skeleton";
 
 interface ProjectOption { _id: string; name: string; }
@@ -57,6 +60,7 @@ export default function DailyProjectReport() {
   const [showForm, setShowForm]   = useState(false);
   const [viewReport, setViewReport] = useState<DprRow | null>(null);
   const [form, setForm] = useState(emptyForm);
+  const pager = usePagination(reports, 10);
 
   const load = () => {
     setLoading(true);
@@ -102,7 +106,7 @@ export default function DailyProjectReport() {
         title="Daily Project Report"
         subtitle="Log your end-of-day site report — work progress, labour/material/drawing alerts, and anything that needs escalation."
         icon={FileText}
-        actions={<Btn label="New Report" icon={Plus} style={{ background: "#4f46e5", borderColor: "#4f46e5" }} onClick={() => { setForm(emptyForm); setShowForm(true); }} />}
+        actions={<NxBtn color="primary" label="New Report" icon={Plus} onClick={() => { setForm(emptyForm); setShowForm(true); }} />}
       />
 
       <Card padded={false} className="overflow-hidden">
@@ -114,33 +118,40 @@ export default function DailyProjectReport() {
         ) : reports.length === 0 ? (
           <div className="py-12 text-center text-gray-400">No reports submitted yet</div>
         ) : (
-          <Table>
-            <Thead>
-              <Tr>
-                <Th>Date</Th>
-                <Th>Project</Th>
-                <Th>Alerts</Th>
-                <Th></Th>
-              </Tr>
-            </Thead>
-            <Tbody>
-              {reports.map(r => (
-                <Tr key={r._id}>
-                  <Td><TdText>{dayjs(r.date).format("DD MMM YYYY")}</TdText></Td>
-                  <Td><TdText>{r.projectName}</TdText></Td>
-                  <Td>
-                    <div className="flex gap-1 flex-wrap">
-                      {ALERT_FIELDS.filter(f => isAlert(r[f.key] as string)).map(f => (
-                        <Badge key={f.key} color={f.key === "escalationRequired" ? "red" : "orange"} small>{f.label}</Badge>
-                      ))}
-                      {ALERT_FIELDS.every(f => !isAlert(r[f.key] as string)) && <Badge color="green" small>All clear</Badge>}
-                    </div>
-                  </Td>
-                  <Td><Btn small outline icon={Eye} onClick={() => setViewReport(r)} /></Td>
+          <>
+            <Table>
+              <Thead>
+                <Tr>
+                  <Th>Date</Th>
+                  <Th>Project</Th>
+                  <Th>Alerts</Th>
+                  <Th></Th>
                 </Tr>
-              ))}
-            </Tbody>
-          </Table>
+              </Thead>
+              <Tbody>
+                {pager.pageItems.map(r => (
+                  <Tr key={r._id}>
+                    <Td><TdText>{dayjs(r.date).format("DD MMM YYYY")}</TdText></Td>
+                    <Td><TdText>{r.projectName}</TdText></Td>
+                    <Td>
+                      <div className="flex gap-1 flex-wrap">
+                        {ALERT_FIELDS.filter(f => isAlert(r[f.key] as string)).map(f => (
+                          <NxBadge key={f.key} color={f.key === "escalationRequired" ? "red" : "orange"}>{f.label}</NxBadge>
+                        ))}
+                        {ALERT_FIELDS.every(f => !isAlert(r[f.key] as string)) && <NxBadge color="green">All clear</NxBadge>}
+                      </div>
+                    </Td>
+                    <Td><NxBtn color="icon" title="View" icon={Eye} onClick={() => setViewReport(r)} /></Td>
+                  </Tr>
+                ))}
+              </Tbody>
+            </Table>
+            {pager.totalPages > 1 && (
+              <div className="px-5 py-3.5 border-t border-gray-100 dark:border-gray-700/40">
+                <Pagination page={pager.page} totalPages={pager.totalPages} onChange={pager.setPage} />
+              </div>
+            )}
+          </>
         )}
       </Card>
 

@@ -32,7 +32,7 @@ export default function DrawingRequestViewModal({
       </div>
 
       <Descriptions>
-        <DescItem label="Ticket No" span={2}><span className="font-mono font-bold text-purple-600 dark:text-purple-400">{request.ticketNo}</span></DescItem>
+        <DescItem label="Ticket No" span={2}><span className="font-bold text-purple-600 dark:text-purple-400">{request.ticketNo}</span></DescItem>
         <DescItem label="Project">{request.projectName}</DescItem>
         <DescItem label="Drawing Type">{request.drawingType}</DescItem>
         <DescItem label="Drawing Description" span={2}>{request.description}</DescItem>

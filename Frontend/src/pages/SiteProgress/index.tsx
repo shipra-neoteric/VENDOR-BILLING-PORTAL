@@ -8,12 +8,11 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import dayjs from "dayjs";
 import type { Dayjs } from "dayjs";
 import apiClient from "../../services/apiClient";
-import { SearchFilter } from "../../ui/Filters";
+import { SearchFilter, DropdownSelectFilter } from "../../ui/Filters";
 import { useAuth } from "../../context/AuthContext";
 import type { AuthUser } from "../../context/AuthContext";
 import { selectableProjects } from "../../utils/projectOptions";
 import DateRangeFilter, { inDateRange } from "../../components/DateRangeFilter";
-import StatCard from "../../ui/StatCard";
 import WorkflowInstanceStepper from "../../components/WorkflowInstanceStepper";
 import type { WorkflowInstance } from "../../types/Workflow";
 import { printBill } from "../../shared/utils/printBill";
@@ -37,6 +36,11 @@ import { Descriptions, DescItem } from "../../ui/Descriptions";
 import { Table, Thead, Tbody, Tfoot, Tr, Th, Td } from "../../ui/Table";
 import { usePagination } from "../../ui/usePagination";
 import Pagination from "../../ui/Pagination";
+import NxBadge from "../../ui/nexora/Badge";
+import NxBtn from "../../ui/nexora/Btn";
+import NxStatCard from "../../ui/nexora/StatCard";
+import DropdownMenu from "../../ui/DropdownMenu";
+import type { DropdownMenuItem } from "../../ui/DropdownMenu";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface ProgressEntryDetail {
@@ -142,9 +146,9 @@ function itemHasUnapprovedVariance(si: ScopeItemDetail): boolean {
 function VarianceTag({ level }: { level: VarianceLevel }) {
   if (level === "none") return null;
   return (
-    <UIBadge color={level === "yellow" ? "amber" : "red"} small>
+    <NxBadge color={level === "yellow" ? "amber" : "red"}>
       <span className="inline-flex items-center gap-1"><AlertTriangle className="w-2.5 h-2.5" /> Over plan {level === "yellow" ? "≤10%" : ">10%"}</span>
-    </UIBadge>
+    </NxBadge>
   );
 }
 
@@ -689,20 +693,20 @@ export default function SiteProgress() {
       />
 
       {/* ── KPI flashcards ── */}
-      <div className="grid gap-3.5 mb-6" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(178px, 1fr))" }}>
-        <StatCard
-          label="Pending L1 (AGM)" value={pendingAgmReqs.length} icon={Clock} iconColorClass="text-amber-500"
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 sm:gap-4 mb-5">
+        <NxStatCard
+          label="Pending L1 (AGM)" value={pendingAgmReqs.length} icon={Clock}
           active={mainTab === "requests" && reqTab === "pending"}
           onClick={() => { setMainTab("requests"); setReqTab(mainTab === "requests" && reqTab === "pending" ? "all" : "pending"); }}
         />
-        <StatCard
-          label="Pending L2 (GM)" value={pendingGmReqs.length} icon={Clock} iconColorClass="text-blue-500"
+        <NxStatCard
+          label="Pending L2 (GM)" value={pendingGmReqs.length} icon={Clock}
           active={mainTab === "requests" && reqTab === "pending-gm"}
           onClick={() => { setMainTab("requests"); setReqTab(mainTab === "requests" && reqTab === "pending-gm" ? "all" : "pending-gm"); }}
         />
-        <StatCard label="Today's Progress Entries" value={kpis.progressEntriesToday} icon={FileText} iconColorClass="text-emerald-500" />
-        <StatCard label="Active DRIs Today" value={kpis.drisActiveToday} icon={Users} iconColorClass="text-purple-500" />
-        <StatCard label="Active Projects Today" value={kpis.projectsActiveToday} icon={Building2} iconColorClass="text-teal-500" />
+        <NxStatCard label="Today's Progress Entries" value={kpis.progressEntriesToday} icon={FileText} />
+        <NxStatCard label="Active DRIs Today" value={kpis.drisActiveToday} icon={Users} />
+        <NxStatCard label="Active Projects Today" value={kpis.projectsActiveToday} icon={Building2} />
       </div>
 
       <div className="mb-4">
@@ -717,7 +721,7 @@ export default function SiteProgress() {
                 <span className="inline-flex items-center gap-1.5">
                   Bill Requests
                   {(pendingAgmReqs.length + pendingGmReqs.length) > 0 && (
-                    <UIBadge color="amber" small>{pendingAgmReqs.length + pendingGmReqs.length}</UIBadge>
+                    <NxBadge color="amber">{pendingAgmReqs.length + pendingGmReqs.length}</NxBadge>
                   )}
                 </span>
               ),
@@ -729,22 +733,20 @@ export default function SiteProgress() {
       {mainTab === "progress" && (
         <>
           {/* ── Filters ── */}
-          <div className="flex gap-2.5 flex-wrap items-center mb-4">
-            <div className="min-w-[240px]">
-              <SField
-                placeholder="Filter by project…"
-                value={selProjectId ?? null} onChange={v => setSelProjectId(v || undefined)}
-                options={[{ value: "", label: "All projects" }, ...projects.map(p => ({ label: p.name, value: p._id }))]}
+          <div className="bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700/40 rounded-lg p-3.5 mb-4">
+            <div className="flex gap-2.5 flex-wrap items-center">
+              <DropdownSelectFilter
+                value={selProjectId ?? ""} onChange={v => setSelProjectId(v || undefined)}
+                placeholder="All projects" resetValue=""
+                options={projects.map(p => ({ label: p.name, value: p._id }))}
               />
-            </div>
-            <div className="min-w-[220px]">
-              <SField
-                placeholder="Filter by DRI…"
-                value={selDriId ?? null} onChange={v => setSelDriId(v || undefined)}
-                options={[{ value: "", label: "All DRIs" }, ...driList.map(d => ({ label: `${d.name} (${d.email})`, value: d._id }))]}
+              <DropdownSelectFilter
+                value={selDriId ?? ""} onChange={v => setSelDriId(v || undefined)}
+                placeholder="All DRIs" resetValue=""
+                options={driList.map(d => ({ label: `${d.name} (${d.email})`, value: d._id }))}
               />
+              <DateRangeFilter onChange={(from, to) => { setDateFrom(from); setDateTo(to); }} />
             </div>
-            <DateRangeFilter onChange={(from, to) => { setDateFrom(from); setDateTo(to); }} />
           </div>
 
           {/* ── Recent DRI Progress ── */}
@@ -773,7 +775,7 @@ export default function SiteProgress() {
                           <Td>{dayjs(ev.createdAt).format("DD MMM, hh:mm a")}</Td>
                           <Td>
                             <div className="font-semibold">{typeof ev.projectId === "object" ? ev.projectId?.name : "—"}</div>
-                            <button type="button" onClick={() => openFromActivity(ev)} className="text-primary font-mono text-xs hover:underline">
+                            <button type="button" onClick={() => openFromActivity(ev)} className="text-primary text-xs hover:underline">
                               {ev.workOrderNo}
                             </button>
                           </Td>
@@ -821,12 +823,12 @@ export default function SiteProgress() {
                     <Card key={wo._id} className="flex justify-between items-center flex-wrap gap-2.5">
                       <div>
                         <div className="flex gap-2 items-center flex-wrap">
-                          <span className="font-mono font-bold text-primary">{wo.workOrderNo}</span>
-                          {wo.category && <UIBadge color="gray">{wo.category}</UIBadge>}
+                          <span className="font-bold text-primary">{wo.workOrderNo}</span>
+                          {wo.category && <NxBadge color="gray">{wo.category}</NxBadge>}
                           {anyVariance && (
-                            <UIBadge color="red"><span className="inline-flex items-center gap-1"><AlertTriangle className="w-2.5 h-2.5" /> Unapproved variance</span></UIBadge>
+                            <NxBadge color="red"><span className="inline-flex items-center gap-1"><AlertTriangle className="w-2.5 h-2.5" /> Unapproved variance</span></NxBadge>
                           )}
-                          {pendingBR && <UIBadge color={pendingBR.status === "pending-gm" ? "blue" : "orange"}>Bill {pendingBR.reqNo} — {STATUS_CFG[pendingBR.status]?.label}</UIBadge>}
+                          {pendingBR && <NxBadge color={pendingBR.status === "pending-gm" ? "blue" : "orange"}>Bill {pendingBR.reqNo} — {STATUS_CFG[pendingBR.status]?.label}</NxBadge>}
                         </div>
                         <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                           {wo.vendorName} · {(wo.assignedDRI ?? []).map(d => d.name).join(", ") || "No DRI assigned"}
@@ -839,7 +841,7 @@ export default function SiteProgress() {
                           </div>
                           <span className="text-xs font-bold text-[#1A1A2E] dark:text-[#F1F5F9]">{avgPct}%</span>
                         </div>
-                        <Btn small color="primary" label="View & Bill" onClick={() => openWO(wo._id)} />
+                        <NxBtn color="primary" label="View & Bill" onClick={() => openWO(wo._id)} />
                       </div>
                     </Card>
                   );
@@ -857,27 +859,27 @@ export default function SiteProgress() {
               value={reqTab}
               onChange={setReqTab}
               options={[
-                { value: "pending",    label: <span className="inline-flex items-center gap-1.5">Pending L1 {pendingAgmReqs.length > 0 && <UIBadge color="amber" small>{pendingAgmReqs.length}</UIBadge>}</span> },
-                { value: "pending-gm", label: <span className="inline-flex items-center gap-1.5">Pending L2 {pendingGmReqs.length > 0 && <UIBadge color="blue" small>{pendingGmReqs.length}</UIBadge>}</span> },
+                { value: "pending",    label: <span className="inline-flex items-center gap-1.5">Pending L1 {pendingAgmReqs.length > 0 && <NxBadge color="amber">{pendingAgmReqs.length}</NxBadge>}</span> },
+                { value: "pending-gm", label: <span className="inline-flex items-center gap-1.5">Pending L2 {pendingGmReqs.length > 0 && <NxBadge color="blue">{pendingGmReqs.length}</NxBadge>}</span> },
                 { value: "approved",   label: "Approved" },
                 { value: "rejected",   label: "Rejected" },
                 { value: "all",        label: "All" },
               ]}
             />
           </div>
-          <div className="mb-4 flex gap-2.5 flex-wrap items-center">
-            <SearchFilter
-              placeholder="Search by request no, work order, contractor, or project…"
-              value={reqSearch} onChange={setReqSearch}
-            />
-            <div className="min-w-[240px]">
-              <SField
-                placeholder="Filter by project…"
-                value={reqProjectFilter ?? null} onChange={v => setReqProjectFilter(v || undefined)}
-                options={[{ value: "", label: "All projects" }, ...projectOptions]}
+          <div className="bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700/40 rounded-lg p-3.5 mb-4">
+            <div className="flex gap-2.5 flex-wrap items-center">
+              <SearchFilter
+                placeholder="Search by request no, work order, contractor, or project…"
+                value={reqSearch} onChange={setReqSearch}
               />
+              <DropdownSelectFilter
+                value={reqProjectFilter ?? ""} onChange={v => setReqProjectFilter(v || undefined)}
+                placeholder="All projects" resetValue=""
+                options={projectOptions}
+              />
+              <UISwitch checked={showArchived} onChange={setShowArchived} onLabel="Archived" offLabel="Show Archived" />
             </div>
-            <UISwitch checked={showArchived} onChange={setShowArchived} onLabel="Archived" offLabel="Show Archived" />
           </div>
           {filteredReqs.length === 0 ? (
             <EmptyState title={`No ${reqTab === "all" ? "" : STATUS_CFG[reqTab]?.label.toLowerCase() || reqTab} bill requests`} />
@@ -899,37 +901,47 @@ export default function SiteProgress() {
                 <Tbody>
                   {reqPager.pageItems.map(r => {
                     const cfg = STATUS_CFG[r.status] ?? { color: "gray", label: r.status };
+                    const menuItems: DropdownMenuItem[] = [
+                      { key: "archive", label: r.isArchived ? "Unarchive" : "Archive", icon: ArchiveIcon, onClick: () => setArchiveTarget(r) },
+                    ];
                     return (
-                      <Tr key={r._id}>
+                      <Tr key={r._id} className="cursor-pointer" onClick={() => setViewReq(r)}>
                         <Td>
                           <div className="flex gap-1.5 items-center">
-                            {r.stageNo && <UIBadge color="orange" small>S{r.stageNo}</UIBadge>}
-                            <button type="button" onClick={() => setViewReq(r)} className="text-primary font-bold font-mono text-[13px] hover:underline">{r.reqNo}</button>
+                            {r.stageNo && <NxBadge color="orange">S{r.stageNo}</NxBadge>}
+                            <span className="text-primary font-bold text-[13px]">{r.reqNo}</span>
                           </div>
                           {r.milestoneAchieved && (
                             <span className="text-[10px] text-primary inline-flex items-center gap-0.5"><Trophy className="w-2.5 h-2.5" /> Milestone</span>
                           )}
                         </Td>
-                        <Td><code className="cursor-pointer text-blue-600 dark:text-blue-400" onClick={() => r.workOrderId && navigate(`/work-items/${r.workOrderId}`)}>{r.workOrderNo}</code></Td>
+                        <Td>
+                          <code
+                            className="cursor-pointer text-blue-600 dark:text-blue-400"
+                            onClick={e => { e.stopPropagation(); if (r.workOrderId) navigate(`/work-items/${r.workOrderId}`); }}
+                          >
+                            {r.workOrderNo}
+                          </code>
+                        </Td>
                         <Td>{r.projectName}</Td>
                         <Td>{r.vendorName}</Td>
                         <Td>{r.items.length} item{r.items.length !== 1 ? "s" : ""}</Td>
                         <Td>{dayjs(r.createdAt).format("DD MMM YYYY")}</Td>
-                        <Td><UIBadge color={cfg.color as any}>{cfg.label}</UIBadge></Td>
+                        <Td><NxBadge color={cfg.color as any}>{cfg.label}</NxBadge></Td>
                         <Td>
-                          <div className="flex gap-1.5 flex-wrap">
-                            <Btn small outline icon={Eye} label="View" onClick={() => setViewReq(r)} />
-                            <Btn small outline icon={Printer} label="Print" loading={printingReqId === r._id} onClick={() => handlePrintReq(r)} />
+                          <div onClick={e => e.stopPropagation()} className="flex items-center gap-1">
+                            <NxBtn color="icon" title="View" icon={Eye} onClick={() => setViewReq(r)} />
+                            <NxBtn color="icon" title="Print" icon={Printer} loading={printingReqId === r._id} onClick={() => handlePrintReq(r)} />
                             {r.status === "pending" && canAgmApprove && (
-                              <Btn small color="primary" icon={CheckCircle2} label="AGM Approve" onClick={() => openApprove(r._id)} />
+                              <NxBtn color="primary" icon={CheckCircle2} label="AGM Approve" onClick={() => openApprove(r._id)} />
                             )}
                             {r.status === "pending-gm" && canGmApprove && (
-                              <Btn small color="blue" icon={CheckCircle2} label="GM Approve" onClick={() => openGmApprove(r._id)} />
+                              <NxBtn color="success" icon={CheckCircle2} label="GM Approve" onClick={() => openGmApprove(r._id)} />
                             )}
                             {["pending", "pending-gm"].includes(r.status) && canRejectAny && (
-                              <Btn small color="red" icon={XCircle} label="Reject" onClick={() => { setRejectTarget(r._id); setRejectModal(true); }} />
+                              <NxBtn color="danger" icon={XCircle} label="Reject" onClick={() => { setRejectTarget(r._id); setRejectModal(true); }} />
                             )}
-                            <Btn small outline icon={ArchiveIcon} label={r.isArchived ? "Unarchive" : "Archive"} onClick={() => setArchiveTarget(r)} />
+                            <DropdownMenu items={menuItems} />
                           </div>
                         </Td>
                       </Tr>

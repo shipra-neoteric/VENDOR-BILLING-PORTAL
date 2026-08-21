@@ -1,17 +1,19 @@
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
-import { Plus, Upload, X, Ruler, Eye, Pencil } from "lucide-react";
+import { Plus, Upload, X, Ruler, Eye, Pencil, Users, UserCheck, UserX } from "lucide-react";
 import PageHeader from "../../ui/PageHeader";
 import Btn from "../../ui/Btn";
-import Card from "../../ui/Card";
 import EmptyState from "../../ui/EmptyState";
 import Field from "../../ui/Field";
 import SField from "../../ui/SField";
 import { SearchFilter } from "../../ui/Filters";
 import Modal from "../../ui/Modal";
 import { Table, Thead, Tbody, Tr, Th, Td, TdText } from "../../ui/Table";
-import { SkeletonTable } from "../../ui/Skeleton";
 import { SectionHeading } from "../../ui/Descriptions";
+import Spinner from "../../ui/Spinner";
+import NxBtn from "../../ui/nexora/Btn";
+import NxBadge from "../../ui/nexora/Badge";
+import NxStatCard from "../../ui/nexora/StatCard";
 import ConsultantDetailView from "../../components/ConsultantDetailView";
 import apiClient from "../../services/apiClient";
 import type { Consultant, ConsultancyType } from "../../types/VendorBilling";
@@ -29,21 +31,6 @@ const DESIGN_SOFTWARE_OPTIONS = [
   "AutoCAD", "Revit", "SketchUp", "3ds Max", "Lumion", "V-Ray", "ArchiCAD",
   "STAAD Pro", "ETABS", "Primavera P6", "MS Project", "BIM 360",
 ];
-
-const TYPE_COLOR: Record<ConsultancyType, string> = {
-  Architect: "#7c3aed",
-  "Interior Designer": "#db2777",
-  "Structural Consultant": "#2563eb",
-  "MEP Consultant": "#0891b2",
-  "Landscape Consultant": "#16a34a",
-  "Facade Consultant": "#4338ca",
-  "Quantity Surveyor": "#d97706",
-  "Project Management Consultant": "#ea580c",
-  "BIM Consultant": "#2563eb",
-  "Environmental Consultant": "#16a34a",
-  "Lighting Consultant": "#f37916",
-  Other: "#6b7280",
-};
 
 const REQUIRED_FIELDS: { key: keyof typeof emptyForm; label: string }[] = [
   { key: "firmName", label: "Firm / Consultant Name" },
@@ -118,6 +105,7 @@ export default function Consultants() {
   const [loading, setLoading]       = useState(true);
   const [saving, setSaving]         = useState(false);
   const [search, setSearch]         = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
   const [registerOpen, setRegisterOpen] = useState(false);
   const [editingConsultant, setEditingConsultant] = useState<Consultant | null>(null);
   const [viewOpen, setViewOpen]     = useState(false);
@@ -134,11 +122,17 @@ export default function Consultants() {
 
   const filtered = consultants.filter(
     (c) =>
-      c.consultantCode.toLowerCase().includes(search.toLowerCase()) ||
-      c.firmName.toLowerCase().includes(search.toLowerCase()) ||
-      c.principalName.toLowerCase().includes(search.toLowerCase()) ||
-      c.mobile.includes(search)
+      (c.consultantCode.toLowerCase().includes(search.toLowerCase()) ||
+        c.firmName.toLowerCase().includes(search.toLowerCase()) ||
+        c.principalName.toLowerCase().includes(search.toLowerCase()) ||
+        c.mobile.includes(search)) &&
+      (statusFilter === "all" || (c.status || "active") === statusFilter)
   );
+
+  const activeCount = consultants.filter(c => (c.status || "active") === "active").length;
+  const inactiveCount = consultants.length - activeCount;
+  const hasActiveFilters = search !== "" || statusFilter !== "all";
+  const clearAllFilters = () => { setSearch(""); setStatusFilter("all"); };
 
   function openAdd() {
     setEditingConsultant(null);
@@ -204,25 +198,44 @@ export default function Consultants() {
         title="Consultants"
         subtitle="Manage registered architects, designers, and professional-services firms."
         icon={Ruler}
-        actions={<Btn label="Register Consultant" icon={Plus} color="primary" onClick={openAdd} />}
+        actions={<NxBtn label="Register Consultant" icon={Plus} color="primary" onClick={openAdd} />}
       />
 
-      <Card className="mb-4">
-        <SearchFilter value={search} onChange={setSearch} placeholder="Search by consultant code, firm, principal, or mobile…" />
-      </Card>
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4 mb-5">
+        <NxStatCard
+          label="Total Consultants" value={consultants.length} icon={Users}
+          active={statusFilter === "all"} onClick={() => setStatusFilter("all")}
+        />
+        <NxStatCard
+          label="Active" value={activeCount} icon={UserCheck}
+          active={statusFilter === "active"} onClick={() => setStatusFilter(statusFilter === "active" ? "all" : "active")}
+        />
+        <NxStatCard
+          label="Inactive" value={inactiveCount} icon={UserX}
+          active={statusFilter === "inactive"} onClick={() => setStatusFilter(statusFilter === "inactive" ? "all" : "inactive")}
+        />
+      </div>
+
+      <div className="bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700/40 rounded-lg p-3.5 mb-4">
+        <div className="flex gap-2.5 items-center flex-wrap">
+          <SearchFilter value={search} onChange={setSearch} placeholder="Search by consultant code, firm, principal, or mobile…" />
+          {hasActiveFilters && <Btn small outline label="Clear all" onClick={clearAllFilters} />}
+          <span className="ml-auto text-gray-400 text-xs whitespace-nowrap">
+            {filtered.length} consultant{filtered.length !== 1 ? "s" : ""}
+          </span>
+        </div>
+      </div>
 
       {loading ? (
-        <Card padded={false} className="p-4"><SkeletonTable rows={6} cols={6} /></Card>
+        <Spinner size="large" />
       ) : filtered.length === 0 ? (
-        <Card padded={false}>
-          <EmptyState
-            icon={Ruler}
-            title={search ? "No consultants match your search" : "No consultants yet"}
-            message={!search ? 'Click "Register Consultant" to add your first firm.' : undefined}
-            actionLabel={!search ? "Register Consultant" : undefined}
-            onAction={!search ? openAdd : undefined}
-          />
-        </Card>
+        <EmptyState
+          icon={Ruler}
+          title={search ? "No consultants match your search" : "No consultants yet"}
+          message={!search ? 'Click "Register Consultant" to add your first firm.' : undefined}
+          actionLabel={!search ? "Register Consultant" : undefined}
+          onAction={!search ? openAdd : undefined}
+        />
       ) : (
         <Table>
           <Thead>
@@ -238,25 +251,17 @@ export default function Consultants() {
           </Thead>
           <Tbody>
             {filtered.map(c => (
-              <Tr key={c.id}>
-                <Td><span className="font-mono font-bold text-primary">{c.consultantCode}</span></Td>
+              <Tr key={c.id} className="cursor-pointer" onClick={() => viewProfile(c)}>
+                <Td><TdText>{c.consultantCode}</TdText></Td>
                 <Td><TdText>{c.firmName}</TdText></Td>
                 <Td><TdText>{c.principalName}</TdText></Td>
-                <Td>
-                  <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded" style={{ background: `${TYPE_COLOR[c.consultancyType] ?? "#6b7280"}15`, color: TYPE_COLOR[c.consultancyType] ?? "#6b7280" }}>
-                    {c.consultancyType}
-                  </span>
-                </Td>
+                <Td><TdText>{c.consultancyType}</TdText></Td>
                 <Td><TdText>{c.mobile}</TdText></Td>
+                <Td><NxBadge color={(c.status || "active") === "active" ? "green" : "red"}>{(c.status || "active").toUpperCase()}</NxBadge></Td>
                 <Td>
-                  <span className={`text-[11px] font-bold uppercase px-1.5 py-0.5 rounded ${c.status === "active" ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400" : "bg-gray-100 text-gray-500 dark:bg-gray-700/40"}`}>
-                    {(c.status || "").toUpperCase()}
-                  </span>
-                </Td>
-                <Td>
-                  <div className="flex gap-1">
-                    <Btn small color="blue" icon={Eye} title="View Consultant" onClick={() => viewProfile(c)} />
-                    <Btn small color="amber" icon={Pencil} title="Edit Consultant" onClick={() => openEdit(c)} />
+                  <div onClick={e => e.stopPropagation()} className="flex items-center gap-1">
+                    <NxBtn color="icon" title="View Consultant" icon={Eye} onClick={() => viewProfile(c)} />
+                    <NxBtn color="icon" title="Edit Consultant" icon={Pencil} onClick={() => openEdit(c)} />
                   </div>
                 </Td>
               </Tr>

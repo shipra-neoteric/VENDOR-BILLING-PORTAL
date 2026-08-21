@@ -104,7 +104,7 @@ function ContractorBillsModal({ vendorName, bills, onClose }: { vendorName: stri
           {bills.map((b, i) => (
             <div key={i} className="border border-gray-100 dark:border-gray-700/40 rounded-lg px-3 py-2.5">
               <div className="flex justify-between items-center gap-2">
-                <span className="font-semibold text-sm text-[#1A1A2E] dark:text-[#F1F5F9] font-mono">{b.billNo}</span>
+                <span className="font-semibold text-sm text-[#1A1A2E] dark:text-[#F1F5F9]">{b.billNo}</span>
                 <span className="text-xs font-bold text-primary">{fmtCr(b.amount)}</span>
               </div>
               <div className="flex justify-between items-center gap-2 mt-0.5">

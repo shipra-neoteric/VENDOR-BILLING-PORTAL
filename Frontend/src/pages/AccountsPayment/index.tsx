@@ -10,12 +10,13 @@ import dayjs from "dayjs";
 import type { Dayjs } from "dayjs";
 import PageHeader from "../../ui/PageHeader";
 import Btn from "../../ui/Btn";
+import NxBtn from "../../ui/nexora/Btn";
+import NxBadge from "../../ui/nexora/Badge";
+import type { NxBadgeColor } from "../../ui/nexora/Badge";
+import NxStatCard from "../../ui/nexora/StatCard";
 import Field from "../../ui/Field";
-import SField from "../../ui/SField";
-import UISwitch from "../../ui/Switch";
 import Modal from "../../ui/Modal";
 import ConfirmModal from "../../ui/ConfirmModal";
-import StatCard from "../../ui/StatCard";
 import Badge from "../../ui/Badge";
 import Segmented from "../../ui/Segmented";
 import Steps from "../../ui/Steps";
@@ -27,7 +28,7 @@ import { Descriptions, DescItem } from "../../ui/Descriptions";
 import { Table, Thead, Tbody, Tfoot, Tr, Th, Td } from "../../ui/Table";
 import { usePagination } from "../../ui/usePagination";
 import Pagination from "../../ui/Pagination";
-import { SearchFilter, FilterRow } from "../../ui/Filters";
+import { SearchFilter, FilterRow, DropdownSelectFilter } from "../../ui/Filters";
 import apiClient from "../../services/apiClient";
 import DateRangeFilter, { inDateRange } from "../../components/DateRangeFilter";
 import { selectableProjects } from "../../utils/projectOptions";
@@ -185,6 +186,21 @@ function sameActor(user: AuthUser | null, actor?: BillUser | null): boolean {
   if (!user || !actor?._id || user.role === "owner") return false;
   return actor._id === user.id;
 }
+
+// List-table status pill — mirrors BILL_STATUS_LABEL's wording (see
+// shared/constants/billStatus.ts, still used as-is by <StatusBadge> inside
+// the bill drawer) but maps each stage onto the fixed Nexora badge palette
+// instead of a bespoke hex color, matching WorkItems' displayStatus() precedent.
+const BILL_LIST_STATUS_CFG: Record<BillStatus, { label: string; color: NxBadgeColor }> = {
+  draft:         { label: "Awaiting Verification",         color: "gray"   },
+  "verify-done": { label: "Awaiting L1 AGM",                color: "amber"  },
+  "l1-approved": { label: "Awaiting L2 Director",           color: "cyan"   },
+  approved:      { label: "Ready for TMS",                  color: "blue"   },
+  "sent-to-tms": { label: "Sent to TMS",                    color: "indigo" },
+  hold:          { label: "On Hold",                        color: "orange" },
+  paid:          { label: "Paid",                           color: "green"  },
+  rejected:      { label: "Rejected",                       color: "red"    },
+};
 
 // ── Small visual building blocks ──────────────────────────────────
 
@@ -391,7 +407,7 @@ function PaidPanel({ bill, isOwner, onUpdated }: { bill: Bill; isOwner: boolean;
         <Descriptions columns={2}>
           <DescItem label="Payment Date">{bill.paymentDate ? dayjs(bill.paymentDate).format("DD MMM YYYY") : "—"}</DescItem>
           <DescItem label="Mode"><Badge color="purple">{PAYMENT_MODE_LABEL[bill.paymentMode || ""] || bill.paymentMode?.toUpperCase() || "—"}</Badge></DescItem>
-          <DescItem label="UTR / Ref"><span className="font-mono font-bold">{bill.paymentUTR || "—"}</span></DescItem>
+          <DescItem label="UTR / Ref"><span className="font-bold">{bill.paymentUTR || "—"}</span></DescItem>
           <DescItem label="Bank">{bill.paymentBank || "—"}</DescItem>
           <DescItem label="Released By">{bill.paymentReleasedBy || "—"}</DescItem>
           <DescItem label="Amount Paid"><span className="font-mono font-bold text-emerald-600">{bill.paidAmount != null ? fmt(bill.paidAmount) : "—"}</span></DescItem>
@@ -1067,98 +1083,112 @@ export default function AccountsPayment() {
         icon={Wallet}
         title="Accounts Payment"
         subtitle="Verification → L1 AGM → L2 Director — then handed off to TMS for payment"
-        actions={<Btn outline label="Procurement Tracker" onClick={() => navigate("/procurement-tracker")} />}
+        actions={<NxBtn color="secondary" label="Procurement Tracker" onClick={() => navigate("/procurement-tracker")} />}
       />
 
       {/* Stat cards — each doubles as a shortcut into the matching pill tab below */}
       <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3 mb-5">
-        <StatCard
+        <NxStatCard
           label="Awaiting Verification" value={<>{draftBills.length}<div className="text-[11px] font-normal text-gray-400 mt-0.5">Draft bills</div></>}
-          icon={FilePlus} iconColorClass="text-gray-500"
+          icon={FilePlus}
           active={activeTab === "draft"} onClick={() => setActiveTab(activeTab === "draft" ? "all" : "draft")}
         />
-        <StatCard
+        <NxStatCard
           label="Awaiting L1 AGM" value={<>{verifyDoneBills.length}<div className="text-[11px] font-normal text-gray-400 mt-0.5">Verified</div></>}
-          icon={ShieldCheck} iconColorClass="text-cyan-600"
+          icon={ShieldCheck}
           active={activeTab === "verifyDone"} onClick={() => setActiveTab(activeTab === "verifyDone" ? "all" : "verifyDone")}
         />
-        <StatCard
+        <NxStatCard
           label="Awaiting L2 Director" value={<>{l1ApprovedBills.length}<div className="text-[11px] font-normal text-gray-400 mt-0.5">L1 AGM approved</div></>}
-          icon={CheckCircle2} iconColorClass="text-purple-600"
+          icon={CheckCircle2}
           active={activeTab === "l1Approved"} onClick={() => setActiveTab(activeTab === "l1Approved" ? "all" : "l1Approved")}
         />
-        <StatCard
+        <NxStatCard
           label="Ready for TMS" value={<>{approvedBills.length}<div className="text-[11px] font-normal text-gray-400 mt-0.5">L2 Director approved</div></>}
-          icon={Clock} iconColorClass="text-indigo-700"
+          icon={Clock}
           active={activeTab === "approved"} onClick={() => setActiveTab(activeTab === "approved" ? "all" : "approved")}
         />
-        <StatCard
+        <NxStatCard
           label="Sent to TMS" value={<>{sentToTmsBills.length}<div className="text-[11px] font-normal text-gray-400 mt-0.5">Awaiting payment</div></>}
-          icon={Send} iconColorClass="text-blue-700"
+          icon={Send}
           active={activeTab === "sentToTms"} onClick={() => setActiveTab(activeTab === "sentToTms" ? "all" : "sentToTms")}
         />
-        <StatCard
+        <NxStatCard
           label="Hold" value={<>{holdBills.length}<div className="text-[11px] font-normal text-gray-400 mt-0.5">Paused before TMS</div></>}
-          icon={PauseCircle} iconColorClass="text-purple-600"
+          icon={PauseCircle}
           active={activeTab === "hold"} onClick={() => setActiveTab(activeTab === "hold" ? "all" : "hold")}
         />
-        <StatCard
+        <NxStatCard
           label="Paid" value={<>{stats.paidThisMonthCount}<div className="text-[11px] font-normal text-gray-400 mt-0.5">{fmt(stats.paidThisMonthAmt)} this month</div></>}
-          icon={IndianRupee} iconColorClass="text-emerald-600"
+          icon={IndianRupee}
           active={activeTab === "paid"} onClick={() => setActiveTab(activeTab === "paid" ? "all" : "paid")}
         />
-        <StatCard
+        <NxStatCard
           label="Rejected" value={<>{rejectedBills.length}<div className="text-[11px] font-normal text-gray-400 mt-0.5">Bills rejected</div></>}
-          icon={XCircle} iconColorClass="text-red-600"
+          icon={XCircle}
           active={activeTab === "rejected"} onClick={() => setActiveTab(activeTab === "rejected" ? "all" : "rejected")}
         />
       </div>
 
       <div className="mb-4">
-        <Segmented
-          value={activeTab}
-          onChange={setActiveTab}
-          options={tabs.map((t) => ({
-            value: t.key,
-            label: (
-              <span className="inline-flex items-center gap-1.5">
-                {t.label}
-                {t.count > 0 && <Badge color="green" small>{t.count}</Badge>}
-              </span>
-            ),
-          }))}
-        />
+        <div className="inline-flex items-center gap-0.5 p-1 rounded-lg bg-gray-100 dark:bg-gray-800/60">
+          {tabs.map((t) => (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => setActiveTab(t.key)}
+              className={[
+                "px-3.5 h-9 rounded-md text-[13px] font-semibold transition-colors whitespace-nowrap inline-flex items-center gap-1.5",
+                activeTab === t.key
+                  ? "bg-white dark:bg-[#1E293B] text-[#1A1A2E]! dark:text-[#F1F5F9]! shadow-sm"
+                  : "text-gray-500! dark:text-gray-400! hover:text-gray-700 dark:hover:text-gray-200",
+              ].join(" ")}
+            >
+              {t.label}
+              {t.count > 0 && <Badge color="green" small>{t.count}</Badge>}
+            </button>
+          ))}
+          {/* Archived isn't a mutually-exclusive status like the tabs above it
+              (a bill can be archived at any stage), so it toggles its own
+              boolean instead of joining the activeTab single-select — it just
+              shares the same pill strip and styling for visual consistency. */}
+          <button
+            type="button"
+            onClick={() => setShowArchived((a) => !a)}
+            className={[
+              "px-3.5 h-9 rounded-md text-[13px] font-semibold transition-colors whitespace-nowrap",
+              showArchived
+                ? "bg-white dark:bg-[#1E293B] text-[#1A1A2E]! dark:text-[#F1F5F9]! shadow-sm"
+                : "text-gray-500! dark:text-gray-400! hover:text-gray-700 dark:hover:text-gray-200",
+            ].join(" ")}
+          >
+            Archived
+          </button>
+        </div>
       </div>
 
       {/* Filter row */}
       <FilterRow>
         <SearchFilter placeholder="Search by bill no, vendor, work order, project…" value={search} onChange={setSearch} />
         <DateRangeFilter onChange={(from, to) => { setDateFrom(from); setDateTo(to); }} />
-        <div className="w-[200px]">
-          <SField
-            placeholder="All Projects"
-            value={projectFilter}
-            onChange={setProjectFilter}
-            options={[{ value: "", label: "All Projects" }, ...selectableProjects(projects).map((p) => ({ label: p.name, value: p.id }))]}
-          />
-        </div>
-        <div className="w-[220px]">
-          <SField
-            placeholder="All Vendors"
-            value={vendorFilter}
-            onChange={setVendorFilter}
-            options={[{ value: "", label: "All Vendors" }, ...contractors.map((c) => ({ label: `${vendorLabel(c.companyName, c.shortCode)} (${c.vendorCode})`, value: c.vendorCode }))]}
-          />
-        </div>
-        <div className="w-[200px]">
-          <SField
-            placeholder="All Companies"
-            value={companyFilter}
-            onChange={setCompanyFilter}
-            options={[{ value: "", label: "All Companies" }, ...companies.map((c) => ({ label: c.name, value: c.name }))]}
-          />
-        </div>
-        <UISwitch checked={showArchived} onChange={setShowArchived} onLabel="Archived" offLabel="Show Archived" />
+        <DropdownSelectFilter
+          placeholder="All Projects" resetValue=""
+          value={projectFilter}
+          onChange={setProjectFilter}
+          options={selectableProjects(projects).map((p) => ({ label: p.name, value: p.id }))}
+        />
+        <DropdownSelectFilter
+          placeholder="All Vendors" resetValue=""
+          value={vendorFilter}
+          onChange={setVendorFilter}
+          options={contractors.map((c) => ({ label: `${vendorLabel(c.companyName, c.shortCode)} (${c.vendorCode})`, value: c.vendorCode }))}
+        />
+        <DropdownSelectFilter
+          placeholder="All Companies" resetValue=""
+          value={companyFilter}
+          onChange={setCompanyFilter}
+          options={companies.map((c) => ({ label: c.name, value: c.name }))}
+        />
         <span className="ml-auto text-gray-400 text-xs">
           {filteredBills.length} bill{filteredBills.length !== 1 ? "s" : ""}
         </span>
@@ -1186,13 +1216,13 @@ export default function AccountsPayment() {
             <Tbody>
               {pagedBills.map((r) => (
                 <Tr key={r.id} className="cursor-pointer" onClick={() => openDrawer(r)}>
-                  <Td className="font-mono font-bold text-blue-600">{r.billNo}</Td>
+                  <Td className="font-bold text-blue-600">{r.billNo}</Td>
                   <Td>
                     {r.workOrderNo && r.workOrderId ? (
                       <button
                         type="button"
                         onClick={(e) => { e.stopPropagation(); openWODrawer(r.workOrderId!); }}
-                        className="font-mono text-xs bg-blue-50 dark:bg-blue-500/10 text-blue-600 border border-blue-200 dark:border-blue-500/30 rounded px-2 py-0.5"
+                        className="text-xs bg-blue-50 dark:bg-blue-500/10 text-blue-600 border border-blue-200 dark:border-blue-500/30 rounded px-2 py-0.5"
                       >
                         {r.workOrderNo}
                       </button>
@@ -1211,17 +1241,15 @@ export default function AccountsPayment() {
                   </Td>
                   <Td>{r.projectName || <span className="text-gray-300">—</span>}</Td>
                   <Td className="text-right font-mono font-bold">{fmt(netAfterAdvance(r))}</Td>
-                  <Td><StatusBadge status={r.status} /></Td>
+                  <Td><NxBadge color={BILL_LIST_STATUS_CFG[r.status].color}>{BILL_LIST_STATUS_CFG[r.status].label}</NxBadge></Td>
                   <Td>{r.billDate ? dayjs(r.billDate).format("DD MMM YYYY") : "—"}</Td>
-                  <Td>
-                    <button
-                      type="button"
+                  <Td onClick={(e) => e.stopPropagation()}>
+                    <NxBtn
+                      color="icon"
                       title={showArchived ? "Unarchive" : "Archive"}
-                      onClick={(e) => { e.stopPropagation(); setArchiveTarget(r); }}
-                      className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700/40"
-                    >
-                      <Inbox className="w-4 h-4" />
-                    </button>
+                      icon={Inbox}
+                      onClick={() => setArchiveTarget(r)}
+                    />
                   </Td>
                 </Tr>
               ))}
@@ -1246,7 +1274,7 @@ export default function AccountsPayment() {
       {drawerOpen && drawerBill && (
         <Modal
           icon={FileText}
-          title={<span className="font-mono text-blue-600 font-extrabold">{drawerBill.billNo}</span>}
+          title={<span className="text-blue-600 font-extrabold">{drawerBill.billNo}</span>}
           subtitle={
             <span className="inline-flex items-center gap-2">
               <StatusBadge status={drawerBill.status} />
@@ -1285,14 +1313,14 @@ export default function AccountsPayment() {
         >
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <InfoCard title="Bill" accentClass="bg-primary">
-              <InfoRow label="Bill No" value={drawerBill.billNo} mono />
+              <InfoRow label="Bill No" value={drawerBill.billNo} />
               <InfoRow label="Vendor" value={drawerBill.vendorName || "—"} />
               <InfoRow label="Amount" value={fmt(netAfterAdvance(drawerBill))} mono bold />
               <InfoRow label="Bill Date" value={dayjs(drawerBill.billDate).format("DD MMM YYYY")} />
               <InfoRow label="Project" value={drawerBill.projectName || "—"} />
             </InfoCard>
             <InfoCard title="Work Order" accentClass="bg-blue-600">
-              <InfoRow label="WO No" value={drawerBill.workOrderNo || "—"} mono />
+              <InfoRow label="WO No" value={drawerBill.workOrderNo || "—"} />
               <InfoRow label="Category" value={drawerWOCategory || "—"} />
               {drawerBill.workOrderId && (
                 <button
@@ -1328,7 +1356,7 @@ export default function AccountsPayment() {
                 )}
                 {drawerBill.isActive === false && drawerBill.supersededBy && (
                   <div className="text-purple-600 text-xs font-semibold">
-                    ↩ Superseded by <span className="font-mono">{drawerBill.supersededBy.billNo}</span>
+                    ↩ Superseded by <span>{drawerBill.supersededBy.billNo}</span>
                   </div>
                 )}
                 {drawerBill.linkedBills && drawerBill.linkedBills.length > 0 && (

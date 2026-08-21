@@ -6,7 +6,7 @@ import apiClient from "../../services/apiClient";
 import { useAuth } from "../../context/AuthContext";
 import PageHeader from "../../ui/PageHeader";
 import Card from "../../ui/Card";
-import Btn from "../../ui/Btn";
+import NxBtn from "../../ui/nexora/Btn";
 import Field from "../../ui/Field";
 
 const CONFIRM_WORD = "RESTORE";
@@ -105,7 +105,7 @@ export default function Backup() {
         <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
           Downloads a single .zip file containing every record from every collection in the database. Files hosted on Cloudinary (e.g. work order documents) are referenced by URL only, not included as files in this archive.
         </p>
-        <Btn color="primary" icon={Download} label="Download Backup" loading={downloading} onClick={downloadBackup} />
+        <NxBtn color="primary" icon={Download} label="Download Backup" loading={downloading} onClick={downloadBackup} />
       </Card>
 
       <Card className="border-red-300 dark:border-red-500/30 bg-red-50/50 dark:bg-red-500/5">
@@ -137,7 +137,7 @@ export default function Backup() {
           />
         </div>
 
-        <Btn color="red" icon={Upload} label="Restore Now" disabled={!canRestore} loading={restoring} onClick={restoreNow} />
+        <NxBtn color="danger" icon={Upload} label="Restore Now" disabled={!canRestore} loading={restoring} onClick={restoreNow} />
       </Card>
     </div>
   );

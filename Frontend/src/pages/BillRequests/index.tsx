@@ -12,15 +12,19 @@ import { billFinancials } from "../../shared/utils/billMath";
 import PageHeader from "../../ui/PageHeader";
 import Btn from "../../ui/Btn";
 import Badge from "../../ui/Badge";
+import NxBtn from "../../ui/nexora/Btn";
+import NxBadge from "../../ui/nexora/Badge";
 import Segmented from "../../ui/Segmented";
 import Switch from "../../ui/Switch";
 import Field from "../../ui/Field";
-import SField from "../../ui/SField";
-import { SearchFilter } from "../../ui/Filters";
+import { SearchFilter, DropdownSelectFilter } from "../../ui/Filters";
 import Modal from "../../ui/Modal";
 import ConfirmModal from "../../ui/ConfirmModal";
 import Checkbox from "../../ui/Checkbox";
 import Spinner from "../../ui/Spinner";
+import EmptyState from "../../ui/EmptyState";
+import DropdownMenu from "../../ui/DropdownMenu";
+import type { DropdownMenuItem } from "../../ui/DropdownMenu";
 import { Table, Thead, Tbody, Tr, Th, Td, TdText } from "../../ui/Table";
 import Pagination from "../../ui/Pagination";
 
@@ -250,109 +254,128 @@ export default function BillRequests() {
         icon={FileText}
       />
 
-      <div className="mb-4">
-        <Segmented
-          value={tab}
-          onChange={v => { setTab(v); setPage(1); }}
-          options={[
-            { value: "pending", label: <span className="flex items-center gap-1.5">Pending {pendingCount > 0 && <Badge color="amber" small>{pendingCount}</Badge>}</span> },
-            { value: "approved", label: "Approved" },
-            { value: "rejected", label: "Rejected" },
-            { value: "all", label: "All" },
-          ]}
-        />
-      </div>
-
-      <div className="mb-4 flex gap-2.5 flex-wrap items-center">
-        <SearchFilter value={search} onChange={v => { setSearch(v); setPage(1); }} placeholder="Search by request no, work order, contractor, vendor code or project…" />
-        <div className="w-60">
-          <SField value={projectFilter || null} onChange={v => { setProjectFilter(v); setPage(1); }} placeholder="Filter by project…" options={projectOptions} />
+      <div className="bg-white/90 dark:bg-gray-800/95 backdrop-blur-xl border border-gray-100 dark:border-gray-700/50 rounded-xl shadow-sm p-5">
+        <div className="flex items-center justify-end flex-wrap gap-2.5 mb-3">
+          <Segmented
+            value={tab}
+            onChange={v => { setTab(v); setPage(1); }}
+            options={[
+              { value: "pending", label: <span className="flex items-center gap-1.5">Pending {pendingCount > 0 && <NxBadge color="amber">{pendingCount}</NxBadge>}</span> },
+              { value: "approved", label: "Approved" },
+              { value: "rejected", label: "Rejected" },
+              { value: "all", label: "All" },
+            ]}
+          />
         </div>
-        <Switch checked={showArchived} onChange={setShowArchived} onLabel="Archived" offLabel="Active" />
-        {selectedIds.length > 0 && (
-          <Btn icon={Inbox} loading={archiving} label={`${showArchived ? "Unarchive" : "Archive"} Selected (${selectedIds.length})`} onClick={() => setBulkArchiveConfirm(true)} />
+
+        <div className="bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700/40 rounded-lg p-3.5 mb-4">
+          <div className="flex gap-2.5 items-center flex-wrap">
+            <SearchFilter value={search} onChange={v => { setSearch(v); setPage(1); }} placeholder="Search by request no, work order, contractor, vendor code or project…" />
+            <DropdownSelectFilter
+              value={projectFilter}
+              onChange={v => { setProjectFilter(v); setPage(1); }}
+              placeholder="All Projects"
+              resetValue=""
+              options={projectOptions}
+            />
+            <Switch checked={showArchived} onChange={setShowArchived} onLabel="Archived" offLabel="Active" />
+            {selectedIds.length > 0 && (
+              <NxBtn color="secondary" icon={Inbox} loading={archiving} label={`${showArchived ? "Unarchive" : "Archive"} Selected (${selectedIds.length})`} onClick={() => setBulkArchiveConfirm(true)} />
+            )}
+            <span className="ml-auto text-gray-400 text-xs whitespace-nowrap">
+              {filtered.length} request{filtered.length !== 1 ? "s" : ""}
+            </span>
+          </div>
+        </div>
+
+        {loading ? (
+          <Spinner label="Loading bill requests…" />
+        ) : filtered.length === 0 ? (
+          <EmptyState icon={FileText} title={search ? `No results for "${search}"` : `No ${tab === "all" ? "" : tab} bill requests`} />
+        ) : (
+          <>
+            <Table>
+              <Thead>
+                <Tr>
+                  <Th><Checkbox checked={allSelected} onChange={toggleAll} /></Th>
+                  <Th>Stage / Request</Th>
+                  <Th>Work Order</Th>
+                  <Th>Project</Th>
+                  <Th>Contractor</Th>
+                  <Th>Period</Th>
+                  <Th>Items</Th>
+                  <Th>Requested By</Th>
+                  <Th>Date</Th>
+                  <Th>Status</Th>
+                  <Th>Actions</Th>
+                </Tr>
+              </Thead>
+              <Tbody>
+                {paged.map(r => {
+                  const cfg = STATUS_CFG[r.status] ?? { color: "orange" as const, label: r.status };
+                  const menuItems: DropdownMenuItem[] = [
+                    { key: "archive", label: showArchived ? "Unarchive" : "Archive", icon: Inbox, onClick: () => setArchiveTarget(r) },
+                  ];
+                  return (
+                    <Tr key={r._id}>
+                      <Td><Checkbox checked={selectedIds.includes(r._id)} onChange={() => toggleOne(r._id)} /></Td>
+                      <Td>
+                        <div className="flex gap-1.5 items-center">
+                          {r.stageNo && <NxBadge color="orange">S{r.stageNo}</NxBadge>}
+                          <button type="button" onClick={() => setViewReq(r)} className="bg-transparent border-none cursor-pointer text-primary font-bold text-[13px] p-0">
+                            {r.reqNo}
+                          </button>
+                        </div>
+                        {r.milestoneAchieved && <span className="text-[10px] text-primary flex items-center gap-1"><Trophy className="w-2.5 h-2.5" /> Milestone</span>}
+                      </Td>
+                      <Td>
+                        <span
+                          className="cursor-pointer text-blue-600 dark:text-blue-400"
+                          onClick={() => r.workOrderId && navigate(`/work-items/${r.workOrderId}`)}
+                        >
+                          {r.workOrderNo}
+                        </span>
+                      </Td>
+                      <Td>
+                        <TdText>{r.projectName}</TdText>
+                        {r.projectLocation && <div className="text-[11px] text-gray-400 dark:text-gray-500">{r.projectLocation}</div>}
+                      </Td>
+                      <Td><TdText>{r.vendorName}</TdText></Td>
+                      <Td>
+                        {r.periodFrom ? (
+                          <span className="text-xs text-gray-500 dark:text-gray-400">{dayjs(r.periodFrom).format("DD MMM")} → {dayjs(r.periodTo ?? r.createdAt).format("DD MMM YYYY")}</span>
+                        ) : <span className="text-gray-300 dark:text-gray-600">—</span>}
+                      </Td>
+                      <Td><TdText>{r.items.length} item{r.items.length !== 1 ? "s" : ""}</TdText></Td>
+                      <Td><TdText>{r.requestedBy?.name || "—"}</TdText></Td>
+                      <Td><TdText>{dayjs(r.createdAt).format("DD MMM YYYY")}</TdText></Td>
+                      <Td><NxBadge color={cfg.color}>{cfg.label}</NxBadge></Td>
+                      <Td>
+                        <div className="flex items-center gap-1 flex-wrap">
+                          <NxBtn color="icon" title="View" icon={Eye} onClick={() => setViewReq(r)} />
+                          {r.status === "pending" && (
+                            <>
+                              <NxBtn color="success" icon={CheckCircle2} label="Approve" onClick={() => openApprove(r._id)} />
+                              <NxBtn color="danger" icon={XCircle} label="Reject" onClick={() => { setRejectTarget(r._id); setRejectModal(true); }} />
+                            </>
+                          )}
+                          <DropdownMenu items={menuItems} />
+                        </div>
+                      </Td>
+                    </Tr>
+                  );
+                })}
+              </Tbody>
+            </Table>
+            {filtered.length > PAGE_SIZE && (
+              <div className="flex items-center justify-between mt-4">
+                <span className="text-xs text-gray-400">{filtered.length} requests</span>
+                <Pagination page={page} totalPages={Math.ceil(filtered.length / PAGE_SIZE)} onChange={setPage} />
+              </div>
+            )}
+          </>
         )}
       </div>
-
-      {loading ? (
-        <Spinner label="Loading bill requests…" />
-      ) : filtered.length === 0 ? (
-        <div className="text-center py-14 text-gray-400">{search ? `No results for "${search}"` : `No ${tab === "all" ? "" : tab} bill requests`}</div>
-      ) : (
-        <>
-          <Table>
-            <Thead>
-              <Tr>
-                <Th><Checkbox checked={allSelected} onChange={toggleAll} /></Th>
-                <Th>Stage / Request</Th>
-                <Th>Work Order</Th>
-                <Th>Project</Th>
-                <Th>Contractor</Th>
-                <Th>Period</Th>
-                <Th>Items</Th>
-                <Th>Requested By</Th>
-                <Th>Date</Th>
-                <Th>Status</Th>
-                <Th>Actions</Th>
-              </Tr>
-            </Thead>
-            <Tbody>
-              {paged.map(r => {
-                const cfg = STATUS_CFG[r.status] ?? { color: "orange" as const, label: r.status };
-                return (
-                  <Tr key={r._id}>
-                    <Td><Checkbox checked={selectedIds.includes(r._id)} onChange={() => toggleOne(r._id)} /></Td>
-                    <Td>
-                      <div className="flex gap-1.5 items-center">
-                        {r.stageNo && <Badge color="orange" small>S{r.stageNo}</Badge>}
-                        <button type="button" onClick={() => setViewReq(r)} className="bg-transparent border-none cursor-pointer text-primary font-bold font-mono text-[13px] p-0">
-                          {r.reqNo}
-                        </button>
-                      </div>
-                      {r.milestoneAchieved && <span className="text-[10px] text-primary flex items-center gap-1"><Trophy className="w-2.5 h-2.5" /> Milestone</span>}
-                    </Td>
-                    <Td>
-                      <code className="cursor-pointer text-blue-500" onClick={() => r.workOrderId && navigate(`/work-items/${r.workOrderId}`)}>{r.workOrderNo}</code>
-                    </Td>
-                    <Td>
-                      <TdText>{r.projectName}</TdText>
-                      {r.projectLocation && <div className="text-[11px] text-gray-400">{r.projectLocation}</div>}
-                    </Td>
-                    <Td><TdText>{r.vendorName}</TdText></Td>
-                    <Td>
-                      {r.periodFrom ? (
-                        <span className="text-xs text-gray-500">{dayjs(r.periodFrom).format("DD MMM")} → {dayjs(r.periodTo ?? r.createdAt).format("DD MMM YYYY")}</span>
-                      ) : <span className="text-gray-300">—</span>}
-                    </Td>
-                    <Td><TdText>{r.items.length} item{r.items.length !== 1 ? "s" : ""}</TdText></Td>
-                    <Td><TdText>{r.requestedBy?.name || "—"}</TdText></Td>
-                    <Td><TdText>{dayjs(r.createdAt).format("DD MMM YYYY")}</TdText></Td>
-                    <Td><Badge color={cfg.color}>{cfg.label}</Badge></Td>
-                    <Td>
-                      <div className="flex gap-1.5 flex-wrap">
-                        <Btn small outline icon={Eye} label="View" onClick={() => setViewReq(r)} />
-                        {r.status === "pending" && (
-                          <>
-                            <Btn small color="green" icon={CheckCircle2} label="Approve" onClick={() => openApprove(r._id)} />
-                            <Btn small color="red" icon={XCircle} label="Reject" onClick={() => { setRejectTarget(r._id); setRejectModal(true); }} />
-                          </>
-                        )}
-                        <Btn small outline icon={Inbox} label={showArchived ? "Unarchive" : "Archive"} onClick={() => setArchiveTarget(r)} />
-                      </div>
-                    </Td>
-                  </Tr>
-                );
-              })}
-            </Tbody>
-          </Table>
-          {filtered.length > PAGE_SIZE && (
-            <div className="flex items-center justify-between mt-4">
-              <span className="text-xs text-gray-400">{filtered.length} requests</span>
-              <Pagination page={page} totalPages={Math.ceil(filtered.length / PAGE_SIZE)} onChange={setPage} />
-            </div>
-          )}
-        </>
-      )}
 
       {/* View / Approve Modal */}
       {viewReq && (
@@ -503,7 +526,7 @@ export default function BillRequests() {
                   {viewReq.milestoneAchieved && viewReq.milestoneDate && (
                     <div className="mt-2 text-primary font-semibold flex items-center gap-1.5">
                       <Trophy className="w-3.5 h-3.5" /> Payment Released: {dayjs(viewReq.milestoneDate).format("DD MMM YYYY")}
-                      {b.paymentUTR && <span className="font-mono ml-2 text-xs text-purple-600 dark:text-purple-400">UTR: {b.paymentUTR}</span>}
+                      {b.paymentUTR && <span className="ml-2 text-xs text-purple-600 dark:text-purple-400">UTR: {b.paymentUTR}</span>}
                     </div>
                   )}
                 </div>

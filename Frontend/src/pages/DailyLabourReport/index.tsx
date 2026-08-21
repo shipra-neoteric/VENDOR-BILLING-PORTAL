@@ -7,12 +7,15 @@ import { WORK_TYPE_OPTIONS, SHIFT_TYPE_OPTIONS } from "../../shared/constants/la
 import type { LabourReportFormValues } from "../../shared/constants/labourReportOptions";
 import PageHeader from "../../ui/PageHeader";
 import Btn from "../../ui/Btn";
+import NxBtn from "../../ui/nexora/Btn";
 import Card from "../../ui/Card";
 import Field from "../../ui/Field";
 import SField from "../../ui/SField";
 import { DatePicker } from "../../ui/DatePicker";
 import Modal from "../../ui/Modal";
 import { Table, Thead, Tbody, Tr, Th, Td, TdText } from "../../ui/Table";
+import { usePagination } from "../../ui/usePagination";
+import Pagination from "../../ui/Pagination";
 import { SkeletonTable } from "../../ui/Skeleton";
 
 interface ProjectOption { _id: string; name: string; }
@@ -35,6 +38,7 @@ export default function DailyLabourReport() {
   const [submitting, setSubmitting]   = useState(false);
   const [showForm, setShowForm]       = useState(false);
   const [form, setForm] = useState(emptyForm);
+  const pager = usePagination(reports, 10);
 
   const load = () => {
     setLoading(true);
@@ -84,7 +88,7 @@ export default function DailyLabourReport() {
         title="Daily Contractor / Labour Report"
         subtitle="Log today's on-site labour count per contractor, work type, and shift."
         icon={HardHat}
-        actions={<Btn label="New Report" icon={Plus} style={{ background: "#0d9488", borderColor: "#0d9488" }} onClick={() => { setForm(emptyForm); setShowForm(true); }} />}
+        actions={<NxBtn color="primary" label="New Report" icon={Plus} onClick={() => { setForm(emptyForm); setShowForm(true); }} />}
       />
 
       <Card padded={false} className="overflow-hidden">
@@ -96,30 +100,37 @@ export default function DailyLabourReport() {
         ) : reports.length === 0 ? (
           <div className="py-12 text-center text-gray-400">No reports submitted yet</div>
         ) : (
-          <Table>
-            <Thead>
-              <Tr>
-                <Th>Date</Th>
-                <Th>Contractor</Th>
-                <Th>Location</Th>
-                <Th>Work Type</Th>
-                <Th>Shift</Th>
-                <Th className="text-right">Labourers</Th>
-              </Tr>
-            </Thead>
-            <Tbody>
-              {reports.map(r => (
-                <Tr key={r._id}>
-                  <Td><TdText>{dayjs(r.date).format("DD MMM YYYY")}</TdText></Td>
-                  <Td><TdText>{r.vendorName}</TdText></Td>
-                  <Td><TdText>{r.projectName}</TdText></Td>
-                  <Td><TdText>{r.workType}</TdText></Td>
-                  <Td><TdText>{r.shiftType}</TdText></Td>
-                  <Td className="text-right"><TdText>{r.labourCount}</TdText></Td>
+          <>
+            <Table>
+              <Thead>
+                <Tr>
+                  <Th>Date</Th>
+                  <Th>Contractor</Th>
+                  <Th>Location</Th>
+                  <Th>Work Type</Th>
+                  <Th>Shift</Th>
+                  <Th className="text-right">Labourers</Th>
                 </Tr>
-              ))}
-            </Tbody>
-          </Table>
+              </Thead>
+              <Tbody>
+                {pager.pageItems.map(r => (
+                  <Tr key={r._id}>
+                    <Td><TdText>{dayjs(r.date).format("DD MMM YYYY")}</TdText></Td>
+                    <Td><TdText>{r.vendorName}</TdText></Td>
+                    <Td><TdText>{r.projectName}</TdText></Td>
+                    <Td><TdText>{r.workType}</TdText></Td>
+                    <Td><TdText>{r.shiftType}</TdText></Td>
+                    <Td className="text-right"><TdText>{r.labourCount}</TdText></Td>
+                  </Tr>
+                ))}
+              </Tbody>
+            </Table>
+            {pager.totalPages > 1 && (
+              <div className="px-5 py-3.5 border-t border-gray-100 dark:border-gray-700/40">
+                <Pagination page={pager.page} totalPages={pager.totalPages} onChange={pager.setPage} />
+              </div>
+            )}
+          </>
         )}
       </Card>
 

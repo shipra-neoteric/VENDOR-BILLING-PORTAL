@@ -14,8 +14,9 @@ import Field from "../../ui/Field";
 import { DatePicker } from "../../ui/DatePicker";
 import Modal from "../../ui/Modal";
 import ConfirmModal from "../../ui/ConfirmModal";
-import StatCard from "../../ui/StatCard";
-import Badge from "../../ui/Badge";
+import KPICard from "../../ui/KPICard";
+import NxBadge from "../../ui/nexora/Badge";
+import NxBtn from "../../ui/nexora/Btn";
 import Checkbox from "../../ui/Checkbox";
 import Spinner from "../../ui/Spinner";
 import EmptyState from "../../ui/EmptyState";
@@ -154,7 +155,7 @@ function EntryActions({
     const title = `Invalidated${who ? ` by ${who}` : ""}${e.invalidated.at ? ` on ${dayjs(e.invalidated.at).format("DD MMM YYYY")}` : ""}${e.invalidated.reason ? ` — ${e.invalidated.reason}` : ""}`;
     return (
       <span title={title}>
-        <Badge color="red" small>Invalidated</Badge>
+        <NxBadge color="red">Invalidated</NxBadge>
       </span>
     );
   }
@@ -204,7 +205,7 @@ function getProjId(wo: WORow): string | undefined {
 // ── Pill helper ────────────────────────────────────────────────────────────────
 function CountPill({ n, color }: { n: number; color: "blue" | "green" | "amber" }) {
   if (n === 0) return <span className="text-gray-400 text-xs">—</span>;
-  return <Badge color={color}>{n}</Badge>;
+  return <NxBadge color={color}>{n}</NxBadge>;
 }
 
 // ── Location fields (Add/Edit Progress modals) ────────────────────────────────
@@ -659,11 +660,11 @@ export default function DRIDashboard() {
         <Header />
 
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 sm:gap-4 mb-6">
-          <StatCard label="Total DRIs" value={allDRIs.length} icon={Users} />
-          <StatCard label="Total WOs" value={allWOs.length} icon={Briefcase} />
-          <StatCard label="Active WOs" value={totalActive} icon={Activity} iconColorClass="text-blue-500" />
-          <StatCard label="Completed WOs" value={totalCompleted} icon={CheckCircle2} iconColorClass="text-emerald-500" />
-          <StatCard label="Pending Bills" value={totalPending} icon={Clock} iconColorClass="text-amber-500" />
+          <KPICard label="Total DRIs" value={allDRIs.length} icon={Users} accent="var(--theme-primary)" />
+          <KPICard label="Total WOs" value={allWOs.length} icon={Briefcase} accent="var(--theme-primary)" />
+          <KPICard label="Active WOs" value={totalActive} icon={Activity} accent="#3B82F6" />
+          <KPICard label="Completed WOs" value={totalCompleted} icon={CheckCircle2} accent="#10B981" />
+          <KPICard label="Pending Bills" value={totalPending} icon={Clock} accent="#F59E0B" />
         </div>
 
         <div className="bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700/40 rounded-lg overflow-hidden shadow-sm">
@@ -723,10 +724,10 @@ export default function DRIDashboard() {
         <Header />
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-6">
-          <StatCard label="Projects" value={driProjects.length} icon={Building2} />
-          <StatCard label="Total WOs" value={driWOs.length} icon={Briefcase} />
-          <StatCard label="Active" value={driWOs.filter(w => w.status === "in-progress" || w.status === "issued").length} icon={Activity} iconColorClass="text-blue-500" />
-          <StatCard label="Completed" value={driWOs.filter(w => w.status === "completed").length} icon={CheckCircle2} iconColorClass="text-emerald-500" />
+          <KPICard label="Projects" value={driProjects.length} icon={Building2} accent="var(--theme-primary)" />
+          <KPICard label="Total WOs" value={driWOs.length} icon={Briefcase} accent="var(--theme-primary)" />
+          <KPICard label="Active" value={driWOs.filter(w => w.status === "in-progress" || w.status === "issued").length} icon={Activity} accent="#3B82F6" />
+          <KPICard label="Completed" value={driWOs.filter(w => w.status === "completed").length} icon={CheckCircle2} accent="#10B981" />
         </div>
 
         {driProjects.length === 0 ? (
@@ -788,24 +789,24 @@ export default function DRIDashboard() {
               {projectWOs.length} work order{projectWOs.length !== 1 ? "s" : ""} · {vendorGroups.length} contractor{vendorGroups.length !== 1 ? "s" : ""}
             </span>
             {canEdit ? (
-              <Badge color="green" small>✎ Editable — owner access</Badge>
+              <NxBadge color="green">✎ Editable — owner access</NxBadge>
             ) : (
-              <Badge color="amber" small>👁 Read-only — admin view</Badge>
+              <NxBadge color="amber">👁 Read-only — admin view</NxBadge>
             )}
           </div>
         </div>
         {canEdit && billableWODetails.length > 0 && (
-          <Btn color="primary" icon={Receipt} label={`Generate Bill Request (${billableWODetails.length})`} onClick={openBillModal} />
+          <NxBtn color="primary" icon={Receipt} label={`Generate Bill Request (${billableWODetails.length})`} onClick={openBillModal} />
         )}
       </div>
 
       {/* Summary stats */}
       {!detailLoading && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-5">
-          <StatCard label="Contractors" value={vendorGroups.length} icon={Users} />
-          <StatCard label="Work Orders" value={projectWOs.length} icon={Briefcase} iconColorClass="text-blue-500" />
-          <StatCard label="Bill Requests" value={projectBills.length} icon={FileText} iconColorClass="text-purple-500" />
-          <StatCard label="Approved" value={projectBills.filter(b => b.status === "approved").length} icon={CheckCircle2} iconColorClass="text-emerald-500" />
+          <KPICard label="Contractors" value={vendorGroups.length} icon={Users} accent="var(--theme-primary)" />
+          <KPICard label="Work Orders" value={projectWOs.length} icon={Briefcase} accent="#3B82F6" />
+          <KPICard label="Bill Requests" value={projectBills.length} icon={FileText} accent="#A855F7" />
+          <KPICard label="Approved" value={projectBills.filter(b => b.status === "approved").length} icon={CheckCircle2} accent="#10B981" />
         </div>
       )}
 
@@ -819,7 +820,7 @@ export default function DRIDashboard() {
               <div className="bg-gray-800 dark:bg-gray-900 px-5 py-3.5">
                 <div className="text-white font-bold text-[15px]">👷 {vg.vendorName}</div>
                 <div className="text-gray-400 text-xs mt-0.5">
-                  <span className="font-mono text-primary">{vg.vendorCode}</span> · {vg.wos.length} work order{vg.wos.length !== 1 ? "s" : ""}
+                  <span className="text-primary">{vg.vendorCode}</span> · {vg.wos.length} work order{vg.wos.length !== 1 ? "s" : ""}
                 </div>
               </div>
 
@@ -834,9 +835,9 @@ export default function DRIDashboard() {
                     {/* WO sub-header */}
                     <div className="px-5 py-3 bg-gray-50 dark:bg-gray-800/40 border-b border-gray-200 dark:border-gray-700/40 flex justify-between items-center flex-wrap gap-2">
                       <div className="flex gap-2 items-center flex-wrap">
-                        <span className="font-mono font-bold text-primary text-[13px]">{wo.workOrderNo}</span>
-                        {wo.category && <Badge color="gray" small>{wo.category}</Badge>}
-                        <Badge color={STATUS_BADGE[wo.status] ?? "gray"} small>{STATUS_LABEL[wo.status] ?? wo.status}</Badge>
+                        <span className="font-bold text-primary text-[13px]">{wo.workOrderNo}</span>
+                        {wo.category && <NxBadge color="gray">{wo.category}</NxBadge>}
+                        <NxBadge color={STATUS_BADGE[wo.status] ?? "gray"}>{STATUS_LABEL[wo.status] ?? wo.status}</NxBadge>
                       </div>
                       {detail && (
                         <div className="flex items-center gap-2 text-xs">
@@ -983,7 +984,7 @@ export default function DRIDashboard() {
                               <div key={e._id + i} className="flex gap-3 items-center text-xs" style={{ opacity: e.invalidated?.done ? 0.55 : 1 }}>
                                 <span className="text-gray-400 min-w-[90px] whitespace-nowrap flex items-center gap-1">
                                   {dayjs(e.date).format("DD MMM")}
-                                  {dayjs(e.date).format("YYYY-MM-DD") === todayStr && <Badge color="blue" small>Today</Badge>}
+                                  {dayjs(e.date).format("YYYY-MM-DD") === todayStr && <NxBadge color="blue">Today</NxBadge>}
                                 </span>
                                 <span className={`font-semibold text-[#1A1A2E] dark:text-[#F1F5F9] flex-1 ${e.invalidated?.done ? "line-through" : ""}`}>
                                   {e.description}
@@ -1044,13 +1045,13 @@ export default function DRIDashboard() {
                     <div className={`text-base font-extrabold ${br.status === "approved" ? "text-emerald-600" : "text-amber-600"}`}>{br.stageNo ?? 1}</div>
                   </div>
                   <div className="flex-1">
-                    <div className="font-bold font-mono text-[13px] text-[#1A1A2E] dark:text-[#F1F5F9]">{br.reqNo}</div>
+                    <div className="font-bold text-[13px] text-[#1A1A2E] dark:text-[#F1F5F9]">{br.reqNo}</div>
                     <div className="text-[11px] text-gray-400 mt-0.5">
                       {br.vendorName && <span>{br.vendorName} · </span>}
                       {dayjs(br.createdAt).format("DD MMM YYYY")}
                     </div>
                   </div>
-                  <Badge color={BR_BADGE[br.status] ?? "gray"}>{br.status.toUpperCase()}</Badge>
+                  <NxBadge color={BR_BADGE[br.status] ?? "gray"}>{br.status.toUpperCase()}</NxBadge>
                 </div>
               ))}
             </div>
@@ -1248,7 +1249,7 @@ export default function DRIDashboard() {
                     <div key={e._id + i} className="flex gap-3 items-center text-xs py-2 border-b border-gray-100 dark:border-gray-700/40" style={{ opacity: e.invalidated?.done ? 0.55 : 1 }}>
                       <span className="text-gray-400 min-w-[90px] whitespace-nowrap flex items-center gap-1">
                         {dayjs(e.date).format("DD MMM")}
-                        {dayjs(e.date).format("YYYY-MM-DD") === todayStr && <Badge color="blue" small>Today</Badge>}
+                        {dayjs(e.date).format("YYYY-MM-DD") === todayStr && <NxBadge color="blue">Today</NxBadge>}
                       </span>
                       <span className={`font-semibold text-[#1A1A2E] dark:text-[#F1F5F9] flex-1 ${e.invalidated?.done ? "line-through" : ""}`}>
                         {e.description}
@@ -1329,7 +1330,7 @@ export default function DRIDashboard() {
                   return (
                     <div key={vg.vendorCode} className="border border-gray-200 dark:border-gray-700/40 rounded-lg overflow-hidden">
                       <div className="bg-gray-50 dark:bg-gray-800/40 px-3.5 py-2.5 font-bold text-[13px] text-[#1A1A2E] dark:text-[#F1F5F9] border-b border-gray-200 dark:border-gray-700/40">
-                        👷 {vg.vendorName} <span className="font-mono text-primary text-[11px] font-normal">({vg.vendorCode})</span>
+                        👷 {vg.vendorName} <span className="text-primary text-[11px] font-normal">({vg.vendorCode})</span>
                       </div>
                       {vgBillableWOs.map(detail => {
                         const pendingItems = getPendingBillableRows(detail.scopeItems);
@@ -1346,7 +1347,7 @@ export default function DRIDashboard() {
                                 })}
                               />
                               <div className="flex-1">
-                                <div className="font-bold text-primary font-mono text-[13px]">{detail.workOrderNo}</div>
+                                <div className="font-bold text-primary text-[13px]">{detail.workOrderNo}</div>
                                 {detail.category && <div className="text-[11px] text-gray-400 mb-2">{detail.category}</div>}
                                 <table className="w-full border-collapse text-xs">
                                   <tbody>

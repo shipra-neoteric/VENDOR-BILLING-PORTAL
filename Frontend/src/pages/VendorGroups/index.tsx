@@ -1,22 +1,21 @@
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
-import { Plus, Users, UserMinus } from "lucide-react";
+import { Plus, Users, UserMinus, Eye } from "lucide-react";
 import apiClient from "../../services/apiClient";
 import { selectableProjects } from "../../utils/projectOptions";
 import { vendorLabel } from "../../utils/vendorLabel";
 import type { Contractor, Project, VendorGroup } from "../../types/VendorBilling";
 import PageHeader from "../../ui/PageHeader";
 import Btn from "../../ui/Btn";
-import Card from "../../ui/Card";
 import EmptyState from "../../ui/EmptyState";
-import Badge from "../../ui/Badge";
 import Field from "../../ui/Field";
 import SField from "../../ui/SField";
 import MultiSelect from "../../ui/MultiSelect";
 import Modal from "../../ui/Modal";
 import { Table, Thead, Tbody, Tr, Th, Td, TdText } from "../../ui/Table";
-import { SkeletonTable } from "../../ui/Skeleton";
 import Spinner from "../../ui/Spinner";
+import NxBtn from "../../ui/nexora/Btn";
+import { SearchFilter } from "../../ui/Filters";
 
 const normalizeId = <T extends { _id?: string; id?: string }>(obj: T) => ({ ...obj, id: obj._id || obj.id });
 const fmt = (n: number) => "₹" + (n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -50,6 +49,7 @@ export default function VendorGroups() {
   const [groups, setGroups] = useState<VendorGroup[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [groupName, setGroupName] = useState("");
@@ -154,6 +154,11 @@ export default function VendorGroups() {
     }
   }
 
+  const filteredGroups = groups.filter(g =>
+    g.name.toLowerCase().includes(search.toLowerCase()) ||
+    g.groupCode.toLowerCase().includes(search.toLowerCase())
+  );
+
   function loadProgress(groupId: string, forProjectId: string) {
     setProgressLoading(true);
     apiClient.get<{ summary: ProgressSummary; perMember: MemberProgress[] }>(
@@ -170,21 +175,32 @@ export default function VendorGroups() {
         title="Vendor Groups"
         subtitle="Internal grouping only — several individually-registered vendor codes belonging to the same real business, so a bill can be paid into any member's account regardless of whose work order it's under."
         icon={Users}
-        actions={<Btn label="New Vendor Group" icon={Plus} style={{ background: "#7c3aed", borderColor: "#7c3aed" }} onClick={() => { setGroupName(""); setCreateOpen(true); }} />}
+        actions={<NxBtn label="New Vendor Group" icon={Plus} style={{ background: "#7c3aed", borderColor: "#7c3aed" }} onClick={() => { setGroupName(""); setCreateOpen(true); }} />}
       />
 
+      {groups.length > 0 && (
+        <div className="bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700/40 rounded-lg p-3.5 mb-4">
+          <div className="flex gap-2.5 items-center flex-wrap">
+            <SearchFilter placeholder="Search by group name or code…" value={search} onChange={setSearch} />
+            <span className="ml-auto text-gray-400 text-xs whitespace-nowrap">
+              {filteredGroups.length} group{filteredGroups.length !== 1 ? "s" : ""}
+            </span>
+          </div>
+        </div>
+      )}
+
       {loading ? (
-        <Card padded={false} className="p-4"><SkeletonTable rows={5} cols={3} /></Card>
+        <Spinner size="large" />
       ) : groups.length === 0 ? (
-        <Card padded={false}>
-          <EmptyState
-            icon={Users}
-            title="No vendor groups yet"
-            message='Click "New Vendor Group" to create one, then add members from inside it.'
-            actionLabel="New Vendor Group"
-            onAction={() => { setGroupName(""); setCreateOpen(true); }}
-          />
-        </Card>
+        <EmptyState
+          icon={Users}
+          title="No vendor groups yet"
+          message='Click "New Vendor Group" to create one, then add members from inside it.'
+          actionLabel="New Vendor Group"
+          onAction={() => { setGroupName(""); setCreateOpen(true); }}
+        />
+      ) : filteredGroups.length === 0 ? (
+        <EmptyState icon={Users} title="No vendor groups match your search" />
       ) : (
         <Table>
           <Thead>
@@ -196,12 +212,16 @@ export default function VendorGroups() {
             </Tr>
           </Thead>
           <Tbody>
-            {groups.map(g => (
-              <Tr key={g.id}>
-                <Td><span className="font-mono font-bold text-purple-600 dark:text-purple-400">{g.groupCode}</span></Td>
+            {filteredGroups.map(g => (
+              <Tr key={g.id} className="cursor-pointer" onClick={() => openGroup(g)}>
+                <Td>{g.groupCode}</Td>
                 <Td><TdText>{g.name}</TdText></Td>
-                <Td><Badge color={(g.memberCount ?? 0) > 0 ? "purple" : "gray"}>{g.memberCount ?? 0}</Badge></Td>
-                <Td><button type="button" onClick={() => openGroup(g)} className="text-xs font-semibold text-primary hover:underline">View</button></Td>
+                <Td>{g.memberCount ?? 0}</Td>
+                <Td>
+                  <div onClick={e => e.stopPropagation()}>
+                    <NxBtn color="icon" title="View Group" icon={Eye} onClick={() => openGroup(g)} />
+                  </div>
+                </Td>
               </Tr>
             ))}
           </Tbody>
@@ -269,7 +289,7 @@ export default function VendorGroups() {
               <Tbody>
                 {members.map(m => (
                   <Tr key={m.id}>
-                    <Td><span className="font-mono font-bold text-primary">{m.vendorCode}</span></Td>
+                    <Td><span className="font-bold text-primary">{m.vendorCode}</span></Td>
                     <Td><TdText>{m.companyName}</TdText></Td>
                     <Td><TdText>{m.ownerName}</TdText></Td>
                     <Td><TdText>{m.mobile}</TdText></Td>
@@ -333,7 +353,7 @@ export default function VendorGroups() {
                   <Tbody>
                     {perMember.map(m => (
                       <Tr key={m.vendorCode}>
-                        <Td><span className="font-mono font-bold text-primary">{m.vendorCode}</span></Td>
+                        <Td><span className="font-bold text-primary">{m.vendorCode}</span></Td>
                         <Td><TdText>{m.companyName}</TdText></Td>
                         <Td className="text-right"><TdText>{m.workOrderCount}</TdText></Td>
                         <Td className="text-right"><TdText>{fmt(m.contractValue)}</TdText></Td>

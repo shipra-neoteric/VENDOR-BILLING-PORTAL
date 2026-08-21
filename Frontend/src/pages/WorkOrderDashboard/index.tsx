@@ -14,9 +14,10 @@ import Spinner from "../../ui/Spinner";
 import EmptyState from "../../ui/EmptyState";
 import KPICard from "../../ui/KPICard";
 import Segmented from "../../ui/Segmented";
-import Card from "../../ui/Card";
+import NxCard from "../../ui/nexora/Card";
 import Btn from "../../ui/Btn";
-import Badge from "../../ui/Badge";
+import NxBadge from "../../ui/nexora/Badge";
+import type { NxBadgeColor } from "../../ui/nexora/Badge";
 import { Table, Thead, Tbody, Tr, Th, Td, TdText } from "../../ui/Table";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -93,24 +94,28 @@ const netPayable = (b: NonNullable<BillRequestStage["billId"]>) =>
   }).netPayable;
 
 // Same "Hold — <stage>" convention used across Bills/Approvals/Ledger so a bill's
-// status reads the same way everywhere in the system.
-const RB_STATUS_CFG: Record<string, { label: string; color: string }> = {
-  draft:         { label: "Awaiting Verification",  color: "#6B7280" },
-  "verify-done": { label: "Awaiting L1 AGM",         color: "#2563eb" },
-  "l1-approved": { label: "Awaiting L2 Director",    color: "#d97706" },
-  approved:      { label: "Ready for TMS",           color: "#d97706" },
-  "sent-to-tms": { label: "Sent to TMS",             color: "#7c3aed" },
-  hold:          { label: "On Hold",                 color: "#9333ea" },
-  rejected:      { label: "Rejected",                color: "#dc2626" },
-  paid:          { label: "Paid",                    color: "#16a34a" },
+// status reads the same way everywhere in the system. Colors follow the Nexora
+// badge semantic map (gray=neutral, blue/indigo=in-progress, amber=pending,
+// slate=paused, red=rejected, green=success).
+const RB_STATUS_CFG: Record<string, { label: string; color: NxBadgeColor }> = {
+  draft:         { label: "Awaiting Verification",  color: "gray" },
+  "verify-done": { label: "Awaiting L1 AGM",         color: "blue" },
+  "l1-approved": { label: "Awaiting L2 Director",    color: "amber" },
+  approved:      { label: "Ready for TMS",           color: "amber" },
+  "sent-to-tms": { label: "Sent to TMS",             color: "indigo" },
+  hold:          { label: "On Hold",                 color: "slate" },
+  rejected:      { label: "Rejected",                color: "red" },
+  paid:          { label: "Paid",                    color: "green" },
 };
 
 // ── Stage Lifecycle Stepper ───────────────────────────────────────────────────
 type StepStatus = "completed" | "current" | "pending" | "rejected";
 
+// "current" uses the dynamic theme accent (not a hardcoded orange) so this
+// stepper follows whatever primary color the app is configured with.
 const STEP_COLORS: Record<StepStatus, { ring: string; bg: string; text: string }> = {
   completed: { ring: "#16a34a", bg: "#f0fdf4",  text: "#16a34a" },
-  current:   { ring: "#FF7A00", bg: "#FFF4E8",  text: "#FF7A00" },
+  current:   { ring: "var(--theme-primary)", bg: "var(--theme-primary-tint)",  text: "var(--theme-primary)" },
   rejected:  { ring: "#ef4444", bg: "#fef2f2",  text: "#ef4444" },
   pending:   { ring: "#D1D5DB", bg: "#F9FAFB",  text: "#9CA3AF" },
 };
@@ -205,10 +210,10 @@ const fmtQty   = (n: number) => (n ?? 0).toLocaleString("en-IN");
 const pctOf    = (c: number, p: number) => p > 0 ? Math.min(100, Math.round(((c ?? 0) / p) * 100)) : 0;
 const fmtDate  = (d?: string | null) => d ? dayjs(d).format("DD MMM YYYY") : "—";
 
-const STAGE_STATUS: Record<string, { icon: string; color: string; label: string; bg: string }> = {
-  pending:  { icon: "⏳", color: "#f59e0b", label: "Pending Review",     bg: "#fffbeb" },
-  approved: { icon: "✅", color: "#16a34a", label: "Approved",            bg: "#f0fdf4" },
-  rejected: { icon: "❌", color: "#ef4444", label: "Rejected",            bg: "#fef2f2" },
+const STAGE_STATUS: Record<string, { icon: string; color: string; label: string; bg: string; badgeColor: NxBadgeColor }> = {
+  pending:  { icon: "⏳", color: "#f59e0b", label: "Pending Review",     bg: "#fffbeb", badgeColor: "amber" },
+  approved: { icon: "✅", color: "#16a34a", label: "Approved",            bg: "#f0fdf4", badgeColor: "green" },
+  rejected: { icon: "❌", color: "#ef4444", label: "Rejected",            bg: "#fef2f2", badgeColor: "red" },
 };
 
 type TabKey = "items" | "milestones" | "bills" | "progress";
@@ -277,7 +282,7 @@ export default function WorkOrderDashboard() {
 
   return (
     <div className="max-w-[1100px] mx-auto p-6">
-      <Card padded={false} className="overflow-hidden flex flex-col">
+      <NxCard padded={false} className="overflow-hidden flex flex-col">
         {/* Back + Header */}
         <div className="p-6 pb-0">
           <button
@@ -291,8 +296,8 @@ export default function WorkOrderDashboard() {
             <div>
               <div className="text-2xl font-extrabold text-[#1A1A2E] dark:text-[#F1F5F9] flex items-center gap-3 flex-wrap">
                 {wo.workOrderNo}
-                <Badge color={woStatusColor}>{woStatus}</Badge>
-                {wo.isLocked && <Badge color="amber">🔒 Locked</Badge>}
+                <NxBadge color={woStatusColor}>{woStatus}</NxBadge>
+                {wo.isLocked && <NxBadge color="amber">🔒 Locked</NxBadge>}
               </div>
               <div className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                 {wo.projectName} · {wo.category}{wo.subCategory ? ` › ${wo.subCategory}` : ""}
@@ -439,15 +444,15 @@ export default function WorkOrderDashboard() {
                       </Thead>
                       <Tbody>
                         {bills.map(({ stage, bill }) => {
-                          const cfg = RB_STATUS_CFG[bill.status] ?? { label: bill.status, color: "#6B7280" };
+                          const cfg = RB_STATUS_CFG[bill.status] ?? { label: bill.status, color: "gray" as NxBadgeColor };
                           const isPaid = bill.status === "paid";
                           const actuallyPaid = bill.paidAmount ?? Math.max(0, netPayable(bill) - (bill.tdsAmount ?? 0));
                           return (
                             <Tr key={bill.billNo}>
-                              <Td><span className="font-mono font-bold text-primary">{bill.billNo}</span></Td>
+                              <Td><span className="font-bold text-primary">{bill.billNo}</span></Td>
                               <Td><TdText>Stage {stage.stageNo}</TdText></Td>
                               <Td><span className="font-mono font-semibold text-[#1A1A2E] dark:text-[#F1F5F9]">{fmtMoney(bill.amount)}</span></Td>
-                              <Td><span className="text-[12px] font-semibold" style={{ color: cfg.color }}>{cfg.label}</span></Td>
+                              <Td><NxBadge color={cfg.color}>{cfg.label}</NxBadge></Td>
                               <Td>
                                 <span className={`font-mono font-bold ${isPaid ? "text-emerald-600 dark:text-emerald-400" : "text-gray-400 dark:text-gray-500"}`}>
                                   {isPaid ? fmtMoney(actuallyPaid) : `${fmtMoney(netPayable(bill))} pending`}
@@ -587,8 +592,8 @@ export default function WorkOrderDashboard() {
                           <div
                             className="w-[52px] h-[52px] rounded-full flex flex-col items-center justify-center"
                             style={{
-                              background: stage.milestoneAchieved ? "#FFF4E8" : cfg.bg,
-                              border: `2px solid ${stage.milestoneAchieved ? "var(--nx-orange)" : cfg.color}`,
+                              background: stage.milestoneAchieved ? "var(--theme-primary-tint)" : cfg.bg,
+                              border: `2px solid ${stage.milestoneAchieved ? "var(--theme-primary)" : cfg.color}`,
                             }}
                           >
                             <div className="text-lg">{stage.milestoneAchieved ? "🏆" : cfg.icon}</div>
@@ -603,11 +608,9 @@ export default function WorkOrderDashboard() {
                           <div className="flex items-center gap-2 flex-wrap mb-1.5">
                             <span className="font-extrabold text-base text-[#1A1A2E] dark:text-[#F1F5F9]">Stage {stage.stageNo}</span>
                             <code className="text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded">{stage.reqNo}</code>
-                            <span className="text-[11px] font-bold rounded-full px-2 py-0.5" style={{ color: cfg.color, background: cfg.bg, border: `1px solid ${cfg.color}` }}>
-                              {cfg.label}
-                            </span>
+                            <NxBadge color={cfg.badgeColor}>{cfg.label}</NxBadge>
                             {stage.milestoneAchieved && (
-                              <Badge color="orange">🏆 Milestone Achieved</Badge>
+                              <NxBadge color="orange">🏆 Milestone Achieved</NxBadge>
                             )}
                           </div>
 
@@ -700,7 +703,7 @@ export default function WorkOrderDashboard() {
             </>
           )}
         </div>
-      </Card>
+      </NxCard>
 
       <BillDetailModal billRequest={viewBill} open={!!viewBill} onClose={() => setViewBill(null)} />
     </div>

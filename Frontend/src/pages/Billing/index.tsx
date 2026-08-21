@@ -1,20 +1,21 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Plus, Receipt, FileText } from "lucide-react";
+import { Plus, Receipt, FileText, Ban, CheckCircle2 } from "lucide-react";
 import dayjs from "dayjs";
 import type { Dayjs } from "dayjs";
 import apiClient from "../../services/apiClient";
 import PageHeader from "../../ui/PageHeader";
-import Btn from "../../ui/Btn";
+import NxBtn from "../../ui/nexora/Btn";
+import NxBadge from "../../ui/nexora/Badge";
+import type { NxBadgeColor } from "../../ui/nexora/Badge";
+import NxStatCard from "../../ui/nexora/StatCard";
 import Modal from "../../ui/Modal";
-import Badge from "../../ui/Badge";
-import StatusBadge from "../../ui/StatusBadge";
 import { Descriptions, DescItem } from "../../ui/Descriptions";
 import { Table, Thead, Tbody, Tr, Th, Td } from "../../ui/Table";
 import { usePagination } from "../../ui/usePagination";
 import Pagination from "../../ui/Pagination";
 import Spinner from "../../ui/Spinner";
 import EmptyState from "../../ui/EmptyState";
-import { FilterRow, SearchFilter, SelectFilter } from "../../ui/Filters";
+import { SearchFilter, DropdownSelectFilter } from "../../ui/Filters";
 import DateRangeFilter, { inDateRange } from "../../components/DateRangeFilter";
 import { selectableProjects } from "../../utils/projectOptions";
 import { useAuth } from "../../context/AuthContext";
@@ -75,6 +76,22 @@ const netAfterAdvance = (b: Bill) =>
   }).netPayable;
 const normalizeId = (obj: Record<string, unknown>) => ({ ...obj, id: (obj._id || obj.id)?.toString() || "" });
 
+// Nexora semantic mapping for each backend bill status — gray/amber for the
+// early not-yet-approved stages, blue/indigo/cyan as it moves through the
+// approval chain, orange for the on-hold warning state, green once paid,
+// red once rejected. Mirrors BILL_STATUS_COLOR's ordering, just recolored
+// onto the fixed Nexora badge palette instead of arbitrary hex.
+const BILL_STATUS_BADGE_COLOR: Record<string, NxBadgeColor> = {
+  draft: "gray",
+  "verify-done": "amber",
+  "l1-approved": "blue",
+  approved: "indigo",
+  "sent-to-tms": "cyan",
+  hold: "orange",
+  paid: "green",
+  rejected: "red",
+};
+
 function hasPerm(user: AuthUser | null, action: string): boolean {
   if (!user) return false;
   if (user.role === "owner") return true;
@@ -133,6 +150,19 @@ export default function Billing() {
 
   const { page, totalPages, setPage, pageItems: pagedBills } = usePagination(filteredBills, 20);
 
+  // Computed off the raw (unfiltered) list so clicking a stat card always
+  // shows the true total for that bucket, not a number depressed by
+  // whatever filter is already active — same convention as WorkItems.
+  const statusCounts = useMemo(() => {
+    const c = { total: bills.length, draft: 0, hold: 0, paid: 0 };
+    for (const b of bills) {
+      if (b.status === "draft") c.draft++;
+      else if (b.status === "hold") c.hold++;
+      else if (b.status === "paid") c.paid++;
+    }
+    return c;
+  }, [bills]);
+
   const viewBill = useMemo(
     () => (viewBillId ? bills.find((b) => b.id === viewBillId) || null : null),
     [bills, viewBillId]
@@ -146,74 +176,104 @@ export default function Billing() {
         subtitle="Every bill in the system — from DRI-progress → AGM → GM approvals, or created directly here — still processed through Accounts Payment"
         actions={
           canCreate ? (
-            <Btn color="primary" icon={Plus} label="New Bill" onClick={() => setNewOpen(true)} />
+            <NxBtn color="primary" icon={Plus} label="New Bill" onClick={() => setNewOpen(true)} />
           ) : undefined
         }
       />
 
-      <FilterRow>
-        <SearchFilter placeholder="Search bill no., vendor, WO, project…" value={search} onChange={setSearch} />
-        <SelectFilter
-          placeholder="Project"
-          value={projectFilter}
-          onChange={setProjectFilter}
-          options={selectableProjects(projects).map((p) => ({ value: p.id, label: p.name }))}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-5">
+        <NxStatCard label="Total Bills" value={statusCounts.total} icon={Receipt} />
+        <NxStatCard
+          label="Awaiting Verification" value={statusCounts.draft} icon={FileText}
+          active={statusFilter === BILL_STATUS.DRAFT}
+          onClick={() => setStatusFilter(statusFilter === BILL_STATUS.DRAFT ? "" : BILL_STATUS.DRAFT)}
         />
-        <SelectFilter
-          placeholder="Status"
-          value={statusFilter}
-          onChange={setStatusFilter}
-          options={Object.values(BILL_STATUS).map((s) => ({ value: s, label: BILL_STATUS_LABEL[s] || s }))}
+        <NxStatCard
+          label="On Hold" value={statusCounts.hold} icon={Ban}
+          active={statusFilter === BILL_STATUS.HOLD}
+          onClick={() => setStatusFilter(statusFilter === BILL_STATUS.HOLD ? "" : BILL_STATUS.HOLD)}
         />
-        <DateRangeFilter onChange={(from, to) => { setDateFrom(from); setDateTo(to); }} />
-      </FilterRow>
+        <NxStatCard
+          label="Paid" value={statusCounts.paid} icon={CheckCircle2}
+          active={statusFilter === BILL_STATUS.PAID}
+          onClick={() => setStatusFilter(statusFilter === BILL_STATUS.PAID ? "" : BILL_STATUS.PAID)}
+        />
+      </div>
 
-      {loading ? (
-        <Spinner size="large" />
-      ) : filteredBills.length === 0 ? (
-        <EmptyState icon={FileText} title="No bills found" message="Try adjusting your search or filters." />
-      ) : (
-        <>
-          <Table>
-            <Thead>
-              <Tr>
-                <Th>Bill No.</Th>
-                <Th>Bill Type</Th>
-                <Th>Work Order</Th>
-                <Th>Vendor</Th>
-                <Th>Project</Th>
-                <Th className="text-right">Amount</Th>
-                <Th>Status</Th>
-                <Th>Date</Th>
-              </Tr>
-            </Thead>
-            <Tbody>
-              {pagedBills.map((r) => (
-                <Tr key={r.id} className="cursor-pointer" onClick={() => setViewBillId(r.id)}>
-                  <Td className="font-mono font-bold text-blue-600">{r.billNo}</Td>
-                  <Td>
-                    {r.billType ? (
-                      <Badge color="blue" small>{BILL_TYPE_CFG[r.billType]?.label || r.billType}</Badge>
-                    ) : (
-                      <span className="text-gray-300">—</span>
-                    )}
-                  </Td>
-                  <Td>{r.workOrderNo ? <span className="font-mono text-blue-600">{r.workOrderNo}</span> : <span className="text-gray-300">—</span>}</Td>
-                  <Td>{r.vendorName || <span className="text-gray-300">—</span>}</Td>
-                  <Td>{r.projectName || <span className="text-gray-300">—</span>}</Td>
-                  <Td className="text-right font-mono font-bold">{fmt(netAfterAdvance(r))}</Td>
-                  <Td><StatusBadge status={r.status} /></Td>
-                  <Td>{r.billDate ? dayjs(r.billDate).format("DD MMM YYYY") : "—"}</Td>
-                </Tr>
-              ))}
-            </Tbody>
-          </Table>
-
-          <div className="mt-4">
-            <Pagination page={page} totalPages={totalPages} onChange={setPage} />
+      <div className="bg-white/90 dark:bg-gray-800/95 backdrop-blur-xl border border-gray-100 dark:border-gray-700/50 rounded-xl shadow-sm p-5">
+        <div className="bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700/40 rounded-lg p-3.5 mb-4">
+          <div className="flex gap-2.5 items-center flex-wrap">
+            <SearchFilter placeholder="Search bill no., vendor, WO, project…" value={search} onChange={setSearch} />
+            <DropdownSelectFilter
+              value={projectFilter}
+              onChange={setProjectFilter}
+              placeholder="All Projects"
+              resetValue=""
+              options={selectableProjects(projects).map((p) => ({ value: p.id, label: p.name }))}
+            />
+            <DropdownSelectFilter
+              value={statusFilter}
+              onChange={setStatusFilter}
+              placeholder="All Statuses"
+              resetValue=""
+              options={Object.values(BILL_STATUS).map((s) => ({ value: s, label: BILL_STATUS_LABEL[s] || s }))}
+            />
+            <DateRangeFilter onChange={(from, to) => { setDateFrom(from); setDateTo(to); }} />
+            <span className="ml-auto text-gray-400 text-xs whitespace-nowrap">
+              {filteredBills.length} bill{filteredBills.length !== 1 ? "s" : ""}
+            </span>
           </div>
-        </>
-      )}
+        </div>
+
+        {loading ? (
+          <Spinner size="large" />
+        ) : filteredBills.length === 0 ? (
+          <EmptyState icon={FileText} title="No bills found" message="Try adjusting your search or filters." />
+        ) : (
+          <>
+            <Table>
+              <Thead>
+                <Tr>
+                  <Th>Bill No.</Th>
+                  <Th>Bill Type</Th>
+                  <Th>Work Order</Th>
+                  <Th>Vendor</Th>
+                  <Th>Project</Th>
+                  <Th className="text-right">Amount</Th>
+                  <Th>Status</Th>
+                  <Th>Date</Th>
+                </Tr>
+              </Thead>
+              <Tbody>
+                {pagedBills.map((r) => (
+                  <Tr key={r.id} className="cursor-pointer" onClick={() => setViewBillId(r.id)}>
+                    <Td className="font-bold text-primary">{r.billNo}</Td>
+                    <Td>
+                      {r.billType ? (
+                        <NxBadge color="blue">{BILL_TYPE_CFG[r.billType]?.label || r.billType}</NxBadge>
+                      ) : (
+                        <span className="text-gray-300 dark:text-gray-600">—</span>
+                      )}
+                    </Td>
+                    <Td>{r.workOrderNo || <span className="text-gray-300 dark:text-gray-600">—</span>}</Td>
+                    <Td>{r.vendorName || <span className="text-gray-300 dark:text-gray-600">—</span>}</Td>
+                    <Td>{r.projectName || <span className="text-gray-300 dark:text-gray-600">—</span>}</Td>
+                    <Td className="text-right font-bold">{fmt(netAfterAdvance(r))}</Td>
+                    <Td><NxBadge color={BILL_STATUS_BADGE_COLOR[r.status] ?? "gray"}>{BILL_STATUS_LABEL[r.status] || r.status}</NxBadge></Td>
+                    <Td>{r.billDate ? dayjs(r.billDate).format("DD MMM YYYY") : "—"}</Td>
+                  </Tr>
+                ))}
+              </Tbody>
+            </Table>
+
+            {totalPages > 1 && (
+              <div className="mt-4">
+                <Pagination page={page} totalPages={totalPages} onChange={setPage} />
+              </div>
+            )}
+          </>
+        )}
+      </div>
 
       {viewBill && (
         <Modal
@@ -223,7 +283,7 @@ export default function Billing() {
           onClose={() => setViewBillId(null)}
         >
           <Descriptions columns={2}>
-            <DescItem label="Status"><StatusBadge status={viewBill.status} /></DescItem>
+            <DescItem label="Status"><NxBadge color={BILL_STATUS_BADGE_COLOR[viewBill.status] ?? "gray"}>{BILL_STATUS_LABEL[viewBill.status] || viewBill.status}</NxBadge></DescItem>
             <DescItem label="Bill Date">{viewBill.billDate ? dayjs(viewBill.billDate).format("DD MMM YYYY") : "—"}</DescItem>
             <DescItem label="Project">{viewBill.projectName || "—"}</DescItem>
             <DescItem label="Work Order">{viewBill.workOrderNo || "—"}</DescItem>
@@ -248,9 +308,9 @@ export default function Billing() {
                 {(viewBill.lineItems || []).map((li, i) => (
                   <Tr key={i}>
                     <Td>{li.description}</Td>
-                    <Td className="text-right font-mono">{li.billedQty} {li.unit}</Td>
-                    <Td className="text-right font-mono">{fmtRate(li.rate)}</Td>
-                    <Td className="text-right font-mono font-bold">{fmt(li.amount)}</Td>
+                    <Td className="text-right">{li.billedQty} {li.unit}</Td>
+                    <Td className="text-right">{fmtRate(li.rate)}</Td>
+                    <Td className="text-right font-bold">{fmt(li.amount)}</Td>
                   </Tr>
                 ))}
               </Tbody>

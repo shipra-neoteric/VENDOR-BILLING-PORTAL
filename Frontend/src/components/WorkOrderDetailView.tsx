@@ -176,7 +176,7 @@ export default function WorkOrderDetailView({
         <PairedGrid
           pairsPerRow={2}
           items={[
-            { label: "Work Order No.", value: <span className="font-mono font-bold text-primary">{wo.workOrderNo}</span> },
+            { label: "Work Order No.", value: <span className="font-bold text-primary">{wo.workOrderNo}</span> },
             { label: isProfessionalServices ? "Firm" : "Contractor Name", value: wo.vendorName },
             { label: "Project Name", value: wo.projectName },
             { label: "Contractor Address", value: bank?.address },
@@ -196,7 +196,7 @@ export default function WorkOrderDetailView({
             {
               label: isProfessionalServices ? "Consultant Code" : "Vendor Code",
               value: (
-                <span className="font-mono font-semibold text-blue-600 bg-blue-50 dark:bg-blue-500/10 dark:text-blue-400 px-1.5 py-0.5 rounded">
+                <span className="font-semibold text-blue-600 bg-blue-50 dark:bg-blue-500/10 dark:text-blue-400 px-1.5 py-0.5 rounded">
                   {wo.vendorCode}
                 </span>
               ),
@@ -398,8 +398,8 @@ export default function WorkOrderDetailView({
               rows={[
                 ["Account Holder Name", bank.accountHolderName || "—"],
                 ["Bank Name", bank.bankName || "—"],
-                ["Account Number", <span className="font-mono">{bank.accountNumber || "—"}</span>],
-                ["IFSC Code", <span className="font-mono">{bank.ifscCode || "—"}</span>],
+                ["Account Number", <span>{bank.accountNumber || "—"}</span>],
+                ["IFSC Code", <span>{bank.ifscCode || "—"}</span>],
                 ...(bank.branchName ? ([["Branch", bank.branchName]] as [string, ReactNode][]) : []),
               ]}
             />

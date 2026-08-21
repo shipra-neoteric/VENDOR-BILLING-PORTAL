@@ -22,7 +22,7 @@ export default function ConsultantDetailView({ consultant }: { consultant: Consu
       <SectionHeading>Firm Details</SectionHeading>
       <Descriptions>
         <DescItem label="Consultant Code" span={2}>
-          <span className="font-mono font-bold text-primary">{c.consultantCode}</span>
+          <span className="font-bold text-primary">{c.consultantCode}</span>
         </DescItem>
         <DescItem label="Firm / Consultant">{c.firmName}</DescItem>
         <DescItem label="Principal">{c.principalName}</DescItem>

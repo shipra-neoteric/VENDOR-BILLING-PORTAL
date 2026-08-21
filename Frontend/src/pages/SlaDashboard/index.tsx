@@ -6,10 +6,10 @@ import apiClient from "../../services/apiClient";
 import type { WorkflowMISReport, WorkflowEntityType, MISPipeline } from "../../types/Workflow";
 import PageHeader from "../../ui/PageHeader";
 import { SelectFilter } from "../../ui/Filters";
-import Badge from "../../ui/Badge";
+import NxBadge from "../../ui/nexora/Badge";
 import Spinner from "../../ui/Spinner";
 import Alert from "../../ui/Alert";
-import Card from "../../ui/Card";
+import NxCard from "../../ui/nexora/Card";
 import Donut from "../../ui/charts/Donut";
 import { Table, Thead, Tbody, Tr, Th, Td } from "../../ui/Table";
 import { useAuth } from "../../context/AuthContext";
@@ -49,7 +49,7 @@ function ViewAllLink({ label, onClick }: { label: string; onClick?: () => void }
   );
 }
 
-function BarRow({ label, value, max, count, color = "#f37916" }: { label: string; value: number; max: number; count?: React.ReactNode; color?: string }) {
+function BarRow({ label, value, max, count, color = "var(--theme-primary)" }: { label: string; value: number; max: number; count?: React.ReactNode; color?: string }) {
   return (
     <div className="flex items-center gap-2.5 mb-2.5">
       <span className="w-[150px] text-[12.5px] text-gray-600 dark:text-gray-300 shrink-0 truncate" title={label}>{label}</span>
@@ -119,10 +119,10 @@ function KpiTile({
   deltaText?: string | null; deltaTone?: DeltaTone; sparkline?: number[]; sparklineColor?: string;
 }) {
   return (
-    <Card>
+    <NxCard>
       <div className="flex items-start justify-between gap-1.5 mb-2">
         <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400 dark:text-gray-500 leading-snug">{label}</span>
-        {badge && <span className="shrink-0"><Badge color={badge.color} small>{badge.label}</Badge></span>}
+        {badge && <span className="shrink-0"><NxBadge color={badge.color}>{badge.label}</NxBadge></span>}
       </div>
       <div className="text-xl font-bold text-[#1A1A2E] dark:text-[#F1F5F9] mb-2 break-words leading-tight" style={valueStyle}>{value}</div>
       {deltaText && (
@@ -131,7 +131,7 @@ function KpiTile({
           {sparkline && sparkline.length >= 2 && sparklineColor && <MiniSparkline points={sparkline} color={sparklineColor} />}
         </div>
       )}
-    </Card>
+    </NxCard>
   );
 }
 
@@ -296,7 +296,7 @@ export default function SlaDashboard() {
 
       {/* ══════════════ Row 2: Financial | Compliance ══════════════ */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-5">
-        <Card className="h-full">
+        <NxCard className="h-full">
           <PanelHead title="Financial Impact" info />
           <div className="flex gap-3.5 mb-4">
             <div className="flex-1">
@@ -311,9 +311,9 @@ export default function SlaDashboard() {
           {financial.byStage.map(s => (
             <BarRow key={s.stageName} label={s.stageName} value={s.amount} max={maxFinStage} count={fmtMoney(s.amount)} color="#2563eb" />
           ))}
-        </Card>
+        </NxCard>
 
-        <Card className="h-full">
+        <NxCard className="h-full">
           <PanelHead title="SLA Compliance" info />
           <Donut
             segments={[
@@ -323,11 +323,11 @@ export default function SlaDashboard() {
             ]}
             size={112} centerValue={`${compliancePct.onTime}%`} centerSub="On Time" legendMode="percent"
           />
-        </Card>
+        </NxCard>
       </div>
 
       {/* ══════════════ Row 3: Live Activity ══════════════ */}
-      <Card className="mb-5">
+      <NxCard className="mb-5">
         <PanelHead title="Live Activity" sub="Most recent activities and updates" info />
         {recentActivity.length === 0 ? (
           <div className="text-gray-400 dark:text-gray-500 text-[13px] text-center py-2.5">No activity yet.</div>
@@ -342,11 +342,11 @@ export default function SlaDashboard() {
             ))}
           </div>
         )}
-      </Card>
+      </NxCard>
 
       {/* ══════════════ Row 4: Work Order Pipeline | Bill Request Pipeline ══════════════ */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-5">
-        <Card className="h-full">
+        <NxCard className="h-full">
           <PanelHead title="Work Order Pipeline" sub="Work orders status across all stages" info />
           {pipelineTiles.length === 0 ? (
             <div className="text-gray-400 dark:text-gray-500 text-[13px] text-center py-2.5">No Work Order workflows yet.</div>
@@ -367,9 +367,9 @@ export default function SlaDashboard() {
             </div>
           )}
           <ViewAllLink label="View all work orders" onClick={() => navigate("/work-items")} />
-        </Card>
+        </NxCard>
 
-        <Card className="h-full">
+        <NxCard className="h-full">
           <PanelHead title="Bill Request Pipeline" sub="Bill requests status across all stages" info />
           {brPipelineTiles.length === 0 ? (
             <div className="text-gray-400 dark:text-gray-500 text-[13px] text-center py-2.5">No Bill Request workflows yet.</div>
@@ -390,11 +390,11 @@ export default function SlaDashboard() {
             </div>
           )}
           <ViewAllLink label="View all bill requests" onClick={() => navigate(billRequestListPath)} />
-        </Card>
+        </NxCard>
       </div>
 
       {/* ══════════════ SLA by User — full width, every user ══════════════ */}
-      <Card className="mb-5">
+      <NxCard className="mb-5">
         <PanelHead title="SLA by User" sub="SLA compliance by individual users" info />
         {byAssigneeRows.length === 0 ? (
           <div className="text-gray-400 dark:text-gray-500 text-[13px]">No stages have started yet.</div>
@@ -426,7 +426,7 @@ export default function SlaDashboard() {
             </Tbody>
           </Table>
         )}
-      </Card>
+      </NxCard>
 
       {/* ══════════════════════════════════════════════════════════════
           Detailed reports — every "View all/full" link above lands here.
@@ -441,15 +441,15 @@ export default function SlaDashboard() {
       {otherPipeline.length > 0 && (
         <div className="flex flex-col gap-5 mb-5">
           {otherPipeline.map(p => (
-            <Card key={p.templateName}>
+            <NxCard key={p.templateName}>
               <PanelHead title={p.templateName} sub={p.entityType} />
               <PipelineFunnel p={p} />
-            </Card>
+            </NxCard>
           ))}
         </div>
       )}
 
-      <Card id="detail-workflows" className="scroll-mt-4">
+      <NxCard id="detail-workflows" className="scroll-mt-4">
         <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
           <PanelHead title={`Ongoing Workflows (${filteredDrilldown.length})`} sub="Every open workflow — click a Work Order or Bill Request to jump to it" />
           <div className="flex flex-wrap gap-2">
@@ -487,7 +487,7 @@ export default function SlaDashboard() {
                         <span className="text-primary font-semibold cursor-pointer" onClick={() => navigate(billRequestPath(d.entityId))}>{d.entityLabel}</span>
                       ) : d.entityLabel}
                     </Td>
-                    <Td><Badge color={d.entityType === "WorkOrder" ? "blue" : "purple"}>{d.entityType}</Badge></Td>
+                    <Td><NxBadge color={d.entityType === "WorkOrder" ? "blue" : "indigo"}>{d.entityType}</NxBadge></Td>
                     <Td>{d.currentStage}</Td>
                     <Td>{d.assignedTo}</Td>
                     <Td>
@@ -496,7 +496,7 @@ export default function SlaDashboard() {
                         : "—"}
                     </Td>
                     <Td className="text-right">
-                      {d.breached ? <Badge color="red">🔴 Overdue</Badge> : <Badge color="green">🟢 On Track</Badge>}
+                      {d.breached ? <NxBadge color="red">🔴 Overdue</NxBadge> : <NxBadge color="green">🟢 On Track</NxBadge>}
                     </Td>
                   </Tr>
                 );
@@ -504,7 +504,7 @@ export default function SlaDashboard() {
             </Tbody>
           </Table>
         )}
-      </Card>
+      </NxCard>
     </div>
   );
 }

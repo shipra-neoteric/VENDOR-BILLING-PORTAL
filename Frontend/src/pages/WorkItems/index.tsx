@@ -1212,7 +1212,6 @@ function WOFormFields({
           placeholder={isEdit ? undefined : `Auto-assign: ${isProfessionalServices ? nextCWONo : nextWONo}`}
           disabled={isEdit}
           maxLength={20}
-          className="font-mono"
           value={values.workOrderNo}
           onChange={e => onChange({ workOrderNo: e.target.value })}
           hint={!isEdit ? `Leave blank to auto-assign (${isProfessionalServices ? nextCWONo : nextWONo})` : undefined}
@@ -2268,7 +2267,7 @@ export default function WorkItems() {
                           <button
                             type="button"
                             onClick={e => { e.stopPropagation(); navigate(`/work-items/${record.id}`); }}
-                            className="font-mono font-bold text-primary"
+                            className="font-bold text-primary"
                           >
                             {record.workOrderNo}
                           </button>
@@ -2382,7 +2381,7 @@ export default function WorkItems() {
       {drawerOpen && (
         <Modal
           icon={ClipboardList}
-          title={<>Work Order — <span className="text-primary font-mono">{currentSelectedWO?.workOrderNo}</span></>}
+          title={<>Work Order — <span className="text-primary">{currentSelectedWO?.workOrderNo}</span></>}
           subtitle={`${currentSelectedWO?.projectName ?? ""}${currentSelectedWO?.projectLocation ? ` — ${currentSelectedWO.projectLocation}` : ""}`}
           extraWide
           onClose={() => setDrawerOpen(false)}
@@ -2484,7 +2483,7 @@ export default function WorkItems() {
       {editModalOpen && (
         <Modal
           icon={Pencil}
-          title={<>Edit Work Order — <span className="text-primary font-mono">{currentEditWO?.workOrderNo}</span></>}
+          title={<>Edit Work Order — <span className="text-primary">{currentEditWO?.workOrderNo}</span></>}
           subtitle="Changes preserve existing progress data"
           ultraWide
           onClose={() => { setEditModalOpen(false); setEditWOId(null); }}

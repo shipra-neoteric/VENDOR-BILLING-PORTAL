@@ -24,7 +24,7 @@ export default function ContractorDetailView({ contractor }: { contractor: Contr
       <SectionHeading>Firm Details</SectionHeading>
       <Descriptions>
         <DescItem label="Vendor Code" span={2}>
-          <span className="font-mono font-bold text-primary">{c.vendorCode}</span>
+          <span className="font-bold text-primary">{c.vendorCode}</span>
         </DescItem>
         <DescItem label="Company">{vendorLabel(c.companyName, c.shortCode)}</DescItem>
         <DescItem label="Owner">{c.ownerName}</DescItem>

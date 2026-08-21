@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
-import { Download, Plus, Eye, Pencil, Trash2, Upload, Search, Loader2 } from "lucide-react";
+import { Download, Plus, Eye, Pencil, Trash2, Upload, Search, Loader2, HardHat, Users, UserCheck, UserX } from "lucide-react";
 
 import ContractorDetailView from "../../components/ContractorDetailView";
 import { downloadContractorListPDF } from "../../components/ContractorListPDF";
@@ -14,9 +14,13 @@ import Field from "../../ui/Field";
 import MultiSelect from "../../ui/MultiSelect";
 import Modal from "../../ui/Modal";
 import ConfirmModal from "../../ui/ConfirmModal";
-import Badge from "../../ui/Badge";
 import EmptyState from "../../ui/EmptyState";
 import Spinner from "../../ui/Spinner";
+import NxBtn from "../../ui/nexora/Btn";
+import NxBadge from "../../ui/nexora/Badge";
+import NxStatCard from "../../ui/nexora/StatCard";
+import DropdownMenu from "../../ui/DropdownMenu";
+import type { DropdownMenuItem } from "../../ui/DropdownMenu";
 import { SearchFilter } from "../../ui/Filters";
 import { Table, Thead, Tbody, Tr, Th, Td } from "../../ui/Table";
 import { usePagination } from "../../ui/usePagination";
@@ -184,6 +188,7 @@ export default function Contractors() {
   const [loading, setLoading]         = useState(true);
   const [saving, setSaving]           = useState(false);
   const [search, setSearch]           = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
   const [registerOpen, setRegisterOpen] = useState(false);
   const [editingContractor, setEditingContractor] = useState<Contractor | null>(null);
   const [viewOpen, setViewOpen]       = useState(false);
@@ -213,11 +218,17 @@ export default function Contractors() {
 
   const filtered = contractors.filter(
     (c) =>
-      c.vendorCode.toLowerCase().includes(search.toLowerCase()) ||
-      c.companyName.toLowerCase().includes(search.toLowerCase()) ||
-      c.mobile.includes(search)
+      (c.vendorCode.toLowerCase().includes(search.toLowerCase()) ||
+        c.companyName.toLowerCase().includes(search.toLowerCase()) ||
+        c.mobile.includes(search)) &&
+      (statusFilter === "all" || (c.status || "active") === statusFilter)
   );
   const { page, totalPages, setPage, pageItems: pagedContractors } = usePagination(filtered, 10);
+
+  const activeCount = contractors.filter(c => (c.status || "active") === "active").length;
+  const inactiveCount = contractors.length - activeCount;
+  const hasActiveFilters = search !== "" || statusFilter !== "all";
+  const clearAllFilters = () => { setSearch(""); setStatusFilter("all"); };
 
   function validateForm(): boolean {
     formErrors.clearAll();
@@ -292,10 +303,11 @@ export default function Contractors() {
       <PageHeader
         title="Contractors"
         subtitle="Manage registered vendors and sub-contractors."
+        icon={HardHat}
         actions={
-          <div className="flex gap-2">
-            <Btn label="Download List" icon={Download} outline onClick={() => downloadContractorListPDF(contractors, vendorGroups)} />
-            <Btn
+          <div className="flex items-center gap-2">
+            <NxBtn label="Download List" icon={Download} color="secondary" onClick={() => downloadContractorListPDF(contractors, vendorGroups)} />
+            <NxBtn
               label="Register Contractor" icon={Plus} color="primary"
               onClick={() => { setFormValues(blankForm()); formErrors.clearAll(); setGroupId(null); setEditingContractor(null); setRegisterOpen(true); }}
             />
@@ -303,9 +315,30 @@ export default function Contractors() {
         }
       />
 
-      {/* Search */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4 mb-5">
+        <NxStatCard
+          label="Total Contractors" value={contractors.length} icon={Users}
+          active={statusFilter === "all"} onClick={() => setStatusFilter("all")}
+        />
+        <NxStatCard
+          label="Active" value={activeCount} icon={UserCheck}
+          active={statusFilter === "active"} onClick={() => setStatusFilter(statusFilter === "active" ? "all" : "active")}
+        />
+        <NxStatCard
+          label="Inactive" value={inactiveCount} icon={UserX}
+          active={statusFilter === "inactive"} onClick={() => setStatusFilter(statusFilter === "inactive" ? "all" : "inactive")}
+        />
+      </div>
+
+      {/* Filters */}
       <div className="bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700/40 rounded-lg p-3.5 mb-4">
-        <SearchFilter placeholder="Search by vendor code, company name, or mobile…" value={search} onChange={setSearch} />
+        <div className="flex gap-2.5 items-center flex-wrap">
+          <SearchFilter placeholder="Search by vendor code, company name, or mobile…" value={search} onChange={setSearch} />
+          {hasActiveFilters && <Btn small outline label="Clear all" onClick={clearAllFilters} />}
+          <span className="ml-auto text-gray-400 text-xs whitespace-nowrap">
+            {filtered.length} contractor{filtered.length !== 1 ? "s" : ""}
+          </span>
+        </div>
       </div>
 
       {/* Table */}
@@ -331,38 +364,35 @@ export default function Contractors() {
             <Tbody>
               {pagedContractors.map((record) => {
                 const group = groupById(record.groupId);
+                const viewRecord = () => {
+                  setSelected(record);
+                  setViewOpen(true);
+                  // The list omits each contractor's uploaded documents (GST/PAN certs
+                  // etc. can run MBs as base64) to keep it fast — fetch the full record
+                  // here so the profile drawer's download links actually work.
+                  apiClient.get<{ contractor: Contractor }>(`/contractors/${record.id}`).then(res => {
+                    const full = normalizeId(res.data.contractor);
+                    setSelected(full);
+                    setContractors(prev => prev.map(c => c.id === record.id ? full : c));
+                  }).catch(() => {});
+                };
+                const menuItems: DropdownMenuItem[] = [
+                  { key: "edit", label: "Edit Contractor", icon: Pencil, onClick: () => openEdit(record) },
+                  { key: "delete", label: "Delete", icon: Trash2, danger: true, onClick: () => setDeleteTarget(record) },
+                ];
                 return (
-                  <Tr key={record.id}>
-                    <Td className="font-mono font-bold text-primary">{record.vendorCode}</Td>
+                  <Tr key={record.id} className="cursor-pointer" onClick={viewRecord}>
+                    <Td>{record.vendorCode}</Td>
                     <Td>{vendorLabel(record.companyName, record.shortCode)}</Td>
                     <Td>{record.ownerName}</Td>
                     <Td>{record.mobile}</Td>
-                    <Td>{group ? <Badge color="purple">{group.name}</Badge> : <span className="text-gray-300">—</span>}</Td>
+                    <Td>{group ? group.name : <span className="text-gray-400">—</span>}</Td>
+                    <Td>{(record.workTypes || []).slice(0, 2).join(", ") || <span className="text-gray-400">—</span>}</Td>
+                    <Td><NxBadge color={(record.status || "active") === "active" ? "green" : "red"}>{((record.status || "active")).toUpperCase()}</NxBadge></Td>
                     <Td>
-                      <div className="flex flex-wrap gap-1">
-                        {(record.workTypes || []).slice(0, 2).map(t => <Badge key={t} color="gray" small>{t}</Badge>)}
-                      </div>
-                    </Td>
-                    <Td><Badge color={record.status === "active" ? "green" : "gray"}>{(record.status || "").toUpperCase()}</Badge></Td>
-                    <Td>
-                      <div className="flex gap-1">
-                        <Btn
-                          small color="blue" icon={Eye} title="View Contractor"
-                          onClick={() => {
-                            setSelected(record);
-                            setViewOpen(true);
-                            // The list omits each contractor's uploaded documents (GST/PAN certs
-                            // etc. can run MBs as base64) to keep it fast — fetch the full record
-                            // here so the profile drawer's download links actually work.
-                            apiClient.get<{ contractor: Contractor }>(`/contractors/${record.id}`).then(res => {
-                              const full = normalizeId(res.data.contractor);
-                              setSelected(full);
-                              setContractors(prev => prev.map(c => c.id === record.id ? full : c));
-                            }).catch(() => {});
-                          }}
-                        />
-                        <Btn small color="amber" icon={Pencil} title="Edit Contractor" onClick={() => openEdit(record)} />
-                        <Btn small color="red" icon={Trash2} title="Delete Contractor" onClick={() => setDeleteTarget(record)} />
+                      <div onClick={e => e.stopPropagation()} className="flex items-center gap-1">
+                        <NxBtn color="icon" title="View Contractor" icon={Eye} onClick={viewRecord} />
+                        <DropdownMenu items={menuItems} />
                       </div>
                     </Td>
                   </Tr>

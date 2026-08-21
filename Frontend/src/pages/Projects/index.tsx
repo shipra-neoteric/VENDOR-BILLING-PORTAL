@@ -15,8 +15,10 @@ import { DatePicker } from "../../ui/DatePicker";
 import Modal from "../../ui/Modal";
 import ConfirmModal from "../../ui/ConfirmModal";
 import Badge from "../../ui/Badge";
-import StatusBadge from "../../ui/StatusBadge";
-import StatCard from "../../ui/StatCard";
+import NxBtn from "../../ui/nexora/Btn";
+import NxBadge from "../../ui/nexora/Badge";
+import type { NxBadgeColor } from "../../ui/nexora/Badge";
+import NxStatCard from "../../ui/nexora/StatCard";
 import Spinner from "../../ui/Spinner";
 import Segmented from "../../ui/Segmented";
 import { Table, Thead, Tbody, Tr, Th, Td } from "../../ui/Table";
@@ -119,24 +121,26 @@ const EVENT_CONFIG: Record<string, { icon: string; color: string; label: string 
 };
 
 // ── Config ─────────────────────────────────────────────────────────────────────
-const STATUS_COLOR: Record<string, string> = {
-  active: "#16a34a", completed: "#2563eb", "on-hold": "#f59e0b",
-};
-const STATUS_LABEL: Record<string, string> = {
-  active: "Active", completed: "Completed", "on-hold": "On Hold",
-};
-const WO_STATUS_COLOR: Record<string, string> = {
-  draft: "#9CA3AF", issued: "#3b82f6", "in-progress": "#FF7A00", completed: "#16a34a",
-};
-const WO_STATUS_LABEL: Record<string, string> = {
-  draft: "Draft", issued: "Issued", "in-progress": "In Progress", completed: "Completed",
-};
-const BILL_REQ_STATUS_COLOR: Record<string, string> = {
-  approved: "#16a34a", rejected: "#dc2626", pending: "#f59e0b", "pending-gm": "#f59e0b",
-};
-const BILL_REQ_STATUS_LABEL: Record<string, string> = {
-  approved: "Approved", rejected: "Rejected", pending: "Pending", "pending-gm": "Pending GM",
-};
+// Nexora status-pill mapping (NxBadge semantics: green=success/complete,
+// blue/indigo=in-progress/approved-stage, amber=pending/waiting,
+// red=rejected/blocked, gray=neutral/draft).
+function projectStatusBadge(status: Project["status"]): { label: string; color: NxBadgeColor } {
+  if (status === "completed") return { label: "Completed", color: "green" };
+  if (status === "on-hold") return { label: "On Hold", color: "amber" };
+  return { label: "Active", color: "blue" };
+}
+function woStatusBadge(status: string): { label: string; color: NxBadgeColor } {
+  if (status === "completed") return { label: "Completed", color: "green" };
+  if (status === "in-progress") return { label: "In Progress", color: "amber" };
+  if (status === "issued") return { label: "Issued", color: "blue" };
+  return { label: "Draft", color: "gray" };
+}
+function billReqStatusBadge(status: string): { label: string; color: NxBadgeColor } {
+  if (status === "approved") return { label: "Approved", color: "green" };
+  if (status === "rejected") return { label: "Rejected", color: "red" };
+  if (status === "pending-gm") return { label: "Pending GM", color: "amber" };
+  return { label: "Pending", color: "amber" };
+}
 
 const normalizeId = (obj: any): Project => ({ ...obj, id: obj._id || obj.id });
 const fmt = (n: number) => "₹" + (n ?? 0).toLocaleString("en-IN", { maximumFractionDigits: 0 });
@@ -265,7 +269,7 @@ function ProjectDetail({
       <Card className="mb-5">
         <div className="flex justify-between items-start gap-5 flex-wrap">
           <div>
-            <Badge color="orange">{project.code}</Badge>
+            <NxBadge color="gray">{project.code}</NxBadge>
             <div className="text-2xl font-extrabold text-[#1A1A2E] dark:text-[#F1F5F9] leading-tight mt-2 mb-1.5">
               {project.name}
             </div>
@@ -279,18 +283,18 @@ function ProjectDetail({
               </div>
             )}
             <div className="flex gap-2 mt-2.5 flex-wrap">
-              <StatusBadge status={project.status} colorMap={STATUS_COLOR} labelMap={STATUS_LABEL} />
+              <NxBadge color={projectStatusBadge(project.status).color}>{projectStatusBadge(project.status).label}</NxBadge>
               {project.projectType && (
-                <Badge color={project.projectType === "apartment" ? "purple" : "teal"}>
+                <NxBadge color={project.projectType === "apartment" ? "indigo" : "teal"}>
                   {project.projectType === "apartment" ? "Apartment" : "Plot"}
-                </Badge>
+                </NxBadge>
               )}
             </div>
           </div>
           <div className="flex gap-2 shrink-0">
-            <Btn color="primary" icon={Pencil} label="Edit Project" onClick={e => onEdit(project, e)} />
-            <Btn
-              color="red" icon={Trash2} label="Delete"
+            <NxBtn color="primary" icon={Pencil} label="Edit Project" onClick={e => onEdit(project, e)} />
+            <NxBtn
+              color="danger" icon={Trash2} label="Delete"
               disabled={subProjects.length > 0}
               title={subProjects.length > 0 ? "Delete its sub-projects first" : undefined}
               onClick={() => setDeleteTarget(project)}
@@ -316,9 +320,9 @@ function ProjectDetail({
                   onClick={() => onSelectProject(sp)}
                   className={`flex items-center gap-3 px-5 py-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/40 ${i < subProjects.length - 1 ? "border-b border-gray-100 dark:border-gray-700/40" : ""}`}
                 >
-                  <Badge color="orange" small>{sp.code}</Badge>
+                  <NxBadge color="gray">{sp.code}</NxBadge>
                   <span className="flex-1 font-semibold text-[13px] text-[#1A1A2E] dark:text-[#F1F5F9]">{sp.name}</span>
-                  <StatusBadge status={sp.status} colorMap={STATUS_COLOR} labelMap={STATUS_LABEL} />
+                  <NxBadge color={projectStatusBadge(sp.status).color}>{projectStatusBadge(sp.status).label}</NxBadge>
                   <button
                     type="button"
                     onClick={e => { e.stopPropagation(); setDeleteTarget(sp); }}
@@ -342,22 +346,22 @@ function ProjectDetail({
           {stats && (
             <>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-                <StatCard label="Awarded (WOs)"    value={fmt(stats.awardedContractValue)} icon={Landmark}     iconColorClass="text-primary" />
-                <StatCard label="Work Executed"    value={fmt(stats.workExecutedValue)}    icon={HardHat}      iconColorClass="text-blue-500" />
-                <StatCard label="Billed Gross"     value={fmt(stats.billedGross)}          icon={Receipt}      iconColorClass="text-indigo-500" />
-                <StatCard label="Certified Net"    value={fmt(stats.certifiedNet)}         icon={CheckCircle2} iconColorClass="text-teal-500" />
-                <StatCard label="Paid"             value={fmt(stats.paidAmount)}           icon={Banknote}     iconColorClass="text-emerald-500" />
-                <StatCard label="Remaining"        value={fmt(stats.remainingContract)}    icon={Clock}        iconColorClass="text-amber-500" />
-                <StatCard label="Overall Progress" value={`${stats.progress}%`}            icon={TrendingUp}   iconColorClass={stats.progress >= 100 ? "text-emerald-500" : "text-primary"} />
+                <NxStatCard label="Awarded (WOs)"    value={fmt(stats.awardedContractValue)} icon={Landmark} />
+                <NxStatCard label="Work Executed"    value={fmt(stats.workExecutedValue)}    icon={HardHat} />
+                <NxStatCard label="Billed Gross"     value={fmt(stats.billedGross)}          icon={Receipt} />
+                <NxStatCard label="Certified Net"    value={fmt(stats.certifiedNet)}         icon={CheckCircle2} />
+                <NxStatCard label="Paid"             value={fmt(stats.paidAmount)}           icon={Banknote} />
+                <NxStatCard label="Remaining"        value={fmt(stats.remainingContract)}    icon={Clock} />
+                <NxStatCard label="Overall Progress" value={`${stats.progress}%`}            icon={TrendingUp} />
               </div>
 
               {/* Quick indicators */}
               <div className="flex gap-2 flex-wrap mb-5">
-                <Badge color="orange">{stats.activeVendors} Active Vendor{stats.activeVendors !== 1 ? "s" : ""}</Badge>
-                <Badge color="blue">{stats.woCount} Work Order{stats.woCount !== 1 ? "s" : ""}</Badge>
-                <Badge color="green">{completedCount} Completed WOs</Badge>
-                <Badge color={stats.pendingBillReqs > 0 ? "amber" : "gray"}>{stats.pendingBillReqs} Pending Bill Req{stats.pendingBillReqs !== 1 ? "s" : ""}</Badge>
-                <Badge color={stats.openBills > 0 ? "purple" : "gray"}>{stats.openBills} Open Bill{stats.openBills !== 1 ? "s" : ""}</Badge>
+                <NxBadge color="teal">{stats.activeVendors} Active Vendor{stats.activeVendors !== 1 ? "s" : ""}</NxBadge>
+                <NxBadge color="blue">{stats.woCount} Work Order{stats.woCount !== 1 ? "s" : ""}</NxBadge>
+                <NxBadge color="green">{completedCount} Completed WOs</NxBadge>
+                <NxBadge color={stats.pendingBillReqs > 0 ? "amber" : "gray"}>{stats.pendingBillReqs} Pending Bill Req{stats.pendingBillReqs !== 1 ? "s" : ""}</NxBadge>
+                <NxBadge color={stats.openBills > 0 ? "indigo" : "gray"}>{stats.openBills} Open Bill{stats.openBills !== 1 ? "s" : ""}</NxBadge>
               </div>
             </>
           )}
@@ -389,16 +393,16 @@ function ProjectDetail({
               ) : (
                 <Table>
                   <Thead>
-                    <Tr><Th>Vendor</Th><Th>Vendor Code</Th><Th>Owner</Th><Th>Work Orders</Th><Th>Contract Value</Th></Tr>
+                    <Tr><Th>Vendor</Th><Th>Vendor Code</Th><Th>Owner</Th><Th>Work Orders</Th><Th className="text-right">Contract Value</Th></Tr>
                   </Thead>
                   <Tbody>
                     {projectVendors.map(v => (
                       <Tr key={v.contractor._id}>
-                        <Td className="font-semibold text-[#1A1A2E] dark:text-[#F1F5F9]">{vendorLabel(v.contractor.companyName, v.contractor.shortCode)}</Td>
-                        <Td className="font-mono text-primary font-bold">{v.contractor.vendorCode}</Td>
-                        <Td className="text-gray-500 dark:text-gray-400">{v.contractor.ownerName || "—"}</Td>
-                        <Td className="font-mono">{v.woCount}</Td>
-                        <Td className="font-mono font-semibold">{fmt(v.contractValue)}</Td>
+                        <Td>{vendorLabel(v.contractor.companyName, v.contractor.shortCode)}</Td>
+                        <Td>{v.contractor.vendorCode}</Td>
+                        <Td>{v.contractor.ownerName || "—"}</Td>
+                        <Td>{v.woCount}</Td>
+                        <Td className="text-right font-bold">{fmt(v.contractValue)}</Td>
                       </Tr>
                     ))}
                   </Tbody>
@@ -424,16 +428,16 @@ function ProjectDetail({
                 ) : (
                   <Table>
                     <Thead>
-                      <Tr><Th>WO Number</Th><Th>Vendor</Th><Th>Category</Th><Th>Status</Th><Th>Contract Value</Th></Tr>
+                      <Tr><Th>WO Number</Th><Th>Vendor</Th><Th>Category</Th><Th>Status</Th><Th className="text-right">Contract Value</Th></Tr>
                     </Thead>
                     <Tbody>
                       {wos.map(wo => (
                         <Tr key={wo._id}>
-                          <Td className="font-mono font-bold text-primary">{wo.workOrderNo}</Td>
-                          <Td className="font-medium text-[#1A1A2E] dark:text-[#F1F5F9]">{wo.vendorName || "—"}</Td>
-                          <Td className="text-gray-500 dark:text-gray-400">{wo.category || "—"}</Td>
-                          <Td><StatusBadge status={wo.status} colorMap={WO_STATUS_COLOR} labelMap={WO_STATUS_LABEL} /></Td>
-                          <Td className="font-mono font-semibold">{fmt(wo.contractValue || 0)}</Td>
+                          <Td>{wo.workOrderNo}</Td>
+                          <Td>{wo.vendorName || "—"}</Td>
+                          <Td>{wo.category || "—"}</Td>
+                          <Td><NxBadge color={woStatusBadge(wo.status).color}>{woStatusBadge(wo.status).label}</NxBadge></Td>
+                          <Td className="text-right font-bold">{fmt(wo.contractValue || 0)}</Td>
                         </Tr>
                       ))}
                     </Tbody>
@@ -454,7 +458,7 @@ function ProjectDetail({
                         <button
                           key={wo._id}
                           onClick={() => setSelectedWONo(wo.workOrderNo)}
-                          className={`rounded-lg px-3 py-1 text-[11px] font-bold font-mono transition-colors ${selectedWONo === wo.workOrderNo ? "bg-primary text-white" : "bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400"}`}
+                          className={`rounded-lg px-3 py-1 text-[11px] font-bold transition-colors ${selectedWONo === wo.workOrderNo ? "bg-primary text-white" : "bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400"}`}
                         >
                           {wo.workOrderNo}
                         </button>
@@ -489,16 +493,16 @@ function ProjectDetail({
                 ) : (
                   <Table>
                     <Thead>
-                      <Tr><Th>Category</Th><Th>WOs</Th><Th>Vendors</Th><Th>Contract Value</Th><Th>Work Executed</Th><Th>Progress</Th></Tr>
+                      <Tr><Th>Category</Th><Th>WOs</Th><Th>Vendors</Th><Th className="text-right">Contract Value</Th><Th className="text-right">Work Executed</Th><Th>Progress</Th></Tr>
                     </Thead>
                     <Tbody>
                       {stats.categoryBreakdown.map(cat => (
                         <Tr key={cat.category} onClick={() => setSelectedCategory(cat.category)} className="cursor-pointer">
-                          <Td className="font-semibold text-[#1A1A2E] dark:text-[#F1F5F9]">{cat.category}</Td>
-                          <Td className="font-mono">{cat.woCount}</Td>
-                          <Td className="font-mono">{cat.vendorCount}</Td>
-                          <Td className="font-mono font-bold text-primary">{fmt(cat.contractValue)}</Td>
-                          <Td className="font-mono text-blue-500">{fmt(cat.workExecuted)}</Td>
+                          <Td>{cat.category}</Td>
+                          <Td>{cat.woCount}</Td>
+                          <Td>{cat.vendorCount}</Td>
+                          <Td className="text-right font-bold">{fmt(cat.contractValue)}</Td>
+                          <Td className="text-right">{fmt(cat.workExecuted)}</Td>
                           <Td className="min-w-[140px]">
                             <div className="flex items-center gap-2">
                               <div className="flex-1 h-2 bg-gray-100 dark:bg-gray-700 rounded overflow-hidden">
@@ -527,10 +531,10 @@ function ProjectDetail({
                           onClick={() => setViewBill(br)}
                           className={`flex items-center gap-3 px-5 py-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/40 ${i < catBills.length - 1 ? "border-b border-gray-100 dark:border-gray-700/40" : ""}`}
                         >
-                          <Badge color="orange" small>{br.reqNo}</Badge>
+                          <NxBadge color="gray">{br.reqNo}</NxBadge>
                           <span className="flex-1 text-sm font-medium text-[#1A1A2E] dark:text-[#F1F5F9]">{br.vendorName}</span>
                           <span className="text-xs text-gray-400">{dayjs(br.createdAt).format("DD MMM YYYY")}</span>
-                          <StatusBadge status={br.status} colorMap={BILL_REQ_STATUS_COLOR} labelMap={BILL_REQ_STATUS_LABEL} />
+                          <NxBadge color={billReqStatusBadge(br.status).color}>{billReqStatusBadge(br.status).label}</NxBadge>
                         </div>
                       ))}
                     </Card>
@@ -559,12 +563,12 @@ function ProjectDetail({
                   <Tbody>
                     {billRequests.map(br => (
                       <Tr key={br._id} onClick={() => setViewBill(br)} className="cursor-pointer">
-                        <Td className="font-mono font-bold text-primary">{br.reqNo}</Td>
-                        <Td className="font-mono text-gray-500 dark:text-gray-400">{br.workOrderNo}</Td>
-                        <Td className="font-medium text-[#1A1A2E] dark:text-[#F1F5F9]">{br.vendorName}</Td>
-                        <Td className="text-gray-500 dark:text-gray-400">{br.category || "—"}</Td>
-                        <Td className="text-gray-400">{dayjs(br.createdAt).format("DD MMM YYYY")}</Td>
-                        <Td><StatusBadge status={br.status} colorMap={BILL_REQ_STATUS_COLOR} labelMap={BILL_REQ_STATUS_LABEL} /></Td>
+                        <Td>{br.reqNo}</Td>
+                        <Td>{br.workOrderNo}</Td>
+                        <Td>{br.vendorName}</Td>
+                        <Td>{br.category || "—"}</Td>
+                        <Td>{dayjs(br.createdAt).format("DD MMM YYYY")}</Td>
+                        <Td><NxBadge color={billReqStatusBadge(br.status).color}>{billReqStatusBadge(br.status).label}</NxBadge></Td>
                       </Tr>
                     ))}
                   </Tbody>
@@ -606,7 +610,7 @@ function ProjectDetail({
                           </div>
                           <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                             {ev.vendorName && <span>{ev.vendorName}</span>}
-                            {ev.workOrderNo && <span className={`font-mono text-primary ${ev.vendorName ? "ml-1.5" : ""}`}>{ev.workOrderNo}</span>}
+                            {ev.workOrderNo && <span className={`text-primary ${ev.vendorName ? "ml-1.5" : ""}`}>{ev.workOrderNo}</span>}
                           </div>
                           {ev.performedByName && <div className="text-[11px] text-gray-400 mt-0.5">by {ev.performedByName}</div>}
                         </div>
@@ -709,11 +713,11 @@ export default function Projects() {
   // Each card doubles as a status filter for the list below — clicking one
   // narrows `filtered` to that status; clicking it again (or "Total Projects")
   // clears back to "all".
-  const statCards: { label: string; value: number; icon: typeof Building2; iconColorClass: string; filterValue: "all" | "active" | "completed" | "on-hold" }[] = [
-    { label: "Total Projects", value: projects.length,                                     icon: Building2,    iconColorClass: "text-primary",     filterValue: "all" },
-    { label: "Active",         value: projects.filter(p => p.status === "active").length,    icon: CheckCircle2, iconColorClass: "text-emerald-500", filterValue: "active" },
-    { label: "Completed",      value: projects.filter(p => p.status === "completed").length, icon: CheckCircle2, iconColorClass: "text-blue-500",    filterValue: "completed" },
-    { label: "On Hold",        value: projects.filter(p => p.status === "on-hold").length,   icon: Clock,        iconColorClass: "text-amber-500",   filterValue: "on-hold" },
+  const statCards: { label: string; value: number; icon: typeof Building2; filterValue: "all" | "active" | "completed" | "on-hold" }[] = [
+    { label: "Total Projects", value: projects.length,                                     icon: Building2,    filterValue: "all" },
+    { label: "Active",         value: projects.filter(p => p.status === "active").length,    icon: CheckCircle2, filterValue: "active" },
+    { label: "Completed",      value: projects.filter(p => p.status === "completed").length, icon: CheckCircle2, filterValue: "completed" },
+    { label: "On Hold",        value: projects.filter(p => p.status === "on-hold").length,   icon: Clock,        filterValue: "on-hold" },
   ];
 
   // ── Handlers ──────────────────────────────────────────────────────────────
@@ -815,7 +819,7 @@ export default function Projects() {
             title="Projects"
             subtitle="Manage project master data — locations, contract values, and status."
             icon={Building2}
-            actions={<Btn label="Add Project" icon={Plus} color="primary" onClick={openCreate} />}
+            actions={<NxBtn label="Add Project" icon={Plus} color="primary" onClick={openCreate} />}
           />
 
           {loading ? (
@@ -825,8 +829,8 @@ export default function Projects() {
               {/* Stats strip */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-6">
                 {statCards.map(s => (
-                  <StatCard
-                    key={s.label} label={s.label} value={s.value} icon={s.icon} iconColorClass={s.iconColorClass}
+                  <NxStatCard
+                    key={s.label} label={s.label} value={s.value} icon={s.icon}
                     active={statusFilter === s.filterValue}
                     onClick={() => setStatusFilter(statusFilter === s.filterValue ? "all" : s.filterValue)}
                   />
@@ -860,8 +864,8 @@ export default function Projects() {
                         className="cursor-pointer hover:shadow-lg transition-all duration-200"
                       >
                         <div className="flex items-center justify-between gap-2 mb-2.5">
-                          <Badge color="orange">{proj.code}</Badge>
-                          <StatusBadge status={proj.status} colorMap={STATUS_COLOR} labelMap={STATUS_LABEL} />
+                          <NxBadge color="gray">{proj.code}</NxBadge>
+                          <NxBadge color={projectStatusBadge(proj.status).color}>{projectStatusBadge(proj.status).label}</NxBadge>
                         </div>
 
                         <div className="font-bold text-[15px] text-[#1A1A2E] dark:text-[#F1F5F9] leading-snug mb-1.5">
@@ -871,25 +875,24 @@ export default function Projects() {
                         <div className="text-xs text-gray-500 dark:text-gray-400 mb-1.5">📍 {proj.location || "—"}</div>
 
                         {subCount > 0 && (
-                          <div className="text-[11px] text-purple-600 dark:text-purple-400 font-semibold mb-1.5">
+                          <div className="text-[11px] text-indigo-600 dark:text-indigo-400 font-semibold mb-1.5">
                             📁 {subCount} sub-project{subCount !== 1 ? "s" : ""}
                           </div>
                         )}
 
                         {proj.projectType && (
                           <div className="flex justify-end border-t border-gray-100 dark:border-gray-700/40 pt-2.5">
-                            <Badge color={proj.projectType === "apartment" ? "purple" : "teal"} small>
+                            <NxBadge color={proj.projectType === "apartment" ? "indigo" : "teal"}>
                               {proj.projectType === "apartment" ? "Apartment" : "Plot"}
-                            </Badge>
+                            </NxBadge>
                           </div>
                         )}
 
-                        <div className="mt-2 flex justify-end gap-1.5" onClick={e => e.stopPropagation()}>
-                          <Btn small outline icon={Pencil} label="Edit" onClick={e => openEdit(proj, e)} />
-                          <Btn
-                            small outline icon={Trash2} label="Delete"
+                        <div className="mt-2 flex justify-end gap-1" onClick={e => e.stopPropagation()}>
+                          <NxBtn color="icon" icon={Pencil} title="Edit" onClick={e => openEdit(proj, e)} />
+                          <NxBtn
+                            color="icon" icon={Trash2} title={subCount > 0 ? "Delete its sub-projects first" : "Delete"}
                             disabled={subCount > 0}
-                            title={subCount > 0 ? "Delete its sub-projects first" : undefined}
                             onClick={e => { e.stopPropagation(); setDeleteTarget(proj); }}
                           />
                         </div>

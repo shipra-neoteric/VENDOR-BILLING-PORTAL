@@ -7,8 +7,9 @@ import { selectableProjects } from "../../utils/projectOptions";
 import { vendorLabel } from "../../utils/vendorLabel";
 import PageHeader from "../../ui/PageHeader";
 import Btn from "../../ui/Btn";
-import Card from "../../ui/Card";
-import Badge from "../../ui/Badge";
+import NxBtn from "../../ui/nexora/Btn";
+import NxBadge from "../../ui/nexora/Badge";
+import type { NxBadgeColor } from "../../ui/nexora/Badge";
 import Checkbox from "../../ui/Checkbox";
 import Switch from "../../ui/Switch";
 import Field from "../../ui/Field";
@@ -16,12 +17,17 @@ import SField from "../../ui/SField";
 import { DatePicker } from "../../ui/DatePicker";
 import Modal from "../../ui/Modal";
 import ConfirmModal from "../../ui/ConfirmModal";
+import DropdownMenu from "../../ui/DropdownMenu";
+import type { DropdownMenuItem } from "../../ui/DropdownMenu";
+import EmptyState from "../../ui/EmptyState";
 import Spinner from "../../ui/Spinner";
 import { Table, Thead, Tbody, Tr, Th, Td, TdText } from "../../ui/Table";
+import { usePagination } from "../../ui/usePagination";
+import Pagination from "../../ui/Pagination";
 
 const fmt = (n: number) => "₹" + (n).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-const STATUS_CFG: Record<string, { color: "orange" | "amber" | "green"; label: string }> = {
+const STATUS_CFG: Record<string, { color: NxBadgeColor; label: string }> = {
   outstanding: { color: "orange", label: "Outstanding" },
   partial:     { color: "amber",  label: "Partial"     },
   recovered:   { color: "green",  label: "Recovered"   },
@@ -156,6 +162,7 @@ export default function AdvancePayments() {
   const allSelected = slips.length > 0 && selectedIds.length === slips.length;
   const toggleAll = () => setSelectedIds(allSelected ? [] : slips.map(s => s._id));
   const toggleOne = (id: string) => setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  const pager = usePagination(slips, 10);
 
   return (
     <div>
@@ -163,14 +170,14 @@ export default function AdvancePayments() {
         title="Advance Payments"
         subtitle="Track advance amounts given to contractors against projects. Recoveries are auto-deducted at bill release."
         icon={Wallet}
-        actions={<Btn label="New Advance Slip" icon={Plus} color="primary" onClick={() => { setForm(emptyForm); setModal(true); }} />}
+        actions={<NxBtn color="primary" icon={Plus} label="New Advance Slip" onClick={() => { setForm(emptyForm); setModal(true); }} />}
       />
 
       <div className="flex items-center gap-3 flex-wrap mb-4">
         <Switch checked={showArchived} onChange={setShowArchived} onLabel="Archived" offLabel="Active" />
         {selectedIds.length > 0 && (
-          <Btn
-            small icon={showArchived ? ArchiveRestore : Archive}
+          <NxBtn
+            color="secondary" icon={showArchived ? ArchiveRestore : Archive}
             label={`${showArchived ? "Unarchive" : "Archive"} Selected (${selectedIds.length})`}
             loading={archiving}
             onClick={() => setBulkArchiveConfirm(true)}
@@ -181,9 +188,7 @@ export default function AdvancePayments() {
       {loading ? (
         <Spinner label="Loading advance slips…" />
       ) : slips.length === 0 ? (
-        <Card className="text-center py-14 text-gray-400">
-          {showArchived ? "No archived advance slips" : "No advance slips yet"}
-        </Card>
+        <EmptyState icon={Wallet} title={showArchived ? "No archived advance slips" : "No advance slips yet"} />
       ) : (
         <Table>
           <Thead>
@@ -202,39 +207,44 @@ export default function AdvancePayments() {
             </Tr>
           </Thead>
           <Tbody>
-            {slips.map(s => {
+            {pager.pageItems.map(s => {
               const live = contractors.find(c => c.vendorCode === s.contractorCode);
               const cfg = STATUS_CFG[s.status] ?? { color: "orange" as const, label: s.status };
+              const menuItems: DropdownMenuItem[] = [
+                { key: "archive", label: showArchived ? "Unarchive" : "Archive", icon: showArchived ? ArchiveRestore : Archive, onClick: () => setArchiveTarget(s) },
+                {
+                  key: "delete", label: "Delete", icon: Trash2, danger: true,
+                  disabled: s.amountRecovered !== 0,
+                  title: s.amountRecovered !== 0 ? "Has recoveries — cannot delete" : undefined,
+                  onClick: () => setDeleteTarget(s),
+                },
+              ];
               return (
                 <Tr key={s._id}>
                   <Td><Checkbox checked={selectedIds.includes(s._id)} onChange={() => toggleOne(s._id)} /></Td>
-                  <Td><span className="font-mono font-bold text-primary">{s.slipNo}</span></Td>
+                  <Td><span className="font-bold text-primary">{s.slipNo}</span></Td>
                   <Td><TdText>{dayjs(s.date).format("DD MMM YYYY")}</TdText></Td>
                   <Td><TdText>{s.projectName}</TdText></Td>
                   <Td>
                     <div className="text-sm text-[#1A1A2E] dark:text-[#F1F5F9]">{live ? vendorLabel(live.companyName, live.shortCode) : s.contractorName}</div>
-                    <div className="text-[11px] text-gray-400 font-mono">{s.contractorCode}</div>
+                    <div className="text-[11px] text-gray-400">{s.contractorCode}</div>
                   </Td>
                   <Td className="text-right"><span className="font-mono font-semibold"><TdText>{fmt(s.amount)}</TdText></span></Td>
                   <Td className="text-right"><span className="font-mono text-emerald-600 dark:text-emerald-400">{fmt(s.amountRecovered)}</span></Td>
                   <Td className="text-right"><span className={`font-mono font-bold ${s.balance > 0 ? "text-red-600 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400"}`}>{fmt(s.balance)}</span></Td>
                   <Td>{s.reference || <span className="text-gray-300 dark:text-gray-600">—</span>}</Td>
-                  <Td><Badge color={cfg.color} small>{cfg.label}</Badge></Td>
+                  <Td><NxBadge color={cfg.color}>{cfg.label}</NxBadge></Td>
                   <Td>
-                    <div className="flex items-center gap-1.5">
-                      {s.amountRecovered === 0 ? (
-                        <Btn small color="red" icon={Trash2} onClick={() => setDeleteTarget(s)} />
-                      ) : (
-                        <span className="text-xs text-gray-400">Has recoveries</span>
-                      )}
-                      <Btn small outline icon={showArchived ? ArchiveRestore : Archive} label={showArchived ? "Unarchive" : "Archive"} onClick={() => setArchiveTarget(s)} />
-                    </div>
+                    <DropdownMenu items={menuItems} />
                   </Td>
                 </Tr>
               );
             })}
           </Tbody>
         </Table>
+      )}
+      {slips.length > 0 && pager.totalPages > 1 && (
+        <div className="mt-4"><Pagination page={pager.page} totalPages={pager.totalPages} onChange={pager.setPage} /></div>
       )}
 
       {modal && (

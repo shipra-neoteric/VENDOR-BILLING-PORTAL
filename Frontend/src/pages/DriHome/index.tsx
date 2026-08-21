@@ -9,13 +9,22 @@ import DrawingRequestButton from "../../components/DrawingRequestButton";
 import SField from "../../ui/SField";
 import { DatePicker } from "../../ui/DatePicker";
 import Btn from "../../ui/Btn";
-import Badge from "../../ui/Badge";
+import NxBtn from "../../ui/nexora/Btn";
+import NxBadge from "../../ui/nexora/Badge";
+import type { NxBadgeColor } from "../../ui/nexora/Badge";
 import Spinner from "../../ui/Spinner";
 import { Table, Thead, Tbody, Tr, Th, Td, TdText } from "../../ui/Table";
 import {
-  REVIEW_STATUS_LABEL, REVIEW_STATUS_COLOR,
+  REVIEW_STATUS_LABEL,
 } from "../../shared/constants/drawingRequestOptions";
 import type { DrawingReviewStatus } from "../../shared/constants/drawingRequestOptions";
+
+// NxBadge has no literal "purple" swatch — L3 (GM cross-check) maps to the
+// closest available hue (indigo) instead of the old REVIEW_STATUS_COLOR value,
+// which is otherwise identical to it stage-for-stage.
+const REVIEW_BADGE_COLOR: Record<DrawingReviewStatus, NxBadgeColor> = {
+  "l1-gm": "amber", "l2-architect": "blue", "l3-gm": "indigo", "l4-gm": "teal", approved: "green", returned: "red",
+};
 
 interface ProjectRow {
   projectId: string;
@@ -142,7 +151,7 @@ export default function DriHome() {
       ) : (
       <>
       <KpiRow>
-        <KpiCard icon="🏗️" label="Projects Assigned" value={data.summary.projectsAssigned} color="#f37916" />
+        <KpiCard icon="🏗️" label="Projects Assigned" value={data.summary.projectsAssigned} color="var(--theme-primary)" />
         <KpiCard icon="📋" label="Work Orders" value={data.summary.workOrders} color="#2563eb" />
         <KpiCard icon="📅" label={isToday ? "Today's Progress Reports" : `Progress Reports (${dayLabel})`} value={data.summary.todayReports} color="#16a34a" />
         <KpiCard icon="✏️" label="Drawing Requests" value={data.summary.drawingRequests} color="#7c3aed" />
@@ -179,7 +188,7 @@ export default function DriHome() {
                       </Td>
                       <Td><TdText>{p.todayReports} Report{p.todayReports === 1 ? "" : "s"}</TdText></Td>
                       <Td><TdText>{p.workOrders}</TdText></Td>
-                      <Td>{p.pendingItems > 0 ? <Badge color="amber" small>{p.pendingItems}</Badge> : <span className="text-gray-300 dark:text-gray-600">0</span>}</Td>
+                      <Td>{p.pendingItems > 0 ? <NxBadge color="amber">{p.pendingItems}</NxBadge> : <span className="text-gray-300 dark:text-gray-600">0</span>}</Td>
                     </Tr>
                   ))}
                 </Tbody>
@@ -219,11 +228,11 @@ export default function DriHome() {
                 <Tbody>
                   {data.drawingRequests.recent.map(r => (
                     <Tr key={r._id}>
-                      <Td><span className="font-mono font-bold text-purple-600 dark:text-purple-400">{r.ticketNo}</span></Td>
+                      <Td><span className="font-bold text-purple-600 dark:text-purple-400">{r.ticketNo}</span></Td>
                       <Td><TdText>{r.projectName}</TdText></Td>
                       <Td><span className="max-w-[160px] truncate block" title={r.description}>{r.description}</span></Td>
                       <Td><TdText>{dayjs(r.createdAt).format("DD MMM YYYY")}</TdText></Td>
-                      <Td><Badge color={REVIEW_STATUS_COLOR[r.reviewStatus]} small>{REVIEW_STATUS_LABEL[r.reviewStatus]}</Badge></Td>
+                      <Td><NxBadge color={REVIEW_BADGE_COLOR[r.reviewStatus]}>{REVIEW_STATUS_LABEL[r.reviewStatus]}</NxBadge></Td>
                     </Tr>
                   ))}
                 </Tbody>
@@ -260,7 +269,7 @@ export default function DriHome() {
 
           <Panel title="Quick Actions">
             <div className="flex flex-col gap-2.5">
-              <Btn label="New Daily Progress Report" icon={ClipboardList} color="primary" className="w-full" onClick={() => navigate("/daily-progress-report")} />
+              <NxBtn label="New Daily Progress Report" icon={ClipboardList} color="primary" className="w-full" onClick={() => navigate("/daily-progress-report")} />
               <DrawingRequestButton projectOptions={projectOptions} driName={user?.name} />
             </div>
           </Panel>

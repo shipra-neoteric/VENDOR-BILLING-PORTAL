@@ -116,7 +116,7 @@ export function BillingChain({ bills, compact = false }: Props) {
               {/* Header row */}
               <div className="flex items-center gap-2 flex-wrap mb-1.5">
                 <span
-                  className="font-mono font-bold"
+                  className="font-bold"
                   style={{
                     color: isSuperseded ? "#9ba3b8" : "#f37916",
                     fontSize: compact ? 13 : 14,
@@ -159,7 +159,7 @@ export function BillingChain({ bills, compact = false }: Props) {
               {bill.supersededBy && (
                 <div className="mt-1.5 text-[11px] text-purple-600 font-semibold flex items-center gap-1">
                   <CornerLeftUp className="w-3 h-3" /> Superseded by{" "}
-                  <span className="font-mono">{bill.supersededBy.billNo}</span>
+                  <span>{bill.supersededBy.billNo}</span>
                 </div>
               )}
               {bill.linkedBills && bill.linkedBills.length > 0 && (
@@ -169,7 +169,7 @@ export function BillingChain({ bills, compact = false }: Props) {
                       <span className="text-[10px] text-purple-600 font-bold uppercase">
                         {REL_LABEL[l.relationshipType] || l.relationshipType}
                       </span>
-                      <span className="font-mono text-[10px] text-[#f37916] border border-[#f37916] bg-orange-50 rounded-md px-1.5 py-0.5">
+                      <span className="text-[10px] text-[#f37916] border border-[#f37916] bg-orange-50 rounded-md px-1.5 py-0.5">
                         {l.billNo}
                       </span>
                     </span>

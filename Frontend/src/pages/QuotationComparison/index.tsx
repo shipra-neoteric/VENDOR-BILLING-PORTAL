@@ -5,11 +5,13 @@ import apiClient from "../../services/apiClient";
 import PageHeader from "../../ui/PageHeader";
 import Card from "../../ui/Card";
 import Btn from "../../ui/Btn";
-import Badge from "../../ui/Badge";
+import NxBtn from "../../ui/nexora/Btn";
+import NxBadge from "../../ui/nexora/Badge";
 import Field from "../../ui/Field";
 import { FilterRow, SearchFilter } from "../../ui/Filters";
 import { Table, Thead, Tbody, Tr, Th, Td, TdText } from "../../ui/Table";
 import { SkeletonTable } from "../../ui/Skeleton";
+import EmptyState from "../../ui/EmptyState";
 import Modal from "../../ui/Modal";
 import ConfirmModal from "../../ui/ConfirmModal";
 
@@ -205,12 +207,12 @@ function QuotationRow({ q, onApprove, onReject }: { q: Quotation; onApprove: () 
         </Td>
         <Td><TdText>{q.quotationNo}</TdText></Td>
         <Td><TdText>{fmt(q.totalQuoted)}</TdText></Td>
-        <Td><Badge color={statusColor(q.status)}>{q.status}</Badge></Td>
+        <Td><NxBadge color={statusColor(q.status)}>{q.status}</NxBadge></Td>
         <Td>
           {q.status === "submitted" && (
             <div className="flex gap-2">
-              <Btn small color="green" icon={Check} label="Approve" onClick={onApprove} />
-              <Btn small color="red" icon={X} label="Reject" onClick={onReject} />
+              <NxBtn color="success" icon={Check} label="Approve" onClick={onApprove} />
+              <NxBtn color="danger" icon={X} label="Reject" onClick={onReject} />
             </div>
           )}
         </Td>
@@ -389,9 +391,7 @@ export default function QuotationComparison() {
       {loading ? (
         <SkeletonTable rows={4} cols={4} />
       ) : filtered.length === 0 ? (
-        <Card className="text-center text-sm text-gray-400 py-10">
-          No draft work orders awaiting quotation right now.
-        </Card>
+        <EmptyState icon={Diff} title="No draft work orders" message="No draft work orders are awaiting quotation right now." />
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {filtered.map(w => (
@@ -402,16 +402,16 @@ export default function QuotationComparison() {
                   <div className="text-sm text-gray-500 dark:text-gray-400 truncate">{w.projectName}</div>
                 </div>
                 {w.pendingQuotationCount > 0 && (
-                  <Badge color="orange">{w.pendingQuotationCount} pending</Badge>
+                  <NxBadge color="orange">{w.pendingQuotationCount} pending</NxBadge>
                 )}
               </div>
               <div className="text-xs text-gray-400 mb-3">
                 {w.vendorName ? `Current: ${w.vendorName}` : "No contractor locked yet"} · Contract Value {fmt(w.contractValue)}
               </div>
               <div className="flex flex-wrap gap-2">
-                <Btn small outline label="Compare Quotes" onClick={() => setCompareFor(w)} />
-                <Btn small color="primary" icon={Plus} label="New Quotation" onClick={() => setNewQuoteFor(w)} />
-                <Btn small outline icon={LinkIcon} label="Copy Public Link" onClick={() => copyPublicLink(w._id)} />
+                <NxBtn color="secondary" label="Compare Quotes" onClick={() => setCompareFor(w)} />
+                <NxBtn color="primary" icon={Plus} label="New Quotation" onClick={() => setNewQuoteFor(w)} />
+                <NxBtn color="secondary" icon={LinkIcon} label="Copy Public Link" onClick={() => copyPublicLink(w._id)} />
               </div>
             </Card>
           ))}

@@ -1,13 +1,14 @@
 import { useEffect, useState, useCallback } from "react";
 import toast from "react-hot-toast";
-import { Plus, Pencil, Trash2, RotateCw, LayoutGrid, ChevronRight } from "lucide-react";
+import { Plus, Pencil, Trash2, RotateCw, LayoutGrid, ChevronRight, Tag, Layers, GitBranch, CheckCircle2 } from "lucide-react";
 import apiClient from "../../services/apiClient";
 import PageHeader from "../../ui/PageHeader";
 import Btn from "../../ui/Btn";
+import NxBtn from "../../ui/nexora/Btn";
+import NxBadge from "../../ui/nexora/Badge";
+import NxStatCard from "../../ui/nexora/StatCard";
 import Card from "../../ui/Card";
-import KPICard from "../../ui/KPICard";
 import EmptyState from "../../ui/EmptyState";
-import Badge from "../../ui/Badge";
 import Field from "../../ui/Field";
 import SField from "../../ui/SField";
 import Modal from "../../ui/Modal";
@@ -192,20 +193,20 @@ export default function Categories() {
         subtitle="3-level category hierarchy: Category → Sub-Category → Sub-Sub-Category. Used across Work Orders for scope item classification."
         icon={LayoutGrid}
         actions={
-          <>
-            <Btn outline icon={RotateCw} onClick={load} />
-            <Btn label="New Category" icon={Plus} color="primary" onClick={() => openAdd(null)} />
-          </>
+          <div className="flex items-center gap-2">
+            <NxBtn color="secondary" icon={RotateCw} label="Refresh" onClick={load} />
+            <NxBtn color="primary" icon={Plus} label="New Category" onClick={() => openAdd(null)} />
+          </div>
         }
       />
 
       {/* Stats strip */}
-      <div className="flex gap-3 mb-6 flex-wrap">
-        <KPICard label="Total" value={cats.length} accent="#FF7A00" />
-        <KPICard label="Category" value={level1.length} accent="#2563eb" />
-        <KPICard label="Sub-Category" value={level2.length} accent="#7c3aed" />
-        <KPICard label="Sub-Sub-Cat" value={level3.length} accent="#0d9488" />
-        <KPICard label="Active" value={cats.filter(c => c.isActive).length} accent="#16a85a" />
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4 mb-5">
+        <NxStatCard label="Total" value={cats.length} icon={LayoutGrid} />
+        <NxStatCard label="Category" value={level1.length} icon={Tag} />
+        <NxStatCard label="Sub-Category" value={level2.length} icon={Layers} />
+        <NxStatCard label="Sub-Sub-Cat" value={level3.length} icon={GitBranch} />
+        <NxStatCard label="Active" value={cats.filter(c => c.isActive).length} icon={CheckCircle2} />
       </div>
 
       {/* ── Category tree ─────────────────────────────────────── */}
@@ -232,16 +233,25 @@ export default function Categories() {
                   <ChevronRight className={`w-3 h-3 text-gray-400 transition-transform shrink-0 ${isOpen ? "rotate-90" : ""}`} />
                   <span className="w-3 h-3 rounded-full shrink-0" style={{ background: cat.color }} />
                   <span className="font-bold text-sm text-[#1A1A2E] dark:text-[#F1F5F9] flex-1">
-                    {cat.name}{!cat.isActive && <Badge color="gray" small><span className="ml-2">Inactive</span></Badge>}
+                    {cat.name}{!cat.isActive && <span className="ml-2 align-middle"><NxBadge color="red">Inactive</NxBadge></span>}
                   </span>
                   <span className="text-xs text-gray-400 mr-1.5">{subs.length} sub-{subs.length === 1 ? "category" : "categories"}</span>
                   <div onClick={e => e.stopPropagation()} className="flex gap-1">
-                    <Btn small title="Add sub-category" icon={Plus}
+                    <button
+                      type="button"
+                      title="Add sub-category"
                       style={{ background: lighten(cat.color), borderColor: cat.color, color: cat.color }}
-                      onClick={() => { openAdd(cat._id); setExpanded(p => new Set([...p, cat._id])); }} />
-                    <Btn small outline icon={Pencil} onClick={() => openEdit(cat)} />
-                    <Btn small color="red" icon={Trash2} disabled={subs.length > 0}
-                      onClick={() => requestDelete(cat, subs.length > 0 ? "Delete all sub-categories first." : "")} />
+                      onClick={() => { openAdd(cat._id); setExpanded(p => new Set([...p, cat._id])); }}
+                      className="w-8 h-8 rounded-lg border flex items-center justify-center shrink-0 hover:opacity-80 transition-opacity"
+                    >
+                      <Plus className="w-4 h-4" />
+                    </button>
+                    <NxBtn color="icon" title="Edit" icon={Pencil} onClick={() => openEdit(cat)} />
+                    <NxBtn
+                      color="icon" title="Delete" icon={Trash2} disabled={subs.length > 0}
+                      className="text-red-500! hover:text-red-600! hover:bg-red-50! dark:hover:bg-red-500/10!"
+                      onClick={() => requestDelete(cat, subs.length > 0 ? "Delete all sub-categories first." : "")}
+                    />
                   </div>
                 </div>
 
@@ -268,17 +278,26 @@ export default function Categories() {
                                 <ChevronRight className={`w-2.5 h-2.5 text-gray-400 transition-transform shrink-0 ${subIsOpen ? "rotate-90" : ""}`} />
                                 <span className="w-2 h-2 rounded-full shrink-0" style={{ background: sub.color }} />
                                 <span className="font-semibold text-[13px] text-gray-700 dark:text-gray-300 flex-1">
-                                  {sub.name}{!sub.isActive && <Badge color="gray" small><span className="ml-1.5">Inactive</span></Badge>}
+                                  {sub.name}{!sub.isActive && <span className="ml-1.5 align-middle"><NxBadge color="red">Inactive</NxBadge></span>}
                                 </span>
                                 {sub.description && <span className="text-xs text-gray-400">{sub.description}</span>}
                                 <span className="text-[11px] text-gray-400 mr-1">{subSubs.length > 0 ? `${subSubs.length} sub-sub` : ""}</span>
                                 <div onClick={e => e.stopPropagation()} className="flex gap-1">
-                                  <Btn small title="Add sub-sub-category" icon={Plus}
+                                  <button
+                                    type="button"
+                                    title="Add sub-sub-category"
                                     style={{ background: lighten(sub.color), borderColor: sub.color, color: sub.color }}
-                                    onClick={() => { openAdd(sub._id); setSubExpanded(p => new Set([...p, sub._id])); }} />
-                                  <Btn small outline icon={Pencil} onClick={() => openEdit(sub)} />
-                                  <Btn small color="red" icon={Trash2} disabled={subSubs.length > 0}
-                                    onClick={() => requestDelete(sub, subSubs.length > 0 ? "Delete all sub-sub-categories first." : "")} />
+                                    onClick={() => { openAdd(sub._id); setSubExpanded(p => new Set([...p, sub._id])); }}
+                                    className="w-8 h-8 rounded-lg border flex items-center justify-center shrink-0 hover:opacity-80 transition-opacity"
+                                  >
+                                    <Plus className="w-4 h-4" />
+                                  </button>
+                                  <NxBtn color="icon" title="Edit" icon={Pencil} onClick={() => openEdit(sub)} />
+                                  <NxBtn
+                                    color="icon" title="Delete" icon={Trash2} disabled={subSubs.length > 0}
+                                    className="text-red-500! hover:text-red-600! hover:bg-red-50! dark:hover:bg-red-500/10!"
+                                    onClick={() => requestDelete(sub, subSubs.length > 0 ? "Delete all sub-sub-categories first." : "")}
+                                  />
                                 </div>
                               </div>
 
@@ -298,12 +317,16 @@ export default function Categories() {
                                         <div key={ss._id} className={`flex items-center gap-2 px-2.5 py-1.5 bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700/40 rounded-md ${ss.isActive ? "" : "opacity-50"}`} style={{ borderLeft: `2px solid ${ss.color}` }}>
                                           <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: ss.color }} />
                                           <span className="font-semibold text-xs text-gray-700 dark:text-gray-300 flex-1">
-                                            {ss.name}{!ss.isActive && <Badge color="gray" small><span className="ml-1.5">Inactive</span></Badge>}
+                                            {ss.name}{!ss.isActive && <span className="ml-1.5 align-middle"><NxBadge color="red">Inactive</NxBadge></span>}
                                           </span>
                                           {ss.description && <span className="text-[11px] text-gray-400">{ss.description}</span>}
                                           <div className="flex gap-1 ml-auto">
-                                            <Btn small outline icon={Pencil} onClick={() => openEdit(ss)} />
-                                            <Btn small color="red" icon={Trash2} onClick={() => requestDelete(ss, "")} />
+                                            <NxBtn color="icon" title="Edit" icon={Pencil} onClick={() => openEdit(ss)} />
+                                            <NxBtn
+                                              color="icon" title="Delete" icon={Trash2}
+                                              className="text-red-500! hover:text-red-600! hover:bg-red-50! dark:hover:bg-red-500/10!"
+                                              onClick={() => requestDelete(ss, "")}
+                                            />
                                           </div>
                                         </div>
                                       ))}
