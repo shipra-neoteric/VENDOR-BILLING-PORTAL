@@ -35,7 +35,7 @@ export function NxSelectFilter({
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="h-10 pl-3 pr-8 border rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm border-gray-300 dark:border-gray-600 theme-ring appearance-none"
+        className="h-10 pl-3 pr-8 border rounded-lg bg-white dark:bg-gray-800 text-gray-500! dark:text-gray-400! text-sm border-gray-300 dark:border-gray-600 theme-ring appearance-none"
       >
         <option value="">{placeholder}</option>
         {options.map((o) => (
