@@ -93,7 +93,7 @@ exports.switchUser = asyncHandler(async (req, res) => {
 
 exports.listUsers = asyncHandler(async (req, res) => {
   const filter = {};
-  if (req.query.role) filter.role = req.query.role;
+  if (req.query.role) filter.role = { $in: req.query.role.split(',') };
   const users = await User.find(filter).select('name email role isActive').sort({ name: 1 });
   success(res, { users });
 });

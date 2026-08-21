@@ -1043,10 +1043,22 @@ const blankWOForm = (): WOFormValues => ({
   documents: [], internalRemark: "",
 });
 
+async function urlToDataURL(url: string): Promise<string> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error("Couldn't re-read the uploaded document");
+  const blob = await res.blob();
+  return await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(new Error("Couldn't read the uploaded document"));
+    reader.readAsDataURL(blob);
+  });
+}
+
 function WOFormFields({
   values, onChange, errors, isEdit = false, nextWONo, nextCWONo,
   contractorsList, consultantsList, projectsList, categoriesList, companiesList = [],
-  driList = [], preparedByName, preparedByContact, onExtracted,
+  driList = [], agmGmList = [], preparedByName, preparedByContact, onExtracted,
 }: {
   values: WOFormValues;
   onChange: (patch: Partial<WOFormValues>) => void;
@@ -1060,6 +1072,7 @@ function WOFormFields({
   categoriesList: { _id: string; name: string; isActive: boolean; parentId?: string | null }[];
   companiesList?: any[];
   driList?: { _id: string; name: string; email: string }[];
+  agmGmList?: { _id: string; name: string; email: string }[];
   preparedByName?: string;
   preparedByContact?: string;
   // Scope items / milestones / warranty live in the parent's own state, not
@@ -1080,8 +1093,12 @@ function WOFormFields({
     setExtracting(true);
     setExtractNote("");
     try {
+      // target.url is the Cloudinary secure_url (a plain https link), not a
+      // data URL — the AI endpoint needs the actual bytes, so fetch it back
+      // and re-encode before posting.
+      const documentBase64 = await urlToDataURL(target.url);
       const res = await apiClient.post<{ extracted: AiExtractedWorkOrder }>("/ai/extract-work-order", {
-        documentBase64: target.url,
+        documentBase64,
         fileName: target.name,
       });
       const data = res.data.extracted;
@@ -1208,7 +1225,9 @@ function WOFormFields({
           placeholder="Select category (optional)"
           value={values.category}
           onChange={v => onChange({ category: v })}
-          options={[{ value: "", label: "— None —" }, ...categoriesList.filter(c => c.isActive && !c.parentId).map(c => ({ label: c.name, value: c.name }))]}
+          options={isProfessionalServices
+            ? [{ value: "", label: "— None —" }, { value: "Planning", label: "Planning" }, { value: "Services", label: "Services" }]
+            : [{ value: "", label: "— None —" }, ...categoriesList.filter(c => c.isActive && !c.parentId).map(c => ({ label: c.name, value: c.name }))]}
         />
       </div>
 
@@ -1239,14 +1258,14 @@ function WOFormFields({
         )}
       </div>
 
-      {driList.length > 0 && (
+      {(isProfessionalServices ? agmGmList : driList).length > 0 && (
         <div className="mt-4">
           <MultiSelect
-            label="Assign DRI (Site Engineer)"
-            placeholder="Select DRI(s) to assign (optional)"
+            label={isProfessionalServices ? "Assign" : "Assign DRI (Site Engineer)"}
+            placeholder={isProfessionalServices ? "Select AGM/GM to assign (optional)" : "Select DRI(s) to assign (optional)"}
             values={values.assignedDRI}
             onChange={v => onChange({ assignedDRI: v })}
-            options={driList.map(d => ({ label: `${d.name} (${d.email})`, value: d._id }))}
+            options={(isProfessionalServices ? agmGmList : driList).map(d => ({ label: `${d.name} (${d.email})`, value: d._id }))}
           />
         </div>
       )}
@@ -1356,6 +1375,7 @@ export default function WorkItems() {
   const [projects,     setProjects]     = useState<Project[]>([]);
   const [companies,    setCompanies]    = useState<any[]>([]);
   const [driList,      setDriList]      = useState<{ _id: string; name: string; email: string }[]>([]);
+  const [agmGmList,    setAgmGmList]    = useState<{ _id: string; name: string; email: string }[]>([]);
   const [loadingData,  setLoadingData]  = useState(true);
   const [saving,       setSaving]       = useState(false);
   const [pdfLoading,   setPdfLoading]   = useState(false);
@@ -1451,6 +1471,8 @@ export default function WorkItems() {
         .then(r => setCompanies(r.data.companies ?? [])),
       apiClient.get<{ users: any[] }>("/auth/users?role=site-dri")
         .then(r => setDriList(r.data.users ?? [])),
+      apiClient.get<{ users: any[] }>("/auth/users?role=agm,gm")
+        .then(r => setAgmGmList(r.data.users ?? [])),
       apiClient.get<{ bills: any[] }>("/bills")
         .then(r => {
           const billMap: Record<string, { status: string; amount: number }[]> = {};
@@ -2380,6 +2402,7 @@ export default function WorkItems() {
               categoriesList={apiCategories}
               companiesList={companies}
               driList={driList}
+              agmGmList={agmGmList}
               preparedByName={user?.name}
               preparedByContact={user?.email}
               onExtracted={applyAiExtraction}
@@ -2444,6 +2467,7 @@ export default function WorkItems() {
               categoriesList={apiCategories}
               companiesList={companies}
               driList={driList}
+              agmGmList={agmGmList}
               preparedByName={currentEditWO?.preparedByName}
               preparedByContact={currentEditWO?.preparedByContact}
             />
