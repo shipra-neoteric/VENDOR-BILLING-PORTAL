@@ -1407,20 +1407,8 @@ export default function WorkItems() {
   }, [searchParams]);
   const [monthlyReportOpen, setMonthlyReportOpen] = useState(false);
 
-  const { categories: apiCategories, lighten, setCategories: setApiCategories } = useCategories();
+  const { categories: apiCategories, setCategories: setApiCategories } = useCategories();
   const handleCategoryCreated = (cat: CatOption) => setApiCategories(prev => [...prev, cat as any]);
-
-  // Resolve color/bg for a category name from API data
-  function getCatColor(name?: string) {
-    const found = apiCategories.find(c => c.name === name);
-    return { color: found?.color ?? "#6B7280", bg: found ? lighten(found.color) : "#F3F4F6" };
-  }
-
-  function CategoryBadge({ cat }: { cat?: string }) {
-    if (!cat) return null;
-    const { color } = getCatColor(cat);
-    return <span style={{ color }} className="text-xs font-semibold whitespace-nowrap">{cat}</span>;
-  }
 
   const [workOrders,   setWorkOrders]   = useState<WorkOrder[]>([]);
   const [contractors,  setContractors]  = useState<Contractor[]>([]);
@@ -2331,8 +2319,8 @@ export default function WorkItems() {
                           <div>{record.projectName}</div>
                           {record.projectLocation && <div className="text-[11px] text-gray-400">{record.projectLocation}</div>}
                         </Td>
-                        <Td><CategoryBadge cat={record.category} /></Td>
-                        <Td><span className="font-mono text-blue-600 text-xs font-semibold">{record.vendorCode}</span></Td>
+                        <Td>{record.category || <span className="text-gray-300">—</span>}</Td>
+                        <Td>{record.vendorCode || <span className="text-gray-300">—</span>}</Td>
                         <Td>{record.vendorName}</Td>
                         <Td className="text-right font-bold">
                           {record.contractValue ? fmt(record.contractValue) : <span className="text-gray-300">—</span>}
@@ -2358,13 +2346,9 @@ export default function WorkItems() {
                           <div className="text-xs text-gray-400">by {(record.createdBy && typeof record.createdBy === "object" ? record.createdBy.name : undefined) || "—"}</div>
                         </Td>
                         <Td>
-                          <div onClick={e => e.stopPropagation()} className="flex items-center gap-0.5">
-                            <button title="View" onClick={() => { setSelectedWOId(record.id); setDrawerOpen(true); }} className="w-7 h-7 rounded-md flex items-center justify-center text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700/50">
-                              <Eye className="w-4 h-4" />
-                            </button>
-                            <button title="Download PDF" disabled={pdfLoading} onClick={() => handleDownloadPDF(record)} className="w-7 h-7 rounded-md flex items-center justify-center text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700/50 disabled:opacity-50">
-                              <FileText className="w-4 h-4" />
-                            </button>
+                          <div onClick={e => e.stopPropagation()} className="flex items-center gap-1">
+                            <NxBtn color="icon" title="View" icon={Eye} onClick={() => { setSelectedWOId(record.id); setDrawerOpen(true); }} />
+                            <NxBtn color="icon" title="Download PDF" icon={FileText} loading={pdfLoading} onClick={() => handleDownloadPDF(record)} />
                             {menuItems.length > 0 && <DropdownMenu items={menuItems} />}
                           </div>
                         </Td>

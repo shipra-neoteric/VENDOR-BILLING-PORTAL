@@ -37,7 +37,7 @@ export default function DropdownMenu({ items, trigger }: DropdownMenuProps) {
         ref={btnRef}
         type="button"
         onClick={(e) => { e.stopPropagation(); measure(btnRef, 180); setOpen((o) => !o); }}
-        className="w-7 h-7 rounded-md flex items-center justify-center text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700/50 transition-colors"
+        className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
       >
         {trigger ?? <MoreHorizontal className="w-4 h-4" />}
       </button>
