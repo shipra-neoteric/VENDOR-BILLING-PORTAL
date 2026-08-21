@@ -1043,18 +1043,6 @@ const blankWOForm = (): WOFormValues => ({
   documents: [], internalRemark: "",
 });
 
-async function urlToDataURL(url: string): Promise<string> {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error("Couldn't re-read the uploaded document");
-  const blob = await res.blob();
-  return await new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = () => reject(new Error("Couldn't read the uploaded document"));
-    reader.readAsDataURL(blob);
-  });
-}
-
 function WOFormFields({
   values, onChange, errors, isEdit = false, nextWONo, nextCWONo,
   contractorsList, consultantsList, projectsList, categoriesList, companiesList = [],
@@ -1093,12 +1081,11 @@ function WOFormFields({
     setExtracting(true);
     setExtractNote("");
     try {
-      // target.url is the Cloudinary secure_url (a plain https link), not a
-      // data URL — the AI endpoint needs the actual bytes, so fetch it back
-      // and re-encode before posting.
-      const documentBase64 = await urlToDataURL(target.url);
+      // target.url is the Cloudinary secure_url — hand it to the backend to
+      // fetch and re-encode itself (a browser-side fetch of a cross-origin
+      // Cloudinary asset is exactly the kind of thing CORS blocks).
       const res = await apiClient.post<{ extracted: AiExtractedWorkOrder }>("/ai/extract-work-order", {
-        documentBase64,
+        documentUrl: target.url,
         fileName: target.name,
       });
       const data = res.data.extracted;
@@ -1115,8 +1102,8 @@ function WOFormFields({
         `Extracted ${data.scopeItems?.length ?? 0} scope item(s) and ${data.paymentMilestones?.length ?? 0} payment milestone(s) — review before saving`
       );
     } catch (err: unknown) {
-      const e = err as { response?: { data?: { message?: string } } };
-      toast.error(e?.response?.data?.message || "AI extraction failed");
+      const e = err as { response?: { data?: { message?: string } }; message?: string };
+      toast.error(e?.response?.data?.message || e?.message || "AI extraction failed");
     } finally {
       setExtracting(false);
     }

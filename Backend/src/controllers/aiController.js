@@ -79,17 +79,49 @@ function parseDataUrl(dataUrl) {
   return { mediaType: match[1], base64: match[2] };
 }
 
-// POST /api/ai/extract-work-order — { documentBase64, fileName }
+function guessMediaTypeFromUrl(url) {
+  const ext = (url.split('?')[0].split('.').pop() || '').toLowerCase();
+  if (ext === 'pdf') return 'application/pdf';
+  if (ext === 'png') return 'image/png';
+  if (ext === 'jpg' || ext === 'jpeg') return 'image/jpeg';
+  return 'application/octet-stream';
+}
+
+// Uploaded work-order documents live in Cloudinary, not on our own server, so
+// the frontend only has a plain https URL to hand us — fetched here (server
+// side, no CORS/browser resource-type restrictions to fight) rather than
+// asking the browser to re-download and re-encode it.
+async function resolveDocument(documentBase64, documentUrl) {
+  if (documentBase64) {
+    const parsed = parseDataUrl(documentBase64);
+    if (!parsed) return { error: 'documentBase64 must be a data URL (data:<type>;base64,<payload>)' };
+    return parsed;
+  }
+  if (documentUrl) {
+    let resp;
+    try {
+      resp = await fetch(documentUrl);
+    } catch {
+      return { error: "Couldn't download the uploaded document — check the file and try again." };
+    }
+    if (!resp.ok) return { error: `Couldn't download the uploaded document (HTTP ${resp.status}).` };
+    const contentType = resp.headers.get('content-type') || '';
+    const mediaType = contentType.split(';')[0].trim() || guessMediaTypeFromUrl(documentUrl);
+    const buf = Buffer.from(await resp.arrayBuffer());
+    return { mediaType, base64: buf.toString('base64') };
+  }
+  return { error: 'documentBase64 or documentUrl is required' };
+}
+
+// POST /api/ai/extract-work-order — { documentUrl, fileName } (or the legacy { documentBase64, fileName })
 exports.extractWorkOrderDocument = asyncHandler(async (req, res) => {
   if (!process.env.GEMINI_API_KEY) {
     return badRequest(res, 'AI extraction is not configured — GEMINI_API_KEY is missing on the server.');
   }
 
-  const { documentBase64, fileName } = req.body;
-  if (!documentBase64) return badRequest(res, 'documentBase64 is required');
-
-  const parsed = parseDataUrl(documentBase64);
-  if (!parsed) return badRequest(res, 'documentBase64 must be a data URL (data:<type>;base64,<payload>)');
+  const { documentBase64, documentUrl, fileName } = req.body;
+  const parsed = await resolveDocument(documentBase64, documentUrl);
+  if (parsed.error) return badRequest(res, parsed.error);
 
   const isPdf   = parsed.mediaType === 'application/pdf';
   const isImage = ['image/jpeg', 'image/jpg', 'image/png'].includes(parsed.mediaType);
