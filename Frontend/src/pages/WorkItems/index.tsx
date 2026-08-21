@@ -32,11 +32,10 @@ import Alert from "../../ui/Alert";
 import { Table, Thead, Tbody, Tfoot, Tr, Th, Td } from "../../ui/Table";
 import { usePagination } from "../../ui/usePagination";
 import Pagination from "../../ui/Pagination";
-import { SearchFilter, SelectFilter } from "../../ui/Filters";
+import { SearchFilter, DropdownSelectFilter } from "../../ui/Filters";
 import { useFormErrors } from "../../hooks/useFormErrors";
 
 import { useAuth } from "../../context/AuthContext";
-import type { AuthUser } from "../../context/AuthContext";
 import { useCategories } from "../../hooks/useCategories";
 import { createCategory } from "../../features/categories/api";
 import DateRangeFilter, { inDateRange } from "../../components/DateRangeFilter";
@@ -77,14 +76,6 @@ function displayStatus(status: WorkOrderStatus): { label: string; color: "gray" 
   if (status === "completed") return { label: "Completed", color: "green" };
   if (status === "cancelled") return { label: "Cancelled", color: "red" };
   return { label: "In Progress", color: "amber" }; // issued + in-progress
-}
-
-// A grant for module 'work-orders' with the given action name — Owner always
-// bypasses, matching the identical pattern used on AccountsPayment's hasPerm.
-function hasPerm(user: AuthUser | null, action: string): boolean {
-  if (!user) return false;
-  if (user.role === "owner") return true;
-  return !!user.permissions?.find(p => p.module === "work-orders")?.actions.includes(action);
 }
 
 // ── Approval workflow status pill ─────────────────────────────
@@ -1386,11 +1377,6 @@ export default function WorkItems() {
   const { user } = useAuth();
   const navigate  = useNavigate();
   const isOwner = user?.role === "owner";
-  const canMaker    = hasPerm(user, "maker");
-  const canChecker  = hasPerm(user, "checker");
-  const canApprover = hasPerm(user, "approver");
-  const canFinal    = hasPerm(user, "ceo-approve");
-  const [activeTab, setActiveTab] = useState<"all" | "pending">("all");
   const [searchParams] = useSearchParams();
   // Two sidebar nav items ("Work Orders" / "Consultancy Orders") both land
   // here, pre-filtered via ?type= — one shared list/table, not a second page.
@@ -1575,39 +1561,6 @@ export default function WorkItems() {
     return parent ? allSubCats.filter(c => c.parentId === parent._id) : [];
   }, [categoryFilter, topLevelCats, allSubCats]);
 
-  // Can this user act on wo's current approval stage? (Owner bypasses via hasPerm.)
-  function canActOnWO(wo: WorkOrder): boolean {
-    // Cancelling freezes the chain wherever it was — approvalStatus is left
-    // untouched (so approval history stays intact), but a cancelled WO can
-    // never be actioned again regardless of what stage it's frozen at.
-    if (wo.status === "cancelled") return false;
-    const st = wo.approvalStatus || "approved";
-    if (st === "draft" || st === "sent-back") return canMaker;
-    if (st === "pending-checker") return canChecker;
-    if (st === "pending-approver") return canApprover;
-    if (st === "pending-final") return canFinal;
-    return false;
-  }
-
-  // What the "Pending Approvals" tab should show for THIS user specifically —
-  // distinct from canActOnWO's raw "am I authorized to act here" check, which
-  // is universally true for owner at every stage (the intentional bypass).
-  // That bypass is correct for actually taking the action, but wrong for a
-  // personal queue: it would make an owner's queue show every WO stuck at
-  // someone else's stage too. Owner's own natural stage in the chain is L4
-  // (final approval) — a WO only genuinely needs the owner's attention once
-  // it actually reaches pending-final, not before.
-  function isPendingForMe(wo: WorkOrder): boolean {
-    if (wo.status === "cancelled") return false;
-    if (user?.role === "owner") return (wo.approvalStatus || "approved") === "pending-final";
-    return canActOnWO(wo);
-  }
-
-  const pendingApprovals = useMemo(
-    () => workOrders.filter(isPendingForMe),
-    [workOrders, user?.role, canMaker, canChecker, canApprover, canFinal]
-  );
-
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
     return workOrders.filter(wo => {
@@ -1654,15 +1607,14 @@ export default function WorkItems() {
 
       const matchDate    = inDateRange(wo.issueDate, dateFrom, dateTo);
       const matchProject = projectFilter.length === 0 || projectFilter.includes(getWorkOrderProjectId(wo.projectId) ?? "");
-      const matchTab      = activeTab === "all" || isPendingForMe(wo);
       const matchContractType = contractTypeFilter === "all" || (wo.contractType || "execution") === contractTypeFilter;
-      return matchSearch && matchStatus && matchStep && matchCategory && matchProgress && matchDate && matchProject && matchTab && matchContractType;
+      return matchSearch && matchStatus && matchStep && matchCategory && matchProgress && matchDate && matchProject && matchContractType;
     }).sort((a, b) => {
       const numA = parseInt(a.workOrderNo.replace(/\D/g, ""), 10) || 0;
       const numB = parseInt(b.workOrderNo.replace(/\D/g, ""), 10) || 0;
       return numB - numA;
     });
-  }, [workOrders, search, statusFilter, stepFilter, categoryFilter, progressFilter, projectFilter, subCatsOfSelected, dateFrom, dateTo, activeTab, contractTypeFilter, user?.role, canMaker, canChecker, canApprover, canFinal]);
+  }, [workOrders, search, statusFilter, stepFilter, categoryFilter, progressFilter, projectFilter, subCatsOfSelected, dateFrom, dateTo, contractTypeFilter]);
 
   // Stat-card counts — computed off the full unfiltered list (matching the
   // "shortcut filter" convention used elsewhere, e.g. Projects' StatCard
@@ -2150,26 +2102,16 @@ export default function WorkItems() {
           shell, matching the app's sidebar/header treatment. */}
       <div className="bg-white/90 dark:bg-gray-800/95 backdrop-blur-xl border border-gray-100 dark:border-gray-700/50 rounded-xl shadow-sm p-5">
         {/* ── Tabs ────────────────────────────────────────────── */}
-        <div className="flex items-center justify-between flex-wrap gap-2.5 mb-3">
+        <div className="flex items-center justify-end flex-wrap gap-2.5 mb-3">
           <Segmented
-            value={activeTab}
-            onChange={setActiveTab}
+            value={contractTypeFilter}
+            onChange={(v) => setContractTypeFilter(v)}
             options={[
-              { value: "all", label: "All Work Orders" },
-              { value: "pending", label: <span className="inline-flex items-center gap-1.5">Pending Approvals {pendingApprovals.length > 0 && <Badge color="green" small>{pendingApprovals.length}</Badge>}</span> },
+              { label: "All", value: "all" },
+              { label: "Execution", value: "execution" },
+              { label: "Professional Services", value: "professional-services" },
             ]}
           />
-          <div className="flex items-center gap-3">
-            <Segmented
-              value={contractTypeFilter}
-              onChange={(v) => setContractTypeFilter(v)}
-              options={[
-                { label: "All", value: "all" },
-                { label: "Execution", value: "execution" },
-                { label: "Professional Services", value: "professional-services" },
-              ]}
-            />
-          </div>
         </div>
 
         {/* ── Filters ─────────────────────────────────────────── */}
@@ -2177,11 +2119,11 @@ export default function WorkItems() {
           <div className="flex gap-2.5 items-center flex-wrap">
             <SearchFilter placeholder="Search by WO No, project, vendor…" value={search} onChange={setSearch} />
 
-            <SelectFilter
+            <DropdownSelectFilter
               value={categoryFilter} onChange={setCategoryFilter} placeholder="All Categories"
               options={topLevelCats.filter(c => c.isActive).map(c => ({ label: c.name, value: c.name }))}
             />
-            <SelectFilter
+            <DropdownSelectFilter
               value={progressFilter} onChange={setProgressFilter} placeholder="All Progress"
               options={[
                 { label: "Not Started", value: "not-started" }, { label: "In Progress", value: "running" },
