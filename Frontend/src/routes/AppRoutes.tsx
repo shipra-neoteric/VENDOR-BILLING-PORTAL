@@ -41,6 +41,7 @@ const DailyProgressReport = lazy(() => import("../pages/DailyProgressReport"));
 const DrawingRequests    = lazy(() => import("../pages/DrawingRequests"));
 const DriHome            = lazy(() => import("../pages/DriHome"));
 const Backup              = lazy(() => import("../pages/Backup"));
+const NexoraPreview        = lazy(() => import("../pages/NexoraPreview"));
 
 import MainLayout     from "../layouts/MainLayout/MainLayout";
 import ProtectedRoute from "../components/ProtectedRoute";
@@ -132,6 +133,7 @@ function AdminRoutes() {
             <Route path="/audit-logs"      element={<AuditLogs />} />
             <Route path="/audit-logs/:module" element={<AuditLogModule />} />
             <Route path="/backup"          element={<Backup />} />
+            <Route path="/nexora-preview"  element={<NexoraPreview />} />
             <Route path="/daily-progress-report" element={<DailyProgressReport />} />
             <Route path="/drawing-requests" element={<DrawingRequests />} />
             <Route path="*"                element={<Navigate to={defaultPath} replace />} />

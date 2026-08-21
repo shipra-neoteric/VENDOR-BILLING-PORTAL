@@ -125,6 +125,28 @@
   --nx-fill-2:    #1a2535;
 }
 
+/* ── Nexora dynamic theme color (pilot) ──────────────────────────────────
+   Unlike --color-primary above (baked into Tailwind's @theme at build time,
+   since @theme values must be static), these three are plain runtime CSS
+   variables — Frontend/src/store/themeColorStore.ts can change them via
+   document.documentElement.style.setProperty(...) with no rebuild, matching
+   Nexora's real getThemeColor() pattern. Defaults match the app's existing
+   orange so nothing looks different until a page opts into using them.
+   Scoped to pages/components that explicitly reference them (theme-* classes
+   below, or the Tailwind arbitrary-value form var(--theme-primary)) — this
+   does not change bg-primary/text-primary anywhere that already uses those. */
+:root {
+  --theme-primary:       #FF7A00;
+  --theme-primary-light: #FF9A3C;
+  --theme-primary-dark:  #E56E00;
+}
+.theme-bg        { background-color: var(--theme-primary); }
+.theme-bg-hover:hover { background-color: var(--theme-primary-dark); }
+.theme-text      { color: var(--theme-primary); }
+.theme-text-light{ color: var(--theme-primary-light); }
+.theme-border     { border-color: var(--theme-primary); }
+.theme-ring:focus { box-shadow: 0 0 0 2px var(--theme-primary); outline: none; }
+
 * { box-sizing: border-box; }
 
 body {
