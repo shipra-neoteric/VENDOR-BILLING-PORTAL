@@ -994,60 +994,14 @@ function DeliverablesBuilder({ items, onChange, gstPercent = 18 }: {
 
 // ── FormSection — a bordered, labeled section wrapper used to group the
 // Create/Edit Work Order drawers into the same named blocks (Work Order
-// Information / Work Items / Payment Terms / Bank Details / Notes &
-// Attachments) as the reference layout, without touching what's inside.
+// Information / Work Items / Payment Terms / Notes & Attachments) as the
+// reference layout, without touching what's inside.
 function FormSection({ title, children }: { title: string; children: ReactNode }) {
   return (
     <div className="border border-gray-200 dark:border-gray-700/40 rounded-lg px-4 pt-4 pb-1 mb-4">
       <div className="text-[11px] font-bold text-gray-400 uppercase tracking-wide mb-3.5">{title}</div>
       {children}
     </div>
-  );
-}
-
-// Read-only bank-details panel shown alongside Payment Terms in the Create/
-// Edit drawers — sourced live from the selected contractor/consultant record,
-// never independently editable per work order.
-function BankDetailsPanel({ vendorCode, contractType, contractorsList, consultantsList }: {
-  vendorCode?: string;
-  contractType?: string;
-  contractorsList: Contractor[];
-  consultantsList: Consultant[];
-}) {
-  const isProfessionalServices = contractType === "professional-services";
-  const party = isProfessionalServices
-    ? consultantsList.find(c => c.consultantCode === vendorCode)
-    : contractorsList.find(c => c.vendorCode === vendorCode);
-
-  if (!party) {
-    return (
-      <FormSection title={`Bank Details (${isProfessionalServices ? "Consultant" : "Contractor"})`}>
-        <div className="text-sm text-gray-400 pb-3.5">
-          Select a {isProfessionalServices ? "consultant" : "vendor"} above to see their bank details.
-        </div>
-      </FormSection>
-    );
-  }
-  const rows: [string, string | undefined][] = [
-    ["Account Holder Name", party.accountHolderName],
-    ["Bank Name", party.bankName],
-    ["Account Number", party.accountNumber],
-    ["IFSC Code", party.ifscCode],
-    ["Branch", party.branchName],
-  ];
-  return (
-    <FormSection title={`Bank Details (${isProfessionalServices ? "Consultant" : "Contractor"})`}>
-      <div className="flex flex-col gap-2.5 pb-3.5">
-        {rows.map(([label, value]) => (
-          <div key={label} className="flex justify-between gap-3 text-sm">
-            <span className="text-gray-400">{label}</span>
-            <span className={`font-semibold text-[#1A1A2E] dark:text-[#F1F5F9] ${label.includes("Number") || label.includes("IFSC") ? "font-mono" : ""}`}>
-              {value || "—"}
-            </span>
-          </div>
-        ))}
-      </div>
-    </FormSection>
   );
 }
 
@@ -1478,7 +1432,6 @@ export default function WorkItems() {
   const editGstPercent   = editValues.gstPercent ?? 18;
   const createContractType = createValues.contractType ?? "execution";
   const editContractType   = editValues.contractType ?? "execution";
-  const createVendorCode = createValues.vendorCode;
 
   // ── Load all data ─────────────────────────────────────────────
   // Each fetch settles independently — one endpoint failing (e.g. a role
@@ -2443,20 +2396,13 @@ export default function WorkItems() {
               />
             )}
           </FormSection>
-          <div className="flex gap-4 items-start flex-wrap">
-            <div className="flex-[2] min-w-[320px]">
-              <FormSection title="Payment Terms">
-                <PaymentMilestonesBuilder
-                  items={createMilestones} onChange={setCreateMilestones}
-                  contractValue={calcTotalAmt(createScopeItems)} contractValueInclGst={calcTotalInclGst(createScopeItems)}
-                  discount={createDiscount} onDiscountChange={setCreateDiscount}
-                />
-              </FormSection>
-            </div>
-            <div className="flex-1 min-w-[260px]">
-              <BankDetailsPanel vendorCode={createVendorCode} contractType={createContractType} contractorsList={contractors} consultantsList={consultants} />
-            </div>
-          </div>
+          <FormSection title="Payment Terms">
+            <PaymentMilestonesBuilder
+              items={createMilestones} onChange={setCreateMilestones}
+              contractValue={calcTotalAmt(createScopeItems)} contractValueInclGst={calcTotalInclGst(createScopeItems)}
+              discount={createDiscount} onDiscountChange={setCreateDiscount}
+            />
+          </FormSection>
           <FormSection title="Security Deposit & Terms">
             <SecurityDepositBuilder
               items={createSecurityDeposits} onChange={setCreateSecurityDeposits}
