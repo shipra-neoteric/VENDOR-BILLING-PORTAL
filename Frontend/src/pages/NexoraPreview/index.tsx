@@ -6,17 +6,26 @@ import {
 import apiClient from "../../services/apiClient";
 import { Table, Thead, Tbody, Tr, Th, Td, TdText } from "../../ui/Table";
 import { Skeleton } from "../../ui/Skeleton";
+import MultiSelect from "../../ui/MultiSelect";
 import NxCard from "../../ui/nexora/Card";
 import NxBadge from "../../ui/nexora/Badge";
 import NxStatCard from "../../ui/nexora/StatCard";
 import NxBtn from "../../ui/nexora/Btn";
 import { NxFilterRow, NxSearchFilter, NxSelectFilter } from "../../ui/nexora/Filters";
 import type { NxBadgeColor } from "../../ui/nexora/Badge";
+import { selectableProjects, getWorkOrderProjectId } from "../../utils/projectOptions";
+
+interface PreviewProject {
+  _id: string;
+  name: string;
+  parentId?: string | null;
+}
 
 interface PreviewWO {
   _id: string;
   workOrderNo: string;
   projectName: string;
+  projectId?: string | { _id: string } | null;
   issueDate?: string;
   category?: string;
   vendorCode?: string;
@@ -68,10 +77,12 @@ const PAGE_SIZE = 10;
 // is approved and the real pages are switched over to it.
 export default function NexoraPreview() {
   const [workOrders, setWorkOrders] = useState<PreviewWO[]>([]);
+  const [projects, setProjects] = useState<PreviewProject[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [stepFilter, setStepFilter] = useState<StepKey | "">("");
+  const [projectFilter, setProjectFilter] = useState<string[]>([]);
   const [page, setPage] = useState(1);
 
   useEffect(() => {
@@ -80,7 +91,16 @@ export default function NexoraPreview() {
       .then((res) => setWorkOrders(res.data.workOrders ?? res.data ?? []))
       .catch(() => {})
       .finally(() => setLoading(false));
+    apiClient
+      .get("/projects")
+      .then((res) => setProjects(res.data.projects ?? res.data ?? []))
+      .catch(() => {});
   }, []);
+
+  const projectOptions = useMemo(
+    () => selectableProjects(projects).map((p) => ({ label: p.name, value: p._id })),
+    [projects]
+  );
 
   const counts = useMemo(() => {
     const c = { total: workOrders.length, draft: 0, inProgress: 0, completed: 0 };
@@ -107,9 +127,10 @@ export default function NexoraPreview() {
       const matchSearch = !q || wo.workOrderNo.toLowerCase().includes(q) || wo.projectName?.toLowerCase().includes(q);
       const matchStatus = !statusFilter || wo.status === statusFilter;
       const matchStep = !stepFilter || stepFor(wo.approvalStatus) === stepFilter;
-      return matchSearch && matchStatus && matchStep;
+      const matchProject = projectFilter.length === 0 || projectFilter.includes(getWorkOrderProjectId(wo.projectId) ?? "");
+      return matchSearch && matchStatus && matchStep && matchProject;
     });
-  }, [workOrders, search, statusFilter, stepFilter]);
+  }, [workOrders, search, statusFilter, stepFilter, projectFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const pageRows = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
@@ -161,6 +182,14 @@ export default function NexoraPreview() {
               { label: "Completed", value: "completed" }, { label: "Cancelled", value: "cancelled" },
             ]}
           />
+          <div className="w-56">
+            <MultiSelect
+              values={projectFilter}
+              onChange={(v) => { setProjectFilter(v); setPage(1); }}
+              options={projectOptions}
+              placeholder="All Projects"
+            />
+          </div>
         </NxFilterRow>
       </NxCard>
 
@@ -172,10 +201,10 @@ export default function NexoraPreview() {
           onClick={() => { setStepFilter(""); setPage(1); }}
           className={
             stepFilter === ""
-              ? "shrink-0 px-3.5 py-1.5 rounded-full text-sm font-medium text-white"
-              : "shrink-0 px-3.5 py-1.5 rounded-full text-sm font-medium bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300"
+              ? "shrink-0 px-3.5 py-1.5 rounded-full text-sm font-semibold theme-text"
+              : "shrink-0 px-3.5 py-1.5 rounded-full text-sm font-medium bg-gray-100 dark:bg-gray-700 text-gray-500! dark:text-gray-400!"
           }
-          style={stepFilter === "" ? { backgroundColor: "var(--theme-primary)" } : undefined}
+          style={stepFilter === "" ? { backgroundColor: "var(--theme-primary-tint)" } : undefined}
         >
           All Steps <span className="ml-1 opacity-75">{workOrders.length}</span>
         </button>
@@ -186,10 +215,10 @@ export default function NexoraPreview() {
             onClick={() => { setStepFilter(stepFilter === k ? "" : k); setPage(1); }}
             className={
               stepFilter === k
-                ? "shrink-0 px-3.5 py-1.5 rounded-full text-sm font-medium text-white"
-                : "shrink-0 px-3.5 py-1.5 rounded-full text-sm font-medium bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300"
+                ? "shrink-0 px-3.5 py-1.5 rounded-full text-sm font-semibold theme-text"
+                : "shrink-0 px-3.5 py-1.5 rounded-full text-sm font-medium bg-gray-100 dark:bg-gray-700 text-gray-500! dark:text-gray-400!"
             }
-            style={stepFilter === k ? { backgroundColor: "var(--theme-primary)" } : undefined}
+            style={stepFilter === k ? { backgroundColor: "var(--theme-primary-tint)" } : undefined}
           >
             {STEP_LABEL[k]} <span className="ml-1 opacity-75">{stepCounts[k]}</span>
           </button>
@@ -231,7 +260,7 @@ export default function NexoraPreview() {
                   <Td><TdText>{wo.projectName}</TdText></Td>
                   <Td><TdText>{wo.category || "—"}</TdText></Td>
                   <Td><TdText>{wo.vendorCode || "—"}</TdText></Td>
-                  <Td><TdText>{wo.companyName || "—"}</TdText></Td>
+                  <Td><TdText>{wo.vendorName || "—"}</TdText></Td>
                   <Td className="text-right font-bold">₹{(wo.contractValue ?? 0).toLocaleString("en-IN")}</Td>
                   <Td>
                     <div className="flex items-center gap-1.5">

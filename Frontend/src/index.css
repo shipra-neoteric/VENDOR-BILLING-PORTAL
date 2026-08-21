@@ -139,11 +139,16 @@
   --theme-primary:       #FF7A00;
   --theme-primary-light: #FF9A3C;
   --theme-primary-dark:  #E56E00;
+  --theme-primary-tint:  #FFECDA;
 }
 .theme-bg        { background-color: var(--theme-primary); }
 .theme-bg-hover:hover { background-color: var(--theme-primary-dark); }
-.theme-text      { color: var(--theme-primary); }
-.theme-text-light{ color: var(--theme-primary-light); }
+/* !important on the two color rules: antd (still loaded during the Nexora
+   migration) injects an unlayered global `button, input, select { color:
+   inherit }` reset that otherwise silently beats these — same reason
+   ui/Btn.tsx's own color classes need the same treatment. */
+.theme-text      { color: var(--theme-primary) !important; }
+.theme-text-light{ color: var(--theme-primary-light) !important; }
 .theme-border     { border-color: var(--theme-primary); }
 .theme-ring:focus { box-shadow: 0 0 0 2px var(--theme-primary); outline: none; }
 

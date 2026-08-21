@@ -27,6 +27,11 @@ function applyThemeColor(hex: string) {
   root.setProperty("--theme-primary", hex);
   root.setProperty("--theme-primary-light", shade(hex, 0.22));
   root.setProperty("--theme-primary-dark", shade(hex, -0.1));
+  // A soft, near-white tint for "active but not shouting" surfaces (pill
+  // toggles, selected filter chips) — this app's own established convention
+  // is orange TEXT on a light tint, not a solid bright fill (per feedback:
+  // "active state = orange text not bg fill; soothing background").
+  root.setProperty("--theme-primary-tint", shade(hex, 0.85));
 }
 
 interface ThemeColorState {
