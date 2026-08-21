@@ -1,11 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
-import { Briefcase, FileText, PlayCircle, CheckCircle2, ChevronLeft, ChevronRight } from "lucide-react";
+import {
+  Briefcase, FileText, PlayCircle, CheckCircle2, ChevronLeft, ChevronRight,
+  Eye, Download, MoreVertical, Lock, CalendarRange, Plus,
+} from "lucide-react";
 import apiClient from "../../services/apiClient";
 import { Table, Thead, Tbody, Tr, Th, Td, TdText } from "../../ui/Table";
 import { Skeleton } from "../../ui/Skeleton";
 import NxCard from "../../ui/nexora/Card";
 import NxBadge from "../../ui/nexora/Badge";
 import NxStatCard from "../../ui/nexora/StatCard";
+import NxBtn from "../../ui/nexora/Btn";
 import { NxFilterRow, NxSearchFilter, NxSelectFilter } from "../../ui/nexora/Filters";
 import type { NxBadgeColor } from "../../ui/nexora/Badge";
 
@@ -13,20 +17,47 @@ interface PreviewWO {
   _id: string;
   workOrderNo: string;
   projectName: string;
+  issueDate?: string;
   category?: string;
+  vendorCode?: string;
   vendorName?: string;
   companyName?: string;
   contractValue?: number;
   status: string;
+  approvalStatus?: string;
+  isLocked?: boolean;
+  createdAt?: string;
+  createdBy?: { name?: string } | null;
 }
 
-const STATUS_BADGE: Record<string, NxBadgeColor> = {
-  draft: "gray",
-  issued: "blue",
-  "in-progress": "amber",
-  completed: "green",
-  cancelled: "red",
-};
+function fmtDate(d?: string) {
+  return d ? new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "—";
+}
+
+// The 5 raw backend statuses collapse to the 3 you asked for. "issued" reads
+// as still-in-progress operationally; "cancelled" is rare enough that it
+// still needs to be visible when it happens, so it renders as its own
+// fourth badge rather than being folded into (or hidden from) the other three.
+function displayStatus(status: string): { label: string; color: NxBadgeColor } {
+  if (status === "draft") return { label: "Draft", color: "gray" };
+  if (status === "completed") return { label: "Completed", color: "green" };
+  if (status === "cancelled") return { label: "Cancelled", color: "red" };
+  return { label: "In Progress", color: "amber" }; // issued + in-progress
+}
+
+// "Step" is derived from the real 4-stage approval chain (maker submits,
+// then checker/approver/final review it) — not a separate stored field.
+// L4 has no real backend stage yet; it's included in the toggle row for
+// forward compatibility, same as the reference screenshot showing a
+// zero-count "Draft 0" pill for a status nothing currently matches.
+type StepKey = "l1" | "l2" | "l3" | "l4";
+const STEP_LABEL: Record<StepKey, string> = { l1: "L1 Pending", l2: "L2 Pending", l3: "L3 Pending", l4: "L4 Pending" };
+function stepFor(approvalStatus?: string): StepKey | null {
+  if (approvalStatus === "pending-checker") return "l1";
+  if (approvalStatus === "pending-approver") return "l2";
+  if (approvalStatus === "pending-final") return "l3";
+  return null;
+}
 
 const PAGE_SIZE = 10;
 
@@ -40,6 +71,7 @@ export default function NexoraPreview() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [stepFilter, setStepFilter] = useState<StepKey | "">("");
   const [page, setPage] = useState(1);
 
   useEffect(() => {
@@ -54,40 +86,54 @@ export default function NexoraPreview() {
     const c = { total: workOrders.length, draft: 0, inProgress: 0, completed: 0 };
     for (const wo of workOrders) {
       if (wo.status === "draft") c.draft++;
-      else if (wo.status === "in-progress" || wo.status === "issued") c.inProgress++;
       else if (wo.status === "completed") c.completed++;
+      else if (wo.status !== "cancelled") c.inProgress++;
     }
     return c;
   }, [workOrders]);
 
-  const categories = useMemo(
-    () => Array.from(new Set(workOrders.map((w) => w.category).filter(Boolean))) as string[],
-    [workOrders]
-  );
+  const stepCounts = useMemo(() => {
+    const c: Record<StepKey, number> = { l1: 0, l2: 0, l3: 0, l4: 0 };
+    for (const wo of workOrders) {
+      const s = stepFor(wo.approvalStatus);
+      if (s) c[s]++;
+    }
+    return c;
+  }, [workOrders]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return workOrders.filter((wo) => {
       const matchSearch = !q || wo.workOrderNo.toLowerCase().includes(q) || wo.projectName?.toLowerCase().includes(q);
       const matchStatus = !statusFilter || wo.status === statusFilter;
-      return matchSearch && matchStatus;
+      const matchStep = !stepFilter || stepFor(wo.approvalStatus) === stepFilter;
+      return matchSearch && matchStatus && matchStep;
     });
-  }, [workOrders, search, statusFilter]);
+  }, [workOrders, search, statusFilter, stepFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const pageRows = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const COL_COUNT = 11;
 
   return (
-    <div className="max-w-6xl">
+    <div>
       <div className="mb-1 flex items-center gap-2">
         <span className="text-[11px] font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500">
           Style Pilot — Not a real page
         </span>
       </div>
-      <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Work Orders</h1>
-      <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-        Read-only preview of the Nexora IMS style guide applied to real work order data.
-      </p>
+      <div className="flex items-start justify-between flex-wrap gap-3 mb-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Work Orders</h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Read-only preview of the Nexora IMS style guide applied to real work order data.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <NxBtn color="secondary" icon={CalendarRange} label="Monthly Report" onClick={() => {}} />
+          <NxBtn color="primary" icon={Plus} label="New Work Order" onClick={() => {}} />
+        </div>
+      </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-4 sm:mb-6">
         <NxStatCard label="Total Work Orders" value={counts.total} icon={Briefcase} />
@@ -105,22 +151,50 @@ export default function NexoraPreview() {
         />
       </div>
 
-      <NxCard className="mb-4">
+      <NxCard className="mb-3">
         <NxFilterRow>
           <NxSearchFilter value={search} onChange={(v) => { setSearch(v); setPage(1); }} placeholder="Search by WO No or project…" />
           <NxSelectFilter
             value={statusFilter} onChange={(v) => { setStatusFilter(v); setPage(1); }} placeholder="All Statuses"
             options={[
-              { label: "Draft", value: "draft" }, { label: "Issued", value: "issued" },
-              { label: "In Progress", value: "in-progress" }, { label: "Completed", value: "completed" },
-              { label: "Cancelled", value: "cancelled" },
+              { label: "Draft", value: "draft" }, { label: "In Progress", value: "in-progress" },
+              { label: "Completed", value: "completed" }, { label: "Cancelled", value: "cancelled" },
             ]}
           />
-          {categories.length > 0 && (
-            <NxSelectFilter value="" onChange={() => {}} placeholder="All Categories" options={categories.map((c) => ({ label: c, value: c }))} />
-          )}
         </NxFilterRow>
       </NxCard>
+
+      {/* Step toggle row — clicking a pill filters the table, matching the
+          reference screenshot's horizontal status-chip pattern. */}
+      <div className="flex items-center gap-2 mb-4 overflow-x-auto pb-1">
+        <button
+          type="button"
+          onClick={() => { setStepFilter(""); setPage(1); }}
+          className={
+            stepFilter === ""
+              ? "shrink-0 px-3.5 py-1.5 rounded-full text-sm font-medium text-white"
+              : "shrink-0 px-3.5 py-1.5 rounded-full text-sm font-medium bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300"
+          }
+          style={stepFilter === "" ? { backgroundColor: "var(--theme-primary)" } : undefined}
+        >
+          All Steps <span className="ml-1 opacity-75">{workOrders.length}</span>
+        </button>
+        {(Object.keys(STEP_LABEL) as StepKey[]).map((k) => (
+          <button
+            key={k}
+            type="button"
+            onClick={() => { setStepFilter(stepFilter === k ? "" : k); setPage(1); }}
+            className={
+              stepFilter === k
+                ? "shrink-0 px-3.5 py-1.5 rounded-full text-sm font-medium text-white"
+                : "shrink-0 px-3.5 py-1.5 rounded-full text-sm font-medium bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300"
+            }
+            style={stepFilter === k ? { backgroundColor: "var(--theme-primary)" } : undefined}
+          >
+            {STEP_LABEL[k]} <span className="ml-1 opacity-75">{stepCounts[k]}</span>
+          </button>
+        ))}
+      </div>
 
       {loading ? (
         <div className="space-y-2">
@@ -131,29 +205,59 @@ export default function NexoraPreview() {
           <Thead>
             <Tr>
               <Th>WO No</Th>
+              <Th>Date</Th>
               <Th>Project</Th>
-              <Th>Vendor</Th>
+              <Th>Category</Th>
+              <Th>Vendor Code</Th>
+              <Th>Company Name</Th>
               <Th>Contract Value</Th>
               <Th>Status</Th>
+              <Th>Step</Th>
+              <Th>Created</Th>
+              <Th>Actions</Th>
             </Tr>
           </Thead>
           <Tbody>
             {pageRows.length === 0 && (
-              <Tr><Td colSpan={5}><div className="text-center text-gray-400 py-8">No work orders match these filters</div></Td></Tr>
+              <Tr><Td colSpan={COL_COUNT}><div className="text-center text-gray-400 py-8">No work orders match these filters</div></Td></Tr>
             )}
-            {pageRows.map((wo) => (
-              <Tr key={wo._id} className="cursor-pointer">
-                <Td><TdText>{wo.workOrderNo}</TdText></Td>
-                <Td><TdText>{wo.projectName}</TdText></Td>
-                <Td><TdText>{wo.vendorName || "—"}</TdText></Td>
-                <Td className="text-right font-bold">₹{(wo.contractValue ?? 0).toLocaleString("en-IN")}</Td>
-                <Td>
-                  <NxBadge color={STATUS_BADGE[wo.status] ?? "gray"}>
-                    {wo.status.replace("-", " ")}
-                  </NxBadge>
-                </Td>
-              </Tr>
-            ))}
+            {pageRows.map((wo) => {
+              const st = displayStatus(wo.status);
+              const step = stepFor(wo.approvalStatus);
+              return (
+                <Tr key={wo._id} className="cursor-pointer">
+                  <Td><TdText>{wo.workOrderNo}</TdText></Td>
+                  <Td><TdText>{fmtDate(wo.issueDate)}</TdText></Td>
+                  <Td><TdText>{wo.projectName}</TdText></Td>
+                  <Td><TdText>{wo.category || "—"}</TdText></Td>
+                  <Td><TdText>{wo.vendorCode || "—"}</TdText></Td>
+                  <Td><TdText>{wo.companyName || "—"}</TdText></Td>
+                  <Td className="text-right font-bold">₹{(wo.contractValue ?? 0).toLocaleString("en-IN")}</Td>
+                  <Td>
+                    <div className="flex items-center gap-1.5">
+                      <NxBadge color={st.color}>{st.label}</NxBadge>
+                      {wo.isLocked && (
+                        <span title="Locked"><Lock className="w-3.5 h-3.5 text-gray-400" /></span>
+                      )}
+                    </div>
+                  </Td>
+                  <Td>
+                    {step ? <NxBadge color="orange">{STEP_LABEL[step]}</NxBadge> : wo.approvalStatus === "sent-back" ? <NxBadge color="red">Sent Back</NxBadge> : <span className="text-gray-400">—</span>}
+                  </Td>
+                  <Td>
+                    <div className="text-sm text-gray-800 dark:text-gray-200">{fmtDate(wo.createdAt)}</div>
+                    <div className="text-xs text-gray-400">by {wo.createdBy?.name || "—"}</div>
+                  </Td>
+                  <Td onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center gap-1">
+                      <NxBtn color="icon" icon={Eye} onClick={() => {}} />
+                      <NxBtn color="icon" icon={Download} onClick={() => {}} />
+                      <NxBtn color="icon" icon={MoreVertical} onClick={() => {}} />
+                    </div>
+                  </Td>
+                </Tr>
+              );
+            })}
           </Tbody>
         </Table>
       )}
