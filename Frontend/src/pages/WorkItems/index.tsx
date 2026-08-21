@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import toast from "react-hot-toast";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -918,6 +918,53 @@ function ScopeItemsBuilder({ items, onChange, allCategories = [], topCatId = nul
 
 const STAGE_SUGGESTIONS = ["Concept", "Design Development", "Design Review", "Client Approval", "Final Submission"];
 
+// A free-text input with a suggestions popover, not a picker-only SField —
+// deliverable stages are project-specific, so whatever's typed is the value
+// as-is; the suggestions are just a shortcut for the common ones.
+function StageField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function onDocClick(e: MouseEvent) {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, []);
+
+  const filtered = value
+    ? STAGE_SUGGESTIONS.filter(s => s.toLowerCase().includes(value.toLowerCase()))
+    : STAGE_SUGGESTIONS;
+
+  return (
+    <div className="relative" ref={rootRef}>
+      <input
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        onFocus={() => setOpen(true)}
+        placeholder="Select or type a stage"
+        className="w-full h-10 px-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0F172A] text-sm text-[#1A1A2E] dark:text-[#F1F5F9] placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+      />
+      {open && filtered.length > 0 && (
+        <div className="absolute z-20 mt-1 w-full bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700/40 rounded-lg shadow-lg overflow-hidden py-1 max-h-56 overflow-y-auto">
+          {filtered.map(s => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => { onChange(s); setOpen(false); }}
+              className="w-full flex items-center justify-between gap-2 px-3 py-2 text-sm text-left text-[#1A1A2E]! dark:text-[#F1F5F9]! hover:bg-gray-50 dark:hover:bg-gray-700/40"
+            >
+              {s}
+              {s === value && <Check className="w-3.5 h-3.5 text-primary shrink-0" />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DeliverablesBuilder({ items, onChange, gstPercent = 18 }: {
   items: ScopeItemDraft[];
   onChange: (items: ScopeItemDraft[]) => void;
@@ -952,12 +999,7 @@ function DeliverablesBuilder({ items, onChange, gstPercent = 18 }: {
             </div>
             <div>
               <div className="text-[11px] text-gray-400 mb-1">Stage</div>
-              <SField
-                placeholder="Select or type a stage"
-                value={item.stage || ""}
-                onChange={v => upd(item.id, { stage: v })}
-                options={STAGE_SUGGESTIONS.map(s => ({ label: s, value: s }))}
-              />
+              <StageField value={item.stage || ""} onChange={v => upd(item.id, { stage: v })} />
             </div>
             <div>
               <div className="text-[11px] text-gray-400 mb-1">Due Date</div>

@@ -386,7 +386,13 @@ export function WorkOrderDocument({ wo, company, contractor }: Props) {
               const rowStyle = item.isChild ? S.scopeChild : (groupIdx % 2 === 0 ? S.scopeRow : S.scopeAlt);
               return (
                 <View key={i}>
-                  <View style={rowStyle} wrap={false}>
+                  {/* No wrap={false} here: a deliverable's remarks can now run
+                      to several bullet lines, and forcing the whole row to
+                      stay unbroken pushes it entirely onto the next page —
+                      leaving a large blank gap under the table header on the
+                      page it didn't fit on. Letting it split naturally is the
+                      lesser visual cost. */}
+                  <View style={rowStyle}>
                     {item.isChild && <View style={S.scopeChildRule} />}
                     <View style={S.colDesc}>
                       <Text style={[S.colDescText, item.isChild ? { color: GRAY } : { fontFamily: "Helvetica-Bold", color: MID }]}>
