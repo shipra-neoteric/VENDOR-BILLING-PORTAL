@@ -106,58 +106,16 @@ const STEP_KEYS: WorkOrderApprovalStatus[] = ["draft", "pending-checker", "pendi
 
 const approvalStatusOf = (wo: WorkOrder): WorkOrderApprovalStatus => wo.approvalStatus || "approved";
 
-// makerBy/checkerBy/approverBy come back as raw ObjectId strings from
-// listWorkOrders/getWorkOrder today (those fields aren't populated there) —
-// only show a name when the backend happens to have populated it as an object.
-function nameOfActor(v?: { _id: string; name: string; email?: string } | string): string | undefined {
-  return v && typeof v === "object" ? v.name : undefined;
-}
-
-// Small muted sub-line under the approval pill: who acted last (which tells
-// you who/what it's now waiting behind), shown only when that name is known.
-function approvalSubline(wo: WorkOrder): string | undefined {
+// Step badge — a plain filled pill (orange while pending, green once
+// approved, red if sent back), matching the Nexora style pilot exactly
+// rather than the old bordered/two-line pill.
+function StepBadge({ wo }: { wo: WorkOrder }) {
   const st = approvalStatusOf(wo);
-  if (st === "pending-checker") {
-    const n = nameOfActor(wo.makerBy);
-    return n ? `Submitted by ${n}` : undefined;
+  if ((STEP_KEYS as string[]).includes(st)) {
+    return <NxBadge color="orange">{APPROVAL_STATUS_CFG[st].level} Pending</NxBadge>;
   }
-  if (st === "pending-approver") {
-    const n = nameOfActor(wo.checkerBy);
-    return n ? `Checked by ${n}` : undefined;
-  }
-  if (st === "pending-final") {
-    const n = nameOfActor(wo.approverBy);
-    return n ? `Approved by ${n}` : undefined;
-  }
-  if (st === "sent-back") {
-    const last = [...(wo.approvalHistory || [])].reverse().find(h => h.action === "sent-back");
-    if (!last) return undefined;
-    const n = nameOfActor(last.by);
-    return n ? `By ${n}${last.remarks ? " — " + last.remarks : ""}` : last.remarks;
-  }
-  return undefined;
-}
-
-function ApprovalStatusPill({ wo }: { wo: WorkOrder }) {
-  const st = approvalStatusOf(wo);
-  const cfg = APPROVAL_STATUS_CFG[st];
-  const sub = approvalSubline(wo);
-  return (
-    <div>
-      <span
-        className="inline-flex items-center gap-1.5 rounded-md px-1.5 py-0.5 text-[11px] font-semibold bg-gray-50 dark:bg-transparent"
-        style={{ border: `1px solid ${cfg.color}`, color: cfg.color }}
-      >
-        {cfg.level && (
-          <span className="rounded text-white text-[9px] font-bold px-1 leading-[14px]" style={{ background: cfg.color }}>
-            {cfg.level}
-          </span>
-        )}
-        {cfg.label}
-      </span>
-      {sub && <div className="text-[11px] text-gray-400 mt-0.5">{sub}</div>}
-    </div>
-  );
+  if (st === "sent-back") return <NxBadge color="red">Sent Back</NxBadge>;
+  return <NxBadge color="green">Approved</NxBadge>;
 }
 
 const UNIT_OPTIONS = [
@@ -2394,7 +2352,7 @@ export default function WorkItems() {
                             )}
                           </div>
                         </Td>
-                        <Td><ApprovalStatusPill wo={record} /></Td>
+                        <Td><StepBadge wo={record} /></Td>
                         <Td>
                           <div className="text-sm text-[#1A1A2E] dark:text-[#F1F5F9]">{record.createdAt ? dayjs(record.createdAt).format("DD MMM YYYY") : <span className="text-gray-300">—</span>}</div>
                           <div className="text-xs text-gray-400">by {(record.createdBy && typeof record.createdBy === "object" ? record.createdBy.name : undefined) || "—"}</div>

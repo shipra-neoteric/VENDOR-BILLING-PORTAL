@@ -57,7 +57,7 @@ const blankForm = (): FormValues => ({
 });
 
 type RequiredField = "firmName" | "principalName" | "consultancyType" | "mobile" | "alternateMobile" | "email" | "address"
-  | "professionalRegistration" | "licenseNo" | "experience" | "portfolioUrl" | "designSoftware"
+  | "designSoftware"
   | "accountHolderName" | "bankName" | "accountNumber" | "ifscCode" | "branchName" | "panNumber" | "aadhaarNumber";
 
 // Design Software needs both "pick from the common list" and "type one not
@@ -134,7 +134,6 @@ export default function PublicConsultantForm() {
     let ok = true;
     const required: Exclude<RequiredField, "designSoftware">[] = [
       "firmName", "principalName", "consultancyType", "mobile", "alternateMobile", "email", "address",
-      "professionalRegistration", "licenseNo", "experience", "portfolioUrl",
       "accountHolderName", "bankName", "accountNumber", "ifscCode", "branchName", "panNumber", "aadhaarNumber",
     ];
     for (const f of required) {
@@ -237,14 +236,13 @@ export default function PublicConsultantForm() {
             <div className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Professional Details</div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Field
-                label="Professional Registration No." required placeholder="e.g. CA/2015/12345"
+                label="Professional Registration No." placeholder="e.g. CA/2015/12345"
                 value={values.professionalRegistration} onChange={e => patch({ professionalRegistration: e.target.value })}
-                error={errors.errors.professionalRegistration}
                 hint="e.g. Council of Architecture (COA) registration number"
               />
-              <Field label="License No." required value={values.licenseNo} onChange={e => patch({ licenseNo: e.target.value })} error={errors.errors.licenseNo} />
-              <Field label="Experience" required placeholder="e.g. 12 years" value={values.experience} onChange={e => patch({ experience: e.target.value })} error={errors.errors.experience} />
-              <Field label="Portfolio URL" required placeholder="https://…" value={values.portfolioUrl} onChange={e => patch({ portfolioUrl: e.target.value })} error={errors.errors.portfolioUrl} />
+              <Field label="License No." value={values.licenseNo} onChange={e => patch({ licenseNo: e.target.value })} />
+              <Field label="Experience" placeholder="e.g. 12 years" value={values.experience} onChange={e => patch({ experience: e.target.value })} />
+              <Field label="Portfolio URL" placeholder="https://…" value={values.portfolioUrl} onChange={e => patch({ portfolioUrl: e.target.value })} />
             </div>
             <div className="mt-3">
               <span className="block text-xs font-bold text-gray-600 uppercase tracking-wide mb-1.5">Design Software <span className="text-red-500">*</span></span>
