@@ -5,6 +5,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   Plus, Pencil, Eye, Paperclip, Trash2, Ban, Lock, Unlock, AlertTriangle,
   FileText, ClipboardList, BarChart3, Link2, Zap, Briefcase, Search, Check, Loader2,
+  CalendarRange, PlayCircle, CheckCircle2,
 } from "lucide-react";
 import dayjs from "dayjs";
 import type { Dayjs } from "dayjs";
@@ -15,6 +16,9 @@ import Btn from "../../ui/Btn";
 import Field from "../../ui/Field";
 import SField from "../../ui/SField";
 import MultiSelect from "../../ui/MultiSelect";
+import NxBtn from "../../ui/nexora/Btn";
+import NxBadge from "../../ui/nexora/Badge";
+import NxStatCard from "../../ui/nexora/StatCard";
 import { DatePicker } from "../../ui/DatePicker";
 import Modal from "../../ui/Modal";
 import ConfirmModal from "../../ui/ConfirmModal";
@@ -63,15 +67,17 @@ import type {
 
 // ── Constants ─────────────────────────────────────────────────
 
-type BadgeColor = "gray" | "orange" | "green" | "red" | "amber" | "blue" | "purple" | "teal";
-
-const STATUS_CFG: Record<WorkOrderStatus, { color: BadgeColor; label: string }> = {
-  draft:         { color: "gray",   label: "Draft" },
-  issued:        { color: "blue",   label: "Issued" },
-  "in-progress": { color: "orange", label: "In Progress" },
-  completed:     { color: "green",  label: "Completed" },
-  cancelled:     { color: "red",    label: "Cancelled" },
-};
+// Collapses the 5 raw backend statuses to Draft/In Progress/Completed for
+// display — "issued" reads as still-in-progress operationally; "cancelled"
+// is rare enough that it still needs to be visible when it happens, so it
+// gets its own fourth badge rather than being folded into (or hidden from)
+// the other three.
+function displayStatus(status: WorkOrderStatus): { label: string; color: "gray" | "amber" | "green" | "red" } {
+  if (status === "draft") return { label: "Draft", color: "gray" };
+  if (status === "completed") return { label: "Completed", color: "green" };
+  if (status === "cancelled") return { label: "Cancelled", color: "red" };
+  return { label: "In Progress", color: "amber" }; // issued + in-progress
+}
 
 // A grant for module 'work-orders' with the given action name — Owner always
 // bypasses, matching the identical pattern used on AccountsPayment's hasPerm.
@@ -93,6 +99,10 @@ const APPROVAL_STATUS_CFG: Record<WorkOrderApprovalStatus, { label: string; colo
   approved:           { label: "Approved",                color: "#16a34a" },
   "sent-back":        { label: "Sent Back",               color: "#dc2626" },
 };
+
+// The 4 stages that have a real "L1"-"L4" level per APPROVAL_STATUS_CFG —
+// used to build the Step filter's pill row and its per-stage counts.
+const STEP_KEYS: WorkOrderApprovalStatus[] = ["draft", "pending-checker", "pending-approver", "pending-final"];
 
 const approvalStatusOf = (wo: WorkOrder): WorkOrderApprovalStatus => wo.approvalStatus || "approved";
 
@@ -1437,7 +1447,7 @@ export default function WorkItems() {
     const type = searchParams.get("type");
     setContractTypeFilter(type === "execution" || type === "professional-services" ? type : "all");
   }, [searchParams]);
-  const [viewMode, setViewMode] = useState<"list" | "monthly">("list");
+  const [monthlyReportOpen, setMonthlyReportOpen] = useState(false);
 
   const { categories: apiCategories, lighten, setCategories: setApiCategories } = useCategories();
   const handleCategoryCreated = (cat: CatOption) => setApiCategories(prev => [...prev, cat as any]);
@@ -1466,9 +1476,11 @@ export default function WorkItems() {
 
   const [createDrawerOpen,    setCreateDrawerOpen]    = useState(false);
   const [search,              setSearch]              = useState("");
+  const [statusFilter,        setStatusFilter]        = useState<string>("all");
+  const [stepFilter,          setStepFilter]          = useState<string>("all");
   const [categoryFilter,      setCategoryFilter]      = useState<string>("all");
   const [progressFilter,      setProgressFilter]      = useState<string>("all");
-  const [projectFilter,       setProjectFilter]       = useState<string>("all");
+  const [projectFilter,       setProjectFilter]       = useState<string[]>([]);
   const [dateFrom,            setDateFrom]            = useState<Dayjs | null>(null);
   const [dateTo,              setDateTo]              = useState<Dayjs | null>(null);
 
@@ -1661,6 +1673,14 @@ export default function WorkItems() {
         wo.vendorCode.toLowerCase().includes(q) ||
         wo.vendorName.toLowerCase().includes(q);
 
+      // Status (stat-card shortcut) — "in-progress" also covers "issued"
+      const matchStatus =
+        statusFilter === "all" ||
+        (statusFilter === "in-progress" ? (wo.status === "in-progress" || wo.status === "issued") : wo.status === statusFilter);
+
+      // Step (approval-chain pill toggle)
+      const matchStep = stepFilter === "all" || approvalStatusOf(wo) === stepFilter;
+
       // Category (matches the parent category or any of its sub-categories)
       let matchCategory = true;
       if (categoryFilter !== "all") {
@@ -1687,16 +1707,42 @@ export default function WorkItems() {
       }
 
       const matchDate    = inDateRange(wo.issueDate, dateFrom, dateTo);
-      const matchProject = projectFilter === "all" || getWorkOrderProjectId(wo.projectId) === projectFilter;
+      const matchProject = projectFilter.length === 0 || projectFilter.includes(getWorkOrderProjectId(wo.projectId) ?? "");
       const matchTab      = activeTab === "all" || isPendingForMe(wo);
       const matchContractType = contractTypeFilter === "all" || (wo.contractType || "execution") === contractTypeFilter;
-      return matchSearch && matchCategory && matchProgress && matchDate && matchProject && matchTab && matchContractType;
+      return matchSearch && matchStatus && matchStep && matchCategory && matchProgress && matchDate && matchProject && matchTab && matchContractType;
     }).sort((a, b) => {
       const numA = parseInt(a.workOrderNo.replace(/\D/g, ""), 10) || 0;
       const numB = parseInt(b.workOrderNo.replace(/\D/g, ""), 10) || 0;
       return numB - numA;
     });
-  }, [workOrders, search, categoryFilter, progressFilter, projectFilter, subCatsOfSelected, dateFrom, dateTo, activeTab, contractTypeFilter, user?.role, canMaker, canChecker, canApprover, canFinal]);
+  }, [workOrders, search, statusFilter, stepFilter, categoryFilter, progressFilter, projectFilter, subCatsOfSelected, dateFrom, dateTo, activeTab, contractTypeFilter, user?.role, canMaker, canChecker, canApprover, canFinal]);
+
+  // Stat-card counts — computed off the full unfiltered list (matching the
+  // "shortcut filter" convention used elsewhere, e.g. Projects' StatCard
+  // row), not the already-filtered list, so clicking one always shows the
+  // true total for that bucket.
+  const statusCounts = useMemo(() => {
+    const c = { total: workOrders.length, draft: 0, inProgress: 0, completed: 0 };
+    for (const wo of workOrders) {
+      if (wo.status === "draft") c.draft++;
+      else if (wo.status === "completed") c.completed++;
+      else if (wo.status !== "cancelled") c.inProgress++;
+    }
+    return c;
+  }, [workOrders]);
+
+  // Step pill counts — one per stage of the real approval chain (see
+  // APPROVAL_STATUS_CFG's `level` field, L1=draft through L4=pending-final).
+  const stepCounts = useMemo(() => {
+    const c: Record<string, number> = {};
+    for (const key of STEP_KEYS) c[key] = 0;
+    for (const wo of workOrders) {
+      const st = approvalStatusOf(wo);
+      if (st in c) c[st]++;
+    }
+    return c;
+  }, [workOrders]);
 
   // Rolls the currently-filtered work orders up by issue month — respects
   // every filter above (project/category/date-range/contract type/etc.) so
@@ -2091,11 +2137,13 @@ export default function WorkItems() {
   }
 
   const hasActiveFilters =
-    categoryFilter !== "all" || progressFilter !== "all" || projectFilter !== "all" || search !== "";
+    statusFilter !== "all" || stepFilter !== "all" || categoryFilter !== "all" || progressFilter !== "all" ||
+    projectFilter.length > 0 || search !== "";
 
   const clearAllFilters = () => {
     setSearch("");
-    setCategoryFilter("all"); setProgressFilter("all"); setProjectFilter("all");
+    setStatusFilter("all"); setStepFilter("all");
+    setCategoryFilter("all"); setProgressFilter("all"); setProjectFilter([]);
   };
 
   const listPager = usePagination(filtered, 10);
@@ -2109,29 +2157,48 @@ export default function WorkItems() {
         title="Work Orders"
         subtitle="Define scope of work items, track progress per item, and flag overdue milestones."
         actions={
-          <Btn
-            color="primary" icon={Plus}
-            label={contractTypeFilter === "professional-services" ? "New Consultancy Order" : "New Work Order"}
-            onClick={() => {
-              setCreateValues({
-                ...blankWOForm(),
-                status: "draft",
-                assignedDRI: defaultDRIIds,
-                // Default to whichever type the list is currently filtered to
-                // (e.g. clicking "New" while viewing Consultancy Orders).
-                contractType: contractTypeFilter === "professional-services" ? "professional-services" : "execution",
-              });
-              createErrors.clearAll();
-              setCreateScopeItems([]);
-              setCreateMilestones([]);
-              setCreateSecurityDeposits([]);
-              setCreateDiscount(null);
-              setCreateWarranty([]);
-              setCreateDrawerOpen(true);
-            }}
-          />
+          <div className="flex items-center gap-2">
+            <NxBtn color="secondary" icon={CalendarRange} label="Monthly Report" onClick={() => setMonthlyReportOpen(true)} />
+            <NxBtn
+              color="primary" icon={Plus}
+              label={contractTypeFilter === "professional-services" ? "New Consultancy Order" : "New Work Order"}
+              onClick={() => {
+                setCreateValues({
+                  ...blankWOForm(),
+                  status: "draft",
+                  assignedDRI: defaultDRIIds,
+                  // Default to whichever type the list is currently filtered to
+                  // (e.g. clicking "New" while viewing Consultancy Orders).
+                  contractType: contractTypeFilter === "professional-services" ? "professional-services" : "execution",
+                });
+                createErrors.clearAll();
+                setCreateScopeItems([]);
+                setCreateMilestones([]);
+                setCreateSecurityDeposits([]);
+                setCreateDiscount(null);
+                setCreateWarranty([]);
+                setCreateDrawerOpen(true);
+              }}
+            />
+          </div>
         }
       />
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-5">
+        <NxStatCard label="Total Work Orders" value={statusCounts.total} icon={Briefcase} />
+        <NxStatCard
+          label="Draft" value={statusCounts.draft} icon={FileText}
+          active={statusFilter === "draft"} onClick={() => setStatusFilter(statusFilter === "draft" ? "all" : "draft")}
+        />
+        <NxStatCard
+          label="In Progress" value={statusCounts.inProgress} icon={PlayCircle}
+          active={statusFilter === "in-progress"} onClick={() => setStatusFilter(statusFilter === "in-progress" ? "all" : "in-progress")}
+        />
+        <NxStatCard
+          label="Completed" value={statusCounts.completed} icon={CheckCircle2}
+          active={statusFilter === "completed"} onClick={() => setStatusFilter(statusFilter === "completed" ? "all" : "completed")}
+        />
+      </div>
 
       {/* Entire list surface — tabs, filters and the table itself — in one glass-panel
           shell, matching the app's sidebar/header treatment. */}
@@ -2156,14 +2223,6 @@ export default function WorkItems() {
                 { label: "Professional Services", value: "professional-services" },
               ]}
             />
-            <Segmented
-              value={viewMode}
-              onChange={(v) => setViewMode(v)}
-              options={[
-                { label: "List View", value: "list" },
-                { label: "Monthly Report", value: "monthly" },
-              ]}
-            />
           </div>
         </div>
 
@@ -2184,10 +2243,12 @@ export default function WorkItems() {
                 { label: "Cancelled", value: "cancelled" },
               ]}
             />
-            <SelectFilter
-              value={projectFilter} onChange={setProjectFilter} placeholder="All Projects"
-              options={selectableProjects(projects).map(p => ({ label: p.name, value: p.id }))}
-            />
+            <div className="w-56">
+              <MultiSelect
+                values={projectFilter} onChange={setProjectFilter} placeholder="All Projects"
+                options={selectableProjects(projects).map(p => ({ label: p.name, value: p.id }))}
+              />
+            </div>
 
             <DateRangeFilter onChange={(from, to) => { setDateFrom(from); setDateTo(to); }} />
 
@@ -2213,18 +2274,54 @@ export default function WorkItems() {
                   <button type="button" onClick={() => setProgressFilter("all")} className="text-emerald-600">×</button>
                 </span>
               )}
-              {projectFilter !== "all" && (
+              {projectFilter.length > 0 && (
                 <span className="bg-primary/10 border border-primary text-primary text-[11px] px-2 py-0.5 rounded flex items-center gap-1">
-                  Project: {selectableProjects(projects).find(p => p.id === projectFilter)?.name ?? projectFilter}
-                  <button type="button" onClick={() => setProjectFilter("all")} className="text-primary">×</button>
+                  Project: {projectFilter.length === 1 ? (selectableProjects(projects).find(p => p.id === projectFilter[0])?.name ?? projectFilter[0]) : `${projectFilter.length} selected`}
+                  <button type="button" onClick={() => setProjectFilter([])} className="text-primary">×</button>
                 </span>
               )}
             </div>
           )}
         </div>
 
+        {/* Step toggle row — one pill per real approval-chain stage (see
+            APPROVAL_STATUS_CFG); clicking one filters the table below. */}
+        <div className="flex items-center gap-2 mb-4 overflow-x-auto pb-1">
+          <button
+            type="button"
+            onClick={() => setStepFilter("all")}
+            className={
+              stepFilter === "all"
+                ? "shrink-0 px-3.5 py-1.5 rounded-full text-sm font-semibold theme-text"
+                : "shrink-0 px-3.5 py-1.5 rounded-full text-sm font-medium bg-gray-100 dark:bg-gray-700 text-gray-500! dark:text-gray-400!"
+            }
+            style={stepFilter === "all" ? { backgroundColor: "var(--theme-primary-tint)" } : undefined}
+          >
+            All Steps <span className="ml-1 opacity-75">{workOrders.length}</span>
+          </button>
+          {STEP_KEYS.map((key) => {
+            const cfg = APPROVAL_STATUS_CFG[key];
+            const active = stepFilter === key;
+            return (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setStepFilter(active ? "all" : key)}
+                className={
+                  active
+                    ? "shrink-0 px-3.5 py-1.5 rounded-full text-sm font-semibold theme-text"
+                    : "shrink-0 px-3.5 py-1.5 rounded-full text-sm font-medium bg-gray-100 dark:bg-gray-700 text-gray-500! dark:text-gray-400!"
+                }
+                style={active ? { backgroundColor: "var(--theme-primary-tint)" } : undefined}
+              >
+                {cfg.level} Pending <span className="ml-1 opacity-75">{stepCounts[key]}</span>
+              </button>
+            );
+          })}
+        </div>
+
         {/* Table */}
-        {viewMode === "list" ? (
+        {
           loadingData ? (
             <Spinner size="large" />
           ) : filtered.length === 0 ? (
@@ -2242,8 +2339,8 @@ export default function WorkItems() {
                     <Th>Company Name</Th>
                     <Th>Contract Value</Th>
                     <Th>Status</Th>
-                    <Th>Created At</Th>
-                    <Th>Created By</Th>
+                    <Th>Step</Th>
+                    <Th>Created</Th>
                     <Th>Actions</Th>
                   </Tr>
                 </Thead>
@@ -2283,23 +2380,25 @@ export default function WorkItems() {
                           {record.contractValue ? <span className="font-mono text-primary font-semibold">{fmt(record.contractValue)}</span> : <span className="text-gray-300">—</span>}
                         </Td>
                         <Td>
-                          <ApprovalStatusPill wo={record} />
-                          <div className="flex gap-1 flex-wrap mt-1.5">
-                            <Badge color={STATUS_CFG[record.status]?.color} small>{STATUS_CFG[record.status]?.label ?? record.status}</Badge>
+                          <div className="flex gap-1.5 items-center flex-wrap">
+                            <NxBadge color={displayStatus(record.status).color}>{displayStatus(record.status).label}</NxBadge>
                             {record.isLocked && (
                               <span title="Rates, scope items, milestones, and contract value are locked">
-                                <Badge color="amber" small><span className="inline-flex items-center gap-1"><Lock className="w-2.5 h-2.5" /> Locked</span></Badge>
+                                <Lock className="w-3.5 h-3.5 text-gray-400" />
                               </span>
                             )}
                             {delays > 0 && (
                               <span title={`${delays} scope item${delays > 1 ? "s" : ""} past their planned end date`}>
-                                <Badge color="red" small><span className="inline-flex items-center gap-1"><AlertTriangle className="w-2.5 h-2.5" /> {delays} overdue</span></Badge>
+                                <NxBadge color="red"><span className="inline-flex items-center gap-1"><AlertTriangle className="w-2.5 h-2.5" /> {delays} overdue</span></NxBadge>
                               </span>
                             )}
                           </div>
                         </Td>
-                        <Td>{record.createdAt ? dayjs(record.createdAt).format("DD MMM YYYY") : <span className="text-gray-300">—</span>}</Td>
-                        <Td>{(record.createdBy && typeof record.createdBy === "object" ? record.createdBy.name : undefined) || <span className="text-gray-300">—</span>}</Td>
+                        <Td><ApprovalStatusPill wo={record} /></Td>
+                        <Td>
+                          <div className="text-sm text-[#1A1A2E] dark:text-[#F1F5F9]">{record.createdAt ? dayjs(record.createdAt).format("DD MMM YYYY") : <span className="text-gray-300">—</span>}</div>
+                          <div className="text-xs text-gray-400">by {(record.createdBy && typeof record.createdBy === "object" ? record.createdBy.name : undefined) || "—"}</div>
+                        </Td>
                         <Td>
                           <div onClick={e => e.stopPropagation()} className="flex items-center gap-0.5">
                             <button title="View" onClick={() => { setSelectedWOId(record.id); setDrawerOpen(true); }} className="w-7 h-7 rounded-md flex items-center justify-center text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700/50">
@@ -2319,8 +2418,14 @@ export default function WorkItems() {
               {listPager.totalPages > 1 && <div className="mt-4"><Pagination page={listPager.page} totalPages={listPager.totalPages} onChange={listPager.setPage} /></div>}
             </>
           )
-        ) : (
-          loadingData ? (
+        }
+      </div>
+
+      {/* ── Monthly Report Modal — same monthlyReport/monthlyReportTotals
+          data as before, now opened by a button instead of a view toggle. */}
+      {monthlyReportOpen && (
+        <Modal icon={BarChart3} title="Monthly Report" subtitle="Work orders rolled up by issue month — respects the filters above" extraWide onClose={() => setMonthlyReportOpen(false)}>
+          {loadingData ? (
             <Spinner size="large" />
           ) : monthlyReport.length === 0 ? (
             <EmptyState icon={BarChart3} title="No work orders match the current filters" />
@@ -2368,9 +2473,9 @@ export default function WorkItems() {
                 </Tr>
               </Tfoot>
             </Table>
-          )
-        )}
-      </div>
+          )}
+        </Modal>
+      )}
 
       {/* ── View Drawer ──────────────────────────────────────── */}
       {drawerOpen && (
