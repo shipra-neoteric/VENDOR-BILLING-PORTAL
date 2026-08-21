@@ -54,17 +54,17 @@ function displayStatus(status: string): { label: string; color: NxBadgeColor } {
   return { label: "In Progress", color: "amber" }; // issued + in-progress
 }
 
-// "Step" is derived from the real 4-stage approval chain (maker submits,
-// then checker/approver/final review it) — not a separate stored field.
-// L4 has no real backend stage yet; it's included in the toggle row for
-// forward compatibility, same as the reference screenshot showing a
-// zero-count "Draft 0" pill for a status nothing currently matches.
+// "Step" is derived from the real 4-stage approval chain — matches the real
+// Work Orders page's own APPROVAL_STATUS_CFG exactly: L1=draft (not yet
+// submitted), L2=awaiting checker, L3=awaiting approver, L4=awaiting final
+// approval. All four are real backend stages — none of them are forced to 0.
 type StepKey = "l1" | "l2" | "l3" | "l4";
 const STEP_LABEL: Record<StepKey, string> = { l1: "L1 Pending", l2: "L2 Pending", l3: "L3 Pending", l4: "L4 Pending" };
 function stepFor(approvalStatus?: string): StepKey | null {
-  if (approvalStatus === "pending-checker") return "l1";
-  if (approvalStatus === "pending-approver") return "l2";
-  if (approvalStatus === "pending-final") return "l3";
+  if (approvalStatus === "draft") return "l1";
+  if (approvalStatus === "pending-checker") return "l2";
+  if (approvalStatus === "pending-approver") return "l3";
+  if (approvalStatus === "pending-final") return "l4";
   return null;
 }
 
@@ -271,7 +271,13 @@ export default function NexoraPreview() {
                     </div>
                   </Td>
                   <Td>
-                    {step ? <NxBadge color="orange">{STEP_LABEL[step]}</NxBadge> : wo.approvalStatus === "sent-back" ? <NxBadge color="red">Sent Back</NxBadge> : <span className="text-gray-400">—</span>}
+                    {step ? (
+                      <NxBadge color="orange">{STEP_LABEL[step]}</NxBadge>
+                    ) : wo.approvalStatus === "sent-back" ? (
+                      <NxBadge color="red">Sent Back</NxBadge>
+                    ) : (
+                      <NxBadge color="green">Approved</NxBadge>
+                    )}
                   </Td>
                   <Td>
                     <div className="text-sm text-gray-800 dark:text-gray-200">{fmtDate(wo.createdAt)}</div>

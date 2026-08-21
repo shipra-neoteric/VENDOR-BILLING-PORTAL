@@ -22,7 +22,7 @@ const COLOR_CLASSES: Record<NxBadgeColor, string> = {
 
 export default function NxBadge({ children, color = "gray" }: { children: ReactNode; color?: NxBadgeColor }) {
   return (
-    <span className={["inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium", COLOR_CLASSES[color]].join(" ")}>
+    <span className={["inline-flex items-center whitespace-nowrap px-2.5 py-1 rounded-full text-xs font-medium", COLOR_CLASSES[color]].join(" ")}>
       {children}
     </span>
   );

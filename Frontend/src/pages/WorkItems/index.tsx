@@ -2337,7 +2337,7 @@ export default function WorkItems() {
                     <Th>Category</Th>
                     <Th>Vendor Code</Th>
                     <Th>Company Name</Th>
-                    <Th>Contract Value</Th>
+                    <Th className="text-right">Contract Value</Th>
                     <Th>Status</Th>
                     <Th>Step</Th>
                     <Th>Created</Th>
@@ -2376,8 +2376,8 @@ export default function WorkItems() {
                         <Td><CategoryBadge cat={record.category} /></Td>
                         <Td><span className="font-mono text-blue-600 text-xs font-semibold">{record.vendorCode}</span></Td>
                         <Td>{record.vendorName}</Td>
-                        <Td>
-                          {record.contractValue ? <span className="font-mono text-primary font-semibold">{fmt(record.contractValue)}</span> : <span className="text-gray-300">—</span>}
+                        <Td className="text-right font-bold">
+                          {record.contractValue ? fmt(record.contractValue) : <span className="text-gray-300">—</span>}
                         </Td>
                         <Td>
                           <div className="flex gap-1.5 items-center flex-wrap">
