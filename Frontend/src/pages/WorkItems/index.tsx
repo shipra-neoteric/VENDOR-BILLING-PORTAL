@@ -989,7 +989,7 @@ function DeliverablesBuilder({ items, onChange, gstPercent = 18 }: {
 
       {items.map((item, idx) => (
         <div key={item.id} className="border border-gray-200 dark:border-gray-700/40 rounded-lg mb-2.5 p-3.5">
-          <div className="grid grid-cols-2 sm:grid-cols-[24px_2fr_1fr_140px_130px_28px] gap-2.5 items-end">
+          <div className="grid grid-cols-2 sm:grid-cols-[24px_2fr_1fr_90px_140px_130px_28px] gap-2.5 items-end">
             <div className="hidden sm:flex items-center pb-2">
               <span className="bg-purple-600 text-white rounded-full w-[22px] h-[22px] inline-flex items-center justify-center text-[11px] font-bold">{idx + 1}</span>
             </div>
@@ -1000,6 +1000,10 @@ function DeliverablesBuilder({ items, onChange, gstPercent = 18 }: {
             <div>
               <div className="text-[11px] text-gray-400 mb-1">Stage</div>
               <StageField value={item.stage || ""} onChange={v => upd(item.id, { stage: v })} />
+            </div>
+            <div>
+              <div className="text-[11px] text-gray-400 mb-1">GST</div>
+              <GstSelect value={item.gstPercent} onChange={v => upd(item.id, { gstPercent: v })} />
             </div>
             <div>
               <div className="text-[11px] text-gray-400 mb-1">Due Date</div>
