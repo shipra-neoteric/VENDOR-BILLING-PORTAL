@@ -285,7 +285,7 @@ export default function WorkOrderDetailView({
                     <Td>
                       <span className="font-semibold text-[#1A1A2E] dark:text-[#F1F5F9]">{si.description}</span>
                       {hasSubItems && <span className="ml-1.5 text-[11px] text-gray-400">({si.subItems.length} particulars)</span>}
-                      {si.remarks && <div className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">📌 {si.remarks}</div>}
+                      {si.remarks && <div className="text-xs text-amber-600 dark:text-amber-400 mt-0.5 whitespace-pre-line">📌 {si.remarks}</div>}
                     </Td>
                     {isProfessionalServices ? (
                       <>
@@ -316,7 +316,7 @@ export default function WorkOrderDetailView({
                             {sub.plannedStart ? dayjs(sub.plannedStart).format("DD MMM YYYY") : "—"} → {sub.plannedEnd ? dayjs(sub.plannedEnd).format("DD MMM YYYY") : "—"}
                           </div>
                         )}
-                        {sub.remarks && <div className="pl-4 text-xs text-amber-600 dark:text-amber-400 mt-0.5">📌 {sub.remarks}</div>}
+                        {sub.remarks && <div className="pl-4 text-xs text-amber-600 dark:text-amber-400 mt-0.5 whitespace-pre-line">📌 {sub.remarks}</div>}
                       </Td>
                       <Td><TdText>{sub.unit}</TdText></Td>
                       <Td><span className="font-mono"><TdText>{sub.plannedQty.toLocaleString("en-IN")}</TdText></span></Td>

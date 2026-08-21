@@ -971,6 +971,15 @@ function DeliverablesBuilder({ items, onChange, gstPercent = 18 }: {
               <Trash2 className="w-3.5 h-3.5" />
             </button>
           </div>
+          <div className="mt-2.5">
+            <Field
+              textarea rows={3}
+              label="Remarks (optional)"
+              placeholder={"Brief notes on this deliverable's scope — one point per line, e.g.\n- Includes 2 rounds of design revisions\n- Excludes structural drawings\n- Site visits billed separately"}
+              value={item.remarks}
+              onChange={e => upd(item.id, { remarks: e.target.value })}
+            />
+          </div>
         </div>
       ))}
 
