@@ -16,8 +16,8 @@ interface TextareaFieldProps extends BaseFieldProps, TextareaHTMLAttributes<HTML
 }
 
 const baseInputClass =
-  "w-full h-10 px-3 rounded-lg border text-sm bg-white dark:bg-[#0F172A] text-[#1A1A2E] dark:text-[#F1F5F9] " +
-  "placeholder:text-gray-400 dark:placeholder:text-gray-500 transition-colors " +
+  "w-full h-9 px-2.5 rounded-lg border text-[13px] bg-white dark:bg-[#0F172A] text-[#1A1A2E] dark:text-[#F1F5F9] " +
+  "placeholder:text-gray-400 dark:placeholder:text-gray-500 placeholder:text-[13px] transition-colors " +
   "focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary disabled:opacity-50 disabled:bg-gray-50 dark:disabled:bg-gray-800";
 
 export default function Field(props: FieldProps | TextareaFieldProps) {

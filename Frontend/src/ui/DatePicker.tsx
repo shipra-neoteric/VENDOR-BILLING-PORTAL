@@ -150,7 +150,7 @@ export function DateRangePicker({ label, from, to, onChange, disabled }: DateRan
             ref={fromPopover.triggerRef}
             type="button" disabled={disabled}
             onClick={() => setOpenWhich(w => (w === "from" ? null : "from"))}
-            className="w-full h-10 pl-9 pr-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0F172A] text-sm text-left text-[#1A1A2E] dark:text-[#F1F5F9] focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary disabled:opacity-50 relative"
+            className="w-full h-9 pl-8 pr-2.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0F172A] text-[13px] text-left text-[#1A1A2E] dark:text-[#F1F5F9] focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary disabled:opacity-50 relative truncate"
           >
             <CalendarIcon className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
             {from ? dayjs(from).format("DD MMM YYYY") : <span className="text-gray-400">From</span>}
@@ -172,7 +172,7 @@ export function DateRangePicker({ label, from, to, onChange, disabled }: DateRan
             ref={toPopover.triggerRef}
             type="button" disabled={disabled}
             onClick={() => setOpenWhich(w => (w === "to" ? null : "to"))}
-            className="w-full h-10 pl-9 pr-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0F172A] text-sm text-left text-[#1A1A2E] dark:text-[#F1F5F9] focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary disabled:opacity-50 relative"
+            className="w-full h-9 pl-8 pr-2.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0F172A] text-[13px] text-left text-[#1A1A2E] dark:text-[#F1F5F9] focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary disabled:opacity-50 relative truncate"
           >
             <CalendarIcon className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
             {to ? dayjs(to).format("DD MMM YYYY") : <span className="text-gray-400">To</span>}

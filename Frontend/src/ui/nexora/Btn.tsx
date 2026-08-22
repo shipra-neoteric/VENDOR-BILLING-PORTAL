@@ -44,7 +44,7 @@ export default function NxBtn({
       disabled={disabled || loading}
       style={color === "primary" ? { backgroundColor: "var(--theme-primary)" } : undefined}
       className={[
-        "inline-flex items-center justify-center gap-2 rounded-lg font-medium text-sm transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed",
+        "inline-flex items-center justify-center gap-2 rounded-lg font-medium text-sm whitespace-nowrap transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed",
         isIconOnly ? "w-8 h-8" : "px-4 py-2",
         COLOR_CLASSES[color],
         className,

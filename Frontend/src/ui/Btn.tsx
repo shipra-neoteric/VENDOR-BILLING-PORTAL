@@ -49,7 +49,7 @@ export default function Btn({
       disabled={disabled || loading}
       style={style}
       className={[
-        "inline-flex items-center justify-center gap-1.5 rounded-md font-bold transition-all duration-200 active:scale-95 disabled:opacity-50 disabled:pointer-events-none disabled:active:scale-100",
+        "inline-flex items-center justify-center gap-1.5 rounded-md font-bold whitespace-nowrap transition-all duration-200 active:scale-95 disabled:opacity-50 disabled:pointer-events-none disabled:active:scale-100",
         small ? "h-[32px] px-3 text-[11px]" : "h-[40px] px-6 text-[13px]",
         COLOR_CLASSES[resolvedColor].bg,
         hasCustomTextColor ? "" : COLOR_CLASSES[resolvedColor].text,

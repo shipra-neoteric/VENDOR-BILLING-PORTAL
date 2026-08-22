@@ -38,7 +38,7 @@ export default function GstSelect({
   }, []);
 
   const baseClass =
-    "w-full h-10 px-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0F172A] text-sm " +
+    "w-full h-9 px-2.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0F172A] text-[13px] " +
     "text-[#1A1A2E] dark:text-[#F1F5F9] focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary";
 
   if (customMode) {
@@ -79,7 +79,7 @@ export default function GstSelect({
           className ?? "",
         ].join(" ")}
       >
-        <span className={selectedLabel ? "" : "text-gray-400 dark:text-gray-500"}>
+        <span className={["truncate min-w-0", selectedLabel ? "" : "text-gray-400 dark:text-gray-500"].join(" ")}>
           {selectedLabel ?? "Select GST %"}
         </span>
         <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform shrink-0 ${open ? "rotate-180" : ""}`} />
@@ -92,7 +92,7 @@ export default function GstSelect({
               key={v}
               type="button"
               onClick={() => { onChange?.(v); setOpen(false); }}
-              className="w-full flex items-center justify-between gap-2 px-3 py-2 text-sm text-left text-[#1A1A2E]! dark:text-[#F1F5F9]! hover:bg-gray-50 dark:hover:bg-gray-700/40"
+              className="w-full flex items-center justify-between gap-2 px-3 py-2 text-[13px] text-left text-[#1A1A2E]! dark:text-[#F1F5F9]! hover:bg-gray-50 dark:hover:bg-gray-700/40"
             >
               {presetLabel(v)}
               {v === value && <Check className="w-3.5 h-3.5 text-primary shrink-0" />}
@@ -101,7 +101,7 @@ export default function GstSelect({
           <button
             type="button"
             onClick={() => { setCustomMode(true); setOpen(false); }}
-            className="w-full flex items-center px-3 py-2 text-sm text-left text-[#1A1A2E]! dark:text-[#F1F5F9]! hover:bg-gray-50 dark:hover:bg-gray-700/40"
+            className="w-full flex items-center px-3 py-2 text-[13px] text-left text-[#1A1A2E]! dark:text-[#F1F5F9]! hover:bg-gray-50 dark:hover:bg-gray-700/40"
           >
             Custom %…
           </button>

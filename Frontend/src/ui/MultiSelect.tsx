@@ -53,9 +53,9 @@ export default function MultiSelect({ label, placeholder = "Select…", values, 
         type="button"
         disabled={disabled}
         onClick={() => setOpen((o) => !o)}
-        className="w-full h-10 px-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0F172A] text-sm flex items-center justify-between gap-2 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+        className="w-full h-9 px-2.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0F172A] text-[13px] flex items-center justify-between gap-2 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
       >
-        <span className={values.length ? "text-[#1A1A2E] dark:text-[#F1F5F9]" : "text-gray-400 dark:text-gray-500"}>
+        <span className={["truncate min-w-0", values.length ? "text-[#1A1A2E] dark:text-[#F1F5F9]" : "text-gray-400 dark:text-gray-500"].join(" ")}>
           {summary}
         </span>
         <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform shrink-0 ${open ? "rotate-180" : ""}`} />
@@ -70,12 +70,12 @@ export default function MultiSelect({ label, placeholder = "Select…", values, 
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search…"
-              className="w-full text-sm bg-transparent outline-none text-[#1A1A2E] dark:text-[#F1F5F9] placeholder:text-gray-400"
+              className="w-full text-[13px] bg-transparent outline-none text-[#1A1A2E] dark:text-[#F1F5F9] placeholder:text-gray-400"
             />
           </div>
           <div className="max-h-56 overflow-y-auto py-1">
             {filtered.length === 0 && (
-              <div className="px-3 py-2 text-sm text-gray-400">No matches</div>
+              <div className="px-3 py-2 text-[13px] text-gray-400">No matches</div>
             )}
             {filtered.map((o) => {
               const checked = values.includes(o.value);
@@ -84,7 +84,7 @@ export default function MultiSelect({ label, placeholder = "Select…", values, 
                   key={o.value}
                   type="button"
                   onClick={() => toggle(o.value)}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left text-[#1A1A2E]! dark:text-[#F1F5F9]! hover:bg-gray-50 dark:hover:bg-gray-700/40"
+                  className="w-full flex items-center gap-2 px-3 py-2 text-[13px] text-left text-[#1A1A2E]! dark:text-[#F1F5F9]! hover:bg-gray-50 dark:hover:bg-gray-700/40"
                 >
                   <span
                     className={[
