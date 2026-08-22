@@ -8,6 +8,24 @@ interface SignResponse {
   cloudName: string;
 }
 
+// Cloudinary blocks direct delivery of PDF/ZIP files uploaded as resource_type
+// "image" by default (a security restriction against a past PDF/SVG exploit,
+// only liftable from the account's own dashboard settings) — which is exactly
+// what the catch-all /auto/upload endpoint picks for a PDF, since Cloudinary
+// treats PDFs as image-like for thumbnailing. Uploading non-image files as
+// resource_type "raw" instead sidesteps that restriction entirely (raw
+// resources are just opaque byte delivery, not the image pipeline the
+// restriction targets), with no dashboard change needed. This only affects
+// which Cloudinary endpoint the file is POSTed to — the signature itself
+// (see Backend/src/utils/cloudinary.js) covers only {timestamp, folder}, so
+// it's valid against any resource-type endpoint.
+function resourceTypeFor(file: File | Blob, fileName?: string): "image" | "raw" {
+  const mime = file instanceof File ? file.type : "";
+  const name = fileName ?? (file instanceof File ? file.name : "");
+  const isImage = mime.startsWith("image/") || /\.(jpe?g|png|gif|webp|bmp)$/i.test(name);
+  return isImage ? "image" : "raw";
+}
+
 // Uploads a single file straight from the browser to Cloudinary — the file
 // itself never passes through our own backend (there's no multer/multipart
 // handling there, and this keeps it that way). `client` decides which
@@ -31,7 +49,7 @@ export async function uploadToCloudinary(
   form.append("signature", signature);
   form.append("folder", signedFolder);
 
-  const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/auto/upload`, {
+  const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/${resourceTypeFor(file, fileName)}/upload`, {
     method: "POST",
     body: form,
   });
