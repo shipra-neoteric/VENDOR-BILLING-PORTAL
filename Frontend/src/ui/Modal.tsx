@@ -8,9 +8,13 @@ interface ModalProps {
   subtitle?: ReactNode;
   icon?: LucideIcon;
   onClose: () => void;
-  wide?: boolean;
+  // The one standard "big" width for any real content drawer (detail views,
+  // create/edit forms, reports) — every drawer in the system uses this same
+  // width, never a bespoke wider/narrower size, so drawers feel consistent
+  // regardless of which page opened them. Small single-purpose modals (a
+  // short confirm prompt, a short list) omit this and stay at the compact
+  // default instead.
   extraWide?: boolean;
-  ultraWide?: boolean;
   footer?: ReactNode;
   children: ReactNode;
   // Only needed when a second Modal must stack on top of another open one
@@ -25,9 +29,9 @@ interface ModalProps {
 // Right-side drawer — the only "modal" shape this design system uses (see
 // ConfirmModal for the one deliberate exception, a centered confirm dialog).
 export default function Modal({
-  title, subtitle, icon: Icon, onClose, wide, extraWide, ultraWide, footer, children, zIndex,
+  title, subtitle, icon: Icon, onClose, extraWide, footer, children, zIndex,
 }: ModalProps) {
-  const widthClass = ultraWide ? "max-w-6xl" : extraWide ? "max-w-4xl" : wide ? "max-w-2xl" : "max-w-lg";
+  const widthClass = extraWide ? "max-w-4xl" : "max-w-lg";
   return (
     <AnimatePresence>
       <motion.div

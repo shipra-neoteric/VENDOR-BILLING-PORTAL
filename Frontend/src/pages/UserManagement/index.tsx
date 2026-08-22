@@ -574,7 +574,7 @@ export default function UserManagement() {
           icon={User}
           title={editUser ? "Edit User" : "Add New User"}
           subtitle={editUser ? `Editing account for ${editUser.name}` : "Create a new team member account"}
-          wide
+          extraWide
           onClose={() => setDrawerOpen(false)}
           footer={
             <div className="flex justify-end gap-2">

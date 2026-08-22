@@ -1285,7 +1285,7 @@ export default function AccountsPayment() {
               </span>
             </span>
           }
-          ultraWide
+          extraWide
           onClose={closeDrawer}
           footer={
             <div className="flex justify-between items-center">
@@ -1517,7 +1517,7 @@ export default function AccountsPayment() {
           icon={Building2}
           title={vendorDrawerContractor?.companyName || vendorDrawerCode}
           subtitle={vendorDrawerCode}
-          wide
+          extraWide
           onClose={closeVendorDrawer}
           footer={<div className="flex justify-end"><Btn outline label="Close" onClick={closeVendorDrawer} /></div>}
         >

@@ -1239,7 +1239,7 @@ export default function DRIDashboard() {
           : [];
 
         return (
-          <Modal icon={History} title="All Measurement Entries" wide onClose={() => setAllEntriesWOId(null)}>
+          <Modal icon={History} title="All Measurement Entries" extraWide onClose={() => setAllEntriesWOId(null)}>
             <div className="max-h-[60vh] overflow-y-auto pr-2">
               {!detail ? (
                 <div className="text-center text-gray-400 py-10 text-sm">No data available.</div>

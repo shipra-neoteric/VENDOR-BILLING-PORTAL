@@ -350,7 +350,7 @@ export default function FinancialView({ financial, comparisonMode, projectId }: 
       </div>
 
       {showAllContractors && (
-        <Modal title="Top Contractors – Payment Status" wide onClose={() => setShowAllContractors(false)} footer={<Btn label="Close" outline onClick={() => setShowAllContractors(false)} />}>
+        <Modal title="Top Contractors – Payment Status" extraWide onClose={() => setShowAllContractors(false)} footer={<Btn label="Close" outline onClick={() => setShowAllContractors(false)} />}>
           <TopContractorsTable contractors={topDelayedContractors} onOpenContractor={setOpenContractor} />
         </Modal>
       )}

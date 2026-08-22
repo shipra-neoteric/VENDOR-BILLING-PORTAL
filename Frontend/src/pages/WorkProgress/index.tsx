@@ -1303,7 +1303,7 @@ function DRIDashboard() {
           : [];
 
         return (
-          <Modal title="All Progress Entries" wide onClose={() => setAllEntriesWOId(null)}>
+          <Modal title="All Progress Entries" extraWide onClose={() => setAllEntriesWOId(null)}>
             <div className="max-h-[60vh] overflow-y-auto pr-2">
               {!detail ? (
                 <div className="text-center text-gray-400 py-10 text-sm">No data available.</div>

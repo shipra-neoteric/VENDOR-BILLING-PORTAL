@@ -2418,7 +2418,7 @@ export default function WorkItems() {
           icon={ClipboardList}
           title="New Work Order"
           subtitle="Select project & vendor, then define the scope of work"
-          ultraWide
+          extraWide
           onClose={() => setCreateDrawerOpen(false)}
           footer={
             <div className="flex justify-end gap-2">
@@ -2485,7 +2485,7 @@ export default function WorkItems() {
           icon={Pencil}
           title={<>Edit Work Order — <span className="text-primary">{currentEditWO?.workOrderNo}</span></>}
           subtitle="Changes preserve existing progress data"
-          ultraWide
+          extraWide
           onClose={() => { setEditModalOpen(false); setEditWOId(null); }}
           footer={
             <div className="flex justify-end gap-2">

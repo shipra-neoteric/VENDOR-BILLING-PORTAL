@@ -361,7 +361,7 @@ export default function OperationalView({ data, comparisonMode, projectId }: { d
       </div>
 
       {showAllProjects && (
-        <Modal title="Projects at a Glance" wide onClose={() => setShowAllProjects(false)} footer={<Btn label="Close" outline onClick={() => setShowAllProjects(false)} />}>
+        <Modal title="Projects at a Glance" extraWide onClose={() => setShowAllProjects(false)} footer={<Btn label="Close" outline onClick={() => setShowAllProjects(false)} />}>
           <ProjectPerfTable rows={projectPerformance} />
         </Modal>
       )}

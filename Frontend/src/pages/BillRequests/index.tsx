@@ -389,7 +389,7 @@ export default function BillRequests() {
               )}
             </div>
           }
-          wide
+          extraWide
           onClose={() => setViewReq(null)}
           footer={
             viewReq.status === "pending" ? (

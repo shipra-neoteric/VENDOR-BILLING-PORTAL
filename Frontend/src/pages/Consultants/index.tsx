@@ -276,7 +276,7 @@ export default function Consultants() {
           title={editingConsultant ? "Edit Consultant" : "Register Consultant"}
           subtitle={editingConsultant ? `Editing ${editingConsultant.consultantCode}` : "Fill in firm, professional, and bank details"}
           icon={Ruler}
-          wide
+          extraWide
           onClose={() => { setRegisterOpen(false); setEditingConsultant(null); }}
           footer={
             <div className="flex justify-end gap-2">

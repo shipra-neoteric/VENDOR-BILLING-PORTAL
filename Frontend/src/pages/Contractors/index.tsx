@@ -409,7 +409,7 @@ export default function Contractors() {
         <Modal
           title={editingContractor ? "Edit Contractor" : "Register Contractor"}
           subtitle={editingContractor ? `Editing ${editingContractor.vendorCode}` : "Fill in firm, bank, and tax details"}
-          wide
+          extraWide
           onClose={() => { setRegisterOpen(false); setEditingContractor(null); }}
           footer={
             <div className="flex justify-end gap-2">
@@ -509,7 +509,7 @@ export default function Contractors() {
         <Modal
           title={vendorLabel(selected.companyName, selected.shortCode)}
           subtitle={selected.vendorCode}
-          wide
+          extraWide
           onClose={() => setViewOpen(false)}
           footer={<div className="flex justify-end"><Btn outline label="Close" onClick={() => setViewOpen(false)} /></div>}
         >

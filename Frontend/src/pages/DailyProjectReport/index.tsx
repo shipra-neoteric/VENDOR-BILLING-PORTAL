@@ -157,7 +157,7 @@ export default function DailyProjectReport() {
 
       {showForm && (
         <Modal
-          title="New Daily Project Report" wide onClose={() => setShowForm(false)}
+          title="New Daily Project Report" extraWide onClose={() => setShowForm(false)}
           footer={<Btn label="Submit Report" style={{ background: "#4f46e5", borderColor: "#4f46e5" }} className="w-full" loading={submitting} onClick={onSubmit} />}
         >
           <Card className="mb-5 flex flex-col gap-4">

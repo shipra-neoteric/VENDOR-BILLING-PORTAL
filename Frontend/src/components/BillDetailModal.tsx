@@ -208,7 +208,7 @@ export default function BillDetailModal({
           )}
         </div>
       }
-      wide
+      extraWide
       onClose={onClose}
       footer={<Btn label="Close" outline onClick={onClose} />}
     >

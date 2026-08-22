@@ -122,7 +122,7 @@ function NewQuotationModal({
       subtitle={`${workOrder.workOrderNo} · ${workOrder.projectName}`}
       icon={Plus}
       onClose={onClose}
-      wide
+      extraWide
       footer={
         <div className="flex justify-end gap-2">
           <Btn label="Cancel" outline onClick={onClose} disabled={submitting} />
@@ -296,7 +296,7 @@ function CompareModal({
         subtitle={`${workOrder.workOrderNo} · ${workOrder.projectName}`}
         icon={Diff}
         onClose={onClose}
-        ultraWide
+        extraWide
       >
         {loading ? (
           <SkeletonTable rows={4} cols={5} />
