@@ -2405,12 +2405,12 @@ export default function WorkItems() {
           footer={
             <div className="flex justify-between gap-2 flex-wrap">
               <div className="flex gap-2">
-                <Btn outline icon={FileText} loading={pdfLoading} label="Download PDF" onClick={() => currentSelectedWO && handleDownloadPDF(currentSelectedWO)} />
-                <Btn outline icon={FileText} loading={pdfLoading} label="Download PDF (Hindi)" onClick={() => currentSelectedWO && handleDownloadPDFHindi(currentSelectedWO)} />
+                <Btn small outline icon={Download} loading={pdfLoading} label="PDF" onClick={() => currentSelectedWO && handleDownloadPDF(currentSelectedWO)} />
+                <Btn small outline icon={Download} loading={pdfLoading} label="PDF (Hindi)" onClick={() => currentSelectedWO && handleDownloadPDFHindi(currentSelectedWO)} />
               </div>
               <div className="flex gap-2">
                 {currentSelectedWO && <Btn outline label="Open Full Page →" onClick={() => { setDrawerOpen(false); navigate(`/work-items/${currentSelectedWO.id}`); }} />}
-                {currentSelectedWO && <Btn outline icon={Pencil} label="Edit Work Order" onClick={() => { setDrawerOpen(false); openEdit(currentSelectedWO); }} />}
+                {currentSelectedWO && <Btn outline icon={Pencil} label="Edit" onClick={() => { setDrawerOpen(false); openEdit(currentSelectedWO); }} />}
                 <Btn outline label="Close" onClick={() => setDrawerOpen(false)} />
               </div>
             </div>
