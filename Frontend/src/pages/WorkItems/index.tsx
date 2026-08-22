@@ -2255,6 +2255,8 @@ export default function WorkItems() {
                     const menuItems: DropdownMenuItem[] = [
                       { key: "pdf-hindi", label: "Download PDF (Hindi)", icon: FileText, onClick: () => handleDownloadPDFHindi(record) },
                       ...(docCount > 0 ? [{ key: "doc", label: `Documents (${docCount})`, icon: Paperclip, onClick: () => { ensureFullWorkOrder(record).then(setDocsRecord); } }] : []),
+                      ...(isOwner ? [{ key: "lock-toggle", label: record.isLocked ? "Unlock Work Order" : "Lock Work Order", icon: record.isLocked ? Unlock : Lock, onClick: () => setLockTarget(record) }] : []),
+                      ...(canCancel ? [{ key: "cancel", label: "Cancel Work Order", icon: Ban, danger: true, onClick: () => { setCancelRemark(""); setCancelRecord(record); } }] : []),
                     ];
                     const delays = countDelays(record);
                     return (
@@ -2307,15 +2309,6 @@ export default function WorkItems() {
                               color="icon-gray" title={record.isLocked ? "Locked — unlock to edit" : "Edit"} icon={Pencil}
                               disabled={record.isLocked} onClick={() => openEdit(record)}
                             />
-                            {isOwner && (
-                              <NxBtn
-                                color="icon-amber" title={record.isLocked ? "Unlock Work Order" : "Lock Work Order"}
-                                icon={record.isLocked ? Unlock : Lock} onClick={() => setLockTarget(record)}
-                              />
-                            )}
-                            {canCancel && (
-                              <NxBtn color="icon-red" title="Cancel Work Order" icon={Ban} onClick={() => { setCancelRemark(""); setCancelRecord(record); }} />
-                            )}
                             {isOwner && (
                               <NxBtn color="icon-red" title="Delete" icon={Trash2} onClick={() => setDeleteTarget(record)} />
                             )}
