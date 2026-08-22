@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import {
-  Clock, FileText, Users, Building2, AlertTriangle, Eye, Printer, CheckCircle2, XCircle,
+  Clock, FileText, Users, Building2, AlertTriangle, Eye, Printer, CheckCircle2, XCircle, Check, X,
   Archive as ArchiveIcon, Pin, Trophy, ChevronDown, ChevronRight, TrendingUp,
 } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -930,16 +930,16 @@ export default function SiteProgress() {
                         <Td><NxBadge color={cfg.color as any}>{cfg.label}</NxBadge></Td>
                         <Td>
                           <div onClick={e => e.stopPropagation()} className="flex items-center gap-1">
-                            <NxBtn color="icon" title="View" icon={Eye} onClick={() => setViewReq(r)} />
+                            <NxBtn color="icon-blue" title="View" icon={Eye} onClick={() => setViewReq(r)} />
                             <NxBtn color="icon" title="Print" icon={Printer} loading={printingReqId === r._id} onClick={() => handlePrintReq(r)} />
                             {r.status === "pending" && canAgmApprove && (
-                              <NxBtn color="primary" icon={CheckCircle2} label="AGM Approve" onClick={() => openApprove(r._id)} />
+                              <NxBtn color="icon-green" title="AGM Approve" icon={Check} onClick={() => openApprove(r._id)} />
                             )}
                             {r.status === "pending-gm" && canGmApprove && (
-                              <NxBtn color="success" icon={CheckCircle2} label="GM Approve" onClick={() => openGmApprove(r._id)} />
+                              <NxBtn color="icon-green" title="GM Approve" icon={Check} onClick={() => openGmApprove(r._id)} />
                             )}
                             {["pending", "pending-gm"].includes(r.status) && canRejectAny && (
-                              <NxBtn color="danger" icon={XCircle} label="Reject" onClick={() => { setRejectTarget(r._id); setRejectModal(true); }} />
+                              <NxBtn color="icon-red" title="Reject" icon={X} onClick={() => { setRejectTarget(r._id); setRejectModal(true); }} />
                             )}
                             <DropdownMenu items={menuItems} />
                           </div>

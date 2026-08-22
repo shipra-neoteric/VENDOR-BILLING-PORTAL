@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import toast from "react-hot-toast";
-import { CheckCircle2, XCircle, Eye, Trophy, Inbox, FileText } from "lucide-react";
+import { Check, X, Eye, Trophy, Inbox, FileText } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import dayjs from "dayjs";
 import apiClient from "../../services/apiClient";
@@ -352,11 +352,11 @@ export default function BillRequests() {
                       <Td><NxBadge color={cfg.color}>{cfg.label}</NxBadge></Td>
                       <Td>
                         <div className="flex items-center gap-1 flex-wrap">
-                          <NxBtn color="icon" title="View" icon={Eye} onClick={() => setViewReq(r)} />
+                          <NxBtn color="icon-blue" title="View" icon={Eye} onClick={() => setViewReq(r)} />
                           {r.status === "pending" && (
                             <>
-                              <NxBtn color="success" icon={CheckCircle2} label="Approve" onClick={() => openApprove(r._id)} />
-                              <NxBtn color="danger" icon={XCircle} label="Reject" onClick={() => { setRejectTarget(r._id); setRejectModal(true); }} />
+                              <NxBtn color="icon-green" title="Approve" icon={Check} onClick={() => openApprove(r._id)} />
+                              <NxBtn color="icon-red" title="Reject" icon={X} onClick={() => { setRejectTarget(r._id); setRejectModal(true); }} />
                             </>
                           )}
                           <DropdownMenu items={menuItems} />

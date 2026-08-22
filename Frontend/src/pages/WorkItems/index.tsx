@@ -5,7 +5,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   Plus, Pencil, Eye, Paperclip, Trash2, Ban, Lock, Unlock, AlertTriangle,
   FileText, ClipboardList, BarChart3, Link2, Zap, Briefcase, Search, Check, Loader2,
-  CalendarRange, PlayCircle, CheckCircle2,
+  CalendarRange, PlayCircle, CheckCircle2, Download,
 } from "lucide-react";
 import dayjs from "dayjs";
 import type { Dayjs } from "dayjs";
@@ -2253,12 +2253,8 @@ export default function WorkItems() {
                     const docCount = getWorkOrderDocuments(record).length;
                     const canCancel = record.status !== "cancelled" && record.status !== "completed";
                     const menuItems: DropdownMenuItem[] = [
-                      { key: "edit", label: "Edit", icon: Pencil, disabled: record.isLocked, title: record.isLocked ? "Locked — unlock to edit" : undefined, onClick: () => openEdit(record) },
                       { key: "pdf-hindi", label: "Download PDF (Hindi)", icon: FileText, onClick: () => handleDownloadPDFHindi(record) },
                       ...(docCount > 0 ? [{ key: "doc", label: `Documents (${docCount})`, icon: Paperclip, onClick: () => { ensureFullWorkOrder(record).then(setDocsRecord); } }] : []),
-                      ...(isOwner ? [{ key: "lock-toggle", label: record.isLocked ? "Unlock Work Order" : "Lock Work Order", icon: record.isLocked ? Unlock : Lock, onClick: () => setLockTarget(record) }] : []),
-                      ...(canCancel ? [{ key: "cancel", label: "Cancel Work Order", icon: Ban, danger: true, onClick: () => { setCancelRemark(""); setCancelRecord(record); } }] : []),
-                      ...(isOwner ? [{ key: "delete", label: "Delete", icon: Trash2, danger: true, onClick: () => setDeleteTarget(record) }] : []),
                     ];
                     const delays = countDelays(record);
                     return (
@@ -2305,8 +2301,24 @@ export default function WorkItems() {
                         </Td>
                         <Td>
                           <div onClick={e => e.stopPropagation()} className="flex items-center gap-1">
-                            <NxBtn color="icon" title="View" icon={Eye} onClick={() => { setSelectedWOId(record.id); setDrawerOpen(true); }} />
-                            <NxBtn color="icon" title="Download PDF" icon={FileText} loading={pdfLoading} onClick={() => handleDownloadPDF(record)} />
+                            <NxBtn color="icon-blue" title="View" icon={Eye} onClick={() => { setSelectedWOId(record.id); setDrawerOpen(true); }} />
+                            <NxBtn color="icon-pink" title="Download PDF" icon={Download} loading={pdfLoading} onClick={() => handleDownloadPDF(record)} />
+                            <NxBtn
+                              color="icon-gray" title={record.isLocked ? "Locked — unlock to edit" : "Edit"} icon={Pencil}
+                              disabled={record.isLocked} onClick={() => openEdit(record)}
+                            />
+                            {isOwner && (
+                              <NxBtn
+                                color="icon-amber" title={record.isLocked ? "Unlock Work Order" : "Lock Work Order"}
+                                icon={record.isLocked ? Unlock : Lock} onClick={() => setLockTarget(record)}
+                              />
+                            )}
+                            {canCancel && (
+                              <NxBtn color="icon-red" title="Cancel Work Order" icon={Ban} onClick={() => { setCancelRemark(""); setCancelRecord(record); }} />
+                            )}
+                            {isOwner && (
+                              <NxBtn color="icon-red" title="Delete" icon={Trash2} onClick={() => setDeleteTarget(record)} />
+                            )}
                             {menuItems.length > 0 && <DropdownMenu items={menuItems} />}
                           </div>
                         </Td>
