@@ -1649,7 +1649,7 @@ export default function WorkItems() {
   // Step pill counts — one per stage of the real approval chain (see
   // APPROVAL_STATUS_CFG's `level` field, L1=draft through L4=pending-final).
   const stepCounts = useMemo(() => {
-    const c: Record<string, number> = {};
+    const c: Record<string, number> = { approved: 0 };
     for (const key of STEP_KEYS) c[key] = 0;
     for (const wo of workOrders) {
       const st = approvalStatusOf(wo);
@@ -2222,6 +2222,18 @@ export default function WorkItems() {
               </button>
             );
           })}
+          <button
+            type="button"
+            onClick={() => setStepFilter(stepFilter === "approved" ? "all" : "approved")}
+            className={
+              stepFilter === "approved"
+                ? "shrink-0 px-3.5 py-1.5 rounded-full text-sm font-semibold theme-text"
+                : "shrink-0 px-3.5 py-1.5 rounded-full text-sm font-medium bg-gray-100 dark:bg-gray-700 text-gray-500! dark:text-gray-400!"
+            }
+            style={stepFilter === "approved" ? { backgroundColor: "var(--theme-primary-tint)" } : undefined}
+          >
+            Approved <span className="ml-1 opacity-75">{stepCounts.approved}</span>
+          </button>
         </div>
 
         {/* Table */}
