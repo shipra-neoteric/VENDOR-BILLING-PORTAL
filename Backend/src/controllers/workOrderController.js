@@ -10,7 +10,7 @@ const asyncHandler = require('../utils/asyncHandler');
 const { success, created, notFound, badRequest, conflict } = require('../utils/responseFormatter');
 const { nextWorkOrderNo, nextConsultancyOrderNo } = require('../utils/codeGen');
 const emitEvent    = require('../utils/emitEvent');
-const { startInstance } = require('../utils/slaEngine');
+const { startInstance, advanceInstance, cancelInstance } = require('../utils/slaEngine');
 const { milestonesExceedContract } = require('../utils/validateMilestones');
 const { documentsExceedLimit } = require('../utils/validateDocuments');
 const { logAudit, diffFields } = require('../utils/auditLog');
@@ -370,6 +370,12 @@ exports.updateWorkOrder = asyncHandler(async (req, res) => {
   }
 
   if (reopening) {
+    // Whatever SLA instance was tracking the old cycle (sitting in-progress
+    // at L2/L3/L4, or already completed if this WO was fully approved) is
+    // now stale — close it out so the next submitWorkOrder starts a clean
+    // one at L1 instead of resuming/advancing the wrong stage.
+    await cancelInstance('WorkOrder', workOrder._id, 'Reopened for editing — approval chain reset to L1');
+
     await logAudit({
       action: 'UPDATE', module: 'work-orders', user: req.user,
       description: `Reopened work order ${workOrder.workOrderNo} for editing — sent back through the full approval chain`,
@@ -398,6 +404,17 @@ exports.submitWorkOrder = asyncHandler(async (req, res) => {
   workOrder.makerAt = new Date();
   workOrder.approvalHistory.push({ stage: 'maker', action: 'submitted', by: req.user._id, remarks: req.body.remarks || '' });
   await workOrder.save();
+
+  // The first submit advances the instance startInstance already created at
+  // creation time (L1 -> L2). A re-submit after sendBack has no in-progress
+  // instance left (sendBack cancels it) — startInstance's own findOne no-ops
+  // into a fresh one there, then this same advanceInstance moves it straight
+  // to L2, so a corrected resubmission gets its own clean SLA clock.
+  await startInstance('WorkOrder', workOrder._id, workOrder.workOrderNo, req.user._id, {
+    projectId: workOrder.projectId, projectName: workOrder.projectName,
+    vendorName: workOrder.vendorName, amount: workOrder.contractValue,
+  });
+  await advanceInstance('WorkOrder', workOrder._id, req.user._id, 'Maker submitted for checker review');
 
   await logAudit({
     action: 'UPDATE', module: 'work-orders', user: req.user,
@@ -428,6 +445,8 @@ exports.checkerApprove = asyncHandler(async (req, res) => {
   workOrder.approvalHistory.push({ stage: 'checker', action: 'approved', by: req.user._id, remarks: workOrder.checkerRemarks });
   await workOrder.save();
 
+  await advanceInstance('WorkOrder', workOrder._id, req.user._id, 'Checker approved — forwarded to approver');
+
   await logAudit({
     action: 'APPROVE', module: 'work-orders', user: req.user,
     description: `Checker verified & approved work order ${workOrder.workOrderNo}`,
@@ -456,6 +475,8 @@ exports.approverApprove = asyncHandler(async (req, res) => {
   workOrder.approverRemarks = req.body.remarks || '';
   workOrder.approvalHistory.push({ stage: 'approver', action: 'approved', by: req.user._id, remarks: workOrder.approverRemarks });
   await workOrder.save();
+
+  await advanceInstance('WorkOrder', workOrder._id, req.user._id, 'Approver approved — forwarded for final approval');
 
   await logAudit({
     action: 'APPROVE', module: 'work-orders', user: req.user,
@@ -490,6 +511,8 @@ exports.finalApprove = asyncHandler(async (req, res) => {
   workOrder.lockedAt = new Date();
   await workOrder.save();
 
+  await advanceInstance('WorkOrder', workOrder._id, req.user._id, 'Final approval granted');
+
   await logAudit({
     action: 'APPROVE', module: 'work-orders', user: req.user,
     description: `Final approval granted for work order ${workOrder.workOrderNo} — locked, ready for Work Progress`,
@@ -520,6 +543,8 @@ exports.sendBack = asyncHandler(async (req, res) => {
   workOrder.approvalHistory.push({ stage: stageAtRejection, action: 'sent-back', by: req.user._id, remarks: reason.trim() });
   await workOrder.save();
 
+  await cancelInstance('WorkOrder', workOrder._id, `Sent back to maker: ${reason.trim()}`);
+
   await logAudit({
     action: 'REJECT', module: 'work-orders', user: req.user,
     description: `Sent work order ${workOrder.workOrderNo} back to maker — ${reason.trim()}`,
@@ -549,6 +574,8 @@ exports.cancelWorkOrder = asyncHandler(async (req, res) => {
   workOrder.cancelledBy  = req.user._id;
   workOrder.cancelledAt  = new Date();
   await workOrder.save();
+
+  await cancelInstance('WorkOrder', workOrder._id, `Work order cancelled: ${remark.trim()}`);
 
   await logAudit({
     action: 'UPDATE', module: 'work-orders', user: req.user,
