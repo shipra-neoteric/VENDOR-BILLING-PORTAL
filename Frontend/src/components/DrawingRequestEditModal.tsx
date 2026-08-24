@@ -77,6 +77,7 @@ export default function DrawingRequestEditModal({
     <Modal
       title="Edit Drawing Request" subtitle={request.projectName} icon={PenTool}
       onClose={onClose}
+      extraWide
       footer={
         <div className="flex justify-end gap-2">
           <Btn label="Cancel" outline onClick={onClose} />

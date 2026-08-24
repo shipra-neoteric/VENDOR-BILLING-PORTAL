@@ -25,6 +25,7 @@ export default function DrawingRequestViewModal({
     <Modal
       title="Drawing Request" subtitle={request.projectName} icon={PenTool}
       onClose={onClose}
+      extraWide
       footer={<Btn label="Close" outline onClick={onClose} />}
     >
       <div className="mb-4">
