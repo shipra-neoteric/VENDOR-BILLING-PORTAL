@@ -33,8 +33,8 @@ export default function NxStatCard({ label, value, icon: Icon, active = false, o
       ].join(" ")}
       style={active ? { boxShadow: "0 0 0 2px var(--theme-primary)" } : undefined}
     >
-      <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">{label}</p>
-      <p className="text-2xl sm:text-3xl font-medium text-gray-900 dark:text-white mt-2 tabular-nums">{value}</p>
+      <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 truncate">{label}</p>
+      <p className="text-lg sm:text-xl font-medium text-gray-900 dark:text-white mt-2 tabular-nums break-words leading-tight">{value}</p>
       {delta && (
         <p className={`text-xs font-semibold mt-1.5 flex items-center gap-1 ${deltaDown ? "text-red-500" : "text-emerald-600 dark:text-emerald-400"}`}>
           <DeltaIcon className="w-3 h-3" /> {delta}

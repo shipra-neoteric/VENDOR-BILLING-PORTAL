@@ -832,14 +832,14 @@ function ScopeItemsBuilder({ items, onChange, allCategories = [], topCatId = nul
                         placeholder="Sub-item description"
                         value={si.description}
                         onChange={e => updSub(item.id, si.id, { description: e.target.value })}
-                        className="flex-[2] min-w-[200px] h-9 px-2.5 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0F172A] text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                        className="flex-[2] min-w-[200px] h-8 px-2.5 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0F172A] text-[13px] focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
                       />
                       {si.unit === "custom" ? (
                         <input
                           placeholder="Type unit"
                           value={si.customUnit}
                           onChange={e => updSub(item.id, si.id, { customUnit: e.target.value })}
-                          className="w-[100px] h-9 px-2.5 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0F172A] text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                          className="w-[100px] h-8 px-2.5 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0F172A] text-[13px] focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
                         />
                       ) : (
                         <div className="w-[140px]">
@@ -850,13 +850,13 @@ function ScopeItemsBuilder({ items, onChange, allCategories = [], topCatId = nul
                         type="number" placeholder="Qty" min={0}
                         value={si.plannedQty ?? ""}
                         onChange={e => updSub(item.id, si.id, { plannedQty: e.target.value === "" ? null : Number(e.target.value) })}
-                        className="w-[85px] h-9 px-2 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0F172A] text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                        className="w-[85px] h-8 px-2 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0F172A] text-[13px] focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
                       />
                       <input
                         type="number" placeholder="Rate ₹" min={0}
                         value={si.rate ?? ""}
                         onChange={e => updSub(item.id, si.id, { rate: e.target.value === "" ? null : Number(e.target.value) })}
-                        className="w-[95px] h-9 px-2 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0F172A] text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                        className="w-[95px] h-8 px-2 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0F172A] text-[13px] focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
                       />
                       <div className="font-mono font-bold text-primary text-xs min-w-[85px] text-right">
                         {calcSubItemAmt(si) > 0 ? fmt(calcSubItemAmt(si)) : "—"}
