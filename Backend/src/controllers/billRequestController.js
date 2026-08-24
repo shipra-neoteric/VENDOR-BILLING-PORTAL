@@ -51,7 +51,7 @@ exports.listBillRequests = asyncHandler(async (req, res) => {
     .populate('approvalHistory.by', 'name')
     .populate({
       path: 'billId',
-      select: 'billNo status amount paidAmount retentionPercent retentionAmount advanceRecovery gstPercent tdsPercent tdsAmount paymentDate paymentMode paymentUTR paymentBank paymentReleasedBy verificationBy verificationAt l1ApprovedBy l1ApprovedAt l2ApprovedBy l2ApprovedAt tmsSentAt tmsCallbackReceivedAt agmApprovedBy agmApprovedAt',
+      select: 'billNo status amount paidAmount retentionPercent retentionAmount advanceRecovery gstPercent tdsPercent tdsAmount paymentDate paymentMode paymentUTR paymentBank paymentReleasedBy verificationBy verificationAt l1ApprovedBy l1ApprovedAt l2ApprovedBy l2ApprovedAt tmsSentAt tmsCallbackReceivedAt agmApprovedBy agmApprovedAt lineItems',
       populate: [
         { path: 'verificationBy', select: 'name' },
         { path: 'l1ApprovedBy', select: 'name' },
@@ -61,6 +61,9 @@ exports.listBillRequests = asyncHandler(async (req, res) => {
         // RunningBill-level field, set by gmApprove at bill-creation time.
         // BillDetailModal falls back to it when approvalHistory is empty.
         { path: 'agmApprovedBy', select: 'name' },
+        // Who signed off the quantity variance snapshotted onto lineItems —
+        // see gmApprove above for where this gets copied from the WO.
+        { path: 'lineItems.varianceApprovedBy', select: 'name' },
       ],
     })
     .sort({ stageNo: 1, createdAt: 1 });
@@ -346,6 +349,15 @@ exports.gmApprove = asyncHandler(async (req, res) => {
 
     const rate   = target?.rate   ?? 0;
     const amount = rate * item.billedQty;
+    const plannedQty = target?.plannedQty ?? 0;
+
+    // createBillRequest already set target.lastBilledQty = completedQty (an
+    // absolute value, not additive) at request time, so by now it already
+    // reflects the post-this-bill cumulative — back this bill's own qty out
+    // of it to get what was billed before it.
+    const cumulativeBilledQty = target?.lastBilledQty ?? item.billedQty;
+    const previouslyBilledQty = Math.max(0, cumulativeBilledQty - item.billedQty);
+    const varianceQty = plannedQty > 0 ? Math.max(0, cumulativeBilledQty - plannedQty) : 0;
 
     return {
       scopeItemId: item.scopeItemId,
@@ -354,10 +366,23 @@ exports.gmApprove = asyncHandler(async (req, res) => {
       remarks:     target?.remarks   || '',
       progressRemarks: item.progressRemarks || '',
       unit:        item.unit,
-      plannedQty:  target?.plannedQty ?? 0,
+      plannedQty,
       billedQty:   item.billedQty,
       rate,
       amount,
+      previouslyBilledQty,
+      cumulativeBilledQty,
+      varianceQty,
+      // Snapshot the AGM/GM sign-off that already had to happen (see
+      // hasUnapprovedVarianceForLineItem in createBillRequest) before this
+      // over-plan quantity could even reach a bill request — this bill just
+      // carries a permanent copy of it, not a new approval of its own.
+      ...(varianceQty > 0 ? {
+        varianceApproved:      !!target?.varianceApproved,
+        varianceApprovedBy:    target?.varianceApprovedBy || null,
+        varianceApprovedAt:    target?.varianceApprovedAt || null,
+        varianceApprovedAtQty: target?.varianceApprovedAtQty ?? null,
+      } : {}),
     };
   });
 

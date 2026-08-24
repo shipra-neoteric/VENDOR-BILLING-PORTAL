@@ -1,4 +1,5 @@
-import { Trophy, HardHat, Check, X } from "lucide-react";
+import { useState } from "react";
+import { Trophy, HardHat, Check, X, AlertTriangle, ChevronDown } from "lucide-react";
 import dayjs from "dayjs";
 import { billFinancials } from "../shared/utils/billMath";
 import Modal from "../ui/Modal";
@@ -74,6 +75,57 @@ function BillApprovalHistoryList({ history }: { history?: BillApprovalHistoryEnt
   );
 }
 
+// Quantity billed above the work order's own plannedQty on this line — never
+// a new approval happening here, just a permanent copy of the AGM/GM sign-off
+// that already had to happen (on the Work Order's progress side) before this
+// over-plan quantity could reach a bill in the first place. Purely a display
+// of evidence, matching the "display-only" decision — no action buttons.
+function LineVarianceEvidence({ item }: { item: BillDetailItem }) {
+  const [open, setOpen] = useState(false);
+  if (!item.varianceQty || item.varianceQty <= 0) return null;
+  return (
+    <div className="mt-1">
+      <div className="flex items-center gap-1.5 text-xs text-orange-600 dark:text-orange-400 font-semibold">
+        <AlertTriangle className="w-3 h-3 shrink-0" />
+        <span>
+          Variance +{item.varianceQty.toLocaleString("en-IN")} {item.varianceApproved ? "— approved" : "— unapproved"}
+          {item.varianceApprovedBy?.name ? ` by ${item.varianceApprovedBy.name}` : ""}
+          {item.varianceApprovedAt ? ` on ${dayjs(item.varianceApprovedAt).format("DD MMM YYYY")}` : ""}
+        </span>
+        <button
+          type="button"
+          onClick={() => setOpen(o => !o)}
+          className="ml-0.5 inline-flex items-center gap-0.5 text-[11px] text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 font-normal"
+        >
+          View Evidence <ChevronDown className={`w-3 h-3 transition-transform ${open ? "rotate-180" : ""}`} />
+        </button>
+      </div>
+      {open && (
+        <div className="mt-1.5 grid grid-cols-3 sm:grid-cols-6 gap-x-3 gap-y-1.5 bg-orange-50 dark:bg-orange-500/10 border border-orange-200 dark:border-orange-500/30 rounded-md px-3 py-2">
+          {[
+            ["Planned", item.plannedQty],
+            ["Previously Billed", item.previouslyBilledQty],
+            ["This Bill", item.billedQty],
+            ["Cumulative", item.cumulativeBilledQty],
+            ["Variance", `+${item.varianceQty}`],
+          ].map(([label, val]) => (
+            <div key={label as string}>
+              <div className="text-[9px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">{label}</div>
+              <div className="text-xs font-semibold text-[#1A1A2E] dark:text-[#F1F5F9]">{val ?? "—"}</div>
+            </div>
+          ))}
+          <div>
+            <div className="text-[9px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Approved</div>
+            <div className="text-xs font-semibold">
+              {item.varianceApproved ? <span className="text-green-600 dark:text-green-400">Yes</span> : <span className="text-red-600 dark:text-red-400">No</span>}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export interface BillDetailItem {
   scopeItemId?: string;
   description: string;
@@ -84,6 +136,17 @@ export interface BillDetailItem {
   billedQty: number;
   rate?: number;
   amount?: number;
+  // Present only on a RunningBill's own lineItems (billId.lineItems below),
+  // never on a plain BillRequest.items entry — see billRequestController's
+  // gmApprove for where these get snapshotted at bill-creation time.
+  plannedQty?: number;
+  previouslyBilledQty?: number;
+  cumulativeBilledQty?: number;
+  varianceQty?: number;
+  varianceApproved?: boolean;
+  varianceApprovedBy?: { name: string } | null;
+  varianceApprovedAt?: string;
+  varianceApprovedAtQty?: number;
 }
 
 export interface BillDetailRequest {
@@ -139,6 +202,12 @@ export interface BillDetailRequest {
     // approvalHistory fallback below for why this gets read.
     agmApprovedBy?: { name: string } | null;
     agmApprovedAt?: string;
+    // The bill's own line items — same shape as BillDetailItem, but this is
+    // the authoritative "as actually billed" record (rate is re-read fresh
+    // from the WO at bill-creation time, and this is the only place quantity-
+    // variance evidence ever gets snapshotted). Preferred over the plain
+    // `items` above whenever a bill actually exists.
+    lineItems?: BillDetailItem[];
   };
   milestoneAchieved?: boolean;
   milestoneDate?: string;
@@ -156,7 +225,13 @@ export default function BillDetailModal({
 }) {
   if (!open || !billRequest) return null;
 
-  const viewTotal = billRequest.items.reduce((s, it) => s + (it.rate ?? 0) * it.billedQty, 0);
+  // Once a RunningBill actually exists, its own lineItems are the
+  // authoritative "as billed" record (fresh rate snapshot, plus the only
+  // place quantity-variance evidence is ever recorded) — prefer those over
+  // the plain BillRequest.items, which is all there is before a bill exists.
+  const displayItems = billRequest.billId?.lineItems ?? billRequest.items;
+  const varianceItems = displayItems.filter(it => (it.varianceQty ?? 0) > 0);
+  const viewTotal = displayItems.reduce((s, it) => s + (it.rate ?? 0) * it.billedQty, 0);
 
   // Bills created via the normal single-request flow carry a real
   // approvalHistory. Older/batch-created ones (e.g. a bulk daily-wages run)
@@ -255,7 +330,14 @@ export default function BillDetailModal({
 
         {/* Items table */}
         <div>
-          <div className="font-bold text-xs text-gray-600 dark:text-gray-300 mb-1.5 uppercase tracking-wide">Scope Items</div>
+          <div className="flex items-center gap-2 mb-1.5">
+            <div className="font-bold text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wide">Scope Items</div>
+            {varianceItems.length > 0 && (
+              <span className="inline-flex items-center gap-1 text-[11px] font-bold text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-500/10 border border-orange-200 dark:border-orange-500/30 rounded-full px-2 py-0.5">
+                <AlertTriangle className="w-3 h-3" /> Quantity Variance: {varianceItems.length} item{varianceItems.length !== 1 ? "s" : ""}
+              </span>
+            )}
+          </div>
           <Table>
             <Thead>
               <Tr>
@@ -267,7 +349,7 @@ export default function BillDetailModal({
               </Tr>
             </Thead>
             <Tbody>
-              {billRequest.items.map((it, i) => {
+              {displayItems.map((it, i) => {
                 const amt = (it.rate ?? 0) * it.billedQty;
                 return (
                   <Tr key={i}>
@@ -278,6 +360,7 @@ export default function BillDetailModal({
                           <HardHat className="w-3 h-3" /> {it.progressRemarks}
                         </div>
                       )}
+                      <LineVarianceEvidence item={it} />
                     </Td>
                     <Td>{it.unit}</Td>
                     <Td className="text-right font-mono">{it.billedQty.toLocaleString("en-IN")}</Td>

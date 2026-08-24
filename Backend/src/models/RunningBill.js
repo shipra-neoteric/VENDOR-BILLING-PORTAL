@@ -16,6 +16,25 @@ const lineItemSchema = new mongoose.Schema({
   billedQty:   { type: Number, required: true },
   rate:        { type: Number, required: true },
   amount:      { type: Number, required: true },
+
+  // ── Quantity-variance evidence (snapshotted at bill creation) ──────────
+  // Only the progress-driven flow (BillRequest -> gmApprove) can ever
+  // produce a variance here — the manual entry flow (billController's
+  // createBill) hard-caps billedQty at the scope item's remaining unbilled
+  // qty, so it can never exceed plannedQty in the first place. When it can
+  // (completedQty was allowed past plannedQty and AGM/GM signed off via
+  // WorkOrder.scopeItems[].varianceApproved), these fields copy that sign-off
+  // onto the bill itself — a permanent record of why this bill's quantity is
+  // higher than the work order's planned quantity, independent of whatever
+  // the work order's own live variance flag later becomes (it can be reset
+  // by a later edit — see applyVarianceGate — without touching history here).
+  previouslyBilledQty: { type: Number, default: 0 },  // cumulative billed on this item/particular, before this bill
+  cumulativeBilledQty: { type: Number, default: 0 },  // previouslyBilledQty + billedQty (this bill's own qty)
+  varianceQty:          { type: Number, default: 0 }, // max(0, cumulativeBilledQty - plannedQty)
+  varianceApproved:     { type: Boolean, default: false },
+  varianceApprovedBy:   { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  varianceApprovedAt:   { type: Date },
+  varianceApprovedAtQty:{ type: Number },
 }, { _id: false });
 
 const runningBillSchema = new mongoose.Schema(
