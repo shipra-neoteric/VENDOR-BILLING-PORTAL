@@ -1,5 +1,4 @@
-import type { ReactNode } from "react";
-import { ChevronRight, TrendingUp, TrendingDown, CheckCircle2, AlertTriangle } from "lucide-react";
+import { ChevronRight, CheckCircle2, AlertTriangle } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import Card from "../../../ui/Card";
 import Btn from "../../../ui/Btn";
@@ -24,29 +23,6 @@ export function ViewAllLink({ label = "View All", onClick }: { label?: string; o
     <button onClick={onClick} className="text-xs font-semibold text-primary hover:underline flex items-center gap-0.5 shrink-0">
       {label} <ChevronRight className="w-3.5 h-3.5" />
     </button>
-  );
-}
-
-// Icon sits bottom-right, no colored chip behind it — matches ui/StatCard.tsx's
-// convention (the one actually used elsewhere in the app, e.g. Projects), not
-// a top icon-chip which isn't the real Nexora pattern.
-export function StatTile({
-  icon: Icon, label, value, delta, deltaDown, accent, onClick,
-}: { icon: LucideIcon; label: string; value: ReactNode; delta?: string; deltaDown?: boolean; accent: string; onClick?: () => void }) {
-  const Arrow = deltaDown ? TrendingDown : TrendingUp;
-  return (
-    <Card className={`relative ${onClick ? "text-left cursor-pointer hover:shadow-md transition-shadow" : ""}`} {...(onClick ? { onClick, role: "button" } : {})}>
-      <div className="pr-6">
-        <div className="text-[13px] text-gray-500 dark:text-gray-400 mb-1">{label}</div>
-        <div className="text-2xl font-bold text-[#1A1A2E] dark:text-[#F1F5F9] font-mono leading-tight">{value}</div>
-        {delta && (
-          <div className={`text-xs font-semibold mt-1.5 flex items-center gap-1 ${deltaDown ? "text-red-500" : "text-emerald-600 dark:text-emerald-400"}`}>
-            <Arrow className="w-3 h-3" /> {delta}
-          </div>
-        )}
-      </div>
-      <Icon className="absolute bottom-3 right-3 w-6 h-6" style={{ color: accent }} strokeWidth={2.5} />
-    </Card>
   );
 }
 

@@ -12,11 +12,12 @@ import type { DPROperational, DPRProjectPerformance } from "../../../types/DPR";
 import type { WORow, BillRow } from "../utils";
 import { woProjectId } from "../utils";
 import type { ComparisonMode } from "./MiniCharts";
-import { progressBarClass, deltaText, ViewAllLink, StatTile, HighlightsBanner, DetailListModal } from "./shared";
+import { progressBarClass, deltaText, ViewAllLink, HighlightsBanner, DetailListModal } from "./shared";
 import Card from "../../../ui/Card";
 import Btn from "../../../ui/Btn";
 import Modal from "../../../ui/Modal";
 import Spinner from "../../../ui/Spinner";
+import NxStatCard from "../../../ui/nexora/StatCard";
 import { Table, Thead, Tbody, Tr, Th, Td } from "../../../ui/Table";
 import Funnel from "../../../ui/charts/Funnel";
 import Donut from "../../../ui/charts/Donut";
@@ -68,11 +69,11 @@ function WorkProgressPanel({ workOrders }: { workOrders: WORow[] }) {
   );
 }
 
-function ProjectPerfTable({ rows }: { rows: DPRProjectPerformance[] }) {
+function ProjectPerfTable({ rows, rangeLabel }: { rows: DPRProjectPerformance[]; rangeLabel: string }) {
   return (
     <Table>
       <Thead>
-        <Tr><Th>Project Name</Th><Th>WOs</Th><Th>Progress</Th><Th>Today's Activity</Th><Th>Pending</Th></Tr>
+        <Tr><Th>Project Name</Th><Th>WOs</Th><Th>Progress</Th><Th>Activity ({rangeLabel})</Th><Th>Pending</Th></Tr>
       </Thead>
       <Tbody>
         {rows.map(p => {
@@ -111,8 +112,8 @@ function ProjectPerfTable({ rows }: { rows: DPRProjectPerformance[] }) {
 // when the badge read 45). Work Orders and Site Progress rows stay counts
 // only, since WORow doesn't carry a bill/WO number or vendor name to list.
 function PendingApprovalsPanel({
-  workOrders, bills, siteProgressCount,
-}: { workOrders: WORow[]; bills: BillRow[]; siteProgressCount: number }) {
+  workOrders, bills, siteProgressCount, rangeLabel,
+}: { workOrders: WORow[]; bills: BillRow[]; siteProgressCount: number; rangeLabel: string }) {
   const [showBills, setShowBills] = useState(false);
   const woPending = workOrders.filter(w => WO_PENDING_APPROVAL_STATUSES.includes(w.approvalStatus || "")).length;
   const pendingBills = bills.filter(b => BILL_PENDING_STATUSES.includes(b.status || ""));
@@ -120,7 +121,7 @@ function PendingApprovalsPanel({
   const rows: { icon: LucideIcon; color: string; label: string; sub: string; count: number; onClick?: () => void }[] = [
     { icon: ClipboardList, color: "#2a78d6", label: "Work Orders", sub: "Waiting for approval", count: woPending },
     { icon: FileText, color: "#eb6834", label: "Bills", sub: "Waiting for approval", count: pendingBills.length, onClick: () => setShowBills(true) },
-    { icon: HardHat, color: "#1baf7a", label: "Site Progress Entries", sub: "Logged today", count: siteProgressCount },
+    { icon: HardHat, color: "#1baf7a", label: "Site Progress Entries", sub: `Logged (${rangeLabel})`, count: siteProgressCount },
   ];
 
   return (
@@ -210,7 +211,7 @@ function RecentActivitiesPanel({ projectId }: { projectId: string }) {
   );
 }
 
-export default function OperationalView({ data, comparisonMode, projectId }: { data: DPROperational; comparisonMode: ComparisonMode; projectId: string }) {
+export default function OperationalView({ data, comparisonMode, projectId, rangeLabel }: { data: DPROperational; comparisonMode: ComparisonMode; projectId: string; rangeLabel: string }) {
   const { kpis, comparisons, details, funnel, siteProgressToday, projectPerformance, briefs } = data;
   const [drill, setDrill] = useState<{ title: string; key: keyof typeof details } | null>(null);
   const [showAllProjects, setShowAllProjects] = useState(false);
@@ -243,34 +244,34 @@ export default function OperationalView({ data, comparisonMode, projectId }: { d
   return (
     <div>
       <HighlightsBanner
-        icon={HardHat} title="Today's Operational Highlights" briefs={briefs}
+        icon={HardHat} title={`Operational Highlights — ${rangeLabel}`} briefs={briefs}
         statusOk={kpis.pendingApprovals === 0}
         statusText={kpis.pendingApprovals === 0 ? "No critical issues. Operations on track." : `${kpis.pendingApprovals} approval${kpis.pendingApprovals !== 1 ? "s" : ""} pending review.`}
       />
 
       {/* Stat row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
-        <StatTile
-          icon={ClipboardList} label="Work Orders Today" value={kpis.woCreatedToday} accent="#2a78d6"
+        <NxStatCard
+          icon={ClipboardList} label={`Work Orders (${rangeLabel})`} value={kpis.woCreatedToday}
           delta={deltaText(comparisons.woCreated[cd], comparisonMode)} deltaDown={(comparisons.woCreated[cd] ?? 0) < 0}
           onClick={() => open("Work Orders Created", "woCreatedToday")}
         />
-        <StatTile
-          icon={FileText} label="Bills Raised Today" value={kpis.billRequestsToday} accent="#4a3aa7"
+        <NxStatCard
+          icon={FileText} label={`Bills Raised (${rangeLabel})`} value={kpis.billRequestsToday}
           delta={deltaText(comparisons.billRequestsRaised[cd], comparisonMode)} deltaDown={(comparisons.billRequestsRaised[cd] ?? 0) < 0}
           onClick={() => open("Bill Requests Raised", "billRequestsToday")}
         />
-        <StatTile
-          icon={Banknote} label="Payments Released" value={paymentsReleasedAmount >= 10_000_000 ? `₹${(paymentsReleasedAmount / 10_000_000).toFixed(2)} Cr` : `₹${(paymentsReleasedAmount / 100_000).toFixed(2)} L`} accent="#008300"
+        <NxStatCard
+          icon={Banknote} label={`Payments Released (${rangeLabel})`} value={paymentsReleasedAmount >= 10_000_000 ? `₹${(paymentsReleasedAmount / 10_000_000).toFixed(2)} Cr` : `₹${(paymentsReleasedAmount / 100_000).toFixed(2)} L`}
           delta={deltaText(comparisons.paymentsReleased[cd], comparisonMode)} deltaDown={(comparisons.paymentsReleased[cd] ?? 0) < 0}
           onClick={() => open("Payments Released", "paymentsReleasedToday")}
         />
-        <StatTile
-          icon={Hourglass} label="Pending Approvals" value={kpis.pendingApprovals} accent="#eda100"
+        <NxStatCard
+          icon={Hourglass} label="Pending Approvals" value={kpis.pendingApprovals}
           onClick={() => open("Pending Approvals", "pendingApprovals")}
         />
-        <StatTile
-          icon={Target} label="Site Progress Today" value={`${avgSiteProgressPct}%`} accent="#2a78d6"
+        <NxStatCard
+          icon={Target} label={`Site Progress (${rangeLabel})`} value={`${avgSiteProgressPct}%`}
         />
       </div>
 
@@ -304,7 +305,7 @@ export default function OperationalView({ data, comparisonMode, projectId }: { d
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 mb-6">
         <Card className="lg:col-span-1">
           <div className="flex justify-between items-start mb-1">
-            <div className="font-bold text-[15px] text-[#1A1A2E] dark:text-[#F1F5F9]">Site Progress Today</div>
+            <div className="font-bold text-[15px] text-[#1A1A2E] dark:text-[#F1F5F9]">Site Progress ({rangeLabel})</div>
             {!showAllSiteProgress && siteProgressToday.length > LIST_PREVIEW_LIMIT && (
               <ViewAllLink onClick={() => setShowAllSiteProgress(true)} />
             )}
@@ -342,7 +343,7 @@ export default function OperationalView({ data, comparisonMode, projectId }: { d
           {projectPerformance.length === 0 ? (
             <div className="text-sm text-gray-400 text-center py-6">No project-linked work orders yet.</div>
           ) : (
-            <ProjectPerfTable rows={projectPerformance.slice(0, LIST_PREVIEW_LIMIT)} />
+            <ProjectPerfTable rows={projectPerformance.slice(0, LIST_PREVIEW_LIMIT)} rangeLabel={rangeLabel} />
           )}
         </Card>
 
@@ -350,7 +351,7 @@ export default function OperationalView({ data, comparisonMode, projectId }: { d
           <Card>
             <div className="font-bold text-[15px] text-[#1A1A2E] dark:text-[#F1F5F9] mb-2">Pending Approvals</div>
             <PendingApprovalsPanel
-              workOrders={scopedWorkOrders} bills={scopedBills} siteProgressCount={siteProgressToday.length}
+              workOrders={scopedWorkOrders} bills={scopedBills} siteProgressCount={siteProgressToday.length} rangeLabel={rangeLabel}
             />
           </Card>
           <Card>
@@ -362,7 +363,7 @@ export default function OperationalView({ data, comparisonMode, projectId }: { d
 
       {showAllProjects && (
         <Modal title="Projects at a Glance" extraWide onClose={() => setShowAllProjects(false)} footer={<Btn label="Close" outline onClick={() => setShowAllProjects(false)} />}>
-          <ProjectPerfTable rows={projectPerformance} />
+          <ProjectPerfTable rows={projectPerformance} rangeLabel={rangeLabel} />
         </Modal>
       )}
 

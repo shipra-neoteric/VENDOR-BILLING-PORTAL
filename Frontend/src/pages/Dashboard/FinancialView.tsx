@@ -8,10 +8,11 @@ import dayjs from "dayjs";
 import apiClient from "../../services/apiClient";
 import type { DPRFinancial } from "../../types/DPR";
 import type { ComparisonMode } from "../../features/dashboard/components/MiniCharts";
-import { deltaText, StatTile, HighlightsBanner, DetailListModal } from "../../features/dashboard/components/shared";
+import { deltaText, HighlightsBanner, DetailListModal } from "../../features/dashboard/components/shared";
 import Card from "../../ui/Card";
 import Btn from "../../ui/Btn";
 import Badge from "../../ui/Badge";
+import NxStatCard from "../../ui/nexora/StatCard";
 import Modal from "../../ui/Modal";
 import Spinner from "../../ui/Spinner";
 import { Table, Thead, Tbody, Tr, Th, Td } from "../../ui/Table";
@@ -280,7 +281,7 @@ function RecentFinancialActivitiesPanel({ projectId }: { projectId: string }) {
   );
 }
 
-export default function FinancialView({ financial, comparisonMode, projectId }: { financial: DPRFinancial; comparisonMode: ComparisonMode; projectId: string }) {
+export default function FinancialView({ financial, comparisonMode, projectId, rangeLabel }: { financial: DPRFinancial; comparisonMode: ComparisonMode; projectId: string; rangeLabel: string }) {
   const { kpis, comparisons, details, paymentBreakdown, paymentHealthBreakdown, monthlyBillingTrend, aging, topDelayedContractors, healthScore, briefs } = financial;
   const [drill, setDrill] = useState<{ title: string; key: keyof typeof details } | null>(null);
   const [showAllContractors, setShowAllContractors] = useState(false);
@@ -296,29 +297,29 @@ export default function FinancialView({ financial, comparisonMode, projectId }: 
   return (
     <div>
       <HighlightsBanner
-        icon={TrendingUp} title="Today's Financial Highlights" briefs={briefs}
+        icon={TrendingUp} title={`Financial Highlights — ${rangeLabel}`} briefs={briefs}
         statusOk={healthScore.status === "good"}
         statusText={healthScore.status === "good" ? "Overall financial status is healthy." : healthScore.status === "warning" ? "Financial health needs attention." : "Financial health is critical."}
       />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4 mb-6">
-        <StatTile
-          icon={Banknote} label="Payments Released Today" value={fmtCr(kpis.amountReleasedToday)} accent="#008300"
+        <NxStatCard
+          icon={Banknote} label={`Payments Released (${rangeLabel})`} value={fmtCr(kpis.amountReleasedToday)}
           delta={deltaText(comparisons.amountReleased[cd], comparisonMode)} deltaDown={(comparisons.amountReleased[cd] ?? 0) < 0}
           onClick={() => open("Amount Released", "amountReleasedToday")}
         />
-        <StatTile icon={Wallet} label="Total Payments Released" value={fmtCr(paymentBreakdown.released)} accent="#eda100" />
-        <StatTile
-          icon={Receipt} label="Pending Payments" value={fmtCr(kpis.pendingValueToday)} accent="#7c3aed"
+        <NxStatCard icon={Wallet} label="Total Payments Released" value={fmtCr(paymentBreakdown.released)} />
+        <NxStatCard
+          icon={Receipt} label="Pending Payments" value={fmtCr(kpis.pendingValueToday)}
           onClick={() => open("Pending Value", "pendingValueToday")}
         />
-        <StatTile
-          icon={FileText} label="Bills Raised Today" value={fmtCr(kpis.billsRaisedValueToday)} accent="#2a78d6"
+        <NxStatCard
+          icon={FileText} label={`Bills Raised (${rangeLabel})`} value={fmtCr(kpis.billsRaisedValueToday)}
           delta={deltaText(comparisons.billsRaisedValue[cd], comparisonMode)} deltaDown={(comparisons.billsRaisedValue[cd] ?? 0) < 0}
           onClick={() => open("Bills Raised", "billsRaisedValueToday")}
         />
-        <StatTile icon={AlertOctagon} label="Overdue Payments" value={fmtCr(overdueAmount)} accent="#DC2626" />
-        <StatTile icon={HeartPulse} label="Payment Health Score" value={`${healthScore.score}%`} accent={healthScore.status === "good" ? "#1baf7a" : healthScore.status === "warning" ? "#eda100" : "#DC2626"} />
+        <NxStatCard icon={AlertOctagon} label="Overdue Payments" value={fmtCr(overdueAmount)} />
+        <NxStatCard icon={HeartPulse} label="Payment Health Score" value={`${healthScore.score}%`} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">

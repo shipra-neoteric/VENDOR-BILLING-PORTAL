@@ -41,6 +41,17 @@ export default function Dashboard() {
   const dprDateFrom = dateRange.from ? dateRange.from.format("YYYY-MM-DD") : null;
   const dprDateTo = (dateRange.to ?? dayjs()).format("YYYY-MM-DD");
 
+  // A human label for whatever range is actually selected — the KPI cards
+  // used to just always say "Today" regardless of this filter, which read as
+  // flatly wrong once someone picked "All Time" and the numbers changed but
+  // the words next to them didn't.
+  const rangeTo = dateRange.to ?? dayjs();
+  const rangeLabel = !dateRange.from
+    ? "All Time"
+    : dateRange.from.isSame(rangeTo, "day")
+      ? (dateRange.from.isSame(dayjs(), "day") ? "Today" : dateRange.from.format("DD MMM"))
+      : `${dateRange.from.format("DD MMM")} – ${rangeTo.format("DD MMM")}`;
+
   useEffect(() => {
     apiClient.get("/projects").then(res => setProjects(res.data.projects ?? [])).catch(() => {});
   }, []);
@@ -107,9 +118,9 @@ export default function Dashboard() {
       ) : error || !data ? (
         <div className="m-6"><Alert type="error" message={(error as Error)?.message ?? "Failed to load MIS report"} /></div>
       ) : view === "operational" ? (
-        <OperationalView data={data.operational} comparisonMode={comparisonMode} projectId={projectId} />
+        <OperationalView data={data.operational} comparisonMode={comparisonMode} projectId={projectId} rangeLabel={rangeLabel} />
       ) : (
-        <FinancialView financial={data.financial} comparisonMode={comparisonMode} projectId={projectId} />
+        <FinancialView financial={data.financial} comparisonMode={comparisonMode} projectId={projectId} rangeLabel={rangeLabel} />
       )}
     </div>
   );
