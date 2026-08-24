@@ -99,11 +99,11 @@ const netPayable = (b: NonNullable<BillRequestStage["billId"]>) =>
 // slate=paused, red=rejected, green=success).
 const RB_STATUS_CFG: Record<string, { label: string; color: NxBadgeColor }> = {
   draft:         { label: "Awaiting Verification",  color: "gray" },
-  "verify-done": { label: "Awaiting L1 AGM",         color: "blue" },
-  "l1-approved": { label: "Awaiting L2 Director",    color: "amber" },
+  "verify-done": { label: "Pending L1 (AGM)",        color: "blue" },
+  "l1-approved": { label: "Pending L2 (GM)",         color: "amber" },
   approved:      { label: "Ready for TMS",           color: "amber" },
   "sent-to-tms": { label: "Sent to TMS",             color: "indigo" },
-  hold:          { label: "On Hold",                 color: "slate" },
+  hold:          { label: "Hold",                    color: "slate" },
   rejected:      { label: "Rejected",                color: "red" },
   paid:          { label: "Paid",                    color: "green" },
 };
@@ -335,9 +335,9 @@ export default function WorkOrderDashboard() {
             ) : undefined}
           />
           <KPICard label="Overall Progress" value={`${avgPct}%`} icon={TrendingUp} tint={progressTint} />
-          <KPICard label="Billed to Date" value={fmtMoney(billedAmount)} icon={CheckCircle2} tint="green" />
+          <KPICard label="Billed" value={fmtMoney(billedAmount)} icon={CheckCircle2} tint="green" />
           <KPICard
-            label="Unbilled Work" value={fmtMoney(unbilledValue)} icon={Clock}
+            label="Unbilled" value={fmtMoney(unbilledValue)} icon={Clock}
             tint={unbilledValue > 0 ? "orange" : "green"}
           />
         </div>

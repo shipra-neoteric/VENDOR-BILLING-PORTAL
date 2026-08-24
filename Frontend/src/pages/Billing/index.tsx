@@ -189,7 +189,7 @@ export default function Billing() {
           onClick={() => setStatusFilter(statusFilter === BILL_STATUS.DRAFT ? "" : BILL_STATUS.DRAFT)}
         />
         <NxStatCard
-          label="On Hold" value={statusCounts.hold} icon={Ban}
+          label="Hold" value={statusCounts.hold} icon={Ban}
           active={statusFilter === BILL_STATUS.HOLD}
           onClick={() => setStatusFilter(statusFilter === BILL_STATUS.HOLD ? "" : BILL_STATUS.HOLD)}
         />

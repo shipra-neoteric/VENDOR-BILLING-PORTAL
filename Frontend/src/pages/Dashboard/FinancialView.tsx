@@ -313,7 +313,7 @@ export default function FinancialView({ financial, comparisonMode, projectId }: 
           onClick={() => open("Pending Value", "pendingValueToday")}
         />
         <StatTile
-          icon={FileText} label="Bills Raised (Total)" value={fmtCr(kpis.billsRaisedValueToday)} accent="#2a78d6"
+          icon={FileText} label="Bills Raised Today" value={fmtCr(kpis.billsRaisedValueToday)} accent="#2a78d6"
           delta={deltaText(comparisons.billsRaisedValue[cd], comparisonMode)} deltaDown={(comparisons.billsRaisedValue[cd] ?? 0) < 0}
           onClick={() => open("Bills Raised", "billsRaisedValueToday")}
         />

@@ -193,11 +193,11 @@ function sameActor(user: AuthUser | null, actor?: BillUser | null): boolean {
 // instead of a bespoke hex color, matching WorkItems' displayStatus() precedent.
 const BILL_LIST_STATUS_CFG: Record<BillStatus, { label: string; color: NxBadgeColor }> = {
   draft:         { label: "Awaiting Verification",         color: "gray"   },
-  "verify-done": { label: "Awaiting L1 AGM",                color: "amber"  },
-  "l1-approved": { label: "Awaiting L2 Director",           color: "cyan"   },
+  "verify-done": { label: "Pending L1 (AGM)",                color: "amber"  },
+  "l1-approved": { label: "Pending L2 (GM)",           color: "cyan"   },
   approved:      { label: "Ready for TMS",                  color: "blue"   },
   "sent-to-tms": { label: "Sent to TMS",                    color: "indigo" },
-  hold:          { label: "On Hold",                        color: "orange" },
+  hold:          { label: "Hold",                           color: "orange" },
   paid:          { label: "Paid",                           color: "green"  },
   rejected:      { label: "Rejected",                       color: "red"    },
 };
@@ -585,8 +585,8 @@ export default function AccountsPayment() {
   const tabs: TabDef[] = [
     { key: "all",         label: "All",              count: 0 },
     { key: "draft",       label: "Awaiting Verification", count: draftBills.length },
-    { key: "verifyDone",  label: "Awaiting L1 AGM",   count: verifyDoneBills.length },
-    { key: "l1Approved",  label: "Awaiting L2 Director", count: l1ApprovedBills.length },
+    { key: "verifyDone",  label: "Pending L1 (AGM)",   count: verifyDoneBills.length },
+    { key: "l1Approved",  label: "Pending L2 (GM)", count: l1ApprovedBills.length },
     { key: "approved",    label: "Ready for TMS",      count: approvedBills.length },
     { key: "sentToTms",   label: "Sent to TMS",        count: sentToTmsBills.length },
     { key: "hold",        label: "Hold",               count: holdBills.length },
@@ -957,7 +957,7 @@ export default function AccountsPayment() {
       }
 
       case "verify-done": {
-        if (!canL1Agm) return <MutedNote text="Awaiting L1 AGM approval." />;
+        if (!canL1Agm) return <MutedNote text="Pending L1 (AGM) approval." />;
         const guard = sameActor(user, bill.verificationBy) ? "You verified this bill — a different user must give L1 AGM approval." : undefined;
         return (
           <div className={sectionPanelClass}>
@@ -988,7 +988,7 @@ export default function AccountsPayment() {
         );
 
       case "l1-approved": {
-        if (!canL2Director) return <MutedNote text="Awaiting L2 Director approval." />;
+        if (!canL2Director) return <MutedNote text="Pending L2 (GM) approval." />;
         const guard = sameActor(user, bill.l1ApprovedBy) ? "You gave L1 AGM approval — a different user must give L2 Director approval." : undefined;
         return (
           <div className={sectionPanelClass}>
@@ -1094,12 +1094,12 @@ export default function AccountsPayment() {
           active={activeTab === "draft"} onClick={() => setActiveTab(activeTab === "draft" ? "all" : "draft")}
         />
         <NxStatCard
-          label="Awaiting L1 AGM" value={<>{verifyDoneBills.length}<div className="text-[11px] font-normal text-gray-400 mt-0.5">Verified</div></>}
+          label="Pending L1 (AGM)" value={<>{verifyDoneBills.length}<div className="text-[11px] font-normal text-gray-400 mt-0.5">Verified</div></>}
           icon={ShieldCheck}
           active={activeTab === "verifyDone"} onClick={() => setActiveTab(activeTab === "verifyDone" ? "all" : "verifyDone")}
         />
         <NxStatCard
-          label="Awaiting L2 Director" value={<>{l1ApprovedBills.length}<div className="text-[11px] font-normal text-gray-400 mt-0.5">L1 AGM approved</div></>}
+          label="Pending L2 (GM)" value={<>{l1ApprovedBills.length}<div className="text-[11px] font-normal text-gray-400 mt-0.5">L1 (AGM) approved</div></>}
           icon={CheckCircle2}
           active={activeTab === "l1Approved"} onClick={() => setActiveTab(activeTab === "l1Approved" ? "all" : "l1Approved")}
         />

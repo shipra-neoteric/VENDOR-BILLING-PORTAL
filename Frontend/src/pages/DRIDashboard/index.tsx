@@ -661,10 +661,10 @@ export default function DRIDashboard() {
 
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 sm:gap-4 mb-6">
           <KPICard label="Total DRIs" value={allDRIs.length} icon={Users} accent="var(--theme-primary)" />
-          <KPICard label="Total WOs" value={allWOs.length} icon={Briefcase} accent="var(--theme-primary)" />
-          <KPICard label="Active WOs" value={totalActive} icon={Activity} accent="#3B82F6" />
-          <KPICard label="Completed WOs" value={totalCompleted} icon={CheckCircle2} accent="#10B981" />
-          <KPICard label="Pending Bills" value={totalPending} icon={Clock} accent="#F59E0B" />
+          <KPICard label="Total Work Orders" value={allWOs.length} icon={Briefcase} accent="var(--theme-primary)" />
+          <KPICard label="In Progress" value={totalActive} icon={Activity} accent="#3B82F6" />
+          <KPICard label="Completed" value={totalCompleted} icon={CheckCircle2} accent="#10B981" />
+          <KPICard label="Pending Bill Requests" value={totalPending} icon={Clock} accent="#F59E0B" />
         </div>
 
         <div className="bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700/40 rounded-lg overflow-hidden shadow-sm">
@@ -725,8 +725,8 @@ export default function DRIDashboard() {
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-6">
           <KPICard label="Projects" value={driProjects.length} icon={Building2} accent="var(--theme-primary)" />
-          <KPICard label="Total WOs" value={driWOs.length} icon={Briefcase} accent="var(--theme-primary)" />
-          <KPICard label="Active" value={driWOs.filter(w => w.status === "in-progress" || w.status === "issued").length} icon={Activity} accent="#3B82F6" />
+          <KPICard label="Work Orders" value={driWOs.length} icon={Briefcase} accent="var(--theme-primary)" />
+          <KPICard label="In Progress" value={driWOs.filter(w => w.status === "in-progress" || w.status === "issued").length} icon={Activity} accent="#3B82F6" />
           <KPICard label="Completed" value={driWOs.filter(w => w.status === "completed").length} icon={CheckCircle2} accent="#10B981" />
         </div>
 

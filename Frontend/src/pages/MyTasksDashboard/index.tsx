@@ -227,17 +227,17 @@ export default function MyTasksDashboard() {
             onOpen={() => navigate("/accounts-payment")}
           />
           <QueueSection
-            title="Awaiting L1 AGM Approval" color="#0d9488"
-            rows={toRows(acctL1Agm)} emptyText="Nothing pending L1 AGM approval" buttonLabel="Approve →"
+            title="Pending L1 (AGM) Approval" color="#0d9488"
+            rows={toRows(acctL1Agm)} emptyText="Nothing pending L1 (AGM) approval" buttonLabel="Approve →"
             onOpen={() => navigate("/accounts-payment")}
           />
           <QueueSection
-            title="Awaiting L2 Director Approval" color="#3730a3"
-            rows={toRows(acctL2Director)} emptyText="Nothing ready for L2 Director approval" buttonLabel="Approve →"
+            title="Pending L2 (GM) Approval" color="#3730a3"
+            rows={toRows(acctL2Director)} emptyText="Nothing ready for L2 (GM) approval" buttonLabel="Approve →"
             onOpen={() => navigate("/accounts-payment")}
           />
           <QueueSection
-            title="On Hold — Needs Release" color="#9333ea"
+            title="Hold — Needs Release" color="#9333ea"
             rows={toRows(acctHold)} emptyText="Nothing on hold" buttonLabel="Release →"
             onOpen={() => navigate("/accounts-payment")}
           />

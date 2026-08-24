@@ -202,7 +202,7 @@ export default function Categories() {
 
       {/* Stats strip */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4 mb-5">
-        <NxStatCard label="Total" value={cats.length} icon={LayoutGrid} />
+        <NxStatCard label="Total Categories" value={cats.length} icon={LayoutGrid} />
         <NxStatCard label="Category" value={level1.length} icon={Tag} />
         <NxStatCard label="Sub-Category" value={level2.length} icon={Layers} />
         <NxStatCard label="Sub-Sub-Cat" value={level3.length} icon={GitBranch} />

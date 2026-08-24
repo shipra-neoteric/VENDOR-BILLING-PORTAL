@@ -298,14 +298,13 @@ export default function SlaDashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-5">
         <NxCard className="h-full">
           <PanelHead title="Financial Impact" info />
+          {/* "Breached" used to duplicate the Financial Risk KPI tile above
+              (same financial.breachedAmount, just labeled differently on the
+              same page) — dropped here since that tile already covers it. */}
           <div className="flex gap-3.5 mb-4">
             <div className="flex-1">
               <div className="text-[10px] text-gray-400 dark:text-gray-500 uppercase">Pending</div>
               <div className="text-base font-extrabold text-gray-700 dark:text-gray-300">{fmtMoney(financial.pendingAmount)}</div>
-            </div>
-            <div className="flex-1">
-              <div className="text-[10px] text-gray-400 dark:text-gray-500 uppercase">Breached</div>
-              <div className="text-base font-extrabold text-red-500 dark:text-red-400">{fmtMoney(financial.breachedAmount)}</div>
             </div>
           </div>
           {financial.byStage.map(s => (

@@ -346,10 +346,10 @@ function ProjectDetail({
           {stats && (
             <>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-                <NxStatCard label="Awarded (WOs)"    value={fmt(stats.awardedContractValue)} icon={Landmark} />
+                <NxStatCard label="Total Contract Value" value={fmt(stats.awardedContractValue)} icon={Landmark} />
                 <NxStatCard label="Work Executed"    value={fmt(stats.workExecutedValue)}    icon={HardHat} />
-                <NxStatCard label="Billed Gross"     value={fmt(stats.billedGross)}          icon={Receipt} />
-                <NxStatCard label="Certified Net"    value={fmt(stats.certifiedNet)}         icon={CheckCircle2} />
+                <NxStatCard label="Total Billed"     value={fmt(stats.billedGross)}          icon={Receipt} />
+                <NxStatCard label="Total Certified (Net)" value={fmt(stats.certifiedNet)}    icon={CheckCircle2} />
                 <NxStatCard label="Paid"             value={fmt(stats.paidAmount)}           icon={Banknote} />
                 <NxStatCard label="Remaining"        value={fmt(stats.remainingContract)}    icon={Clock} />
                 <NxStatCard label="Overall Progress" value={`${stats.progress}%`}            icon={TrendingUp} />
@@ -357,7 +357,7 @@ function ProjectDetail({
 
               {/* Quick indicators */}
               <div className="flex gap-2.5 flex-wrap mb-5">
-                <NxBadge size="md" color="teal">{stats.activeVendors} Active Vendor{stats.activeVendors !== 1 ? "s" : ""}</NxBadge>
+                <NxBadge size="md" color="teal">{stats.activeVendors} Active Contractor{stats.activeVendors !== 1 ? "s" : ""}</NxBadge>
                 <NxBadge size="md" color="blue">{stats.woCount} Work Order{stats.woCount !== 1 ? "s" : ""}</NxBadge>
                 <NxBadge size="md" color="green">{completedCount} Completed WOs</NxBadge>
                 <NxBadge size="md" color={stats.pendingBillReqs > 0 ? "amber" : "gray"}>{stats.pendingBillReqs} Pending Bill Req{stats.pendingBillReqs !== 1 ? "s" : ""}</NxBadge>

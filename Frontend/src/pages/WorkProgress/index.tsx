@@ -316,7 +316,7 @@ function WorkProgressAdmin() {
               const billedAmt = si.reduce((s, x) => s + (x.lastBilledQty || 0) * (x.rate || 0), 0);
               return [
                 { label: "Contract Value", value: fmt(woDetail.contractValue ?? 0), icon: ClipboardList },
-                { label: "Progress", value: `${avgPct}%`, icon: TrendingUp },
+                { label: "Overall Progress", value: `${avgPct}%`, icon: TrendingUp },
                 { label: "Billed", value: fmt(billedAmt), icon: CheckCircle2 },
                 { label: "Stages", value: String(billReqs.length), icon: Layers },
               ].map(({ label, value, icon }) => (

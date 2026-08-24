@@ -76,11 +76,11 @@ function calcBill(b: Bill) {
 // (a warning/paused state), green=paid, red=rejected.
 const STATUS_CFG: Record<BillStatus, { color: NxBadgeColor; label: string }> = {
   draft:         { color: "gray",   label: "Draft" },
-  "verify-done": { color: "amber",  label: "Awaiting L1 AGM" },
-  "l1-approved": { color: "cyan",   label: "Awaiting L2 Director" },
+  "verify-done": { color: "amber",  label: "Pending L1 (AGM)" },
+  "l1-approved": { color: "cyan",   label: "Pending L2 (GM)" },
   approved:      { color: "blue",   label: "Ready for TMS" },
   "sent-to-tms": { color: "indigo", label: "Sent to TMS" },
-  hold:          { color: "orange", label: "On Hold" },
+  hold:          { color: "orange", label: "Hold" },
   rejected:      { color: "red",    label: "Rejected" },
   paid:          { color: "green",  label: "Paid" },
 };
@@ -255,9 +255,13 @@ export default function Ledger() {
   const portfolioActuallyPaid  = bills
     .filter(b => b.status === "paid" && woSummaries.some(r => r.wo._id === b.workOrderId))
     .reduce((s, b) => s + calcBill(b).net, 0);
+  // Gross (incl. GST) of paid bills — matches the single-WO detail view's
+  // "Total Bill Amount" card exactly (that one sums r.gross over paid rows);
+  // this used to sum the raw pre-GST b.amount instead, silently disagreeing
+  // with the detail view under the identical label.
   const portfolioTotalBillAmountPaid = bills
     .filter(b => b.status === "paid" && woSummaries.some(r => r.wo._id === b.workOrderId))
-    .reduce((s, b) => s + (b.amount ?? 0), 0);
+    .reduce((s, b) => s + calcBill(b).gross, 0);
 
   // ═══════════════════════════════════════════════════════════
   //  DETAIL VIEW
@@ -297,11 +301,11 @@ export default function Ledger() {
             value={<>{fmt(detail.rows.filter(r => r.b.status === "paid").reduce((s, r) => s + r.gross, 0))}<div className="text-[11px] font-normal text-gray-400 mt-0.5">gross billed (paid bills)</div></>}
           />
           <NxStatCard
-            label="Cash Released (Net TDS)" icon={Landmark}
+            label="Paid" icon={Landmark}
             value={<>{fmt(detail.rows.filter(r => r.b.status === "paid").reduce((s, r) => s + r.net, 0))}<div className="text-[11px] font-normal text-gray-400 mt-0.5">actual bank transfer</div></>}
           />
           <NxStatCard
-            label="Balance Remaining" icon={Scale}
+            label="Remaining" icon={Scale}
             value={
               <>
                 <span className={detail.balance < 0 ? "text-red-600 dark:text-red-400" : ""}>{fmt(Math.max(detail.balance, 0))}</span>
@@ -443,7 +447,7 @@ export default function Ledger() {
           value={<>{fmt(portfolioContract)}<div className="text-[11px] font-normal text-gray-400 mt-0.5">{woSummaries.length} work orders</div></>}
         />
         <NxStatCard
-          label="Total Billed (Gross)" icon={Receipt}
+          label="Total Billed" icon={Receipt}
           value={<>{fmt(portfolioGross)}<div className="text-[11px] font-normal text-gray-400 mt-0.5">all running bills incl. GST</div></>}
         />
         <NxStatCard
@@ -455,11 +459,11 @@ export default function Ledger() {
           value={<>{fmt(portfolioTotalBillAmountPaid)}<div className="text-[11px] font-normal text-gray-400 mt-0.5">gross billed (paid bills)</div></>}
         />
         <NxStatCard
-          label="Cash Released (Net TDS)" icon={Landmark}
+          label="Paid" icon={Landmark}
           value={<>{fmt(portfolioActuallyPaid)}<div className="text-[11px] font-normal text-gray-400 mt-0.5">actual bank transfer</div></>}
         />
         <NxStatCard
-          label="Balance Remaining" icon={Scale}
+          label="Remaining" icon={Scale}
           value={<>{fmt(portfolioBalance)}<div className="text-[11px] font-normal text-gray-400 mt-0.5">uncertified contract value</div></>}
         />
       </div>
