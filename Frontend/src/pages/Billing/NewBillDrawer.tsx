@@ -18,7 +18,7 @@ import Segmented from "../../ui/Segmented";
 import StatusBadge from "../../ui/StatusBadge";
 import Badge from "../../ui/Badge";
 import { Table, Thead, Tbody, Tr, Th, Td } from "../../ui/Table";
-import type { Contractor } from "../../types/VendorBilling";
+import type { Contractor, Consultant } from "../../types/VendorBilling";
 import { BILL_TYPE_CFG, RELATIONSHIP_OPTIONS } from "../../shared/constants/billOptions";
 import { billFinancials, holdAmountFromPercent } from "../../shared/utils/billMath";
 
@@ -54,7 +54,7 @@ interface ExistingBill { id: string; billNo: string; amount: number; status: str
 interface ProjectOpt { id: string; name: string; code: string; parentId?: string | null; }
 interface SubItemOpt { id: string; description: string; unit: string; plannedQty: number; lastBilledQty: number; rate?: number; }
 interface ScopeItemOpt { id: string; description: string; unit: string; plannedQty: number; lastBilledQty: number; rate?: number; subItems?: SubItemOpt[]; }
-interface WorkOrderOpt { id: string; workOrderNo: string; projectId: string; projectName: string; vendorCode: string; vendorName: string; scopeItems: ScopeItemOpt[]; }
+interface WorkOrderOpt { id: string; workOrderNo: string; projectId: string; projectName: string; vendorCode: string; vendorName: string; contractType?: string; scopeItems: ScopeItemOpt[]; }
 interface AdvanceSlipOpt { _id: string; slipNo: string; amount: number; amountRecovered: number; balance: number; date?: string; reference?: string; }
 
 const fmt = (n: number) => "₹" + (n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -100,8 +100,14 @@ export default function NewBillDrawer({
 
   const [projects, setProjects] = useState<ProjectOpt[]>([]);
   const [contractors, setContractors] = useState<Contractor[]>([]);
+  const [consultants, setConsultants] = useState<Consultant[]>([]);
   const [projectId, setProjectId] = useState<string>("");
+  // A bill is raised against either a Contractor (execution work orders) or
+  // a Consultant (professional-services work orders) — never both, so only
+  // one id is ever set at a time; switching the toggle clears the other.
+  const [partyType, setPartyType] = useState<"contractor" | "consultant">("contractor");
   const [contractorId, setContractorId] = useState<string>("");
+  const [consultantId, setConsultantId] = useState<string>("");
   // Who this bill's payment actually goes to — normally the same as the
   // selected contractor, but a fellow Vendor Group member can be picked
   // instead (e.g. "Ambika Construction" takes the work, this particular
@@ -148,7 +154,9 @@ export default function NewBillDrawer({
     if (!open) return;
     formErrors.clearAll();
     setProjectId("");
+    setPartyType("contractor");
     setContractorId("");
+    setConsultantId("");
     setPayeeVendorCode("");
     setWoList([]);
     setLineItems([blankRow()]);
@@ -179,6 +187,9 @@ export default function NewBillDrawer({
     apiClient.get<{ contractors: Record<string, unknown>[] }>("/contractors")
       .then((r) => setContractors((r.data.contractors || []).map((c) => normalizeId(c) as unknown as Contractor)))
       .catch(() => {});
+    apiClient.get<{ consultants: Record<string, unknown>[] }>("/consultants")
+      .then((r) => setConsultants((r.data.consultants || []).map((c) => normalizeId(c) as unknown as Consultant)))
+      .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
@@ -186,10 +197,16 @@ export default function NewBillDrawer({
     () => contractors.find((c) => c.id === contractorId) || null,
     [contractors, contractorId]
   );
+  const selectedConsultant = useMemo(
+    () => consultants.find((c) => c.id === consultantId) || null,
+    [consultants, consultantId]
+  );
 
   // Defaults the payee back to the selected contractor's own code whenever
   // that selection changes — a previous group override shouldn't silently
-  // carry over onto an unrelated contractor.
+  // carry over onto an unrelated contractor. Vendor Group pay-to-a-different-
+  // member is a Contractor-only concept (Consultant has no groupId), so this
+  // stays scoped to the contractor path.
   useEffect(() => {
     setPayeeVendorCode(selectedContractor?.vendorCode || "");
   }, [selectedContractor?.vendorCode]);
@@ -205,22 +222,27 @@ export default function NewBillDrawer({
     [contractors, payeeVendorCode, selectedContractor]
   );
 
+  // The vendor this bill is actually raised against, whichever type is
+  // active — everything downstream (WO lookup, payload) reads through this
+  // rather than branching on partyType itself.
+  const activeVendorCode = partyType === "consultant" ? (selectedConsultant?.consultantCode || "") : (selectedPayee?.vendorCode || "");
+  const activeVendorName = partyType === "consultant" ? (selectedConsultant?.firmName || "") : (selectedPayee?.companyName || "");
+
   useEffect(() => {
-    if (!projectId || !contractorId) { setWoList([]); return; }
-    const c = contractors.find((x) => x.id === contractorId);
-    if (!c) return;
+    const code = partyType === "consultant" ? selectedConsultant?.consultantCode : selectedContractor?.vendorCode;
+    if (!projectId || !code) { setWoList([]); return; }
     apiClient.get<{ workOrders: Record<string, unknown>[] }>(`/work-orders?projectId=${projectId}`)
       .then((r) => {
         const all = (r.data.workOrders || []).map(normalizeWO);
-        setWoList(all.filter((wo) => wo.vendorCode === c.vendorCode));
+        setWoList(all.filter((wo) => wo.vendorCode === code && (wo.contractType === "professional-services") === (partyType === "consultant")));
       })
       .catch(() => setWoList([]));
-  }, [projectId, contractorId, contractors]);
+  }, [projectId, partyType, selectedContractor?.vendorCode, selectedConsultant?.consultantCode]);
 
-  // Outstanding advances for the picked contractor/project — same fetch used
-  // by Accounts Payment's own late-stage recovery picker.
+  // Advance recovery is a Contractor-only concept (AdvanceSlip is keyed by
+  // contractorCode, not raised for Consultants in this system).
   useEffect(() => {
-    if (!projectId || !selectedContractor?.vendorCode) { setPendingAdvances([]); return; }
+    if (partyType !== "contractor" || !projectId || !selectedContractor?.vendorCode) { setPendingAdvances([]); return; }
     setAdvancesLoading(true);
     setAdvancesUnavailable(false);
     apiClient.get<{ advanceSlips: AdvanceSlipOpt[] }>(`/advance-slips/pending?projectId=${projectId}&vendorCode=${selectedContractor.vendorCode}`)
@@ -230,7 +252,7 @@ export default function NewBillDrawer({
       })
       .catch(() => { setPendingAdvances([]); setAdvancesUnavailable(true); })
       .finally(() => setAdvancesLoading(false));
-  }, [projectId, selectedContractor?.vendorCode]);
+  }, [partyType, projectId, selectedContractor?.vendorCode]);
 
   function updateLineItem(key: number, field: keyof LineItem, val: unknown) {
     setLineItems((prev) =>
@@ -333,13 +355,15 @@ export default function NewBillDrawer({
     }
     formErrors.clearAll();
     let hasError = false;
-    if (!contractorId) { formErrors.setError("contractorId", "Select a contractor"); hasError = true; }
+    if (!activeVendorCode) {
+      formErrors.setError("contractorId", partyType === "consultant" ? "Select a consultant" : "Select a contractor");
+      hasError = true;
+    }
     if (!billDate) { formErrors.setError("billDate", "Required"); hasError = true; }
     if (!generatedBy.trim()) { formErrors.setError("generatedBy", "Required"); hasError = true; }
     if (hasError) return;
 
     const project = projects.find((p) => p.id === projectId);
-    const contractor = selectedContractor;
 
     const linkedBills = linkedBillIds.map(id => {
       const found = woExistingBills.find(b => b.id === id);
@@ -364,8 +388,8 @@ export default function NewBillDrawer({
       billDate:          dayjs(billDate).toISOString(),
       projectId:         projectId || undefined,
       projectName:       project?.name ?? "",
-      vendorCode:        selectedPayee?.vendorCode ?? contractor?.vendorCode ?? "",
-      vendorName:        selectedPayee?.companyName ?? contractor?.companyName ?? "",
+      vendorCode:        activeVendorCode,
+      vendorName:        activeVendorName,
       generatedBy:       generatedBy ?? "",
       contractorRefNo:   contractorRefNo ?? "",
       remarks:           remarksInput ?? "",
@@ -410,7 +434,7 @@ export default function NewBillDrawer({
       <Modal
         icon={FileText}
         title="New Bill"
-        subtitle="Select project → contractor → add work items → submit — lands in Draft, awaiting maker confirmation"
+        subtitle="Select project → contractor or consultant → add work items → submit — lands in Draft, awaiting maker confirmation"
         extraWide
         onClose={onClose}
         footer={
@@ -424,6 +448,19 @@ export default function NewBillDrawer({
         <div className="bg-gray-50 dark:bg-gray-800/40 rounded-lg p-4 mb-5">
           <div className="font-bold text-[13px] text-[#1A1A2E] dark:text-[#F1F5F9] mb-3">Bill Information</div>
 
+          <div className="mb-4">
+            <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">Bill For</div>
+            <Segmented
+              value={partyType}
+              onChange={(v) => {
+                setPartyType(v as "contractor" | "consultant");
+                setContractorId(""); setConsultantId(""); setWoList([]);
+                setSelectedWOId(""); setWoExistingBills([]); setImportedFromWOId("");
+              }}
+              options={[{ value: "contractor", label: "Contractor" }, { value: "consultant", label: "Consultant" }]}
+            />
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
             <SField
               label="Site / Project"
@@ -432,24 +469,46 @@ export default function NewBillDrawer({
               onChange={(v) => { setProjectId(v); setWoList([]); }}
               options={[{ value: "", label: "— No project —" }, ...selectableProjects(projects).map((p) => ({ value: p.id, label: `${p.code ? p.code + " — " : ""}${p.name}` }))]}
             />
-            <SField
-              label="Contractor" required
-              placeholder="Search by name or vendor code…"
-              value={contractorId || ""}
-              onChange={(v) => setContractorId(v)}
-              options={contractors.map((c) => ({ value: c.id, label: `${vendorLabel(c.companyName, c.shortCode)}  (${c.vendorCode})` }))}
-              error={formErrors.errors.contractorId}
-            />
-            <Field
-              label="Vendor Code"
-              value={selectedContractor?.vendorCode || ""}
-              disabled
-              placeholder="Auto-filled"
-              className="text-primary font-bold font-mono"
-            />
+            {partyType === "contractor" ? (
+              <>
+                <SField
+                  label="Contractor" required
+                  placeholder="Search by name or vendor code…"
+                  value={contractorId || ""}
+                  onChange={(v) => setContractorId(v)}
+                  options={contractors.map((c) => ({ value: c.id, label: `${vendorLabel(c.companyName, c.shortCode)}  (${c.vendorCode})` }))}
+                  error={formErrors.errors.contractorId}
+                />
+                <Field
+                  label="Vendor Code"
+                  value={selectedContractor?.vendorCode || ""}
+                  disabled
+                  placeholder="Auto-filled"
+                  className="text-primary font-bold font-mono"
+                />
+              </>
+            ) : (
+              <>
+                <SField
+                  label="Consultant" required
+                  placeholder="Search by firm name or consultant code…"
+                  value={consultantId || ""}
+                  onChange={(v) => setConsultantId(v)}
+                  options={consultants.map((c) => ({ value: c.id, label: `${c.firmName} (${c.consultantCode})` }))}
+                  error={formErrors.errors.contractorId}
+                />
+                <Field
+                  label="Consultant Code"
+                  value={selectedConsultant?.consultantCode || ""}
+                  disabled
+                  placeholder="Auto-filled"
+                  className="text-primary font-bold font-mono"
+                />
+              </>
+            )}
           </div>
 
-          {groupSiblings.length > 1 && (
+          {partyType === "contractor" && groupSiblings.length > 1 && (
             <div className="mb-4 max-w-md">
               <SField
                 label="Pay To (Vendor Group)"
@@ -472,7 +531,7 @@ export default function NewBillDrawer({
               error={formErrors.errors.generatedBy}
             />
             <Field
-              label="Contractor Ref. No." placeholder="e.g. ABCI/2026/003"
+              label={partyType === "consultant" ? "Consultant Ref. No." : "Contractor Ref. No."} placeholder="e.g. ABCI/2026/003"
               value={contractorRefNo} onChange={(e) => setContractorRefNo(e.target.value)}
             />
           </div>
@@ -773,8 +832,9 @@ export default function NewBillDrawer({
             </div>
 
             {/* Advance Recovery — deducted (along with Hold, above) BEFORE GST is
-                calculated, not after, so it's shown here rather than below. */}
-            {!advancesUnavailable && (
+                calculated, not after, so it's shown here rather than below.
+                Contractor-only — Consultants don't carry advance slips. */}
+            {partyType === "contractor" && !advancesUnavailable && (
               <div className="p-3.5 border-b border-gray-100 dark:border-gray-700/40 bg-amber-50/60 dark:bg-amber-500/5">
                 <div className="font-bold text-xs text-amber-800 dark:text-amber-300 mb-2">Advance Recovery</div>
                 {advancesLoading && <div className="text-xs text-gray-400 mb-2">Checking pending advances…</div>}
