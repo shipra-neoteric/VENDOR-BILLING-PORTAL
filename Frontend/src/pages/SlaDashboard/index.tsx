@@ -10,7 +10,6 @@ import NxBadge from "../../ui/nexora/Badge";
 import Spinner from "../../ui/Spinner";
 import Alert from "../../ui/Alert";
 import NxCard from "../../ui/nexora/Card";
-import Donut from "../../ui/charts/Donut";
 import { Table, Thead, Tbody, Tr, Th, Td } from "../../ui/Table";
 import { useAuth } from "../../context/AuthContext";
 
@@ -24,7 +23,6 @@ function fmtMinutes(min: number): string {
   if (h > 0) return `${h}h ${m}m`;
   return `${m}m`;
 }
-const fmtMoney = (n: number) => n ? "₹" + n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "₹0";
 const statusColor = (pct: number) => pct >= 90 ? "#16a34a" : pct >= 60 ? "#f59e0b" : "#e03b3b";
 
 // ── Section heading used inside a Card ──────────────────────────
@@ -49,20 +47,6 @@ function ViewAllLink({ label, onClick }: { label: string; onClick?: () => void }
   );
 }
 
-function BarRow({ label, value, max, count, color = "var(--theme-primary)" }: { label: string; value: number; max: number; count?: React.ReactNode; color?: string }) {
-  return (
-    <div className="flex items-center gap-2.5 mb-2.5">
-      <span className="w-[150px] text-[12.5px] text-gray-600 dark:text-gray-300 shrink-0 truncate" title={label}>{label}</span>
-      <div className="flex-1 bg-gray-100 dark:bg-gray-700/40 rounded h-4 relative overflow-hidden">
-        <div className="h-full rounded transition-[width] duration-400" style={{ width: `${Math.min(100, (value / max) * 100)}%`, background: color, minWidth: value > 0 ? 4 : 0 }} />
-      </div>
-      <span className="w-[90px] text-[12.5px] font-bold text-gray-700 dark:text-gray-300 text-right shrink-0">
-        {count !== undefined ? count : value}
-      </span>
-    </div>
-  );
-}
-
 function PipelineFunnel({ p }: { p: MISPipeline }) {
   return (
     <div className="flex gap-0 overflow-x-auto">
@@ -83,55 +67,6 @@ function PipelineFunnel({ p }: { p: MISPipeline }) {
         );
       })}
     </div>
-  );
-}
-
-// Tiny inline sparkline — deliberately not the shared TrendLine (that
-// component's fixed 20px padding assumes a full-size card chart, not an
-// 80×28 tile; forcing it down to tile size would break its own proportions).
-function MiniSparkline({ points, color }: { points: number[]; color: string }) {
-  if (points.length < 2) return null;
-  const W = 84, H = 28;
-  const max = Math.max(...points), min = Math.min(...points);
-  const range = max - min || 1;
-  const step = W / (points.length - 1);
-  const toY = (v: number) => H - ((v - min) / range) * (H - 4) - 2;
-  const pts = points.map((v, i) => `${i * step},${toY(v)}`).join(" ");
-  return (
-    <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="shrink-0">
-      <polyline points={pts} fill="none" stroke={color} strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-type DeltaTone = "good" | "bad" | "neutral";
-const DELTA_TONE_CLASS: Record<DeltaTone, string> = {
-  good: "text-emerald-600 dark:text-emerald-400",
-  bad: "text-red-500 dark:text-red-400",
-  neutral: "text-blue-500 dark:text-blue-400",
-};
-
-function KpiTile({
-  label, value, valueStyle, badge, deltaText, deltaTone = "neutral", sparkline, sparklineColor,
-}: {
-  label: string; value: React.ReactNode; valueStyle?: React.CSSProperties;
-  badge?: { label: string; color: "green" | "amber" | "red" | "blue" };
-  deltaText?: string | null; deltaTone?: DeltaTone; sparkline?: number[]; sparklineColor?: string;
-}) {
-  return (
-    <NxCard>
-      <div className="flex items-start justify-between gap-1.5 mb-2">
-        <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400 dark:text-gray-500 leading-snug">{label}</span>
-        {badge && <span className="shrink-0"><NxBadge color={badge.color}>{badge.label}</NxBadge></span>}
-      </div>
-      <div className="text-xl font-bold text-[#1A1A2E] dark:text-[#F1F5F9] mb-2 break-words leading-tight" style={valueStyle}>{value}</div>
-      {deltaText && (
-        <div className="flex items-end justify-between gap-2">
-          <span className={`text-xs font-semibold leading-tight ${DELTA_TONE_CLASS[deltaTone]}`}>{deltaText}</span>
-          {sparkline && sparkline.length >= 2 && sparklineColor && <MiniSparkline points={sparkline} color={sparklineColor} />}
-        </div>
-      )}
-    </NxCard>
   );
 }
 
@@ -171,61 +106,11 @@ export default function SlaDashboard() {
   if (error) return <div className="m-6"><Alert type="error" message={error} /></div>;
   if (!report) return null;
 
-  const { health, pipeline, byAssignee, projectHealth, financial, drilldown, recentActivity, trend } = report;
-
-  const maxFinStage = Math.max(1, ...financial.byStage.map(s => s.amount));
+  const { pipeline, byAssignee, drilldown, recentActivity } = report;
 
   const woPipeline = pipeline.filter(p => p.entityType === "WorkOrder");
   const brPipeline = pipeline.filter(p => p.entityType === "BillRequest");
   const otherPipeline = pipeline.filter(p => p.entityType !== "WorkOrder" && p.entityType !== "BillRequest");
-
-  // ── KPI tile deltas — every series here is a real daily snapshot field
-  // from the backend (trend[].netSla/ongoing/slaBreach/breachedAmount).
-  // "Total Projects" has no historical snapshot field at all, so it
-  // intentionally gets no delta/sparkline below rather than a fabricated one.
-  const hasTrend = trend.length >= 2;
-  const first = trend[0], last = trend[trend.length - 1];
-  const healthDelta = hasTrend ? last.netSla - first.netSla : null;
-  const openDelta = hasTrend ? last.ongoing - first.ongoing : null;
-  const criticalDelta = hasTrend ? last.slaBreach - first.slaBreach : null;
-  const rangeLabel = rangeFilter === "all" ? "start" : `${rangeFilter}d ago`;
-
-  // A % change off a small baseline can read as a huge, hard-to-parse number
-  // (e.g. "1564%") even though it's mathematically correct — show the real ₹
-  // delta instead once the percentage swings past a legible range.
-  const finDeltaAbs = hasTrend ? last.breachedAmount - first.breachedAmount : null;
-  const finDeltaPctRaw = hasTrend && first.breachedAmount > 0
-    ? Math.round((finDeltaAbs! / first.breachedAmount) * 100)
-    : null;
-  const finDeltaPct = finDeltaPctRaw !== null && Math.abs(finDeltaPctRaw) <= 300 ? finDeltaPctRaw : null;
-  const finDeltaText = hasTrend
-    ? (finDeltaPct !== null
-      ? `${finDeltaPct >= 0 ? "↑" : "↓"} ${Math.abs(finDeltaPct)}% vs ${rangeLabel}`
-      : (finDeltaAbs !== 0 ? `${finDeltaAbs! >= 0 ? "↑" : "↓"} ${fmtMoney(Math.abs(finDeltaAbs!))} vs ${rangeLabel}` : null))
-    : null;
-  const finDeltaGood = finDeltaPct !== null ? finDeltaPct <= 0 : (finDeltaAbs !== null ? finDeltaAbs <= 0 : true);
-
-  const finRiskRatio = financial.pendingAmount > 0 ? financial.breachedAmount / financial.pendingAmount : 0;
-  const finBadge = finRiskRatio >= 0.3
-    ? { label: "High Risk", color: "red" as const }
-    : finRiskRatio > 0
-      ? { label: "Moderate Risk", color: "amber" as const }
-      : { label: "Low Risk", color: "green" as const };
-
-  // ── SLA Compliance: real 3-way split derived from every open workflow in `drilldown`
-  const RISK_WINDOW_MS = 24 * 60 * 60 * 1000;
-  let onTimeCount = 0, atRiskCount = 0, overdueCount = 0;
-  drilldown.forEach(d => {
-    if (d.breached) { overdueCount++; return; }
-    if (d.dueAt && new Date(d.dueAt).getTime() - Date.now() < RISK_WINDOW_MS) atRiskCount++;
-    else onTimeCount++;
-  });
-  const complianceTotal = drilldown.length || 1;
-  const compliancePct = {
-    onTime: Math.round((onTimeCount / complianceTotal) * 100),
-    atRisk: Math.round((atRiskCount / complianceTotal) * 100),
-    overdue: Math.round((overdueCount / complianceTotal) * 100),
-  };
 
   // ── Pipeline tiles — real per-stage backlog + historical on-time %
   const pipelineTiles = woPipeline.flatMap(p => p.stages).slice(0, 6);
@@ -263,67 +148,6 @@ export default function SlaDashboard() {
           </>
         }
       />
-
-      {/* ══════════════ Row 1: KPI tiles ══════════════ */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 sm:gap-4 mb-6">
-        <KpiTile
-          label="Health Score" value={`${health.score}%`} valueStyle={{ color: statusColor(health.score) }}
-          badge={{ label: health.status === "good" ? "Good" : health.status === "warning" ? "Warning" : "Critical", color: health.status === "good" ? "green" : health.status === "warning" ? "amber" : "red" }}
-          deltaText={healthDelta !== null ? `${healthDelta >= 0 ? "↑" : "↓"} ${Math.abs(healthDelta)}pt vs ${rangeLabel}` : undefined}
-          deltaTone={healthDelta !== null ? (healthDelta >= 0 ? "good" : "bad") : "neutral"}
-          sparkline={trend.map(p => p.netSla)} sparklineColor="#16a34a"
-        />
-        <KpiTile
-          label="Open Items" value={health.openWorkflows}
-          deltaText={openDelta !== null ? `${openDelta >= 0 ? "↑" : "↓"} ${Math.abs(openDelta)} vs ${rangeLabel}` : undefined}
-          deltaTone="neutral"
-          sparkline={trend.map(p => p.ongoing)} sparklineColor="#2a78d6"
-        />
-        <KpiTile
-          label="Critical Items" value={health.critical} valueStyle={{ color: "#e03b3b" }}
-          deltaText={criticalDelta !== null ? `${criticalDelta >= 0 ? "↑" : "↓"} ${Math.abs(criticalDelta)} vs ${rangeLabel}` : undefined}
-          deltaTone={criticalDelta !== null ? (criticalDelta <= 0 ? "good" : "bad") : "neutral"}
-          sparkline={trend.map(p => p.slaBreach)} sparklineColor="#eb6834"
-        />
-        <KpiTile
-          label="Financial Risk" value={fmtMoney(financial.breachedAmount)} badge={finBadge}
-          deltaText={finDeltaText ?? undefined}
-          deltaTone={finDeltaText !== null ? (finDeltaGood ? "good" : "bad") : "neutral"}
-          sparkline={trend.map(p => p.breachedAmount)} sparklineColor="#e03b3b"
-        />
-        <KpiTile label="Total Projects" value={projectHealth.length} badge={{ label: "Active", color: "blue" }} />
-      </div>
-
-      {/* ══════════════ Row 2: Financial | Compliance ══════════════ */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-5">
-        <NxCard className="h-full">
-          <PanelHead title="Financial Impact" info />
-          {/* "Breached" used to duplicate the Financial Risk KPI tile above
-              (same financial.breachedAmount, just labeled differently on the
-              same page) — dropped here since that tile already covers it. */}
-          <div className="flex gap-3.5 mb-4">
-            <div className="flex-1">
-              <div className="text-[10px] text-gray-400 dark:text-gray-500 uppercase">Pending</div>
-              <div className="text-base font-extrabold text-gray-700 dark:text-gray-300">{fmtMoney(financial.pendingAmount)}</div>
-            </div>
-          </div>
-          {financial.byStage.map(s => (
-            <BarRow key={s.stageName} label={s.stageName} value={s.amount} max={maxFinStage} count={fmtMoney(s.amount)} color="#2563eb" />
-          ))}
-        </NxCard>
-
-        <NxCard className="h-full">
-          <PanelHead title="SLA Compliance" info />
-          <Donut
-            segments={[
-              { label: "On Time", value: onTimeCount, color: "#16a34a" },
-              { label: "At Risk", value: atRiskCount, color: "#f59e0b" },
-              { label: "Overdue", value: overdueCount, color: "#e03b3b" },
-            ]}
-            size={112} centerValue={`${compliancePct.onTime}%`} centerSub="On Time" legendMode="percent"
-          />
-        </NxCard>
-      </div>
 
       {/* ══════════════ Row 3: Live Activity ══════════════ */}
       <NxCard className="mb-5">
