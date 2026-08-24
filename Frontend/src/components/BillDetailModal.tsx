@@ -217,11 +217,15 @@ export interface BillDetailRequest {
 // Read-only view of a bill request — same layout as the BillRequests page's
 // view modal, minus approve/reject/milestone actions (not applicable outside that workflow).
 export default function BillDetailModal({
-  billRequest, open, onClose,
+  billRequest, open, onClose, zIndex,
 }: {
   billRequest: BillDetailRequest | null;
   open: boolean;
   onClose: () => void;
+  // Only needed when this stacks on top of another already-open Modal (e.g.
+  // opened from a dashboard drill-down list) — see Modal.tsx's own note on
+  // why this must be a sibling render, never nested.
+  zIndex?: number;
 }) {
   if (!open || !billRequest) return null;
 
@@ -285,6 +289,7 @@ export default function BillDetailModal({
       }
       extraWide
       onClose={onClose}
+      zIndex={zIndex}
       footer={<Btn label="Close" outline onClick={onClose} />}
     >
       <div className="flex flex-col gap-3.5">

@@ -287,6 +287,9 @@ export default function FinancialView({ financial, comparisonMode, projectId, ra
   const [showAllContractors, setShowAllContractors] = useState(false);
   const [openContractor, setOpenContractor] = useState<string | null>(null);
 
+  // Every drill-down key on this dashboard is backed by RunningBill records
+  // (see dprController's financialDetails) — one uniform kind, unlike the
+  // Operational dashboard which mixes work orders and bill requests too.
   const open = (title: string, key: keyof typeof details) => setDrill({ title, key });
   const cd = comparisonMode === "none" ? "yesterday" : comparisonMode;
   const totalPending = aging.buckets.reduce((s, b) => s + b.amount, 0);
@@ -365,7 +368,7 @@ export default function FinancialView({ financial, comparisonMode, projectId, ra
       )}
 
       {drill && (
-        <DetailListModal title={drill.title} rows={details[drill.key]} onClose={() => setDrill(null)} />
+        <DetailListModal title={drill.title} rows={details[drill.key]} kind="runningBill" onClose={() => setDrill(null)} />
       )}
     </div>
   );

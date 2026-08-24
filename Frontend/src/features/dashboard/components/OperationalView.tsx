@@ -13,6 +13,7 @@ import type { WORow, BillRow } from "../utils";
 import { woProjectId } from "../utils";
 import type { ComparisonMode } from "./MiniCharts";
 import { progressBarClass, deltaText, ViewAllLink, HighlightsBanner, DetailListModal } from "./shared";
+import type { DrillKind } from "./shared";
 import Card from "../../../ui/Card";
 import Btn from "../../../ui/Btn";
 import Modal from "../../../ui/Modal";
@@ -148,6 +149,7 @@ function PendingApprovalsPanel({
         <DetailListModal
           title="Bills Waiting for Approval"
           rows={pendingBills.map(b => ({ id: b._id, label: b.billNo || "—", project: "", vendor: b.vendorName || "", value: b.amount || 0 }))}
+          kind="runningBill"
           onClose={() => setShowBills(false)}
         />
       )}
@@ -213,12 +215,12 @@ function RecentActivitiesPanel({ projectId }: { projectId: string }) {
 
 export default function OperationalView({ data, comparisonMode, projectId, rangeLabel }: { data: DPROperational; comparisonMode: ComparisonMode; projectId: string; rangeLabel: string }) {
   const { kpis, comparisons, details, funnel, siteProgressToday, projectPerformance, briefs } = data;
-  const [drill, setDrill] = useState<{ title: string; key: keyof typeof details } | null>(null);
+  const [drill, setDrill] = useState<{ title: string; key: keyof typeof details; kind: DrillKind } | null>(null);
   const [showAllProjects, setShowAllProjects] = useState(false);
   const [showAllCategories, setShowAllCategories] = useState(false);
   const [showAllSiteProgress, setShowAllSiteProgress] = useState(false);
 
-  const open = (title: string, key: keyof typeof details) => setDrill({ title, key });
+  const open = (title: string, key: keyof typeof details, kind: DrillKind) => setDrill({ title, key, kind });
 
   const { categories, loading: categoriesLoading } = useCategories();
   const { data: legacyData } = useDashboardData(false);
@@ -254,21 +256,21 @@ export default function OperationalView({ data, comparisonMode, projectId, range
         <NxStatCard
           icon={ClipboardList} label={`Work Orders (${rangeLabel})`} value={kpis.woCreatedToday}
           delta={deltaText(comparisons.woCreated[cd], comparisonMode)} deltaDown={(comparisons.woCreated[cd] ?? 0) < 0}
-          onClick={() => open("Work Orders Created", "woCreatedToday")}
+          onClick={() => open("Work Orders Created", "woCreatedToday", "workOrder")}
         />
         <NxStatCard
           icon={FileText} label={`Bills Raised (${rangeLabel})`} value={kpis.billRequestsToday}
           delta={deltaText(comparisons.billRequestsRaised[cd], comparisonMode)} deltaDown={(comparisons.billRequestsRaised[cd] ?? 0) < 0}
-          onClick={() => open("Bill Requests Raised", "billRequestsToday")}
+          onClick={() => open("Bill Requests Raised", "billRequestsToday", "billRequest")}
         />
         <NxStatCard
           icon={Banknote} label={`Payments Released (${rangeLabel})`} value={paymentsReleasedAmount >= 10_000_000 ? `₹${(paymentsReleasedAmount / 10_000_000).toFixed(2)} Cr` : `₹${(paymentsReleasedAmount / 100_000).toFixed(2)} L`}
           delta={deltaText(comparisons.paymentsReleased[cd], comparisonMode)} deltaDown={(comparisons.paymentsReleased[cd] ?? 0) < 0}
-          onClick={() => open("Payments Released", "paymentsReleasedToday")}
+          onClick={() => open("Payments Released", "paymentsReleasedToday", "runningBill")}
         />
         <NxStatCard
           icon={Hourglass} label="Pending Approvals" value={kpis.pendingApprovals}
-          onClick={() => open("Pending Approvals", "pendingApprovals")}
+          onClick={() => open("Pending Approvals", "pendingApprovals", "billRequest")}
         />
         <NxStatCard
           icon={Target} label={`Site Progress (${rangeLabel})`} value={`${avgSiteProgressPct}%`}
@@ -374,7 +376,7 @@ export default function OperationalView({ data, comparisonMode, projectId, range
       )}
 
       {drill && (
-        <DetailListModal title={drill.title} rows={details[drill.key]} onClose={() => setDrill(null)} />
+        <DetailListModal title={drill.title} rows={details[drill.key]} kind={drill.kind} onClose={() => setDrill(null)} />
       )}
     </div>
   );
