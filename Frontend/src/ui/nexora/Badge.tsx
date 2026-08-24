@@ -20,9 +20,15 @@ const COLOR_CLASSES: Record<NxBadgeColor, string> = {
   red:    "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300",
 };
 
-export default function NxBadge({ children, color = "gray" }: { children: ReactNode; color?: NxBadgeColor }) {
+export default function NxBadge({ children, color = "gray", size = "sm" }: { children: ReactNode; color?: NxBadgeColor; size?: "sm" | "md" }) {
   return (
-    <span className={["inline-flex items-center whitespace-nowrap px-2.5 py-1 rounded-full text-xs font-medium", COLOR_CLASSES[color]].join(" ")}>
+    <span
+      className={[
+        "inline-flex items-center whitespace-nowrap rounded-full font-medium",
+        size === "md" ? "px-3 py-1.5 text-sm" : "px-2.5 py-1 text-xs",
+        COLOR_CLASSES[color],
+      ].join(" ")}
+    >
       {children}
     </span>
   );

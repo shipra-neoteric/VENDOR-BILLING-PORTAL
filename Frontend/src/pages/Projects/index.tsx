@@ -356,12 +356,12 @@ function ProjectDetail({
               </div>
 
               {/* Quick indicators */}
-              <div className="flex gap-2 flex-wrap mb-5">
-                <NxBadge color="teal">{stats.activeVendors} Active Vendor{stats.activeVendors !== 1 ? "s" : ""}</NxBadge>
-                <NxBadge color="blue">{stats.woCount} Work Order{stats.woCount !== 1 ? "s" : ""}</NxBadge>
-                <NxBadge color="green">{completedCount} Completed WOs</NxBadge>
-                <NxBadge color={stats.pendingBillReqs > 0 ? "amber" : "gray"}>{stats.pendingBillReqs} Pending Bill Req{stats.pendingBillReqs !== 1 ? "s" : ""}</NxBadge>
-                <NxBadge color={stats.openBills > 0 ? "indigo" : "gray"}>{stats.openBills} Open Bill{stats.openBills !== 1 ? "s" : ""}</NxBadge>
+              <div className="flex gap-2.5 flex-wrap mb-5">
+                <NxBadge size="md" color="teal">{stats.activeVendors} Active Vendor{stats.activeVendors !== 1 ? "s" : ""}</NxBadge>
+                <NxBadge size="md" color="blue">{stats.woCount} Work Order{stats.woCount !== 1 ? "s" : ""}</NxBadge>
+                <NxBadge size="md" color="green">{completedCount} Completed WOs</NxBadge>
+                <NxBadge size="md" color={stats.pendingBillReqs > 0 ? "amber" : "gray"}>{stats.pendingBillReqs} Pending Bill Req{stats.pendingBillReqs !== 1 ? "s" : ""}</NxBadge>
+                <NxBadge size="md" color={stats.openBills > 0 ? "indigo" : "gray"}>{stats.openBills} Open Bill{stats.openBills !== 1 ? "s" : ""}</NxBadge>
               </div>
             </>
           )}
@@ -880,21 +880,20 @@ export default function Projects() {
                           </div>
                         )}
 
-                        {proj.projectType && (
-                          <div className="flex justify-end border-t border-gray-100 dark:border-gray-700/40 pt-2.5">
+                        <div className="flex items-center justify-between border-t border-gray-100 dark:border-gray-700/40 mt-2 pt-2.5">
+                          {proj.projectType ? (
                             <NxBadge color={proj.projectType === "apartment" ? "indigo" : "teal"}>
                               {proj.projectType === "apartment" ? "Apartment" : "Plot"}
                             </NxBadge>
+                          ) : <span />}
+                          <div className="flex gap-1" onClick={e => e.stopPropagation()}>
+                            <NxBtn color="icon" icon={Pencil} title="Edit" onClick={e => openEdit(proj, e)} />
+                            <NxBtn
+                              color="icon" icon={Trash2} title={subCount > 0 ? "Delete its sub-projects first" : "Delete"}
+                              disabled={subCount > 0}
+                              onClick={e => { e.stopPropagation(); setDeleteTarget(proj); }}
+                            />
                           </div>
-                        )}
-
-                        <div className="mt-2 flex justify-end gap-1" onClick={e => e.stopPropagation()}>
-                          <NxBtn color="icon" icon={Pencil} title="Edit" onClick={e => openEdit(proj, e)} />
-                          <NxBtn
-                            color="icon" icon={Trash2} title={subCount > 0 ? "Delete its sub-projects first" : "Delete"}
-                            disabled={subCount > 0}
-                            onClick={e => { e.stopPropagation(); setDeleteTarget(proj); }}
-                          />
                         </div>
                       </Card>
                     );
