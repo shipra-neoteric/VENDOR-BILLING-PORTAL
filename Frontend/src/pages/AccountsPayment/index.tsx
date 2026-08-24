@@ -97,6 +97,11 @@ interface Bill {
   tdsPercent: number;
   remarks?: string;
   status: BillStatus;
+  // Only meaningful for a bill created directly via Billing -> New Bill —
+  // its own pre-Accounts AGM/GM sign-off (see billController's
+  // manualAgmApprove/manualGmApprove), reviewed on Site Progress's Bill
+  // Requests tab, not here. A progress-driven bill is born 'approved'.
+  manualApprovalStatus?: "pending" | "pending-gm" | "approved" | "rejected";
   agmApprovedBy?: BillUser | null;
   agmApprovedAt?: string;
   verificationBy?: BillUser | null;
@@ -874,6 +879,16 @@ export default function AccountsPayment() {
 
     switch (bill.status) {
       case "draft": {
+        if (bill.manualApprovalStatus && bill.manualApprovalStatus !== "approved") {
+          const stageText = bill.manualApprovalStatus === "pending-gm" ? "GM" : bill.manualApprovalStatus === "rejected" ? null : "AGM";
+          return (
+            <MutedNote text={
+              stageText
+                ? `This manually-created bill needs ${stageText} sign-off on Site Progress's Bill Requests tab before it can be verified.`
+                : "This manually-created bill was rejected during AGM/GM sign-off — see Site Progress's Bill Requests tab."
+            } />
+          );
+        }
         if (!canVerify) return <MutedNote text="Awaiting Verification against its work order and vendor details." />;
         return (
           <div className={sectionPanelClass}>

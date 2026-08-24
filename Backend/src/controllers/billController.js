@@ -32,15 +32,18 @@ function pushHistory(bill, stage, action, by, remarks) {
   bill.approvalHistory.push({ stage, action, by, remarks: remarks || '' });
 }
 
-const POPULATE_FIELDS = ['agmApprovedBy', 'makerBy', 'verifiedBy', 'checkerBy', 'approvedBy', 'paymentInitiatedBy', 'rejectedBy', 'verificationBy', 'l1ApprovedBy', 'l2ApprovedBy', 'holdBy', 'holdReleasedBy', 'lineItems.varianceApprovedBy'];
+const POPULATE_FIELDS = ['agmApprovedBy', 'makerBy', 'verifiedBy', 'checkerBy', 'approvedBy', 'paymentInitiatedBy', 'rejectedBy', 'verificationBy', 'l1ApprovedBy', 'l2ApprovedBy', 'holdBy', 'holdReleasedBy', 'lineItems.varianceApprovedBy', 'manualAgmApprovedBy', 'manualGmApprovedBy', 'manualRejectedBy'];
 
 exports.listBills = asyncHandler(async (req, res) => {
-  const { workOrderId, vendorCode, projectId, status, search, archived } = req.query;
+  const { workOrderId, vendorCode, projectId, status, manualApprovalStatus, search, archived } = req.query;
   const filter = {};
   if (workOrderId) filter.workOrderId = workOrderId;
   if (vendorCode)  filter.vendorCode  = vendorCode;
   if (projectId)   filter.projectId   = projectId;
   if (status)      filter.status      = status;
+  if (manualApprovalStatus) {
+    filter.manualApprovalStatus = Array.isArray(manualApprovalStatus) ? { $in: manualApprovalStatus } : manualApprovalStatus;
+  }
   if (archived === 'true') filter.isArchived = true;
   else if (archived !== 'all') filter.isArchived = { $ne: true };
   // archived === 'all' → no isArchived filter, returns both
@@ -164,6 +167,11 @@ exports.createBill = asyncHandler(async (req, res) => {
     vendorCode:  payee.vendorCode,
     vendorName:  payee.vendorName,
     status:      'draft',
+    // This is exactly the manual-entry path — unlike a progress-driven bill
+    // (born already 'approved' here, having gone through BillRequest's own
+    // AGM/GM sign-off before this document existed), it needs that same
+    // sign-off now, before Accounts can verify it.
+    manualApprovalStatus: 'pending',
     createdBy:   req.user._id,
   });
 
@@ -298,6 +306,9 @@ exports.verifyBill = asyncHandler(async (req, res) => {
   if (bill.status !== 'draft') {
     return badRequest(res, `Cannot verify a bill with status '${bill.status}'`);
   }
+  if (bill.manualApprovalStatus !== 'approved') {
+    return badRequest(res, `This bill needs AGM/GM sign-off on Bill Requests before it can be verified (currently ${bill.manualApprovalStatus === 'pending-gm' ? 'pending GM approval' : bill.manualApprovalStatus}).`);
+  }
 
   const adjustmentAmount = req.body.adjustmentAmount != null ? Number(req.body.adjustmentAmount) : 0;
   if (adjustmentAmount !== 0 && !String(req.body.adjustmentRemark || '').trim()) {
@@ -346,6 +357,87 @@ exports.verifyBill = asyncHandler(async (req, res) => {
   });
 
   success(res, { bill }, 'Verified — ready for L1 AGM approval');
+});
+
+// ── Pre-Accounts AGM/GM sign-off for manually-created bills ─────────────
+// Mirrors billRequestController's agmApprove/gmApprove/reject, just without
+// re-deriving anything from a Work Order — a manual bill's amount/lineItems
+// were already decided when it was created, so there's nothing to
+// recompute here, only to sign off on.
+exports.manualAgmApprove = asyncHandler(async (req, res) => {
+  const bill = await RunningBill.findById(req.params.id);
+  if (!bill) return notFound(res, 'Bill not found');
+  if (bill.manualApprovalStatus !== 'pending') {
+    return badRequest(res, `This bill's AGM/GM sign-off is already ${bill.manualApprovalStatus}`);
+  }
+
+  bill.manualAgmApprovedBy = req.user._id;
+  bill.manualAgmApprovedAt = new Date();
+  bill.manualApprovalStatus = 'pending-gm';
+  pushHistory(bill, 'manual-agm', 'approved', req.user._id, req.body.remarks || '');
+  await bill.save();
+  await bill.populate('manualAgmApprovedBy', 'name role');
+
+  await logAudit({
+    action: 'APPROVE', module: MODULE, user: req.user,
+    description: `AGM signed off on manually-created bill ${bill.billNo} — forwarded to GM`,
+    entityType: 'RunningBill', entityId: bill._id, entityLabel: bill.billNo,
+  });
+
+  success(res, { bill }, 'AGM approved — forwarded to GM');
+});
+
+exports.manualGmApprove = asyncHandler(async (req, res) => {
+  const bill = await RunningBill.findById(req.params.id);
+  if (!bill) return notFound(res, 'Bill not found');
+  if (bill.manualApprovalStatus !== 'pending-gm') {
+    return badRequest(res, `This bill's AGM/GM sign-off is already ${bill.manualApprovalStatus}`);
+  }
+
+  bill.manualGmApprovedBy = req.user._id;
+  bill.manualGmApprovedAt = new Date();
+  bill.manualApprovalStatus = 'approved';
+  pushHistory(bill, 'manual-gm', 'approved', req.user._id, req.body.remarks || '');
+  await bill.save();
+  await bill.populate('manualGmApprovedBy', 'name role');
+
+  await logAudit({
+    action: 'APPROVE', module: MODULE, user: req.user,
+    description: `GM signed off on manually-created bill ${bill.billNo} — ready for Accounts to verify`,
+    entityType: 'RunningBill', entityId: bill._id, entityLabel: bill.billNo,
+  });
+
+  success(res, { bill }, 'GM approved — ready for Accounts to verify');
+});
+
+exports.manualReject = asyncHandler(async (req, res) => {
+  const bill = await RunningBill.findById(req.params.id);
+  if (!bill) return notFound(res, 'Bill not found');
+  if (!['pending', 'pending-gm'].includes(bill.manualApprovalStatus)) {
+    return badRequest(res, `This bill's AGM/GM sign-off is already ${bill.manualApprovalStatus}`);
+  }
+  const reason = req.body.reason || 'No reason provided';
+
+  bill.manualApprovalStatus = 'rejected';
+  bill.manualRejectedBy = req.user._id;
+  bill.manualRejectReason = reason;
+  // Terminal — same as a draft bill rejected in Accounts Payment (rejectBill
+  // above); nothing downstream has happened yet for a bill still awaiting
+  // this sign-off, so there's no WO progress or advance recovery to unwind
+  // beyond what createBill already applied at creation time.
+  bill.status = 'rejected';
+  bill.rejectedBy = req.user._id;
+  bill.rejectReason = reason;
+  pushHistory(bill, bill.manualAgmApprovedAt ? 'manual-gm' : 'manual-agm', 'rejected', req.user._id, reason);
+  await bill.save();
+
+  await logAudit({
+    action: 'REJECT', module: MODULE, user: req.user,
+    description: `AGM/GM rejected manually-created bill ${bill.billNo} — ${reason}`,
+    entityType: 'RunningBill', entityId: bill._id, entityLabel: bill.billNo,
+  });
+
+  success(res, { bill }, 'Bill rejected');
 });
 
 // L1 AGM approval — pure approve-and-forward.

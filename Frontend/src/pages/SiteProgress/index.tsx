@@ -115,6 +115,16 @@ interface BillRequestRow {
   isArchived?: boolean;
 }
 
+// A bill created directly via Billing -> New Bill, not from DRI progress —
+// carries no BillRequest of its own, so it needs this separate pre-Accounts
+// AGM/GM sign-off tracked right on the bill itself (see billController's
+// manualAgmApprove/manualGmApprove/manualReject).
+interface ManualBillRow {
+  _id: string; billNo: string; amount: number;
+  projectName?: string; vendorName?: string; billDate: string; createdAt: string;
+  manualApprovalStatus: "pending" | "pending-gm" | "approved" | "rejected";
+}
+
 // ── Helpers ────────────────────────────────────────────────────────────────────
 const fmt  = (n: number) => "₹" + (n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 // Per-unit rates are fractional far more often than totals are — rounding
@@ -312,6 +322,7 @@ export default function SiteProgress() {
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [allWOs,   setAllWOs]   = useState<WORow[]>([]);
   const [billReqs, setBillReqs] = useState<BillRequestRow[]>([]);
+  const [manualBills, setManualBills] = useState<ManualBillRow[]>([]);
   const [driList,  setDriList]  = useState<DriOption[]>([]);
   const [kpis, setKpis] = useState({ progressEntriesToday: 0, drisActiveToday: 0, projectsActiveToday: 0 });
 
@@ -331,13 +342,16 @@ export default function SiteProgress() {
       apiClient.get("/bill-requests"),
       apiClient.get("/auth/users?role=site-dri"),
       apiClient.get("/dpr"),
+      apiClient.get("/bills", { params: { manualApprovalStatus: "pending" } }),
+      apiClient.get("/bills", { params: { manualApprovalStatus: "pending-gm" } }),
     ])
-      .then(([actR, projR, woR, brR, driR, dprR]) => {
+      .then(([actR, projR, woR, brR, driR, dprR, manualPendingR, manualGmR]) => {
         setActivity(actR.data.events ?? []);
         setProjects(projR.data.projects ?? []);
         setAllWOs(woR.data.workOrders ?? []);
         setBillReqs(brR.data.billRequests ?? []);
         setDriList(driR.data.users ?? []);
+        setManualBills([...(manualPendingR.data.bills ?? []), ...(manualGmR.data.bills ?? [])]);
         const k = dprR.data?.operational?.kpis || {};
         setKpis({
           progressEntriesToday: k.progressEntriesToday || 0,
@@ -352,6 +366,8 @@ export default function SiteProgress() {
 
   const pendingAgmReqs = useMemo(() => billReqs.filter(r => r.status === "pending" && !r.isArchived), [billReqs]);
   const pendingGmReqs  = useMemo(() => billReqs.filter(r => r.status === "pending-gm" && !r.isArchived), [billReqs]);
+  const pendingManualAgm = useMemo(() => manualBills.filter(b => b.manualApprovalStatus === "pending"), [manualBills]);
+  const pendingManualGm  = useMemo(() => manualBills.filter(b => b.manualApprovalStatus === "pending-gm"), [manualBills]);
 
   const projectWOs = useMemo(
     () => selProjectId ? allWOs.filter(wo => getProjId(wo) === selProjectId) : [],
@@ -612,6 +628,38 @@ export default function SiteProgress() {
     finally { setSaving(false); }
   };
 
+  // ── Manual bills (Billing -> New Bill) awaiting their own AGM/GM sign-off —
+  // same reviewers, same permissions, just a plain approve (no retention/GST/
+  // advance to decide — those were already set when the bill was created).
+  const [manualApproveTarget, setManualApproveTarget] = useState<ManualBillRow | null>(null);
+  const [manualRejectTarget,  setManualRejectTarget]  = useState<ManualBillRow | null>(null);
+  const [manualRejectReason,  setManualRejectReason]  = useState("");
+
+  const handleManualApprove = async (bill: ManualBillRow) => {
+    setSaving(true);
+    try {
+      const endpoint = bill.manualApprovalStatus === "pending" ? "manual-agm-approve" : "manual-gm-approve";
+      const res = await apiClient.patch(`/bills/${bill._id}/${endpoint}`);
+      toast.success(res.data.message || "Approved");
+      setManualApproveTarget(null);
+      load();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || "Failed to approve");
+    } finally { setSaving(false); }
+  };
+  const handleManualReject = async () => {
+    if (!manualRejectTarget) return;
+    setSaving(true);
+    try {
+      await apiClient.patch(`/bills/${manualRejectTarget._id}/manual-reject`, { reason: manualRejectReason });
+      toast.success("Bill rejected");
+      setManualRejectTarget(null); setManualRejectReason("");
+      load();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || "Failed to reject");
+    } finally { setSaving(false); }
+  };
+
   const [archiveTarget, setArchiveTarget] = useState<BillRequestRow | null>(null);
   const [archiving, setArchiving] = useState(false);
 
@@ -695,12 +743,12 @@ export default function SiteProgress() {
       {/* ── KPI flashcards ── */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 sm:gap-4 mb-5">
         <NxStatCard
-          label="Pending L1 (AGM)" value={pendingAgmReqs.length} icon={Clock}
+          label="Pending L1 (AGM)" value={pendingAgmReqs.length + pendingManualAgm.length} icon={Clock}
           active={mainTab === "requests" && reqTab === "pending"}
           onClick={() => { setMainTab("requests"); setReqTab(mainTab === "requests" && reqTab === "pending" ? "all" : "pending"); }}
         />
         <NxStatCard
-          label="Pending L2 (GM)" value={pendingGmReqs.length} icon={Clock}
+          label="Pending L2 (GM)" value={pendingGmReqs.length + pendingManualGm.length} icon={Clock}
           active={mainTab === "requests" && reqTab === "pending-gm"}
           onClick={() => { setMainTab("requests"); setReqTab(mainTab === "requests" && reqTab === "pending-gm" ? "all" : "pending-gm"); }}
         />
@@ -720,8 +768,8 @@ export default function SiteProgress() {
               label: (
                 <span className="inline-flex items-center gap-1.5">
                   Bill Requests
-                  {(pendingAgmReqs.length + pendingGmReqs.length) > 0 && (
-                    <NxBadge color="amber">{pendingAgmReqs.length + pendingGmReqs.length}</NxBadge>
+                  {(pendingAgmReqs.length + pendingGmReqs.length + pendingManualAgm.length + pendingManualGm.length) > 0 && (
+                    <NxBadge color="amber">{pendingAgmReqs.length + pendingGmReqs.length + pendingManualAgm.length + pendingManualGm.length}</NxBadge>
                   )}
                 </span>
               ),
@@ -881,6 +929,56 @@ export default function SiteProgress() {
               <UISwitch checked={showArchived} onChange={setShowArchived} onLabel="Archived" offLabel="Show Archived" />
             </div>
           </div>
+
+          {/* Manual bills (Billing -> New Bill) — no BillRequest of their own,
+              so they're never in billReqs above; this is their own AGM/GM
+              sign-off, tracked directly on the bill. */}
+          {(reqTab === "pending" ? pendingManualAgm : reqTab === "pending-gm" ? pendingManualGm : reqTab === "all" ? manualBills : []).length > 0 && (
+            <div className="mb-5">
+              <div className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">
+                Manual Bills — Billing → New Bill
+              </div>
+              <Table>
+                <Thead>
+                  <Tr>
+                    <Th>Bill No</Th>
+                    <Th>Project</Th>
+                    <Th>Vendor</Th>
+                    <Th>Amount</Th>
+                    <Th>Date</Th>
+                    <Th>Stage</Th>
+                    <Th>Actions</Th>
+                  </Tr>
+                </Thead>
+                <Tbody>
+                  {(reqTab === "pending" ? pendingManualAgm : reqTab === "pending-gm" ? pendingManualGm : manualBills).map(b => (
+                    <Tr key={b._id}>
+                      <Td><span className="text-primary font-bold text-[13px]">{b.billNo}</span></Td>
+                      <Td>{b.projectName || "—"}</Td>
+                      <Td>{b.vendorName || "—"}</Td>
+                      <Td className="font-mono">{fmt(b.amount)}</Td>
+                      <Td>{dayjs(b.billDate || b.createdAt).format("DD MMM YYYY")}</Td>
+                      <Td><NxBadge color={b.manualApprovalStatus === "pending-gm" ? "blue" : "orange"}>{b.manualApprovalStatus === "pending-gm" ? "Pending L2" : "Pending L1"}</NxBadge></Td>
+                      <Td>
+                        <div className="flex items-center gap-1">
+                          {b.manualApprovalStatus === "pending" && canAgmApprove && (
+                            <NxBtn color="icon-green" title="AGM Approve" icon={Check} onClick={() => setManualApproveTarget(b)} />
+                          )}
+                          {b.manualApprovalStatus === "pending-gm" && canGmApprove && (
+                            <NxBtn color="icon-green" title="GM Approve" icon={Check} onClick={() => setManualApproveTarget(b)} />
+                          )}
+                          {canRejectAny && (
+                            <NxBtn color="icon-red" title="Reject" icon={X} onClick={() => setManualRejectTarget(b)} />
+                          )}
+                        </div>
+                      </Td>
+                    </Tr>
+                  ))}
+                </Tbody>
+              </Table>
+            </div>
+          )}
+
           {filteredReqs.length === 0 ? (
             <EmptyState title={`No ${reqTab === "all" ? "" : STATUS_CFG[reqTab]?.label.toLowerCase() || reqTab} bill requests`} />
           ) : (
@@ -1416,6 +1514,33 @@ export default function SiteProgress() {
           }
         >
           <Field textarea label="Reason for rejection (optional)" placeholder="Reason for rejection (optional)" value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} />
+        </Modal>
+      )}
+
+      {manualApproveTarget && (
+        <ConfirmModal
+          title={manualApproveTarget.manualApprovalStatus === "pending" ? "AGM Approve this bill?" : "GM Approve this bill?"}
+          message={`${manualApproveTarget.billNo} (${fmt(manualApproveTarget.amount)}) will move ${manualApproveTarget.manualApprovalStatus === "pending" ? "to GM for final sign-off" : "to Accounts for verification"}.`}
+          confirmLabel="Approve"
+          loading={saving}
+          onConfirm={() => handleManualApprove(manualApproveTarget)}
+          onCancel={() => setManualApproveTarget(null)}
+        />
+      )}
+
+      {manualRejectTarget && (
+        <Modal
+          icon={XCircle}
+          title={`Reject ${manualRejectTarget.billNo}`}
+          onClose={() => { setManualRejectTarget(null); setManualRejectReason(""); }}
+          footer={
+            <div className="flex justify-end gap-2">
+              <Btn outline label="Cancel" onClick={() => { setManualRejectTarget(null); setManualRejectReason(""); }} />
+              <Btn color="red" label="Confirm Rejection" loading={saving} onClick={handleManualReject} />
+            </div>
+          }
+        >
+          <Field textarea label="Reason for rejection" placeholder="Why is this bill being rejected?" value={manualRejectReason} onChange={(e) => setManualRejectReason(e.target.value)} />
         </Modal>
       )}
     </div>

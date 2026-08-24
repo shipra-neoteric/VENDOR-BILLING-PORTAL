@@ -180,6 +180,23 @@ const runningBillSchema = new mongoose.Schema(
     rejectedBy:  { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     rejectReason:{ type: String },
 
+    // ── Pre-Accounts AGM/GM sign-off ────────────────────────────
+    // Only meaningful for bills created directly via Billing -> New Bill
+    // (billController.createBill) — a progress-driven bill already got this
+    // exact sign-off via BillRequest.agmApprove/gmApprove before this
+    // document even existed, so it's born 'approved' here and this whole
+    // block stays untouched for it. verifyBill refuses to act on a manual
+    // bill until this reaches 'approved', so Accounts can't touch it before
+    // AGM then GM have — the same order a progress-driven bill already goes
+    // through, just happening here instead of on a separate BillRequest.
+    manualApprovalStatus: { type: String, enum: ['pending', 'pending-gm', 'approved', 'rejected'], default: 'approved' },
+    manualAgmApprovedBy:  { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    manualAgmApprovedAt:  { type: Date },
+    manualGmApprovedBy:   { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    manualGmApprovedAt:   { type: Date },
+    manualRejectedBy:     { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    manualRejectReason:   { type: String, default: '' },
+
     // Set by the L2 Director's Hold action (only from 'approved') and left
     // in place — not cleared — by releaseHold, so "was this ever held" stays
     // visible from the document alone without hydrating approvalHistory.

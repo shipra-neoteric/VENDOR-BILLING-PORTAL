@@ -62,6 +62,7 @@ interface Bill {
   tdsAmount?: number;
   remarks?: string;
   status: string;
+  manualApprovalStatus?: "pending" | "pending-gm" | "approved" | "rejected";
   billType?: string;
   createdAt?: string;
 }
@@ -285,7 +286,14 @@ export default function Billing() {
                     <Td>{r.vendorName || <span className="text-gray-300 dark:text-gray-600">—</span>}</Td>
                     <Td>{r.projectName || <span className="text-gray-300 dark:text-gray-600">—</span>}</Td>
                     <Td className="text-right font-bold">{fmt(netAfterAdvance(r))}</Td>
-                    <Td><NxBadge color={BILL_STATUS_BADGE_COLOR[r.status] ?? "gray"}>{BILL_STATUS_LABEL[r.status] || r.status}</NxBadge></Td>
+                    <Td>
+                      <div className="flex items-center gap-1.5">
+                        <NxBadge color={BILL_STATUS_BADGE_COLOR[r.status] ?? "gray"}>{BILL_STATUS_LABEL[r.status] || r.status}</NxBadge>
+                        {r.manualApprovalStatus === "pending" && <NxBadge color="orange">Pending L1 (AGM)</NxBadge>}
+                        {r.manualApprovalStatus === "pending-gm" && <NxBadge color="orange">Pending L2 (GM)</NxBadge>}
+                        {r.manualApprovalStatus === "rejected" && <NxBadge color="red">AGM/GM Rejected</NxBadge>}
+                      </div>
+                    </Td>
                     <Td>{r.billDate ? dayjs(r.billDate).format("DD MMM YYYY") : "—"}</Td>
                     <Td onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center gap-1">
