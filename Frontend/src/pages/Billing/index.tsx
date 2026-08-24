@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Plus, Receipt, FileText, Ban, CheckCircle2 } from "lucide-react";
+import { Plus, Receipt, FileText, Ban, CheckCircle2, Eye, Download } from "lucide-react";
+import toast from "react-hot-toast";
 import dayjs from "dayjs";
 import type { Dayjs } from "dayjs";
 import apiClient from "../../services/apiClient";
+import { printBill } from "../../shared/utils/printBill";
+import type { Contractor } from "../../types/VendorBilling";
 import PageHeader from "../../ui/PageHeader";
 import NxBtn from "../../ui/nexora/Btn";
 import NxBadge from "../../ui/nexora/Badge";
@@ -114,6 +117,28 @@ export default function Billing() {
   const [dateTo, setDateTo] = useState<Dayjs | null>(null);
 
   const [viewBillId, setViewBillId] = useState<string | null>(null);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+
+  // Same print-ready template Accounts Payment/Site Progress already use for
+  // a bill — opens a new window and triggers window.print(), where "Save as
+  // PDF" is the actual "download". The list here already carries every field
+  // the template needs (lineItems, gstPercent, etc. — see the Bill interface
+  // above), so only the contractor's bank details need a fresh lookup.
+  async function handleDownload(bill: Bill) {
+    setDownloadingId(bill.id);
+    try {
+      let contractor: Contractor | null = null;
+      if (bill.vendorCode) {
+        const res = await apiClient.get<{ contractors: Contractor[] }>("/contractors", { params: { search: bill.vendorCode } });
+        contractor = res.data.contractors.find((c) => c.vendorCode === bill.vendorCode) ?? null;
+      }
+      printBill(bill, contractor, bill.status === "paid" ? "post" : "pre");
+    } catch {
+      toast.error("Failed to prepare the bill for download");
+    } finally {
+      setDownloadingId(null);
+    }
+  }
 
   const loadBills = useCallback(() => {
     setLoading(true);
@@ -242,6 +267,7 @@ export default function Billing() {
                   <Th className="text-right">Amount</Th>
                   <Th>Status</Th>
                   <Th>Date</Th>
+                  <Th>Actions</Th>
                 </Tr>
               </Thead>
               <Tbody>
@@ -261,6 +287,12 @@ export default function Billing() {
                     <Td className="text-right font-bold">{fmt(netAfterAdvance(r))}</Td>
                     <Td><NxBadge color={BILL_STATUS_BADGE_COLOR[r.status] ?? "gray"}>{BILL_STATUS_LABEL[r.status] || r.status}</NxBadge></Td>
                     <Td>{r.billDate ? dayjs(r.billDate).format("DD MMM YYYY") : "—"}</Td>
+                    <Td onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center gap-1">
+                        <NxBtn color="icon-blue" title="View" icon={Eye} onClick={() => setViewBillId(r.id)} />
+                        <NxBtn color="icon-pink" title="Download" icon={Download} loading={downloadingId === r.id} onClick={() => handleDownload(r)} />
+                      </div>
+                    </Td>
                   </Tr>
                 ))}
               </Tbody>
