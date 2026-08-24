@@ -127,7 +127,7 @@ export default function BillRequests() {
 
   useEffect(() => { load(tab === "all" ? undefined : tab, showArchived); }, [tab, showArchived]);
 
-  // Deep link from other pages (e.g. the MIS Dashboard's Ongoing Workflows
+  // Deep link from other pages (e.g. the SLA Report's Ongoing Workflows
   // table) — ?open=<billRequestId> auto-opens that request's view modal
   // once the list has loaded.
   useEffect(() => {

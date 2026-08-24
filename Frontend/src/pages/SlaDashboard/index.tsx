@@ -137,8 +137,8 @@ export default function SlaDashboard() {
   return (
     <div>
       <PageHeader
-        title="MIS Dashboard"
-        subtitle="Real-time overview of project performance, SLA health, and financial impact."
+        title="SLA Report"
+        subtitle="Real-time overview of work order and bill request SLA compliance across every stage."
         actions={
           <>
             <SelectFilter value={entityFilter} onChange={v => setEntityFilter(v as WorkflowEntityType | "all")}

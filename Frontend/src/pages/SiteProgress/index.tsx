@@ -468,7 +468,7 @@ export default function SiteProgress() {
   const [viewReq, setViewReq] = useState<BillRequestRow | null>(null);
   const [printingReqId, setPrintingReqId] = useState<string | null>(null);
 
-  // Deep link from other pages (e.g. the MIS Dashboard's Ongoing Workflows
+  // Deep link from other pages (e.g. the SLA Report's Ongoing Workflows
   // table) — ?open=<billRequestId> switches to the Requests tab and opens
   // that request's view modal once the list has loaded.
   useEffect(() => {
