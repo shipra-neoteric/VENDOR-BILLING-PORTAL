@@ -31,11 +31,11 @@ const APPLY = process.argv.includes('--apply');
   const stuck = await WorkflowInstance.find({ entityType: 'WorkOrder', status: 'in-progress' });
   console.log(`Found ${stuck.length} in-progress WorkOrder SLA instance(s) to check.\n`);
 
-  let cancelledOrphan = 0, cancelledWO = 0, cancelledStaleCycle = 0, reconciled = 0, untouched = 0;
+  let cancelledOrphan = 0, cancelledWO = 0, cancelledStaleCycle = 0, cancelledLegacyApproved = 0, reconciled = 0, untouched = 0;
 
   for (const inst of stuck) {
     const wo = await WorkOrder.findById(inst.entityId)
-      .select('workOrderNo approvalStatus status makerBy makerAt checkerBy checkerAt approverBy approverAt finalApprovedBy finalApprovedAt cancelledAt approvalHistory');
+      .select('workOrderNo approvalStatus status createdAt makerBy makerAt checkerBy checkerAt approverBy approverAt finalApprovedBy finalApprovedAt cancelledAt approvalHistory');
 
     if (!wo) {
       console.log(`[orphan] ${inst.entityLabel} — work order no longer exists, cancelling instance`);
@@ -108,6 +108,22 @@ const APPLY = process.argv.includes('--apply');
       cancelledStaleCycle++;
     }
 
+    // Grandfathered / legacy-approved work order — approvalStatus is
+    // 'approved' but NONE of the four real per-stage timestamps were ever
+    // set, meaning it was approved outside the real digital flow entirely
+    // (a one-off migration, or created already-approved) rather than by
+    // walking through submit/checker/approver/final-approve. There is no
+    // genuine per-stage timing to reconstruct for these, so the honest fix
+    // is to close the tracking record rather than leave it stuck forever
+    // or invent fake stage-by-stage history.
+    const hasAnyRealTimestamp = realTimes.some(Boolean);
+    if (wo.approvalStatus === 'approved' && inst.status === 'in-progress' && !hasAnyRealTimestamp) {
+      inst.status = 'cancelled';
+      inst.completedAt = wo.createdAt || new Date();
+      changed = true;
+      cancelledLegacyApproved++;
+    }
+
     if (changed) {
       console.log(`[reconciled] ${wo.workOrderNo} — real status '${wo.approvalStatus}', instance now stage ${inst.currentStageIndex} (${inst.status})`);
       if (APPLY) await inst.save();
@@ -118,7 +134,7 @@ const APPLY = process.argv.includes('--apply');
   }
 
   console.log('\n── Summary (pass 1 — advance/close stuck instances) ──');
-  console.log({ total: stuck.length, reconciled, cancelledStaleCycle, cancelledWO, cancelledOrphan, untouched });
+  console.log({ total: stuck.length, reconciled, cancelledStaleCycle, cancelledLegacyApproved, cancelledWO, cancelledOrphan, untouched });
 
   // ── Pass 2: repair completedBy on stages already marked 'completed' —
   // covers both real approvals that predate this whole fix and stages this
