@@ -39,7 +39,7 @@ import StatusBadge from "../../ui/StatusBadge";
 import WorkOrderDetailView from "../../components/WorkOrderDetailView";
 import ContractorDetailView from "../../components/ContractorDetailView";
 import type { WorkOrder, Contractor } from "../../types/VendorBilling";
-import { printBill } from "../../shared/utils/printBill";
+import { printBill, resolvePrintParty } from "../../shared/utils/printBill";
 import { billFinancials } from "../../shared/utils/billMath";
 import { BILL_TYPE_CFG } from "../../shared/constants/billOptions";
 
@@ -638,11 +638,11 @@ export default function AccountsPayment() {
   // ── Download / Print ─────────────────────────────────────────
 
   const downloadBill = useCallback(
-    (bill: Bill, mode: 'pre' | 'post' = 'pre') => {
-      const contractor = contractors.find((c) => c.vendorCode === bill.vendorCode) ?? null;
+    async (bill: Bill, mode: 'pre' | 'post' = 'pre') => {
+      const contractor = await resolvePrintParty(bill.vendorCode);
       printBill(bill, contractor, mode);
     },
-    [contractors]
+    []
   );
 
   // ── Drawer open/close ─────────────────────────────────────────

@@ -572,9 +572,15 @@ exports.sendToTms = asyncHandler(async (req, res) => {
   bill.tmsLastAttemptAt = new Date();
 
   try {
+    // bill.vendorCode is either a Contractor's vendorCode or a Consultant's
+    // consultantCode (professional-services work orders) — both carry the
+    // same bank-detail field names, so whichever collection matches is fine.
     const Contractor = require('../models/Contractor');
-    const contractor = bill.vendorCode ? await Contractor.findOne({ vendorCode: bill.vendorCode }) : null;
-    await sendBill(bill, contractor);
+    const Consultant = require('../models/Consultant');
+    const payee = bill.vendorCode
+      ? (await Contractor.findOne({ vendorCode: bill.vendorCode })) || (await Consultant.findOne({ consultantCode: bill.vendorCode }))
+      : null;
+    await sendBill(bill, payee);
   } catch (err) {
     bill.tmsLastError = err.message || 'Failed to reach TMS';
     pushHistory(bill, 'tms-handoff', 'send-failed', req.user._id, bill.tmsLastError);

@@ -1,8 +1,56 @@
 import dayjs from "dayjs";
-import type { Contractor } from "../../types/VendorBilling";
+import apiClient from "../../services/apiClient";
+import type { Contractor, Consultant } from "../../types/VendorBilling";
 import { BILL_STATUS_LABEL } from "../constants/billStatus";
 import type { BillStatus } from "../constants/billStatus";
 import { billFinancials } from "./billMath";
+
+// printBill only ever learned the Contractor shape — a Consultant (billed for
+// professional-services work orders) carries the exact same bank/tax fields
+// under different identity field names (firmName vs companyName, etc.), so
+// it's adapted into a Contractor-shaped object here rather than teaching the
+// print template a second party shape.
+function consultantAsContractor(c: Consultant): Contractor {
+  return {
+    id: c.id,
+    vendorCode: c.consultantCode,
+    companyName: c.firmName,
+    ownerName: c.principalName,
+    address: c.address || "",
+    mobile: c.mobile,
+    alternateMobile: c.alternateMobile,
+    email: c.email,
+    accountHolderName: c.accountHolderName || "",
+    bankName: c.bankName || "",
+    accountNumber: c.accountNumber || "",
+    ifscCode: c.ifscCode || "",
+    branchName: c.branchName || "",
+    gstNumber: c.gstNumber,
+    panNumber: c.panNumber,
+    aadhaarNumber: c.aadhaarNumber,
+    workTypes: [],
+    status: c.status,
+  };
+}
+
+// A bill's vendor is either a Contractor or a Consultant — tries Contractor
+// first (the common case), falls back to Consultant (adapted above) so a
+// consultant bill's print/PDF gets real bank details too, instead of the
+// blank "Bank Details" section a Contractor-only lookup silently produces.
+export async function resolvePrintParty(vendorCode: string | undefined): Promise<Contractor | null> {
+  if (!vendorCode) return null;
+  try {
+    const cRes = await apiClient.get<{ contractors: Contractor[] }>("/contractors", { params: { search: vendorCode } });
+    const contractor = cRes.data.contractors.find((c) => c.vendorCode === vendorCode);
+    if (contractor) return contractor;
+  } catch { /* fall through to the consultant lookup below */ }
+  try {
+    const sRes = await apiClient.get<{ consultants: Consultant[] }>("/consultants", { params: { search: vendorCode } });
+    const consultant = sRes.data.consultants.find((c) => c.consultantCode === vendorCode);
+    if (consultant) return consultantAsContractor(consultant);
+  } catch { /* no match in either collection */ }
+  return null;
+}
 
 export interface PrintableBillUser {
   _id?: string;

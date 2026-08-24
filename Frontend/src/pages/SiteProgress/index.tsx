@@ -15,7 +15,7 @@ import { selectableProjects } from "../../utils/projectOptions";
 import DateRangeFilter, { inDateRange } from "../../components/DateRangeFilter";
 import WorkflowInstanceStepper from "../../components/WorkflowInstanceStepper";
 import type { WorkflowInstance } from "../../types/Workflow";
-import { printBill } from "../../shared/utils/printBill";
+import { printBill, resolvePrintParty } from "../../shared/utils/printBill";
 import type { PrintableBill } from "../../shared/utils/printBill";
 import type { Contractor } from "../../types/VendorBilling";
 import { billFinancials } from "../../shared/utils/billMath";
@@ -260,11 +260,7 @@ function ApprovalHistoryTimeline({ history }: { history?: ApprovalHistoryEntry[]
 // br.agmApprovedBy already, correctly, reflects.
 async function printBillRequest(br: BillRequestRow) {
   try {
-    let contractor: Contractor | null = null;
-    if (br.vendorCode) {
-      const cRes = await apiClient.get<{ contractors: Contractor[] }>("/contractors", { params: { search: br.vendorCode } });
-      contractor = cRes.data.contractors.find(c => c.vendorCode === br.vendorCode) ?? null;
-    }
+    const contractor = await resolvePrintParty(br.vendorCode);
 
     if (br.billId?._id) {
       const bRes = await apiClient.get<{ bill: PrintableBill }>(`/bills/${br.billId._id}`);

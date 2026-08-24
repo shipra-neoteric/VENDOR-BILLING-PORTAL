@@ -4,8 +4,7 @@ import toast from "react-hot-toast";
 import dayjs from "dayjs";
 import type { Dayjs } from "dayjs";
 import apiClient from "../../services/apiClient";
-import { printBill } from "../../shared/utils/printBill";
-import type { Contractor } from "../../types/VendorBilling";
+import { printBill, resolvePrintParty } from "../../shared/utils/printBill";
 import PageHeader from "../../ui/PageHeader";
 import NxBtn from "../../ui/nexora/Btn";
 import NxBadge from "../../ui/nexora/Badge";
@@ -124,15 +123,12 @@ export default function Billing() {
   // a bill — opens a new window and triggers window.print(), where "Save as
   // PDF" is the actual "download". The list here already carries every field
   // the template needs (lineItems, gstPercent, etc. — see the Bill interface
-  // above), so only the contractor's bank details need a fresh lookup.
+  // above), so only the vendor's (Contractor or Consultant) bank details need
+  // a fresh lookup.
   async function handleDownload(bill: Bill) {
     setDownloadingId(bill.id);
     try {
-      let contractor: Contractor | null = null;
-      if (bill.vendorCode) {
-        const res = await apiClient.get<{ contractors: Contractor[] }>("/contractors", { params: { search: bill.vendorCode } });
-        contractor = res.data.contractors.find((c) => c.vendorCode === bill.vendorCode) ?? null;
-      }
+      const contractor = await resolvePrintParty(bill.vendorCode);
       printBill(bill, contractor, bill.status === "paid" ? "post" : "pre");
     } catch {
       toast.error("Failed to prepare the bill for download");
