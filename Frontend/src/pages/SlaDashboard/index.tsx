@@ -85,6 +85,20 @@ export default function SlaDashboard() {
   const [wfTypeFilter, setWfTypeFilter] = useState<WorkflowEntityType | "all">("all");
   const [wfStatusFilter, setWfStatusFilter] = useState<"all" | "overdue" | "ontrack">("all");
   const [wfAssigneeFilter, setWfAssigneeFilter] = useState<string>("all");
+  // Set by clicking a Work Order/Bill Request SLA tile above — narrows the
+  // Ongoing Workflows table below to just that one stage.
+  const [wfStageFilter, setWfStageFilter] = useState<string>("all");
+
+  // Clicking a pipeline-stage tile jumps down to the Ongoing Workflows table
+  // with entity type + stage pre-applied, so "45 pending at L1" and the rows
+  // you land on on always agree.
+  const openStageDetail = (entityType: WorkflowEntityType, stageName: string) => {
+    setWfTypeFilter(entityType);
+    setWfStageFilter(stageName);
+    setWfStatusFilter("all");
+    setWfAssigneeFilter("all");
+    document.getElementById("detail-workflows")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 
   const load = useCallback(async () => {
     setLoading(true); setError("");
@@ -112,7 +126,7 @@ export default function SlaDashboard() {
   const brPipeline = pipeline.filter(p => p.entityType === "BillRequest");
   const otherPipeline = pipeline.filter(p => p.entityType !== "WorkOrder" && p.entityType !== "BillRequest");
 
-  // ── Pipeline tiles — real per-stage backlog + historical on-time %
+  // ── Pipeline tiles — real per-stage backlog (how many are sitting there right now)
   const pipelineTiles = woPipeline.flatMap(p => p.stages).slice(0, 6);
   const brPipelineTiles = brPipeline.flatMap(p => p.stages).slice(0, 6);
   const billRequestListPath = user?.role === "site-dri" ? "/bill-requests" : "/site-progress";
@@ -128,6 +142,7 @@ export default function SlaDashboard() {
   const wfAssigneeOptions = [...new Set(drilldown.map(d => d.assignedTo))].sort((a, b) => a.localeCompare(b));
   const filteredDrilldown = drilldown.filter(d => {
     if (wfTypeFilter !== "all" && d.entityType !== wfTypeFilter) return false;
+    if (wfStageFilter !== "all" && d.currentStage !== wfStageFilter) return false;
     if (wfStatusFilter === "overdue" && !d.breached) return false;
     if (wfStatusFilter === "ontrack" && d.breached) return false;
     if (wfAssigneeFilter !== "all" && d.assignedTo !== wfAssigneeFilter) return false;
@@ -167,49 +182,45 @@ export default function SlaDashboard() {
         )}
       </NxCard>
 
-      {/* ══════════════ Row 4: Work Order Pipeline | Bill Request Pipeline ══════════════ */}
+      {/* ══════════════ Row 4: Work Order SLA | Bill Request SLA ══════════════ */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-5">
         <NxCard className="h-full">
-          <PanelHead title="Work Order Pipeline" sub="Work orders status across all stages" info />
+          <PanelHead title="Work Order SLA" sub="Click a stage to see exactly which work orders are pending there" info />
           {pipelineTiles.length === 0 ? (
             <div className="text-gray-400 dark:text-gray-500 text-[13px] text-center py-2.5">No Work Order workflows yet.</div>
           ) : (
             <div className="grid grid-cols-3 gap-2">
-              {pipelineTiles.map(s => {
-                const onTime = s.withinSlaPct >= 50;
-                return (
-                  <div key={s.name} className={`rounded-lg px-2.5 py-2.5 border ${onTime ? "bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/20" : "bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/20"}`}>
-                    <div className="text-[10.5px] font-semibold text-gray-500 dark:text-gray-400 truncate mb-1" title={s.name}>{s.name}</div>
-                    <div className="text-xl font-extrabold text-[#1A1A2E] dark:text-[#F1F5F9]">{s.pending}</div>
-                    <div className={`text-[10.5px] font-semibold mt-0.5 ${onTime ? "text-emerald-600 dark:text-emerald-400" : "text-red-500 dark:text-red-400"}`}>
-                      {onTime ? `On Time ${s.withinSlaPct}%` : `Overdue ${100 - s.withinSlaPct}%`}
-                    </div>
-                  </div>
-                );
-              })}
+              {pipelineTiles.map(s => (
+                <button
+                  key={s.name} type="button" onClick={() => openStageDetail("WorkOrder", s.name)}
+                  className={`text-left rounded-lg px-2.5 py-2.5 border transition-colors ${s.pending > 0 ? "bg-blue-50 dark:bg-blue-500/10 border-blue-200 dark:border-blue-500/20 hover:bg-blue-100 dark:hover:bg-blue-500/20" : "bg-gray-50 dark:bg-gray-800/40 border-gray-200 dark:border-gray-700/40 hover:bg-gray-100 dark:hover:bg-gray-700/60"}`}
+                >
+                  <div className="text-[10.5px] font-semibold text-gray-500 dark:text-gray-400 truncate mb-1" title={s.name}>{s.name}</div>
+                  <div className={`text-xl font-extrabold ${s.pending > 0 ? "text-blue-700 dark:text-blue-400" : "text-[#1A1A2E] dark:text-[#F1F5F9]"}`}>{s.pending}</div>
+                  <div className="text-[10.5px] font-semibold mt-0.5 text-gray-400 dark:text-gray-500">pending</div>
+                </button>
+              ))}
             </div>
           )}
           <ViewAllLink label="View all work orders" onClick={() => navigate("/work-items")} />
         </NxCard>
 
         <NxCard className="h-full">
-          <PanelHead title="Bill Request Pipeline" sub="Bill requests status across all stages" info />
+          <PanelHead title="Bill Request SLA" sub="Click a stage to see exactly which bill requests are pending there" info />
           {brPipelineTiles.length === 0 ? (
             <div className="text-gray-400 dark:text-gray-500 text-[13px] text-center py-2.5">No Bill Request workflows yet.</div>
           ) : (
             <div className="grid grid-cols-3 gap-2">
-              {brPipelineTiles.map(s => {
-                const onTime = s.withinSlaPct >= 50;
-                return (
-                  <div key={s.name} className={`rounded-lg px-2.5 py-2.5 border ${onTime ? "bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/20" : "bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/20"}`}>
-                    <div className="text-[10.5px] font-semibold text-gray-500 dark:text-gray-400 truncate mb-1" title={s.name}>{s.name}</div>
-                    <div className="text-xl font-extrabold text-[#1A1A2E] dark:text-[#F1F5F9]">{s.pending}</div>
-                    <div className={`text-[10.5px] font-semibold mt-0.5 ${onTime ? "text-emerald-600 dark:text-emerald-400" : "text-red-500 dark:text-red-400"}`}>
-                      {onTime ? `On Time ${s.withinSlaPct}%` : `Overdue ${100 - s.withinSlaPct}%`}
-                    </div>
-                  </div>
-                );
-              })}
+              {brPipelineTiles.map(s => (
+                <button
+                  key={s.name} type="button" onClick={() => openStageDetail("BillRequest", s.name)}
+                  className={`text-left rounded-lg px-2.5 py-2.5 border transition-colors ${s.pending > 0 ? "bg-blue-50 dark:bg-blue-500/10 border-blue-200 dark:border-blue-500/20 hover:bg-blue-100 dark:hover:bg-blue-500/20" : "bg-gray-50 dark:bg-gray-800/40 border-gray-200 dark:border-gray-700/40 hover:bg-gray-100 dark:hover:bg-gray-700/60"}`}
+                >
+                  <div className="text-[10.5px] font-semibold text-gray-500 dark:text-gray-400 truncate mb-1" title={s.name}>{s.name}</div>
+                  <div className={`text-xl font-extrabold ${s.pending > 0 ? "text-blue-700 dark:text-blue-400" : "text-[#1A1A2E] dark:text-[#F1F5F9]"}`}>{s.pending}</div>
+                  <div className="text-[10.5px] font-semibold mt-0.5 text-gray-400 dark:text-gray-500">pending</div>
+                </button>
+              ))}
             </div>
           )}
           <ViewAllLink label="View all bill requests" onClick={() => navigate(billRequestListPath)} />
@@ -275,8 +286,14 @@ export default function SlaDashboard() {
       <NxCard id="detail-workflows" className="scroll-mt-4">
         <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
           <PanelHead title={`Ongoing Workflows (${filteredDrilldown.length})`} sub="Every open workflow — click a Work Order or Bill Request to jump to it" />
-          <div className="flex flex-wrap gap-2">
-            <SelectFilter value={wfTypeFilter} onChange={v => setWfTypeFilter(v as WorkflowEntityType | "all")}
+          <div className="flex flex-wrap items-center gap-2">
+            {wfStageFilter !== "all" && (
+              <span className="inline-flex items-center gap-1.5 bg-primary/10 text-primary text-xs font-semibold px-2.5 py-1 rounded-full">
+                Stage: {wfStageFilter}
+                <button type="button" onClick={() => setWfStageFilter("all")} className="hover:opacity-70" aria-label="Clear stage filter">✕</button>
+              </span>
+            )}
+            <SelectFilter value={wfTypeFilter} onChange={v => { setWfTypeFilter(v as WorkflowEntityType | "all"); setWfStageFilter("all"); }}
               options={[{ label: "All Types", value: "all" }, { label: "Work Order", value: "WorkOrder" }, { label: "Bill Request", value: "BillRequest" }, { label: "Custom", value: "Custom" }]} />
             <SelectFilter value={wfStatusFilter} onChange={v => setWfStatusFilter(v as "all" | "overdue" | "ontrack")}
               options={[{ label: "All Status", value: "all" }, { label: "Overdue", value: "overdue" }, { label: "On Track", value: "ontrack" }]} />
