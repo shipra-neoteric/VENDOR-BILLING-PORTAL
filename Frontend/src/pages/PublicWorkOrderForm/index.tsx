@@ -301,18 +301,18 @@ function ScopeItemCard({
                 <span className="text-[11px] text-gray-400 min-w-[28px] font-semibold">{idx + 1}.{siIdx + 1}</span>
                 <input
                   placeholder="Sub-item description" value={si.description} onChange={e => updSub(si.id, { description: e.target.value })}
-                  className="flex-[2] min-w-[180px] h-9 px-2.5 rounded-md border border-gray-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                  className="flex-[2] min-w-[180px] h-8 px-2.5 rounded-md border border-gray-200 bg-white text-[13px] focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
                 />
                 <div className="w-[130px]"><SField value={si.unit} onChange={v => updSub(si.id, { unit: v })} options={UNIT_OPTIONS} /></div>
                 <input
                   type="number" placeholder="Qty" min={0} step={0.01} value={si.plannedQty ?? ""}
                   onChange={e => updSub(si.id, { plannedQty: e.target.value === "" ? null : Number(e.target.value) })}
-                  className="w-[90px] h-9 px-2 rounded-md border border-gray-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                  className="w-[90px] h-8 px-2 rounded-md border border-gray-200 bg-white text-[13px] focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
                 />
                 <input
                   type="number" placeholder="Rate" min={0} value={si.rate ?? ""}
                   onChange={e => updSub(si.id, { rate: e.target.value === "" ? null : Number(e.target.value) })}
-                  className="w-[100px] h-9 px-2 rounded-md border border-gray-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                  className="w-[100px] h-8 px-2 rounded-md border border-gray-200 bg-white text-[13px] focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
                 />
                 <div className="min-w-[90px]"><AmtBox value={(si.plannedQty || 0) * (si.rate || 0)} /></div>
                 <button type="button" onClick={() => onChange({ subItems: item.subItems.filter(s => s.id !== si.id) })} className="text-red-500 hover:bg-red-50 rounded p-1">

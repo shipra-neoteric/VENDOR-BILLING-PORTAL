@@ -179,7 +179,7 @@ export function KpiCard({
     >
       <div style={{ fontSize: 20, marginBottom: 8 }}>{icon}</div>
       <div style={{ fontSize: 10.5, color: "#9CA3AF", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 700 }}>{label}</div>
-      <div style={{ fontSize: 22, fontWeight: 800, color, marginTop: 3 }}>{value}</div>
+      <div style={{ fontSize: 22, fontWeight: 800, color, marginTop: 3, wordBreak: "break-word" }}>{value}</div>
       {showChange && (
         <div style={{ fontSize: 11, marginTop: 5, color: change === null ? "#9CA3AF" : change > 0 ? "#16a34a" : change < 0 ? "#e03b3b" : "#9CA3AF" }}>
           {change === null ? "New activity" : `${change > 0 ? "▲" : change < 0 ? "▼" : "–"} ${Math.abs(change)}% ${COMPARISON_LABELS[comparisonMode as Exclude<ComparisonMode, "none">]}`}

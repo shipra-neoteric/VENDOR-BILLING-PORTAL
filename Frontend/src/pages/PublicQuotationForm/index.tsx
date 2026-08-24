@@ -163,7 +163,7 @@ export default function PublicQuotationForm() {
                           min={0}
                           value={rates[item._id] ?? ""}
                           onChange={e => setRates(r => ({ ...r, [item._id]: e.target.value }))}
-                          className="w-28 h-8 px-2 rounded-md border border-gray-200 text-sm text-[#1A1A2E] focus:outline-none focus:ring-2 focus:ring-primary/30"
+                          className="w-28 h-8 px-2 rounded-md border border-gray-200 text-[13px] text-[#1A1A2E] focus:outline-none focus:ring-2 focus:ring-primary/30"
                         />
                       </Td>
                       <Td><TdText>{fmt((item.plannedQty || 0) * (Number(rates[item._id]) || 0))}</TdText></Td>

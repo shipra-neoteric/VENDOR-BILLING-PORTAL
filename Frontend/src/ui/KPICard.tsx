@@ -41,7 +41,7 @@ export default function KPICard({ label, value, sub, icon: Icon, accent = "#FF7A
         <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-1">
           {label}
         </div>
-        <div className={`text-xl font-bold font-mono leading-tight ${t.value}`}>
+        <div className={`text-lg font-bold font-mono leading-tight break-words ${t.value}`}>
           {value}
         </div>
         {sub && <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">{sub}</div>}
@@ -62,7 +62,7 @@ export default function KPICard({ label, value, sub, icon: Icon, accent = "#FF7A
       <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-1">
         {label}
       </div>
-      <div className="text-xl font-bold font-mono text-[#1A1A2E] dark:text-[#F1F5F9] leading-tight">
+      <div className="text-lg font-bold font-mono text-[#1A1A2E] dark:text-[#F1F5F9] leading-tight break-words">
         {value}
       </div>
       {sub && <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">{sub}</div>}

@@ -496,7 +496,7 @@ export default function Contractors() {
               <label key={doc} className="inline-flex">
                 <input type="file" className="hidden" />
                 <span className="inline-flex items-center gap-2 h-10 px-4 w-[220px] rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-transparent text-sm text-gray-700 dark:text-[#F1F5F9] cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800">
-                  <Upload className="w-4 h-4" /> {doc}
+                  <Upload className="w-4 h-4 shrink-0" /> <span className="truncate">{doc}</span>
                 </span>
               </label>
             ))}

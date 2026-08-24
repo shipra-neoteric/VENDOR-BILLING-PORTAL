@@ -198,7 +198,7 @@ export default function PaymentMilestonesBuilder({
               type="number" min="0" placeholder="0"
               value={discount ?? ""}
               onChange={e => onDiscountChange?.(e.target.value === "" ? null : Number(e.target.value))}
-              className="w-[130px] h-8 px-2.5 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0F172A] text-sm text-[#1A1A2E] dark:text-[#F1F5F9] focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+              className="w-[150px] h-8 px-2.5 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0F172A] text-[13px] text-[#1A1A2E] dark:text-[#F1F5F9] focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
             />
           </div>
           {(discount || 0) > 0 && (

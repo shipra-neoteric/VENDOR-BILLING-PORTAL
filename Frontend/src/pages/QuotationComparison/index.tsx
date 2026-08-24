@@ -165,7 +165,7 @@ function NewQuotationModal({
                         min={0}
                         value={rates[item._id] ?? ""}
                         onChange={e => setRates(r => ({ ...r, [item._id]: e.target.value }))}
-                        className="w-28 h-8 px-2 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0F172A] text-sm text-[#1A1A2E] dark:text-[#F1F5F9] focus:outline-none focus:ring-2 focus:ring-primary/30"
+                        className="w-28 h-8 px-2 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0F172A] text-[13px] text-[#1A1A2E] dark:text-[#F1F5F9] focus:outline-none focus:ring-2 focus:ring-primary/30"
                       />
                     </Td>
                     <Td><TdText>{fmt((item.plannedQty || 0) * (Number(rates[item._id]) || 0))}</TdText></Td>
