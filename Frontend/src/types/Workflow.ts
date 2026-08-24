@@ -80,6 +80,7 @@ export interface MISBottleneck {
 }
 
 export interface MISPipelineStage {
+  stageIndex: number;
   name: string;
   reached: number;
   completed: number;
@@ -179,6 +180,7 @@ export interface MISDrilldownRow {
   entityType: WorkflowEntityType;
   entityId: string;
   entityLabel: string;
+  currentStageIndex: number;
   currentStage: string;
   assignedTo: string;
   dueAt: string | null;

@@ -306,6 +306,7 @@ exports.getMISReport = asyncHandler(async (req, res) => {
         entityType: inst.entityType,
         entityId: inst.entityId,
         entityLabel: inst.entityLabel,
+        currentStageIndex: inst.currentStageIndex,
         currentStage: stage ? stage.name : '—',
         assignedTo: stage ? (stage.assignedUserId?.name || `${stage.assignedRole} (role)`) : '—',
         dueAt: stage ? stage.dueAt : null,
@@ -427,11 +428,18 @@ exports.getMISReport = asyncHandler(async (req, res) => {
     if (p.total >= 2 && pct < 60) alerts.push(`${p.projectName} is below 60% SLA compliance`);
   }
 
-  const byAssigneeArr = [...byAssignee.entries()].map(([key, v]) => ({
-    key, label: v.label, totalSla: v.totalSla, slaComplete: v.slaComplete, slaBreach: v.slaBreach,
-    overdueMinutes: v.breachDelays.reduce((s, d) => s + d, 0),
-    avgBreachMinutes: avg(v.breachDelays),
-  })).sort((a, b) => b.slaBreach - a.slaBreach);
+  // Real named users only — a "role:<x>" key means the stage was never
+  // claimed/completed by any specific person (still open, generically
+  // assigned to "any AGM"/etc.), so there's no real individual to hold
+  // accountable for it. Those stages still count everywhere else (KPIs,
+  // pipeline tiles, drilldown); they just don't get a fake "role" row here.
+  const byAssigneeArr = [...byAssignee.entries()]
+    .filter(([key]) => !key.startsWith('role:'))
+    .map(([key, v]) => ({
+      key, label: v.label, totalSla: v.totalSla, slaComplete: v.slaComplete, slaBreach: v.slaBreach,
+      overdueMinutes: v.breachDelays.reduce((s, d) => s + d, 0),
+      avgBreachMinutes: avg(v.breachDelays),
+    })).sort((a, b) => b.slaBreach - a.slaBreach);
 
   const byStageArr = [...byStage.values()].map(v => ({
     entityType: v.entityType, stageName: v.stageName, total: v.total,
@@ -468,7 +476,12 @@ exports.getMISReport = asyncHandler(async (req, res) => {
 
   const pipeline = [...pipelineGroups.values()].map(pg => ({
     templateName: pg.templateName, entityType: pg.entityType,
-    stages: pg.perStage.map(s => ({
+    stages: pg.perStage.map((s, i) => ({
+      // Position in the chain, not just the name — a stage snapshot on an
+      // older instance can carry a name from before the template was last
+      // edited, so filtering the drilldown below by name alone would silently
+      // miss those instances even though this tile's own count includes them.
+      stageIndex: i,
       name: s.name, reached: s.reached, completed: s.completed,
       avgHours: avg(s.durationsHrs),
       withinSlaPct: (s.withinSla + s.breached) ? Math.round((s.withinSla / (s.withinSla + s.breached)) * 100) : 0,

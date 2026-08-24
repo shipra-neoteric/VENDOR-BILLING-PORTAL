@@ -35,7 +35,7 @@ const APPLY = process.argv.includes('--apply');
 
   for (const inst of stuck) {
     const wo = await WorkOrder.findById(inst.entityId)
-      .select('workOrderNo approvalStatus status makerAt checkerAt approverAt finalApprovedAt cancelledAt approvalHistory');
+      .select('workOrderNo approvalStatus status makerBy makerAt checkerBy checkerAt approverBy approverAt finalApprovedBy finalApprovedAt cancelledAt approvalHistory');
 
     if (!wo) {
       console.log(`[orphan] ${inst.entityLabel} — work order no longer exists, cancelling instance`);
@@ -55,13 +55,29 @@ const APPLY = process.argv.includes('--apply');
     // completeStageAt does, just using the actual recorded time for each
     // step instead of "now".
     const realTimes = [wo.makerAt, wo.checkerAt, wo.approverAt, wo.finalApprovedAt];
+    const realActors = [wo.makerBy, wo.checkerBy, wo.approverBy, wo.finalApprovedBy];
+    // A resubmit-after-reopen cycle overwrites makerAt/checkerAt/approverAt
+    // as it goes, but does NOT clear a stale finalApprovedAt (or approverAt)
+    // left over from an earlier, since-superseded cycle — e.g. a work order
+    // sitting at 'pending-final' right now can still carry a finalApprovedAt
+    // from before it was reopened and resubmitted. Cap how many stages we'll
+    // trust to exactly what the CURRENT approvalStatus says has genuinely
+    // completed, so a real still-open stage never gets marked done off a
+    // stale timestamp from a previous cycle.
+    const STATUS_STAGE_CAP = {
+      draft: 0, 'sent-back': 0,
+      'pending-checker': 1, 'pending-approver': 2, 'pending-final': 3, approved: 4,
+    };
+    const stageCap = STATUS_STAGE_CAP[wo.approvalStatus] ?? 0;
+
     let changed = false;
-    for (let i = 0; i < inst.stages.length && i < realTimes.length; i++) {
+    for (let i = 0; i < inst.stages.length && i < realTimes.length && i < stageCap; i++) {
       const at = realTimes[i];
       const stage = inst.stages[i];
       if (!at || stage.status === 'completed') continue;
 
       stage.completedAt = at;
+      stage.completedBy = realActors[i] || null;
       stage.status = 'completed';
       stage.delayMinutes = stage.dueAt ? Math.max(0, Math.round((at - stage.dueAt) / 60000)) : 0;
 
@@ -101,8 +117,46 @@ const APPLY = process.argv.includes('--apply');
     }
   }
 
-  console.log('\n── Summary ──');
+  console.log('\n── Summary (pass 1 — advance/close stuck instances) ──');
   console.log({ total: stuck.length, reconciled, cancelledStaleCycle, cancelledWO, cancelledOrphan, untouched });
+
+  // ── Pass 2: repair completedBy on stages already marked 'completed' —
+  // covers both real approvals that predate this whole fix and stages this
+  // script's own earlier run (before this pass existed) already timestamped
+  // without an actor. Without a real completedBy, the SLA-by-User report has
+  // no user to attribute the stage to, so it either falls into a generic
+  // "role" bucket or silently disappears now that those buckets are filtered
+  // out — the exact "who does this belong to" gap this backfill exists to
+  // close. Only patches when the actor field's own timestamp matches the
+  // stage's completedAt exactly, so a stage from an abandoned, since-
+  // superseded resubmit cycle never gets attributed to whoever holds that
+  // actor field *now*.
+  const allWoInstances = await WorkflowInstance.find({ entityType: 'WorkOrder' });
+  console.log(`\nPass 2: scanning ${allWoInstances.length} total WorkOrder instance(s) for missing completedBy...`);
+  let attributed = 0;
+  for (const inst of allWoInstances) {
+    const wo = await WorkOrder.findById(inst.entityId)
+      .select('workOrderNo makerBy makerAt checkerBy checkerAt approverBy approverAt finalApprovedBy finalApprovedAt');
+    if (!wo) continue;
+
+    const realTimes = [wo.makerAt, wo.checkerAt, wo.approverAt, wo.finalApprovedAt];
+    const realActors = [wo.makerBy, wo.checkerBy, wo.approverBy, wo.finalApprovedBy];
+    let patched = false;
+    for (let i = 0; i < inst.stages.length && i < realTimes.length; i++) {
+      const stage = inst.stages[i];
+      if (stage.status !== 'completed' || stage.completedBy || !realActors[i] || !realTimes[i] || !stage.completedAt) continue;
+      if (new Date(stage.completedAt).getTime() !== new Date(realTimes[i]).getTime()) continue;
+      stage.completedBy = realActors[i];
+      patched = true;
+    }
+    if (patched) {
+      console.log(`[attributed] ${wo.workOrderNo} — filled in completedBy for ${inst.stages.filter(s => s.completedBy).length} stage(s)`);
+      if (APPLY) await inst.save();
+      attributed++;
+    }
+  }
+  console.log(`Pass 2 done: ${attributed} instance(s) had completedBy filled in.`);
+
   if (!APPLY) console.log('\nDry run only — re-run with --apply to write these changes.');
 
   process.exit(0);
