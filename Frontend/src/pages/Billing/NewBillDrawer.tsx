@@ -52,6 +52,7 @@ interface LineItem {
 interface ExistingBill { id: string; billNo: string; amount: number; status: string; isActive?: boolean; }
 
 interface ProjectOpt { id: string; name: string; code: string; parentId?: string | null; }
+interface CompanyOpt { id: string; name: string; shortCode: string; isActive?: boolean; }
 interface SubItemOpt { id: string; description: string; unit: string; plannedQty: number; lastBilledQty: number; rate?: number; }
 interface ScopeItemOpt { id: string; description: string; unit: string; plannedQty: number; lastBilledQty: number; rate?: number; subItems?: SubItemOpt[]; }
 interface WorkOrderOpt { id: string; workOrderNo: string; projectId: string; projectName: string; vendorCode: string; vendorName: string; contractType?: string; scopeItems: ScopeItemOpt[]; }
@@ -96,12 +97,17 @@ export default function NewBillDrawer({
   onCreated: (bill: Record<string, unknown>) => void;
 }) {
   const [saving, setSaving] = useState(false);
-  const formErrors = useFormErrors<"contractorId" | "billDate" | "generatedBy">();
+  const formErrors = useFormErrors<"contractorId" | "billDate" | "generatedBy" | "companyId">();
 
   const [projects, setProjects] = useState<ProjectOpt[]>([]);
   const [contractors, setContractors] = useState<Contractor[]>([]);
   const [consultants, setConsultants] = useState<Consultant[]>([]);
+  const [companies, setCompanies] = useState<CompanyOpt[]>([]);
   const [projectId, setProjectId] = useState<string>("");
+  // Only relevant for a standalone bill (no project/work order to inherit a
+  // company from, see isStandalone below) — which group company this bill is
+  // being raised through.
+  const [companyId, setCompanyId] = useState<string>("");
   // A bill is raised against either a Contractor (execution work orders) or
   // a Consultant (professional-services work orders) — never both, so only
   // one id is ever set at a time; switching the toggle clears the other.
@@ -154,6 +160,7 @@ export default function NewBillDrawer({
     if (!open) return;
     formErrors.clearAll();
     setProjectId("");
+    setCompanyId("");
     setPartyType("contractor");
     setContractorId("");
     setConsultantId("");
@@ -190,8 +197,17 @@ export default function NewBillDrawer({
     apiClient.get<{ consultants: Record<string, unknown>[] }>("/consultants")
       .then((r) => setConsultants((r.data.consultants || []).map((c) => normalizeId(c) as unknown as Consultant)))
       .catch(() => {});
+    apiClient.get<{ companies: Record<string, unknown>[] }>("/companies")
+      .then((r) => setCompanies((r.data.companies || []).map((c) => normalizeId(c) as unknown as CompanyOpt).filter((c) => c.isActive !== false)))
+      .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+
+  // No project selected means no work order can be linked either (the WO
+  // list below is only ever fetched once a project is picked) — so this bill
+  // is standalone and needs its own company selection instead of inheriting
+  // one from a work order.
+  const isStandalone = !projectId;
 
   const selectedContractor = useMemo(
     () => contractors.find((c) => c.id === contractorId) || null,
@@ -361,6 +377,10 @@ export default function NewBillDrawer({
     }
     if (!billDate) { formErrors.setError("billDate", "Required"); hasError = true; }
     if (!generatedBy.trim()) { formErrors.setError("generatedBy", "Required"); hasError = true; }
+    if (isStandalone && !companyId) {
+      formErrors.setError("companyId", "Select which company this bill is raised through");
+      hasError = true;
+    }
     if (hasError) return;
 
     const project = projects.find((p) => p.id === projectId);
@@ -399,6 +419,7 @@ export default function NewBillDrawer({
       relationshipType:  linkedBills.length > 0 ? relType : "NONE",
       linkedBills:       linkedBills.length > 0 ? linkedBills : [],
       workOrderId:       linkedToScopeItems ? (importedFromWOId || selectedWOId || undefined) : (selectedWOId || undefined),
+      ...(isStandalone ? { companyId } : {}),
       retentionPercent:  holdMode === "percent" ? (holdPercent || 0) : (gross > 0 ? Math.round((holdAmount / gross) * 10000) / 100 : 0),
       retentionAmount:   holdAmount,
       ...(recoveries.length ? { advanceRecoveries: recoveries } : {}),
@@ -507,6 +528,20 @@ export default function NewBillDrawer({
               </>
             )}
           </div>
+
+          {isStandalone && (
+            <div className="mb-4 max-w-xs">
+              <SField
+                label="Company" required
+                placeholder="Select billing company…"
+                value={companyId}
+                onChange={setCompanyId}
+                options={companies.map((c) => ({ value: c.id, label: `${c.name} (${c.shortCode})` }))}
+                error={formErrors.errors.companyId}
+                hint="No project/work order linked — pick which group company this bill is raised through."
+              />
+            </div>
+          )}
 
           {partyType === "contractor" && groupSiblings.length > 1 && (
             <div className="mb-4 max-w-md">

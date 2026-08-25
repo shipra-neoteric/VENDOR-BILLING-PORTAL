@@ -48,7 +48,11 @@ const runningBillSchema = new mongoose.Schema(
     vendorCode:  { type: String },
     vendorName:  { type: String },
     // Denormalized from WorkOrder.companyName — the issuing entity this bill
-    // was raised under (this system spans multiple legal companies).
+    // was raised under (this system spans multiple legal companies). For a
+    // bill with no work order, companyId/companyName are set directly from
+    // the maker's own selection at creation (see billController.createBill)
+    // instead of being derived from a work order.
+    companyId:   { type: mongoose.Schema.Types.ObjectId, ref: 'Company', default: null },
     companyName: { type: String, default: '' },
     billDate:    { type: Date, required: true },
     billingPeriodFrom: { type: Date },

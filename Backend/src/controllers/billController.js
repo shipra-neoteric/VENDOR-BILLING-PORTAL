@@ -2,6 +2,7 @@ const { validationResult } = require('express-validator');
 const RunningBill  = require('../models/RunningBill');
 const BillRequest  = require('../models/BillRequest');
 const WorkOrder    = require('../models/WorkOrder');
+const Company      = require('../models/Company');
 const { resolvePayee } = require('../utils/vendorGroupHelpers');
 const asyncHandler = require('../utils/asyncHandler');
 const { success, created, notFound, badRequest, conflict } = require('../utils/responseFormatter');
@@ -90,6 +91,17 @@ exports.createBill = asyncHandler(async (req, res) => {
     return badRequest(res, `"${workOrder.workOrderNo}" has not completed its own approval chain yet (currently ${workOrder.approvalStatus}) — no bill can be raised against it until Final Approval is given.`);
   }
 
+  // A bill with no work order has no company to inherit from, so the maker
+  // must say up front which group company this bill is being raised through.
+  let company = null;
+  if (!workOrder) {
+    if (!req.body.companyId) {
+      return badRequest(res, 'Company is required for a bill that is not linked to a work order.');
+    }
+    company = await Company.findById(req.body.companyId);
+    if (!company) return notFound(res, 'Company not found');
+  }
+
   const lineItems = Array.isArray(req.body.lineItems) ? req.body.lineItems : [];
   if (lineItems.length === 0) {
     return badRequest(res, 'At least one work item is required');
@@ -163,7 +175,10 @@ exports.createBill = asyncHandler(async (req, res) => {
       projectName: workOrder.projectName,
       projectLocation: workOrder.projectLocation,
       companyName: workOrder.companyName,
-    } : {}),
+    } : {
+      companyId:   company._id,
+      companyName: company.name,
+    }),
     vendorCode:  payee.vendorCode,
     vendorName:  payee.vendorName,
     status:      'draft',
