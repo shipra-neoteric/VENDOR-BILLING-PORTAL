@@ -839,10 +839,10 @@ function ScopeItemsBuilder({ items, onChange, allCategories = [], topCatId = nul
                           placeholder="Type unit"
                           value={si.customUnit}
                           onChange={e => updSub(item.id, si.id, { customUnit: e.target.value })}
-                          className="w-[100px] h-8 px-2.5 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0F172A] text-[13px] focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                          className="w-[180px] h-8 px-2.5 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0F172A] text-[13px] focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
                         />
                       ) : (
-                        <div className="w-[140px]">
+                        <div className="w-[180px]">
                           <SField value={si.unit} onChange={v => updSub(item.id, si.id, { unit: v, customUnit: "" })} options={UNIT_OPTIONS} />
                         </div>
                       )}
