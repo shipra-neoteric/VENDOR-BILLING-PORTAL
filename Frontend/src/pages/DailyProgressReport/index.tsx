@@ -35,7 +35,7 @@ import { SkeletonTable } from "../../ui/Skeleton";
 import EmptyState from "../../ui/EmptyState";
 
 interface ProjectOption { _id: string; name: string; }
-interface ContractorOption { vendorCode: string; companyName: string; }
+interface ContractorOption { vendorCode: string; companyName: string; vendorId?: string; name?: string; shortCode?: string; }
 interface DriOption { _id: string; name: string; }
 interface ScopeItemRow { description: string; unit?: string; plannedQty?: number; completedQty?: number; }
 interface WorkOrderRow { _id: string; projectId?: string | { _id: string }; scopeItems: ScopeItemRow[]; }
@@ -489,7 +489,19 @@ export default function DailyProgressReport() {
                 label="Contractor Name" required placeholder="Choose"
                 value={form.vendorCode || null}
                 onChange={v => setForm(f => ({ ...f, vendorCode: v }))}
-                options={contractors.map(c => ({ label: c.companyName, value: c.vendorCode }))}
+                options={contractors.map(c => ({
+                  label: c.companyName || c.name || "",
+                  value: c.vendorCode || c.vendorId || "",
+                  vendorId: c.vendorId || c.vendorCode || "",
+                  name: c.name || c.companyName || "",
+                  searchText: `${c.companyName || c.name || ""} ${c.vendorCode || ""} ${c.vendorId || ""}`.trim(),
+                }))}
+                filterFn={(opt, search) => {
+                  const s = search.toLowerCase().trim();
+                  const contractorName = (opt.name || opt.label || "").toLowerCase();
+                  const vendorId = (opt.vendorId || opt.vendorCode || opt.value || "").toLowerCase();
+                  return contractorName.includes(s) || vendorId.includes(s);
+                }}
               />
               <SField
                 label="DRI Name" required placeholder="Choose"

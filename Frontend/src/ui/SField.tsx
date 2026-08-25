@@ -5,6 +5,11 @@ import { Check, ChevronDown, Search } from "lucide-react";
 export interface SFieldOption {
   value: string;
   label: string;
+  vendorId?: string;
+  vendorCode?: string;
+  name?: string;
+  companyName?: string;
+  searchText?: string;
 }
 
 interface SFieldProps {
@@ -17,13 +22,14 @@ interface SFieldProps {
   onChange: (value: string) => void;
   options: SFieldOption[];
   disabled?: boolean;
+  filterFn?: (option: SFieldOption, query: string) => boolean;
   // Rich per-option JSX (e.g. bold name + muted email, or a colored badge +
   // description) — falls back to the plain option.label row when omitted.
   renderOption?: (option: SFieldOption) => ReactNode;
 }
 
 // Searchable single-select — click to open, type to filter, click an option to pick.
-export default function SField({ label, required, placeholder = "Select…", hint, error, value, onChange, options, disabled, renderOption }: SFieldProps) {
+export default function SField({ label, required, placeholder = "Select…", hint, error, value, onChange, options, disabled, filterFn, renderOption }: SFieldProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const rootRef = useRef<HTMLDivElement>(null);
@@ -41,7 +47,27 @@ export default function SField({ label, required, placeholder = "Select…", hin
 
   const selected = options.find((o) => o.value === value);
   const filtered = query
-    ? options.filter((o) => o.label.toLowerCase().includes(query.toLowerCase()))
+    ? options.filter((o) => {
+        if (filterFn) return filterFn(o, query);
+        const q = query.toLowerCase().trim();
+        const label = (o.label ?? "").toLowerCase();
+        const val = (o.value ?? "").toLowerCase();
+        const search = (o.searchText ?? "").toLowerCase();
+        const vId = (o.vendorId ?? "").toLowerCase();
+        const vCode = (o.vendorCode ?? "").toLowerCase();
+        const n = (o.name ?? "").toLowerCase();
+        const cName = (o.companyName ?? "").toLowerCase();
+
+        return (
+          label.includes(q) ||
+          val.includes(q) ||
+          search.includes(q) ||
+          vId.includes(q) ||
+          vCode.includes(q) ||
+          n.includes(q) ||
+          cName.includes(q)
+        );
+      })
     : options;
 
   return (

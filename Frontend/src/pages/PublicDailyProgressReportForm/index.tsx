@@ -21,7 +21,7 @@ pub.interceptors.response.use(r => {
 });
 
 interface Lookup { _id: string; name: string; }
-interface ContractorLookup { vendorCode: string; companyName: string; }
+interface ContractorLookup { vendorCode: string; companyName: string; vendorId?: string; name?: string; shortCode?: string; }
 
 const emptyForm: DailyProgressReportFormValues = {
   projectId: "", driName: "", date: dayjs().format("YYYY-MM-DD"), vendorCode: "",
@@ -126,7 +126,19 @@ export default function PublicDailyProgressReportForm() {
               label="Contractor Name" required placeholder="Choose"
               value={form.vendorCode || null}
               onChange={v => setForm(f => ({ ...f, vendorCode: v }))}
-              options={contractors.map(c => ({ label: c.companyName, value: c.vendorCode }))}
+              options={contractors.map(c => ({
+                label: c.companyName || c.name || "",
+                value: c.vendorCode || c.vendorId || "",
+                vendorId: c.vendorId || c.vendorCode || "",
+                name: c.name || c.companyName || "",
+                searchText: `${c.companyName || c.name || ""} ${c.vendorCode || ""} ${c.vendorId || ""}`.trim(),
+              }))}
+              filterFn={(opt, search) => {
+                const s = search.toLowerCase().trim();
+                const contractorName = (opt.name || opt.label || "").toLowerCase();
+                const vendorId = (opt.vendorId || opt.vendorCode || opt.value || "").toLowerCase();
+                return contractorName.includes(s) || vendorId.includes(s);
+              }}
             />
             <Field
               label="DRI Name" required placeholder="Type your name"
