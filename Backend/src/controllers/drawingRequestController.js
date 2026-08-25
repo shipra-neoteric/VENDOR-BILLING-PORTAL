@@ -3,7 +3,7 @@ const { success, created, notFound, badRequest } = require('../utils/responseFor
 const DrawingRequest = require('../models/DrawingRequest');
 const Project = require('../models/Project');
 const { nextDrawingRequestTicketNo } = require('../utils/codeGen');
-const { logAudit, diffFields } = require('../utils/auditLog');
+const { logAudit } = require('../utils/auditLog');
 
 async function populatedRequest(id) {
   return DrawingRequest.findById(id)
@@ -15,12 +15,15 @@ async function populatedRequest(id) {
 
 const DRAWING_TYPES = ['Architectural', 'Structural', 'MEP', 'Civil', 'Interior', 'Landscape', 'Shop Drawing', 'As-Built', 'Other'];
 
+const PRIORITIES = ['low', 'medium', 'high', 'urgent'];
+
 async function buildRequestDoc(body) {
-  const { projectId, description, drawingType, source, driName } = body;
+  const { projectId, description, drawingType, source, driName, priority } = body;
   if (!projectId) return { error: 'Project is required' };
   if (!description || !description.trim()) return { error: 'Describe what drawing is needed' };
   if (!DRAWING_TYPES.includes(drawingType)) return { error: 'Select a valid drawing type' };
   if (!driName || !driName.trim()) return { error: 'Requested By (DRI) is required' };
+  if (priority && !PRIORITIES.includes(priority)) return { error: 'Select a valid priority' };
 
   const project = await Project.findById(projectId).select('name');
   if (!project) return { error: 'Project not found' };
@@ -33,6 +36,7 @@ async function buildRequestDoc(body) {
       drawingType,
       source: source || '',
       driName: driName.trim(),
+      priority: priority || '',
     },
   };
 }
@@ -49,12 +53,6 @@ exports.createRequest = asyncHandler(async (req, res) => {
     isPublicSubmission: false,
   });
 
-  await logAudit({
-    action: 'CREATE', module: 'drawing-requests', user: req.user,
-    description: `Drawing request ${request.ticketNo} created`,
-    entityType: 'DrawingRequest', entityId: request._id, entityLabel: request.ticketNo,
-  });
-
   created(res, { request }, 'Drawing request submitted');
 });
 
@@ -68,13 +66,6 @@ exports.createPublicRequest = asyncHandler(async (req, res) => {
     ticketNo: await nextDrawingRequestTicketNo(),
     submittedBy: null,
     isPublicSubmission: true,
-  });
-
-  await logAudit({
-    action: 'CREATE', module: 'drawing-requests',
-    user: { _id: null, name: doc.driName, role: 'public' },
-    description: `Drawing request ${request.ticketNo} submitted publicly`,
-    entityType: 'DrawingRequest', entityId: request._id, entityLabel: request.ticketNo,
   });
 
   created(res, { request }, 'Drawing request submitted');
@@ -151,7 +142,6 @@ exports.updateRequest = asyncHandler(async (req, res) => {
     return badRequest(res, 'This request must clear AGM and GM review first — use the Review Workflow actions, not a direct edit, to move it forward.');
   }
 
-  const before = request.toObject();
   for (const field of UPDATABLE_FIELDS) {
     if (!(field in req.body)) continue;
     const val = req.body[field];
@@ -164,14 +154,6 @@ exports.updateRequest = asyncHandler(async (req, res) => {
     }
   }
   await request.save();
-
-  const changes = diffFields(before, request.toObject(), UPDATABLE_FIELDS);
-  await logAudit({
-    action: 'UPDATE', module: 'drawing-requests', user: req.user,
-    description: `Drawing request ${request.ticketNo} updated`,
-    entityType: 'DrawingRequest', entityId: request._id, entityLabel: request.ticketNo,
-    ...(changes ? { changes } : {}),
-  });
 
   success(res, { request: await populatedRequest(request._id) }, 'Drawing request updated');
 });
@@ -332,12 +314,5 @@ exports.resubmitRequest = asyncHandler(async (req, res) => {
 exports.deleteRequest = asyncHandler(async (req, res) => {
   const request = await DrawingRequest.findByIdAndDelete(req.params.id);
   if (!request) return notFound(res, 'Drawing request not found');
-
-  await logAudit({
-    action: 'DELETE', module: 'drawing-requests', user: req.user,
-    description: `Drawing request ${request.ticketNo} deleted`,
-    entityType: 'DrawingRequest', entityId: request._id, entityLabel: request.ticketNo,
-  });
-
   success(res, {}, 'Drawing request deleted');
 });

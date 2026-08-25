@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import dayjs from "dayjs";
-import { Info } from "lucide-react";
+import toast from "react-hot-toast";
+import { Info, FileText, Receipt } from "lucide-react";
 import apiClient from "../../services/apiClient";
 import type { WorkflowMISReport, WorkflowEntityType, MISPipeline } from "../../types/Workflow";
 import PageHeader from "../../ui/PageHeader";
@@ -10,6 +11,9 @@ import NxBadge from "../../ui/nexora/Badge";
 import Spinner from "../../ui/Spinner";
 import Alert from "../../ui/Alert";
 import NxCard from "../../ui/nexora/Card";
+import Modal from "../../ui/Modal";
+import NxBtn from "../../ui/nexora/Btn";
+import { Descriptions, DescItem, SectionHeading } from "../../ui/Descriptions";
 import { Table, Thead, Tbody, Tr, Th, Td } from "../../ui/Table";
 import { useAuth } from "../../context/AuthContext";
 
@@ -24,6 +28,47 @@ function fmtMinutes(min: number): string {
   return `${m}m`;
 }
 const statusColor = (pct: number) => pct >= 90 ? "#16a34a" : pct >= 60 ? "#f59e0b" : "#e03b3b";
+const fmtMoney = (n: number) => n ? "₹" + n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "₹0";
+
+const ENTITY_STATUS_COLOR: Record<string, "green" | "amber" | "red" | "blue" | "gray"> = {
+  approved: "green", completed: "green",
+  "in-progress": "blue", issued: "blue", "pending-gm": "blue", "pending-checker": "amber", "pending-approver": "amber", "pending-final": "amber", pending: "amber",
+  rejected: "red", cancelled: "red", "send-back": "red", "sent-back": "red",
+  draft: "gray",
+};
+const entityStatusColor = (status?: string) => ENTITY_STATUS_COLOR[status ?? ""] ?? "gray";
+const entityStatusLabel = (status?: string) => status ? status.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase()) : "—";
+
+// ── Minimal shapes for the two quick-view drawers — just what's rendered
+// there; the full WorkOrder/BillRequest types live in VendorBilling.ts but
+// don't match these endpoints' raw (unmapped) API response shape.
+interface WorkOrderQuickView {
+  _id: string;
+  workOrderNo: string;
+  status?: string;
+  approvalStatus?: string;
+  projectId?: { name?: string; code?: string } | string;
+  vendorName?: string;
+  category?: string;
+  subCategory?: string;
+  contractValue?: number;
+  issueDate?: string;
+  scopeItems?: { description: string; unit: string; plannedQty: number; rate: number; amount: number }[];
+}
+interface BillRequestQuickView {
+  _id: string;
+  reqNo: string;
+  status?: string;
+  workOrderNo?: string;
+  projectName?: string;
+  vendorName?: string;
+  requestedBy?: { name?: string } | string;
+  createdAt?: string;
+  periodFrom?: string;
+  periodTo?: string;
+  items?: { description: string; unit: string; billedQty: number; rate?: number; amount?: number }[];
+  billId?: { retentionAmount?: number; advanceRecovery?: number; gstPercent?: number } | null;
+}
 
 // ── Section heading used inside a Card ──────────────────────────
 function PanelHead({ title, sub, info }: { title: string; sub?: string; info?: boolean }) {
@@ -108,6 +153,35 @@ export default function SlaDashboard() {
   }, [entityFilter, rangeFilter]);
 
   useEffect(() => { load(); }, [load]);
+
+  // ── Side-drawer quick views — an Admin should never have to leave the SLA
+  // Report to see what a Work Order or Bill Request actually is; clicking one
+  // in Ongoing Workflows opens its detail right here instead of navigating away.
+  const [viewWorkOrderId, setViewWorkOrderId] = useState<string | null>(null);
+  const [woDetail, setWoDetail] = useState<WorkOrderQuickView | null>(null);
+  const [woDetailLoading, setWoDetailLoading] = useState(false);
+
+  const [viewBillRequestId, setViewBillRequestId] = useState<string | null>(null);
+  const [brDetail, setBrDetail] = useState<BillRequestQuickView | null>(null);
+  const [brDetailLoading, setBrDetailLoading] = useState(false);
+
+  useEffect(() => {
+    if (!viewWorkOrderId) { setWoDetail(null); return; }
+    setWoDetailLoading(true);
+    apiClient.get(`/work-orders/${viewWorkOrderId}`)
+      .then(res => setWoDetail(res.data.workOrder))
+      .catch(() => toast.error("Failed to load work order"))
+      .finally(() => setWoDetailLoading(false));
+  }, [viewWorkOrderId]);
+
+  useEffect(() => {
+    if (!viewBillRequestId) { setBrDetail(null); return; }
+    setBrDetailLoading(true);
+    apiClient.get("/bill-requests")
+      .then(res => setBrDetail((res.data.billRequests ?? []).find((r: BillRequestQuickView) => r._id === viewBillRequestId) ?? null))
+      .catch(() => toast.error("Failed to load bill request"))
+      .finally(() => setBrDetailLoading(false));
+  }, [viewBillRequestId]);
 
   if (loading && !report) return <Spinner label="Loading SLA MIS report…" />;
 
@@ -276,7 +350,7 @@ export default function SlaDashboard() {
 
       <NxCard id="detail-workflows" className="scroll-mt-4">
         <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
-          <PanelHead title={`Ongoing Workflows (${filteredDrilldown.length})`} sub="Every open workflow — click a Work Order or Bill Request to jump to it" />
+          <PanelHead title={`Ongoing Workflows (${filteredDrilldown.length})`} sub="Every open workflow — click a Work Order or Bill Request to view it here" />
           <div className="flex flex-wrap items-center gap-2">
             {wfStageFilter && (
               <span className="inline-flex items-center gap-1.5 bg-primary/10 text-primary text-xs font-semibold px-2.5 py-1 rounded-full">
@@ -313,9 +387,9 @@ export default function SlaDashboard() {
                   <Tr key={d.instanceId}>
                     <Td>
                       {d.entityType === "WorkOrder" ? (
-                        <span className="text-primary font-semibold cursor-pointer" onClick={() => navigate(`/work-items/${d.entityId}`)}>{d.entityLabel}</span>
+                        <span className="text-primary font-semibold cursor-pointer hover:underline" onClick={() => setViewWorkOrderId(d.entityId)}>{d.entityLabel}</span>
                       ) : d.entityType === "BillRequest" ? (
-                        <span className="text-primary font-semibold cursor-pointer" onClick={() => navigate(billRequestPath(d.entityId))}>{d.entityLabel}</span>
+                        <span className="text-primary font-semibold cursor-pointer hover:underline" onClick={() => setViewBillRequestId(d.entityId)}>{d.entityLabel}</span>
                       ) : d.entityLabel}
                     </Td>
                     <Td><NxBadge color={d.entityType === "WorkOrder" ? "blue" : "indigo"}>{d.entityType}</NxBadge></Td>
@@ -336,6 +410,151 @@ export default function SlaDashboard() {
           </Table>
         )}
       </NxCard>
+
+      {/* ══════════════ Work Order quick view — stays on this page ══════════════ */}
+      {viewWorkOrderId && (
+        <Modal
+          title={woDetail?.workOrderNo ?? "Work Order"}
+          subtitle={woDetail ? (typeof woDetail.projectId === "object" ? woDetail.projectId?.name : undefined) : undefined}
+          icon={FileText}
+          onClose={() => setViewWorkOrderId(null)}
+          extraWide
+          footer={
+            <div className="flex items-center justify-between gap-2">
+              <NxBtn color="secondary" label="Close" onClick={() => setViewWorkOrderId(null)} />
+              <NxBtn color="primary" label="Open full page →" onClick={() => { setViewWorkOrderId(null); navigate(`/work-items/${viewWorkOrderId}`); }} />
+            </div>
+          }
+        >
+          {woDetailLoading || !woDetail ? (
+            <Spinner label="Loading work order…" />
+          ) : (
+            <>
+              <SectionHeading>Overview</SectionHeading>
+              <Descriptions columns={2}>
+                <DescItem label="Status"><NxBadge color={entityStatusColor(woDetail.status)}>{entityStatusLabel(woDetail.status)}</NxBadge></DescItem>
+                <DescItem label="Approval"><NxBadge color={entityStatusColor(woDetail.approvalStatus)}>{entityStatusLabel(woDetail.approvalStatus)}</NxBadge></DescItem>
+                <DescItem label="Project">{typeof woDetail.projectId === "object" ? woDetail.projectId?.name : "—"}</DescItem>
+                <DescItem label="Contractor">{woDetail.vendorName ?? "—"}</DescItem>
+                <DescItem label="Category">{[woDetail.category, woDetail.subCategory].filter(Boolean).join(" — ") || "—"}</DescItem>
+                <DescItem label="Contract Value">{fmtMoney(woDetail.contractValue ?? 0)}</DescItem>
+                <DescItem label="Issue Date">{woDetail.issueDate ? dayjs(woDetail.issueDate).format("DD MMM YYYY") : "—"}</DescItem>
+              </Descriptions>
+
+              <SectionHeading>Scope Items ({woDetail.scopeItems?.length ?? 0})</SectionHeading>
+              {!woDetail.scopeItems?.length ? (
+                <div className="text-gray-400 dark:text-gray-500 text-[13px]">No scope items.</div>
+              ) : (
+                <Table>
+                  <Thead>
+                    <Tr>
+                      <Th>Description</Th>
+                      <Th>Unit</Th>
+                      <Th className="text-right">Qty</Th>
+                      <Th className="text-right">Rate</Th>
+                      <Th className="text-right">Amount</Th>
+                    </Tr>
+                  </Thead>
+                  <Tbody>
+                    {woDetail.scopeItems.map((s, i) => (
+                      <Tr key={i}>
+                        <Td>{s.description}</Td>
+                        <Td>{s.unit}</Td>
+                        <Td className="text-right">{s.plannedQty}</Td>
+                        <Td className="text-right">{fmtMoney(s.rate)}</Td>
+                        <Td className="text-right font-semibold">{fmtMoney(s.amount)}</Td>
+                      </Tr>
+                    ))}
+                  </Tbody>
+                </Table>
+              )}
+            </>
+          )}
+        </Modal>
+      )}
+
+      {/* ══════════════ Bill Request quick view — stays on this page ══════════════ */}
+      {viewBillRequestId && (
+        <Modal
+          title={brDetail?.reqNo ?? "Bill Request"}
+          subtitle={brDetail?.projectName}
+          icon={Receipt}
+          onClose={() => setViewBillRequestId(null)}
+          extraWide
+          footer={
+            <div className="flex items-center justify-between gap-2">
+              <NxBtn color="secondary" label="Close" onClick={() => setViewBillRequestId(null)} />
+              <NxBtn color="primary" label="Open full page →" onClick={() => { setViewBillRequestId(null); navigate(billRequestPath(viewBillRequestId)); }} />
+            </div>
+          }
+        >
+          {brDetailLoading || !brDetail ? (
+            <Spinner label="Loading bill request…" />
+          ) : (
+            <>
+              <SectionHeading>Overview</SectionHeading>
+              <Descriptions columns={2}>
+                <DescItem label="Status"><NxBadge color={entityStatusColor(brDetail.status)}>{entityStatusLabel(brDetail.status)}</NxBadge></DescItem>
+                <DescItem label="Work Order">{brDetail.workOrderNo ?? "—"}</DescItem>
+                <DescItem label="Project">{brDetail.projectName ?? "—"}</DescItem>
+                <DescItem label="Contractor">{brDetail.vendorName ?? "—"}</DescItem>
+                <DescItem label="Requested By">{typeof brDetail.requestedBy === "object" ? brDetail.requestedBy?.name : "—"}</DescItem>
+                <DescItem label="Date">{brDetail.createdAt ? dayjs(brDetail.createdAt).format("DD MMM YYYY") : "—"}</DescItem>
+                <DescItem label="Period" span={2}>
+                  {brDetail.periodFrom && brDetail.periodTo
+                    ? `${dayjs(brDetail.periodFrom).format("DD MMM YYYY")} → ${dayjs(brDetail.periodTo).format("DD MMM YYYY")}`
+                    : "—"}
+                </DescItem>
+              </Descriptions>
+
+              {brDetail.billId && (
+                <>
+                  <SectionHeading>Hold / Advance (AGM-set)</SectionHeading>
+                  <Descriptions columns={3}>
+                    <DescItem label="Hold / Retention">{fmtMoney(brDetail.billId.retentionAmount ?? 0)}</DescItem>
+                    <DescItem label="Advance Recovery">{fmtMoney(brDetail.billId.advanceRecovery ?? 0)}</DescItem>
+                    <DescItem label="GST %">{brDetail.billId.gstPercent !== undefined ? `${brDetail.billId.gstPercent}%` : "—"}</DescItem>
+                  </Descriptions>
+                </>
+              )}
+
+              <SectionHeading>Line Items</SectionHeading>
+              {!brDetail.items?.length ? (
+                <div className="text-gray-400 dark:text-gray-500 text-[13px]">No line items.</div>
+              ) : (
+                <>
+                  <Table>
+                    <Thead>
+                      <Tr>
+                        <Th>Description</Th>
+                        <Th>Unit</Th>
+                        <Th className="text-right">Qty Billed</Th>
+                        <Th className="text-right">Rate</Th>
+                        <Th className="text-right">Amount</Th>
+                      </Tr>
+                    </Thead>
+                    <Tbody>
+                      {brDetail.items.map((it, i) => (
+                        <Tr key={i}>
+                          <Td>{it.description}</Td>
+                          <Td>{it.unit}</Td>
+                          <Td className="text-right">{it.billedQty}</Td>
+                          <Td className="text-right">{fmtMoney(it.rate ?? 0)}</Td>
+                          <Td className="text-right font-semibold">{fmtMoney(it.amount ?? 0)}</Td>
+                        </Tr>
+                      ))}
+                    </Tbody>
+                  </Table>
+                  <div className="flex justify-between items-center mt-3 pt-3 border-t border-gray-200 dark:border-gray-700/40">
+                    <span className="text-sm font-bold text-gray-700 dark:text-gray-300">Total</span>
+                    <span className="text-base font-extrabold text-primary">{fmtMoney(brDetail.items.reduce((s, it) => s + (it.amount ?? 0), 0))}</span>
+                  </div>
+                </>
+              )}
+            </>
+          )}
+        </Modal>
+      )}
     </div>
   );
 }

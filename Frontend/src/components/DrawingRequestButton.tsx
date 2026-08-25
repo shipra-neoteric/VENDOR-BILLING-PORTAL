@@ -2,7 +2,7 @@ import { useState } from "react";
 import toast from "react-hot-toast";
 import { PenTool } from "lucide-react";
 import apiClient from "../services/apiClient";
-import { DRAWING_TYPE_OPTIONS, SOURCE_OPTIONS } from "../shared/constants/drawingRequestOptions";
+import { DRAWING_TYPE_OPTIONS, SOURCE_OPTIONS, PRIORITY_OPTIONS, PRIORITY_LABEL } from "../shared/constants/drawingRequestOptions";
 import Btn from "../ui/Btn";
 import Modal from "../ui/Modal";
 import Field from "../ui/Field";
@@ -14,18 +14,19 @@ import SField from "../ui/SField";
 // PublicDailyProgressReportForm) — that flow instead gets its own standalone
 // public form (PublicDrawingRequestForm) since there's no in-page context to prefill from there.
 export default function DrawingRequestButton({
-  projectId, projectOptions, driName: driNameDefault,
+  projectId, projectOptions, driName: driNameDefault, onSubmitted,
 }: {
   projectId?: string;
   projectOptions: { label: string; value: string }[];
   driName?: string;
+  onSubmitted?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({ projectId: projectId || "", description: "", drawingType: "", source: "", driName: driNameDefault || "" });
+  const [form, setForm] = useState({ projectId: projectId || "", description: "", drawingType: "", source: "", priority: "", driName: driNameDefault || "" });
 
   function openModal() {
-    setForm({ projectId: projectId || "", description: "", drawingType: "", source: "", driName: driNameDefault || "" });
+    setForm({ projectId: projectId || "", description: "", drawingType: "", source: "", priority: "", driName: driNameDefault || "" });
     setOpen(true);
   }
 
@@ -39,6 +40,7 @@ export default function DrawingRequestButton({
       await apiClient.post("/drawing-requests", form);
       toast.success("Drawing request submitted");
       setOpen(false);
+      onSubmitted?.();
     } catch (e: unknown) {
       const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message || "Failed to submit request";
       toast.error(msg);
@@ -80,6 +82,12 @@ export default function DrawingRequestButton({
               value={form.source || null}
               onChange={v => setForm(f => ({ ...f, source: v }))}
               options={SOURCE_OPTIONS.map(s => ({ label: s, value: s }))}
+            />
+            <SField
+              label="Priority (optional)" placeholder="Choose priority"
+              value={form.priority || null}
+              onChange={v => setForm(f => ({ ...f, priority: v }))}
+              options={PRIORITY_OPTIONS.map(p => ({ label: PRIORITY_LABEL[p], value: p }))}
             />
             <Field
               label="Requested By (DRI)" required placeholder="Requester's name"

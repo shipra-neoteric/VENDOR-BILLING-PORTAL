@@ -1,43 +1,30 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
-import { Eye, Pencil, Trash2, PenTool, Clock, CalendarCheck, CheckCircle2, AlertTriangle } from "lucide-react";
+import { Eye, Pencil, Trash2, PenTool } from "lucide-react";
 import dayjs from "dayjs";
 import apiClient from "../../services/apiClient";
 import {
   DRAWING_TYPE_OPTIONS, STATUS_OPTIONS, STATUS_LABEL, STATUS_COLOR,
-  PRIORITY_OPTIONS, PRIORITY_LABEL, PRIORITY_COLOR, delayDays,
+  PRIORITY_OPTIONS, PRIORITY_LABEL, PRIORITY_COLOR,
   REVIEW_STATUS_OPTIONS, REVIEW_STATUS_LABEL, REVIEW_STATUS_COLOR,
 } from "../../shared/constants/drawingRequestOptions";
 import type { DrawingRequest } from "../../shared/constants/drawingRequestOptions";
 import PageHeader from "../../ui/PageHeader";
-import NxBtn from "../../ui/nexora/Btn";
-import NxBadge from "../../ui/nexora/Badge";
-import type { NxBadgeColor } from "../../ui/nexora/Badge";
-import NxStatCard from "../../ui/nexora/StatCard";
-import { SearchFilter, DropdownSelectFilter } from "../../ui/Filters";
+import Btn from "../../ui/Btn";
+import Badge from "../../ui/Badge";
+import { FilterRow, SearchFilter, SelectFilter } from "../../ui/Filters";
 import { DateRangePicker } from "../../ui/DatePicker";
 import { Table, Thead, Tbody, Tr, Th, Td, TdText } from "../../ui/Table";
-import { usePagination } from "../../ui/usePagination";
-import Pagination from "../../ui/Pagination";
 import { SkeletonTable } from "../../ui/Skeleton";
-import EmptyState from "../../ui/EmptyState";
 import ConfirmModal from "../../ui/ConfirmModal";
-import DropdownMenu from "../../ui/DropdownMenu";
-import type { DropdownMenuItem } from "../../ui/DropdownMenu";
 import DrawingRequestViewModal from "../../components/DrawingRequestViewModal";
 import DrawingRequestEditModal from "../../components/DrawingRequestEditModal";
-
-// The old Badge component's palette includes "purple", which NxBadge doesn't
-// — map it onto the closest Nexora semantic color (indigo = in-progress/
-// approved-stage) rather than editing the shared drawingRequestOptions.ts
-// constants (other not-yet-migrated pages still read those colors too).
-function toNxColor(c: "gray" | "blue" | "green" | "red" | "amber" | "purple" | "teal"): NxBadgeColor {
-  return c === "purple" ? "indigo" : c;
-}
+import DrawingRequestButton from "../../components/DrawingRequestButton";
 
 export default function DrawingRequests() {
   const [requests, setRequests] = useState<DrawingRequest[]>([]);
   const [loading, setLoading]   = useState(true);
+  const [projectOptions, setProjectOptions] = useState<{ label: string; value: string }[]>([]);
 
   const [search, setSearch]           = useState("");
   const [statusFilter, setStatusFilter]     = useState("");
@@ -72,6 +59,12 @@ export default function DrawingRequests() {
 
   useEffect(() => { load(); }, [search, statusFilter, reviewStatusFilter, priorityFilter, typeFilter, dateFrom, dateTo]);
 
+  useEffect(() => {
+    apiClient.get("/projects")
+      .then(res => setProjectOptions((res.data.projects ?? []).map((p: { _id: string; name: string }) => ({ label: p.name, value: p._id }))))
+      .catch(() => {});
+  }, []);
+
   async function handleDelete() {
     if (!deleteTarget) return;
     setDeleting(true);
@@ -88,142 +81,77 @@ export default function DrawingRequests() {
     }
   }
 
-  // Reflects whatever the current filters already returned from the server
-  // (status is filtered server-side, not client-side) — so with a status
-  // filter active, the other status cards will read 0 rather than a true
-  // unfiltered total. Clicking a card still works as a quick toggle since it
-  // just drives the same statusFilter the dropdown already uses.
-  const statusCounts = useMemo(() => ({
-    pending:   requests.filter(r => r.status === "pending").length,
-    committed: requests.filter(r => r.status === "committed").length,
-    completed: requests.filter(r => r.status === "completed").length,
-    delayed:   requests.filter(r => r.status === "delayed").length,
-  }), [requests]);
-
-  const pager = usePagination(requests, 10);
-
   return (
     <div>
       <PageHeader
         title="Drawing Requests"
         subtitle={`Manage drawing requests — ${requests.length} total`}
         icon={PenTool}
+        actions={<DrawingRequestButton projectOptions={projectOptions} onSubmitted={load} />}
       />
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-5">
-        <NxStatCard
-          label="Pending" value={statusCounts.pending} icon={Clock}
-          active={statusFilter === "pending"} onClick={() => setStatusFilter(statusFilter === "pending" ? "" : "pending")}
-        />
-        <NxStatCard
-          label="Committed" value={statusCounts.committed} icon={CalendarCheck}
-          active={statusFilter === "committed"} onClick={() => setStatusFilter(statusFilter === "committed" ? "" : "committed")}
-        />
-        <NxStatCard
-          label="Completed" value={statusCounts.completed} icon={CheckCircle2}
-          active={statusFilter === "completed"} onClick={() => setStatusFilter(statusFilter === "completed" ? "" : "completed")}
-        />
-        <NxStatCard
-          label="Delayed" value={statusCounts.delayed} icon={AlertTriangle}
-          active={statusFilter === "delayed"} onClick={() => setStatusFilter(statusFilter === "delayed" ? "" : "delayed")}
-        />
-      </div>
+      <FilterRow>
+        <SearchFilter value={search} onChange={setSearch} placeholder="Search project…" />
+        <SelectFilter value={typeFilter} onChange={setTypeFilter} placeholder="All Types" options={DRAWING_TYPE_OPTIONS.map(t => ({ label: t, value: t }))} />
+        <SelectFilter value={priorityFilter} onChange={setPriorityFilter} placeholder="All Priorities" options={PRIORITY_OPTIONS.map(p => ({ label: PRIORITY_LABEL[p], value: p }))} />
+        <SelectFilter value={statusFilter} onChange={setStatusFilter} placeholder="All Statuses" options={STATUS_OPTIONS.map(s => ({ label: STATUS_LABEL[s], value: s }))} />
+        <SelectFilter value={reviewStatusFilter} onChange={setReviewStatusFilter} placeholder="All Review Stages" options={REVIEW_STATUS_OPTIONS.map(s => ({ label: REVIEW_STATUS_LABEL[s], value: s }))} />
+        <DateRangePicker from={dateFrom} to={dateTo} onChange={(f, t) => { setDateFrom(f); setDateTo(t); }} />
+        <Btn label="Search" icon={Eye} color="purple" onClick={load} />
+      </FilterRow>
 
-      <div className="bg-white/90 dark:bg-gray-800/95 backdrop-blur-xl border border-gray-100 dark:border-gray-700/50 rounded-xl shadow-sm p-5">
-        <div className="bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700/40 rounded-lg p-3.5 mb-4">
-          <div className="flex gap-2.5 items-center flex-wrap">
-            <SearchFilter value={search} onChange={setSearch} placeholder="Search project…" />
-            <DropdownSelectFilter
-              value={typeFilter} onChange={setTypeFilter} placeholder="All Types" resetValue=""
-              options={DRAWING_TYPE_OPTIONS.map(t => ({ label: t, value: t }))}
-            />
-            <DropdownSelectFilter
-              value={priorityFilter} onChange={setPriorityFilter} placeholder="All Priorities" resetValue=""
-              options={PRIORITY_OPTIONS.map(p => ({ label: PRIORITY_LABEL[p], value: p }))}
-            />
-            <DropdownSelectFilter
-              value={statusFilter} onChange={setStatusFilter} placeholder="All Statuses" resetValue=""
-              options={STATUS_OPTIONS.map(s => ({ label: STATUS_LABEL[s], value: s }))}
-            />
-            <DropdownSelectFilter
-              value={reviewStatusFilter} onChange={setReviewStatusFilter} placeholder="All Review Stages" resetValue=""
-              options={REVIEW_STATUS_OPTIONS.map(s => ({ label: REVIEW_STATUS_LABEL[s], value: s }))}
-            />
-            <DateRangePicker from={dateFrom} to={dateTo} onChange={(f, t) => { setDateFrom(f); setDateTo(t); }} />
-            <NxBtn color="secondary" icon={Eye} label="Search" onClick={load} />
-          </div>
-        </div>
-
-        {loading ? (
-          <SkeletonTable rows={6} cols={11} />
-        ) : requests.length === 0 ? (
-          <EmptyState icon={PenTool} title="No drawing requests" message="No drawing requests match these filters." />
-        ) : (
-          <>
-            <Table>
-              <Thead>
-                <Tr>
-                  <Th>Ticket No</Th>
-                  <Th>Project</Th>
-                  <Th>Description</Th>
-                  <Th>Type</Th>
-                  <Th>Source</Th>
-                  <Th>Requested By</Th>
-                  <Th>Request Date</Th>
-                  <Th>Review</Th>
-                  <Th>Assigned To</Th>
-                  <Th>Priority</Th>
-                  <Th>Status</Th>
-                  <Th>Committed</Th>
-                  <Th>Actual Completion</Th>
-                  <Th>Delay</Th>
-                  <Th>Plan. Verified</Th>
-                  <Th>Proj. Ack.</Th>
-                  <Th>Remarks</Th>
-                  <Th>Actions</Th>
-                </Tr>
-              </Thead>
-              <Tbody>
-                {pager.pageItems.map(r => {
-                  const delay = delayDays(r);
-                  const menuItems: DropdownMenuItem[] = [
-                    { key: "delete", label: "Delete", icon: Trash2, danger: true, onClick: () => setDeleteTarget(r) },
-                  ];
-                  return (
-                    <Tr key={r._id}>
-                      <Td><span className="font-bold text-primary">{r.ticketNo}</span></Td>
-                      <Td><span className="font-semibold text-[#1A1A2E] dark:text-[#F1F5F9]">{r.projectName}</span></Td>
-                      <Td><span className="max-w-[180px] truncate block" title={r.description}><TdText>{r.description}</TdText></span></Td>
-                      <Td><TdText>{r.drawingType}</TdText></Td>
-                      <Td>{r.source ? <TdText>{r.source}</TdText> : <span className="text-gray-300 dark:text-gray-600">—</span>}</Td>
-                      <Td><TdText>{r.driName}</TdText></Td>
-                      <Td><TdText>{dayjs(r.createdAt).format("DD MMM YYYY")}</TdText></Td>
-                      <Td><NxBadge color={toNxColor(REVIEW_STATUS_COLOR[r.reviewStatus])}>{REVIEW_STATUS_LABEL[r.reviewStatus]}</NxBadge></Td>
-                      <Td>{r.assignedTo ? <TdText>{r.assignedTo.name}</TdText> : <span className="text-gray-300 dark:text-gray-600">—</span>}</Td>
-                      <Td>{r.priority ? <NxBadge color={toNxColor(PRIORITY_COLOR[r.priority])}>{PRIORITY_LABEL[r.priority]}</NxBadge> : <span className="text-gray-300 dark:text-gray-600">—</span>}</Td>
-                      <Td><NxBadge color={toNxColor(STATUS_COLOR[r.status])}>{STATUS_LABEL[r.status]}</NxBadge></Td>
-                      <Td>{r.committedDate ? <TdText>{dayjs(r.committedDate).format("DD MMM YYYY")}</TdText> : <span className="text-gray-300 dark:text-gray-600">—</span>}</Td>
-                      <Td>{r.actualCompletionDate ? <TdText>{dayjs(r.actualCompletionDate).format("DD MMM YYYY")}</TdText> : <span className="text-gray-300 dark:text-gray-600">—</span>}</Td>
-                      <Td>{delay !== null ? <NxBadge color={delay > 0 ? "red" : "green"}>{delay > 0 ? `+${delay}d` : `${delay}d`}</NxBadge> : <span className="text-gray-300 dark:text-gray-600">—</span>}</Td>
-                      <Td>{r.planningVerified ? <NxBadge color="green">Yes</NxBadge> : <NxBadge color="gray">No</NxBadge>}</Td>
-                      <Td>{r.projectAcknowledged ? <NxBadge color="green">Yes</NxBadge> : <NxBadge color="gray">No</NxBadge>}</Td>
-                      <Td>{r.remarks ? <span className="max-w-[140px] truncate block" title={r.remarks}><TdText>{r.remarks}</TdText></span> : <span className="text-gray-300 dark:text-gray-600">—</span>}</Td>
-                      <Td>
-                        <div className="flex items-center gap-1">
-                          <NxBtn color="icon" title="View" icon={Eye} onClick={() => setViewTarget(r)} />
-                          <NxBtn color="icon" title="Edit" icon={Pencil} onClick={() => setEditTarget(r)} />
-                          <DropdownMenu items={menuItems} />
-                        </div>
-                      </Td>
-                    </Tr>
-                  );
-                })}
-              </Tbody>
-            </Table>
-            {pager.totalPages > 1 && <div className="mt-4"><Pagination page={pager.page} totalPages={pager.totalPages} onChange={pager.setPage} /></div>}
-          </>
-        )}
-      </div>
+      {loading ? (
+        <SkeletonTable rows={6} cols={14} />
+      ) : requests.length === 0 ? (
+        <div className="text-center py-14 text-gray-400">No drawing requests match these filters</div>
+      ) : (
+        <Table>
+          <Thead>
+            <Tr>
+              <Th>Ticket No</Th>
+              <Th>Project</Th>
+              <Th>Description</Th>
+              <Th>Type</Th>
+              <Th>Source</Th>
+              <Th>Requested By</Th>
+              <Th>Request Date</Th>
+              <Th>Review</Th>
+              <Th>Priority</Th>
+              <Th>Status</Th>
+              <Th>Plan. Verified</Th>
+              <Th>Proj. Ack.</Th>
+              <Th>Remarks</Th>
+              <Th>Action</Th>
+            </Tr>
+          </Thead>
+          <Tbody>
+            {requests.map(r => (
+              <Tr key={r._id}>
+                <Td><span className="font-mono font-bold text-purple-600 dark:text-purple-400">{r.ticketNo}</span></Td>
+                <Td><span className="font-semibold text-[#1A1A2E] dark:text-[#F1F5F9]">{r.projectName}</span></Td>
+                <Td><span className="max-w-[180px] truncate block" title={r.description}>{r.description}</span></Td>
+                <Td><TdText>{r.drawingType}</TdText></Td>
+                <Td>{r.source ? <TdText>{r.source}</TdText> : <span className="text-gray-300 dark:text-gray-600">—</span>}</Td>
+                <Td><TdText>{r.driName}</TdText></Td>
+                <Td><TdText>{dayjs(r.createdAt).format("DD MMM YYYY")}</TdText></Td>
+                <Td><Badge color={REVIEW_STATUS_COLOR[r.reviewStatus]} small>{REVIEW_STATUS_LABEL[r.reviewStatus]}</Badge></Td>
+                <Td>{r.priority ? <Badge color={PRIORITY_COLOR[r.priority]} small>{PRIORITY_LABEL[r.priority]}</Badge> : <span className="text-gray-300 dark:text-gray-600">—</span>}</Td>
+                <Td><Badge color={STATUS_COLOR[r.status]} small>{STATUS_LABEL[r.status]}</Badge></Td>
+                <Td><span className={r.planningVerified ? "text-emerald-600 dark:text-emerald-400 font-semibold" : "text-gray-400"}>{r.planningVerified ? "Yes" : "No"}</span></Td>
+                <Td><span className={r.projectAcknowledged ? "text-emerald-600 dark:text-emerald-400 font-semibold" : "text-gray-400"}>{r.projectAcknowledged ? "Yes" : "No"}</span></Td>
+                <Td>{r.remarks ? <span className="max-w-[140px] truncate block" title={r.remarks}>{r.remarks}</span> : <span className="text-gray-300 dark:text-gray-600">—</span>}</Td>
+                <Td>
+                  <div className="flex gap-1">
+                    <Btn small outline icon={Eye} onClick={() => setViewTarget(r)} />
+                    <Btn small outline icon={Pencil} onClick={() => setEditTarget(r)} />
+                    <Btn small color="red" icon={Trash2} onClick={() => setDeleteTarget(r)} />
+                  </div>
+                </Td>
+              </Tr>
+            ))}
+          </Tbody>
+        </Table>
+      )}
 
       {viewTarget && (
         <DrawingRequestViewModal
