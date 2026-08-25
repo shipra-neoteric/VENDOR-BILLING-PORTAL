@@ -21,7 +21,7 @@ export function SearchFilter({ value, onChange, placeholder = "Search…" }: Sea
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="w-full h-10 pl-9 pr-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0F172A] text-sm text-[#1A1A2E] dark:text-[#F1F5F9] placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+        className="w-full h-10 pl-9 pr-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0F172A] text-[13px] text-[#1A1A2E] dark:text-[#F1F5F9] placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
       />
     </div>
   );
@@ -43,7 +43,7 @@ export function SelectFilter({ value, onChange, options, placeholder = "All", di
       value={value}
       disabled={disabled}
       onChange={(e) => onChange(e.target.value)}
-      className="h-10 px-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0F172A] text-sm text-gray-500! dark:text-gray-400! focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary disabled:opacity-50"
+      className="h-10 px-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0F172A] text-[13px] text-gray-500! dark:text-gray-400! focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary disabled:opacity-50"
     >
       <option value="">{placeholder}</option>
       {options.map((o) => (
@@ -101,7 +101,7 @@ export function DropdownSelectFilter({ value, onChange, options, placeholder = "
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="h-10 px-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0F172A] text-sm min-w-[150px] flex items-center justify-between gap-2 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+        className="h-10 px-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0F172A] text-[13px] min-w-[150px] flex items-center justify-between gap-2 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
       >
         <span className={isReset ? "text-gray-400 dark:text-gray-500" : "text-[#1A1A2E] dark:text-[#F1F5F9]"}>
           {summary}
@@ -118,26 +118,26 @@ export function DropdownSelectFilter({ value, onChange, options, placeholder = "
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search…"
-              className="w-full text-sm bg-transparent outline-none text-[#1A1A2E] dark:text-[#F1F5F9] placeholder:text-gray-400"
+              className="w-full text-[13px] bg-transparent outline-none text-[#1A1A2E] dark:text-[#F1F5F9] placeholder:text-gray-400"
             />
           </div>
           <div className="max-h-56 overflow-y-auto py-1">
             <button
               type="button"
               onClick={() => select(resetValue)}
-              className={["w-full flex items-center px-3 py-2 text-sm text-left hover:bg-gray-50 dark:hover:bg-gray-700/40", isReset ? "text-primary! font-semibold" : "text-[#1A1A2E]! dark:text-[#F1F5F9]!"].join(" ")}
+              className={["w-full flex items-center px-3 py-2 text-[13px] text-left hover:bg-gray-50 dark:hover:bg-gray-700/40", isReset ? "text-primary! font-semibold" : "text-[#1A1A2E]! dark:text-[#F1F5F9]!"].join(" ")}
             >
               {placeholder}
             </button>
             {filtered.length === 0 && (
-              <div className="px-3 py-2 text-sm text-gray-400">No matches</div>
+              <div className="px-3 py-2 text-[13px] text-gray-400">No matches</div>
             )}
             {filtered.map((o) => (
               <button
                 key={o.value}
                 type="button"
                 onClick={() => select(o.value)}
-                className={["w-full flex items-center px-3 py-2 text-sm text-left hover:bg-gray-50 dark:hover:bg-gray-700/40", value === o.value ? "text-primary! font-semibold" : "text-[#1A1A2E]! dark:text-[#F1F5F9]!"].join(" ")}
+                className={["w-full flex items-center px-3 py-2 text-[13px] text-left hover:bg-gray-50 dark:hover:bg-gray-700/40", value === o.value ? "text-primary! font-semibold" : "text-[#1A1A2E]! dark:text-[#F1F5F9]!"].join(" ")}
               >
                 {o.label}
               </button>

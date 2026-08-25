@@ -95,7 +95,7 @@ export function DatePicker({ label, value, onChange, min, max, disabled }: DateP
         type="button"
         disabled={disabled}
         onClick={() => setOpen(o => !o)}
-        className="w-full h-10 pl-9 pr-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0F172A] text-sm text-left text-[#1A1A2E] dark:text-[#F1F5F9] focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary disabled:opacity-50 relative"
+        className="w-full h-10 pl-9 pr-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0F172A] text-[13px] text-left text-[#1A1A2E] dark:text-[#F1F5F9] focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary disabled:opacity-50 relative"
       >
         <CalendarIcon className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
         {value ? dayjs(value).format("DD MMM YYYY") : <span className="text-gray-400">Select date</span>}
@@ -166,7 +166,7 @@ export function DateRangePicker({ label, from, to, onChange, disabled }: DateRan
             document.body
           )}
         </div>
-        <span className="text-gray-400 text-sm shrink-0">to</span>
+        <span className="text-gray-400 text-[13px] shrink-0">to</span>
         <div className="flex-1">
           <button
             ref={toPopover.triggerRef}

@@ -944,7 +944,7 @@ function StageField({ value, onChange }: { value: string; onChange: (v: string) 
         onChange={e => onChange(e.target.value)}
         onFocus={() => setOpen(true)}
         placeholder="Select or type a stage"
-        className="w-full h-10 px-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0F172A] text-sm text-[#1A1A2E] dark:text-[#F1F5F9] placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+        className="w-full h-10 px-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0F172A] text-[13px] text-[#1A1A2E] dark:text-[#F1F5F9] placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
       />
       {open && filtered.length > 0 && (
         <div className="absolute z-20 mt-1 w-full bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700/40 rounded-lg shadow-lg overflow-hidden py-1 max-h-56 overflow-y-auto">
@@ -953,7 +953,7 @@ function StageField({ value, onChange }: { value: string; onChange: (v: string) 
               key={s}
               type="button"
               onClick={() => { onChange(s); setOpen(false); }}
-              className="w-full flex items-center justify-between gap-2 px-3 py-2 text-sm text-left text-[#1A1A2E]! dark:text-[#F1F5F9]! hover:bg-gray-50 dark:hover:bg-gray-700/40"
+              className="w-full flex items-center justify-between gap-2 px-3 py-2 text-[13px] text-left text-[#1A1A2E]! dark:text-[#F1F5F9]! hover:bg-gray-50 dark:hover:bg-gray-700/40"
             >
               {s}
               {s === value && <Check className="w-3.5 h-3.5 text-primary shrink-0" />}

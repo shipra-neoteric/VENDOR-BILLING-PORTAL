@@ -95,7 +95,7 @@ function SoftwareTagPicker({ values, onChange }: { values: string[]; onChange: (
           value={custom} onChange={e => setCustom(e.target.value)}
           onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addCustom(); } }}
           placeholder="Type another software and press Enter…"
-          className="flex-1 h-9 px-3 rounded-md border border-gray-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+          className="flex-1 h-9 px-3 rounded-md border border-gray-200 bg-white text-[13px] focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
         />
         <Btn small outline icon={Plus} label="Add" onClick={addCustom} />
       </div>

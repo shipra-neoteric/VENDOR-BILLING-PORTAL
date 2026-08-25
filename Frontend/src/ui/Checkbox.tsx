@@ -24,7 +24,7 @@ export default function Checkbox({ checked, onChange, label, disabled }: Checkbo
       >
         {checked && <Check className="w-3 h-3 text-white" strokeWidth={3} />}
       </button>
-      {label && <span className="text-sm text-[#1A1A2E] dark:text-[#F1F5F9]">{label}</span>}
+      {label && <span className="text-[13px] text-[#1A1A2E] dark:text-[#F1F5F9]">{label}</span>}
     </label>
   );
 }

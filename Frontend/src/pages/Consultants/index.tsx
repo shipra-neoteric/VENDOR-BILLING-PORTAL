@@ -86,7 +86,7 @@ function TagInput({ value, onChange, suggestions }: { value: string[]; onChange:
         onChange={e => setInput(e.target.value)}
         onKeyDown={e => { if ((e.key === "Enter" || e.key === ",") && input.trim()) { e.preventDefault(); add(input); } }}
         placeholder="Type software name and press Enter…"
-        className="w-full h-10 px-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0F172A] text-sm text-[#1A1A2E] dark:text-[#F1F5F9] placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+        className="w-full h-10 px-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0F172A] text-[13px] text-[#1A1A2E] dark:text-[#F1F5F9] placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
       />
       <div className="flex flex-wrap gap-1.5 mt-2">
         {suggestions.filter(s => !value.includes(s)).map(s => (

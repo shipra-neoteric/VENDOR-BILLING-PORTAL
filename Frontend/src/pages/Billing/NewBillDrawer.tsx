@@ -427,7 +427,7 @@ export default function NewBillDrawer({
   // Bare, borderless inline-editable table-cell input — matches antd's
   // `bordered={false}` Input/InputNumber look used throughout this table
   // (as opposed to ui/Field's always-bordered, labeled form-field look).
-  const cellInputClass = "w-full bg-transparent text-sm px-1 py-1 outline-none focus:ring-1 focus:ring-primary/30 rounded";
+  const cellInputClass = "w-full bg-transparent text-[13px] px-1 py-1 outline-none focus:ring-1 focus:ring-primary/30 rounded";
 
   return (
     <>
