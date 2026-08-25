@@ -16,7 +16,7 @@ const fmtRate = (n: number) => "₹" + (n || 0).toLocaleString("en-IN", { minimu
 // chain — same fields AccountsPayment's stepper reads, just laid out as a
 // table (matching the Work Order's own "Approval Workflow & Signatures" look)
 // instead of a stepper, since a bill has no re-submission cycles to group.
-function BillStageCell({ by, at }: { by?: string; at?: string }) {
+export function BillStageCell({ by, at }: { by?: string; at?: string }) {
   if (!by && !at) return <span className="text-gray-300 dark:text-gray-600">—</span>;
   return (
     <div className="flex flex-col gap-1 min-w-[110px]">
@@ -40,7 +40,7 @@ export interface BillApprovalHistoryEntry {
 // earlier chain from BillStageCell's Verification → L1 AGM → L2 Director
 // one above, which only starts once Accounts has the bill. Same append-only
 // shape and rendering convention as SiteProgress's own ApprovalHistoryTimeline.
-function BillApprovalHistoryList({ history }: { history?: BillApprovalHistoryEntry[] }) {
+export function BillApprovalHistoryList({ history }: { history?: BillApprovalHistoryEntry[] }) {
   if (!history || history.length === 0) return null;
   const stageLabel = (s: string) => (s === "agm" ? "AGM" : "GM");
   return (
@@ -214,6 +214,34 @@ export interface BillDetailRequest {
   createdAt: string;
 }
 
+// Bills created via the normal single-request flow carry a real
+// approvalHistory. Older/batch-created ones (e.g. a bulk daily-wages run)
+// never wrote it — they only ever set the plain agmApprovedBy/processedBy
+// stamps (on the BillRequest itself, or as a last resort the RunningBill's
+// own pre-redesign agmApprovedBy field). Synthesize an equivalent 2-row
+// history from whichever of those is actually present, so this section
+// still shows something for every approved/rejected bill, not just ones
+// that happened to go through agmApprove/gmApprove individually. Exported
+// so other read-only bill views (e.g. Billing's own list) can derive the
+// identical "Approval Chain — Before Accounts" timeline from a fetched
+// BillRequest without duplicating this fallback rule.
+export function deriveBillApprovalHistory(billRequest: Pick<BillDetailRequest, "approvalHistory" | "agmApprovedBy" | "agmApprovedAt" | "status" | "processedBy" | "processedAt" | "rejectReason"> & { billId?: Pick<NonNullable<BillDetailRequest["billId"]>, "agmApprovedBy" | "agmApprovedAt"> }): BillApprovalHistoryEntry[] {
+  if (billRequest.approvalHistory?.length) return billRequest.approvalHistory;
+  const agmBy = billRequest.agmApprovedBy ?? billRequest.billId?.agmApprovedBy;
+  const agmAt = billRequest.agmApprovedAt ?? billRequest.billId?.agmApprovedAt;
+  const rows: BillApprovalHistoryEntry[] = [];
+  if (agmBy || agmAt) rows.push({ stage: "agm", action: "approved", by: agmBy, at: agmAt });
+  if (billRequest.status === "approved" && (billRequest.processedBy || billRequest.processedAt)) {
+    rows.push({ stage: "gm", action: "approved", by: billRequest.processedBy, at: billRequest.processedAt });
+  } else if (billRequest.status === "rejected" && (billRequest.processedBy || billRequest.processedAt)) {
+    // No approvalHistory to say which stage actually rejected it — if AGM
+    // had already approved (forwarded to GM), a later reject must be GM's;
+    // if AGM never approved at all, it was rejected at AGM itself.
+    rows.push({ stage: agmBy || agmAt ? "gm" : "agm", action: "rejected", by: billRequest.processedBy, at: billRequest.processedAt, remarks: billRequest.rejectReason });
+  }
+  return rows;
+}
+
 // Read-only view of a bill request — same layout as the BillRequests page's
 // view modal, minus approve/reject/milestone actions (not applicable outside that workflow).
 export default function BillDetailModal({
@@ -237,31 +265,7 @@ export default function BillDetailModal({
   const varianceItems = displayItems.filter(it => (it.varianceQty ?? 0) > 0);
   const viewTotal = displayItems.reduce((s, it) => s + (it.rate ?? 0) * it.billedQty, 0);
 
-  // Bills created via the normal single-request flow carry a real
-  // approvalHistory. Older/batch-created ones (e.g. a bulk daily-wages run)
-  // never wrote it — they only ever set the plain agmApprovedBy/processedBy
-  // stamps (on the BillRequest itself, or as a last resort the RunningBill's
-  // own pre-redesign agmApprovedBy field). Synthesize an equivalent 2-row
-  // history from whichever of those is actually present, so this section
-  // still shows something for every approved/rejected bill, not just ones
-  // that happened to go through agmApprove/gmApprove individually.
-  const approvalHistory: BillApprovalHistoryEntry[] = billRequest.approvalHistory?.length
-    ? billRequest.approvalHistory
-    : (() => {
-        const agmBy = billRequest.agmApprovedBy ?? billRequest.billId?.agmApprovedBy;
-        const agmAt = billRequest.agmApprovedAt ?? billRequest.billId?.agmApprovedAt;
-        const rows: BillApprovalHistoryEntry[] = [];
-        if (agmBy || agmAt) rows.push({ stage: "agm", action: "approved", by: agmBy, at: agmAt });
-        if (billRequest.status === "approved" && (billRequest.processedBy || billRequest.processedAt)) {
-          rows.push({ stage: "gm", action: "approved", by: billRequest.processedBy, at: billRequest.processedAt });
-        } else if (billRequest.status === "rejected" && (billRequest.processedBy || billRequest.processedAt)) {
-          // No approvalHistory to say which stage actually rejected it — if AGM
-          // had already approved (forwarded to GM), a later reject must be
-          // GM's; if AGM never approved at all, it was rejected at AGM itself.
-          rows.push({ stage: agmBy || agmAt ? "gm" : "agm", action: "rejected", by: billRequest.processedBy, at: billRequest.processedAt, remarks: billRequest.rejectReason });
-        }
-        return rows;
-      })();
+  const approvalHistory = deriveBillApprovalHistory(billRequest);
 
   const headerRows: [string, React.ReactNode][] = [
     ["Work Order",    billRequest.workOrderNo],

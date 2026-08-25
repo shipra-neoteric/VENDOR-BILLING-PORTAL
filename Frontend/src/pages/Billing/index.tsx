@@ -12,7 +12,7 @@ import type { NxBadgeColor } from "../../ui/nexora/Badge";
 import NxStatCard from "../../ui/nexora/StatCard";
 import Modal from "../../ui/Modal";
 import { Descriptions, DescItem } from "../../ui/Descriptions";
-import { Table, Thead, Tbody, Tr, Th, Td } from "../../ui/Table";
+import { Table, Thead, Tbody, Tfoot, Tr, Th, Td } from "../../ui/Table";
 import { usePagination } from "../../ui/usePagination";
 import Pagination from "../../ui/Pagination";
 import Spinner from "../../ui/Spinner";
@@ -26,6 +26,8 @@ import { BILL_TYPE_CFG } from "../../shared/constants/billOptions";
 import { BILL_STATUS, BILL_STATUS_LABEL } from "../../shared/constants/billStatus";
 import { billFinancials } from "../../shared/utils/billMath";
 import NewBillDrawer from "./NewBillDrawer";
+import { BillStageCell, BillApprovalHistoryList, deriveBillApprovalHistory } from "../../components/BillDetailModal";
+import type { BillApprovalHistoryEntry } from "../../components/BillDetailModal";
 
 // ── Types — a read-only slice of what AccountsPayment's own Bill looks
 // like; this page never edits a bill, only lists/views + creates new ones ──
@@ -64,6 +66,37 @@ interface Bill {
   manualApprovalStatus?: "pending" | "pending-gm" | "approved" | "rejected";
   billType?: string;
   createdAt?: string;
+
+  // ── Accounts Payment's own Verification → L1 AGM → L2 Director → TMS
+  // chain — always present on the bill itself (regardless of how it was
+  // created), just empty until each stage is actually reached.
+  verificationBy?: { name: string } | null;
+  verificationAt?: string;
+  l1ApprovedBy?: { name: string } | null;
+  l1ApprovedAt?: string;
+  l2ApprovedBy?: { name: string } | null;
+  l2ApprovedAt?: string;
+  tmsSentAt?: string;
+  tmsCallbackReceivedAt?: string;
+  paidAmount?: number;
+  adjustmentAmount?: number;
+  adjustmentRemark?: string;
+  paymentUTR?: string;
+
+  // ── Pre-Accounts sign-off ────────────────────────────────────
+  // A progress-driven bill's AGM/GM approval happened on its originating
+  // BillRequest, fetched separately (see loadApprovalHistory) — these are
+  // only the RunningBill-level fallbacks for older/batch-created bills.
+  agmApprovedBy?: { name: string } | null;
+  agmApprovedAt?: string;
+  // A manually created bill (Billing → New Bill) has no BillRequest at all —
+  // this is its own, separate AGM/GM sign-off chain instead.
+  manualAgmApprovedBy?: { name: string } | null;
+  manualAgmApprovedAt?: string;
+  manualGmApprovedBy?: { name: string } | null;
+  manualGmApprovedAt?: string;
+  manualRejectedBy?: { name: string } | null;
+  manualRejectReason?: string;
 }
 
 interface ProjectOpt { id: string; name: string; code: string; parentId?: string | null; }
@@ -118,6 +151,12 @@ export default function Billing() {
 
   const [viewBillId, setViewBillId] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  // The pre-Accounts AGM/GM sign-off happened on this bill's originating
+  // BillRequest, not on the RunningBill itself — a progress-driven bill only,
+  // fetched on demand (never present on /bills' own response) once a bill is
+  // opened for viewing. Stays null for a manually created bill (no
+  // BillRequest exists) or once loading finishes with no match found.
+  const [viewApprovalHistory, setViewApprovalHistory] = useState<BillApprovalHistoryEntry[] | null>(null);
 
   // Same print-ready template Accounts Payment/Site Progress already use for
   // a bill — opens a new window and triggers window.print(), where "Save as
@@ -189,6 +228,21 @@ export default function Billing() {
     () => (viewBillId ? bills.find((b) => b.id === viewBillId) || null : null),
     [bills, viewBillId]
   );
+
+  useEffect(() => {
+    setViewApprovalHistory(null);
+    if (!viewBill?.workOrderId) return;
+    apiClient.get<{ billRequests: Record<string, unknown>[] }>(`/bill-requests?workOrderId=${viewBill.workOrderId}`)
+      .then((r) => {
+        const match = (r.data.billRequests || []).find((br) => {
+          const billId = br.billId as { _id?: string } | string | undefined;
+          const id = typeof billId === "string" ? billId : billId?._id;
+          return id === viewBill.id;
+        });
+        if (match) setViewApprovalHistory(deriveBillApprovalHistory(match as Parameters<typeof deriveBillApprovalHistory>[0]));
+      })
+      .catch(() => {});
+  }, [viewBill?.workOrderId, viewBill?.id]);
 
   return (
     <div>
@@ -329,13 +383,42 @@ export default function Billing() {
 
           <div className="border-t border-gray-200 dark:border-gray-700/40 my-4" />
 
-          <div className="font-bold text-[13px] mb-2 text-[#1A1A2E] dark:text-[#F1F5F9]">Line Items</div>
+          {/* Accounts Payment's own Verification → L1 AGM → L2 Director → TMS
+              chain — same table the Work Order's own bill view shows. */}
+          <div className="mb-4">
+            <div className="font-bold text-xs text-gray-600 dark:text-gray-300 mb-1.5 uppercase tracking-wide">
+              Bill Approvals
+            </div>
+            <Table>
+              <Thead>
+                <Tr>
+                  <Th>Verification</Th>
+                  <Th>L1 AGM</Th>
+                  <Th>L2 Director</Th>
+                  <Th>Sent to TMS</Th>
+                  <Th>Paid</Th>
+                </Tr>
+              </Thead>
+              <Tbody>
+                <Tr>
+                  <Td className="align-top"><BillStageCell by={viewBill.verificationBy?.name} at={viewBill.verificationAt} /></Td>
+                  <Td className="align-top"><BillStageCell by={viewBill.l1ApprovedBy?.name} at={viewBill.l1ApprovedAt} /></Td>
+                  <Td className="align-top"><BillStageCell by={viewBill.l2ApprovedBy?.name} at={viewBill.l2ApprovedAt} /></Td>
+                  <Td className="align-top"><BillStageCell at={viewBill.tmsSentAt} /></Td>
+                  <Td className="align-top"><BillStageCell at={viewBill.tmsCallbackReceivedAt} /></Td>
+                </Tr>
+              </Tbody>
+            </Table>
+          </div>
+
+          <div className="font-bold text-xs text-gray-600 dark:text-gray-300 mb-1.5 uppercase tracking-wide">Scope Items</div>
           <div className="mb-4">
             <Table>
               <Thead>
                 <Tr>
                   <Th>Description</Th>
-                  <Th className="text-right">Qty</Th>
+                  <Th>Unit</Th>
+                  <Th className="text-right">Qty Billed</Th>
                   <Th className="text-right">Rate</Th>
                   <Th className="text-right">Amount</Th>
                 </Tr>
@@ -344,45 +427,110 @@ export default function Billing() {
                 {(viewBill.lineItems || []).map((li, i) => (
                   <Tr key={i}>
                     <Td>{li.description}</Td>
-                    <Td className="text-right">{li.billedQty} {li.unit}</Td>
+                    <Td>{li.unit}</Td>
+                    <Td className="text-right font-mono">{li.billedQty.toLocaleString("en-IN")}</Td>
                     <Td className="text-right">{fmtRate(li.rate)}</Td>
                     <Td className="text-right font-bold">{fmt(li.amount)}</Td>
                   </Tr>
                 ))}
               </Tbody>
+              <Tfoot>
+                <Tr className="bg-primary/5">
+                  <Td colSpan={4} className="font-bold text-right text-primary">Gross Total</Td>
+                  <Td className="font-bold text-right text-[#1A1A2E] dark:text-[#F1F5F9]">{fmt(viewBill.amount)}</Td>
+                </Tr>
+              </Tfoot>
             </Table>
           </div>
 
-          <div className="font-bold text-[13px] mb-2 text-[#1A1A2E] dark:text-[#F1F5F9]">Financial Summary</div>
-          <div className="font-mono text-[13px] border border-gray-200 dark:border-gray-700/40 rounded-lg overflow-hidden">
-            <div className="flex justify-between px-3.5 py-1.5 border-b border-gray-100 dark:border-gray-700/40">
-              <span>Gross Amount</span><span>{fmt(viewBill.amount)}</span>
-            </div>
-            {(viewBill.retentionAmount ?? 0) > 0 && (
-              <div className="flex justify-between px-3.5 py-1.5 border-b border-gray-100 dark:border-gray-700/40 text-amber-700 dark:text-amber-400">
-                <span>− Hold / Retention{viewBill.retentionPercent ? ` (${viewBill.retentionPercent}%)` : ""}</span><span>{fmt(viewBill.retentionAmount || 0)}</span>
+          {(() => {
+            const gross = viewBill.amount || 0;
+            const retAmt = viewBill.retentionAmount ?? 0;
+            const advRec = viewBill.advanceRecovery ?? 0;
+            const { gstAmount: gstAmt, netAfterHold: netPay } = billFinancials({ gross, gstPercent: viewBill.gstPercent ?? 0, retentionAmount: retAmt, advanceRecovery: advRec });
+            const paid = viewBill.paidAmount;
+            return (
+              <div className="bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-300 dark:border-emerald-500/30 rounded-lg p-3 text-sm mb-4">
+                <div className="font-bold mb-2 text-emerald-800 dark:text-emerald-300">
+                  Running Bill: {viewBill.billNo}
+                </div>
+                <div className="font-mono text-xs flex flex-col gap-0.5">
+                  <div className="flex justify-between">
+                    <span className="text-gray-500 dark:text-gray-400">Gross Billed</span>
+                    <span className="font-semibold">{fmt(gross)}</span>
+                  </div>
+                  {retAmt > 0 && (
+                    <div className="flex justify-between text-red-600 dark:text-red-400">
+                      <span>Hold / Retention{(viewBill.retentionPercent ?? 0) > 0 ? ` @ ${viewBill.retentionPercent}%` : ""}</span>
+                      <span>− {fmt(retAmt)}</span>
+                    </div>
+                  )}
+                  {advRec > 0 && (
+                    <div className="flex justify-between text-amber-600 dark:text-amber-400">
+                      <span>Less: Advance Recovery</span>
+                      <span>− {fmt(advRec)}</span>
+                    </div>
+                  )}
+                  {gstAmt > 0 && (
+                    <div className="flex justify-between text-emerald-600 dark:text-emerald-400">
+                      <span>GST @ {viewBill.gstPercent}%</span>
+                      <span>+ {fmt(gstAmt)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between border-t border-emerald-300 dark:border-emerald-500/30 pt-1 mt-0.5 font-bold">
+                    <span>Net Payable</span>
+                    <span>{fmt(netPay)}</span>
+                  </div>
+                  {(viewBill.adjustmentAmount ?? 0) !== 0 && (
+                    <div className={`flex justify-between ${(viewBill.adjustmentAmount ?? 0) > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
+                      <span>Adjustment{viewBill.adjustmentRemark ? ` (${viewBill.adjustmentRemark})` : ""}</span>
+                      <span>{(viewBill.adjustmentAmount ?? 0) > 0 ? "+" : "−"} {fmt(Math.abs(viewBill.adjustmentAmount ?? 0))}</span>
+                    </div>
+                  )}
+                  {paid != null && (
+                    <div className="flex justify-between font-bold text-emerald-600 dark:text-emerald-400 text-[13px] mt-1 border-t border-emerald-300 dark:border-emerald-500/30 pt-1">
+                      <span>Actually Paid</span>
+                      <span>{fmt(paid)}</span>
+                    </div>
+                  )}
+                </div>
+                {viewBill.paymentUTR && (
+                  <div className="mt-2 font-mono text-xs text-purple-600 dark:text-purple-400">UTR: {viewBill.paymentUTR}</div>
+                )}
               </div>
-            )}
-            {(viewBill.advanceRecovery ?? 0) > 0 && (
-              <div className="flex justify-between px-3.5 py-1.5 border-b border-gray-100 dark:border-gray-700/40 text-amber-700 dark:text-amber-400">
-                <span>− Advance Recovery</span><span>{fmt(viewBill.advanceRecovery || 0)}</span>
-              </div>
-            )}
-            <div className="flex justify-between px-3.5 py-1.5 border-b border-gray-100 dark:border-gray-700/40">
-              <span>+ GST @ {viewBill.gstPercent}%</span>
-              <span>{fmt(billFinancials({ gross: viewBill.amount, gstPercent: viewBill.gstPercent, retentionAmount: viewBill.retentionAmount ?? 0, advanceRecovery: viewBill.advanceRecovery ?? 0 }).gstAmount)}</span>
-            </div>
-            <div className="flex justify-between px-3.5 py-2.5 bg-primary/5 font-extrabold text-[15px] text-primary">
-              <span>Net Payable</span><span>{fmt(netAfterAdvance(viewBill))}</span>
-            </div>
-          </div>
+            );
+          })()}
 
           {viewBill.remarks && (
-            <>
-              <div className="border-t border-gray-200 dark:border-gray-700/40 my-4" />
-              <div className="text-gray-500 dark:text-gray-400 text-[13px]"><strong>Remarks:</strong> {viewBill.remarks}</div>
-            </>
+            <div className="mb-4 text-gray-500 dark:text-gray-400 text-[13px]"><strong>Remarks:</strong> {viewBill.remarks}</div>
           )}
+
+          {/* AGM → GM sign-off — happens in Site Progress (or, for a manual
+              bill with no BillRequest, Billing's own pre-Accounts step),
+              before this ever reaches Accounts as a RunningBill. */}
+          {(() => {
+            const history = viewApprovalHistory ?? (
+              !viewBill.workOrderId
+                ? deriveBillApprovalHistory({
+                    agmApprovedBy: viewBill.manualAgmApprovedBy, agmApprovedAt: viewBill.manualAgmApprovedAt,
+                    status: viewBill.manualApprovalStatus === "rejected" ? "rejected" : viewBill.manualApprovalStatus === "approved" ? "approved" : "pending",
+                    processedBy: viewBill.manualGmApprovedBy ?? viewBill.manualRejectedBy, processedAt: viewBill.manualGmApprovedAt,
+                    rejectReason: viewBill.manualRejectReason,
+                  })
+                : []
+            );
+            if (history.length === 0) return null;
+            return (
+              <div className="mb-4">
+                <div className="font-bold text-xs text-gray-600 dark:text-gray-300 mb-1.5 uppercase tracking-wide">
+                  Approval Chain — Before Accounts
+                </div>
+                <div className="bg-gray-50 dark:bg-gray-800/40 rounded-lg p-3.5">
+                  <BillApprovalHistoryList history={history} />
+                </div>
+              </div>
+            );
+          })()}
         </Modal>
       )}
 
