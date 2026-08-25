@@ -1,0 +1,208 @@
+import dayjs from "dayjs";
+import type { Dayjs } from "dayjs";
+import { inDateRange } from "../components/DateRangeFilter";
+import { REVIEW_STATUS_LABEL } from "../shared/constants/drawingRequestOptions";
+import type { DrawingRequest, DrawingReviewStatus } from "../shared/constants/drawingRequestOptions";
+
+interface ReportLike {
+  projectId: string;
+  projectName?: string;
+  driName: string;
+  date: string;
+  vendorCode: string;
+  labourCount: number | "";
+  workEntries: { workType: string }[];
+}
+interface ProjectLike { _id: string; name: string; }
+interface WorkOrderLike {
+  projectId?: string | { _id: string };
+  scopeItems: { description: string; unit?: string; plannedQty?: number; completedQty?: number }[];
+}
+
+export interface ReportPeriod { from: Dayjs | null; to: Dayjs | null; }
+
+export function periodLabel({ from, to }: ReportPeriod): string {
+  if (!from && !to) return "All Time";
+  if (from && to && from.isSame(to, "day")) return from.format("DD MMM YYYY");
+  return `${from ? from.format("DD MMM YYYY") : "…"} – ${to ? to.format("DD MMM YYYY") : "…"}`;
+}
+
+// The equal-length window immediately preceding the selected period, used
+// only for the "vs Previous Period" column — undefined for "All Time" since
+// there's no prior window to compare against.
+function previousPeriod({ from, to }: ReportPeriod): ReportPeriod | null {
+  if (!from || !to) return null;
+  const days = to.diff(from, "day") + 1;
+  return { from: from.subtract(days, "day"), to: from.subtract(1, "day").endOf("day") };
+}
+
+export interface DailyProgressReportSummary {
+  periodLabel: string;
+  generatedAt: string;
+  preparedBy: string;
+  scopeLabel: string;
+  kpis: {
+    totalLabour: number;
+    projectsCovered: number;
+    totalContractors: number;
+    workTypes: number;
+    reportingDays: number;
+    reportsSubmitted: number;
+    drawingRequests: number;
+  };
+  projectSummary: { projectName: string; labour: number; contractors: number; majorWorkType: string; reportsCount: number; changePct: number | null }[];
+  workTypeSummary: { workType: string; entries: number; pct: number }[];
+  workProgress: { description: string; unit: string; planned: number; completed: number; pct: number }[];
+  drawingRequests: { ticketNo: string; description: string; projectName: string; driName: string; stageLabel: string; requestedOn: string; daysSince: number }[];
+  drawingStageFunnel: { label: string; count: number }[];
+  exceptions: { project: string; issue: string }[];
+  actionItems: { level: "critical" | "warning" | "good"; text: string }[];
+}
+
+export function buildDailyProgressReportSummary(args: {
+  reports: ReportLike[];
+  workOrders: WorkOrderLike[];
+  drawingReqs: DrawingRequest[];
+  projects: ProjectLike[];
+  period: ReportPeriod;
+  filterProjectId: string;
+  filterDriName: string;
+  preparedBy: string;
+}): DailyProgressReportSummary {
+  const { reports, workOrders, drawingReqs, projects, period, filterProjectId, filterDriName, preparedBy } = args;
+
+  const inRange = reports.filter(r =>
+    inDateRange(r.date, period.from, period.to) &&
+    (!filterProjectId || r.projectId === filterProjectId) &&
+    (!filterDriName || r.driName === filterDriName)
+  );
+
+  const projectIds = new Set(inRange.map(r => r.projectId));
+  const contractorCodes = new Set(inRange.map(r => r.vendorCode));
+  const workTypeSet = new Set(inRange.flatMap(r => r.workEntries.map(e => e.workType)));
+  const reportingDays = new Set(inRange.map(r => dayjs(r.date).format("YYYY-MM-DD"))).size;
+
+  // ── Project-wise labour summary ──
+  const byProject = new Map<string, { projectName: string; labour: number; contractors: Set<string>; workTypeCounts: Map<string, number>; reportsCount: number }>();
+  for (const r of inRange) {
+    const key = r.projectId || r.projectName || "—";
+    if (!byProject.has(key)) byProject.set(key, { projectName: r.projectName || "—", labour: 0, contractors: new Set(), workTypeCounts: new Map(), reportsCount: 0 });
+    const row = byProject.get(key)!;
+    row.labour += Number(r.labourCount) || 0;
+    row.contractors.add(r.vendorCode);
+    row.reportsCount += 1;
+    for (const e of r.workEntries) row.workTypeCounts.set(e.workType, (row.workTypeCounts.get(e.workType) || 0) + 1);
+  }
+
+  const prev = previousPeriod(period);
+  const prevLabourByProject = new Map<string, number>();
+  if (prev) {
+    for (const r of reports) {
+      if (!inDateRange(r.date, prev.from, prev.to)) continue;
+      if (filterProjectId && r.projectId !== filterProjectId) continue;
+      if (filterDriName && r.driName !== filterDriName) continue;
+      const key = r.projectId || r.projectName || "—";
+      prevLabourByProject.set(key, (prevLabourByProject.get(key) || 0) + (Number(r.labourCount) || 0));
+    }
+  }
+
+  const projectSummary = [...byProject.entries()].map(([key, row]) => {
+    let majorWorkType = "—";
+    let max = 0;
+    for (const [wt, count] of row.workTypeCounts) if (count > max) { max = count; majorWorkType = wt; }
+    const prevLabour = prevLabourByProject.get(key);
+    const changePct = prev && prevLabour !== undefined && prevLabour > 0
+      ? Math.round(((row.labour - prevLabour) / prevLabour) * 100)
+      : null;
+    return { projectName: row.projectName, labour: row.labour, contractors: row.contractors.size, majorWorkType, reportsCount: row.reportsCount, changePct };
+  }).sort((a, b) => b.labour - a.labour);
+
+  // ── Work-type distribution (report entries, not labour headcount — the
+  // schema records labour per report, not split across the work types
+  // logged in it, so "entries logged" is what's honestly derivable) ──
+  const workTypeCounts = new Map<string, number>();
+  for (const r of inRange) for (const e of r.workEntries) workTypeCounts.set(e.workType, (workTypeCounts.get(e.workType) || 0) + 1);
+  const totalEntries = [...workTypeCounts.values()].reduce((a, b) => a + b, 0);
+  const workTypeSummary = [...workTypeCounts.entries()]
+    .map(([workType, entries]) => ({ workType, entries, pct: totalEntries > 0 ? Math.round((entries / totalEntries) * 100) : 0 }))
+    .sort((a, b) => b.entries - a.entries);
+
+  // ── Work progress — cumulative scope-item totals, project-filtered only
+  // (scope items aren't date-stamped the way daily reports are) ──
+  const filteredWO = workOrders.filter(wo => {
+    if (!filterProjectId) return true;
+    const pid = typeof wo.projectId === "string" ? wo.projectId : wo.projectId?._id;
+    return pid === filterProjectId;
+  });
+  const byDesc = new Map<string, { description: string; unit: string; planned: number; completed: number }>();
+  for (const wo of filteredWO) for (const si of wo.scopeItems || []) {
+    const key = (si.description || "").trim().toLowerCase();
+    if (!key) continue;
+    if (!byDesc.has(key)) byDesc.set(key, { description: si.description, unit: si.unit || "", planned: 0, completed: 0 });
+    const row = byDesc.get(key)!;
+    row.planned += si.plannedQty || 0;
+    row.completed += si.completedQty || 0;
+  }
+  const workProgress = [...byDesc.values()]
+    .filter(r => r.planned > 0)
+    .map(r => ({ ...r, pct: Math.min(100, Math.round((r.completed / r.planned) * 100)) }))
+    .sort((a, b) => b.planned - a.planned)
+    .slice(0, 15);
+
+  // ── Drawing requests — project-filtered, matches the on-screen tab ──
+  const filteredDR = drawingReqs.filter(d => !filterProjectId || d.projectId === filterProjectId);
+  const drawingRequestsOut = filteredDR
+    .slice()
+    .sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""))
+    .slice(0, 25)
+    .map(d => ({
+      ticketNo: d.ticketNo, description: d.description, projectName: d.projectName, driName: d.driName,
+      stageLabel: REVIEW_STATUS_LABEL[d.reviewStatus], requestedOn: dayjs(d.createdAt).format("DD MMM YYYY"),
+      daysSince: dayjs().diff(dayjs(d.createdAt), "day"),
+    }));
+
+  const stageOrder: DrawingReviewStatus[] = ["l1-gm", "l2-architect", "l3-gm", "l4-gm", "approved", "returned"];
+  const drawingStageFunnel = stageOrder.map(s => ({ label: REVIEW_STATUS_LABEL[s], count: filteredDR.filter(d => d.reviewStatus === s).length }));
+
+  // ── Exceptions & action items ──
+  const exceptions: { project: string; issue: string }[] = [];
+  if (!filterProjectId) {
+    for (const p of projects) {
+      const hasReport = inRange.some(r => r.projectId === p._id);
+      if (!hasReport) exceptions.push({ project: p.name, issue: `No progress report submitted for ${periodLabel(period)}` });
+    }
+  }
+  const delayedDrawings = filteredDR.filter(d => !["approved", "returned"].includes(d.reviewStatus) && dayjs().diff(dayjs(d.createdAt), "day") > 3);
+  for (const d of delayedDrawings) {
+    const age = dayjs().diff(dayjs(d.createdAt), "day");
+    exceptions.push({ project: d.projectName, issue: `Drawing request ${d.ticketNo} pending ${age} days (${REVIEW_STATUS_LABEL[d.reviewStatus]})` });
+  }
+
+  const actionItems: DailyProgressReportSummary["actionItems"] = [];
+  if (delayedDrawings.length > 0) {
+    actionItems.push({ level: "critical", text: `${delayedDrawings.length} drawing request${delayedDrawings.length === 1 ? "" : "s"} delayed more than 3 days` });
+  }
+  const totalProjectScope = filterProjectId ? 1 : projects.length;
+  const missingCount = !filterProjectId ? projects.filter(p => !inRange.some(r => r.projectId === p._id)).length : 0;
+  if (missingCount > 0) {
+    actionItems.push({ level: "warning", text: `${missingCount} project${missingCount === 1 ? "" : "s"} did not submit a progress report for ${periodLabel(period)}` });
+  }
+  actionItems.push({ level: "good", text: `${projectIds.size} / ${totalProjectScope} project${totalProjectScope === 1 ? "" : "s"} reported in this period` });
+
+  return {
+    periodLabel: periodLabel(period),
+    generatedAt: new Date().toISOString(),
+    preparedBy,
+    scopeLabel: [filterProjectId ? projects.find(p => p._id === filterProjectId)?.name : "All Projects", filterDriName || null].filter(Boolean).join(" · "),
+    kpis: {
+      totalLabour: inRange.reduce((s, r) => s + (Number(r.labourCount) || 0), 0),
+      projectsCovered: projectIds.size,
+      totalContractors: contractorCodes.size,
+      workTypes: workTypeSet.size,
+      reportingDays,
+      reportsSubmitted: inRange.length,
+      drawingRequests: filteredDR.length,
+    },
+    projectSummary, workTypeSummary, workProgress, drawingRequests: drawingRequestsOut, drawingStageFunnel, exceptions, actionItems,
+  };
+}

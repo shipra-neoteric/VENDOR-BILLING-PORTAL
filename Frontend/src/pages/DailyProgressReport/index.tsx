@@ -1,11 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
-import { Plus, Eye, ClipboardList, Users, TrendingUp, PenTool, Building2 } from "lucide-react";
+import { Plus, Eye, ClipboardList, Users, TrendingUp, PenTool, Building2, Download } from "lucide-react";
 import dayjs from "dayjs";
+import type { Dayjs } from "dayjs";
 import apiClient from "../../services/apiClient";
 import { useAuth } from "../../context/AuthContext";
 import WorkCategoryChecklist from "../../components/WorkCategoryChecklist";
 import DrawingRequestButton from "../../components/DrawingRequestButton";
+import DateRangeFilter, { inDateRange } from "../../components/DateRangeFilter";
+import { downloadDailyProgressReportPDF } from "../../components/DailyProgressReportPDF";
+import { buildDailyProgressReportSummary, periodLabel } from "../../utils/dailyProgressReportSummary";
 import { firstMissingProgressField, MIN_IMAGES_PER_CATEGORY } from "../../shared/constants/dailyProgressReportOptions";
 import type { DailyProgressReportFormValues, WorkEntry } from "../../shared/constants/dailyProgressReportOptions";
 import { REVIEW_STATUS_LABEL, REVIEW_STATUS_COLOR } from "../../shared/constants/drawingRequestOptions";
@@ -69,32 +73,72 @@ export default function DailyProgressReport() {
   const [form, setForm] = useState(emptyForm);
 
   // Filters driving the flashcards/tables below — independent of the New
-  // Report form's own state above.
-  const [filterDate, setFilterDate] = useState(dayjs().format("YYYY-MM-DD"));
+  // Report form's own state above. Default null/null ("All Time") matches
+  // every other page's DateRangeFilter convention (Billing, WorkItems, etc).
+  const [filterDateFrom, setFilterDateFrom] = useState<Dayjs | null>(null);
+  const [filterDateTo, setFilterDateTo] = useState<Dayjs | null>(null);
   const [filterProjectId, setFilterProjectId] = useState("");
   const [filterDriName, setFilterDriName] = useState("");
   const [activeTab, setActiveTab] = useState<"progress" | "drawings" | "summary">("progress");
+  const [generating, setGenerating] = useState(false);
 
-  const load = () => {
-    setLoading(true);
-    Promise.all([
+  // Returns the freshly-fetched data directly (in addition to updating
+  // state) so callers that need it immediately — like PDF generation —
+  // don't have to wait a render cycle for stale-closure state to update.
+  const fetchAll = async () => {
+    const [p, c, u, r, wo, dr] = await Promise.all([
       apiClient.get("/projects"),
       apiClient.get("/contractors"),
       apiClient.get("/auth/users", { params: { role: "site-dri" } }),
       apiClient.get("/daily-progress-reports"),
       apiClient.get("/work-orders"),
       apiClient.get("/drawing-requests"),
-    ]).then(([p, c, u, r, wo, dr]) => {
-      setProjects(p.data.projects || []);
-      setContractors(c.data.contractors || []);
-      setDriUsers(u.data.users || []);
-      setReports(r.data.reports || []);
-      setWorkOrders(wo.data.workOrders || []);
-      setDrawingReqs(dr.data.requests || []);
-    }).catch(() => {}).finally(() => setLoading(false));
+    ]);
+    const data = {
+      projects: (p.data.projects || []) as ProjectOption[],
+      contractors: (c.data.contractors || []) as ContractorOption[],
+      driUsers: (u.data.users || []) as DriOption[],
+      reports: (r.data.reports || []) as ProgressReportRow[],
+      workOrders: (wo.data.workOrders || []) as WorkOrderRow[],
+      drawingReqs: (dr.data.requests || []) as DrawingRequest[],
+    };
+    setProjects(data.projects);
+    setContractors(data.contractors);
+    setDriUsers(data.driUsers);
+    setReports(data.reports);
+    setWorkOrders(data.workOrders);
+    setDrawingReqs(data.drawingReqs);
+    return data;
+  };
+
+  const load = () => {
+    setLoading(true);
+    fetchAll().catch(() => {}).finally(() => setLoading(false));
   };
 
   useEffect(load, []);
+
+  async function handleGenerateReport() {
+    setGenerating(true);
+    try {
+      const data = await fetchAll();
+      const summary = buildDailyProgressReportSummary({
+        reports: data.reports,
+        workOrders: data.workOrders,
+        drawingReqs: data.drawingReqs,
+        projects: data.projects,
+        period: { from: filterDateFrom, to: filterDateTo },
+        filterProjectId,
+        filterDriName,
+        preparedBy: user?.name || "—",
+      });
+      await downloadDailyProgressReportPDF(summary);
+    } catch {
+      toast.error("Failed to generate report");
+    } finally {
+      setGenerating(false);
+    }
+  }
 
   function openNew() {
     // If the logged-in user is themselves a registered DRI, default to their
@@ -134,19 +178,21 @@ export default function DailyProgressReport() {
   const projectOptions = projects.map(p => ({ label: p.name, value: p._id }));
 
   // ── Filtered slices driving the flashcards/tables ──────────────────────
-  const reportsOnDate = useMemo(() => reports.filter(r =>
-    dayjs(r.date).format("YYYY-MM-DD") === filterDate &&
+  const reportsInPeriod = useMemo(() => reports.filter(r =>
+    inDateRange(r.date, filterDateFrom, filterDateTo) &&
     (!filterProjectId || r.projectId === filterProjectId) &&
     (!filterDriName || r.driName === filterDriName)
-  ), [reports, filterDate, filterProjectId, filterDriName]);
+  ), [reports, filterDateFrom, filterDateTo, filterProjectId, filterDriName]);
+
+  const periodText = useMemo(() => periodLabel({ from: filterDateFrom, to: filterDateTo }), [filterDateFrom, filterDateTo]);
 
   const totalLabourToday = useMemo(
-    () => reportsOnDate.reduce((s, r) => s + (Number(r.labourCount) || 0), 0),
-    [reportsOnDate]
+    () => reportsInPeriod.reduce((s, r) => s + (Number(r.labourCount) || 0), 0),
+    [reportsInPeriod]
   );
   const activeProjectsToday = useMemo(
-    () => new Set(reportsOnDate.map(r => r.projectId)).size,
-    [reportsOnDate]
+    () => new Set(reportsInPeriod.map(r => r.projectId)).size,
+    [reportsInPeriod]
   );
 
   const filteredWorkOrders = useMemo(() => workOrders.filter(wo => {
@@ -187,13 +233,13 @@ export default function DailyProgressReport() {
 
   const labourByProject = useMemo(() => {
     const byProject = new Map<string, { projectName: string; total: number }>();
-    for (const r of reportsOnDate) {
+    for (const r of reportsInPeriod) {
       const key = r.projectId || r.projectName || "—";
       if (!byProject.has(key)) byProject.set(key, { projectName: r.projectName || "—", total: 0 });
       byProject.get(key)!.total += Number(r.labourCount) || 0;
     }
     return [...byProject.values()].sort((a, b) => b.total - a.total);
-  }, [reportsOnDate]);
+  }, [reportsInPeriod]);
 
   const filteredDrawingReqs = useMemo(
     () => drawingReqs.filter(d => !filterProjectId || d.projectId === filterProjectId),
@@ -230,9 +276,9 @@ export default function DailyProgressReport() {
       {/* ── Filters ── */}
       <NxCard className="mb-5">
         <div className="flex flex-wrap items-end gap-3.5">
-          <div className="w-[160px]">
-            <div className="text-[11px] text-gray-400 mb-1">Date</div>
-            <DatePicker value={filterDate} onChange={setFilterDate} max={dayjs().format("YYYY-MM-DD")} />
+          <div>
+            <div className="text-[11px] text-gray-400 mb-1">Date Range</div>
+            <DateRangeFilter onChange={(from, to) => { setFilterDateFrom(from); setFilterDateTo(to); }} />
           </div>
           <div className="w-[200px]">
             <div className="text-[11px] text-gray-400 mb-1">Project</div>
@@ -245,16 +291,16 @@ export default function DailyProgressReport() {
               options={[{ value: "", label: "All DRI" }, ...driUsers.map(d => ({ label: d.name, value: d.name }))]}
             />
           </div>
-          <NxBtn color="primary" label="Generate Report" icon={TrendingUp} loading={loading} onClick={load} />
+          <NxBtn color="primary" label="Generate Report" icon={Download} loading={generating} onClick={handleGenerateReport} />
         </div>
       </NxCard>
 
       {/* ── Flashcards ── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-5">
-        <NxStatCard icon={Users} label={`Total Labour (${dayjs(filterDate).format("DD MMM")})`} value={totalLabourToday} />
+        <NxStatCard icon={Users} label={`Total Labour (${periodText})`} value={totalLabourToday} />
         <NxStatCard icon={TrendingUp} label="Work Progress (Overall)" value={`${overallWorkProgressPct}%`} />
         <NxStatCard icon={PenTool} label="Pending Drawing Requests" value={pendingDrawingReqs.length} />
-        <NxStatCard icon={Building2} label={`Active Projects (${dayjs(filterDate).format("DD MMM")})`} value={activeProjectsToday} />
+        <NxStatCard icon={Building2} label={`Active Projects (${periodText})`} value={activeProjectsToday} />
       </div>
 
       {/* ── Tabs ── */}
@@ -308,7 +354,7 @@ export default function DailyProgressReport() {
 
           <NxCard>
             <div className="font-bold text-[15px] text-[#1A1A2E] dark:text-[#F1F5F9] mb-0.5">Labour Count by Project</div>
-            <div className="text-xs text-gray-400 mb-3.5">{dayjs(filterDate).format("DD MMM YYYY")}{filterDriName ? ` · ${filterDriName}` : ""}</div>
+            <div className="text-xs text-gray-400 mb-3.5">{periodText}{filterDriName ? ` · ${filterDriName}` : ""}</div>
             {labourByProject.length === 0 ? (
               <EmptyState title="No reports logged for this date" />
             ) : (
