@@ -2,7 +2,7 @@ import dayjs from "dayjs";
 import type { Dayjs } from "dayjs";
 import { inDateRange } from "../components/DateRangeFilter";
 import { REVIEW_STATUS_LABEL } from "../shared/constants/drawingRequestOptions";
-import type { DrawingRequest, DrawingReviewStatus } from "../shared/constants/drawingRequestOptions";
+import type { DrawingRequest } from "../shared/constants/drawingRequestOptions";
 
 interface ReportLike {
   projectId: string;
@@ -10,6 +10,7 @@ interface ReportLike {
   driName: string;
   date: string;
   vendorCode: string;
+  vendorName?: string;
   labourCount: number | "";
   workEntries: { workType: string }[];
 }
@@ -50,12 +51,16 @@ export interface DailyProgressReportSummary {
     reportsSubmitted: number;
     drawingRequests: number;
   };
-  projectSummary: { projectName: string; labour: number; contractors: number; majorWorkType: string; reportsCount: number; changePct: number | null }[];
+  projectSummary: {
+    projectName: string; labour: number; contractors: number; majorWorkType: string; reportsCount: number; changePct: number | null;
+    // Per-contractor breakdown nested under this project — same 4 columns as
+    // the in-app labour flashcards (Vendor Code / Contractor Name / Work
+    // Type / Labour Count), aggregated across the same date range/filters.
+    vendorBreakdown: { vendorCode: string; vendorName: string; workType: string; labourCount: number }[];
+  }[];
   workTypeSummary: { workType: string; entries: number; pct: number }[];
   workProgress: { description: string; unit: string; planned: number; completed: number; pct: number }[];
   drawingRequests: { ticketNo: string; description: string; projectName: string; driName: string; stageLabel: string; requestedOn: string; daysSince: number }[];
-  drawingStageFunnel: { label: string; count: number }[];
-  exceptions: { project: string; issue: string }[];
   actionItems: { level: "critical" | "warning" | "good"; text: string }[];
 }
 
@@ -82,16 +87,24 @@ export function buildDailyProgressReportSummary(args: {
   const workTypeSet = new Set(inRange.flatMap(r => r.workEntries.map(e => e.workType)));
   const reportingDays = new Set(inRange.map(r => dayjs(r.date).format("YYYY-MM-DD"))).size;
 
-  // ── Project-wise labour summary ──
-  const byProject = new Map<string, { projectName: string; labour: number; contractors: Set<string>; workTypeCounts: Map<string, number>; reportsCount: number }>();
+  // ── Project-wise labour summary (+ per-contractor breakdown) ──
+  const byProject = new Map<string, {
+    projectName: string; labour: number; contractors: Set<string>; workTypeCounts: Map<string, number>; reportsCount: number;
+    vendors: Map<string, { vendorName: string; workTypes: Set<string>; labour: number }>;
+  }>();
   for (const r of inRange) {
     const key = r.projectId || r.projectName || "—";
-    if (!byProject.has(key)) byProject.set(key, { projectName: r.projectName || "—", labour: 0, contractors: new Set(), workTypeCounts: new Map(), reportsCount: 0 });
+    if (!byProject.has(key)) byProject.set(key, { projectName: r.projectName || "—", labour: 0, contractors: new Set(), workTypeCounts: new Map(), reportsCount: 0, vendors: new Map() });
     const row = byProject.get(key)!;
     row.labour += Number(r.labourCount) || 0;
     row.contractors.add(r.vendorCode);
     row.reportsCount += 1;
     for (const e of r.workEntries) row.workTypeCounts.set(e.workType, (row.workTypeCounts.get(e.workType) || 0) + 1);
+
+    if (!row.vendors.has(r.vendorCode)) row.vendors.set(r.vendorCode, { vendorName: r.vendorName || "—", workTypes: new Set(), labour: 0 });
+    const v = row.vendors.get(r.vendorCode)!;
+    v.labour += Number(r.labourCount) || 0;
+    for (const e of r.workEntries) v.workTypes.add(e.workType);
   }
 
   const prev = previousPeriod(period);
@@ -114,7 +127,10 @@ export function buildDailyProgressReportSummary(args: {
     const changePct = prev && prevLabour !== undefined && prevLabour > 0
       ? Math.round(((row.labour - prevLabour) / prevLabour) * 100)
       : null;
-    return { projectName: row.projectName, labour: row.labour, contractors: row.contractors.size, majorWorkType, reportsCount: row.reportsCount, changePct };
+    const vendorBreakdown = [...row.vendors.entries()]
+      .map(([vendorCode, v]) => ({ vendorCode, vendorName: v.vendorName, workType: [...v.workTypes].join(", ") || "—", labourCount: v.labour }))
+      .sort((a, b) => b.labourCount - a.labourCount);
+    return { projectName: row.projectName, labour: row.labour, contractors: row.contractors.size, majorWorkType, reportsCount: row.reportsCount, changePct, vendorBreakdown };
   }).sort((a, b) => b.labour - a.labour);
 
   // ── Work-type distribution (report entries, not labour headcount — the
@@ -161,22 +177,8 @@ export function buildDailyProgressReportSummary(args: {
       daysSince: dayjs().diff(dayjs(d.createdAt), "day"),
     }));
 
-  const stageOrder: DrawingReviewStatus[] = ["l1-gm", "l2-architect", "l3-gm", "l4-gm", "approved", "returned"];
-  const drawingStageFunnel = stageOrder.map(s => ({ label: REVIEW_STATUS_LABEL[s], count: filteredDR.filter(d => d.reviewStatus === s).length }));
-
-  // ── Exceptions & action items ──
-  const exceptions: { project: string; issue: string }[] = [];
-  if (!filterProjectId) {
-    for (const p of projects) {
-      const hasReport = inRange.some(r => r.projectId === p._id);
-      if (!hasReport) exceptions.push({ project: p.name, issue: `No progress report submitted for ${periodLabel(period)}` });
-    }
-  }
+  // ── Action items ──
   const delayedDrawings = filteredDR.filter(d => !["approved", "returned"].includes(d.reviewStatus) && dayjs().diff(dayjs(d.createdAt), "day") > 3);
-  for (const d of delayedDrawings) {
-    const age = dayjs().diff(dayjs(d.createdAt), "day");
-    exceptions.push({ project: d.projectName, issue: `Drawing request ${d.ticketNo} pending ${age} days (${REVIEW_STATUS_LABEL[d.reviewStatus]})` });
-  }
 
   const actionItems: DailyProgressReportSummary["actionItems"] = [];
   if (delayedDrawings.length > 0) {
@@ -203,6 +205,6 @@ export function buildDailyProgressReportSummary(args: {
       reportsSubmitted: inRange.length,
       drawingRequests: filteredDR.length,
     },
-    projectSummary, workTypeSummary, workProgress, drawingRequests: drawingRequestsOut, drawingStageFunnel, exceptions, actionItems,
+    projectSummary, workTypeSummary, workProgress, drawingRequests: drawingRequestsOut, actionItems,
   };
 }

@@ -8,6 +8,10 @@ const GRAY = "#6B7280";
 const LIGHT = "#F9FAFB";
 const BORDER = "#D1D5DB";
 const HDR_BG = "#1F2937";
+// Same tint as the app's --theme-primary-tint — used for the per-project
+// vendor breakdown's header so it reads as "nested under" its parent
+// project row instead of another top-level section.
+const TINT = "#FFECDA";
 const RED = "#DC2626";
 const AMBER = "#D97706";
 const GREEN = "#16A34A";
@@ -31,6 +35,10 @@ const S = StyleSheet.create({
   hdrText: { color: "#fff", fontFamily: "Helvetica-Bold", fontSize: 8 },
   col: { flex: 1, fontSize: 8, padding: "2px 4px" },
   bullet: { flexDirection: "row", borderTopWidth: 1, borderTopColor: BORDER, padding: "5px 10px", gap: 6 },
+  subWrap: { marginHorizontal: 10, marginBottom: 8, marginTop: 2, borderWidth: 1, borderColor: BORDER, borderRadius: 3, overflow: "hidden" },
+  subHeader: { backgroundColor: TINT, paddingVertical: 4, paddingHorizontal: 8, flexDirection: "row", justifyContent: "space-between" },
+  subTitle: { fontFamily: "Helvetica-Bold", color: DARK, fontSize: 8 },
+  subMeta: { fontFamily: "Helvetica-Bold", color: ORANGE, fontSize: 8 },
 });
 
 function KpiTable({ title, rows }: { title: string; rows: { label: string; value: string }[] }) {
@@ -66,6 +74,39 @@ function DataTable({ title, columns, widths, rows, emptyLabel }: { title: string
 }
 
 const ACTION_COLOR: Record<string, string> = { critical: RED, warning: AMBER, good: GREEN };
+
+// The per-project contractor/work-type/labour breakdown nested under Project-
+// wise Labour Summary — same four columns as the in-app labour flashcards
+// (Vendor Code, Contractor Name, Work Type, Labour Count).
+function VendorBreakdownTable({ projectName, totalLabour, rows }: {
+  projectName: string; totalLabour: number;
+  rows: { vendorCode: string; vendorName: string; workType: string; labourCount: number }[];
+}) {
+  return (
+    <View style={S.subWrap} wrap={false}>
+      <View style={S.subHeader}>
+        <Text style={S.subTitle}>{projectName}</Text>
+        <Text style={S.subMeta}>Labour Count: {totalLabour.toLocaleString("en-IN")}</Text>
+      </View>
+      <View style={S.hdr}>
+        <Text style={[S.col, S.hdrText]}>Vendor Code</Text>
+        <Text style={[S.col, S.hdrText]}>Contractor Name</Text>
+        <Text style={[S.col, S.hdrText]}>Work Type</Text>
+        <Text style={[S.col, S.hdrText, { textAlign: "right" }]}>Labour Count</Text>
+      </View>
+      {rows.length === 0 ? (
+        <View style={S.row}><Text style={[S.col, { padding: "6px 10px", color: GRAY, flex: 4 }]}>No contractor entries.</Text></View>
+      ) : rows.map((r, i) => (
+        <View key={r.vendorCode} style={i % 2 === 0 ? S.row : S.rowAlt}>
+          <Text style={S.col}>{r.vendorCode}</Text>
+          <Text style={S.col}>{r.vendorName}</Text>
+          <Text style={S.col}>{r.workType}</Text>
+          <Text style={[S.col, { textAlign: "right" }]}>{r.labourCount}</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
 
 export function DailyProgressReportDocument({ summary }: { summary: DailyProgressReportSummary }) {
   const s = summary;
@@ -106,6 +147,10 @@ export function DailyProgressReportDocument({ summary }: { summary: DailyProgres
           emptyLabel="No progress reports in this period."
         />
 
+        {s.projectSummary.map(p => (
+          <VendorBreakdownTable key={p.projectName} projectName={p.projectName} totalLabour={p.labour} rows={p.vendorBreakdown} />
+        ))}
+
         <DataTable
           title="Work Categories Logged (by report entries)"
           columns={["Work Type", "Entries", "% Share"]}
@@ -122,25 +167,11 @@ export function DailyProgressReportDocument({ summary }: { summary: DailyProgres
         />
 
         <DataTable
-          title="Drawing Request Stage Funnel"
-          columns={["Stage", "Count"]}
-          rows={s.drawingStageFunnel.map(f => [f.label, String(f.count)])}
-        />
-
-        <DataTable
           title="Drawing Request Status"
           columns={["Ticket", "Description", "Project", "Requested By", "Stage", "Requested On", "Days"]}
           widths={[0.7, 1.6, 1, 0.9, 1.1, 0.9, 0.5]}
           rows={s.drawingRequests.map(d => [d.ticketNo, d.description, d.projectName, d.driName, d.stageLabel, d.requestedOn, String(d.daysSince)])}
           emptyLabel="No drawing requests in scope."
-        />
-
-        <DataTable
-          title="Data Exceptions"
-          columns={["Project", "Issue"]}
-          widths={[1, 2.2]}
-          rows={s.exceptions.map(e => [e.project, e.issue])}
-          emptyLabel="No exceptions — all projects reporting, no delayed drawing requests."
         />
 
         <View style={S.table} wrap={false}>
