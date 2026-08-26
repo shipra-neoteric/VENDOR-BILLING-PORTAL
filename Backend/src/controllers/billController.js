@@ -13,6 +13,8 @@ const { logAudit, diffFields } = require('../utils/auditLog');
 const { hasUnapprovedVarianceForLineItem, resolveBillableItem, findOverbilledLineItem, isWorkOrderApproved } = require('../utils/varianceCheck');
 const { recomputeAfterInvalidate, recomputeParentFromSubItems, deriveStatus } = require('../utils/progressHelpers');
 const { applyAdvanceRecoveries } = require('../utils/advanceRecovery');
+const AdvanceSlip  = require('../models/AdvanceSlip');
+const { nextCode } = require('../utils/sequence');
 
 const MODULE = 'accounts-payment';
 
@@ -135,7 +137,6 @@ exports.createBill = asyncHandler(async (req, res) => {
   const recoveries = Array.isArray(req.body.advanceRecoveries) ? req.body.advanceRecoveries : [];
   const recoveryVendorCode = workOrder ? workOrder.vendorCode : req.body.vendorCode;
   if (recoveries.length) {
-    const AdvanceSlip = require('../models/AdvanceSlip');
     const slips = await AdvanceSlip.find({ _id: { $in: recoveries.map(r => r.slipId).filter(Boolean) } }).select('contractorCode');
     const mismatch = slips.find(s => s.contractorCode !== recoveryVendorCode);
     if (mismatch) {
@@ -245,6 +246,39 @@ exports.createBill = asyncHandler(async (req, res) => {
     const applied = await applyAdvanceRecoveries(recoveries, { billNo: bill.billNo, releasedBy: req.user.name });
     bill.advanceRecovery = (bill.advanceRecovery || 0) + applied.reduce((sum, a) => sum + a.amount, 0);
     if (applied.length) await bill.save();
+  }
+
+  // A Mobilisation Advance bill raised as ADVANCE_FOR future billing is, by
+  // definition, money paid out ahead of work done — the same thing an
+  // Advance Slip already exists to track (outstanding balance, recoveries
+  // against later bills). Auto-create one here instead of relying on
+  // someone to remember to raise it separately from Advance Payments.
+  // Non-fatal: a slip needs a projectId, which a standalone (no work order)
+  // bill never has — skip silently rather than fail the bill itself over it.
+  if (bill.billType === 'advance_mobilization' && bill.relationshipType === 'ADVANCE_FOR' && bill.projectId) {
+    try {
+      const slipNo = await nextCode('advanceSlipNo', 'ADV-', 4);
+      const slip = await AdvanceSlip.create({
+        slipNo,
+        contractorCode: bill.vendorCode,
+        contractorName: bill.vendorName,
+        projectId:      bill.projectId,
+        projectName:    bill.projectName,
+        amount:         bill.amount,
+        date:           bill.billDate,
+        reference:      bill.billNo,
+        notes:          `Auto-generated from Mobilisation Advance bill ${bill.billNo}`,
+        createdBy:      req.user._id,
+      });
+
+      await logAudit({
+        action: 'CREATE', module: 'advance-slips', user: req.user,
+        description: `Advance slip ${slipNo} auto-created from bill ${bill.billNo} (₹${Number(bill.amount).toLocaleString('en-IN')})`,
+        entityType: 'AdvanceSlip', entityId: slip._id, entityLabel: slip.slipNo,
+      });
+    } catch (advErr) {
+      console.error('Warning: could not auto-create advance slip for bill', bill.billNo, advErr.message);
+    }
   }
 
   await logAudit({

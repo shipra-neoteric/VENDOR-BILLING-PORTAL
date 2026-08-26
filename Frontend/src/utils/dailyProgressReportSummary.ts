@@ -15,9 +15,31 @@ interface ReportLike {
   workEntries: { workType: string }[];
 }
 interface ProjectLike { _id: string; name: string; }
+interface ProgressEntryLike {
+  date: string | Date;
+  qtyAdded: number;
+  enteredBy?: { _id: string; name: string } | string | null;
+  invalidated?: { done?: boolean; reason?: string };
+}
+interface SubItemLike {
+  description: string;
+  unit?: string;
+  plannedQty?: number;
+  completedQty?: number;
+  progressEntries?: ProgressEntryLike[];
+}
+interface ScopeItemLike {
+  description: string;
+  unit?: string;
+  plannedQty?: number;
+  completedQty?: number;
+  progressEntries?: ProgressEntryLike[];
+  subItems?: SubItemLike[];
+}
 interface WorkOrderLike {
-  projectId?: string | { _id: string };
-  scopeItems: { description: string; unit?: string; plannedQty?: number; completedQty?: number }[];
+  projectId?: string | { _id: string; name?: string };
+  assignedDRI?: ({ _id: string; name: string; email?: string } | string)[];
+  scopeItems: ScopeItemLike[];
 }
 
 export interface ReportPeriod { from: Dayjs | null; to: Dayjs | null; }
@@ -143,21 +165,85 @@ export function buildDailyProgressReportSummary(args: {
     .map(([workType, entries]) => ({ workType, entries, pct: totalEntries > 0 ? Math.round((entries / totalEntries) * 100) : 0 }))
     .sort((a, b) => b.entries - a.entries);
 
-  // ── Work progress — cumulative scope-item totals, project-filtered only
-  // (scope items aren't date-stamped the way daily reports are) ──
+  // ── Work progress — cumulative scope-item totals, filtered by project, DRI, and date range ──
   const filteredWO = workOrders.filter(wo => {
-    if (!filterProjectId) return true;
-    const pid = typeof wo.projectId === "string" ? wo.projectId : wo.projectId?._id;
-    return pid === filterProjectId;
+    if (filterProjectId) {
+      const pid = typeof wo.projectId === "string" ? wo.projectId : wo.projectId?._id;
+      if (pid !== filterProjectId) return false;
+    }
+    if (filterDriName) {
+      const isDriAssigned = Boolean(
+        wo.assignedDRI &&
+        wo.assignedDRI.some(d => {
+          if (!d) return false;
+          return typeof d === "object" ? d.name === filterDriName : d === filterDriName;
+        })
+      );
+      const hasEntryByDri = (wo.scopeItems || []).some(si => {
+        const checkEntries = (entries?: ProgressEntryLike[]) =>
+          (entries || []).some(e => {
+            if (!e.enteredBy) return false;
+            return typeof e.enteredBy === "object" ? e.enteredBy.name === filterDriName : e.enteredBy === filterDriName;
+          });
+        if (checkEntries(si.progressEntries)) return true;
+        return (si.subItems || []).some(sub => checkEntries(sub.progressEntries));
+      });
+      if (!isDriAssigned && !hasEntryByDri) return false;
+    }
+    return true;
   });
+
   const byDesc = new Map<string, { description: string; unit: string; planned: number; completed: number }>();
-  for (const wo of filteredWO) for (const si of wo.scopeItems || []) {
-    const key = (si.description || "").trim().toLowerCase();
-    if (!key) continue;
-    if (!byDesc.has(key)) byDesc.set(key, { description: si.description, unit: si.unit || "", planned: 0, completed: 0 });
-    const row = byDesc.get(key)!;
-    row.planned += si.plannedQty || 0;
-    row.completed += si.completedQty || 0;
+  for (const wo of filteredWO) {
+    const isDriAssigned = Boolean(
+      !filterDriName ||
+      (wo.assignedDRI &&
+        wo.assignedDRI.some(d => {
+          if (!d) return false;
+          return typeof d === "object" ? d.name === filterDriName : d === filterDriName;
+        }))
+    );
+
+    for (const si of wo.scopeItems || []) {
+      const key = (si.description || "").trim().toLowerCase();
+      if (!key) continue;
+      if (!byDesc.has(key)) byDesc.set(key, { description: si.description, unit: si.unit || "", planned: 0, completed: 0 });
+      const row = byDesc.get(key)!;
+      row.planned += si.plannedQty || 0;
+
+      const isAllTime = !period.from && !period.to;
+      const noDriFilter = !filterDriName;
+
+      const entryMatchesDri = (entry: ProgressEntryLike) => {
+        if (noDriFilter || isDriAssigned) return true;
+        const eb = entry.enteredBy;
+        if (!eb) return false;
+        return typeof eb === "object" ? eb.name === filterDriName : eb === filterDriName;
+      };
+
+      const allEntries: ProgressEntryLike[] = [];
+      if (Array.isArray(si.progressEntries)) {
+        for (const e of si.progressEntries) if (!e.invalidated?.done) allEntries.push(e);
+      }
+      if (Array.isArray(si.subItems)) {
+        for (const sub of si.subItems) {
+          if (Array.isArray(sub.progressEntries)) {
+            for (const e of sub.progressEntries) if (!e.invalidated?.done) allEntries.push(e);
+          }
+        }
+      }
+
+      if (allEntries.length > 0) {
+        for (const entry of allEntries) {
+          if (!entryMatchesDri(entry)) continue;
+          const dateStr = typeof entry.date === "string" ? entry.date : entry.date ? dayjs(entry.date).format("YYYY-MM-DD") : undefined;
+          if (!inDateRange(dateStr, period.from, period.to)) continue;
+          row.completed += Number(entry.qtyAdded) || 0;
+        }
+      } else if (isAllTime && (noDriFilter || isDriAssigned)) {
+        row.completed += Number(si.completedQty) || 0;
+      }
+    }
   }
   const workProgress = [...byDesc.values()]
     .filter(r => r.planned > 0)
@@ -165,8 +251,12 @@ export function buildDailyProgressReportSummary(args: {
     .sort((a, b) => b.planned - a.planned)
     .slice(0, 15);
 
-  // ── Drawing requests — project-filtered, matches the on-screen tab ──
-  const filteredDR = drawingReqs.filter(d => !filterProjectId || d.projectId === filterProjectId);
+  // ── Drawing requests — filtered by date range, project, and DRI, matching the on-screen tab ──
+  const filteredDR = drawingReqs.filter(d =>
+    inDateRange(d.createdAt, period.from, period.to) &&
+    (!filterProjectId || d.projectId === filterProjectId) &&
+    (!filterDriName || d.driName === filterDriName)
+  );
   const drawingRequestsOut = filteredDR
     .slice()
     .sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""))

@@ -160,6 +160,8 @@ router.post('/contractors', asyncHandler(async (req, res) => {
   if (!companyName) return badRequest(res, 'Company / firm name is required');
   if (!ownerName)   return badRequest(res, 'Owner name is required');
   if (!mobile)      return badRequest(res, 'Mobile is required');
+  if (!email)       return badRequest(res, 'Email is required');
+  if (!/^\S+@\S+\.\S+$/.test(email)) return badRequest(res, 'Enter a valid email');
 
   const vendorCode = await nextVendorCode();
 

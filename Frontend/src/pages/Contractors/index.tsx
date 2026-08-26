@@ -19,8 +19,6 @@ import Spinner from "../../ui/Spinner";
 import NxBtn from "../../ui/nexora/Btn";
 import NxBadge from "../../ui/nexora/Badge";
 import NxStatCard from "../../ui/nexora/StatCard";
-import DropdownMenu from "../../ui/DropdownMenu";
-import type { DropdownMenuItem } from "../../ui/DropdownMenu";
 import { SearchFilter } from "../../ui/Filters";
 import { Table, Thead, Tbody, Tr, Th, Td } from "../../ui/Table";
 import { usePagination } from "../../ui/usePagination";
@@ -198,7 +196,7 @@ export default function Contractors() {
   const [groupId, setGroupId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Contractor | null>(null);
   const [formValues, setFormValues] = useState<ContractorFormValues>(blankForm());
-  const formErrors = useFormErrors<"companyName" | "ownerName" | "address" | "mobile" | "accountHolderName" | "bankName">();
+  const formErrors = useFormErrors<"companyName" | "ownerName" | "address" | "mobile" | "email" | "accountHolderName" | "bankName">();
 
   const patch = (p: Partial<ContractorFormValues>) => setFormValues(prev => ({ ...prev, ...p }));
 
@@ -238,6 +236,8 @@ export default function Contractors() {
     if (!formValues.ownerName.trim()) { formErrors.setError("ownerName", "Required"); ok = false; }
     if (!formValues.address.trim()) { formErrors.setError("address", "Required"); ok = false; }
     if (!formValues.mobile.trim()) { formErrors.setError("mobile", "Required"); ok = false; }
+    if (!formValues.email.trim()) { formErrors.setError("email", "Required"); ok = false; }
+    else if (!/^\S+@\S+\.\S+$/.test(formValues.email.trim())) { formErrors.setError("email", "Enter a valid email"); ok = false; }
     if (!formValues.accountHolderName.trim()) { formErrors.setError("accountHolderName", "Required"); ok = false; }
     if (!formValues.bankName.trim()) { formErrors.setError("bankName", "Required"); ok = false; }
     return ok;
@@ -377,10 +377,6 @@ export default function Contractors() {
                     setContractors(prev => prev.map(c => c.id === record.id ? full : c));
                   }).catch(() => {});
                 };
-                const menuItems: DropdownMenuItem[] = [
-                  { key: "edit", label: "Edit Contractor", icon: Pencil, onClick: () => openEdit(record) },
-                  { key: "delete", label: "Delete", icon: Trash2, danger: true, onClick: () => setDeleteTarget(record) },
-                ];
                 return (
                   <Tr key={record.id} className="cursor-pointer" onClick={viewRecord}>
                     <Td>{record.vendorCode}</Td>
@@ -393,7 +389,8 @@ export default function Contractors() {
                     <Td>
                       <div onClick={e => e.stopPropagation()} className="flex items-center gap-1">
                         <NxBtn color="icon" title="View Contractor" icon={Eye} onClick={viewRecord} />
-                        <DropdownMenu items={menuItems} />
+                        <NxBtn color="icon" title="Edit Contractor" icon={Pencil} onClick={() => openEdit(record)} />
+                        <NxBtn color="icon" title="Delete Contractor" icon={Trash2} onClick={() => setDeleteTarget(record)} />
                       </div>
                     </Td>
                   </Tr>
@@ -450,7 +447,7 @@ export default function Contractors() {
             <Field label="Alternate Mobile" value={formValues.alternateMobile} onChange={e => patch({ alternateMobile: e.target.value })} />
           </div>
           <div className="mt-4">
-            <Field label="Email" type="email" placeholder="company@email.com" value={formValues.email} onChange={e => patch({ email: e.target.value })} />
+            <Field label="Email" required type="email" placeholder="company@email.com" value={formValues.email} onChange={e => patch({ email: e.target.value })} error={formErrors.errors.email} />
           </div>
 
           <SectionHeading>Bank Details</SectionHeading>

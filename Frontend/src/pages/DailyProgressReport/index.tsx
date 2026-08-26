@@ -37,8 +37,91 @@ import EmptyState from "../../ui/EmptyState";
 interface ProjectOption { _id: string; name: string; }
 interface ContractorOption { vendorCode: string; companyName: string; vendorId?: string; name?: string; shortCode?: string; }
 interface DriOption { _id: string; name: string; }
-interface ScopeItemRow { description: string; unit?: string; plannedQty?: number; completedQty?: number; }
-interface WorkOrderRow { _id: string; projectId?: string | { _id: string }; scopeItems: ScopeItemRow[]; }
+interface ProgressEntryRow {
+  _id?: string;
+  date: string | Date;
+  qtyAdded: number;
+  enteredBy?: { _id: string; name: string } | string | null;
+  invalidated?: { done?: boolean; reason?: string };
+}
+interface SubItemRow {
+  _id?: string;
+  description: string;
+  unit?: string;
+  plannedQty?: number;
+  completedQty?: number;
+  progressEntries?: ProgressEntryRow[];
+}
+interface ScopeItemRow {
+  _id?: string;
+  description: string;
+  unit?: string;
+  plannedQty?: number;
+  completedQty?: number;
+  progressEntries?: ProgressEntryRow[];
+  subItems?: SubItemRow[];
+}
+interface WorkOrderRow {
+  _id: string;
+  projectId?: string | { _id: string; name?: string };
+  assignedDRI?: ({ _id: string; name: string; email?: string } | string)[];
+  scopeItems: ScopeItemRow[];
+}
+
+function getScopeItemCompletedQty(
+  si: ScopeItemRow,
+  filterDateFrom: Dayjs | null,
+  filterDateTo: Dayjs | null,
+  filterDriName: string,
+  isDriAssignedToWO: boolean,
+  selectedDriId?: string
+): number {
+  const isAllTime = !filterDateFrom && !filterDateTo;
+  const noDriFilter = !filterDriName;
+
+  const entryMatchesDri = (entry: ProgressEntryRow) => {
+    if (noDriFilter || isDriAssignedToWO) return true;
+    const eb = entry.enteredBy;
+    if (!eb) return false;
+    if (typeof eb === "object") {
+      return eb.name === filterDriName || (selectedDriId && eb._id === selectedDriId);
+    }
+    return eb === filterDriName || (selectedDriId && eb === selectedDriId);
+  };
+
+  const allEntries: ProgressEntryRow[] = [];
+  if (Array.isArray(si.progressEntries)) {
+    for (const e of si.progressEntries) {
+      if (!e.invalidated?.done) allEntries.push(e);
+    }
+  }
+  if (Array.isArray(si.subItems)) {
+    for (const sub of si.subItems) {
+      if (Array.isArray(sub.progressEntries)) {
+        for (const e of sub.progressEntries) {
+          if (!e.invalidated?.done) allEntries.push(e);
+        }
+      }
+    }
+  }
+
+  if (allEntries.length > 0) {
+    let completed = 0;
+    for (const entry of allEntries) {
+      if (!entryMatchesDri(entry)) continue;
+      const dateStr = typeof entry.date === "string" ? entry.date : entry.date ? dayjs(entry.date).format("YYYY-MM-DD") : undefined;
+      if (!inDateRange(dateStr, filterDateFrom, filterDateTo)) continue;
+      completed += Number(entry.qtyAdded) || 0;
+    }
+    return completed;
+  }
+
+  if (isAllTime && (noDriFilter || isDriAssignedToWO)) {
+    return Number(si.completedQty) || 0;
+  }
+
+  return 0;
+}
 
 interface ProgressReportRow extends DailyProgressReportFormValues {
   _id: string;
@@ -60,16 +143,16 @@ function toNxColor(c: "gray" | "blue" | "green" | "red" | "amber" | "purple" | "
 export default function DailyProgressReport() {
   const { user } = useAuth();
 
-  const [projects, setProjects]       = useState<ProjectOption[]>([]);
+  const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [contractors, setContractors] = useState<ContractorOption[]>([]);
-  const [driUsers, setDriUsers]       = useState<DriOption[]>([]);
-  const [reports, setReports]         = useState<ProgressReportRow[]>([]);
-  const [workOrders, setWorkOrders]   = useState<WorkOrderRow[]>([]);
+  const [driUsers, setDriUsers] = useState<DriOption[]>([]);
+  const [reports, setReports] = useState<ProgressReportRow[]>([]);
+  const [workOrders, setWorkOrders] = useState<WorkOrderRow[]>([]);
   const [drawingReqs, setDrawingReqs] = useState<DrawingRequest[]>([]);
-  const [loading, setLoading]         = useState(true);
-  const [submitting, setSubmitting]   = useState(false);
-  const [showForm, setShowForm]       = useState(false);
-  const [viewReport, setViewReport]   = useState<ProgressReportRow | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [showForm, setShowForm] = useState(false);
+  const [viewReport, setViewReport] = useState<ProgressReportRow | null>(null);
   const [form, setForm] = useState(emptyForm);
 
   // Filters driving the flashcards/tables below — independent of the New
@@ -113,7 +196,7 @@ export default function DailyProgressReport() {
 
   const load = () => {
     setLoading(true);
-    fetchAll().catch(() => {}).finally(() => setLoading(false));
+    fetchAll().catch(() => { }).finally(() => setLoading(false));
   };
 
   useEffect(load, []);
@@ -195,11 +278,48 @@ export default function DailyProgressReport() {
     [reportsInPeriod]
   );
 
+  const selectedDriId = useMemo(() => {
+    if (!filterDriName) return undefined;
+    return driUsers.find(d => d.name === filterDriName)?._id;
+  }, [driUsers, filterDriName]);
+
   const filteredWorkOrders = useMemo(() => workOrders.filter(wo => {
-    if (!filterProjectId) return true;
-    const pid = typeof wo.projectId === "string" ? wo.projectId : wo.projectId?._id;
-    return pid === filterProjectId;
-  }), [workOrders, filterProjectId]);
+    if (filterProjectId) {
+      const pid = typeof wo.projectId === "string" ? wo.projectId : wo.projectId?._id;
+      if (pid !== filterProjectId) return false;
+    }
+
+    if (filterDriName) {
+      const isDriAssigned = Boolean(
+        wo.assignedDRI &&
+        wo.assignedDRI.some(d => {
+          if (!d) return false;
+          if (typeof d === "object") {
+            return d.name === filterDriName || (selectedDriId && d._id === selectedDriId);
+          }
+          return d === filterDriName || (selectedDriId && d === selectedDriId);
+        })
+      );
+
+      const hasEntryByDri = (wo.scopeItems || []).some(si => {
+        const checkEntries = (entries?: ProgressEntryRow[]) =>
+          (entries || []).some(e => {
+            if (!e.enteredBy) return false;
+            if (typeof e.enteredBy === "object") {
+              return e.enteredBy.name === filterDriName || (selectedDriId && e.enteredBy._id === selectedDriId);
+            }
+            return e.enteredBy === filterDriName || (selectedDriId && e.enteredBy === selectedDriId);
+          });
+
+        if (checkEntries(si.progressEntries)) return true;
+        return (si.subItems || []).some(sub => checkEntries(sub.progressEntries));
+      });
+
+      if (!isDriAssigned && !hasEntryByDri) return false;
+    }
+
+    return true;
+  }), [workOrders, filterProjectId, filterDriName, selectedDriId]);
 
   // Grouped by description across every work order in scope — a "site-wide"
   // rollup rather than per-work-order, since a work item like "Excavation"
@@ -207,29 +327,67 @@ export default function DailyProgressReport() {
   const workProgressRows = useMemo(() => {
     const byDesc = new Map<string, { description: string; unit: string; planned: number; completed: number }>();
     for (const wo of filteredWorkOrders) {
+      const isDriAssigned = Boolean(
+        !filterDriName ||
+        (wo.assignedDRI &&
+          wo.assignedDRI.some(d => {
+            if (!d) return false;
+            if (typeof d === "object") {
+              return d.name === filterDriName || (selectedDriId && d._id === selectedDriId);
+            }
+            return d === filterDriName || (selectedDriId && d === selectedDriId);
+          }))
+      );
+
       for (const si of wo.scopeItems || []) {
         const key = (si.description || "").trim().toLowerCase();
         if (!key) continue;
         if (!byDesc.has(key)) byDesc.set(key, { description: si.description, unit: si.unit || "", planned: 0, completed: 0 });
         const row = byDesc.get(key)!;
         row.planned += si.plannedQty || 0;
-        row.completed += si.completedQty || 0;
+        row.completed += getScopeItemCompletedQty(
+          si,
+          filterDateFrom,
+          filterDateTo,
+          filterDriName,
+          isDriAssigned,
+          selectedDriId
+        );
       }
     }
     return [...byDesc.values()].filter(r => r.planned > 0).sort((a, b) => b.planned - a.planned).slice(0, 8);
-  }, [filteredWorkOrders]);
+  }, [filteredWorkOrders, filterDateFrom, filterDateTo, filterDriName, selectedDriId]);
 
   // Overall %, from every scope item in scope — not just the top 8 rows shown.
   const overallWorkProgressPct = useMemo(() => {
     let planned = 0, completed = 0;
     for (const wo of filteredWorkOrders) {
+      const isDriAssigned = Boolean(
+        !filterDriName ||
+        (wo.assignedDRI &&
+          wo.assignedDRI.some(d => {
+            if (!d) return false;
+            if (typeof d === "object") {
+              return d.name === filterDriName || (selectedDriId && d._id === selectedDriId);
+            }
+            return d === filterDriName || (selectedDriId && d === selectedDriId);
+          }))
+      );
+
       for (const si of wo.scopeItems || []) {
         planned += si.plannedQty || 0;
-        completed += si.completedQty || 0;
+        completed += getScopeItemCompletedQty(
+          si,
+          filterDateFrom,
+          filterDateTo,
+          filterDriName,
+          isDriAssigned,
+          selectedDriId
+        );
       }
     }
-    return planned > 0 ? Math.round((completed / planned) * 100) : 0;
-  }, [filteredWorkOrders]);
+    return planned > 0 ? Math.min(100, Math.round((completed / planned) * 100)) : 0;
+  }, [filteredWorkOrders, filterDateFrom, filterDateTo, filterDriName, selectedDriId]);
 
   const labourByProject = useMemo(() => {
     const byProject = new Map<string, { projectName: string; total: number }>();
@@ -242,21 +400,20 @@ export default function DailyProgressReport() {
   }, [reportsInPeriod]);
 
   const filteredDrawingReqs = useMemo(
-    () => drawingReqs.filter(d => !filterProjectId || d.projectId === filterProjectId),
-    [drawingReqs, filterProjectId]
+    () => drawingReqs.filter(d =>
+      inDateRange(d.createdAt, filterDateFrom, filterDateTo) &&
+      (!filterProjectId || d.projectId === filterProjectId) &&
+      (!filterDriName || d.driName === filterDriName || (selectedDriId && (d.submittedBy?._id === selectedDriId || (d.submittedBy as unknown as string) === selectedDriId)))
+    ),
+    [drawingReqs, filterDateFrom, filterDateTo, filterProjectId, filterDriName, selectedDriId]
   );
   const pendingDrawingReqs = useMemo(
     () => filteredDrawingReqs.filter(d => d.status !== "completed"),
     [filteredDrawingReqs]
   );
 
-  // "Summary" tab keeps the full history (not locked to one date, so it
-  // still works as a browsable log) but still respects the Project/DRI
-  // filters, same as everything else on this page.
-  const summaryReports = useMemo(() => reports.filter(r =>
-    (!filterProjectId || r.projectId === filterProjectId) &&
-    (!filterDriName || r.driName === filterDriName)
-  ), [reports, filterProjectId, filterDriName]);
+  // "Summary" tab respects the Date Range, Project, and DRI filters.
+  const summaryReports = reportsInPeriod;
   const pager = usePagination(summaryReports, 10);
 
   return (
@@ -320,7 +477,7 @@ export default function DailyProgressReport() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5">
           <NxCard>
             <div className="font-bold text-[15px] text-[#1A1A2E] dark:text-[#F1F5F9] mb-0.5">Work Progress (Site-wide)</div>
-            <div className="text-xs text-gray-400 mb-3.5">{filterProjectId ? projects.find(p => p._id === filterProjectId)?.name : "All projects"} — planned vs. completed by work item</div>
+            <div className="text-xs text-gray-400 mb-3.5">{filterProjectId ? projects.find(p => p._id === filterProjectId)?.name : "All projects"}{filterDriName ? ` · ${filterDriName}` : ""} · {periodText} — planned vs. completed by work item</div>
             {workProgressRows.length === 0 ? (
               <EmptyState title="No scope items recorded yet" />
             ) : (
@@ -394,7 +551,7 @@ export default function DailyProgressReport() {
             <NxBadge color="blue">{filteredDrawingReqs.length} total</NxBadge>
           </div>
           {filteredDrawingReqs.length === 0 ? (
-            <div className="py-12"><EmptyState title="No drawing requests for this project" /></div>
+            <div className="py-12"><EmptyState title="No drawing requests found in scope" /></div>
           ) : (
             <Table>
               <Thead>
@@ -426,7 +583,7 @@ export default function DailyProgressReport() {
           {loading ? (
             <div className="p-4"><SkeletonTable rows={5} cols={7} /></div>
           ) : summaryReports.length === 0 ? (
-            <div className="py-12 text-center text-gray-400">No reports submitted yet</div>
+            <div className="py-12 text-center text-gray-400">No reports submitted for this period</div>
           ) : (
             <>
               <Table>
@@ -489,18 +646,25 @@ export default function DailyProgressReport() {
                 label="Contractor Name" required placeholder="Choose"
                 value={form.vendorCode || null}
                 onChange={v => setForm(f => ({ ...f, vendorCode: v }))}
-                options={contractors.map(c => ({
-                  label: c.companyName || c.name || "",
-                  value: c.vendorCode || c.vendorId || "",
-                  vendorId: c.vendorId || c.vendorCode || "",
-                  name: c.name || c.companyName || "",
-                  searchText: `${c.companyName || c.name || ""} ${c.vendorCode || ""} ${c.vendorId || ""}`.trim(),
-                }))}
+                options={contractors.map(c => {
+                  const vendorId = c.vendorCode || c.vendorId || "";
+                  const name = c.companyName || c.name || "";
+                  const label = vendorId && name ? `${vendorId} - ${name}` : (vendorId || name);
+                  return {
+                    label,
+                    value: vendorId,
+                    vendorId,
+                    name,
+                    companyName: c.companyName,
+                    searchText: `${vendorId} ${name}`.trim(),
+                  };
+                })}
                 filterFn={(opt, search) => {
                   const s = search.toLowerCase().trim();
-                  const contractorName = (opt.name || opt.label || "").toLowerCase();
+                  const contractorName = (opt.name || opt.companyName || "").toLowerCase();
                   const vendorId = (opt.vendorId || opt.vendorCode || opt.value || "").toLowerCase();
-                  return contractorName.includes(s) || vendorId.includes(s);
+                  const label = (opt.label || "").toLowerCase();
+                  return contractorName.includes(s) || vendorId.includes(s) || label.includes(s);
                 }}
               />
               <SField

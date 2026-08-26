@@ -190,16 +190,16 @@ export default function NewBillDrawer({
 
     apiClient.get<{ projects: Record<string, unknown>[] }>("/projects")
       .then((r) => setProjects((r.data.projects || []).map((p) => normalizeId(p) as unknown as ProjectOpt)))
-      .catch(() => {});
+      .catch(() => { });
     apiClient.get<{ contractors: Record<string, unknown>[] }>("/contractors")
       .then((r) => setContractors((r.data.contractors || []).map((c) => normalizeId(c) as unknown as Contractor)))
-      .catch(() => {});
+      .catch(() => { });
     apiClient.get<{ consultants: Record<string, unknown>[] }>("/consultants")
       .then((r) => setConsultants((r.data.consultants || []).map((c) => normalizeId(c) as unknown as Consultant)))
-      .catch(() => {});
+      .catch(() => { });
     apiClient.get<{ companies: Record<string, unknown>[] }>("/companies")
       .then((r) => setCompanies((r.data.companies || []).map((c) => normalizeId(c) as unknown as CompanyOpt).filter((c) => c.isActive !== false)))
-      .catch(() => {});
+      .catch(() => { });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
@@ -405,23 +405,23 @@ export default function NewBillDrawer({
     const linkedToScopeItems = validItems.some((li) => li.scopeItemId);
 
     const payload = {
-      billDate:          dayjs(billDate).toISOString(),
-      projectId:         projectId || undefined,
-      projectName:       project?.name ?? "",
-      vendorCode:        activeVendorCode,
-      vendorName:        activeVendorName,
-      generatedBy:       generatedBy ?? "",
-      contractorRefNo:   contractorRefNo ?? "",
-      remarks:           remarksInput ?? "",
+      billDate: dayjs(billDate).toISOString(),
+      projectId: projectId || undefined,
+      projectName: project?.name ?? "",
+      vendorCode: activeVendorCode,
+      vendorName: activeVendorName,
+      generatedBy: generatedBy ?? "",
+      contractorRefNo: contractorRefNo ?? "",
+      remarks: remarksInput ?? "",
       gstPercent,
-      tdsPercent:        0,
+      tdsPercent: 0,
       billType,
-      relationshipType:  linkedBills.length > 0 ? relType : "NONE",
-      linkedBills:       linkedBills.length > 0 ? linkedBills : [],
-      workOrderId:       linkedToScopeItems ? (importedFromWOId || selectedWOId || undefined) : (selectedWOId || undefined),
+      relationshipType: linkedBills.length > 0 ? relType : "NONE",
+      linkedBills: linkedBills.length > 0 ? linkedBills : [],
+      workOrderId: linkedToScopeItems ? (importedFromWOId || selectedWOId || undefined) : (selectedWOId || undefined),
       ...(isStandalone ? { companyId } : {}),
-      retentionPercent:  holdMode === "percent" ? (holdPercent || 0) : (gross > 0 ? Math.round((holdAmount / gross) * 10000) / 100 : 0),
-      retentionAmount:   holdAmount,
+      retentionPercent: holdMode === "percent" ? (holdPercent || 0) : (gross > 0 ? Math.round((holdAmount / gross) * 10000) / 100 : 0),
+      retentionAmount: holdAmount,
       ...(recoveries.length ? { advanceRecoveries: recoveries } : {}),
       lineItems: validItems.map(({ key: _k, lastBilledQty: _l, percentComplete: _p, groupLabel: _g, ...rest }) => ({
         ...rest,
@@ -653,7 +653,7 @@ export default function NewBillDrawer({
                           "rounded-md border px-2.5 py-1.5 text-xs select-none",
                           isSuperseded ? "cursor-not-allowed opacity-50 bg-gray-50 dark:bg-gray-800/40 border-gray-200 dark:border-gray-700/40"
                             : isSelected ? "cursor-pointer bg-blue-50 dark:bg-blue-500/10 border-blue-600"
-                            : "cursor-pointer bg-white dark:bg-transparent border-gray-200 dark:border-gray-700/40",
+                              : "cursor-pointer bg-white dark:bg-transparent border-gray-200 dark:border-gray-700/40",
                         ].join(" ")}
                       >
                         <span className={`font-mono font-bold ${isSelected ? "text-blue-600" : "text-primary"}`}>{b.billNo}</span>
@@ -694,133 +694,137 @@ export default function NewBillDrawer({
             </span>
           </div>
 
-          <Table>
-            <Thead>
-              <Tr>
-                <Th>Description of Work *</Th>
-                <Th className="text-center">Unit</Th>
-                <Th className="text-right">Master Qty</Th>
-                <Th className="text-right">% of Work</Th>
-                <Th className="text-right">Quantity *</Th>
-                <Th className="text-right">Rate (₹) *</Th>
-                <Th className="text-right">Amount (₹)</Th>
-                <Th></Th>
-              </Tr>
-            </Thead>
-            <Tbody>
-              {(() => {
-                const rows: ReactNode[] = [];
-                const seenGroups = new Set<string>();
-                lineItems.forEach((item) => {
-                  const groupKey = item.scopeItemId && item.subItemId ? item.scopeItemId : null;
+          <div className="overflow-x-auto">
+            <Table>
+              <Thead>
+                <Tr>
+                  <Th className="min-w-[300px] w-[36%]">Description of Work *</Th>
+                  <Th className="text-center">Unit</Th>
+                  <Th className="text-right">Master Qty</Th>
+                  <Th className="text-right">% of Work</Th>
+                  <Th className="text-right">Quantity *</Th>
+                  <Th className="text-right">Rate (₹) *</Th>
+                  <Th className="text-right">Amount (₹)</Th>
+                  <Th></Th>
+                </Tr>
+              </Thead>
+              <Tbody>
+                {(() => {
+                  const rows: ReactNode[] = [];
+                  const seenGroups = new Set<string>();
+                  lineItems.forEach((item) => {
+                    const groupKey = item.scopeItemId && item.subItemId ? item.scopeItemId : null;
 
-                  if (groupKey && !seenGroups.has(groupKey)) {
-                    seenGroups.add(groupKey);
-                    const isExpanded = expandedGroups.has(groupKey);
-                    const particulars = lineItems.filter((li) => li.scopeItemId === groupKey && li.subItemId);
-                    const groupAmount = particulars.reduce((s, li) => s + (li.amount || 0), 0);
+                    if (groupKey && !seenGroups.has(groupKey)) {
+                      seenGroups.add(groupKey);
+                      const isExpanded = expandedGroups.has(groupKey);
+                      const particulars = lineItems.filter((li) => li.scopeItemId === groupKey && li.subItemId);
+                      const groupAmount = particulars.reduce((s, li) => s + (li.amount || 0), 0);
+                      rows.push(
+                        <Tr
+                          key={`group-${groupKey}`}
+                          onClick={() => setExpandedGroups((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(groupKey)) next.delete(groupKey); else next.add(groupKey);
+                            return next;
+                          })}
+                          className="cursor-pointer bg-blue-50 dark:bg-blue-500/10"
+                        >
+                          <Td colSpan={6} className="font-bold text-blue-700 dark:text-blue-300">
+                            <span className={`inline-block mr-2 transition-transform ${isExpanded ? "rotate-90" : ""}`}>▶</span>
+                            {item.groupLabel}
+                            <span className="font-normal text-gray-500 dark:text-gray-400 ml-2">
+                              {particulars.length} particular{particulars.length === 1 ? "" : "s"} — click to {isExpanded ? "collapse" : "add % of work done per particular"}
+                            </span>
+                          </Td>
+                          <Td className={`text-right font-mono font-bold ${groupAmount > 0 ? "text-emerald-600" : "text-gray-300"}`}>
+                            {groupAmount > 0 ? fmt(groupAmount) : "—"}
+                          </Td>
+                          <Td></Td>
+                        </Tr>
+                      );
+                    }
+
+                    if (groupKey && !expandedGroups.has(groupKey)) return;
+
+                    const cap = remainingPercent(item);
                     rows.push(
-                      <Tr
-                        key={`group-${groupKey}`}
-                        onClick={() => setExpandedGroups((prev) => {
-                          const next = new Set(prev);
-                          if (next.has(groupKey)) next.delete(groupKey); else next.add(groupKey);
-                          return next;
-                        })}
-                        className="cursor-pointer bg-blue-50 dark:bg-blue-500/10"
-                      >
-                        <Td colSpan={6} className="font-bold text-blue-700 dark:text-blue-300">
-                          <span className={`inline-block mr-2 transition-transform ${isExpanded ? "rotate-90" : ""}`}>▶</span>
-                          {item.groupLabel}
-                          <span className="font-normal text-gray-500 dark:text-gray-400 ml-2">
-                            {particulars.length} particular{particulars.length === 1 ? "" : "s"} — click to {isExpanded ? "collapse" : "add % of work done per particular"}
-                          </span>
+                      <Tr key={item.key} className={groupKey ? "bg-gray-50/60 dark:bg-gray-800/20" : ""}>
+                        <Td
+                          className="min-w-[300px] w-[36%]"
+                          style={groupKey ? { paddingLeft: 26 } : undefined}
+                        >
+                          <input
+                            value={item.description}
+                            placeholder="e.g. RCC work, Plastering, Tile fixing…"
+                            onChange={(e) => updateLineItem(item.key, "description", e.target.value)}
+                            className={`${cellInputClass} min-w-0`}
+                          />
                         </Td>
-                        <Td className={`text-right font-mono font-bold ${groupAmount > 0 ? "text-emerald-600" : "text-gray-300"}`}>
-                          {groupAmount > 0 ? fmt(groupAmount) : "—"}
+                        <Td className="text-center">
+                          <input
+                            value={item.unit}
+                            placeholder="sqft"
+                            onChange={(e) => updateLineItem(item.key, "unit", e.target.value)}
+                            className={`${cellInputClass} text-center`}
+                          />
                         </Td>
-                        <Td></Td>
+                        <Td className="text-right font-mono text-gray-500 dark:text-gray-400">
+                          {item.scopeItemId ? item.plannedQty : "—"}
+                        </Td>
+                        <Td>
+                          {item.scopeItemId ? (
+                            <div>
+                              <input
+                                value={formatPercent(item.percentComplete)}
+                                placeholder="0"
+                                onChange={(e) => updateLineItem(item.key, "percentComplete", parsePercent(e.target.value))}
+                                className={`${cellInputClass} text-right`}
+                              />
+                              {cap != null && <div className="text-[10px] text-gray-400 text-right">{cap}% remaining</div>}
+                            </div>
+                          ) : (
+                            <span className="text-gray-300 text-[11px] block text-right">—</span>
+                          )}
+                        </Td>
+                        <Td>
+                          <input
+                            type="number" min="0"
+                            value={item.billedQty || ""}
+                            placeholder="0"
+                            onChange={(e) => updateLineItem(item.key, "billedQty", Number(e.target.value) || 0)}
+                            className={`${cellInputClass} text-right`}
+                          />
+                        </Td>
+                        <Td>
+                          <input
+                            value={formatThousands(item.rate || "")}
+                            placeholder="0.00"
+                            onChange={(e) => updateLineItem(item.key, "rate", parseThousands(e.target.value))}
+                            className={`${cellInputClass} text-right`}
+                          />
+                        </Td>
+                        <Td className={`text-right font-mono font-bold whitespace-nowrap ${item.amount > 0 ? "text-emerald-600" : "text-gray-300"}`}>
+                          {item.amount > 0 ? fmt(item.amount) : "—"}
+                        </Td>
+                        <Td className="text-center">
+                          <button
+                            type="button"
+                            disabled={lineItems.length === 1}
+                            onClick={() => setConfirmRemoveKey(item.key)}
+                            className="text-red-500 hover:text-red-700 disabled:opacity-30 disabled:pointer-events-none p-1"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </Td>
                       </Tr>
                     );
-                  }
-
-                  if (groupKey && !expandedGroups.has(groupKey)) return;
-
-                  const cap = remainingPercent(item);
-                  rows.push(
-                    <Tr key={item.key} className={groupKey ? "bg-gray-50/60 dark:bg-gray-800/20" : ""}>
-                      <Td style={groupKey ? { paddingLeft: 26 } : undefined}>
-                        <input
-                          value={item.description}
-                          placeholder="e.g. RCC work, Plastering, Tile fixing…"
-                          onChange={(e) => updateLineItem(item.key, "description", e.target.value)}
-                          className={cellInputClass}
-                        />
-                      </Td>
-                      <Td className="text-center">
-                        <input
-                          value={item.unit}
-                          placeholder="sqft"
-                          onChange={(e) => updateLineItem(item.key, "unit", e.target.value)}
-                          className={`${cellInputClass} text-center`}
-                        />
-                      </Td>
-                      <Td className="text-right font-mono text-gray-500 dark:text-gray-400">
-                        {item.scopeItemId ? item.plannedQty : "—"}
-                      </Td>
-                      <Td>
-                        {item.scopeItemId ? (
-                          <div>
-                            <input
-                              value={formatPercent(item.percentComplete)}
-                              placeholder="0"
-                              onChange={(e) => updateLineItem(item.key, "percentComplete", parsePercent(e.target.value))}
-                              className={`${cellInputClass} text-right`}
-                            />
-                            {cap != null && <div className="text-[10px] text-gray-400 text-right">{cap}% remaining</div>}
-                          </div>
-                        ) : (
-                          <span className="text-gray-300 text-[11px] block text-right">—</span>
-                        )}
-                      </Td>
-                      <Td>
-                        <input
-                          type="number" min="0"
-                          value={item.billedQty || ""}
-                          placeholder="0"
-                          onChange={(e) => updateLineItem(item.key, "billedQty", Number(e.target.value) || 0)}
-                          className={`${cellInputClass} text-right`}
-                        />
-                      </Td>
-                      <Td>
-                        <input
-                          value={formatThousands(item.rate || "")}
-                          placeholder="0.00"
-                          onChange={(e) => updateLineItem(item.key, "rate", parseThousands(e.target.value))}
-                          className={`${cellInputClass} text-right`}
-                        />
-                      </Td>
-                      <Td className={`text-right font-mono font-bold whitespace-nowrap ${item.amount > 0 ? "text-emerald-600" : "text-gray-300"}`}>
-                        {item.amount > 0 ? fmt(item.amount) : "—"}
-                      </Td>
-                      <Td className="text-center">
-                        <button
-                          type="button"
-                          disabled={lineItems.length === 1}
-                          onClick={() => setConfirmRemoveKey(item.key)}
-                          className="text-red-500 hover:text-red-700 disabled:opacity-30 disabled:pointer-events-none p-1"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </Td>
-                    </Tr>
-                  );
-                });
-                return rows;
-              })()}
-            </Tbody>
-          </Table>
-
+                  });
+                  return rows;
+                })()}
+              </Tbody>
+            </Table>
+          </div>
           <div className="mt-2">
             <Btn outline icon={Plus} label="Add Work Item" className="w-full" onClick={() => setLineItems((prev) => [...prev, blankRow()])} />
           </div>

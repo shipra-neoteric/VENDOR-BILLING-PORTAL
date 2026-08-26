@@ -14,7 +14,11 @@ type NxBtnColor =
 // theme color (never a hardcoded orange), secondary/danger/success are
 // static Tailwind, icon-only buttons get the active:scale-95 press feel.
 const COLOR_CLASSES: Record<NxBtnColor, string> = {
-  primary: "text-white hover:opacity-90",
+  // `!` forces !important — antd (still loaded during the Nexora migration)
+  // injects its own global, unlayered `button { color: inherit }` reset
+  // that otherwise silently beats this Tailwind utility (see ui/Btn.tsx's
+  // identical note, and index.css's "Direct Button Target" section).
+  primary: "text-white! hover:opacity-90",
   secondary: "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600",
   danger: "bg-red-600 hover:bg-red-700 text-white",
   success: "bg-green-600 hover:bg-green-700 text-white",

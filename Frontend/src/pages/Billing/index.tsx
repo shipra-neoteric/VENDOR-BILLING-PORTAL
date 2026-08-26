@@ -180,7 +180,7 @@ export default function Billing() {
     setLoading(true);
     apiClient.get<{ bills: Record<string, unknown>[] }>("/bills")
       .then((r) => setBills((r.data.bills || []).map((b) => normalizeId(b) as unknown as Bill)))
-      .catch(() => {})
+      .catch(() => { })
       .finally(() => setLoading(false));
   }, []);
 
@@ -189,7 +189,7 @@ export default function Billing() {
   useEffect(() => {
     apiClient.get<{ projects: Record<string, unknown>[] }>("/projects")
       .then((r) => setProjects((r.data.projects || []).map((p) => normalizeId(p) as unknown as ProjectOpt)))
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   const filteredBills = useMemo(() => {
@@ -203,8 +203,8 @@ export default function Billing() {
         (b.projectName || "").toLowerCase().includes(q) ||
         (b.generatedBy || "").toLowerCase().includes(q);
       const matchProject = !projectFilter || b.projectId === projectFilter;
-      const matchStatus  = !statusFilter || b.status === statusFilter;
-      const matchDate     = inDateRange(b.billDate, dateFrom, dateTo);
+      const matchStatus = !statusFilter || b.status === statusFilter;
+      const matchDate = inDateRange(b.billDate, dateFrom, dateTo);
       return matchSearch && matchProject && matchStatus && matchDate;
     }).sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
   }, [bills, search, projectFilter, statusFilter, dateFrom, dateTo]);
@@ -241,7 +241,7 @@ export default function Billing() {
         });
         if (match) setViewApprovalHistory(deriveBillApprovalHistory(match as Parameters<typeof deriveBillApprovalHistory>[0]));
       })
-      .catch(() => {});
+      .catch(() => { });
   }, [viewBill?.workOrderId, viewBill?.id]);
 
   return (
@@ -512,11 +512,11 @@ export default function Billing() {
             const history = viewApprovalHistory ?? (
               !viewBill.workOrderId
                 ? deriveBillApprovalHistory({
-                    agmApprovedBy: viewBill.manualAgmApprovedBy, agmApprovedAt: viewBill.manualAgmApprovedAt,
-                    status: viewBill.manualApprovalStatus === "rejected" ? "rejected" : viewBill.manualApprovalStatus === "approved" ? "approved" : "pending",
-                    processedBy: viewBill.manualGmApprovedBy ?? viewBill.manualRejectedBy, processedAt: viewBill.manualGmApprovedAt,
-                    rejectReason: viewBill.manualRejectReason,
-                  })
+                  agmApprovedBy: viewBill.manualAgmApprovedBy, agmApprovedAt: viewBill.manualAgmApprovedAt,
+                  status: viewBill.manualApprovalStatus === "rejected" ? "rejected" : viewBill.manualApprovalStatus === "approved" ? "approved" : "pending",
+                  processedBy: viewBill.manualGmApprovedBy ?? viewBill.manualRejectedBy, processedAt: viewBill.manualGmApprovedAt,
+                  rejectReason: viewBill.manualRejectReason,
+                })
                 : []
             );
             if (history.length === 0) return null;

@@ -50,7 +50,7 @@ const blankForm = (): FormValues => ({
   averageTurnover: null, workTypes: [],
 });
 
-type RequiredField = "companyName" | "ownerName" | "mobile" | "address" | "accountHolderName" | "bankName" | "accountNumber" | "ifscCode" | "branchName" | "gstNumber" | "panNumber" | "aadhaarNumber";
+type RequiredField = "companyName" | "ownerName" | "mobile" | "email" | "address" | "accountHolderName" | "bankName" | "accountNumber" | "ifscCode" | "branchName" | "gstNumber" | "panNumber" | "aadhaarNumber";
 
 export default function PublicContractorForm() {
   const [values, setValues] = useState<FormValues>(blankForm());
@@ -81,9 +81,13 @@ export default function PublicContractorForm() {
   function validate(): boolean {
     errors.clearAll();
     let ok = true;
-    const required: RequiredField[] = ["companyName", "ownerName", "mobile", "address", "accountHolderName", "bankName", "accountNumber", "ifscCode", "branchName", "gstNumber", "panNumber", "aadhaarNumber"];
+    const required: RequiredField[] = ["companyName", "ownerName", "mobile", "email", "address", "accountHolderName", "bankName", "accountNumber", "ifscCode", "branchName", "gstNumber", "panNumber", "aadhaarNumber"];
     for (const f of required) {
       if (!values[f].trim()) { errors.setError(f, "Required"); ok = false; }
+    }
+    if (values.email.trim() && !/^\S+@\S+\.\S+$/.test(values.email.trim())) {
+      errors.setError("email", "Enter a valid email");
+      ok = false;
     }
     return ok;
   }
@@ -168,7 +172,7 @@ export default function PublicContractorForm() {
               <Field label="Owner Name" required placeholder="e.g. Rajesh Sharma" value={values.ownerName} onChange={e => patch({ ownerName: e.target.value })} error={errors.errors.ownerName} />
               <Field label="Mobile" required placeholder="10-digit mobile number" maxLength={10} value={values.mobile} onChange={e => patch({ mobile: e.target.value })} error={errors.errors.mobile} />
               <Field label="Alternate Mobile" placeholder="Optional" maxLength={10} value={values.alternateMobile} onChange={e => patch({ alternateMobile: e.target.value })} />
-              <Field label="Email" placeholder="Optional" value={values.email} onChange={e => patch({ email: e.target.value })} />
+              <Field label="Email" required type="email" placeholder="company@email.com" value={values.email} onChange={e => patch({ email: e.target.value })} error={errors.errors.email} />
             </div>
             <div className="mt-3">
               <Field textarea label="Address" required placeholder="Full address…" value={values.address} onChange={e => patch({ address: e.target.value })} error={errors.errors.address} />

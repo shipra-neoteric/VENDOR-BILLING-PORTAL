@@ -23,64 +23,64 @@
 
 :root {
   /* Brand */
-  --nx-orange:        #FF7A00;
-  --nx-orange-50:     #FFF4E8;
-  --nx-orange-hover:  #E56E00;
+  --nx-orange: #FF7A00;
+  --nx-orange-50: #FFF4E8;
+  --nx-orange-hover: #E56E00;
 
   /* Layout */
-  --nx-bg:     #F8FAFC;
-  --nx-text:   #111827;
+  --nx-bg: #F8FAFC;
+  --nx-text: #111827;
   --nx-text-2: #6B7280;
   --nx-border: #E5E7EB;
-  --nx-white:  #ffffff;
+  --nx-white: #ffffff;
 
   /* Header */
   --nx-header-bg: #ffffff;
 
   /* Sidebar */
-  --nx-sidebar-bg:           #ffffff;
-  --nx-sidebar-border:       #E5E7EB;
-  --nx-sidebar-logo-border:  #F3F4F6;
-  --nx-sidebar-brand-color:  #111827;
-  --nx-sidebar-sub-color:    #9CA3AF;
-  --nx-sidebar-group-color:  #B0B7C3;
-  --nx-sidebar-group-line:   #F0F0F5;
+  --nx-sidebar-bg: #ffffff;
+  --nx-sidebar-border: #E5E7EB;
+  --nx-sidebar-logo-border: #F3F4F6;
+  --nx-sidebar-brand-color: #111827;
+  --nx-sidebar-sub-color: #9CA3AF;
+  --nx-sidebar-group-color: #B0B7C3;
+  --nx-sidebar-group-line: #F0F0F5;
 
   /* Nav items */
-  --nx-nav-item-color:       #374151;
-  --nx-nav-item-hover-bg:    #F3F4F6;
+  --nx-nav-item-color: #374151;
+  --nx-nav-item-hover-bg: #F3F4F6;
   --nx-nav-item-hover-color: #111827;
-  --nx-nav-icon-bg:          #F3F4F6;
-  --nx-nav-icon-hover-bg:    #E9EAEC;
+  --nx-nav-icon-bg: #F3F4F6;
+  --nx-nav-icon-hover-bg: #E9EAEC;
 
   /* Table */
-  --nx-table-header-color:   #374151;
-  --nx-table-row-hover-bg:   #FFFAF5;
+  --nx-table-header-color: #374151;
+  --nx-table-row-hover-bg: #FFFAF5;
 
   /* Drawer */
-  --nx-drawer-title-color:   #111827;
-  --nx-drawer-footer-bg:     #FAFAFA;
-  --nx-drawer-body-bg:       #ffffff;
+  --nx-drawer-title-color: #111827;
+  --nx-drawer-footer-bg: #FAFAFA;
+  --nx-drawer-body-bg: #ffffff;
 
   /* Form / Card */
-  --nx-form-label-color:     #374151;
-  --nx-section-label-color:  #9CA3AF;
-  --nx-card-border:          #E5E7EB;
+  --nx-form-label-color: #374151;
+  --nx-section-label-color: #9CA3AF;
+  --nx-card-border: #E5E7EB;
 
   /* Extra text/fill scales */
-  --nx-text-3:    #374151;
-  --nx-text-muted:#9CA3AF;
-  --nx-fill:      #F3F4F6;
-  --nx-fill-2:    #F9FAFB;
+  --nx-text-3: #374151;
+  --nx-text-muted: #9CA3AF;
+  --nx-fill: #F3F4F6;
+  --nx-fill-2: #F9FAFB;
 }
 
 [data-theme="dark"] {
   /* Layout */
-  --nx-bg:     #0F172A;
-  --nx-text:   #F1F5F9;
+  --nx-bg: #0F172A;
+  --nx-text: #F1F5F9;
   --nx-text-2: #94A3B8;
   --nx-border: #334155;
-  --nx-white:  #1E293B;
+  --nx-white: #1E293B;
 
   /* Brand (orange stays orange; tint adapts) */
   --nx-orange-50: rgba(255, 122, 0, 0.12);
@@ -89,40 +89,40 @@
   --nx-header-bg: #1E293B;
 
   /* Sidebar */
-  --nx-sidebar-bg:          #1E293B;
-  --nx-sidebar-border:      #334155;
+  --nx-sidebar-bg: #1E293B;
+  --nx-sidebar-border: #334155;
   --nx-sidebar-logo-border: #334155;
   --nx-sidebar-brand-color: #F1F5F9;
-  --nx-sidebar-sub-color:   #64748B;
+  --nx-sidebar-sub-color: #64748B;
   --nx-sidebar-group-color: #64748B;
-  --nx-sidebar-group-line:  #334155;
+  --nx-sidebar-group-line: #334155;
 
   /* Nav items */
-  --nx-nav-item-color:       #CBD5E1;
-  --nx-nav-item-hover-bg:    #273549;
+  --nx-nav-item-color: #CBD5E1;
+  --nx-nav-item-hover-bg: #273549;
   --nx-nav-item-hover-color: #F1F5F9;
-  --nx-nav-icon-bg:          #273549;
-  --nx-nav-icon-hover-bg:    #304460;
+  --nx-nav-icon-bg: #273549;
+  --nx-nav-icon-hover-bg: #304460;
 
   /* Table */
-  --nx-table-header-color:   #94A3B8;
-  --nx-table-row-hover-bg:   #1a2535;
+  --nx-table-header-color: #94A3B8;
+  --nx-table-row-hover-bg: #1a2535;
 
   /* Drawer */
-  --nx-drawer-title-color:   #F1F5F9;
-  --nx-drawer-footer-bg:     #162032;
-  --nx-drawer-body-bg:       #1E293B;
+  --nx-drawer-title-color: #F1F5F9;
+  --nx-drawer-footer-bg: #162032;
+  --nx-drawer-body-bg: #1E293B;
 
   /* Form / Card */
-  --nx-form-label-color:     #CBD5E1;
-  --nx-section-label-color:  #64748B;
-  --nx-card-border:          #334155;
+  --nx-form-label-color: #CBD5E1;
+  --nx-section-label-color: #64748B;
+  --nx-card-border: #334155;
 
   /* Extra text/fill scales */
-  --nx-text-3:    #CBD5E1;
-  --nx-text-muted:#64748B;
-  --nx-fill:      #273549;
-  --nx-fill-2:    #1a2535;
+  --nx-text-3: #CBD5E1;
+  --nx-text-muted: #64748B;
+  --nx-fill: #273549;
+  --nx-fill-2: #1a2535;
 }
 
 /* ── Nexora dynamic theme color (pilot) ──────────────────────────────────
@@ -136,23 +136,44 @@
    below, or the Tailwind arbitrary-value form var(--theme-primary)) — this
    does not change bg-primary/text-primary anywhere that already uses those. */
 :root {
-  --theme-primary:       #FF7A00;
+  --theme-primary: #FF7A00;
   --theme-primary-light: #FF9A3C;
-  --theme-primary-dark:  #E56E00;
-  --theme-primary-tint:  #FFECDA;
+  --theme-primary-dark: #E56E00;
+  --theme-primary-tint: #FFECDA;
 }
-.theme-bg        { background-color: var(--theme-primary); }
-.theme-bg-hover:hover { background-color: var(--theme-primary-dark); }
+
+.theme-bg {
+  background-color: var(--theme-primary);
+}
+
+.theme-bg-hover:hover {
+  background-color: var(--theme-primary-dark);
+}
+
 /* !important on the two color rules: antd (still loaded during the Nexora
    migration) injects an unlayered global `button, input, select { color:
    inherit }` reset that otherwise silently beats these — same reason
    ui/Btn.tsx's own color classes need the same treatment. */
-.theme-text      { color: var(--theme-primary) !important; }
-.theme-text-light{ color: var(--theme-primary-light) !important; }
-.theme-border     { border-color: var(--theme-primary); }
-.theme-ring:focus { box-shadow: 0 0 0 2px var(--theme-primary); outline: none; }
+.theme-text {
+  color: var(--theme-primary) !important;
+}
 
-* { box-sizing: border-box; }
+.theme-text-light {
+  color: var(--theme-primary-light) !important;
+}
+
+.theme-border {
+  border-color: var(--theme-primary);
+}
+
+.theme-ring:focus {
+  box-shadow: 0 0 0 2px var(--theme-primary);
+  outline: none;
+}
+
+* {
+  box-sizing: border-box;
+}
 
 body {
   margin: 0;
@@ -170,14 +191,16 @@ body {
   border-radius: 10px !important;
   overflow: hidden;
 }
-.ant-table-thead > tr > th {
+
+.ant-table-thead>tr>th {
   font-weight: 700 !important;
   font-size: 12px !important;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--nx-table-header-color) !important;
 }
-.ant-table-row:hover > td {
+
+.ant-table-row:hover>td {
   background: var(--nx-table-row-hover-bg) !important;
 }
 
@@ -186,16 +209,19 @@ body {
   border-bottom: 1px solid var(--nx-border) !important;
   padding: 20px 24px !important;
 }
+
 .ant-drawer-title {
   font-size: 17px !important;
   font-weight: 700 !important;
   color: var(--nx-drawer-title-color) !important;
 }
+
 .ant-drawer-footer {
   border-top: 1px solid var(--nx-border) !important;
   background: var(--nx-drawer-footer-bg) !important;
   padding: 16px 24px !important;
 }
+
 .ant-drawer-body {
   padding: 24px !important;
   background: var(--nx-drawer-body-bg) !important;
@@ -204,18 +230,18 @@ body {
 /* Cards */
 .ant-card {
   border: 1px solid var(--nx-card-border) !important;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.06) !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06) !important;
 }
 
 /* Form labels */
-.ant-form-item-label > label {
+.ant-form-item-label>label {
   font-weight: 600 !important;
   font-size: 14px !important;
   color: var(--nx-form-label-color) !important;
 }
 
 /* Tabs card type */
-.ant-tabs-card > .ant-tabs-nav .ant-tabs-tab {
+.ant-tabs-card>.ant-tabs-nav .ant-tabs-tab {
   border-radius: 8px 8px 0 0 !important;
 }
 
@@ -288,4 +314,71 @@ body {
 
 .nx-nav-item--active .nx-nav-icon {
   background: rgba(255, 122, 0, 0.14);
+}
+
+/* ── Direct Button Target ─────────────────────────────────────────
+   Forces white text + white icons on every solid-orange/primary button,
+   in both Light and Dark themes. Scoped to actual button-like elements
+   (button, a[role="button"], .btn) — never bare `*` — so cards, table
+   cells, and other containers that merely share an orange background
+   utility class are never touched by this. */
+
+.ant-btn-primary,
+.ant-btn-primary span,
+.ant-btn-primary svg,
+button.bg-primary,
+button.theme-bg,
+button.btn-orange,
+button[class*="bg-orange"],
+button[class*="bg-amber"],
+button[class*="bg-[#FF7A00]"],
+button[class*="bg-[#ff6b00]"],
+button[class*="bg-[#ff7a00]"],
+a[role="button"].bg-primary,
+a[role="button"].theme-bg,
+a[role="button"].btn-orange,
+a[role="button"][class*="bg-orange"],
+a[role="button"][class*="bg-amber"],
+a[role="button"][class*="bg-[#FF7A00]"],
+a[role="button"][class*="bg-[#ff6b00]"],
+a[role="button"][class*="bg-[#ff7a00]"],
+.btn.bg-primary,
+.btn.theme-bg,
+.btn.btn-orange,
+.btn[class*="bg-orange"],
+.btn[class*="bg-amber"],
+.btn[class*="bg-[#FF7A00]"],
+.btn[class*="bg-[#ff6b00]"],
+.btn[class*="bg-[#ff7a00]"] {
+  color: #ffffff !important;
+}
+
+.ant-btn-primary svg,
+button.bg-primary svg,
+button.theme-bg svg,
+button.btn-orange svg,
+button[class*="bg-orange"] svg,
+button[class*="bg-amber"] svg,
+button[class*="bg-[#FF7A00]"] svg,
+button[class*="bg-[#ff6b00]"] svg,
+button[class*="bg-[#ff7a00]"] svg,
+a[role="button"].bg-primary svg,
+a[role="button"].theme-bg svg,
+a[role="button"].btn-orange svg,
+a[role="button"][class*="bg-orange"] svg,
+a[role="button"][class*="bg-amber"] svg,
+a[role="button"][class*="bg-[#FF7A00]"] svg,
+a[role="button"][class*="bg-[#ff6b00]"] svg,
+a[role="button"][class*="bg-[#ff7a00]"] svg,
+.btn.bg-primary svg,
+.btn.theme-bg svg,
+.btn.btn-orange svg,
+.btn[class*="bg-orange"] svg,
+.btn[class*="bg-amber"] svg,
+.btn[class*="bg-[#FF7A00]"] svg,
+.btn[class*="bg-[#ff6b00]"] svg,
+.btn[class*="bg-[#ff7a00]"] svg {
+  color: #ffffff !important;
+  fill: currentColor !important;
+  stroke: currentColor !important;
 }

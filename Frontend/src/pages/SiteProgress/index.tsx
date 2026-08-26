@@ -126,7 +126,7 @@ interface ManualBillRow {
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
-const fmt  = (n: number) => "₹" + (n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fmt = (n: number) => "₹" + (n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 // Per-unit rates are fractional far more often than totals are — rounding
 // them for display (as fmt() does) silently turns 130.5 into 131.
 const fmtRate = (n: number) => "₹" + (n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -134,10 +134,10 @@ const fmtN = (n: number) => (n ?? 0).toLocaleString("en-IN");
 const pctOf = (c: number, p: number) => p > 0 ? Math.min(100, Math.round((c / p) * 100)) : 0;
 
 const STATUS_CFG: Record<string, { color: string; label: string }> = {
-  pending:    { color: "orange", label: "Pending L1 (AGM)" },
+  pending: { color: "orange", label: "Pending L1 (AGM)" },
   "pending-gm": { color: "blue", label: "Pending L2 (GM)" },
-  approved:   { color: "green",  label: "Approved" },
-  rejected:   { color: "red",    label: "Rejected" },
+  approved: { color: "green", label: "Approved" },
+  rejected: { color: "red", label: "Rejected" },
 };
 
 type VarianceLevel = "none" | "yellow" | "red";
@@ -308,25 +308,25 @@ export default function SiteProgress() {
   const openReqId = searchParams.get("open");
 
   const canAgmApprove = user?.role === "agm" || hasPerm(user, "agm-approve");
-  const canGmApprove  = user?.role === "gm"  || hasPerm(user, "gm-approve");
-  const canRejectAny  = canAgmApprove || canGmApprove || user?.role === "accounts" || hasPerm(user, "reject");
+  const canGmApprove = user?.role === "gm" || hasPerm(user, "gm-approve");
+  const canRejectAny = canAgmApprove || canGmApprove || user?.role === "accounts" || hasPerm(user, "reject");
 
   const [mainTab, setMainTab] = useState<"progress" | "requests">("progress");
 
-  const [loading, setLoading]   = useState(true);
+  const [loading, setLoading] = useState(true);
   const [activity, setActivity] = useState<ActivityEvent[]>([]);
   const [projects, setProjects] = useState<ProjectOption[]>([]);
-  const [allWOs,   setAllWOs]   = useState<WORow[]>([]);
+  const [allWOs, setAllWOs] = useState<WORow[]>([]);
   const [billReqs, setBillReqs] = useState<BillRequestRow[]>([]);
   const [manualBills, setManualBills] = useState<ManualBillRow[]>([]);
-  const [driList,  setDriList]  = useState<DriOption[]>([]);
+  const [driList, setDriList] = useState<DriOption[]>([]);
   const [kpis, setKpis] = useState({ progressEntriesToday: 0, drisActiveToday: 0, projectsActiveToday: 0 });
 
   const [selProjectId, setSelProjectId] = useState<string | undefined>(undefined);
-  const [selDriId,     setSelDriId]     = useState<string | undefined>(undefined);
+  const [selDriId, setSelDriId] = useState<string | undefined>(undefined);
   const [dateFrom, setDateFrom] = useState<Dayjs | null>(null);
-  const [dateTo,   setDateTo]   = useState<Dayjs | null>(null);
-  const [woDetails,     setWoDetails]     = useState<Map<string, WODetail>>(new Map());
+  const [dateTo, setDateTo] = useState<Dayjs | null>(null);
+  const [woDetails, setWoDetails] = useState<Map<string, WODetail>>(new Map());
   const [detailLoading, setDetailLoading] = useState(false);
 
   const load = () => {
@@ -351,8 +351,8 @@ export default function SiteProgress() {
         const k = dprR.data?.operational?.kpis || {};
         setKpis({
           progressEntriesToday: k.progressEntriesToday || 0,
-          drisActiveToday:      k.drisActiveToday || 0,
-          projectsActiveToday:  k.projectsActiveToday || 0,
+          drisActiveToday: k.drisActiveToday || 0,
+          projectsActiveToday: k.projectsActiveToday || 0,
         });
       })
       .catch(() => toast.error("Failed to load Site Progress data"))
@@ -361,9 +361,9 @@ export default function SiteProgress() {
   useEffect(load, []);
 
   const pendingAgmReqs = useMemo(() => billReqs.filter(r => r.status === "pending" && !r.isArchived), [billReqs]);
-  const pendingGmReqs  = useMemo(() => billReqs.filter(r => r.status === "pending-gm" && !r.isArchived), [billReqs]);
+  const pendingGmReqs = useMemo(() => billReqs.filter(r => r.status === "pending-gm" && !r.isArchived), [billReqs]);
   const pendingManualAgm = useMemo(() => manualBills.filter(b => b.manualApprovalStatus === "pending"), [manualBills]);
-  const pendingManualGm  = useMemo(() => manualBills.filter(b => b.manualApprovalStatus === "pending-gm"), [manualBills]);
+  const pendingManualGm = useMemo(() => manualBills.filter(b => b.manualApprovalStatus === "pending-gm"), [manualBills]);
 
   const projectWOs = useMemo(
     () => selProjectId ? allWOs.filter(wo => getProjId(wo) === selProjectId) : [],
@@ -379,7 +379,7 @@ export default function SiteProgress() {
         results.forEach(r => { const d = r.data.workOrder; if (d) map.set(d._id, d); });
         setWoDetails(map);
       })
-      .catch(() => {})
+      .catch(() => { })
       .finally(() => setDetailLoading(false));
   }, [projectWOs]);
 
@@ -390,11 +390,11 @@ export default function SiteProgress() {
 
   // ── Work order detail + bill-generation modal ───────────────────────────────
   const [viewWOId, setViewWOId] = useState<string | null>(null);
-  const [checked,  setChecked]  = useState<Set<string>>(new Set());
+  const [checked, setChecked] = useState<Set<string>>(new Set());
   const [expandedEntries, setExpandedEntries] = useState<Set<string>>(new Set());
   const [slaInstance, setSlaInstance] = useState<WorkflowInstance | null>(null);
   const [billRemarks, setBillRemarks] = useState("");
-  const [generating,  setGenerating]  = useState(false);
+  const [generating, setGenerating] = useState(false);
   const [approvingVariance, setApprovingVariance] = useState<string | null>(null);
 
   const viewWO = viewWOId ? woDetails.get(viewWOId) ?? null : null;
@@ -493,13 +493,37 @@ export default function SiteProgress() {
     setPrintingReqId(r._id);
     try { await printBillRequest(r); } finally { setPrintingReqId(null); }
   }
-  const [approveModal,     setApproveModal]     = useState(false); // AGM (L1)
-  const [approveTarget,    setApproveTarget]    = useState<string | null>(null);
+  // View — same fix as printBillRequest already applies to Print: once a
+  // RunningBill exists (r.billId), its own lineItems/retention/advance/GST
+  // are the authoritative "as billed" record, not the request's own
+  // items snapshot. Fetches it and merges those fields onto the row before
+  // opening the existing, unchanged viewReq Modal — no new modal, same JSX.
+  async function openViewReq(r: BillRequestRow) {
+    if (!r.billId?._id) return setViewReq(r);
+    try {
+      const bRes = await apiClient.get<{ bill: PrintableBill }>(`/bills/${r.billId._id}`);
+      const bill = bRes.data.bill;
+      setViewReq({
+        ...r,
+        items: bill.lineItems.map(li => ({
+          description: li.description, unit: li.unit || "", billedQty: li.billedQty,
+          rate: li.rate, amount: li.amount, progressRemarks: li.progressRemarks,
+        })),
+        retentionAmount: bill.retentionAmount ?? r.retentionAmount,
+        advanceRecovery: bill.advanceRecovery ?? r.advanceRecovery,
+        gstPercentOverride: bill.gstPercent ?? r.gstPercentOverride,
+      });
+    } catch {
+      setViewReq(r);
+    }
+  }
+  const [approveModal, setApproveModal] = useState(false); // AGM (L1)
+  const [approveTarget, setApproveTarget] = useState<string | null>(null);
   const [approveRetention, setApproveRetention] = useState<number | null>(null);
-  const [approveAdvance,   setApproveAdvance]   = useState<number | null>(null);
+  const [approveAdvance, setApproveAdvance] = useState<number | null>(null);
   // Lets AGM set/override GST% on this bill — mainly for a work order that
   // has no GST% configured at all. Blank means "use the work order's own".
-  const [approveGst,       setApproveGst]       = useState<number | null>(null);
+  const [approveGst, setApproveGst] = useState<number | null>(null);
   // Who this bill's payment actually goes to — normally the work order's own
   // vendor, but a fellow Vendor Group member can be picked instead.
   const [approvePayeeCode, setApprovePayeeCode] = useState<string>("");
@@ -509,14 +533,14 @@ export default function SiteProgress() {
   // instead of being a bare number no AdvanceSlip ever finds out about.
   const [approvePendingAdvances, setApprovePendingAdvances] = useState<{ _id: string; slipNo: string; balance: number }[]>([]);
   const [approveProjectId, setApproveProjectId] = useState<string>("");
-  const [gmModal,     setGmModal]     = useState(false); // GM (L2)
-  const [gmTarget,    setGmTarget]    = useState<string | null>(null);
-  const [gmRemarks,   setGmRemarks]   = useState("");
+  const [gmModal, setGmModal] = useState(false); // GM (L2)
+  const [gmTarget, setGmTarget] = useState<string | null>(null);
+  const [gmRemarks, setGmRemarks] = useState("");
   // GM has final say on who gets paid — can confirm AGM's Stage 1 choice (or
   // the work order's own vendor, if neither ever set one) or override it.
   const [gmPayeeCode, setGmPayeeCode] = useState<string>("");
   const [gmGroupSiblings, setGmGroupSiblings] = useState<{ vendorCode: string; companyName: string }[]>([]);
-  const [rejectModal,  setRejectModal]  = useState(false);
+  const [rejectModal, setRejectModal] = useState(false);
   const [rejectTarget, setRejectTarget] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState("");
   const [saving, setSaving] = useState(false);
@@ -559,7 +583,7 @@ export default function SiteProgress() {
     try {
       const body: Record<string, unknown> = {};
       if (approveRetention != null) body.retentionAmount = approveRetention;
-      if (approveGst       != null) body.gstPercent       = approveGst;
+      if (approveGst != null) body.gstPercent = approveGst;
       if (approvePayeeCode) body.payeeVendorCode = approvePayeeCode;
       if (approveAdvance != null) {
         body.advanceRecovery = approveAdvance;
@@ -628,8 +652,8 @@ export default function SiteProgress() {
   // same reviewers, same permissions, just a plain approve (no retention/GST/
   // advance to decide — those were already set when the bill was created).
   const [manualApproveTarget, setManualApproveTarget] = useState<ManualBillRow | null>(null);
-  const [manualRejectTarget,  setManualRejectTarget]  = useState<ManualBillRow | null>(null);
-  const [manualRejectReason,  setManualRejectReason]  = useState("");
+  const [manualRejectTarget, setManualRejectTarget] = useState<ManualBillRow | null>(null);
+  const [manualRejectReason, setManualRejectReason] = useState("");
 
   const handleManualApprove = async (bill: ManualBillRow) => {
     setSaving(true);
@@ -903,11 +927,11 @@ export default function SiteProgress() {
               value={reqTab}
               onChange={setReqTab}
               options={[
-                { value: "pending",    label: <span className="inline-flex items-center gap-1.5">Pending L1 {pendingAgmReqs.length > 0 && <NxBadge color="amber">{pendingAgmReqs.length}</NxBadge>}</span> },
+                { value: "pending", label: <span className="inline-flex items-center gap-1.5">Pending L1 {pendingAgmReqs.length > 0 && <NxBadge color="amber">{pendingAgmReqs.length}</NxBadge>}</span> },
                 { value: "pending-gm", label: <span className="inline-flex items-center gap-1.5">Pending L2 {pendingGmReqs.length > 0 && <NxBadge color="blue">{pendingGmReqs.length}</NxBadge>}</span> },
-                { value: "approved",   label: "Approved" },
-                { value: "rejected",   label: "Rejected" },
-                { value: "all",        label: "All" },
+                { value: "approved", label: "Approved" },
+                { value: "rejected", label: "Rejected" },
+                { value: "all", label: "All" },
               ]}
             />
           </div>
@@ -999,7 +1023,7 @@ export default function SiteProgress() {
                       { key: "archive", label: r.isArchived ? "Unarchive" : "Archive", icon: ArchiveIcon, onClick: () => setArchiveTarget(r) },
                     ];
                     return (
-                      <Tr key={r._id} className="cursor-pointer" onClick={() => setViewReq(r)}>
+                      <Tr key={r._id} className="cursor-pointer" onClick={() => openViewReq(r)}>
                         <Td>
                           <div className="flex gap-1.5 items-center">
                             {r.stageNo && <NxBadge color="orange">S{r.stageNo}</NxBadge>}
@@ -1024,7 +1048,7 @@ export default function SiteProgress() {
                         <Td><NxBadge color={cfg.color as any}>{cfg.label}</NxBadge></Td>
                         <Td>
                           <div onClick={e => e.stopPropagation()} className="flex items-center gap-1">
-                            <NxBtn color="icon-blue" title="View" icon={Eye} onClick={() => setViewReq(r)} />
+                            <NxBtn color="icon-blue" title="View" icon={Eye} onClick={() => openViewReq(r)} />
                             <NxBtn color="icon" title="Print" icon={Printer} loading={printingReqId === r._id} onClick={() => handlePrintReq(r)} />
                             {r.status === "pending" && canAgmApprove && (
                               <NxBtn color="icon-green" title="AGM Approve" icon={Check} onClick={() => openApprove(r._id)} />
@@ -1106,7 +1130,7 @@ export default function SiteProgress() {
                     onChanged={() => {
                       apiClient.get("/workflows/instances", { params: { entityType: "WorkOrder", entityId: viewWO._id } })
                         .then(res => setSlaInstance(res.data.instances?.[0] ?? null))
-                        .catch(() => {});
+                        .catch(() => { });
                     }}
                     compact
                   />

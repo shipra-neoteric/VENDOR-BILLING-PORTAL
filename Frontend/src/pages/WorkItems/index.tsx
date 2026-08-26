@@ -1577,6 +1577,13 @@ export default function WorkItems() {
     return parent ? allSubCats.filter(c => c.parentId === parent._id) : [];
   }, [categoryFilter, topLevelCats, allSubCats]);
 
+  // Source of truth for "does this Work Order already have a bill" — any
+  // bill at all (draft through paid, not just paid), since a generated bill
+  // already exists against it either way. `woBillsMap` is keyed by
+  // workOrderId from the same `/bills` fetch the monthly report's "Billed"
+  // column already uses, so this doesn't introduce a new data source.
+  const hasBill = (woId: string) => (woBillsMap[woId]?.length ?? 0) > 0;
+
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
     return workOrders.filter(wo => {
@@ -1588,10 +1595,18 @@ export default function WorkItems() {
         wo.vendorCode.toLowerCase().includes(q) ||
         wo.vendorName.toLowerCase().includes(q);
 
-      // Status (stat-card shortcut) — "in-progress" also covers "issued"
+      // Status (stat-card shortcut) — "in-progress" also covers "issued".
+      // Draft/In Progress are specifically the "no bill generated yet"
+      // buckets — once any bill exists for a Work Order (any status, not
+      // just paid), it's no longer "unbilled work" for this purpose, so it
+      // drops out of both, matching statusCounts below.
       const matchStatus =
         statusFilter === "all" ||
-        (statusFilter === "in-progress" ? (wo.status === "in-progress" || wo.status === "issued") : wo.status === statusFilter);
+        (statusFilter === "in-progress"
+          ? (wo.status === "in-progress" || wo.status === "issued") && !hasBill(wo.id)
+          : statusFilter === "draft"
+            ? wo.status === "draft" && !hasBill(wo.id)
+            : wo.status === statusFilter);
 
       // Step (approval-chain pill toggle)
       const matchStep = stepFilter === "all" || approvalStatusOf(wo) === stepFilter;
@@ -1630,7 +1645,7 @@ export default function WorkItems() {
       const numB = parseInt(b.workOrderNo.replace(/\D/g, ""), 10) || 0;
       return numB - numA;
     });
-  }, [workOrders, search, statusFilter, stepFilter, categoryFilter, progressFilter, projectFilter, subCatsOfSelected, dateFrom, dateTo, contractTypeFilter]);
+  }, [workOrders, search, statusFilter, stepFilter, categoryFilter, progressFilter, projectFilter, subCatsOfSelected, dateFrom, dateTo, contractTypeFilter, woBillsMap]);
 
   // Stat-card counts — computed off the full unfiltered list (matching the
   // "shortcut filter" convention used elsewhere, e.g. Projects' StatCard
@@ -1639,12 +1654,17 @@ export default function WorkItems() {
   const statusCounts = useMemo(() => {
     const c = { total: workOrders.length, draft: 0, inProgress: 0, completed: 0 };
     for (const wo of workOrders) {
-      if (wo.status === "draft") c.draft++;
-      else if (wo.status === "completed") c.completed++;
-      else if (wo.status !== "cancelled") c.inProgress++;
+      // A Work Order that already has a generated bill (any status — this
+      // isn't limited to "paid") is no longer unbilled work, so it drops out
+      // of Draft/In Progress entirely rather than counting toward either.
+      if (wo.status === "completed") c.completed++;
+      else if (wo.status === "cancelled") continue;
+      else if (hasBill(wo.id)) continue;
+      else if (wo.status === "draft") c.draft++;
+      else c.inProgress++;
     }
     return c;
-  }, [workOrders]);
+  }, [workOrders, woBillsMap]);
 
   // Step pill counts — one per stage of the real approval chain (see
   // APPROVAL_STATUS_CFG's `level` field, L1=draft through L4=pending-final).

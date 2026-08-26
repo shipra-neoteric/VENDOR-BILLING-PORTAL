@@ -71,7 +71,7 @@ export default function VendorGroups() {
     setLoading(true);
     apiClient.get<{ groups: VendorGroup[] }>("/vendor-groups")
       .then((r) => setGroups(r.data.groups.map(normalizeId)))
-      .catch(() => {})
+      .catch(() => { })
       .finally(() => setLoading(false));
   }
 
@@ -79,10 +79,10 @@ export default function VendorGroups() {
     load();
     apiClient.get<{ projects: (Project & { _id?: string })[] }>("/projects")
       .then((r) => setProjects(r.data.projects.map(normalizeId)))
-      .catch(() => {});
+      .catch(() => { });
     apiClient.get<{ contractors: (Contractor & { _id?: string })[] }>("/contractors")
       .then((r) => setContractors(r.data.contractors.map(normalizeId)))
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   async function handleCreate() {
@@ -175,7 +175,20 @@ export default function VendorGroups() {
         title="Vendor Groups"
         subtitle="Internal grouping only — several individually-registered vendor codes belonging to the same real business, so a bill can be paid into any member's account regardless of whose work order it's under."
         icon={Users}
-        actions={<NxBtn label="New Vendor Group" icon={Plus} style={{ background: "#7c3aed", borderColor: "#7c3aed" }} onClick={() => { setGroupName(""); setCreateOpen(true); }} />}
+        actions={
+          <NxBtn
+            label="New Vendor Group"
+            icon={Plus}
+            style={{
+              background: "#ff7a00",
+              borderColor: "#ff7a00",
+            }}
+            onClick={() => {
+              setGroupName("");
+              setCreateOpen(true);
+            }}
+          />
+        }
       />
 
       {groups.length > 0 && (
