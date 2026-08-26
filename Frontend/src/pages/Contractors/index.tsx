@@ -49,6 +49,7 @@ const WORK_OPTIONS = [
   "Painting",
   "Masonry",
   "Landscaping",
+  "Marketing",
 ];
 
 const DOCUMENT_TYPES = ["GST Certificate", "PAN Card", "Cancelled Cheque", "Business Card", "Aadhaar Card"];

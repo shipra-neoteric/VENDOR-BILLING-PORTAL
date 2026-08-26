@@ -21,7 +21,7 @@ const WORK_OPTIONS = [
   "General Contractors", "Excavation", "Concrete", "Framing", "Steel",
   "Window & Door", "Electrical", "Plumbing", "HVAC", "Fire Alarm & Sprinkler",
   "Roofing", "Insulation", "Drywall", "Taping", "Plaster", "Flooring",
-  "Finish Carpentry", "Painting", "Masonry", "Landscaping",
+  "Finish Carpentry", "Painting", "Masonry", "Landscaping", "Marketing",
 ];
 
 const DOCUMENT_FIELDS: { key: string; label: string; required?: boolean }[] = [
