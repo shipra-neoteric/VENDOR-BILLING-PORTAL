@@ -2256,7 +2256,10 @@ export default function WorkItems() {
           </button>
         </div>
 
-        {/* Table */}
+        {/* Table — min-h keeps the page from collapsing/shrinking when there
+            are only a few (or zero) rows, same fixed footprint regardless
+            of entry count. */}
+        <div className="min-h-[420px]">
         {
           loadingData ? (
             <Spinner size="large" />
@@ -2277,7 +2280,7 @@ export default function WorkItems() {
                     <Th>Status</Th>
                     <Th>Step</Th>
                     <Th>Created</Th>
-                    <Th>Actions</Th>
+                    <Th className="min-w-[190px]">Actions</Th>
                   </Tr>
                 </Thead>
                 <Tbody>
@@ -2356,6 +2359,7 @@ export default function WorkItems() {
             </>
           )
         }
+        </div>
       </div>
 
       {/* ── Monthly Report Modal — same monthlyReport/monthlyReportTotals

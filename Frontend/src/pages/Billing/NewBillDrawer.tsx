@@ -694,18 +694,18 @@ export default function NewBillDrawer({
             </span>
           </div>
 
-          <div className="overflow-x-auto">
+          <div>
             <Table>
               <Thead>
                 <Tr>
-                  <Th className="min-w-[300px] w-[36%]">Description of Work *</Th>
-                  <Th className="text-center">Unit</Th>
-                  <Th className="text-right">Master Qty</Th>
-                  <Th className="text-right">% of Work</Th>
-                  <Th className="text-right">Quantity *</Th>
-                  <Th className="text-right">Rate (₹) *</Th>
-                  <Th className="text-right">Amount (₹)</Th>
-                  <Th></Th>
+                  <Th className="w-[28%]">Description of Work *</Th>
+                  <Th className="text-center w-[8%]">Unit</Th>
+                  <Th className="text-right w-[12%]">Master Qty</Th>
+                  <Th className="text-right w-[12%]">% of Work</Th>
+                  <Th className="text-right w-[12%]">Quantity *</Th>
+                  <Th className="text-right w-[13%]">Rate (₹) *</Th>
+                  <Th className="text-right w-[13%]">Amount (₹)</Th>
+                  <Th className="w-[2%]"></Th>
                 </Tr>
               </Thead>
               <Tbody>
