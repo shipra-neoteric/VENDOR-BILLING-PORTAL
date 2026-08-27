@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Plus, Receipt, FileText, Ban, CheckCircle2, Eye, Download } from "lucide-react";
+import { Plus, Receipt, FileText, Ban, CheckCircle2, Eye, Download, Printer } from "lucide-react";
 import toast from "react-hot-toast";
 import dayjs from "dayjs";
 import type { Dayjs } from "dayjs";
@@ -316,8 +316,9 @@ export default function Billing() {
                   <Th>Vendor</Th>
                   <Th>Project</Th>
                   <Th className="text-right">Amount</Th>
-                  <Th>Status</Th>
-                  <Th>Date</Th>
+                  <Th className="w-[150px]">Approval</Th>
+                  <Th className="w-[170px]">Accounts</Th>
+                  <Th className="w-[110px] whitespace-nowrap">Date</Th>
                   <Th>Actions</Th>
                 </Tr>
               </Thead>
@@ -337,12 +338,18 @@ export default function Billing() {
                     <Td>{r.projectName || <span className="text-gray-300 dark:text-gray-600">—</span>}</Td>
                     <Td className="text-right font-bold">{fmt(netAfterAdvance(r))}</Td>
                     <Td>
-                      <div className="flex items-center gap-1.5">
-                        <NxBadge color={BILL_STATUS_BADGE_COLOR[r.status] ?? "gray"}>{BILL_STATUS_LABEL[r.status] || r.status}</NxBadge>
-                        {r.manualApprovalStatus === "pending" && <NxBadge color="orange">Pending L1 (AGM)</NxBadge>}
-                        {r.manualApprovalStatus === "pending-gm" && <NxBadge color="orange">Pending L2 (GM)</NxBadge>}
-                        {r.manualApprovalStatus === "rejected" && <NxBadge color="red">AGM/GM Rejected</NxBadge>}
-                      </div>
+                      {(r.manualApprovalStatus === "pending" || r.manualApprovalStatus === "pending-gm" || r.manualApprovalStatus === "rejected") ? (
+                        <>
+                          {r.manualApprovalStatus === "pending" && <NxBadge color="orange">Pending L1 (AGM)</NxBadge>}
+                          {r.manualApprovalStatus === "pending-gm" && <NxBadge color="orange">Pending L2 (GM)</NxBadge>}
+                          {r.manualApprovalStatus === "rejected" && <NxBadge color="red">AGM/GM Rejected</NxBadge>}
+                        </>
+                      ) : (
+                        <span className="text-gray-300 dark:text-gray-600">—</span>
+                      )}
+                    </Td>
+                    <Td>
+                      <NxBadge color={BILL_STATUS_BADGE_COLOR[r.status] ?? "gray"}>{BILL_STATUS_LABEL[r.status] || r.status}</NxBadge>
                     </Td>
                     <Td>{r.billDate ? dayjs(r.billDate).format("DD MMM YYYY") : "—"}</Td>
                     <Td onClick={(e) => e.stopPropagation()}>
@@ -371,6 +378,12 @@ export default function Billing() {
           title={viewBill.billNo}
           subtitle="Read-only — process this bill in Accounts Payment"
           onClose={() => setViewBillId(null)}
+          footer={
+            <div className="flex justify-end gap-2">
+              <NxBtn color="secondary" icon={Eye} label="View" loading={downloadingId === viewBill.id} onClick={() => handleDownload(viewBill)} />
+              <NxBtn color="secondary" icon={Printer} label="Print" loading={downloadingId === viewBill.id} onClick={() => handleDownload(viewBill)} />
+            </div>
+          }
         >
           <Descriptions columns={2}>
             <DescItem label="Status"><NxBadge color={BILL_STATUS_BADGE_COLOR[viewBill.status] ?? "gray"}>{BILL_STATUS_LABEL[viewBill.status] || viewBill.status}</NxBadge></DescItem>

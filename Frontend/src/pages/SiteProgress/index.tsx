@@ -475,6 +475,12 @@ export default function SiteProgress() {
   };
 
   const pendingBRForWO = (woId: string) => billReqs.find(br => br.workOrderId === woId && ["pending", "pending-gm"].includes(br.status));
+  // Most recent bill request of any status for a Work Order — used by the
+  // Recent DRI Progress table's Print action, since a progress-log row isn't
+  // itself a bill; it just needs whichever request that work order's most
+  // recent billing cycle actually produced.
+  const latestBRForWO = (woId: string) =>
+    billReqs.filter(br => br.workOrderId === woId).sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""))[0];
 
   // ── Bill request view / approve / reject ────────────────────────────────────
   const [viewReq, setViewReq] = useState<BillRequestRow | null>(null);
@@ -832,12 +838,14 @@ export default function SiteProgress() {
                       <Th>DRI</Th>
                       <Th>Progress</Th>
                       <Th>Remarks</Th>
+                      <Th>Actions</Th>
                     </Tr>
                   </Thead>
                   <Tbody>
                     {activityPager.pageItems.map(ev => {
                       const m = ev.metadata || {};
                       const level = m.plannedQty != null && m.completedQty != null ? varianceLevel(m.plannedQty, m.completedQty) : "none";
+                      const br = ev.workOrderId ? latestBRForWO(ev.workOrderId) : undefined;
                       return (
                         <Tr key={ev._id}>
                           <Td>{dayjs(ev.createdAt).format("DD MMM, hh:mm a")}</Td>
@@ -856,6 +864,16 @@ export default function SiteProgress() {
                             {ev.remarks
                               ? <span className="text-xs text-gray-500 dark:text-gray-400 inline-flex items-center gap-1"><Pin className="w-3 h-3" /> {ev.remarks}</span>
                               : <span className="text-gray-300 dark:text-gray-600">—</span>}
+                          </Td>
+                          <Td>
+                            <div className="flex items-center gap-1">
+                              <NxBtn color="icon-blue" title="View Work Order" icon={Eye} onClick={() => openFromActivity(ev)} />
+                              <NxBtn
+                                color="icon" title="Print Bill Request"
+                                icon={Printer} loading={!!br && printingReqId === br._id}
+                                onClick={() => br ? handlePrintReq(br) : toast.error("No bill request exists yet for this work order")}
+                              />
+                            </div>
                           </Td>
                         </Tr>
                       );
