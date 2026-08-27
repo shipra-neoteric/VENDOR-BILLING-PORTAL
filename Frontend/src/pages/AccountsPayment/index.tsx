@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
-  ArrowRight, CheckCircle2, XCircle, IndianRupee, AlertCircle, FilePlus, Inbox,
+  CheckCircle2, XCircle, IndianRupee, AlertCircle, FilePlus,
   PauseCircle, Printer, ShieldCheck, Send, FileText, ClipboardList, Building2, Wallet, Pencil,
   Eye,
 } from "lucide-react";
@@ -230,15 +230,6 @@ function SectionLabel({ title }: { title: string }) {
     <div className="flex items-center gap-2 mb-2.5">
       <div className="w-1 h-[15px] rounded bg-[#ff7a00]" />
       <div className="text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide">{title}</div>
-    </div>
-  );
-}
-
-function InfoRow({ label, value, mono, bold }: { label: string; value: ReactNode; mono?: boolean; bold?: boolean }) {
-  return (
-    <div className="flex justify-between gap-2.5 py-1 text-[12.5px]">
-      <span className="text-gray-400">{label}</span>
-      <span className={`text-right ${mono ? "font-mono" : ""} ${bold ? "font-bold" : "font-medium"}`}>{value}</span>
     </div>
   );
 }
