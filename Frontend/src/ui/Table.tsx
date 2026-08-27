@@ -1,8 +1,20 @@
 import type { ReactNode, HTMLAttributes, ThHTMLAttributes, TdHTMLAttributes } from "react";
 
-export function Table({ children, className = "", ...rest }: HTMLAttributes<HTMLTableElement>) {
+interface TableProps extends HTMLAttributes<HTMLTableElement> {
+  // Optional — extends the wrapping scroll container's own className (e.g.
+  // a fixed height + overflow-y-auto). Combining it on THIS div (which
+  // already carries overflow-x-auto) gives one container that handles both
+  // scroll axes, instead of nesting a second overflow wrapper around it —
+  // a nested wrapper puts the horizontal scrollbar at the bottom of the
+  // table's own (shorter) content instead of the bottom of the fixed-height
+  // box, making it appear to float mid-container. Empty by default: every
+  // existing caller's layout is unaffected.
+  containerClassName?: string;
+}
+
+export function Table({ children, className = "", containerClassName = "", ...rest }: TableProps) {
   return (
-    <div className="w-full overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700/40">
+    <div className={["w-full overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700/40", containerClassName].join(" ")}>
       <table className={["w-full table-fixed border-collapse text-sm", className].join(" ")} {...rest}>
         {children}
       </table>

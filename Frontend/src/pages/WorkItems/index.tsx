@@ -2256,10 +2256,15 @@ export default function WorkItems() {
           </button>
         </div>
 
-        {/* Table — min-h keeps the page from collapsing/shrinking when there
-            are only a few (or zero) rows, same fixed footprint regardless
-            of entry count. */}
-        <div className="min-h-[420px]">
+        {/* Table — no horizontal scrollbar: every column gets a percentage
+            width (summing to 100%) so the row always fits the container's
+            width. Vertical scroll only, via Table's own containerClassName
+            (fixed height + overflow-y-auto on the SAME div that already
+            handles horizontal overflow — kept at 0 here since nothing
+            overflows) so there's still just one scroll container, not a
+            nested one. Safe to scroll now that DropdownMenu renders its
+            popup via a portal (see ui/DropdownMenu.tsx) instead of getting
+            clipped by this box. */}
         {
           loadingData ? (
             <Spinner size="large" />
@@ -2267,20 +2272,20 @@ export default function WorkItems() {
             <EmptyState icon={ClipboardList} title="No work orders yet" message='Click "New Work Order" to create your first one.' />
           ) : (
             <>
-              <Table>
+              <Table containerClassName="h-[650px] overflow-y-auto">
                 <Thead>
                   <Tr>
-                    <Th>WO No</Th>
-                    <Th>Date</Th>
-                    <Th>Project</Th>
-                    <Th>Category</Th>
-                    <Th>Vendor Code</Th>
-                    <Th>Company Name</Th>
-                    <Th className="text-right">Contract Value</Th>
-                    <Th>Status</Th>
-                    <Th>Step</Th>
-                    <Th>Created</Th>
-                    <Th className="min-w-[190px]">Actions</Th>
+                    <Th className="w-[9%]">WO No</Th>
+                    <Th className="w-[8%]">Date</Th>
+                    <Th className="w-[10%]">Project</Th>
+                    <Th className="w-[9%]">Category</Th>
+                    <Th className="w-[8%]">Vendor Code</Th>
+                    <Th className="w-[10%]">Company Name</Th>
+                    <Th className="text-right w-[10%]">Contract Value</Th>
+                    <Th className="w-[8%]">Status</Th>
+                    <Th className="w-[8%]">Step</Th>
+                    <Th className="w-[8%]">Created</Th>
+                    <Th className="w-[12%]">Actions</Th>
                   </Tr>
                 </Thead>
                 <Tbody>
@@ -2359,7 +2364,6 @@ export default function WorkItems() {
             </>
           )
         }
-        </div>
       </div>
 
       {/* ── Monthly Report Modal — same monthlyReport/monthlyReportTotals
