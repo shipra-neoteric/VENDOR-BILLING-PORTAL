@@ -300,6 +300,21 @@ async function printBillRequest(br: BillRequestRow) {
   }
 }
 
+// A "Manual Bill" row is already a real RunningBill (created via Billing →
+// New Bill, just still pending its own AGM/GM sign-off) — no pseudo-bill
+// needed here, just fetch the full record (ManualBillRow is a summary row,
+// missing lineItems/vendorCode/etc.) and print it through the same template.
+async function printManualBill(b: ManualBillRow) {
+  try {
+    const bRes = await apiClient.get<{ bill: PrintableBill }>(`/bills/${b._id}`);
+    const bill = bRes.data.bill;
+    const contractor = await resolvePrintParty(bill.vendorCode);
+    printBill(bill, contractor, bill.status === "paid" ? "post" : "pre");
+  } catch {
+    toast.error("Failed to prepare print view");
+  }
+}
+
 // ── Main component ─────────────────────────────────────────────────────────────
 export default function SiteProgress() {
   const { user } = useAuth();
@@ -492,6 +507,13 @@ export default function SiteProgress() {
   async function handlePrintReq(r: BillRequestRow) {
     setPrintingReqId(r._id);
     try { await printBillRequest(r); } finally { setPrintingReqId(null); }
+  }
+  // Manual Bills' Print — reuses printingReqId for the loading spinner since
+  // a Manual Bill's _id is a different collection's id and never collides
+  // with a BillRequestRow's.
+  async function handlePrintManualBill(b: ManualBillRow) {
+    setPrintingReqId(b._id);
+    try { await printManualBill(b); } finally { setPrintingReqId(null); }
   }
   // View — same fix as printBillRequest already applies to Print: once a
   // RunningBill exists (r.billId), its own lineItems/retention/advance/GST
@@ -981,6 +1003,8 @@ export default function SiteProgress() {
                       <Td><NxBadge color={b.manualApprovalStatus === "pending-gm" ? "blue" : "orange"}>{b.manualApprovalStatus === "pending-gm" ? "Pending L2" : "Pending L1"}</NxBadge></Td>
                       <Td>
                         <div className="flex items-center gap-1">
+                          <NxBtn color="icon-blue" title="View" icon={Eye} loading={printingReqId === b._id} onClick={() => handlePrintManualBill(b)} />
+                          <NxBtn color="icon" title="Print" icon={Printer} loading={printingReqId === b._id} onClick={() => handlePrintManualBill(b)} />
                           {b.manualApprovalStatus === "pending" && canAgmApprove && (
                             <NxBtn color="icon-green" title="AGM Approve" icon={Check} onClick={() => setManualApproveTarget(b)} />
                           )}
