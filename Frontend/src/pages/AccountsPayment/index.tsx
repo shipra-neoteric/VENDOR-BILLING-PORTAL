@@ -1036,9 +1036,9 @@ export default function AccountsPayment() {
                 as that row's own width/position. No card/border — just the
                 two small rows themselves. */}
             <div className="flex justify-end">
-              <div className="w-full max-w-[320px] flex flex-col gap-1.5 py-1.5">
+              <div className="w-full max-w-[320px] flex flex-col gap-2 py-2">
                 {/* TDS row: %/₹ toggle → small input → calculated TDS Amount */}
-                <div className="flex items-center gap-1.5 text-[11px]">
+                <div className="flex items-center gap-2 text-[13px]">
                   <span className="text-gray-400 shrink-0">TDS</span>
                   <div className="inline-flex items-center rounded border border-gray-200 dark:border-gray-700 overflow-hidden shrink-0">
                     {(["percent", "amount"] as const).map((m) => (
@@ -1062,7 +1062,7 @@ export default function AccountsPayment() {
                         // income). Never on the raw gross or the GST-inclusive figure.
                         setVerifyTdsAmount(Math.round(tdsBase() * pct / 100));
                       }}
-                      className="w-14 h-6 px-1.5 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-transparent text-[11px] text-right"
+                      className="w-16 h-7 px-2 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-transparent text-[13px] text-right"
                     />
                   ) : (
                     <input
@@ -1073,21 +1073,21 @@ export default function AccountsPayment() {
                         const base = tdsBase();
                         setVerifyTdsPercent(base > 0 ? Math.round((amt / base) * 10000) / 100 : 0);
                       }}
-                      className="w-16 h-6 px-1.5 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-transparent text-[11px] text-right"
+                      className="w-16 h-6 px-1.5 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-transparent text-[13px] text-right"
                     />
                   )}
-                  <span className="text-gray-400 ml-auto shrink-0">TDS Amount</span>
+                  <span className="text-gray-400 ml-auto shrink-0" pl-4>TDS Amount</span>
                   <span className="font-semibold text-[#1A1A2E] dark:text-[#F1F5F9] shrink-0">{fmt(verifyTdsAmount)}</span>
                 </div>
 
                 {/* Adjustment row: −/+ toggle → small Amount input */}
-                <div className="flex items-center gap-1.5 text-[11px]">
+                <div className="flex items-center gap-2.5 text-[13px]">
                   <span className="text-gray-400 shrink-0">Adjustment</span>
                   <div className="inline-flex items-center rounded border border-gray-200 dark:border-gray-700 overflow-hidden shrink-0">
                     {(["subtract", "add"] as const).map((s) => (
                       <button
                         key={s} type="button" onClick={() => setVerifyAdjustmentSign(s)}
-                        className={`px-1.5 h-6 text-[11px] font-bold whitespace-nowrap ${verifyAdjustmentSign === s ? "bg-primary text-white" : "bg-white dark:bg-transparent text-gray-500 dark:text-gray-400"}`}
+                        className={`px-2 h-6 text-[12px] font-bold whitespace-nowrap ${verifyAdjustmentSign === s ? "bg-primary text-white" : "bg-white dark:bg-transparent text-gray-500 dark:text-gray-400"}`}
                       >
                         {s === "subtract" ? "− Subtract" : "+ Add"}
                       </button>
@@ -1097,7 +1097,7 @@ export default function AccountsPayment() {
                     type="number" min="0" placeholder="0"
                     value={verifyAdjustmentMagnitude ?? ""}
                     onChange={(e) => setVerifyAdjustmentMagnitude(e.target.value === "" ? null : Number(e.target.value))}
-                    className="w-16 h-6 px-1.5 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-transparent text-[11px] text-right ml-auto"
+                    className="w-20 h-7 px-2 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-transparent text-[13px] text-right ml-auto"
                   />
                   {!!verifyAdjustmentMagnitude && (
                     <span className={`font-bold shrink-0 ${verifyAdjustmentSign === "subtract" ? "text-red-600" : "text-emerald-600"}`}>
