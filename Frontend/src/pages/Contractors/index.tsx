@@ -181,7 +181,7 @@ interface ContractorFormValues {
   accountHolderName: string; bankName: string; accountNumber: string; ifscCode: string; branchName: string;
   gstNumber: string; panNumber: string; aadhaarNumber: string;
   workTypes: string[]; reference1: string; reference2: string; averageTurnover: number | null;
-  documents: Record<string, { fileName: string; dataUrl: string } | undefined>;
+  documents: Record<string, { fileName?: string; dataUrl?: string } | undefined>;
 }
 
 const blankForm = (): ContractorFormValues => ({

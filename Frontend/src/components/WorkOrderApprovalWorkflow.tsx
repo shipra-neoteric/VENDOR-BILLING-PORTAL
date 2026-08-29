@@ -276,6 +276,7 @@ export default function WorkOrderApprovalWorkflow<T extends ApprovalWorkOrder>({
     // approval records logged before byName/byRole started being captured).
     if (byName) return byName;
     void byRole; // rendered separately by CycleCell, alongside this label
+    void at; // timestamp itself is rendered separately by CycleCell
 
     const uid = idOf(by);
     const resolvedName = uid ? (userMap[uid] || (typeof by === "object" ? (by as any)?.name : undefined)) : undefined;
