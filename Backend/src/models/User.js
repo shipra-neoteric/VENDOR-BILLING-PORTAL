@@ -6,9 +6,14 @@ const userSchema = new mongoose.Schema(
     name:  { type: String, required: true, trim: true },
     email: { type: String, required: true, unique: true, lowercase: true, trim: true },
     password: { type: String, required: true, minlength: 6, select: false },
+    // No longer a fixed enum — a custom role name (validated in
+    // userController.js's isValidRole) is also accepted, alongside the 6
+    // built-in roles. Those 6 keep every existing hardcoded behavior
+    // (owner/site-dri bypasses, authorize() gates, etc.) exactly as before;
+    // a custom role gets none of that and relies entirely on its own
+    // `permissions` array.
     role: {
       type: String,
-      enum: ['owner', 'gm', 'agm', 'accounts', 'process-coordinator', 'site-dri'],
       default: 'site-dri',
     },
     vendorCode: { type: String, default: null },

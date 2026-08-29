@@ -43,8 +43,6 @@ import { downloadWorkOrderPDF } from "../../components/WorkOrderPDF";
 import { downloadWorkOrderPDFHindi } from "../../components/WorkOrderPDFHindi";
 import { selectableProjects, getWorkOrderProjectId } from "../../utils/projectOptions";
 import { vendorLabel } from "../../utils/vendorLabel";
-import PaymentMilestonesBuilder, { calcPayable, calcGrandTotal, newMilestone } from "../../components/PaymentMilestonesBuilder";
-import type { MilestoneDraft } from "../../components/PaymentMilestonesBuilder";
 import SecurityDepositBuilder, { calcDepositAmount } from "../../components/SecurityDepositBuilder";
 import type { SecurityDepositDraft } from "../../components/SecurityDepositBuilder";
 import GstSelect from "../../components/GstSelect";
@@ -60,7 +58,6 @@ import type {
   WorkOrderStatus,
   WorkOrderApprovalStatus,
   ScopeItem,
-  PaymentMilestone,
   SecurityDeposit,
 } from "../../types/VendorBilling";
 
@@ -275,13 +272,6 @@ function buildApprovals(wo: WorkOrder, userMap: Record<string, string>) {
   };
 }
 
-const toMilestoneDraft = (pm: PaymentMilestone): MilestoneDraft => ({
-  id: pm.id, stage: pm.stage, date: pm.date, type: pm.type,
-  mode: pm.mode, amount: pm.amount,
-  amountMode: pm.amountMode ?? "fixed", amountPercent: pm.amountPercent ?? null,
-  gstPercent: pm.gstPercent,
-});
-
 const toSecurityDepositDraft = (sd: SecurityDeposit): SecurityDepositDraft => ({
   id: sd.id, scopeItemIds: sd.scopeItemIds, mode: sd.mode, rate: sd.rate, notes: sd.notes || "",
 });
@@ -292,18 +282,6 @@ const securityDepositDraftToPayload = (d: SecurityDepositDraft, scopeItems: Scop
   rate: d.rate || 0,
   amount: calcDepositAmount(d, scopeItems.map(si => ({ id: si.id, description: si.description, plannedQty: si.plannedQty, amount: calcDraftItemAmt(si) }))),
   notes: d.notes,
-});
-
-const milestoneDraftToPayload = (m: MilestoneDraft) => ({
-  stage: m.stage, date: m.date, type: m.type, mode: m.mode,
-  amount: m.amount || 0, amountMode: m.amountMode, amountPercent: m.amountPercent,
-  gstPercent: m.gstPercent,
-  // `amount` is always the pre-GST base figure regardless of mode (a percent-
-  // mode amount is resolved as % of the pre-GST contract value) — GST is
-  // always added on top, so this tells the backend's own recompute
-  // (validateMilestones.js) to do exactly that, matching calcPayable.
-  gstType: "exclusive",
-  payable: calcPayable(m),
 });
 
 const newSubDraft = (): ScopeSubItemDraft => ({
@@ -1469,9 +1447,6 @@ export default function WorkItems() {
   const [progressRemarks, setProgressRemarks] = useState("");
   const progressErrors = useFormErrors<"date" | "qtyAdded">();
 
-  const [createMilestones, setCreateMilestones] = useState<MilestoneDraft[]>([]);
-  const [editMilestones,   setEditMilestones]   = useState<MilestoneDraft[]>([]);
-
   const [createSecurityDeposits, setCreateSecurityDeposits] = useState<SecurityDepositDraft[]>([]);
   const [editSecurityDeposits,   setEditSecurityDeposits]   = useState<SecurityDepositDraft[]>([]);
   const [createDiscount,   setCreateDiscount]   = useState<number | null>(null);
@@ -1554,16 +1529,6 @@ export default function WorkItems() {
           rate: item.rate ?? null,
         };
       }));
-    }
-    if (data.paymentMilestones?.length) {
-      setCreateMilestones(data.paymentMilestones.map(m => ({
-        ...newMilestone(),
-        stage: m.stage || "",
-        type: m.type || m.stage || "",
-        amountMode: m.amountPercent != null ? "percent" : "fixed",
-        amountPercent: m.amountPercent ?? null,
-        amount: m.amount ?? null,
-      })));
     }
     if (data.warrantyTerms?.length) setCreateWarranty(data.warrantyTerms.filter(Boolean));
   }
@@ -1755,12 +1720,6 @@ export default function WorkItems() {
     if (!validateWOForm(createValues, createErrors)) return;
     const values = createValues;
     const totalAmt  = calcTotalAmt(createScopeItems);
-    const contractValueInclGst = calcTotalInclGst(createScopeItems);
-    const milestonesTotal = calcGrandTotal(createMilestones);
-    if (milestonesTotal > contractValueInclGst + 1) {
-      toast.error(`Payment milestones total (${fmt(milestonesTotal)}) exceeds the scope of work's contract value incl. GST (${fmt(contractValueInclGst)})`);
-      return;
-    }
     if (values.contractType !== "professional-services" && createScopeItems.some(it => it.description.trim() && (!it.plannedStart || !it.plannedEnd))) {
       toast.error("Start Date and End Date are required for every work item");
       return;
@@ -1795,7 +1754,6 @@ export default function WorkItems() {
       preparedByName:    user?.name  || "",
       preparedByContact: user?.email || "",
       documents:         values.documents || [],
-      paymentMilestones: createMilestones.map(milestoneDraftToPayload),
       securityDeposits:  createSecurityDeposits.map(d => securityDepositDraftToPayload(d, createScopeItems)),
       warrantyTerms:     createWarranty.filter(t => t.trim()),
     };
@@ -1808,7 +1766,6 @@ export default function WorkItems() {
       toast.success(`Work order ${res.data.workOrder.workOrderNo} created`);
       setCreateValues(blankWOForm());
       setCreateScopeItems([]);
-      setCreateMilestones([]);
       setCreateSecurityDeposits([]);
       setCreateDiscount(null);
       setCreateWarranty([]);
@@ -1853,7 +1810,6 @@ export default function WorkItems() {
       internalRemark: (wo as any).internalRemark || "",
     });
     setEditScopeItems((wo.scopeItems || []).map(toDraft));
-    setEditMilestones((wo.paymentMilestones || []).map(toMilestoneDraft));
     setEditSecurityDeposits((wo.securityDeposits || []).map(toSecurityDepositDraft));
     setEditDiscount(wo.discount || null);
     setEditWarranty(wo.warrantyTerms || []);
@@ -1866,12 +1822,6 @@ export default function WorkItems() {
     const values = editValues;
 
     const totalAmt    = calcTotalAmt(editScopeItems);
-    const contractValueInclGst = calcTotalInclGst(editScopeItems);
-    const milestonesTotal = calcGrandTotal(editMilestones);
-    if (milestonesTotal > contractValueInclGst + 1) {
-      toast.error(`Payment milestones total (${fmt(milestonesTotal)}) exceeds the scope of work's contract value incl. GST (${fmt(contractValueInclGst)})`);
-      return;
-    }
     if (values.contractType !== "professional-services" && editScopeItems.some(it => it.description.trim() && (!it.plannedStart || !it.plannedEnd))) {
       toast.error("Start Date and End Date are required for every work item");
       return;
@@ -1908,7 +1858,6 @@ export default function WorkItems() {
       retentionPercent:  values.retentionPercent ?? (currentEditWO as any).retentionPercent ?? 0,
       status:            values.status,
       documents:         values.documents ?? currentEditWO.documents ?? [],
-      paymentMilestones: editMilestones.map(milestoneDraftToPayload),
       securityDeposits:  editSecurityDeposits.map(d => securityDepositDraftToPayload(d, editScopeItems)),
       warrantyTerms:     editWarranty.filter(t => t.trim()),
     };
@@ -2107,7 +2056,6 @@ export default function WorkItems() {
                 });
                 createErrors.clearAll();
                 setCreateScopeItems([]);
-                setCreateMilestones([]);
                 setCreateSecurityDeposits([]);
                 setCreateDiscount(null);
                 setCreateWarranty([]);
@@ -2272,7 +2220,7 @@ export default function WorkItems() {
             <EmptyState icon={ClipboardList} title="No work orders yet" message='Click "New Work Order" to create your first one.' />
           ) : (
             <>
-              <Table containerClassName="h-[650px] overflow-y-auto">
+              <Table containerClassName="h-[650px] overflow-y-auto" className="min-w-[1200px]">
                 <Thead>
                   <Tr>
                     <Th className="w-[9%]">WO No</Th>
@@ -2469,7 +2417,7 @@ export default function WorkItems() {
             <div className="flex justify-end gap-2">
               <Btn
                 outline label="Cancel"
-                onClick={() => { setCreateValues(blankWOForm()); setCreateScopeItems([]); setCreateMilestones([]); setCreateSecurityDeposits([]); setCreateDiscount(null); setCreateWarranty([]); setCreateDrawerOpen(false); }}
+                onClick={() => { setCreateValues(blankWOForm()); setCreateScopeItems([]); setCreateSecurityDeposits([]); setCreateDiscount(null); setCreateWarranty([]); setCreateDrawerOpen(false); }}
               />
               <Btn color="primary" loading={saving} label="Save Work Order" onClick={handleCreate} />
             </div>
@@ -2504,13 +2452,6 @@ export default function WorkItems() {
                 onCategoryCreated={handleCategoryCreated} gstPercent={createGstPercent}
               />
             )}
-          </FormSection>
-          <FormSection title="Payment Terms">
-            <PaymentMilestonesBuilder
-              items={createMilestones} onChange={setCreateMilestones}
-              contractValue={calcTotalAmt(createScopeItems)} contractValueInclGst={calcTotalInclGst(createScopeItems)}
-              discount={createDiscount} onDiscountChange={setCreateDiscount}
-            />
           </FormSection>
           <FormSection title="Security Deposit & Terms">
             <SecurityDepositBuilder
@@ -2568,13 +2509,6 @@ export default function WorkItems() {
                 onCategoryCreated={handleCategoryCreated} gstPercent={editGstPercent}
               />
             )}
-          </FormSection>
-          <FormSection title="Payment Terms">
-            <PaymentMilestonesBuilder
-              items={editMilestones} onChange={setEditMilestones}
-              contractValue={calcTotalAmt(editScopeItems)} contractValueInclGst={calcTotalInclGst(editScopeItems)}
-              discount={editDiscount} onDiscountChange={setEditDiscount}
-            />
           </FormSection>
           <FormSection title="Security Deposit & Terms">
             <SecurityDepositBuilder

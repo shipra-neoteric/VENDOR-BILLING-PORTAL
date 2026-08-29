@@ -5,6 +5,7 @@ import { Download, Plus, Eye, Pencil, Trash2, Upload, Search, Loader2, HardHat, 
 import ContractorDetailView from "../../components/ContractorDetailView";
 import { downloadContractorListPDF } from "../../components/ContractorListPDF";
 import apiClient from "../../services/apiClient";
+import { uploadToCloudinary } from "../../utils/cloudinaryUpload";
 import type { Contractor, VendorGroup } from "../../types/VendorBilling";
 import { vendorLabel } from "../../utils/vendorLabel";
 import { useFormErrors } from "../../hooks/useFormErrors";
@@ -50,7 +51,17 @@ const WORK_OPTIONS = [
   "Marketing",
 ];
 
-const DOCUMENT_TYPES = ["GST Certificate", "PAN Card", "Cancelled Cheque", "Business Card", "Aadhaar Card"];
+// Keys must match ContractorDetailView's own DOCUMENT_FIELD_LABELS so an
+// uploaded document actually shows up in the view drawer afterward.
+const DOCUMENT_FIELDS: { key: string; label: string }[] = [
+  { key: "gstCertificate",  label: "GST Certificate" },
+  { key: "panCard",         label: "PAN Card" },
+  { key: "cancelledCheque", label: "Cancelled Cheque" },
+  { key: "businessCard",    label: "Business Card" },
+  { key: "aadhaarCard",     label: "Aadhaar Card" },
+];
+
+const MAX_FILE_MB = 5;
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
   return (
@@ -170,6 +181,7 @@ interface ContractorFormValues {
   accountHolderName: string; bankName: string; accountNumber: string; ifscCode: string; branchName: string;
   gstNumber: string; panNumber: string; aadhaarNumber: string;
   workTypes: string[]; reference1: string; reference2: string; averageTurnover: number | null;
+  documents: Record<string, { fileName: string; dataUrl: string } | undefined>;
 }
 
 const blankForm = (): ContractorFormValues => ({
@@ -178,6 +190,7 @@ const blankForm = (): ContractorFormValues => ({
   accountHolderName: "", bankName: "", accountNumber: "", ifscCode: "", branchName: "",
   gstNumber: "", panNumber: "", aadhaarNumber: "",
   workTypes: [], reference1: "", reference2: "", averageTurnover: null,
+  documents: {},
 });
 
 // ── Main Component ─────────────────────────────────────────────
@@ -196,6 +209,7 @@ export default function Contractors() {
   const [groupId, setGroupId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Contractor | null>(null);
   const [formValues, setFormValues] = useState<ContractorFormValues>(blankForm());
+  const [uploadingDocKey, setUploadingDocKey] = useState<string | null>(null);
   const formErrors = useFormErrors<"companyName" | "ownerName" | "address" | "mobile" | "email" | "accountHolderName" | "bankName">();
 
   const patch = (p: Partial<ContractorFormValues>) => setFormValues(prev => ({ ...prev, ...p }));
@@ -280,12 +294,35 @@ export default function Contractors() {
       gstNumber: record.gstNumber || "", panNumber: record.panNumber || "", aadhaarNumber: record.aadhaarNumber || "",
       workTypes: record.workTypes || [], reference1: record.reference1 || "", reference2: record.reference2 || "",
       averageTurnover: record.averageTurnover ?? null,
+      documents: record.documents ?? {},
     });
     formErrors.clearAll();
     setGroupId(record.groupId || null);
     setEditingContractor(record);
     setRegisterOpen(true);
+    // The list row omits `documents` (excluded there for payload size —
+    // see listContractors) — fetch the full record so saving this edit
+    // doesn't silently wipe out documents already uploaded earlier.
+    apiClient.get<{ contractor: Contractor }>(`/contractors/${record.id}`)
+      .then((res) => setFormValues((f) => ({ ...f, documents: res.data.contractor.documents ?? {} })))
+      .catch(() => {});
   };
+
+  async function handleDocSelect(key: string, file: File) {
+    if (file.size > MAX_FILE_MB * 1024 * 1024) {
+      toast.error(`${file.name} is larger than ${MAX_FILE_MB}MB`);
+      return;
+    }
+    setUploadingDocKey(key);
+    try {
+      const url = await uploadToCloudinary(apiClient, file, "contractors", file.name);
+      setFormValues((f) => ({ ...f, documents: { ...f.documents, [key]: { fileName: file.name, dataUrl: url } } }));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : `Couldn't upload ${file.name}`);
+    } finally {
+      setUploadingDocKey(null);
+    }
+  }
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
@@ -349,17 +386,17 @@ export default function Contractors() {
         <EmptyState icon={Download} title="No contractors yet" message='Click "Register Contractor" to add your first vendor.' />
       ) : (
         <>
-          <Table>
+          <Table className="min-w-[1150px]">
             <Thead>
               <Tr>
-                <Th>Vendor Code</Th>
-                <Th>Company</Th>
-                <Th>Owner</Th>
-                <Th>Mobile</Th>
-                <Th>Vendor Group</Th>
-                <Th>Work Types</Th>
-                <Th>Status</Th>
-                <Th>Actions</Th>
+                <Th className="w-[10%]">Vendor Code</Th>
+                <Th className="w-[19%]">Company</Th>
+                <Th className="w-[13%]">Owner</Th>
+                <Th className="w-[11%]">Mobile</Th>
+                <Th className="w-[11%]">Vendor Group</Th>
+                <Th className="w-[14%]">Work Types</Th>
+                <Th className="w-[8%]">Status</Th>
+                <Th className="w-[14%]">Actions</Th>
               </Tr>
             </Thead>
             <Tbody>
@@ -379,12 +416,12 @@ export default function Contractors() {
                 };
                 return (
                   <Tr key={record.id} className="cursor-pointer" onClick={viewRecord}>
-                    <Td>{record.vendorCode}</Td>
-                    <Td>{vendorLabel(record.companyName, record.shortCode)}</Td>
-                    <Td>{record.ownerName}</Td>
-                    <Td>{record.mobile}</Td>
-                    <Td>{group ? group.name : <span className="text-gray-400">—</span>}</Td>
-                    <Td>{(record.workTypes || []).slice(0, 2).join(", ") || <span className="text-gray-400">—</span>}</Td>
+                    <Td className="whitespace-nowrap truncate">{record.vendorCode}</Td>
+                    <Td className="whitespace-nowrap truncate" title={vendorLabel(record.companyName, record.shortCode)}>{vendorLabel(record.companyName, record.shortCode)}</Td>
+                    <Td className="whitespace-nowrap truncate" title={record.ownerName}>{record.ownerName}</Td>
+                    <Td className="whitespace-nowrap truncate">{record.mobile}</Td>
+                    <Td className="whitespace-nowrap truncate">{group ? group.name : <span className="text-gray-400">—</span>}</Td>
+                    <Td className="whitespace-nowrap truncate">{(record.workTypes || []).slice(0, 2).join(", ") || <span className="text-gray-400">—</span>}</Td>
                     <Td><NxBadge color={(record.status || "active") === "active" ? "green" : "red"}>{((record.status || "active")).toUpperCase()}</NxBadge></Td>
                     <Td>
                       <div onClick={e => e.stopPropagation()} className="flex items-center gap-1">
@@ -489,14 +526,21 @@ export default function Contractors() {
           </div>
 
           <SectionHeading>Documents</SectionHeading>
-          <div className="flex flex-col gap-2.5 pb-2">
-            {DOCUMENT_TYPES.map((doc) => (
-              <label key={doc} className="inline-flex">
-                <input type="file" className="hidden" />
-                <span className="inline-flex items-center gap-2 h-10 px-4 w-[220px] rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-transparent text-sm text-gray-700 dark:text-[#F1F5F9] cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800">
-                  <Upload className="w-4 h-4 shrink-0" /> <span className="truncate">{doc}</span>
-                </span>
-              </label>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pb-2">
+            {DOCUMENT_FIELDS.map(({ key, label }) => (
+              <div key={key}>
+                <label className="inline-flex w-full">
+                  <input
+                    type="file" accept=".pdf,.jpg,.jpeg,.png" className="hidden"
+                    onChange={(e) => { const f = e.target.files?.[0]; if (f) handleDocSelect(key, f); e.target.value = ""; }}
+                  />
+                  <span className="w-full inline-flex items-center gap-2 h-10 px-4 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-transparent text-sm text-gray-700 dark:text-[#F1F5F9] cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 min-w-0">
+                    {uploadingDocKey === key ? <Loader2 className="w-4 h-4 shrink-0 animate-spin" /> : <Upload className="w-4 h-4 shrink-0" />}
+                    <span className="truncate">{uploadingDocKey === key ? "Uploading…" : (formValues.documents[key]?.fileName || label)}</span>
+                  </span>
+                </label>
+                {formValues.documents[key] && <div className="text-[11px] text-emerald-600 mt-1">✓ Attached</div>}
+              </div>
             ))}
           </div>
         </Modal>

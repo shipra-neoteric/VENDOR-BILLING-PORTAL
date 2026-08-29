@@ -163,6 +163,13 @@ exports.createBill = asyncHandler(async (req, res) => {
     ? await resolvePayee(workOrder.vendorCode, workOrder.vendorName, req.body.vendorCode)
     : { vendorCode: req.body.vendorCode, vendorName: req.body.vendorName };
 
+  // Snapshotted from the WO's own paymentMilestones subdoc (embedded, not a
+  // separate collection) at creation time — purely a display/reference tag,
+  // doesn't feed into amount/GST/retention.
+  const milestone = (workOrder && req.body.milestoneId)
+    ? workOrder.paymentMilestones.id(req.body.milestoneId)
+    : null;
+
   const bill = await RunningBill.create({
     ...req.body,
     billNo,
@@ -170,6 +177,8 @@ exports.createBill = asyncHandler(async (req, res) => {
     lineItems,
     linkedBills,
     billingCycle: cycleCount + 1,
+    milestoneId:    milestone ? milestone._id : null,
+    milestoneStage: milestone ? (milestone.stage || milestone.type || '') : '',
     ...(workOrder ? {
       workOrderNo: workOrder.workOrderNo,
       projectId:   workOrder.projectId,

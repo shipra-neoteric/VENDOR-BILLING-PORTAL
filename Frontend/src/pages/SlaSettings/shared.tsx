@@ -30,7 +30,7 @@ export interface UserOption { _id: string; name: string; email: string; }
 export function newStage(): WorkflowTemplateStage {
   return {
     name: "", order: 0, assignedRole: "any", assignedUserId: null,
-    slaHours: 24, businessHoursOnly: false, workingDays: ["mon", "tue", "wed", "thu", "fri"],
+    slaHours: 24, businessHoursOnly: false, workingDays: ["mon", "tue", "wed", "thu", "fri", "sat"],
     reminderBeforeMinutes: 0, escalateAfterMinutes: 0, escalateToUserId: null,
   };
 }

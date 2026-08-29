@@ -42,6 +42,12 @@ const runningBillSchema = new mongoose.Schema(
     billNo:      { type: String, required: true, unique: true },
     workOrderId: { type: mongoose.Schema.Types.ObjectId, ref: 'WorkOrder' },
     workOrderNo: { type: String },
+    // Which of the Work Order's own paymentMilestones (an embedded subdoc,
+    // not a separate collection — hence no `ref`) this bill was raised
+    // against. Purely a reference tag picked at bill creation — doesn't feed
+    // into amount/GST/retention calculation, which are unaffected by this.
+    milestoneId:    { type: mongoose.Schema.Types.ObjectId, default: null },
+    milestoneStage: { type: String, default: '' },
     projectId:   { type: mongoose.Schema.Types.ObjectId, ref: 'Project' },
     projectName: { type: String },
     projectLocation: { type: String, default: '' },

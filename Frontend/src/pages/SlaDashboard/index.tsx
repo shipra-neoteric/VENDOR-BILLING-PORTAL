@@ -298,22 +298,22 @@ export default function SlaDashboard() {
         {byAssigneeRows.length === 0 ? (
           <div className="text-gray-400 dark:text-gray-500 text-[13px]">No stages have started yet.</div>
         ) : (
-          <Table>
+          <Table className="min-w-[900px]">
             <Thead>
               <Tr>
-                <Th>User</Th>
-                <Th className="text-right">Total SLA</Th>
-                <Th className="text-right">SLA Done</Th>
-                <Th className="text-right">SLA Breach</Th>
-                <Th className="text-right">Overdue Time</Th>
-                <Th className="text-right">Score (%)</Th>
-                <Th className="text-right">SLA Avg Time</Th>
+                <Th className="w-[22%]">User</Th>
+                <Th className="text-right w-[13%]">Total SLA</Th>
+                <Th className="text-right w-[13%]">SLA Done</Th>
+                <Th className="text-right w-[13%]">SLA Breach</Th>
+                <Th className="text-right w-[13%]">Overdue Time</Th>
+                <Th className="text-right w-[13%]">Score (%)</Th>
+                <Th className="text-right w-[13%]">SLA Avg Time</Th>
               </Tr>
             </Thead>
             <Tbody>
               {byAssigneeRows.map(a => (
                 <Tr key={a.key}>
-                  <Td className="font-semibold text-gray-700 dark:text-gray-300 whitespace-nowrap">{a.label}</Td>
+                  <Td className="font-semibold text-gray-700 dark:text-gray-300 whitespace-nowrap truncate" title={a.label}>{a.label}</Td>
                   <Td className="text-right text-gray-700 dark:text-gray-300">{a.totalSla}</Td>
                   <Td className="text-right text-emerald-600 dark:text-emerald-400 font-semibold">{a.slaComplete}</Td>
                   <Td className={`text-right font-semibold ${a.slaBreach > 0 ? "text-red-500 dark:text-red-400" : "text-gray-400 dark:text-gray-500"}`}>{a.slaBreach}</Td>
@@ -369,15 +369,15 @@ export default function SlaDashboard() {
         {filteredDrilldown.length === 0 ? (
           <div className="text-gray-400 dark:text-gray-500 text-[13px] text-center py-5">No ongoing workflows match this filter.</div>
         ) : (
-          <Table>
+          <Table className="min-w-[900px]">
             <Thead>
               <Tr>
-                <Th>Entity</Th>
-                <Th>Type</Th>
-                <Th>Current Stage</Th>
-                <Th>Assigned To</Th>
-                <Th>SLA</Th>
-                <Th className="text-right">Status</Th>
+                <Th className="w-[13%]">Entity</Th>
+                <Th className="w-[13%]">Type</Th>
+                <Th className="w-[17%]">Current Stage</Th>
+                <Th className="w-[17%]">Assigned To</Th>
+                <Th className="w-[20%]">SLA</Th>
+                <Th className="text-right w-[20%]">Status</Th>
               </Tr>
             </Thead>
             <Tbody>
@@ -385,17 +385,17 @@ export default function SlaDashboard() {
                 const remainingMs = d.dueAt ? new Date(d.dueAt).getTime() - Date.now() : null;
                 return (
                   <Tr key={d.instanceId}>
-                    <Td>
+                    <Td className="whitespace-nowrap truncate">
                       {d.entityType === "WorkOrder" ? (
                         <span className="text-primary font-semibold cursor-pointer hover:underline" onClick={() => setViewWorkOrderId(d.entityId)}>{d.entityLabel}</span>
                       ) : d.entityType === "BillRequest" ? (
                         <span className="text-primary font-semibold cursor-pointer hover:underline" onClick={() => setViewBillRequestId(d.entityId)}>{d.entityLabel}</span>
                       ) : d.entityLabel}
                     </Td>
-                    <Td><NxBadge color={d.entityType === "WorkOrder" ? "blue" : "indigo"}>{d.entityType}</NxBadge></Td>
-                    <Td>{d.currentStage}</Td>
-                    <Td>{d.assignedTo}</Td>
-                    <Td>
+                    <Td className="whitespace-nowrap"><NxBadge color={d.entityType === "WorkOrder" ? "blue" : "indigo"}>{d.entityType}</NxBadge></Td>
+                    <Td className="whitespace-nowrap truncate">{d.currentStage}</Td>
+                    <Td className="whitespace-nowrap truncate">{d.assignedTo}</Td>
+                    <Td className="whitespace-nowrap">
                       {d.breached ? <span className="text-red-500 dark:text-red-400">Overdue {fmtMinutes(d.overdueMinutes)}</span>
                         : remainingMs !== null ? <span className="text-emerald-600 dark:text-emerald-400">{fmtMinutes(Math.round(remainingMs / 60000))} left</span>
                         : "—"}

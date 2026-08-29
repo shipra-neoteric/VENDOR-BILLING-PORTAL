@@ -190,20 +190,20 @@ export default function AdvancePayments() {
       ) : slips.length === 0 ? (
         <EmptyState icon={Wallet} title={showArchived ? "No archived advance slips" : "No advance slips yet"} />
       ) : (
-        <Table>
+        <Table className="min-w-[1200px]">
           <Thead>
             <Tr>
-              <Th><Checkbox checked={allSelected} onChange={toggleAll} /></Th>
-              <Th>Slip No</Th>
-              <Th>Date</Th>
-              <Th>Project</Th>
-              <Th>Contractor</Th>
-              <Th className="text-right">Advance Given</Th>
-              <Th className="text-right">Recovered</Th>
-              <Th className="text-right">Balance</Th>
-              <Th>Reference</Th>
-              <Th>Status</Th>
-              <Th>Actions</Th>
+              <Th className="w-[4%]"><Checkbox checked={allSelected} onChange={toggleAll} /></Th>
+              <Th className="w-[9%]">Slip No</Th>
+              <Th className="w-[10%]">Date</Th>
+              <Th className="w-[14%]">Project</Th>
+              <Th className="w-[15%]">Contractor</Th>
+              <Th className="text-right w-[11%]">Advance Given</Th>
+              <Th className="text-right w-[10%]">Recovered</Th>
+              <Th className="text-right w-[10%]">Balance</Th>
+              <Th className="w-[9%]">Reference</Th>
+              <Th className="w-[8%]">Status</Th>
+              <Th className="w-[10%]">Actions</Th>
             </Tr>
           </Thead>
           <Tbody>
@@ -222,18 +222,18 @@ export default function AdvancePayments() {
               return (
                 <Tr key={s._id}>
                   <Td><Checkbox checked={selectedIds.includes(s._id)} onChange={() => toggleOne(s._id)} /></Td>
-                  <Td><span className="font-bold text-primary">{s.slipNo}</span></Td>
-                  <Td><TdText>{dayjs(s.date).format("DD MMM YYYY")}</TdText></Td>
-                  <Td><TdText>{s.projectName}</TdText></Td>
-                  <Td>
-                    <div className="text-sm text-[#1A1A2E] dark:text-[#F1F5F9]">{live ? vendorLabel(live.companyName, live.shortCode) : s.contractorName}</div>
-                    <div className="text-[11px] text-gray-400">{s.contractorCode}</div>
+                  <Td className="whitespace-nowrap truncate"><span className="font-bold text-primary">{s.slipNo}</span></Td>
+                  <Td className="whitespace-nowrap truncate"><TdText>{dayjs(s.date).format("DD MMM YYYY")}</TdText></Td>
+                  <Td className="whitespace-nowrap truncate"><TdText>{s.projectName}</TdText></Td>
+                  <Td className="whitespace-nowrap truncate">
+                    <div className="text-sm text-[#1A1A2E] dark:text-[#F1F5F9] truncate">{live ? vendorLabel(live.companyName, live.shortCode) : s.contractorName}</div>
+                    <div className="text-[11px] text-gray-400 truncate">{s.contractorCode}</div>
                   </Td>
-                  <Td className="text-right"><span className="font-mono font-semibold"><TdText>{fmt(s.amount)}</TdText></span></Td>
-                  <Td className="text-right"><span className="font-mono text-emerald-600 dark:text-emerald-400">{fmt(s.amountRecovered)}</span></Td>
-                  <Td className="text-right"><span className={`font-mono font-bold ${s.balance > 0 ? "text-red-600 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400"}`}>{fmt(s.balance)}</span></Td>
-                  <Td>{s.reference || <span className="text-gray-300 dark:text-gray-600">—</span>}</Td>
-                  <Td><NxBadge color={cfg.color}>{cfg.label}</NxBadge></Td>
+                  <Td className="text-right whitespace-nowrap"><span className="font-mono font-semibold"><TdText>{fmt(s.amount)}</TdText></span></Td>
+                  <Td className="text-right whitespace-nowrap"><span className="font-mono text-emerald-600 dark:text-emerald-400">{fmt(s.amountRecovered)}</span></Td>
+                  <Td className="text-right whitespace-nowrap"><span className={`font-mono font-bold ${s.balance > 0 ? "text-red-600 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400"}`}>{fmt(s.balance)}</span></Td>
+                  <Td className="whitespace-nowrap truncate">{s.reference || <span className="text-gray-300 dark:text-gray-600">—</span>}</Td>
+                  <Td className="whitespace-nowrap truncate"><NxBadge color={cfg.color}>{cfg.label}</NxBadge></Td>
                   <Td>
                     <DropdownMenu items={menuItems} />
                   </Td>

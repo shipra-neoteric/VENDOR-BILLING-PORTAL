@@ -203,29 +203,29 @@ export default function ProcurementTracker() {
           <EmptyState icon={ClipboardList} title="No bills match these filters" />
         ) : (
           <>
-            <Table>
+            <Table className="min-w-[1300px]">
               <Thead>
                 <Tr>
-                  <Th>PO Number</Th>
-                  <Th>Bill No</Th>
-                  <Th>Vendor / Project</Th>
-                  <Th className="text-right">Amount</Th>
-                  <Th>Verification</Th>
-                  <Th>L1</Th>
-                  <Th>L2</Th>
-                  <Th>Payment</Th>
-                  <Th>Overall Status</Th>
-                  <Th></Th>
+                  <Th className="w-[9%]">PO Number</Th>
+                  <Th className="w-[9%]">Bill No</Th>
+                  <Th className="w-[16%]">Vendor / Project</Th>
+                  <Th className="text-right w-[10%]">Amount</Th>
+                  <Th className="w-[11%]">Verification</Th>
+                  <Th className="w-[11%]">L1</Th>
+                  <Th className="w-[11%]">L2</Th>
+                  <Th className="w-[11%]">Payment</Th>
+                  <Th className="w-[12%]">Overall Status</Th>
+                  <Th className="w-[10%]"></Th>
                 </Tr>
               </Thead>
               <Tbody>
                 {pager.pageItems.map(r => (
                   <Tr key={r.id}>
-                    <Td>{r.workOrderNo ? <span className="font-mono font-bold text-primary">{r.workOrderNo}</span> : <span className="text-gray-300 dark:text-gray-600">—</span>}</Td>
-                    <Td><TdText>{r.billNo}</TdText></Td>
-                    <Td>
-                      <div className="font-semibold text-sm text-[#1A1A2E] dark:text-[#F1F5F9]">{r.vendorName || "—"}</div>
-                      <div className="text-xs text-gray-400">{r.projectName || "—"}</div>
+                    <Td className="whitespace-nowrap truncate">{r.workOrderNo ? <span className="font-mono font-bold text-primary">{r.workOrderNo}</span> : <span className="text-gray-300 dark:text-gray-600">—</span>}</Td>
+                    <Td className="whitespace-nowrap truncate"><TdText>{r.billNo}</TdText></Td>
+                    <Td className="whitespace-nowrap truncate">
+                      <div className="font-semibold text-sm text-[#1A1A2E] dark:text-[#F1F5F9] truncate">{r.vendorName || "—"}</div>
+                      <div className="text-xs text-gray-400 truncate">{r.projectName || "—"}</div>
                     </Td>
                     <Td className="text-right"><span className="font-mono font-bold"><TdText>{fmt(r.amount)}</TdText></span></Td>
                     <Td><StageCell done={stageReached(r.status, "verify-done")} who={r.verificationBy?.name} at={r.verificationAt} /></Td>

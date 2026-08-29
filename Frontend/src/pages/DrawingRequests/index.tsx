@@ -105,35 +105,35 @@ export default function DrawingRequests() {
       ) : requests.length === 0 ? (
         <div className="text-center py-14 text-gray-400">No drawing requests match these filters</div>
       ) : (
-        <Table>
+        <Table className="min-w-[1500px]">
           <Thead>
             <Tr>
-              <Th>Ticket No</Th>
-              <Th>Project</Th>
-              <Th>Description</Th>
-              <Th>Type</Th>
-              <Th>Source</Th>
-              <Th>Requested By</Th>
-              <Th>Request Date</Th>
-              <Th>Review</Th>
-              <Th>Priority</Th>
-              <Th>Status</Th>
-              <Th>Plan. Verified</Th>
-              <Th>Proj. Ack.</Th>
-              <Th>Remarks</Th>
-              <Th>Action</Th>
+              <Th className="w-[7%]">Ticket No</Th>
+              <Th className="w-[9%]">Project</Th>
+              <Th className="w-[13%]">Description</Th>
+              <Th className="w-[7%]">Type</Th>
+              <Th className="w-[7%]">Source</Th>
+              <Th className="w-[8%]">Requested By</Th>
+              <Th className="w-[8%]">Request Date</Th>
+              <Th className="w-[7%]">Review</Th>
+              <Th className="w-[6%]">Priority</Th>
+              <Th className="w-[7%]">Status</Th>
+              <Th className="w-[7%]">Plan. Verified</Th>
+              <Th className="w-[6%]">Proj. Ack.</Th>
+              <Th className="w-[9%]">Remarks</Th>
+              <Th className="w-[9%]">Action</Th>
             </Tr>
           </Thead>
           <Tbody>
             {requests.map(r => (
               <Tr key={r._id}>
-                <Td><span className="font-mono font-bold text-purple-600 dark:text-purple-400">{r.ticketNo}</span></Td>
-                <Td><span className="font-semibold text-[#1A1A2E] dark:text-[#F1F5F9]">{r.projectName}</span></Td>
+                <Td className="whitespace-nowrap truncate"><span className="font-mono font-bold text-purple-600 dark:text-purple-400">{r.ticketNo}</span></Td>
+                <Td className="whitespace-nowrap truncate"><span className="font-semibold text-[#1A1A2E] dark:text-[#F1F5F9]">{r.projectName}</span></Td>
                 <Td><span className="max-w-[180px] truncate block" title={r.description}>{r.description}</span></Td>
-                <Td><TdText>{r.drawingType}</TdText></Td>
-                <Td>{r.source ? <TdText>{r.source}</TdText> : <span className="text-gray-300 dark:text-gray-600">—</span>}</Td>
-                <Td><TdText>{r.driName}</TdText></Td>
-                <Td><TdText>{dayjs(r.createdAt).format("DD MMM YYYY")}</TdText></Td>
+                <Td className="whitespace-nowrap truncate"><TdText>{r.drawingType}</TdText></Td>
+                <Td className="whitespace-nowrap truncate">{r.source ? <TdText>{r.source}</TdText> : <span className="text-gray-300 dark:text-gray-600">—</span>}</Td>
+                <Td className="whitespace-nowrap truncate"><TdText>{r.driName}</TdText></Td>
+                <Td className="whitespace-nowrap truncate"><TdText>{dayjs(r.createdAt).format("DD MMM YYYY")}</TdText></Td>
                 <Td><Badge color={REVIEW_STATUS_COLOR[r.reviewStatus]} small>{REVIEW_STATUS_LABEL[r.reviewStatus]}</Badge></Td>
                 <Td>{r.priority ? <Badge color={PRIORITY_COLOR[r.priority]} small>{PRIORITY_LABEL[r.priority]}</Badge> : <span className="text-gray-300 dark:text-gray-600">—</span>}</Td>
                 <Td><Badge color={STATUS_COLOR[r.status]} small>{STATUS_LABEL[r.status]}</Badge></Td>

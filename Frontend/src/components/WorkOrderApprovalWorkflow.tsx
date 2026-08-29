@@ -27,6 +27,12 @@ export interface ApprovalHistoryEntry {
   // which is a reviewer's rejection, not an edit.
   action: "submitted" | "approved" | "sent-back" | "reopened";
   by?: ActorRef;
+  // Snapshotted from the acting user at the moment of this event — preferred
+  // over the `by` id lookup below since it's locked in even if that user's
+  // name/role later changes. Absent on records created before this field
+  // existed, which keep falling back to the id-lookup/hardcoded label below.
+  byName?: string;
+  byRole?: string;
   at?: string;
   remarks?: string;
 }
@@ -131,10 +137,11 @@ function groupIntoCycles(history: ApprovalHistoryEntry[]): ApprovalCycle[] {
 
 function CycleCell({
   action, entry, actorLabel, roleLabel,
-}: { action: "submitted" | "approved" | "sent-back"; entry: ApprovalHistoryEntry; actorLabel: (by: ActorRef | undefined, roleFallback: string, at?: string | null) => string; roleLabel: string }) {
+}: { action: "submitted" | "approved" | "sent-back"; entry: ApprovalHistoryEntry; actorLabel: (by: ActorRef | undefined, roleFallback: string, at?: string | null, byName?: string, byRole?: string) => string; roleLabel: string }) {
   return (
     <div className="flex flex-col gap-1 min-w-[130px]">
-      <div className="text-[12.5px] font-bold text-gray-900 dark:text-[#F1F5F9]">{actorLabel(entry.by, roleLabel, entry.at)}</div>
+      <div className="text-[12.5px] font-bold text-gray-900 dark:text-[#F1F5F9]">{actorLabel(entry.by, roleLabel, entry.at, entry.byName, entry.byRole)}</div>
+      {entry.byName && entry.byRole && <div className="text-[10.5px] text-gray-400 uppercase tracking-wide">{entry.byRole}</div>}
       {entry.at && <div className="text-[11px] text-gray-400">{dayjs(entry.at).format("DD MMM YYYY, hh:mm A")}</div>}
       <div>
         {action === "sent-back" ? <Badge color="red" small>Sent Back</Badge> : action === "submitted" ? <Badge color="blue" small>Initiated</Badge> : <Badge color="green" small>Approved</Badge>}
@@ -152,7 +159,7 @@ function CycleCell({
 // but organized as one row per submit→resolution cycle instead of one flat
 // event list, so a sent-back-and-resubmitted work order shows its prior
 // cycle's approvals and its new cycle's approvals as clearly separate rows.
-function ApprovalCyclesTable({ history, actorLabel }: { history: ApprovalHistoryEntry[]; actorLabel: (by: ActorRef | undefined, roleFallback: string, at?: string | null) => string }) {
+function ApprovalCyclesTable({ history, actorLabel }: { history: ApprovalHistoryEntry[]; actorLabel: (by: ActorRef | undefined, roleFallback: string, at?: string | null, byName?: string, byRole?: string) => string }) {
   const cycles = groupIntoCycles(history);
   if (cycles.length === 0) {
     return <div className="text-[12.5px] text-gray-400">No workflow activity yet.</div>;
@@ -263,18 +270,15 @@ export default function WorkOrderApprovalWorkflow<T extends ApprovalWorkOrder>({
 
   // `by` resolves to "You" for the current viewer, a real name when /auth/users
   // was reachable, or the role label (Maker/Checker/…) as a last resort.
-  function actorLabel(by: ActorRef | undefined, roleFallback: string, at?: string | null): string {
+  function actorLabel(by: ActorRef | undefined, roleFallback: string, at?: string | null, byName?: string, byRole?: string): string {
+    // Real, historically-snapshotted name — preferred whenever present, ahead
+    // of the id-lookup/hardcoded-guess fallbacks below (which only exist for
+    // approval records logged before byName/byRole started being captured).
+    if (byName) return byName;
+    void byRole; // rendered separately by CycleCell, alongside this label
+
     const uid = idOf(by);
     const resolvedName = uid ? (userMap[uid] || (typeof by === "object" ? (by as any)?.name : undefined)) : undefined;
-
-    if (!at) {
-      if (roleFallback.toLowerCase().includes("checker") || roleFallback.toLowerCase().includes("agm") || resolvedName === "Sagar Gupta" || resolvedName === "Akhilesh Bhadoriya") {
-        return "Sagar Gupta / Akhilesh Bhadoriya";
-      }
-      if (roleFallback.toLowerCase().includes("approver") || roleFallback.toLowerCase().includes("gm") || resolvedName === "Rakesh Bhargava" || resolvedName === "Jalaj Gupta") {
-        return "Rakesh Bhargava / Jalaj Gupta";
-      }
-    }
 
     if (!uid) return roleFallback;
     if (user?.id && uid === user.id) return "You";

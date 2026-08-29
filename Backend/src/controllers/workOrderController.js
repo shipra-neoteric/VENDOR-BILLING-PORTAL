@@ -290,6 +290,7 @@ exports.updateWorkOrder = asyncHandler(async (req, res) => {
   const mongoUpdate = reopening
     ? { $set: updateData, $push: { approvalHistory: {
         stage: 'maker', action: 'reopened', by: req.user._id,
+        byName: req.user.name, byRole: req.user.role,
         remarks: wasMidCycle
           ? `Scope of Work / Payment Milestones edited while ${before.approvalStatus.replace('pending-', 'pending ')} — sent back through the full approval chain.`
           : 'Scope of Work / Payment Milestones edited after approval — sent back through the full approval chain.',
@@ -402,7 +403,7 @@ exports.submitWorkOrder = asyncHandler(async (req, res) => {
   workOrder.approvalStatus = 'pending-checker';
   workOrder.makerBy = req.user._id;
   workOrder.makerAt = new Date();
-  workOrder.approvalHistory.push({ stage: 'maker', action: 'submitted', by: req.user._id, remarks: req.body.remarks || '' });
+  workOrder.approvalHistory.push({ stage: 'maker', action: 'submitted', by: req.user._id, byName: req.user.name, byRole: req.user.role, remarks: req.body.remarks || '' });
   await workOrder.save();
 
   // The first submit advances the instance startInstance already created at
@@ -442,7 +443,7 @@ exports.checkerApprove = asyncHandler(async (req, res) => {
   workOrder.checkerBy = req.user._id;
   workOrder.checkerAt = new Date();
   workOrder.checkerRemarks = req.body.remarks || '';
-  workOrder.approvalHistory.push({ stage: 'checker', action: 'approved', by: req.user._id, remarks: workOrder.checkerRemarks });
+  workOrder.approvalHistory.push({ stage: 'checker', action: 'approved', by: req.user._id, byName: req.user.name, byRole: req.user.role, remarks: workOrder.checkerRemarks });
   await workOrder.save();
 
   await advanceInstance('WorkOrder', workOrder._id, req.user._id, 'Checker approved — forwarded to approver');
@@ -473,7 +474,7 @@ exports.approverApprove = asyncHandler(async (req, res) => {
   workOrder.approverBy = req.user._id;
   workOrder.approverAt = new Date();
   workOrder.approverRemarks = req.body.remarks || '';
-  workOrder.approvalHistory.push({ stage: 'approver', action: 'approved', by: req.user._id, remarks: workOrder.approverRemarks });
+  workOrder.approvalHistory.push({ stage: 'approver', action: 'approved', by: req.user._id, byName: req.user.name, byRole: req.user.role, remarks: workOrder.approverRemarks });
   await workOrder.save();
 
   await advanceInstance('WorkOrder', workOrder._id, req.user._id, 'Approver approved — forwarded for final approval');
@@ -505,7 +506,7 @@ exports.finalApprove = asyncHandler(async (req, res) => {
   workOrder.finalApprovedBy = req.user._id;
   workOrder.finalApprovedAt = new Date();
   workOrder.finalRemarks = req.body.remarks || '';
-  workOrder.approvalHistory.push({ stage: 'final', action: 'approved', by: req.user._id, remarks: workOrder.finalRemarks });
+  workOrder.approvalHistory.push({ stage: 'final', action: 'approved', by: req.user._id, byName: req.user.name, byRole: req.user.role, remarks: workOrder.finalRemarks });
   workOrder.isLocked = true;
   workOrder.lockedBy = req.user._id;
   workOrder.lockedAt = new Date();
@@ -540,7 +541,7 @@ exports.sendBack = asyncHandler(async (req, res) => {
     return badRequest(res, `Cannot send back a work order with approval status '${workOrder.approvalStatus}'`);
   }
   workOrder.approvalStatus = 'sent-back';
-  workOrder.approvalHistory.push({ stage: stageAtRejection, action: 'sent-back', by: req.user._id, remarks: reason.trim() });
+  workOrder.approvalHistory.push({ stage: stageAtRejection, action: 'sent-back', by: req.user._id, byName: req.user.name, byRole: req.user.role, remarks: reason.trim() });
   await workOrder.save();
 
   await cancelInstance('WorkOrder', workOrder._id, `Sent back to maker: ${reason.trim()}`);

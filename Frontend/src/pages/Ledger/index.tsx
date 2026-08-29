@@ -498,32 +498,32 @@ export default function Ledger() {
         <EmptyState icon={BookOpen} title="No work orders match the selected filters" />
       ) : (
         <>
-          <Table>
+          <Table className="min-w-[1400px]">
             <Thead>
               <Tr>
-                <Th>Work Order</Th>
-                <Th>Project</Th>
-                <Th>Vendor</Th>
-                <Th>Category</Th>
-                <Th className="text-right">Contract Value</Th>
-                <Th className="text-right">Total Billed</Th>
-                <Th className="text-right">Certified (Net)</Th>
-                <Th className="text-right">Balance</Th>
-                <Th>Progress</Th>
-                <Th className="text-center">Bills</Th>
-                <Th></Th>
+                <Th className="w-[9%]">Work Order</Th>
+                <Th className="w-[11%]">Project</Th>
+                <Th className="w-[12%]">Vendor</Th>
+                <Th className="w-[9%]">Category</Th>
+                <Th className="text-right w-[10%]">Contract Value</Th>
+                <Th className="text-right w-[9%]">Total Billed</Th>
+                <Th className="text-right w-[10%]">Certified (Net)</Th>
+                <Th className="text-right w-[9%]">Balance</Th>
+                <Th className="w-[9%]">Progress</Th>
+                <Th className="text-center w-[6%]">Bills</Th>
+                <Th className="w-[6%]"></Th>
               </Tr>
             </Thead>
             <Tbody>
               {pager.pageItems.map(r => (
                 <Tr key={r.wo._id} className="cursor-pointer" onClick={() => setSelectedWOId(r.wo._id)}>
-                  <Td className="font-bold text-primary">{r.wo.workOrderNo}</Td>
-                  <Td className="text-gray-500 dark:text-gray-400">{r.wo.projectName || "—"}</Td>
-                  <Td>
-                    <div className="font-semibold text-sm">{r.wo.vendorName || "—"}</div>
-                    <div className="text-[11px] text-gray-400">{r.wo.vendorCode}</div>
+                  <Td className="font-bold text-primary whitespace-nowrap truncate">{r.wo.workOrderNo}</Td>
+                  <Td className="text-gray-500 dark:text-gray-400 whitespace-nowrap truncate">{r.wo.projectName || "—"}</Td>
+                  <Td className="whitespace-nowrap truncate">
+                    <div className="font-semibold text-sm truncate">{r.wo.vendorName || "—"}</div>
+                    <div className="text-[11px] text-gray-400 truncate">{r.wo.vendorCode}</div>
                   </Td>
-                  <Td>{r.wo.category || <span className="text-gray-300 dark:text-gray-600">—</span>}</Td>
+                  <Td className="whitespace-nowrap truncate">{r.wo.category || <span className="text-gray-300 dark:text-gray-600">—</span>}</Td>
                   <Td className="text-right font-mono font-bold">{fmt(r.contract)}</Td>
                   <Td className="text-right font-mono">{r.totalGross > 0 ? fmt(r.totalGross) : <span className="text-gray-300 dark:text-gray-600">—</span>}</Td>
                   <Td className="text-right font-mono font-semibold text-emerald-600 dark:text-emerald-400">{r.certifiedNet > 0 ? fmt(r.certifiedNet) : <span className="text-gray-300 dark:text-gray-600">—</span>}</Td>

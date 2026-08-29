@@ -240,6 +240,12 @@ const workOrderSchema = new mongoose.Schema(
       stage:   { type: String, required: true }, // 'maker' | 'checker' | 'approver' | 'final'
       action:  { type: String, required: true }, // 'submitted' | 'approved' | 'sent-back'
       by:      { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      // Snapshotted from req.user at the moment of this action — so the
+      // approver's name/role at the time is preserved even if their account
+      // is later renamed, reassigned a different role, or deleted (unlike
+      // `by`, which is a live ref that depends on the User doc still existing).
+      byName:  { type: String },
+      byRole:  { type: String },
       at:      { type: Date, default: Date.now },
       remarks: { type: String, default: '' },
       _id: false,

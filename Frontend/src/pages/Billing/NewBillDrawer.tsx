@@ -55,7 +55,8 @@ interface ProjectOpt { id: string; name: string; code: string; parentId?: string
 interface CompanyOpt { id: string; name: string; shortCode: string; isActive?: boolean; }
 interface SubItemOpt { id: string; description: string; unit: string; plannedQty: number; lastBilledQty: number; rate?: number; }
 interface ScopeItemOpt { id: string; description: string; unit: string; plannedQty: number; lastBilledQty: number; rate?: number; subItems?: SubItemOpt[]; }
-interface WorkOrderOpt { id: string; workOrderNo: string; projectId: string; projectName: string; vendorCode: string; vendorName: string; contractType?: string; scopeItems: ScopeItemOpt[]; }
+interface PaymentMilestoneOpt { _id: string; stage: string; type?: string; amount: number; date?: string; }
+interface WorkOrderOpt { id: string; workOrderNo: string; projectId: string; projectName: string; vendorCode: string; vendorName: string; contractType?: string; scopeItems: ScopeItemOpt[]; paymentMilestones?: PaymentMilestoneOpt[]; }
 interface AdvanceSlipOpt { _id: string; slipNo: string; amount: number; amountRecovered: number; balance: number; date?: string; reference?: string; }
 
 const fmt = (n: number) => "₹" + (n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -128,6 +129,11 @@ export default function NewBillDrawer({
   const [linkedBillIds, setLinkedBillIds] = useState<string[]>([]);
   const [selectedWOId, setSelectedWOId] = useState<string>("");
   const [woExistingBills, setWoExistingBills] = useState<ExistingBill[]>([]);
+  // Which of the selected Work Order's own Payment Milestones (defined at WO
+  // creation, see PaymentMilestonesBuilder) this bill is raised against —
+  // purely a reference tag carried onto the bill, doesn't affect amount/GST
+  // calculation.
+  const [milestoneId, setMilestoneId] = useState<string>("");
   // The WO scope items were actually imported from — kept separate from
   // selectedWOId (the "Bill Relationship" picker) so changing that picker
   // afterward can't silently disconnect the imported qty/variance checks
@@ -174,6 +180,7 @@ export default function NewBillDrawer({
     setLinkedBillIds([]);
     setSelectedWOId("");
     setWoExistingBills([]);
+    setMilestoneId("");
     setImportedFromWOId("");
     setExpandedGroups(new Set());
     setImportWOPick("");
@@ -342,6 +349,7 @@ export default function NewBillDrawer({
 
   async function handleWOSelectForLinking(woId: string) {
     setSelectedWOId(woId);
+    setMilestoneId("");
     if (!woId) { setWoExistingBills([]); return; }
     try {
       const res = await apiClient.get<{ bills: Record<string, unknown>[] }>(`/bills/chain/${woId}`);
@@ -419,6 +427,7 @@ export default function NewBillDrawer({
       relationshipType: linkedBills.length > 0 ? relType : "NONE",
       linkedBills: linkedBills.length > 0 ? linkedBills : [],
       workOrderId: linkedToScopeItems ? (importedFromWOId || selectedWOId || undefined) : (selectedWOId || undefined),
+      ...(milestoneId ? { milestoneId } : {}),
       ...(isStandalone ? { companyId } : {}),
       retentionPercent: holdMode === "percent" ? (holdPercent || 0) : (gross > 0 ? Math.round((holdAmount / gross) * 10000) / 100 : 0),
       retentionAmount: holdAmount,
@@ -626,6 +635,24 @@ export default function NewBillDrawer({
                 options={RELATIONSHIP_OPTIONS}
               />
             </div>
+            {(() => {
+              const milestones = woList.find((wo) => wo.id === selectedWOId)?.paymentMilestones ?? [];
+              if (!selectedWOId || milestones.length === 0) return null;
+              return (
+                <div className="mt-3">
+                  <SField
+                    label="Payment Milestone (optional)"
+                    placeholder="Select milestone…"
+                    value={milestoneId}
+                    onChange={setMilestoneId}
+                    options={[
+                      { value: "", label: "— None —" },
+                      ...milestones.map((m) => ({ value: m._id, label: `${m.stage || m.type || "Milestone"} — ${fmt(m.amount)}` })),
+                    ]}
+                  />
+                </div>
+              );
+            })()}
             {woExistingBills.length > 0 && (
               <div className="mt-2.5">
                 <div className="text-xs text-gray-500 dark:text-gray-400 mb-1.5">
@@ -669,8 +696,10 @@ export default function NewBillDrawer({
             )}
           </div>
 
-          {/* Work order import (optional) */}
-          {woList.length > 0 && (
+          {/* Work order import (optional) — hidden once a Work Order is
+              already chosen above (Bill Relationship's own picker), since
+              re-picking one here would just be the same choice twice. */}
+          {woList.length > 0 && !selectedWOId && (
             <div className="rounded-lg border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 p-3">
               <div className="font-semibold text-xs text-amber-700 dark:text-amber-300 mb-2">
                 Work orders found — import scope items (optional)

@@ -3,7 +3,7 @@ const WorkflowInstance  = require('../models/WorkflowInstance');
 const MISSnapshot       = require('../models/MISSnapshot');
 const asyncHandler = require('../utils/asyncHandler');
 const { success, created, notFound, badRequest, conflict, forbidden } = require('../utils/responseFormatter');
-const { completeStageById, isStageBreached, captureDailySnapshotIfNeeded } = require('../utils/slaEngine');
+const { completeStageById, isStageBreached, captureDailySnapshotIfNeeded, overdueMinutesFor } = require('../utils/slaEngine');
 const { logAudit, diffFields } = require('../utils/auditLog');
 
 // ── Templates ────────────────────────────────────────────────────
@@ -259,7 +259,7 @@ exports.getMISReport = asyncHandler(async (req, res) => {
 
       if (stageBreached) {
         slaBreach++;
-        const overdueMin = Math.round((now - new Date(stage.dueAt)) / 60000);
+        const overdueMin = overdueMinutesFor(stage, now);
         breachDelaysAll.push(overdueMin);
         if (overdueMin >= 48 * 60) critical48h++;
         breachedAmount += inst.amount || 0;
@@ -298,7 +298,7 @@ exports.getMISReport = asyncHandler(async (req, res) => {
         c.totalSla++;
         c.pendingAmount += inst.amount || 0;
         if (inst.projectId) c.projectIds.add(String(inst.projectId));
-        if (stageBreached) { c.slaBreach++; c.breachDelays.push(Math.round((now - new Date(stage.dueAt)) / 60000)); }
+        if (stageBreached) { c.slaBreach++; c.breachDelays.push(overdueMinutesFor(stage, now)); }
       }
 
       drilldown.push({
@@ -311,7 +311,7 @@ exports.getMISReport = asyncHandler(async (req, res) => {
         assignedTo: stage ? (stage.assignedUserId?.name || `${stage.assignedRole} (role)`) : '—',
         dueAt: stage ? stage.dueAt : null,
         breached: !!stageBreached,
-        overdueMinutes: stageBreached ? Math.round((now - new Date(stage.dueAt)) / 60000) : 0,
+        overdueMinutes: stageBreached ? overdueMinutesFor(stage, now) : 0,
       });
     }
 
@@ -343,7 +343,7 @@ exports.getMISReport = asyncHandler(async (req, res) => {
         a.slaComplete++;
         if (stage.delayMinutes > 0) { a.slaBreach++; a.breachDelays.push(stage.delayMinutes); }
       } else if (stageBreachedNow) {
-        a.slaBreach++; a.breachDelays.push(Math.round((now - new Date(stage.dueAt)) / 60000));
+        a.slaBreach++; a.breachDelays.push(overdueMinutesFor(stage, now));
       }
 
       // Per-stage

@@ -1364,24 +1364,24 @@ export default function AccountsPayment() {
           <EmptyState icon={FileText} title="No bills found" message="New bills are created from the Billing module." />
         ) : (
           <>
-            <Table>
+            <Table className="min-w-[1100px]">
               <Thead>
                 <Tr>
-                  <Th>Bill No.</Th>
-                  <Th>Work Order</Th>
-                  <Th>Vendor</Th>
-                  <Th>Project</Th>
-                  <Th className="text-right">Amount</Th>
-                  <Th>Status</Th>
-                  <Th>Date</Th>
-                  <Th>Actions</Th>
+                  <Th className="w-[10%]">Bill No.</Th>
+                  <Th className="w-[11%]">Work Order</Th>
+                  <Th className="w-[16%]">Vendor</Th>
+                  <Th className="w-[15%]">Project</Th>
+                  <Th className="text-right w-[12%]">Amount</Th>
+                  <Th className="w-[15%]">Status</Th>
+                  <Th className="w-[11%]">Date</Th>
+                  <Th className="w-[10%]">Actions</Th>
                 </Tr>
               </Thead>
               <Tbody>
                 {pagedBills.map((r) => (
                   <Tr key={r.id} className="cursor-pointer" onClick={() => openDrawer(r)}>
-                    <Td className="font-bold text-blue-600">{r.billNo}</Td>
-                    <Td>
+                    <Td className="font-bold text-blue-600 whitespace-nowrap truncate">{r.billNo}</Td>
+                    <Td className="whitespace-nowrap truncate">
                       {r.workOrderNo && r.workOrderId ? (
                         // Opens the same full bill drawer as clicking anywhere
                         // else on the row (Bill + Work Order cards,
@@ -1398,7 +1398,7 @@ export default function AccountsPayment() {
                         </button>
                       ) : <span className="text-gray-300">—</span>}
                     </Td>
-                    <Td>
+                    <Td className="whitespace-nowrap truncate">
                       {r.vendorName && r.vendorCode ? (
                         <button
                           type="button"
@@ -1409,10 +1409,10 @@ export default function AccountsPayment() {
                         </button>
                       ) : (r.vendorName || <span className="text-gray-300">—</span>)}
                     </Td>
-                    <Td>{r.projectName || <span className="text-gray-300">—</span>}</Td>
-                    <Td className="text-right font-mono font-bold">{fmt(netAfterAdvance(r))}</Td>
-                    <Td><NxBadge color={BILL_LIST_STATUS_CFG[r.status].color}>{BILL_LIST_STATUS_CFG[r.status].label}</NxBadge></Td>
-                    <Td>{r.billDate ? dayjs(r.billDate).format("DD MMM YYYY") : "—"}</Td>
+                    <Td className="whitespace-nowrap truncate">{r.projectName || <span className="text-gray-300">—</span>}</Td>
+                    <Td className="text-right font-mono font-bold whitespace-nowrap">{fmt(netAfterAdvance(r))}</Td>
+                    <Td className="whitespace-nowrap truncate"><NxBadge color={BILL_LIST_STATUS_CFG[r.status].color}>{BILL_LIST_STATUS_CFG[r.status].label}</NxBadge></Td>
+                    <Td className="whitespace-nowrap">{r.billDate ? dayjs(r.billDate).format("DD MMM YYYY") : "—"}</Td>
                     <Td onClick={(e) => e.stopPropagation()}>
                       <NxBtn
                         color="icon"

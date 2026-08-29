@@ -10,7 +10,7 @@ const User = require('../src/models/User');
 const stage = (name, assignedRole, slaHours) => ({
   name, assignedRole, slaHours,
   businessHoursOnly: false,
-  workingDays: ['mon', 'tue', 'wed', 'thu', 'fri'],
+  workingDays: ['mon', 'tue', 'wed', 'thu', 'fri', 'sat'],
   reminderBeforeMinutes: 0,
   escalateAfterMinutes: 0,
 });

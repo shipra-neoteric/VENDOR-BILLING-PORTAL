@@ -117,7 +117,18 @@ function permsToArray(map: Record<string, PermAction[]>): { module: string; acti
   return Object.entries(map).filter(([, a]) => a.length > 0).map(([module, actions]) => ({ module, actions }));
 }
 
-type UserRole = "owner" | "gm" | "agm" | "accounts" | "process-coordinator" | "site-dri";
+// The 6 built-in roles keep exact literal typing (so existing role === "owner"
+// etc. checks elsewhere stay sound); the `(string & {})` branch additionally
+// allows any custom role name typed in below, while still preserving
+// autocomplete on the 6 known literals wherever this type is used.
+type FixedRole = "owner" | "gm" | "agm" | "accounts" | "process-coordinator" | "site-dri";
+type UserRole = FixedRole | (string & {});
+
+// A sentinel option value (never a real role name) that the role picker below
+// uses to reveal the "type a new role name" input — kept out of ROLE_CFG so
+// it never gets treated as an actual assignable role.
+const CUSTOM_ROLE_OPTION = "__custom_role__";
+const isKnownRole = (r: string): boolean => Object.prototype.hasOwnProperty.call(ROLE_CFG, r);
 
 // ── Role config ───────────────────────────────────────────────────
 // `color` values are ui/Badge color names (not antd Tag color names).
@@ -269,6 +280,12 @@ export default function UserManagement() {
   const [mobileField, setMobileField] = useState("");
   const [passwordField, setPasswordField] = useState("");
   const [roleField, setRoleField]     = useState<UserRole>("site-dri");
+  // Drives the role picker's "type a new role name" input — shown only while
+  // creating/editing with a role outside the fixed 6 (either the sentinel was
+  // just picked, or an existing user's own role turns out to already be a
+  // custom one).
+  const [isCustomRole, setIsCustomRole] = useState(false);
+  const [customRoleInput, setCustomRoleInput] = useState("");
   const [isActiveField, setIsActiveField] = useState(true);
   const formErrors = useFormErrors<"name" | "email" | "mobile" | "password" | "role">();
 
@@ -341,6 +358,7 @@ export default function UserManagement() {
     formErrors.clearAll();
     setNameField(""); setEmailField(""); setMobileField(""); setPasswordField("");
     setRoleField("site-dri"); setIsActiveField(true);
+    setIsCustomRole(false); setCustomRoleInput("");
     setPerms({});
     setDrawerOpen(true);
   }
@@ -350,6 +368,9 @@ export default function UserManagement() {
     formErrors.clearAll();
     setNameField(u.name); setEmailField(u.email); setMobileField(u.mobile || "");
     setPasswordField(""); setRoleField(u.role); setIsActiveField(u.isActive);
+    const existingIsCustom = !isKnownRole(u.role);
+    setIsCustomRole(existingIsCustom);
+    setCustomRoleInput(existingIsCustom ? u.role : "");
     setPerms(u.permissions ? permsToMap(u.permissions) : {});
     setDrawerOpen(true);
   }
@@ -513,14 +534,14 @@ export default function UserManagement() {
         <EmptyState icon={Users} title="No users found" />
       ) : (
         <>
-          <Table>
+          <Table className="min-w-[900px]">
             <Thead>
               <Tr>
-                <Th>User</Th>
-                <Th>Role</Th>
-                <Th>Status</Th>
-                <Th>Joined</Th>
-                <Th>Actions</Th>
+                <Th className="w-[30%]">User</Th>
+                <Th className="w-[18%]">Role</Th>
+                <Th className="w-[18%]">Status</Th>
+                <Th className="w-[16%]">Joined</Th>
+                <Th className="w-[18%]">Actions</Th>
               </Tr>
             </Thead>
             <Tbody>
@@ -540,12 +561,12 @@ export default function UserManagement() {
                         >
                           {initials(u.name)}
                         </span>
-                        <div>
-                          <div className="font-bold text-[15px] text-[#1A1A2E] dark:text-[#F1F5F9]">
+                        <div className="min-w-0">
+                          <div className="font-bold text-[15px] text-[#1A1A2E] dark:text-[#F1F5F9] truncate">
                             {u.name}
                             {myId === u._id && <span className="ml-2 align-middle"><NxBadge color="orange">You</NxBadge></span>}
                           </div>
-                          <div className="text-[13px] text-gray-400 mt-0.5">{u.email}</div>
+                          <div className="text-[13px] text-gray-400 mt-0.5 truncate" title={u.email}>{u.email}</div>
                         </div>
                       </div>
                     </Td>
@@ -609,10 +630,36 @@ export default function UserManagement() {
             <SField
               label="Role" required
               placeholder="Select role…"
-              value={roleField}
-              onChange={(v) => setRoleField(v as UserRole)}
-              options={ROLE_OPTIONS.map((r) => ({ value: r.value, label: ROLE_CFG[r.value]?.label }))}
+              value={isCustomRole ? CUSTOM_ROLE_OPTION : roleField}
+              onChange={(v) => {
+                if (v === CUSTOM_ROLE_OPTION) {
+                  setIsCustomRole(true);
+                  setCustomRoleInput("");
+                  setRoleField("");
+                  // A brand-new custom role starts with zero permissions —
+                  // only applies the moment it's freshly picked here, not
+                  // when merely re-opening an existing custom-role user (see
+                  // openEdit, which never touches isCustomRole this way).
+                  setPerms({});
+                } else {
+                  setIsCustomRole(false);
+                  setCustomRoleInput("");
+                  setRoleField(v as UserRole);
+                }
+              }}
+              options={[
+                ...ROLE_OPTIONS.map((r) => ({ value: r.value, label: ROLE_CFG[r.value]?.label })),
+                { value: CUSTOM_ROLE_OPTION, label: "+ Create custom role…" },
+              ]}
               renderOption={(o) => {
+                if (o.value === CUSTOM_ROLE_OPTION) {
+                  return (
+                    <div className="py-0.5">
+                      <Badge color="gray">+ Create custom role…</Badge>
+                      <div className="text-xs text-gray-400 mt-1">Define a new role and assign its permissions below</div>
+                    </div>
+                  );
+                }
                 const role = o.value as UserRole;
                 return (
                   <div className="py-0.5">
@@ -623,6 +670,15 @@ export default function UserManagement() {
               }}
               error={formErrors.errors.role}
             />
+            {isCustomRole && (
+              <Field
+                label="Custom Role Name" required placeholder="e.g. Site Supervisor"
+                value={customRoleInput}
+                onChange={(e) => { setCustomRoleInput(e.target.value); setRoleField(e.target.value.trim()); }}
+                error={formErrors.errors.role}
+                hint="This role starts with zero permissions — tick what it should access below."
+              />
+            )}
             <div>
               <span className="block text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wide mb-1.5">Account Status</span>
               <UISwitch

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
-import { Plus, Upload, X, Ruler, Eye, Pencil, Users, UserCheck, UserX } from "lucide-react";
+import { Plus, Upload, X, Ruler, Eye, Pencil, Users, UserCheck, UserX, Loader2 } from "lucide-react";
+import { uploadToCloudinary } from "../../utils/cloudinaryUpload";
 import PageHeader from "../../ui/PageHeader";
 import Btn from "../../ui/Btn";
 import EmptyState from "../../ui/EmptyState";
@@ -53,6 +54,16 @@ const REQUIRED_FIELDS: { key: keyof typeof emptyForm; label: string }[] = [
   { key: "aadhaarNumber", label: "Aadhaar Number" },
 ];
 
+const DOCUMENT_FIELDS: { key: string; label: string }[] = [
+  { key: "gstCertificate",  label: "GST Certificate" },
+  { key: "panCard",         label: "PAN Card" },
+  { key: "cancelledCheque", label: "Cancelled Cheque" },
+  { key: "businessCard",    label: "Business Card" },
+  { key: "professionalRegistrationCert", label: "Professional Registration Certificate" },
+];
+
+const MAX_FILE_MB = 5;
+
 const emptyForm = {
   firmName: "", principalName: "", consultancyType: "" as ConsultancyType | "", address: "",
   mobile: "", alternateMobile: "", email: "",
@@ -60,6 +71,7 @@ const emptyForm = {
   designSoftware: [] as string[],
   accountHolderName: "", bankName: "", accountNumber: "", ifscCode: "", branchName: "",
   panNumber: "", aadhaarNumber: "", gstNumber: "",
+  documents: {} as Record<string, { fileName: string; dataUrl: string } | undefined>,
 };
 
 function TagInput({ value, onChange, suggestions }: { value: string[]; onChange: (v: string[]) => void; suggestions: string[] }) {
@@ -111,6 +123,7 @@ export default function Consultants() {
   const [viewOpen, setViewOpen]     = useState(false);
   const [selected, setSelected]     = useState<Consultant | null>(null);
   const [form, setForm] = useState(emptyForm);
+  const [uploadingDocKey, setUploadingDocKey] = useState<string | null>(null);
 
   useEffect(() => {
     apiClient
@@ -150,10 +163,27 @@ export default function Consultants() {
       accountHolderName: record.accountHolderName ?? "", bankName: record.bankName ?? "",
       accountNumber: record.accountNumber ?? "", ifscCode: record.ifscCode ?? "", branchName: record.branchName ?? "",
       panNumber: record.panNumber ?? "", aadhaarNumber: record.aadhaarNumber ?? "", gstNumber: record.gstNumber ?? "",
+      documents: (record.documents ?? {}) as Record<string, { fileName: string; dataUrl: string } | undefined>,
     });
     setEditingConsultant(record);
     setRegisterOpen(true);
   };
+
+  async function handleDocSelect(key: string, file: File) {
+    if (file.size > MAX_FILE_MB * 1024 * 1024) {
+      toast.error(`${file.name} is larger than ${MAX_FILE_MB}MB`);
+      return;
+    }
+    setUploadingDocKey(key);
+    try {
+      const url = await uploadToCloudinary(apiClient, file, "consultants", file.name);
+      setForm((f) => ({ ...f, documents: { ...f.documents, [key]: { fileName: file.name, dataUrl: url } } }));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : `Couldn't upload ${file.name}`);
+    } finally {
+      setUploadingDocKey(null);
+    }
+  }
 
   const handleRegister = async () => {
     const missing = REQUIRED_FIELDS.find(f => !form[f.key]);
@@ -237,26 +267,26 @@ export default function Consultants() {
           onAction={!search ? openAdd : undefined}
         />
       ) : (
-        <Table>
+        <Table className="min-w-[980px]">
           <Thead>
             <Tr>
-              <Th>Consultant Code</Th>
-              <Th>Firm / Consultant</Th>
-              <Th>Principal</Th>
-              <Th>Type</Th>
-              <Th>Mobile</Th>
-              <Th>Status</Th>
-              <Th>Actions</Th>
+              <Th className="w-[14%]">Consultant Code</Th>
+              <Th className="w-[20%]">Firm / Consultant</Th>
+              <Th className="w-[16%]">Principal</Th>
+              <Th className="w-[16%]">Type</Th>
+              <Th className="w-[13%]">Mobile</Th>
+              <Th className="w-[11%]">Status</Th>
+              <Th className="w-[10%]">Actions</Th>
             </Tr>
           </Thead>
           <Tbody>
             {filtered.map(c => (
               <Tr key={c.id} className="cursor-pointer" onClick={() => viewProfile(c)}>
-                <Td><TdText>{c.consultantCode}</TdText></Td>
-                <Td><TdText>{c.firmName}</TdText></Td>
-                <Td><TdText>{c.principalName}</TdText></Td>
-                <Td><TdText>{c.consultancyType}</TdText></Td>
-                <Td><TdText>{c.mobile}</TdText></Td>
+                <Td className="whitespace-nowrap truncate"><TdText>{c.consultantCode}</TdText></Td>
+                <Td className="whitespace-nowrap truncate" title={c.firmName}><TdText>{c.firmName}</TdText></Td>
+                <Td className="whitespace-nowrap truncate" title={c.principalName}><TdText>{c.principalName}</TdText></Td>
+                <Td className="whitespace-nowrap truncate"><TdText>{c.consultancyType}</TdText></Td>
+                <Td className="whitespace-nowrap truncate"><TdText>{c.mobile}</TdText></Td>
                 <Td><NxBadge color={(c.status || "active") === "active" ? "green" : "red"}>{(c.status || "active").toUpperCase()}</NxBadge></Td>
                 <Td>
                   <div onClick={e => e.stopPropagation()} className="flex items-center gap-1">
@@ -355,9 +385,21 @@ export default function Consultants() {
               value={form.gstNumber} onChange={e => setForm(f => ({ ...f, gstNumber: e.target.value }))} />
 
             <SectionHeading>Documents</SectionHeading>
-            <div className="flex flex-col gap-2.5">
-              {["GST Certificate", "PAN Card", "Cancelled Cheque", "Business Card", "Professional Registration Certificate"].map(doc => (
-                <Btn key={doc} outline icon={Upload} label={doc} className="w-[260px] justify-start" />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {DOCUMENT_FIELDS.map(({ key, label }) => (
+                <div key={key}>
+                  <label className="inline-flex w-full">
+                    <input
+                      type="file" accept=".pdf,.jpg,.jpeg,.png" className="hidden"
+                      onChange={(e) => { const f = e.target.files?.[0]; if (f) handleDocSelect(key, f); e.target.value = ""; }}
+                    />
+                    <span className="w-full inline-flex items-center gap-2 h-10 px-3.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-transparent text-[13px] text-gray-700 dark:text-[#F1F5F9] cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 min-w-0">
+                      {uploadingDocKey === key ? <Loader2 className="w-4 h-4 shrink-0 animate-spin" /> : <Upload className="w-4 h-4 shrink-0" />}
+                      <span className="truncate">{uploadingDocKey === key ? "Uploading…" : (form.documents[key]?.fileName || label)}</span>
+                    </span>
+                  </label>
+                  {form.documents[key] && <div className="text-[11px] text-emerald-600 mt-1">✓ Attached</div>}
+                </div>
               ))}
             </div>
           </div>
@@ -368,8 +410,9 @@ export default function Consultants() {
       {viewOpen && selected && (
         <Modal
           title={selected.firmName} subtitle={selected.consultantCode}
+          extraWide
           onClose={() => setViewOpen(false)}
-          footer={<Btn label="Close" outline onClick={() => setViewOpen(false)} />}
+          footer={<div className="flex justify-end"><Btn outline label="Close" onClick={() => setViewOpen(false)} /></div>}
         >
           <ConsultantDetailView consultant={selected} />
         </Modal>

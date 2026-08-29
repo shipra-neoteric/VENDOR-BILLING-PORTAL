@@ -846,14 +846,14 @@ export default function SiteProgress() {
               <EmptyState title="No progress logged for these filters" />
             ) : (
               <>
-                <Table>
+                <Table className="min-w-[900px]">
                   <Thead>
                     <Tr>
-                      <Th>When</Th>
-                      <Th>Project / Work Order</Th>
-                      <Th>DRI</Th>
-                      <Th>Progress</Th>
-                      <Th>Remarks</Th>
+                      <Th className="w-[14%]">When</Th>
+                      <Th className="w-[24%]">Project / Work Order</Th>
+                      <Th className="w-[16%]">DRI</Th>
+                      <Th className="w-[22%]">Progress</Th>
+                      <Th className="w-[24%]">Remarks</Th>
                     </Tr>
                   </Thead>
                   <Tbody>
@@ -862,14 +862,14 @@ export default function SiteProgress() {
                       const level = m.plannedQty != null && m.completedQty != null ? varianceLevel(m.plannedQty, m.completedQty) : "none";
                       return (
                         <Tr key={ev._id}>
-                          <Td>{dayjs(ev.createdAt).format("DD MMM, hh:mm a")}</Td>
-                          <Td>
-                            <div className="font-semibold">{typeof ev.projectId === "object" ? ev.projectId?.name : "—"}</div>
+                          <Td className="whitespace-nowrap">{dayjs(ev.createdAt).format("DD MMM, hh:mm a")}</Td>
+                          <Td className="whitespace-nowrap truncate">
+                            <div className="font-semibold truncate">{typeof ev.projectId === "object" ? ev.projectId?.name : "—"}</div>
                             <button type="button" onClick={() => openFromActivity(ev)} className="text-primary text-xs hover:underline">
                               {ev.workOrderNo}
                             </button>
                           </Td>
-                          <Td>{ev.performedByName || "—"}</Td>
+                          <Td className="whitespace-nowrap truncate">{ev.performedByName || "—"}</Td>
                           <Td>
                             <div className="text-[13px]">{m.scopeItem} <span className="font-mono text-emerald-600 font-bold">+{fmtN(m.qtyAdded || 0)} {m.unit}</span></div>
                             {level !== "none" && <VarianceTag level={level} />}

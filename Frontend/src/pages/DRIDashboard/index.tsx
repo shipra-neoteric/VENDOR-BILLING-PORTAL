@@ -256,6 +256,16 @@ export default function DRIDashboard() {
   const [allWOs,   setAllWOs]   = useState<WORow[]>([]);
   const [allBills, setAllBills] = useState<BillReq[]>([]);
   const [loading,  setLoading]  = useState(true);
+  // Work Order → real bill(s) map, keyed off the actual RunningBill
+  // collection (/bills) — same source WorkItems/index.tsx already uses for
+  // its own `hasBill()` check. `allBills` above is /bill-requests (the
+  // progress-driven request workflow), not the same thing: a bill created
+  // manually via Billing → New Bill has no request at all, so it never
+  // shows up there, which is why Billed/Unbilled here could look wrong for
+  // a WO that's actually already billed. This is purely an additional data
+  // source for display/filtering below — it doesn't touch lastBilledQty,
+  // completedQty, or any billing calculation.
+  const [woBillsMap, setWoBillsMap] = useState<Record<string, { status: string; amount: number }[]>>({});
 
   // Navigation state
   const [view,         setView]         = useState<PageView>("overview");
@@ -316,6 +326,16 @@ export default function DRIDashboard() {
         .then(r => setAllWOs(r.data.workOrders ?? [])),
       apiClient.get("/bill-requests")
         .then(r => setAllBills(r.data.billRequests ?? [])),
+      apiClient.get("/bills")
+        .then(r => {
+          const billMap: Record<string, { status: string; amount: number }[]> = {};
+          (r.data.bills ?? []).forEach((b: any) => {
+            const wid = b.workOrderId;
+            if (!wid) return;
+            (billMap[wid] ||= []).push({ status: b.status, amount: b.amount });
+          });
+          setWoBillsMap(billMap);
+        }),
     ];
     Promise.allSettled(calls).finally(() => setLoading(false));
   }, []);
@@ -366,6 +386,11 @@ export default function DRIDashboard() {
       .finally(() => setDetailLoading(false));
   }, [projectWOs]);
 
+  // Any real bill at all (any status, not just paid) against a Work Order —
+  // see woBillsMap's own comment above for why this exists alongside
+  // allBills/projectBills (bill *requests*, a different collection).
+  const hasBill = (woId: string) => (woBillsMap[woId]?.length ?? 0) > 0;
+
   // Mirrors the backend's expandBillableCandidates — billing (and this
   // preview of it) operates per particular when an item has them, never
   // against the parent's own rolled-up completedQty, which is only ever a
@@ -400,9 +425,10 @@ export default function DRIDashboard() {
   const billableWODetails = useMemo(
     () => Array.from(woDetails.values()).filter(d =>
       getPendingBillableRows(d.scopeItems).length > 0 &&
-      !projectBills.some(br => br.workOrderId === d._id && br.status === "pending")
+      !projectBills.some(br => br.workOrderId === d._id && br.status === "pending") &&
+      !hasBill(d._id)
     ),
-    [woDetails, projectBills]
+    [woDetails, projectBills, woBillsMap]
   );
 
   const progProjectType: "apartment" | "plot" = useMemo(() => {
@@ -674,32 +700,32 @@ export default function DRIDashboard() {
           {allDRIs.length === 0 ? (
             <EmptyState icon={Users} title="No DRI users found." />
           ) : (
-            <Table>
+            <Table className="min-w-[1000px]">
               <Thead>
                 <Tr>
-                  <Th>DRI Name</Th>
-                  <Th>Email</Th>
-                  <Th>Total WOs</Th>
-                  <Th>Active</Th>
-                  <Th>Completed</Th>
-                  <Th>Pending Bills</Th>
-                  <Th>Approved Bills</Th>
-                  <Th></Th>
+                  <Th className="w-[20%]">DRI Name</Th>
+                  <Th className="w-[22%]">Email</Th>
+                  <Th className="w-[10%]">Total WOs</Th>
+                  <Th className="w-[10%]">Active</Th>
+                  <Th className="w-[10%]">Completed</Th>
+                  <Th className="w-[12%]">Pending Bills</Th>
+                  <Th className="w-[12%]">Approved Bills</Th>
+                  <Th className="w-[4%]"></Th>
                 </Tr>
               </Thead>
               <Tbody>
                 {driStats.map(row => (
                   <Tr key={row.dri._id} className="cursor-pointer" onClick={() => selectDRI(row.dri)}>
-                    <Td>
-                      <div className="flex items-center gap-2">
+                    <Td className="whitespace-nowrap truncate">
+                      <div className="flex items-center gap-2 min-w-0">
                         <span className="w-[30px] h-[30px] rounded-full bg-primary text-white inline-flex items-center justify-center font-extrabold text-xs shrink-0">
                           {row.dri.name.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2)}
                         </span>
-                        <span className="font-bold text-primary text-[13px]">{row.dri.name}</span>
+                        <span className="font-bold text-primary text-[13px] truncate">{row.dri.name}</span>
                       </div>
                     </Td>
-                    <Td className="text-xs text-gray-500 dark:text-gray-400">{row.dri.email}</Td>
-                    <Td className="font-mono font-bold tabular-nums text-sm">{row.total}</Td>
+                    <Td className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap truncate">{row.dri.email}</Td>
+                    <Td className="font-mono font-bold tabular-nums text-sm whitespace-nowrap">{row.total}</Td>
                     <Td><CountPill n={row.active} color="blue" /></Td>
                     <Td><CountPill n={row.completed} color="green" /></Td>
                     <Td><CountPill n={row.pendingBills} color="amber" /></Td>
@@ -855,30 +881,30 @@ export default function DRIDashboard() {
                     ) : detail.scopeItems.length === 0 ? (
                       <div className="py-5 text-center text-gray-400 text-sm">No scope items defined.</div>
                     ) : (
-                      <Table>
+                      <Table className="min-w-[900px]">
                         <Thead>
                           <Tr>
-                            <Th>#</Th>
-                            <Th>Description</Th>
-                            <Th>Unit</Th>
-                            <Th>Planned</Th>
-                            <Th>Done</Th>
-                            <Th>Billed</Th>
-                            <Th>Unbilled</Th>
-                            <Th>Measurement</Th>
-                            {canEdit && <Th>Action</Th>}
+                            <Th className="w-[4%]">#</Th>
+                            <Th className="w-[26%]">Description</Th>
+                            <Th className="w-[8%]">Unit</Th>
+                            <Th className="w-[9%]">Planned</Th>
+                            <Th className="w-[9%]">Done</Th>
+                            <Th className="w-[9%]">Billed</Th>
+                            <Th className="w-[9%]">Unbilled</Th>
+                            <Th className="w-[16%]">Measurement</Th>
+                            {canEdit && <Th className="w-[10%]">Action</Th>}
                           </Tr>
                         </Thead>
                         <Tbody>
                           {detail.scopeItems.map((si, idx) => {
                             const p          = pctOf(si.completedQty, si.plannedQty);
                             const billed     = si.lastBilledQty || 0;
-                            const unbilled   = Math.max(0, si.completedQty - billed);
+                            const unbilled   = hasBill(wo._id) ? 0 : Math.max(0, si.completedQty - billed);
                             const hasSubItems = (si.subItems?.length ?? 0) > 0;
                             return (
                               <Fragment key={si._id}>
                                 <Tr>
-                                  <Td className="text-gray-400 text-xs">{idx + 1}</Td>
+                                  <Td className="text-gray-400 text-xs whitespace-nowrap">{idx + 1}</Td>
                                   <Td className="font-semibold text-[#1A1A2E] dark:text-[#F1F5F9] text-sm">
                                     {si.description}
                                     {hasSubItems && (
@@ -888,11 +914,11 @@ export default function DRIDashboard() {
                                     )}
                                     {si.remarks && <div className="text-[11px] font-normal text-amber-600 mt-0.5">📌 {si.remarks}</div>}
                                   </Td>
-                                  <Td className="text-gray-500 dark:text-gray-400 text-xs">{si.unit}</Td>
-                                  <Td className="font-mono text-xs">{fmtN(si.plannedQty)}</Td>
-                                  <Td className={`font-mono text-xs ${si.completedQty > 0 ? "text-emerald-600" : "text-gray-400"}`}>{fmtN(si.completedQty)}</Td>
-                                  <Td className="font-mono text-xs text-blue-600">{fmtN(billed)}</Td>
-                                  <Td className="font-mono text-xs">
+                                  <Td className="text-gray-500 dark:text-gray-400 text-xs whitespace-nowrap">{si.unit}</Td>
+                                  <Td className="font-mono text-xs whitespace-nowrap">{fmtN(si.plannedQty)}</Td>
+                                  <Td className={`font-mono text-xs whitespace-nowrap ${si.completedQty > 0 ? "text-emerald-600" : "text-gray-400"}`}>{fmtN(si.completedQty)}</Td>
+                                  <Td className="font-mono text-xs text-blue-600 whitespace-nowrap">{fmtN(billed)}</Td>
+                                  <Td className="font-mono text-xs whitespace-nowrap">
                                     {unbilled > 0
                                       ? <span className="text-primary font-bold">{fmtN(unbilled)}</span>
                                       : <span className="text-gray-400">—</span>}

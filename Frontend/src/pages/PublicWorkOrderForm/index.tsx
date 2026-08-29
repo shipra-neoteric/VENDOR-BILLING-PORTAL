@@ -11,8 +11,6 @@ import { DatePicker } from "../../ui/DatePicker";
 import Btn from "../../ui/Btn";
 import Badge from "../../ui/Badge";
 import Spinner from "../../ui/Spinner";
-import PaymentMilestonesBuilder, { calcPayable, calcGrandTotal } from "../../components/PaymentMilestonesBuilder";
-import type { MilestoneDraft } from "../../components/PaymentMilestonesBuilder";
 import WarrantyTermsBuilder from "../../components/WarrantyTermsBuilder";
 import GstSelect from "../../components/GstSelect";
 import DocumentsUpload from "../../components/DocumentsUpload";
@@ -357,7 +355,6 @@ export default function PublicWorkOrderForm() {
   const [scopeItems,  setScopeItems]  = useState<ScopeDraft[]>([newScope()]);
   const [topCatId,    setTopCatId]    = useState<string>("");
   const [documents,   setDocuments]   = useState<WODocument[]>([]);
-  const [milestones,  setMilestones]  = useState<MilestoneDraft[]>([]);
   const [warrantyTerms, setWarrantyTerms] = useState<string[]>([]);
 
   useEffect(() => {
@@ -396,11 +393,6 @@ export default function PublicWorkOrderForm() {
 
   async function onSubmit() {
     if (!validate()) return;
-    const milestonesTotal = calcGrandTotal(milestones);
-    if (milestonesTotal > contractValueInclGst + 1) {
-      toast.error(`Payment milestones total (${fmt(milestonesTotal)}) exceeds the scope of work's contract value incl. GST (${fmt(contractValueInclGst)})`);
-      return;
-    }
     if (scopeItems.some(i => (i.description.trim() || i.subCategoryId) && (!i.plannedStart || !i.plannedEnd))) {
       toast.error("Start Date and End Date are required for every work item");
       return;
@@ -421,16 +413,6 @@ export default function PublicWorkOrderForm() {
         documents:   documents,
         preparedByName:    values.preparedByName    || "",
         preparedByContact: values.preparedByContact || "",
-        paymentMilestones: milestones.map(m => ({
-          stage: m.stage, date: m.date, type: m.type, mode: m.mode,
-          amount: m.amount || 0, amountMode: m.amountMode, amountPercent: m.amountPercent,
-          gstPercent: m.gstPercent,
-          // `amount` is always the pre-GST base figure regardless of mode — GST
-          // is always added on top, so tells the backend's own recompute
-          // (validateMilestones.js) to do exactly that.
-          gstType: "exclusive",
-          payable: calcPayable(m),
-        })),
         warrantyTerms: warrantyTerms.filter(t => t.trim()),
         scopeItems: validScope.map(i => ({
           description: i.description,
@@ -467,7 +449,6 @@ export default function PublicWorkOrderForm() {
     setScopeItems([newScope()]);
     setTopCatId("");
     setDocuments([]);
-    setMilestones([]);
     setWarrantyTerms([]);
     setSubmitted(null);
   }
@@ -629,11 +610,6 @@ export default function PublicWorkOrderForm() {
                 </>
               )}
             </div>
-          </div>
-
-          {/* ── Payment Milestones ── */}
-          <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
-            <PaymentMilestonesBuilder items={milestones} onChange={setMilestones} contractValue={contractValue} contractValueInclGst={contractValueInclGst} />
           </div>
 
           {/* ── Warranty / Guarantee Terms ── */}

@@ -72,9 +72,15 @@ function WorkProgressPanel({ workOrders }: { workOrders: WORow[] }) {
 
 function ProjectPerfTable({ rows, rangeLabel }: { rows: DPRProjectPerformance[]; rangeLabel: string }) {
   return (
-    <Table>
+    <Table className="min-w-[560px]">
       <Thead>
-        <Tr><Th>Project Name</Th><Th>WOs</Th><Th>Progress</Th><Th>Activity ({rangeLabel})</Th><Th>Pending</Th></Tr>
+        <Tr>
+          <Th className="w-[32%]">Project Name</Th>
+          <Th className="w-[10%]">WOs</Th>
+          <Th className="w-[20%]">Progress</Th>
+          <Th className="w-[26%]">Activity ({rangeLabel})</Th>
+          <Th className="w-[12%]">Pending</Th>
+        </Tr>
       </Thead>
       <Tbody>
         {rows.map(p => {
@@ -82,8 +88,8 @@ function ProjectPerfTable({ rows, rangeLabel }: { rows: DPRProjectPerformance[];
           return (
             <Tr key={p.projectId}>
               <Td>
-                <div className="font-semibold text-[#1A1A2E] dark:text-[#F1F5F9] whitespace-nowrap">{p.projectName}</div>
-                {p.projectLocation && <div className="text-xs text-gray-400">{p.projectLocation}</div>}
+                <div className="font-semibold text-[#1A1A2E] dark:text-[#F1F5F9] whitespace-nowrap truncate" title={p.projectName}>{p.projectName}</div>
+                {p.projectLocation && <div className="text-xs text-gray-400 truncate">{p.projectLocation}</div>}
               </Td>
               <Td className="font-mono">{p.woCount}</Td>
               <Td>
@@ -94,7 +100,7 @@ function ProjectPerfTable({ rows, rangeLabel }: { rows: DPRProjectPerformance[];
                   <span className="text-xs font-mono font-semibold">{p.progressPct}%</span>
                 </div>
               </Td>
-              <Td className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">{p.woCount} WOs, {p.billRequestCount} Bills</Td>
+              <Td className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap truncate">{p.woCount} WOs, {p.billRequestCount} Bills</Td>
               <Td>{pending > 0 ? <span className="font-mono font-bold text-amber-600 dark:text-amber-400">{pending}</span> : <span className="text-gray-300">—</span>}</Td>
             </Tr>
           );

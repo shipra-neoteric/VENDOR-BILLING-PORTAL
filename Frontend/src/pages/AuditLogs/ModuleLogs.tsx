@@ -169,7 +169,7 @@ export default function ModuleLogs() {
           ))}
         </div>
       ) : (
-        <Table className="table-fixed">
+        <Table className="table-fixed min-w-[1000px]">
           <Thead>
             <Tr>
               <Th className="w-[15%]">Performed By</Th>
@@ -190,14 +190,14 @@ export default function ModuleLogs() {
             )}
             {logs.map((row) => (
               <Tr key={row._id}>
-                <Td>
-                  <div className="font-semibold text-sm text-[#1A1A2E] dark:text-[#F1F5F9]">{row.userName || "—"}</div>
-                  <div className="text-xs text-gray-400">{row.userEmail}</div>
+                <Td className="whitespace-nowrap truncate">
+                  <div className="font-semibold text-sm text-[#1A1A2E] dark:text-[#F1F5F9] truncate">{row.userName || "—"}</div>
+                  <div className="text-xs text-gray-400 truncate">{row.userEmail}</div>
                 </Td>
-                <Td>
+                <Td className="whitespace-nowrap truncate">
                   <ResourceCell row={row} />
                 </Td>
-                <Td>
+                <Td className="whitespace-nowrap">
                   <Badge color={ACTION_COLOR[row.action]} small>
                     {row.action}
                   </Badge>
@@ -205,7 +205,7 @@ export default function ModuleLogs() {
                 <Td>
                   <TdText>{row.description}</TdText>
                 </Td>
-                <Td>
+                <Td className="whitespace-nowrap">
                   <div className="text-sm text-[#1A1A2E] dark:text-[#F1F5F9]">{dayjs(row.createdAt).format("DD MMM YYYY, hh:mm a")}</div>
                 </Td>
                 <Td>

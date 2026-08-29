@@ -14,7 +14,7 @@ function computeDueAt(startedAt, slaHours, businessHoursOnly, workingDays) {
     return new Date(start.getTime() + slaHours * 60 * 60 * 1000);
   }
 
-  const days = workingDays && workingDays.length ? workingDays : ['mon', 'tue', 'wed', 'thu', 'fri'];
+  const days = workingDays && workingDays.length ? workingDays : ['mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
   let remainingMinutes = slaHours * 60;
   const cursor = new Date(start);
 
@@ -45,6 +45,51 @@ function computeDueAt(startedAt, slaHours, businessHoursOnly, workingDays) {
     }
   }
   return cursor;
+}
+
+// Minutes actually spent inside the business window (9am-6pm, working days
+// only) between two timestamps — the same clock computeDueAt uses to set a
+// business-hours deadline in the first place. Used to measure "how overdue"
+// a business-hours stage is; measuring that with a plain calendar-time diff
+// (as this codebase used to) wildly overstates overdue time whenever a
+// breach spans a night or a weekend, e.g. a stage missed by 1 real hour on a
+// Friday evening would otherwise show as ~60 hours overdue by Monday.
+function businessMinutesBetween(from, to, workingDays) {
+  const start = new Date(from);
+  const end = new Date(to);
+  if (end <= start) return 0;
+
+  const days = workingDays && workingDays.length ? workingDays : ['mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+  let total = 0;
+  const dayCursor = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+  const lastDay = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+
+  while (dayCursor <= lastDay) {
+    if (days.includes(DAY_KEYS[dayCursor.getDay()])) {
+      const winStart = new Date(dayCursor); winStart.setHours(BUSINESS_START_HOUR, 0, 0, 0);
+      const winEnd   = new Date(dayCursor); winEnd.setHours(BUSINESS_END_HOUR, 0, 0, 0);
+      const overlapStart = start > winStart ? start : winStart;
+      const overlapEnd   = end < winEnd ? end : winEnd;
+      if (overlapEnd > overlapStart) {
+        total += Math.round((overlapEnd - overlapStart) / (60 * 1000));
+      }
+    }
+    dayCursor.setDate(dayCursor.getDate() + 1);
+  }
+  return total;
+}
+
+// How overdue a stage actually is, in minutes — business-hours-aware when
+// the stage itself is (matching the clock its own dueAt was computed with),
+// plain calendar-time otherwise. Returns 0 if not overdue.
+function overdueMinutesFor(stage, now) {
+  if (!stage || !stage.dueAt) return 0;
+  const due = new Date(stage.dueAt);
+  const at = now || new Date();
+  if (at <= due) return 0;
+  return stage.businessHoursOnly
+    ? businessMinutesBetween(due, at, stage.workingDays)
+    : Math.round((at - due) / (60 * 1000));
 }
 
 function buildInstanceStage(templateStage, startedAt) {
@@ -105,9 +150,7 @@ function completeStageAt(instance, stageIndex, completedByUserId, remarks) {
   stage.completedBy = completedByUserId || null;
   if (remarks) stage.remarks = remarks;
   stage.status = 'completed';
-  stage.delayMinutes = stage.dueAt
-    ? Math.max(0, Math.round((now - stage.dueAt) / (60 * 1000)))
-    : 0;
+  stage.delayMinutes = overdueMinutesFor(stage, now);
 
   const nextStage = instance.stages[stageIndex + 1];
   if (nextStage) {
@@ -180,6 +223,8 @@ async function captureDailySnapshotIfNeeded(kpis) {
 
 module.exports = {
   computeDueAt,
+  businessMinutesBetween,
+  overdueMinutesFor,
   startInstance,
   advanceInstance,
   cancelInstance,

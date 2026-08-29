@@ -307,15 +307,15 @@ export default function Billing() {
           <EmptyState icon={FileText} title="No bills found" message="Try adjusting your search or filters." />
         ) : (
           <>
-            <Table>
+            <Table className="min-w-[1300px]">
               <Thead>
                 <Tr>
-                  <Th>Bill No.</Th>
-                  <Th>Bill Type</Th>
-                  <Th>Work Order</Th>
-                  <Th>Vendor</Th>
-                  <Th>Project</Th>
-                  <Th className="text-right">Amount</Th>
+                  <Th className="w-[100px]">Bill No.</Th>
+                  <Th className="w-[140px]">Bill Type</Th>
+                  <Th className="w-[110px]">Work Order</Th>
+                  <Th className="w-[160px]">Vendor</Th>
+                  <Th className="w-[150px]">Project</Th>
+                  <Th className="text-right w-[120px]">Amount</Th>
                   <Th className="w-[150px]">Approval</Th>
                   <Th className="w-[170px]">Accounts</Th>
                   <Th className="w-[110px] whitespace-nowrap">Date</Th>
@@ -325,18 +325,18 @@ export default function Billing() {
               <Tbody>
                 {pagedBills.map((r) => (
                   <Tr key={r.id} className="cursor-pointer" onClick={() => setViewBillId(r.id)}>
-                    <Td className="font-bold text-primary">{r.billNo}</Td>
-                    <Td>
+                    <Td className="font-bold text-primary whitespace-nowrap truncate" title={r.billNo}>{r.billNo}</Td>
+                    <Td className="whitespace-nowrap">
                       {r.billType ? (
                         <NxBadge color="blue">{BILL_TYPE_CFG[r.billType]?.label || r.billType}</NxBadge>
                       ) : (
                         <span className="text-gray-300 dark:text-gray-600">—</span>
                       )}
                     </Td>
-                    <Td>{r.workOrderNo || <span className="text-gray-300 dark:text-gray-600">—</span>}</Td>
-                    <Td>{r.vendorName || <span className="text-gray-300 dark:text-gray-600">—</span>}</Td>
-                    <Td>{r.projectName || <span className="text-gray-300 dark:text-gray-600">—</span>}</Td>
-                    <Td className="text-right font-bold">{fmt(netAfterAdvance(r))}</Td>
+                    <Td className="whitespace-nowrap truncate" title={r.workOrderNo || ""}>{r.workOrderNo || <span className="text-gray-300 dark:text-gray-600">—</span>}</Td>
+                    <Td className="whitespace-nowrap truncate" title={r.vendorName || ""}>{r.vendorName || <span className="text-gray-300 dark:text-gray-600">—</span>}</Td>
+                    <Td className="whitespace-nowrap truncate" title={r.projectName || ""}>{r.projectName || <span className="text-gray-300 dark:text-gray-600">—</span>}</Td>
+                    <Td className="text-right font-bold whitespace-nowrap">{fmt(netAfterAdvance(r))}</Td>
                     <Td>
                       {(r.manualApprovalStatus === "pending" || r.manualApprovalStatus === "pending-gm" || r.manualApprovalStatus === "rejected") ? (
                         <>
