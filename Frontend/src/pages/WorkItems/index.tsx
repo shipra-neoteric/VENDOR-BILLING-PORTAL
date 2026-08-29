@@ -2323,46 +2323,46 @@ export default function WorkItems() {
           ) : monthlyReport.length === 0 ? (
             <EmptyState icon={BarChart3} title="No work orders match the current filters" />
           ) : (
-            <Table>
+            <Table className="min-w-[1100px]">
               <Thead>
                 <Tr>
-                  <Th stickyLeft>Month</Th>
-                  <Th className="text-right">WOs</Th>
-                  <Th className="text-right">Contract Value</Th>
-                  <Th className="text-right">Billed</Th>
-                  <Th className="text-right">Draft</Th>
-                  <Th className="text-right">Issued</Th>
-                  <Th className="text-right">In Progress</Th>
-                  <Th className="text-right">Completed</Th>
-                  <Th className="text-right">Cancelled</Th>
+                  <Th stickyLeft className="w-[12%]">Month</Th>
+                  <Th className="text-right w-[8%]">WOs</Th>
+                  <Th className="text-right w-[16%]">Contract Value</Th>
+                  <Th className="text-right w-[13%]">Billed</Th>
+                  <Th className="text-right w-[10%]">Draft</Th>
+                  <Th className="text-right w-[10%]">Issued</Th>
+                  <Th className="text-right w-[10%]">In Progress</Th>
+                  <Th className="text-right w-[11%]">Completed</Th>
+                  <Th className="text-right w-[10%]">Cancelled</Th>
                 </Tr>
               </Thead>
               <Tbody>
                 {monthlyReport.map(r => (
                   <Tr key={r.key}>
-                    <Td stickyLeft><strong>{r.label}</strong></Td>
-                    <Td className="text-right">{r.count}</Td>
-                    <Td className="text-right font-mono">{fmt(r.contractValue)}</Td>
-                    <Td className="text-right font-mono text-emerald-600 font-semibold">{fmt(r.billed)}</Td>
-                    <Td className="text-right">{r.draft}</Td>
-                    <Td className="text-right">{r.issued}</Td>
-                    <Td className="text-right">{r.inProgress}</Td>
-                    <Td className="text-right">{r.completed}</Td>
-                    <Td className="text-right">{r.cancelled}</Td>
+                    <Td stickyLeft className="whitespace-nowrap"><strong>{r.label}</strong></Td>
+                    <Td className="text-right whitespace-nowrap">{r.count}</Td>
+                    <Td className="text-right font-mono whitespace-nowrap">{fmt(r.contractValue)}</Td>
+                    <Td className="text-right font-mono text-emerald-600 font-semibold whitespace-nowrap">{fmt(r.billed)}</Td>
+                    <Td className="text-right whitespace-nowrap">{r.draft}</Td>
+                    <Td className="text-right whitespace-nowrap">{r.issued}</Td>
+                    <Td className="text-right whitespace-nowrap">{r.inProgress}</Td>
+                    <Td className="text-right whitespace-nowrap">{r.completed}</Td>
+                    <Td className="text-right whitespace-nowrap">{r.cancelled}</Td>
                   </Tr>
                 ))}
               </Tbody>
               <Tfoot>
                 <Tr className="!bg-primary/5 font-bold">
-                  <Td stickyLeft className="!bg-primary/5">Total</Td>
-                  <Td className="text-right">{monthlyReportTotals.count}</Td>
-                  <Td className="text-right font-mono">{fmt(monthlyReportTotals.contractValue)}</Td>
-                  <Td className="text-right font-mono">{fmt(monthlyReportTotals.billed)}</Td>
-                  <Td className="text-right">{monthlyReportTotals.draft}</Td>
-                  <Td className="text-right">{monthlyReportTotals.issued}</Td>
-                  <Td className="text-right">{monthlyReportTotals.inProgress}</Td>
-                  <Td className="text-right">{monthlyReportTotals.completed}</Td>
-                  <Td className="text-right">{monthlyReportTotals.cancelled}</Td>
+                  <Td stickyLeft className="!bg-primary/5 whitespace-nowrap">Total</Td>
+                  <Td className="text-right whitespace-nowrap">{monthlyReportTotals.count}</Td>
+                  <Td className="text-right font-mono whitespace-nowrap">{fmt(monthlyReportTotals.contractValue)}</Td>
+                  <Td className="text-right font-mono whitespace-nowrap">{fmt(monthlyReportTotals.billed)}</Td>
+                  <Td className="text-right whitespace-nowrap">{monthlyReportTotals.draft}</Td>
+                  <Td className="text-right whitespace-nowrap">{monthlyReportTotals.issued}</Td>
+                  <Td className="text-right whitespace-nowrap">{monthlyReportTotals.inProgress}</Td>
+                  <Td className="text-right whitespace-nowrap">{monthlyReportTotals.completed}</Td>
+                  <Td className="text-right whitespace-nowrap">{monthlyReportTotals.cancelled}</Td>
                 </Tr>
               </Tfoot>
             </Table>
