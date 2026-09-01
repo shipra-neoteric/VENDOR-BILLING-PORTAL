@@ -1080,6 +1080,7 @@ function WOFormFields({
   values, onChange, errors, isEdit = false, nextWONo, nextCWONo,
   contractorsList, consultantsList, projectsList, categoriesList, companiesList = [],
   driList = [], agmGmList = [], preparedByName, preparedByContact, onExtracted,
+  onDocsUploadingChange,
 }: {
   values: WOFormValues;
   onChange: (patch: Partial<WOFormValues>) => void;
@@ -1100,6 +1101,9 @@ function WOFormFields({
   // this form — extraction hands the full result up so the parent can apply
   // those pieces itself, while this component applies the plain form fields.
   onExtracted?: (data: AiExtractedWorkOrder) => void;
+  // Lets the parent (Save button) know a document upload is in flight, so it
+  // can't be saved mid-upload — see DocumentsUpload's own onUploadingChange.
+  onDocsUploadingChange?: (uploading: boolean) => void;
 }) {
   const [extracting, setExtracting] = useState(false);
   const [extractNote, setExtractNote] = useState("");
@@ -1335,7 +1339,7 @@ function WOFormFields({
 
       <div className="mb-4">
         <span className="block text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wide mb-1.5">Upload Work Order Documents</span>
-        <DocumentsUpload value={values.documents} onChange={docs => onChange({ documents: docs })} />
+        <DocumentsUpload value={values.documents} onChange={docs => onChange({ documents: docs })} onUploadingChange={onDocsUploadingChange} />
       </div>
 
       <div className="mb-4">
@@ -1398,6 +1402,11 @@ export default function WorkItems() {
   const [loadingData,  setLoadingData]  = useState(true);
   const [saving,       setSaving]       = useState(false);
   const [pdfLoading,   setPdfLoading]   = useState(false);
+  // A document upload still in flight when Save is clicked — blocking the
+  // save here means it can never end up with a document entry that has a
+  // name but no file behind it (see DocumentsUpload's own onUploadingChange).
+  const [createDocsUploading, setCreateDocsUploading] = useState(false);
+  const [editDocsUploading,   setEditDocsUploading]   = useState(false);
 
   const [createDrawerOpen,    setCreateDrawerOpen]    = useState(false);
   const [search,              setSearch]              = useState("");
@@ -1718,6 +1727,10 @@ export default function WorkItems() {
 
   const handleCreate = async () => {
     if (!validateWOForm(createValues, createErrors)) return;
+    if (createDocsUploading) {
+      toast.error("A document is still uploading — wait for it to finish before saving");
+      return;
+    }
     const values = createValues;
     const totalAmt  = calcTotalAmt(createScopeItems);
     if (values.contractType !== "professional-services" && createScopeItems.some(it => it.description.trim() && (!it.plannedStart || !it.plannedEnd))) {
@@ -1819,6 +1832,10 @@ export default function WorkItems() {
   const handleSaveEdit = async () => {
     if (!currentEditWO) return;
     if (!validateWOForm(editValues, editErrors)) return;
+    if (editDocsUploading) {
+      toast.error("A document is still uploading — wait for it to finish before saving");
+      return;
+    }
     const values = editValues;
 
     const totalAmt    = calcTotalAmt(editScopeItems);
@@ -2419,7 +2436,7 @@ export default function WorkItems() {
                 outline label="Cancel"
                 onClick={() => { setCreateValues(blankWOForm()); setCreateScopeItems([]); setCreateSecurityDeposits([]); setCreateDiscount(null); setCreateWarranty([]); setCreateDrawerOpen(false); }}
               />
-              <Btn color="primary" loading={saving} label="Save Work Order" onClick={handleCreate} />
+              <Btn color="primary" loading={saving} disabled={createDocsUploading} label="Save Work Order" onClick={handleCreate} />
             </div>
           }
         >
@@ -2440,6 +2457,7 @@ export default function WorkItems() {
               preparedByName={user?.name}
               preparedByContact={user?.email}
               onExtracted={applyAiExtraction}
+              onDocsUploadingChange={setCreateDocsUploading}
             />
           </FormSection>
           <FormSection title="Work Items">
@@ -2476,7 +2494,7 @@ export default function WorkItems() {
           footer={
             <div className="flex justify-end gap-2">
               <Btn outline label="Cancel" onClick={() => { setEditModalOpen(false); setEditWOId(null); }} />
-              <Btn color="primary" loading={saving} label="Save Changes" onClick={handleSaveEdit} />
+              <Btn color="primary" loading={saving} disabled={editDocsUploading} label="Save Changes" onClick={handleSaveEdit} />
             </div>
           }
         >
@@ -2497,6 +2515,7 @@ export default function WorkItems() {
               agmGmList={agmGmList}
               preparedByName={currentEditWO?.preparedByName}
               preparedByContact={currentEditWO?.preparedByContact}
+              onDocsUploadingChange={setEditDocsUploading}
             />
           </FormSection>
           <FormSection title="Work Items">

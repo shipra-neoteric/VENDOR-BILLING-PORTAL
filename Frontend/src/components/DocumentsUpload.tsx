@@ -11,7 +11,7 @@ export const MAX_DOCUMENT_FILES = 5;
 const MAX_FILE_MB = 5;
 
 export default function DocumentsUpload({
-  value = [], onChange, uploadClient = apiClient,
+  value = [], onChange, uploadClient = apiClient, onUploadingChange,
 }: {
   value?: WODocument[];
   onChange?: (docs: WODocument[]) => void;
@@ -20,8 +20,17 @@ export default function DocumentsUpload({
   // token to sign an upload with otherwise (see Backend/src/routes/
   // uploads.js vs routes/public.js's separate signer).
   uploadClient?: AxiosInstance;
+  // Lets the parent form know an upload is in flight, so it can disable its
+  // own Save/Submit button — otherwise a user who saves (or closes the form)
+  // before an upload finishes ends up with a document entry that has a name
+  // but no file behind it (the entry is only added once the upload actually
+  // succeeds, so nothing gets silently corrupted — but the save itself would
+  // go through without that file ever being attached, with no indication
+  // anything was missed).
+  onUploadingChange?: (uploading: boolean) => void;
 }) {
-  const [uploading, setUploading] = useState(false);
+  const [uploading, setUploadingState] = useState(false);
+  const setUploading = (u: boolean) => { setUploadingState(u); onUploadingChange?.(u); };
   const inputRef = useRef<HTMLInputElement>(null);
 
   async function handleFile(file: File) {
@@ -36,6 +45,10 @@ export default function DocumentsUpload({
     setUploading(true);
     try {
       const url = await uploadToCloudinary(uploadClient, file, "work-orders", file.name);
+      if (!url) {
+        toast.error(`Upload of ${file.name} didn't return a file link — please try again`);
+        return;
+      }
       onChange?.([...value, { name: file.name, url }]);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : `Couldn't upload ${file.name}`);
@@ -69,6 +82,11 @@ export default function DocumentsUpload({
       <div className="text-[11px] mt-1.5 text-gray-400">
         max {MAX_FILE_MB} MB per file, up to {MAX_DOCUMENT_FILES} files
       </div>
+      {uploading && (
+        <div className="text-[11px] mt-1 text-amber-600 dark:text-amber-400 font-medium">
+          Uploading — please wait before saving or closing this form.
+        </div>
+      )}
       {value.length > 0 && (
         <div className="mt-2 flex flex-col gap-1.5">
           {value.map((d, i) => (

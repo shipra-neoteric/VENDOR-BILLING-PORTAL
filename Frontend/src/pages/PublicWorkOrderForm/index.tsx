@@ -355,6 +355,7 @@ export default function PublicWorkOrderForm() {
   const [scopeItems,  setScopeItems]  = useState<ScopeDraft[]>([newScope()]);
   const [topCatId,    setTopCatId]    = useState<string>("");
   const [documents,   setDocuments]   = useState<WODocument[]>([]);
+  const [docsUploading, setDocsUploading] = useState(false);
   const [warrantyTerms, setWarrantyTerms] = useState<string[]>([]);
 
   useEffect(() => {
@@ -393,6 +394,10 @@ export default function PublicWorkOrderForm() {
 
   async function onSubmit() {
     if (!validate()) return;
+    if (docsUploading) {
+      toast.error("A document is still uploading — wait for it to finish before saving");
+      return;
+    }
     if (scopeItems.some(i => (i.description.trim() || i.subCategoryId) && (!i.plannedStart || !i.plannedEnd))) {
       toast.error("Start Date and End Date are required for every work item");
       return;
@@ -560,7 +565,7 @@ export default function PublicWorkOrderForm() {
 
             <div className="mt-3">
               <span className="block text-xs font-bold text-gray-600 uppercase tracking-wide mb-1.5">Upload Work Order Documents</span>
-              <DocumentsUpload value={documents} onChange={setDocuments} uploadClient={pub} />
+              <DocumentsUpload value={documents} onChange={setDocuments} uploadClient={pub} onUploadingChange={setDocsUploading} />
             </div>
           </div>
 
@@ -620,7 +625,7 @@ export default function PublicWorkOrderForm() {
           {/* ── Submit ── */}
           <div className="flex justify-end gap-3 flex-wrap">
             <Btn outline label="Reset" onClick={reset} />
-            <Btn color="primary" loading={submitting} label="Save Work Order" onClick={onSubmit} />
+            <Btn color="primary" loading={submitting} disabled={docsUploading} label="Save Work Order" onClick={onSubmit} />
           </div>
         </div>
       </div>
