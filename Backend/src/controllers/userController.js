@@ -5,17 +5,24 @@ const { logAudit, diffFields } = require('../utils/auditLog');
 
 const ROLE_HIERARCHY = ['owner', 'gm', 'agm', 'accounts', 'process-coordinator', 'site-dri'];
 
+// Strips everything but letters/digits and lowercases — so "Site DRI",
+// "site_dri", and "site-dri" are all recognized as the same identifier
+// when checking for a collision with a built-in role name below.
+const normalizeRoleKey = (s) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+
 // A role is either one of the 6 built-in ones above, or a genuinely new
-// custom role name — accepted as long as it isn't just a different-case
-// spelling of a built-in role (which could otherwise be confused for one by
-// any future case-insensitive check, e.g. the 'owner'/'site-dri' bypasses
-// elsewhere in the app that are — and must stay — exact-match only).
+// custom role name — accepted as long as it isn't just a differently-cased
+// or differently-punctuated spelling of a built-in role (e.g. "Site DRI" for
+// "site-dri") — otherwise it'd silently create a look-alike role that gets
+// NONE of the real role's special-cased behavior (DRI-dashboard routing,
+// owner bypasses, etc., which all key off the exact built-in string), while
+// looking to an admin like the same role.
 function isValidRole(role) {
   if (typeof role !== 'string') return false;
   const trimmed = role.trim();
   if (!trimmed) return false;
   if (ROLE_HIERARCHY.includes(trimmed)) return true;
-  if (ROLE_HIERARCHY.some((r) => r.toLowerCase() === trimmed.toLowerCase())) return false;
+  if (ROLE_HIERARCHY.some((r) => normalizeRoleKey(r) === normalizeRoleKey(trimmed))) return false;
   return /^[A-Za-z0-9 _-]{2,40}$/.test(trimmed);
 }
 
