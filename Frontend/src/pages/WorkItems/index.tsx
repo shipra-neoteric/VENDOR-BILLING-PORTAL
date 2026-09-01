@@ -2572,24 +2572,12 @@ export default function WorkItems() {
         <Modal title={`Documents — ${docsRecord.workOrderNo ?? ""}`} onClose={() => setDocsRecord(null)}>
           <div className="flex flex-col gap-2">
             {getWorkOrderDocuments(docsRecord).map((d, i) => (
-              d.url ? (
-                <a
-                  key={i} href={d.url} target="_blank" rel="noreferrer" download={d.name}
-                  className="flex items-center gap-2 px-2.5 py-2 bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700/40 rounded-md text-sm text-[#1A1A2E] dark:text-[#F1F5F9]"
-                >
-                  <Link2 className="w-4 h-4 text-gray-400" /> {d.name}
-                </a>
-              ) : (
-                // No url saved for this entry (interrupted upload) — never a
-                // clickable dead link; say so plainly instead.
-                <span
-                  key={i}
-                  className="flex items-center gap-2 px-2.5 py-2 bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700/40 rounded-md text-sm text-gray-400"
-                  title="Upload didn't complete — no file link saved. Remove and re-upload from Edit."
-                >
-                  <Link2 className="w-4 h-4 text-gray-400" /> {d.name} <span className="italic">(upload incomplete, no file)</span>
-                </span>
-              )
+              <a
+                key={i} href={d.url} target="_blank" rel="noreferrer" download={d.name}
+                className="flex items-center gap-2 px-2.5 py-2 bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700/40 rounded-md text-sm text-[#1A1A2E] dark:text-[#F1F5F9]"
+              >
+                <Link2 className="w-4 h-4 text-gray-400" /> {d.name}
+              </a>
             ))}
           </div>
         </Modal>

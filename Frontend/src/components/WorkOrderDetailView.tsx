@@ -521,17 +521,9 @@ export default function WorkOrderDetailView({
               <div className="font-semibold text-[13px] text-gray-700 dark:text-gray-300 mb-1.5">Documents</div>
               <div className="flex flex-col gap-1">
                 {documents.map((d, i) => (
-                  d.url ? (
-                    <a key={i} href={d.url} target="_blank" rel="noreferrer" download={d.name} className="flex items-center gap-1.5 text-sm text-primary hover:underline">
-                      <Link2 className="w-3.5 h-3.5" /> {d.name}
-                    </a>
-                  ) : (
-                    // No url saved for this entry (interrupted upload) — never
-                    // a clickable dead link; say so plainly instead.
-                    <span key={i} className="flex items-center gap-1.5 text-sm text-gray-400" title="Upload didn't complete — no file link saved.">
-                      <Link2 className="w-3.5 h-3.5" /> {d.name} <span className="italic">(upload incomplete, no file)</span>
-                    </span>
-                  )
+                  <a key={i} href={d.url} target="_blank" rel="noreferrer" download={d.name} className="flex items-center gap-1.5 text-sm text-primary hover:underline">
+                    <Link2 className="w-3.5 h-3.5" /> {d.name}
+                  </a>
                 ))}
               </div>
             </>

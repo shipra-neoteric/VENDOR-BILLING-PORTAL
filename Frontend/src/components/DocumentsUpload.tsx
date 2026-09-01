@@ -36,13 +36,6 @@ export default function DocumentsUpload({
     setUploading(true);
     try {
       const url = await uploadToCloudinary(uploadClient, file, "work-orders", file.name);
-      // Cloudinary is expected to always return a real URL on success — this
-      // is just a defensive backstop so a document entry with no url (dead
-      // link, unclickable once saved) can never be added to the list.
-      if (!url) {
-        toast.error(`Upload of ${file.name} didn't return a file link — please try again`);
-        return;
-      }
       onChange?.([...value, { name: file.name, url }]);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : `Couldn't upload ${file.name}`);
@@ -81,21 +74,12 @@ export default function DocumentsUpload({
           {value.map((d, i) => (
             <div key={i} className="flex items-center gap-2 text-[12.5px] bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700 rounded-md px-2.5 py-1.5">
               <FileText className="w-3.5 h-3.5 text-primary shrink-0" />
-              {d.url ? (
-                <a
-                  href={d.url} target="_blank" rel="noreferrer" download={d.name}
-                  className="flex-1 text-gray-700 dark:text-gray-200 overflow-hidden truncate"
-                >
-                  {d.name}
-                </a>
-              ) : (
-                // No url saved for this entry (e.g. an interrupted upload
-                // before this safeguard existed) — never a clickable dead
-                // link; say so plainly instead.
-                <span className="flex-1 text-gray-400 overflow-hidden truncate" title="Upload didn't complete — no file link saved. Remove and re-upload.">
-                  {d.name} — <span className="italic">upload incomplete, no file</span>
-                </span>
-              )}
+              <a
+                href={d.url} target="_blank" rel="noreferrer" download={d.name}
+                className="flex-1 text-gray-700 dark:text-gray-200 overflow-hidden truncate"
+              >
+                {d.name}
+              </a>
               <button type="button" onClick={() => remove(i)} className="text-red-500 hover:text-red-600 shrink-0">
                 <Trash2 className="w-3.5 h-3.5" />
               </button>
