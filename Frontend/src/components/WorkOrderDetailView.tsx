@@ -94,6 +94,7 @@ function toMilestoneDraft(m: NonNullable<WorkOrder["paymentMilestones"]>[number]
     amountMode: m.amountMode ?? "fixed",
     amountPercent: m.amountPercent ?? null,
     gstPercent: m.gstPercent,
+    scopeItemIds: m.scopeItemIds ?? [],
   };
 }
 

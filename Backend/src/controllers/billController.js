@@ -170,6 +170,21 @@ exports.createBill = asyncHandler(async (req, res) => {
     ? workOrder.paymentMilestones.id(req.body.milestoneId)
     : null;
 
+  // A milestone with no scope items linked to it (lineItems here carry no
+  // scopeItemId) has no plannedQty/lastBilledQty to guard against double
+  // billing — findOverbilledLineItem above only checks scope-item-linked
+  // lines. So for that lump-sum case specifically, block raising a second
+  // bill against the same milestone outright (one active bill per milestone).
+  if (milestone && !lineItems.some((li) => li.scopeItemId)) {
+    const alreadyBilled = await RunningBill.exists({
+      workOrderId: workOrder._id, milestoneId: milestone._id,
+      isActive: { $ne: false }, status: { $ne: 'rejected' },
+    });
+    if (alreadyBilled) {
+      return badRequest(res, `"${milestone.stage || milestone.type || 'This milestone'}" has already been billed — a lump-sum milestone can only be billed once.`);
+    }
+  }
+
   const bill = await RunningBill.create({
     ...req.body,
     billNo,

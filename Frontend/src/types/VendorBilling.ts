@@ -213,6 +213,9 @@ export interface PaymentMilestone {
   discount?: number;
   gstPercent: number;
   payable: number;
+  // Which of the Work Order's own scope items this milestone's payment
+  // covers — reference only, read back by New Bill's milestone picker.
+  scopeItemIds?: string[];
 }
 
 // A security deposit deliberately baked into a group of scope items' own

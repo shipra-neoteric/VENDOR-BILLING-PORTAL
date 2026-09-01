@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const { validationResult } = require('express-validator');
 const WorkOrder    = require('../models/WorkOrder');
 const Contractor   = require('../models/Contractor');
@@ -50,6 +51,40 @@ function diffScopeItems(before, after) {
 // recomputeParentFromSubItems / applyVarianceGate / sumActiveQty now live in
 // ../utils/progressHelpers — shared with billController.js/billRequestController.js,
 // which need the same recompute when auto-invalidating entries on bill rejection.
+
+const OBJECT_ID_RE = /^[0-9a-fA-F]{24}$/;
+
+// A brand-new scope item (just typed into the form, never saved before) only
+// has the frontend's own temporary draft id (crypto.randomUUID()) at submit
+// time — not a real Mongo ObjectId, since that's only assigned once this
+// document is actually created. A Payment Milestone's own `scopeItemIds`
+// field is a real ObjectId though (see paymentMilestoneSchema), so a
+// milestone covering a brand-new scope item would otherwise send that
+// temporary id straight through and fail Mongoose's cast.
+//
+// This pre-assigns a real ObjectId to every scope item whose incoming id
+// isn't already one (mutating `scopeItems` in place so WorkOrder.create/
+// findByIdAndUpdate persists that exact _id), and rewrites every milestone's
+// scopeItemIds from the old temporary id to that new real one. An id that's
+// already a valid ObjectId (an existing, previously-saved scope item) is
+// left untouched — it already matches what's in the database.
+function resolveScopeItemIdsForMilestones(scopeItems, paymentMilestones) {
+  const idMap = new Map();
+  for (const si of scopeItems || []) {
+    if (si && si.id && !OBJECT_ID_RE.test(String(si.id))) {
+      const newId = new mongoose.Types.ObjectId();
+      idMap.set(String(si.id), newId);
+      si._id = newId;
+    }
+  }
+  for (const pm of paymentMilestones || []) {
+    if (Array.isArray(pm.scopeItemIds)) {
+      pm.scopeItemIds = pm.scopeItemIds
+        .map((id) => (idMap.has(String(id)) ? idMap.get(String(id)) : (OBJECT_ID_RE.test(String(id)) ? id : null)))
+        .filter(Boolean);
+    }
+  }
+}
 
 // Normalized signatures for the two things that actually define what an
 // already-approved work order was approved on — Scope of Work and Payment
@@ -156,6 +191,8 @@ exports.createWorkOrder = asyncHandler(async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
+  resolveScopeItemIdsForMilestones(req.body.scopeItems, req.body.paymentMilestones);
+
   if (milestonesExceedContract(req.body)) {
     return badRequest(res, "Payment milestones total exceeds the work order's contract value (incl. GST)");
   }
@@ -244,6 +281,10 @@ exports.createWorkOrder = asyncHandler(async (req, res) => {
 
 exports.updateWorkOrder = asyncHandler(async (req, res) => {
   const { workOrderNo: _wo, ...updateData } = req.body;
+
+  if (updateData.scopeItems) {
+    resolveScopeItemIdsForMilestones(updateData.scopeItems, updateData.paymentMilestones);
+  }
 
   if (updateData.paymentMilestones && milestonesExceedContract(updateData)) {
     return badRequest(res, "Payment milestones total exceeds the work order's contract value (incl. GST)");

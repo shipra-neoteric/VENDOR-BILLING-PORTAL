@@ -63,7 +63,9 @@ interface ScopeItemRow {
 }
 interface WorkOrderRow {
   _id: string;
+  workOrderNo?: string;
   projectId?: string | { _id: string; name?: string };
+  projectName?: string;
   assignedDRI?: ({ _id: string; name: string; email?: string } | string)[];
   scopeItems: ScopeItemRow[];
 }

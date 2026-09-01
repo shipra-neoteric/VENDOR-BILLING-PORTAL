@@ -55,7 +55,7 @@ interface ProjectOpt { id: string; name: string; code: string; parentId?: string
 interface CompanyOpt { id: string; name: string; shortCode: string; isActive?: boolean; }
 interface SubItemOpt { id: string; description: string; unit: string; plannedQty: number; lastBilledQty: number; rate?: number; }
 interface ScopeItemOpt { id: string; description: string; unit: string; plannedQty: number; lastBilledQty: number; rate?: number; subItems?: SubItemOpt[]; }
-interface PaymentMilestoneOpt { _id: string; stage: string; type?: string; amount: number; date?: string; }
+interface PaymentMilestoneOpt { _id: string; stage: string; type?: string; amount: number; date?: string; scopeItemIds?: string[]; }
 interface WorkOrderOpt { id: string; workOrderNo: string; projectId: string; projectName: string; vendorCode: string; vendorName: string; contractType?: string; scopeItems: ScopeItemOpt[]; paymentMilestones?: PaymentMilestoneOpt[]; }
 interface AdvanceSlipOpt { _id: string; slipNo: string; amount: number; amountRecovered: number; balance: number; date?: string; reference?: string; }
 
@@ -78,6 +78,24 @@ function remainingPercent(li: LineItem): number | null {
   if (!li.scopeItemId || !(li.plannedQty > 0)) return null;
   const remaining = li.plannedQty - (li.lastBilledQty || 0);
   return Math.max(0, Math.round((remaining / li.plannedQty) * 10000) / 100);
+}
+
+// Remaining raw quantity still billable for a scope-item/particular-linked
+// row — same idea as remainingPercent above, but in the item's own unit
+// (e.g. "1 sq.ft remaining") for the Quantity column, which — unlike "% of
+// Work" — has no cap on direct entry, so this is shown as a warning instead
+// of silently clamping what the user types.
+function remainingQty(li: LineItem): number | null {
+  if (!li.scopeItemId || !(li.plannedQty > 0)) return null;
+  return Math.round((li.plannedQty - (li.lastBilledQty || 0)) * 100) / 100;
+}
+
+// Mirrors the backend's own hard-reject (findOverbilledLineItem) — flags a
+// row here too so the drawer can warn/block *before* hitting Save instead of
+// only finding out from the server's rejection after the fact.
+function isOverbilled(li: LineItem): boolean {
+  const remaining = remainingQty(li);
+  return remaining != null && Number(li.billedQty) > remaining + 0.001;
 }
 
 const GST_SLABS = [
@@ -131,9 +149,16 @@ export default function NewBillDrawer({
   const [woExistingBills, setWoExistingBills] = useState<ExistingBill[]>([]);
   // Which of the selected Work Order's own Payment Milestones (defined at WO
   // creation, see PaymentMilestonesBuilder) this bill is raised against —
-  // purely a reference tag carried onto the bill, doesn't affect amount/GST
-  // calculation.
+  // saved as a tag on the bill, AND auto-fills a line item for its amount
+  // below so it actually reflects in the bill total (see handleMilestoneSelect).
   const [milestoneId, setMilestoneId] = useState<string>("");
+  // Which line item rows (by key) were auto-added for the currently-selected
+  // milestone — either the actual scope-item-linked rows it covers (so they
+  // get genuinely marked billed on submit), or a single freeform lump-sum
+  // row when the milestone has no scope items assigned to it. Tracked so
+  // re-picking a different milestone replaces these rows instead of piling
+  // up duplicates, and picking "— None —" removes them cleanly.
+  const [milestoneRowKeys, setMilestoneRowKeys] = useState<number[]>([]);
   // The WO scope items were actually imported from — kept separate from
   // selectedWOId (the "Bill Relationship" picker) so changing that picker
   // afterward can't silently disconnect the imported qty/variance checks
@@ -252,12 +277,17 @@ export default function NewBillDrawer({
   const activeVendorName = partyType === "consultant" ? (selectedConsultant?.firmName || "") : (selectedPayee?.companyName || "");
 
   useEffect(() => {
+    // Loads as soon as a Project is picked — doesn't wait for a
+    // Contractor/Consultant to also be selected, so the Payment Milestone
+    // and "import scope items" boxes below can appear right away. Once a
+    // vendor IS selected, the list narrows to just that vendor's own WOs
+    // (matching before); until then it shows every WO on the project.
+    if (!projectId) { setWoList([]); return; }
     const code = partyType === "consultant" ? selectedConsultant?.consultantCode : selectedContractor?.vendorCode;
-    if (!projectId || !code) { setWoList([]); return; }
     apiClient.get<{ workOrders: Record<string, unknown>[] }>(`/work-orders?projectId=${projectId}`)
       .then((r) => {
         const all = (r.data.workOrders || []).map(normalizeWO);
-        setWoList(all.filter((wo) => wo.vendorCode === code && (wo.contractType === "professional-services") === (partyType === "consultant")));
+        setWoList(all.filter((wo) => (!code || wo.vendorCode === code) && (wo.contractType === "professional-services") === (partyType === "consultant")));
       })
       .catch(() => setWoList([]));
   }, [projectId, partyType, selectedContractor?.vendorCode, selectedConsultant?.consultantCode]);
@@ -347,7 +377,27 @@ export default function NewBillDrawer({
     toast.success(`${imported.length} item${imported.length === 1 ? "" : "s"} imported — enter % complete or quantity`);
   }
 
+  // Returns false only when the user was asked and declined — callers must
+  // bail out in that case instead of proceeding to import/replace rows on
+  // top of the ones that were supposed to be cleared.
+  function clearMilestoneRows(): boolean {
+    if (milestoneRowKeys.length === 0) return true;
+    const hasEnteredData = lineItems.some(
+      (li) => milestoneRowKeys.includes(li.key) && (Number(li.billedQty) > 0 || Number(li.percentComplete) > 0)
+    );
+    if (hasEnteredData && !window.confirm("Switching this will discard the quantity/% you already entered for the current milestone's items. Continue?")) {
+      return false;
+    }
+    setLineItems((prev) => prev.filter((li) => !milestoneRowKeys.includes(li.key)));
+    setMilestoneRowKeys([]);
+    return true;
+  }
+
   async function handleWOSelectForLinking(woId: string) {
+    // Changing which WO this bill relates to invalidates whatever milestone
+    // (and its auto-filled rows) was picked for the previous one — bail out
+    // without switching WOs if the user declines to discard entered data.
+    if (!clearMilestoneRows()) return;
     setSelectedWOId(woId);
     setMilestoneId("");
     if (!woId) { setWoExistingBills([]); return; }
@@ -356,6 +406,80 @@ export default function NewBillDrawer({
       const existing = (res.data.bills || []).map(b => normalizeId(b) as unknown as ExistingBill);
       setWoExistingBills(existing.filter(b => b.status !== "rejected"));
     } catch { setWoExistingBills([]); }
+  }
+
+  // Picking a milestone now actually reflects in the bill:
+  // - If the milestone has specific Work Items assigned to it (set at WO
+  //   creation, see PaymentMilestonesBuilder's "Covers Work Item(s)"), those
+  //   are imported as real scope-item-linked rows (same as "import from WO"),
+  //   so completing/billing them here genuinely marks those items billed on
+  //   submit — not just a cosmetic total.
+  // - Otherwise (older milestones with no items assigned) it falls back to a
+  //   single freeform lump-sum row for the milestone's own amount, same as
+  //   before — purely reflects in the total, doesn't mark anything billed.
+  // Re-picking a different milestone replaces whichever rows the previous
+  // one added instead of piling up duplicates; "— None —" removes them.
+  function handleMilestoneSelect(id: string) {
+    if (!clearMilestoneRows()) return;
+    setMilestoneId(id);
+    if (!id) return;
+    const wo = woList.find((w) => w.id === selectedWOId);
+    const milestone = wo?.paymentMilestones?.find((m) => m._id === id);
+    if (!wo || !milestone) return;
+
+    const coveredIds = milestone.scopeItemIds ?? [];
+    const coveredItems = wo.scopeItems.filter((si) => coveredIds.includes(si.id));
+
+    if (coveredItems.length > 0) {
+      const imported: LineItem[] = coveredItems.flatMap((si) => {
+        if (si.subItems && si.subItems.length > 0) {
+          return si.subItems.map((sub) => ({
+            key: nextKey(),
+            scopeItemId: si.id,
+            subItemId: sub.id,
+            groupLabel: si.description,
+            description: sub.description,
+            unit: sub.unit || "",
+            plannedQty: sub.plannedQty || 0,
+            lastBilledQty: sub.lastBilledQty || 0,
+            percentComplete: 0,
+            billedQty: 0,
+            rate: sub.rate || 0,
+            amount: 0,
+          }));
+        }
+        return [{
+          key: nextKey(),
+          scopeItemId: si.id,
+          description: si.description,
+          unit: si.unit || "",
+          plannedQty: si.plannedQty || 0,
+          lastBilledQty: si.lastBilledQty || 0,
+          percentComplete: 0,
+          billedQty: 0,
+          rate: si.rate || 0,
+          amount: 0,
+        }];
+      });
+      setMilestoneRowKeys(imported.map((li) => li.key));
+      setLineItems((prev) => [...prev.filter((li) => li.description.trim()), ...imported]);
+      toast.success(`${imported.length} work item${imported.length === 1 ? "" : "s"} imported from this milestone — enter % complete or quantity`);
+      return;
+    }
+
+    // No items assigned to this milestone — fall back to a plain lump-sum row.
+    const label = milestone.stage || milestone.type || "Milestone Payment";
+    const amount = Math.round((milestone.amount || 0) * 100) / 100;
+    const fill = { description: label, billedQty: 1, rate: amount, amount };
+    const firstRow = lineItems[0];
+    if (lineItems.length === 1 && firstRow && !firstRow.description.trim() && !firstRow.billedQty) {
+      setMilestoneRowKeys([firstRow.key]);
+      setLineItems([{ ...firstRow, ...fill }]);
+      return;
+    }
+    const row = { ...blankRow(), ...fill };
+    setMilestoneRowKeys([row.key]);
+    setLineItems((prev) => [...prev, row]);
   }
 
   const totalLineAmount = useMemo(
@@ -375,6 +499,14 @@ export default function NewBillDrawer({
     const validItems = lineItems.filter((li) => li.description.trim() && li.billedQty > 0);
     if (validItems.length === 0) {
       toast.error("Add at least one work item with a description and quantity > 0");
+      return;
+    }
+    // Same check the backend would hard-reject with (findOverbilledLineItem)
+    // — caught here first so the user sees exactly which item and why,
+    // instead of submitting and finding out from a server error afterward.
+    const overbilledItem = validItems.find(isOverbilled);
+    if (overbilledItem) {
+      toast.error(`"${overbilledItem.description}" — only ${remainingQty(overbilledItem)} ${overbilledItem.unit || ""} remaining to bill. Fix the highlighted quantity before saving.`, { duration: 6000 });
       return;
     }
     formErrors.clearAll();
@@ -635,24 +767,6 @@ export default function NewBillDrawer({
                 options={RELATIONSHIP_OPTIONS}
               />
             </div>
-            {(() => {
-              const milestones = woList.find((wo) => wo.id === selectedWOId)?.paymentMilestones ?? [];
-              if (!selectedWOId || milestones.length === 0) return null;
-              return (
-                <div className="mt-3">
-                  <SField
-                    label="Payment Milestone (optional)"
-                    placeholder="Select milestone…"
-                    value={milestoneId}
-                    onChange={setMilestoneId}
-                    options={[
-                      { value: "", label: "— None —" },
-                      ...milestones.map((m) => ({ value: m._id, label: `${m.stage || m.type || "Milestone"} — ${fmt(m.amount)}` })),
-                    ]}
-                  />
-                </div>
-              );
-            })()}
             {woExistingBills.length > 0 && (
               <div className="mt-2.5">
                 <div className="text-xs text-gray-500 dark:text-gray-400 mb-1.5">
@@ -696,10 +810,36 @@ export default function NewBillDrawer({
             )}
           </div>
 
-          {/* Work order import (optional) — hidden once a Work Order is
-              already chosen above (Bill Relationship's own picker), since
-              re-picking one here would just be the same choice twice. */}
-          {woList.length > 0 && !selectedWOId && (
+          {/* Payment Milestone — its own standalone box (same visual
+              pattern as the WO-import box below), independent of the Bill
+              Relationship box above. Needs a WO selected there first
+              (milestones belong to one), so it's disabled with a hint until
+              then, rather than hidden entirely. */}
+          {woList.length > 0 && (() => {
+            const milestones = woList.find((wo) => wo.id === selectedWOId)?.paymentMilestones ?? [];
+            return (
+              <div className="rounded-lg border border-purple-200 dark:border-purple-500/30 bg-purple-50 dark:bg-purple-500/10 p-3 mb-3">
+                <div className="font-semibold text-xs text-purple-700 dark:text-purple-300 mb-2">
+                  Payment Milestone (optional)
+                </div>
+                <SField
+                  placeholder={!selectedWOId ? "Select a Work Order above first…" : milestones.length === 0 ? "This work order has no payment milestones" : "Select milestone…"}
+                  value={milestoneId}
+                  onChange={handleMilestoneSelect}
+                  disabled={!selectedWOId || milestones.length === 0}
+                  options={[
+                    { value: "", label: "— None —" },
+                    ...milestones.map((m) => ({ value: m._id, label: `${m.stage || m.type || "Milestone"} — ${fmt(m.amount)}` })),
+                  ]}
+                />
+              </div>
+            );
+          })()}
+
+          {/* Work order import (optional) — always shown alongside the
+              Bill Relationship picker/Payment Milestone above; both are
+              independent optional actions, neither one hides the other. */}
+          {woList.length > 0 && (
             <div className="rounded-lg border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 p-3">
               <div className="font-semibold text-xs text-amber-700 dark:text-amber-300 mb-2">
                 Work orders found — import scope items (optional)
@@ -822,8 +962,13 @@ export default function NewBillDrawer({
                             value={item.billedQty || ""}
                             placeholder="0"
                             onChange={(e) => updateLineItem(item.key, "billedQty", Number(e.target.value) || 0)}
-                            className={`${cellInputClass} text-right`}
+                            className={`${cellInputClass} text-right ${isOverbilled(item) ? "ring-1 ring-red-500 rounded bg-red-50 dark:bg-red-500/10" : ""}`}
                           />
+                          {isOverbilled(item) && (
+                            <div className="text-[10px] text-red-600 dark:text-red-400 text-right font-semibold">
+                              only {remainingQty(item)} {item.unit || ""} remaining — will be rejected
+                            </div>
+                          )}
                         </Td>
                         <Td>
                           <input

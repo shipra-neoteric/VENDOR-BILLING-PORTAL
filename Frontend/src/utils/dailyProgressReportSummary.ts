@@ -37,7 +37,9 @@ interface ScopeItemLike {
   subItems?: SubItemLike[];
 }
 interface WorkOrderLike {
+  workOrderNo?: string;
   projectId?: string | { _id: string; name?: string };
+  projectName?: string;
   assignedDRI?: ({ _id: string; name: string; email?: string } | string)[];
   scopeItems: ScopeItemLike[];
 }
@@ -81,7 +83,7 @@ export interface DailyProgressReportSummary {
     vendorBreakdown: { vendorCode: string; vendorName: string; workType: string; labourCount: number }[];
   }[];
   workTypeSummary: { workType: string; entries: number; pct: number }[];
-  workProgress: { description: string; unit: string; planned: number; completed: number; pct: number }[];
+  workProgress: { description: string; projectName: string; workOrderNo: string; unit: string; planned: number; completed: number; pct: number }[];
   drawingRequests: { ticketNo: string; description: string; projectName: string; driName: string; stageLabel: string; requestedOn: string; daysSince: number }[];
   actionItems: { level: "critical" | "warning" | "good"; text: string }[];
 }
@@ -193,7 +195,11 @@ export function buildDailyProgressReportSummary(args: {
     return true;
   });
 
-  const byDesc = new Map<string, { description: string; unit: string; planned: number; completed: number }>();
+  // Keyed by work order + description (not description alone) — two
+  // different work orders can legitimately have a scope item with the same
+  // name, and merging those would misreport both quantities under one row
+  // with no way to tell which WO/project it actually belongs to.
+  const byDesc = new Map<string, { description: string; projectName: string; workOrderNo: string; unit: string; planned: number; completed: number }>();
   for (const wo of filteredWO) {
     const isDriAssigned = Boolean(
       !filterDriName ||
@@ -203,11 +209,14 @@ export function buildDailyProgressReportSummary(args: {
           return typeof d === "object" ? d.name === filterDriName : d === filterDriName;
         }))
     );
+    const woProjectName = (typeof wo.projectId === "object" ? wo.projectId?.name : undefined) || wo.projectName || "—";
+    const woNo = wo.workOrderNo || "—";
 
     for (const si of wo.scopeItems || []) {
-      const key = (si.description || "").trim().toLowerCase();
-      if (!key) continue;
-      if (!byDesc.has(key)) byDesc.set(key, { description: si.description, unit: si.unit || "", planned: 0, completed: 0 });
+      const descKey = (si.description || "").trim().toLowerCase();
+      if (!descKey) continue;
+      const key = `${woNo}::${descKey}`;
+      if (!byDesc.has(key)) byDesc.set(key, { description: si.description, projectName: woProjectName, workOrderNo: woNo, unit: si.unit || "", planned: 0, completed: 0 });
       const row = byDesc.get(key)!;
       row.planned += si.plannedQty || 0;
 

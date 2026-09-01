@@ -106,6 +106,11 @@ const paymentMilestoneSchema = new mongoose.Schema(
     gstPercent: { type: Number, default: 18 },
     gstType:    { type: String, enum: ['inclusive', 'exclusive'], default: 'exclusive' },
     payable:    { type: Number, default: 0 },
+    // Which of this Work Order's own scope items this milestone's payment
+    // actually covers — lets New Bill auto-import exactly those items
+    // (scope-item-linked, so they get genuinely marked billed) when this
+    // milestone is picked, instead of just a freeform lump-sum row.
+    scopeItemIds: [{ type: mongoose.Schema.Types.ObjectId }],
   },
   { _id: true }
 );

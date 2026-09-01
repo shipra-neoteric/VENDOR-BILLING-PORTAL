@@ -4,6 +4,7 @@ import Btn from "../ui/Btn";
 import Field from "../ui/Field";
 import SField from "../ui/SField";
 import Segmented from "../ui/Segmented";
+import MultiSelect from "../ui/MultiSelect";
 import { DatePicker } from "../ui/DatePicker";
 import GstSelect from "./GstSelect";
 
@@ -21,7 +22,14 @@ export interface MilestoneDraft {
   amountMode: "fixed" | "percent";
   amountPercent: number | null;
   gstPercent: number;
+  // Which of this Work Order's own scope items this milestone's payment
+  // actually covers — lets New Bill auto-import exactly those items
+  // (scope-item-linked, so they get genuinely marked billed) when this
+  // milestone is picked there, instead of just a freeform lump-sum row.
+  scopeItemIds: string[];
 }
+
+interface ScopeItemLike { id: string; description: string; }
 
 const MODE_OPTIONS = [
   { label: "Bank Transfer", value: "Bank Transfer" },
@@ -37,7 +45,7 @@ export function newMilestone(): MilestoneDraft {
     id: crypto.randomUUID(),
     stage: "", date: "", type: "", mode: "Bank Transfer",
     amount: null, amountMode: "fixed", amountPercent: null,
-    gstPercent: 18,
+    gstPercent: 18, scopeItemIds: [],
   };
 }
 
@@ -58,7 +66,7 @@ const fmt = (n: number) => "₹" + (n).toLocaleString("en-IN", { minimumFraction
 
 export default function PaymentMilestonesBuilder({
   items, onChange, contractValue, contractValueInclGst,
-  discount = null, onDiscountChange,
+  discount = null, onDiscountChange, scopeItems = [],
 }: {
   items: MilestoneDraft[];
   onChange: (items: MilestoneDraft[]) => void;
@@ -72,9 +80,18 @@ export default function PaymentMilestonesBuilder({
   // shown) once payment milestones exist, not a per-milestone figure.
   discount?: number | null;
   onDiscountChange?: (v: number | null) => void;
+  // This Work Order's own scope items — lets each milestone say which of them
+  // its payment covers (purely a reference tag here, doesn't affect this
+  // builder's own amount/GST math; New Bill reads it back when the milestone
+  // is picked there).
+  scopeItems?: ScopeItemLike[];
 }) {
   const upd = (id: string, patch: Partial<MilestoneDraft>) =>
     onChange(items.map(m => m.id === id ? { ...m, ...patch } : m));
+
+  const scopeItemOptions = scopeItems
+    .filter(si => si.description.trim())
+    .map(si => ({ label: si.description, value: si.id }));
 
   // Keep percent-based milestones' resolved rupee amount in sync if the
   // contract value changes later (e.g. scope items edited after a % was set).
@@ -171,6 +188,20 @@ export default function PaymentMilestonesBuilder({
               <Trash2 className="w-3.5 h-3.5" />
             </button>
           </div>
+          {scopeItemOptions.length > 0 && (
+            <div className="mt-2.5">
+              <div className="text-[11px] text-gray-400 mb-1">Covers Work Item(s) (optional)</div>
+              <MultiSelect
+                placeholder="Select the work item(s) this milestone's payment covers"
+                values={m.scopeItemIds}
+                options={scopeItemOptions}
+                onChange={v => upd(m.id, { scopeItemIds: v })}
+              />
+              <div className="text-[10.5px] text-gray-400 mt-1">
+                Reference only — used later to auto-fill the matching Work Items when this milestone is billed.
+              </div>
+            </div>
+          )}
           <div className="flex items-center justify-between mt-2">
             <div className="text-xs text-gray-500 dark:text-gray-400">
               Payable: <strong className="font-mono text-primary">{fmt(calcPayable(m))}</strong>

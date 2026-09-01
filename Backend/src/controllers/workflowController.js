@@ -1,6 +1,7 @@
 const WorkflowTemplate = require('../models/WorkflowTemplate');
 const WorkflowInstance  = require('../models/WorkflowInstance');
 const MISSnapshot       = require('../models/MISSnapshot');
+const WorkOrder         = require('../models/WorkOrder');
 const asyncHandler = require('../utils/asyncHandler');
 const { success, created, notFound, badRequest, conflict, forbidden } = require('../utils/responseFormatter');
 const { completeStageById, isStageBreached, captureDailySnapshotIfNeeded, overdueMinutesFor } = require('../utils/slaEngine');
@@ -153,6 +154,30 @@ exports.completeStage = asyncHandler(async (req, res) => {
     description: `Completed stage "${stage.name}" on ${result.instance.entityLabel || result.instance._id}`,
     entityType: 'WorkflowInstance', entityId: result.instance._id, entityLabel: result.instance.entityLabel || '',
   });
+
+  // This generic "sign-off chain" is a second, independent approval track from
+  // the Work Order's own draft->pending-checker->pending-approver->pending-final
+  // ->approved chain (workOrderController's submit/checker/approver/finalApprove).
+  // Completing it here used to leave approvalStatus stuck on 'draft' even though
+  // this chain showed "COMPLETED" — billing (which only checks approvalStatus)
+  // would then wrongly reject the work order as unapproved. Sync it here so the
+  // two tracks can't drift apart.
+  if (result.instance.entityType === 'WorkOrder' && result.instance.status === 'completed') {
+    const workOrder = await WorkOrder.findById(result.instance.entityId);
+    if (workOrder && workOrder.approvalStatus !== 'approved') {
+      workOrder.approvalStatus = 'approved';
+      workOrder.finalApprovedBy = req.user._id;
+      workOrder.finalApprovedAt = new Date();
+      workOrder.isLocked = true;
+      workOrder.lockedBy = req.user._id;
+      workOrder.lockedAt = new Date();
+      workOrder.approvalHistory.push({
+        stage: 'final', action: 'approved', by: req.user._id, byName: req.user.name, byRole: req.user.role,
+        remarks: 'Auto-synced: completed via the sign-off chain workflow',
+      });
+      await workOrder.save();
+    }
+  }
 
   success(res, { instance: decorateInstance(result.instance) }, 'Stage marked complete');
 });
