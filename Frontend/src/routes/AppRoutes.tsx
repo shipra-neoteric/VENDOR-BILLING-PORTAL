@@ -122,6 +122,7 @@ function AdminRoutes() {
             <Route path="/billing"          element={<Billing />} />
             <Route path="/procurement-tracker" element={<ProcurementTracker />} />
             <Route path="/site-progress"    element={<SiteProgress />} />
+            <Route path="/bill-requests"    element={<BillRequests />} />
             <Route path="/advance-payments" element={<AdvancePayments />} />
             <Route path="/ledger"           element={<Ledger />} />
             <Route path="/users"            element={<UserManagement />} />

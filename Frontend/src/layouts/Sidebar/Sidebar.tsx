@@ -6,7 +6,7 @@ import {
   FileText, LineChart, Wallet,
   BookOpen, UserPlus, Monitor,
   Share2, Settings, Clock, History,
-  FileSearch, CalendarClock, CreditCard,
+  FileSearch, CalendarClock, CreditCard, CheckSquare,
   Workflow, GitCompare, Ruler, Network, PenLine, Database,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
@@ -63,6 +63,7 @@ const ADMIN_GROUPS: NavGroup[] = [
     label: "Billing",
     items: [
       { name: "Site Progress",      path: "/site-progress",    icon: <FileSearch className="w-4 h-4" />,   moduleId: "bill-review" },
+      { name: "Bill Approval",      path: "/bill-requests",    icon: <CheckSquare className="w-4 h-4" />,  moduleId: "bill-review" },
       { name: "Billing",            path: "/billing",          icon: <CreditCard className="w-4 h-4" />,   moduleId: "billing" },
       { name: "Accounts Payment",   path: "/accounts-payment", icon: <Wallet className="w-4 h-4" />,       moduleId: "accounts-payment" },
       { name: "Procurement Tracker", path: "/procurement-tracker", icon: <Workflow className="w-4 h-4" />, moduleId: "procurement-tracker" },

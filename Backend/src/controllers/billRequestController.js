@@ -47,8 +47,8 @@ exports.listBillRequests = asyncHandler(async (req, res) => {
   const requests = await BillRequest.find(filter)
     .populate('requestedBy', 'name email')
     .populate('processedBy', 'name')
-    .populate('agmApprovedBy', 'name')
-    .populate('approvalHistory.by', 'name')
+    .populate('agmApprovedBy', 'name role')
+    .populate('approvalHistory.by', 'name role')
     .populate({
       path: 'billId',
       select: 'billNo status amount paidAmount retentionPercent retentionAmount advanceRecovery gstPercent tdsPercent tdsAmount paymentDate paymentMode paymentUTR paymentBank paymentReleasedBy verificationBy verificationAt l1ApprovedBy l1ApprovedAt l2ApprovedBy l2ApprovedAt tmsSentAt tmsCallbackReceivedAt agmApprovedBy agmApprovedAt lineItems',
@@ -282,7 +282,7 @@ exports.agmApprove = asyncHandler(async (req, res) => {
   br.agmApprovedBy   = req.user._id;
   br.agmApprovedAt   = new Date();
   br.status          = 'pending-gm';
-  br.approvalHistory.push({ stage: 'agm', action: 'approved', by: req.user._id, remarks: req.body.remarks || '' });
+  br.approvalHistory.push({ stage: 'agm', action: 'approved', by: req.user._id, byName: req.user.name, byRole: req.user.role, remarks: req.body.remarks || '' });
   await br.save();
 
   emitEvent('BILL_REQUEST_AGM_APPROVED', {
@@ -432,7 +432,7 @@ exports.gmApprove = asyncHandler(async (req, res) => {
   br.billId      = runningBill._id;
   br.processedBy = req.user._id;
   br.processedAt = new Date();
-  br.approvalHistory.push({ stage: 'gm', action: 'approved', by: req.user._id, remarks: req.body.remarks || '' });
+  br.approvalHistory.push({ stage: 'gm', action: 'approved', by: req.user._id, byName: req.user.name, byRole: req.user.role, remarks: req.body.remarks || '' });
   await br.save();
 
   // Apply AGM's advance-slip recoveries now that the bill actually exists —
@@ -513,7 +513,7 @@ exports.rejectBillRequest = asyncHandler(async (req, res) => {
   br.rejectReason = rejectReason;
   br.processedBy  = req.user._id;
   br.processedAt  = new Date();
-  br.approvalHistory.push({ stage: rejectedStage, action: 'rejected', by: req.user._id, remarks: rejectReason });
+  br.approvalHistory.push({ stage: rejectedStage, action: 'rejected', by: req.user._id, byName: req.user.name, byRole: req.user.role, remarks: rejectReason });
   await br.save();
 
   emitEvent('BILL_REQUEST_REJECTED', {

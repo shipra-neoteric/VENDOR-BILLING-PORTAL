@@ -175,6 +175,15 @@ const workOrderSchema = new mongoose.Schema(
       type: String,
       default: '',
     },
+    // Which internal team this work order belongs to — a fixed short list
+    // plus an escape hatch (customDepartment) for a team not on that list.
+    department: {
+      type: String,
+      enum: ['', 'civil', 'marketing', 'planning', 'maintenance', 'custom'],
+      default: '',
+    },
+    // Only meaningful when department === 'custom' — the typed-in team name.
+    customDepartment: { type: String, default: '' },
     description:   { type: String, default: '' },
     scopeOfWork:   { type: String },
     totalTenure:   { type: String, default: '' },

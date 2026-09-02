@@ -87,6 +87,13 @@ const billRequestSchema = new Schema(
       stage:   { type: String, enum: ['agm', 'gm'], required: true },
       action:  { type: String, enum: ['approved', 'rejected'], required: true },
       by:      { type: Schema.Types.ObjectId, ref: 'User' },
+      // Snapshotted from the actual approver at the moment they acted (same
+      // pattern as WorkOrder.approvalHistory) — the real name and whatever
+      // role/custom-role they held then, not a hardcoded "AGM"/"GM" label.
+      // A user's role can change or their account can be deactivated later;
+      // this keeps the history entry accurate to what actually happened.
+      byName:  { type: String, default: '' },
+      byRole:  { type: String, default: '' },
       at:      { type: Date, default: Date.now },
       remarks: { type: String, default: '' },
       _id: false,
