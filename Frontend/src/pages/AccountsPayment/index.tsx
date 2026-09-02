@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import type { ReactNode } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
   CheckCircle2, XCircle, IndianRupee, AlertCircle, FilePlus,
@@ -548,6 +548,7 @@ function PaidPanel({ bill, isOwner, onUpdated }: { bill: Bill; isOwner: boolean;
 export default function AccountsPayment() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const canVerify = hasPerm(user, "verify");
   const canL1Agm = hasPerm(user, "l1-agm-approve");
   const canL2Director = hasPerm(user, "l2-director-approve");
@@ -644,6 +645,18 @@ export default function AccountsPayment() {
   useEffect(() => {
     loadBills(showArchived);
   }, [loadBills, showArchived]);
+
+  // Deep link from Slack's "View & Decide" button (?bill=<id>) — opens the
+  // same drawer a normal click would, then drops the param so closing/reopening
+  // behaves normally.
+  useEffect(() => {
+    const billId = searchParams.get("bill");
+    if (!billId || loading) return;
+    const bill = bills.find((b) => b.id === billId);
+    if (bill) openDrawer(bill);
+    setSearchParams((prev) => { prev.delete("bill"); return prev; }, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, bills, loading]);
 
   useEffect(() => {
     apiClient.get<{ projects: Record<string, unknown>[] }>("/projects")

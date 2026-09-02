@@ -36,6 +36,10 @@ app.use(cors({
   credentials: true,
 }));
 app.use(compression());
+// Slack signs the raw request body, so its route needs the raw bytes captured
+// (via `verify`) before the global express.json() below would otherwise
+// consume the stream — must be mounted first, with its own parser.
+app.use('/api/slack', express.urlencoded({ extended: true, verify: (req, _res, buf) => { req.rawBody = buf; } }), require('./routes/slack'));
 app.use(express.json({ limit: '25mb' }));
 app.use(morgan('dev'));
 

@@ -36,6 +36,7 @@ interface AppUser {
   name: string;
   email: string;
   mobile?: string;
+  slackUserId?: string;
   role: UserRole;
   isActive: boolean;
   createdAt: string;
@@ -278,6 +279,7 @@ export default function UserManagement() {
   const [nameField, setNameField]     = useState("");
   const [emailField, setEmailField]   = useState("");
   const [mobileField, setMobileField] = useState("");
+  const [slackUserIdField, setSlackUserIdField] = useState("");
   const [passwordField, setPasswordField] = useState("");
   const [roleField, setRoleField]     = useState<UserRole>("site-dri");
   // Drives the role picker's "type a new role name" input — shown only while
@@ -356,7 +358,7 @@ export default function UserManagement() {
   function openCreate() {
     setEditUser(null);
     formErrors.clearAll();
-    setNameField(""); setEmailField(""); setMobileField(""); setPasswordField("");
+    setNameField(""); setEmailField(""); setMobileField(""); setSlackUserIdField(""); setPasswordField("");
     setRoleField("site-dri"); setIsActiveField(true);
     setIsCustomRole(false); setCustomRoleInput("");
     setPerms({});
@@ -366,7 +368,7 @@ export default function UserManagement() {
   function openEdit(u: AppUser) {
     setEditUser(u);
     formErrors.clearAll();
-    setNameField(u.name); setEmailField(u.email); setMobileField(u.mobile || "");
+    setNameField(u.name); setEmailField(u.email); setMobileField(u.mobile || ""); setSlackUserIdField(u.slackUserId || "");
     setPasswordField(""); setRoleField(u.role); setIsActiveField(u.isActive);
     const existingIsCustom = !isKnownRole(u.role);
     setIsCustomRole(existingIsCustom);
@@ -396,7 +398,7 @@ export default function UserManagement() {
     setSaving(true);
     try {
       const payload: Record<string, unknown> = {
-        name: nameField, email: emailField, mobile: mobileField, role: roleField, isActive: isActiveField,
+        name: nameField, email: emailField, mobile: mobileField, slackUserId: slackUserIdField, role: roleField, isActive: isActiveField,
         permissions: permsToArray(perms),
       };
       if (!editUser) payload.password = passwordField;
@@ -619,6 +621,10 @@ export default function UserManagement() {
               label="Mobile" placeholder="e.g. 9876543210"
               value={mobileField} onChange={(e) => setMobileField(e.target.value)}
               error={formErrors.errors.mobile}
+            />
+            <Field
+              label="Slack Member ID" placeholder="e.g. U0123ABCDE"
+              value={slackUserIdField} onChange={(e) => setSlackUserIdField(e.target.value)}
             />
             {!editUser && (
               <Field

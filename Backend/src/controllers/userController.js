@@ -87,7 +87,7 @@ exports.createUser = asyncHandler(async (req, res) => {
 
 // PUT /api/users/:id
 exports.updateUser = asyncHandler(async (req, res) => {
-  const { name, email, role, isActive, permissions, mobile } = req.body;
+  const { name, email, role, isActive, permissions, mobile, slackUserId } = req.body;
   const user = await User.findById(req.params.id);
   if (!user) return notFound(res, 'User not found');
   const before = user.toObject();
@@ -117,12 +117,13 @@ exports.updateUser = asyncHandler(async (req, res) => {
   if (isActive !== undefined)  user.isActive    = isActive;
   if (permissions !== undefined) user.permissions = permissions;
   if (mobile !== undefined)    user.mobile      = mobile;
+  if (slackUserId !== undefined) user.slackUserId = slackUserId.trim() || null;
 
   await user.save();
   const safe = user.toObject();
   delete safe.password;
 
-  const changes = diffFields(before, safe, ['name', 'email', 'role', 'isActive', 'permissions', 'mobile']);
+  const changes = diffFields(before, safe, ['name', 'email', 'role', 'isActive', 'permissions', 'mobile', 'slackUserId']);
   if (changes) {
     await logAudit({
       action: 'UPDATE', module: 'user-management', user: req.user,

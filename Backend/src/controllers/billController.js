@@ -15,8 +15,37 @@ const { recomputeAfterInvalidate, recomputeParentFromSubItems, deriveStatus } = 
 const { applyAdvanceRecoveries } = require('../utils/advanceRecovery');
 const AdvanceSlip  = require('../models/AdvanceSlip');
 const { nextCode } = require('../utils/sequence');
+const { createApprovalAndNotify, resolveApproverUser } = require('../utils/slackApprovals');
 
 const MODULE = 'accounts-payment';
+
+// Fire-and-forget (mirrors emitEvent's un-awaited call sites) — a failed or
+// unconfigured Slack push must never block the real approval-chain write that
+// already happened. Silently does nothing if no one has slackUserId set.
+function notifyL2ApprovalNeeded(bill) {
+  resolveApproverUser('accounts-payment', 'l2-director-approve')
+    .then((approver) => {
+      if (!approver) return;
+      return createApprovalAndNotify({
+        approvalType: 'PAYMENT_L2_GM_APPROVAL',
+        entityType: 'RunningBill',
+        entityId: bill._id,
+        approverUser: approver,
+        title: 'Accounts Payment — L2 GM Approval Required',
+        lines: [
+          { label: 'Project', value: bill.projectName || '—' },
+          { label: 'Contractor', value: bill.vendorName || '—' },
+          { label: 'Bill', value: bill.billNo },
+          { label: 'Work Order', value: bill.workOrderNo || '—' },
+          { label: 'Bill Amount', value: `₹${(bill.amount || 0).toLocaleString('en-IN')}` },
+          { label: 'Previous Approval', value: `L1 AGM${bill.l1ApprovedBy?.name ? ` — ${bill.l1ApprovedBy.name}` : ''}` },
+          { label: 'Current Approval', value: 'L2 GM' },
+        ],
+        deepLinkPath: `/accounts-payment?bill=${bill._id}`,
+      });
+    })
+    .catch((err) => console.error('[slack] PAYMENT_L2_GM_APPROVAL notify failed', err.message));
+}
 
 // Advances the SLA tracker for whichever BillRequest generated this RunningBill —
 // no-ops silently if there's no linked request or no in-progress instance, so it's
@@ -537,6 +566,8 @@ exports.l1AgmApprove = asyncHandler(async (req, res) => {
     description: `L1 AGM approved bill ${bill.billNo}`,
     entityType: 'RunningBill', entityId: bill._id, entityLabel: bill.billNo,
   });
+
+  notifyL2ApprovalNeeded(bill);
 
   success(res, { bill }, 'L1 AGM approved — ready for L2 Director approval');
 });

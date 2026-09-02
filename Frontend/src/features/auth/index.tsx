@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { Eye, EyeOff } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import Field from "../../ui/Field";
@@ -9,6 +9,10 @@ import Alert from "../../ui/Alert";
 export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  // Set by ProtectedRoute when it bounced an unauthenticated visit here (e.g.
+  // a Slack "View & Decide" deep link) — send them back to it, not "/".
+  const from = (location.state as { from?: { pathname: string; search: string } } | null)?.from;
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -27,7 +31,7 @@ export default function Login() {
     setError("");
     try {
       await login(email, password);
-      navigate("/", { replace: true });
+      navigate(from ? `${from.pathname}${from.search || ""}` : "/", { replace: true });
     } catch (err: unknown) {
       setError((err as { response?: { data?: { message?: string } } }).response?.data?.message || "Invalid email or password");
     } finally {
