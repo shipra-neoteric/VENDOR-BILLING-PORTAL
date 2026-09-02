@@ -100,6 +100,22 @@ async function updateApprovalMessage(approval, { decidedByName, verb, remarks })
   });
 }
 
+// Re-renders a still-pending message from its own saved snapshot (title/lines/
+// deepLinkPath) — used by scripts/fix_slack_deeplinks.js to correct messages
+// that were posted with the wrong FRONTEND_URL (e.g. a one-off script run
+// locally against production data, picking up the local dev URL by mistake).
+async function refreshApprovalMessage(approval) {
+  if (!approval.slackChannel || !approval.slackMessageTs) return;
+  const deepLinkUrl = `${process.env.FRONTEND_URL.split(',')[0].trim()}${approval.deepLinkPath}`;
+  const blocks = buildBlocks({ title: approval.title, lines: approval.lines, deepLinkUrl, approvalId: String(approval._id) });
+  await slackCall('chat.update', {
+    channel: approval.slackChannel,
+    ts: approval.slackMessageTs,
+    text: approval.title,
+    blocks,
+  });
+}
+
 async function openReasonModal(triggerId, approvalId) {
   await slackCall('views.open', {
     trigger_id: triggerId,
@@ -128,4 +144,4 @@ async function postEphemeral(channel, user, text) {
   }
 }
 
-module.exports = { createApprovalAndNotify, updateApprovalMessage, openReasonModal, postEphemeral, resolveApproverUser };
+module.exports = { createApprovalAndNotify, updateApprovalMessage, refreshApprovalMessage, openReasonModal, postEphemeral, resolveApproverUser };
