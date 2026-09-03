@@ -6,7 +6,7 @@ const billController = require('./billController');
 const billRequestController = require('./billRequestController');
 const { can } = require('../middleware/auth');
 const { STAGES } = require('../config/approvalStages');
-const { updateApprovalMessage, openReasonModal, postEphemeral } = require('../utils/slackApprovals');
+const { updateApprovalMessage, openReasonModal, postEphemeral, postMessage } = require('../utils/slackApprovals');
 
 // Per-approvalType wiring: which real controller function to call for
 // Approve/Reject. The permission gate (module/action/roles) lives once in
@@ -167,4 +167,60 @@ exports.handleInteraction = async (req, res) => {
   }
 
   res.status(200).send();
+};
+
+// Formats a person's own pending approvals for a DM reply — reuses each
+// SlackApproval's own saved title/lines/deepLinkPath snapshot (no re-fetch of
+// the underlying WorkOrder/RunningBill/BillRequest needed).
+function buildPendingListBlocks(pending) {
+  if (!pending.length) {
+    return [{ type: 'section', text: { type: 'mrkdwn', text: '🎉 No pending approvals right now.' } }];
+  }
+  const blocks = [
+    { type: 'header', text: { type: 'plain_text', text: `You have ${pending.length} pending approval${pending.length !== 1 ? 's' : ''}`, emoji: true } },
+  ];
+  for (const a of pending) {
+    const deepLinkUrl = `${process.env.FRONTEND_URL.split(',')[0].trim()}${a.deepLinkPath}`;
+    const key = a.lines.find((l) => ['Work Order', 'Bill', 'Bill Request'].includes(l.label))?.value || '';
+    blocks.push({ type: 'divider' });
+    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: `*<${deepLinkUrl}|${a.title}>*${key ? `\n${key}` : ''}` } });
+  }
+  return blocks;
+}
+
+// POST /api/slack/events — the bot's DM conversation entry point (separate
+// from /interactions, which only handles button clicks / modal submits).
+// Slack's Event Subscriptions must be pointed here, subscribed to the
+// `message.im` bot event, with the `im:history` scope granted.
+exports.handleEvent = async (req, res) => {
+  if (!verifySlackSignature(req)) return res.status(401).send('Invalid signature');
+
+  // One-time handshake Slack does when you first save the Request URL in the
+  // Event Subscriptions page — just echo the challenge back.
+  if (req.body.type === 'url_verification') {
+    return res.status(200).json({ challenge: req.body.challenge });
+  }
+
+  res.status(200).send(); // ack immediately — Slack needs a 200 within 3s
+
+  const event = req.body.event;
+  // subtype is set on edits/deletes/etc (not a real new message); bot_id is
+  // set on messages OUR OWN bot posts (including its replies here) — without
+  // this check, replying would trigger another event, replying to itself.
+  if (!event || event.type !== 'message' || event.subtype || event.bot_id) return;
+  if (event.channel_type !== 'im') return; // DMs only for now
+
+  (async () => {
+    const actingUser = await resolveActingUser(event.user);
+    if (!actingUser) {
+      return postMessage(event.channel, "Your Slack account isn't linked to a portal user — contact an admin.");
+    }
+
+    const text = (event.text || '').trim().toLowerCase();
+    if (text === 'pending') {
+      const pending = await SlackApproval.find({ approverUserIds: actingUser._id, status: 'pending' }).sort({ createdAt: 1 });
+      return postMessage(event.channel, `You have ${pending.length} pending approval${pending.length !== 1 ? 's' : ''}`, buildPendingListBlocks(pending));
+    }
+    return postMessage(event.channel, 'I can show your pending approvals — type `pending`.');
+  })().catch((err) => console.error('[slackController] event handling failed', err.message));
 };

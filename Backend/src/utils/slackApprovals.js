@@ -234,7 +234,15 @@ async function postEphemeral(channel, user, text) {
   }
 }
 
+async function postMessage(channel, text, blocks) {
+  try {
+    await slackCall('chat.postMessage', { channel, text, ...(blocks ? { blocks } : {}) });
+  } catch (err) {
+    console.error('[slackApprovals] postMessage failed', err.message);
+  }
+}
+
 module.exports = {
   notifyStagePending, settleAllPendingForEntity, updateApprovalMessage, refreshApprovalMessage,
-  openReasonModal, postEphemeral, resolveApproverUsers,
+  openReasonModal, postEphemeral, postMessage, resolveApproverUsers,
 };
