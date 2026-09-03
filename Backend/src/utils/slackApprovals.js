@@ -39,7 +39,7 @@ async function slackCall(method, body) {
   return data;
 }
 
-function buildBlocks({ title, lines, deepLinkUrl, approvalId, footer }) {
+function buildBlocks({ title, lines, deepLinkUrl, approvalId, footer, mentionText }) {
   const blocks = [
     { type: 'header', text: { type: 'plain_text', text: title, emoji: true } },
     {
@@ -47,6 +47,9 @@ function buildBlocks({ title, lines, deepLinkUrl, approvalId, footer }) {
       fields: lines.map(l => ({ type: 'mrkdwn', text: `*${l.label}:*\n${l.value}` })),
     },
   ];
+  if (mentionText) {
+    blocks.push({ type: 'context', elements: [{ type: 'mrkdwn', text: `👤 *Needs action from:* ${mentionText}` }] });
+  }
   if (footer) {
     blocks.push({ type: 'context', elements: [{ type: 'mrkdwn', text: footer }] });
     return blocks; // decided — no action buttons
@@ -62,6 +65,35 @@ function buildBlocks({ title, lines, deepLinkUrl, approvalId, footer }) {
   return blocks;
 }
 
+// Shared implementation behind settleStaleApprovals/settleAllPendingForEntity
+// below — marks matching still-'pending' rows decided and updates every
+// posted copy of each, same as a real Slack-driven decision would.
+async function settlePendingApprovals(filter, { verb = 'Approved', decidedByName = 'the app' } = {}) {
+  const stale = await SlackApproval.find({ ...filter, status: 'pending' });
+  for (const approval of stale) {
+    approval.status = verb === 'Rejected' ? 'rejected' : 'approved';
+    approval.decidedAt = new Date();
+    await approval.save();
+    await updateApprovalMessage(approval, { decidedByName, verb })
+      .catch((err) => console.error('[slackApprovals] settle update failed', err.message));
+  }
+}
+
+// Called from notifyStagePending itself: an entity moving to a NEW stage
+// means any of its OTHER still-pending rows (a different approvalType) are
+// stale — most commonly because the previous stage was actioned through the
+// app UI directly, not a Slack button, so nothing ever marked it decided.
+const settleStaleApprovals = (entityId, exceptApprovalType) =>
+  settlePendingApprovals({ entityId, approvalType: { $ne: exceptApprovalType } });
+
+// Called explicitly from every reject/send-back controller function — a
+// reject ends ALL currently-pending approval needs for that entity at once
+// (regardless of which stage they were at), so a later resubmission starts
+// clean instead of the dedup guard above mistaking a stale row for a still-
+// current one.
+const settleAllPendingForEntity = (entityId, opts) =>
+  settlePendingApprovals({ entityId }, opts);
+
 // The one function every controller hook calls, right after an entity flips
 // into a stage that's someone's turn (see approvalStages.js for the full
 // list). Resolves everyone eligible, DMs each of them individually, and posts
@@ -71,6 +103,23 @@ async function notifyStagePending(approvalType, entityDoc) {
   const stage = STAGES[approvalType];
   if (!stage) throw new Error(`Unknown Slack approval stage: ${approvalType}`);
   if (!process.env.SLACK_BOT_TOKEN) return; // Slack not configured (e.g. local dev) — silently skip
+
+  // Guards against posting the same approval twice — an entity can only
+  // meaningfully be "pending at this exact stage" once at a time, so a
+  // second call for the same entity+stage (a double-click before the button
+  // disabled, a retried request after a slow Render cold-start response,
+  // Slack's own retry on a slow ack, etc.) is a re-notification, not a new one.
+  const existing = await SlackApproval.findOne({ approvalType, entityId: entityDoc._id, status: 'pending' });
+  if (existing) return existing;
+
+  // An entity moving to a NEW stage means any of its OTHER still-'pending'
+  // rows are stale — most commonly because the previous stage was actioned
+  // through the app UI directly rather than a Slack button, so nothing ever
+  // marked it decided. Settling those here (rather than only when their own
+  // Slack button is clicked) keeps the dedup check above honest on a
+  // resubmit-after-send-back cycle — otherwise a leftover stale 'pending' row
+  // from the first pass would wrongly block the real re-notification.
+  await settleStaleApprovals(entityDoc._id, approvalType);
 
   const recipients = await resolveApproverUsers(stage.module, stage.action, ...stage.roles);
   // Reuses the already-configured, already-working channel (originally set
@@ -91,7 +140,11 @@ async function notifyStagePending(approvalType, entityDoc) {
   });
 
   const deepLinkUrl = `${process.env.FRONTEND_URL.split(',')[0].trim()}${deepLinkPath}`;
-  const blocks = buildBlocks({ title, lines, deepLinkUrl, approvalId: String(approval._id) });
+  // <@U123> is Slack's mention syntax — renders as a clickable, pinging @name.
+  // Mainly matters on the group channel copy (a DM already only reaches one
+  // person), but included everywhere so it's obvious who else can also act.
+  const mentionText = recipients.map(u => `<@${u.slackUserId}>`).join(' ') || undefined;
+  const blocks = buildBlocks({ title, lines, deepLinkUrl, approvalId: String(approval._id), mentionText });
 
   const targets = [...recipients.map(u => u.slackUserId), ...(groupChannel ? [groupChannel] : [])];
   const messages = [];
@@ -134,7 +187,9 @@ async function updateApprovalMessage(approval, { decidedByName, verb, remarks })
 async function refreshApprovalMessage(approval) {
   if (!approval.messages?.length) return;
   const deepLinkUrl = `${process.env.FRONTEND_URL.split(',')[0].trim()}${approval.deepLinkPath}`;
-  const blocks = buildBlocks({ title: approval.title, lines: approval.lines, deepLinkUrl, approvalId: String(approval._id) });
+  const recipients = await User.find({ _id: { $in: approval.approverUserIds || [] } }).select('slackUserId');
+  const mentionText = recipients.map(u => `<@${u.slackUserId}>`).join(' ') || undefined;
+  const blocks = buildBlocks({ title: approval.title, lines: approval.lines, deepLinkUrl, approvalId: String(approval._id), mentionText });
   for (const m of approval.messages) {
     try {
       await slackCall('chat.update', { channel: m.channel, ts: m.ts, text: approval.title, blocks });
@@ -173,6 +228,6 @@ async function postEphemeral(channel, user, text) {
 }
 
 module.exports = {
-  notifyStagePending, updateApprovalMessage, refreshApprovalMessage,
+  notifyStagePending, settleAllPendingForEntity, updateApprovalMessage, refreshApprovalMessage,
   openReasonModal, postEphemeral, resolveApproverUsers,
 };

@@ -13,12 +13,16 @@ const { updateApprovalMessage, openReasonModal, postEphemeral } = require('../ut
 // approvalStages.js and is looked up from there below — checked again here
 // since calling a controller function directly bypasses the Express
 // middleware chain (authorizeOr/authorizeAnyOr) that normally guards it.
+// rejectBodyKey defaults to 'reason' (sendBack/rejectBill/manualReject all
+// read req.body.reason) — rejectBillRequest is the one outlier, reading
+// req.body.rejectReason instead (matches BillRequests/index.tsx's own PUT
+// .../reject call), so it's called out explicitly per entry below.
 const CONTROLLER_FNS = {
   WORK_ORDER_CHECKER_APPROVAL:  { approveFn: workOrderController.checkerApprove,  rejectFn: workOrderController.sendBack },
   WORK_ORDER_APPROVER_APPROVAL: { approveFn: workOrderController.approverApprove, rejectFn: workOrderController.sendBack },
   WORK_ORDER_OWNER_APPROVAL:    { approveFn: workOrderController.finalApprove,    rejectFn: workOrderController.sendBack },
-  BILL_REQUEST_AGM_APPROVAL:    { approveFn: billRequestController.agmApprove,    rejectFn: billRequestController.rejectBillRequest },
-  BILL_REQUEST_GM_APPROVAL:     { approveFn: billRequestController.gmApprove,     rejectFn: billRequestController.rejectBillRequest },
+  BILL_REQUEST_AGM_APPROVAL:    { approveFn: billRequestController.agmApprove,    rejectFn: billRequestController.rejectBillRequest, rejectBodyKey: 'rejectReason' },
+  BILL_REQUEST_GM_APPROVAL:     { approveFn: billRequestController.gmApprove,     rejectFn: billRequestController.rejectBillRequest, rejectBodyKey: 'rejectReason' },
   PAYMENT_MANUAL_AGM_APPROVAL:  { approveFn: billController.manualAgmApprove,     rejectFn: billController.manualReject },
   PAYMENT_MANUAL_GM_APPROVAL:   { approveFn: billController.manualGmApprove,      rejectFn: billController.manualReject },
   PAYMENT_VERIFY_APPROVAL:      { approveFn: billController.verifyBill,           rejectFn: billController.rejectBill },
@@ -81,8 +85,8 @@ async function handleApprove(approval, actingUser) {
 }
 
 async function handleReject(approval, actingUser, reason) {
-  const { rejectFn } = CONTROLLER_FNS[approval.approvalType];
-  await runController(rejectFn, { params: { id: String(approval.entityId) }, body: { reason }, user: actingUser });
+  const { rejectFn, rejectBodyKey = 'reason' } = CONTROLLER_FNS[approval.approvalType];
+  await runController(rejectFn, { params: { id: String(approval.entityId) }, body: { [rejectBodyKey]: reason }, user: actingUser });
   approval.status = 'rejected';
   approval.decidedBy = actingUser._id;
   approval.decidedAt = new Date();

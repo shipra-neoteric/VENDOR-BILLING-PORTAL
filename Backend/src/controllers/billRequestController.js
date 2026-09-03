@@ -13,7 +13,7 @@ const { nextBillNo } = require('../utils/codeGen');
 const { recomputeAfterInvalidate, expandBillableCandidates, recomputeParentFromSubItems } = require('../utils/progressHelpers');
 const { resolvePayee } = require('../utils/vendorGroupHelpers');
 const { applyAdvanceRecoveries } = require('../utils/advanceRecovery');
-const { notifyStagePending } = require('../utils/slackApprovals');
+const { notifyStagePending, settleAllPendingForEntity } = require('../utils/slackApprovals');
 
 // Fire-and-forget (matches emitEvent's un-awaited call sites below) — a failed
 // or unconfigured Slack push must never block the real approval-chain write
@@ -554,6 +554,9 @@ exports.rejectBillRequest = asyncHandler(async (req, res) => {
     description: `Rejected ${br.reqNo}${br.rejectReason ? ` — ${br.rejectReason}` : ''}`,
     entityType: 'BillRequest', entityId: br._id, entityLabel: br.reqNo,
   });
+
+  settleAllPendingForEntity(br._id, { verb: 'Rejected', decidedByName: req.user.name })
+    .catch((err) => console.error('[slack] settle on reject failed', err.message));
 
   success(res, { billRequest: br }, `Stage ${br.stageNo} rejected — DRI can re-submit after corrections`);
 });

@@ -16,7 +16,7 @@ const { milestonesExceedContract } = require('../utils/validateMilestones');
 const { documentsExceedLimit } = require('../utils/validateDocuments');
 const { logAudit, diffFields } = require('../utils/auditLog');
 const { sumActiveQty, applyVarianceGate, recomputeParentFromSubItems } = require('../utils/progressHelpers');
-const { notifyStagePending } = require('../utils/slackApprovals');
+const { notifyStagePending, settleAllPendingForEntity } = require('../utils/slackApprovals');
 
 // Fire-and-forget (matches emitEvent's un-awaited call sites above) — a failed
 // or unconfigured Slack push must never block the real approval-chain write
@@ -613,6 +613,9 @@ exports.sendBack = asyncHandler(async (req, res) => {
     vendorCode: workOrder.vendorCode, vendorName: workOrder.vendorName, user: req.user,
     metadata: { reason: reason.trim() },
   });
+
+  settleAllPendingForEntity(workOrder._id, { verb: 'Rejected', decidedByName: req.user.name })
+    .catch((err) => console.error('[slack] settle on send-back failed', err.message));
 
   success(res, { workOrder }, 'Sent back to maker');
 });
