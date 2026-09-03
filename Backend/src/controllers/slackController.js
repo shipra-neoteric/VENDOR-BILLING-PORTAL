@@ -3,25 +3,27 @@ const User = require('../models/User');
 const SlackApproval = require('../models/SlackApproval');
 const workOrderController = require('./workOrderController');
 const billController = require('./billController');
+const billRequestController = require('./billRequestController');
 const { can } = require('../middleware/auth');
+const { STAGES } = require('../config/approvalStages');
 const { updateApprovalMessage, openReasonModal, postEphemeral } = require('../utils/slackApprovals');
 
 // Per-approvalType wiring: which real controller function to call for
-// Approve/Reject, and which permission gate matches the route's own
-// authorizeOr/authorizeAnyOr (see routes/workOrders.js, routes/bills.js) —
-// checked again here since calling a controller function directly bypasses
-// the Express middleware chain that normally guards it.
-const ACTIONS = {
-  WORK_ORDER_OWNER_APPROVAL: {
-    module: 'work-orders', action: 'ceo-approve', roles: ['owner'],
-    approveFn: workOrderController.finalApprove,
-    rejectFn: workOrderController.sendBack,
-  },
-  PAYMENT_L2_GM_APPROVAL: {
-    module: 'accounts-payment', action: 'l2-director-approve', roles: ['owner'],
-    approveFn: billController.l2DirectorApprove,
-    rejectFn: billController.rejectBill,
-  },
+// Approve/Reject. The permission gate (module/action/roles) lives once in
+// approvalStages.js and is looked up from there below — checked again here
+// since calling a controller function directly bypasses the Express
+// middleware chain (authorizeOr/authorizeAnyOr) that normally guards it.
+const CONTROLLER_FNS = {
+  WORK_ORDER_CHECKER_APPROVAL:  { approveFn: workOrderController.checkerApprove,  rejectFn: workOrderController.sendBack },
+  WORK_ORDER_APPROVER_APPROVAL: { approveFn: workOrderController.approverApprove, rejectFn: workOrderController.sendBack },
+  WORK_ORDER_OWNER_APPROVAL:    { approveFn: workOrderController.finalApprove,    rejectFn: workOrderController.sendBack },
+  BILL_REQUEST_AGM_APPROVAL:    { approveFn: billRequestController.agmApprove,    rejectFn: billRequestController.rejectBillRequest },
+  BILL_REQUEST_GM_APPROVAL:     { approveFn: billRequestController.gmApprove,     rejectFn: billRequestController.rejectBillRequest },
+  PAYMENT_MANUAL_AGM_APPROVAL:  { approveFn: billController.manualAgmApprove,     rejectFn: billController.manualReject },
+  PAYMENT_MANUAL_GM_APPROVAL:   { approveFn: billController.manualGmApprove,      rejectFn: billController.manualReject },
+  PAYMENT_VERIFY_APPROVAL:      { approveFn: billController.verifyBill,           rejectFn: billController.rejectBill },
+  PAYMENT_L1_AGM_APPROVAL:      { approveFn: billController.l1AgmApprove,         rejectFn: billController.rejectBill },
+  PAYMENT_L2_GM_APPROVAL:       { approveFn: billController.l2DirectorApprove,    rejectFn: billController.rejectBill },
 };
 
 // Verifies Slack's request signature against the raw body (captured by the
@@ -69,8 +71,8 @@ async function resolveActingUser(slackUserId) {
 }
 
 async function handleApprove(approval, actingUser) {
-  const cfg = ACTIONS[approval.approvalType];
-  await runController(cfg.approveFn, { params: { id: String(approval.entityId) }, body: {}, user: actingUser });
+  const { approveFn } = CONTROLLER_FNS[approval.approvalType];
+  await runController(approveFn, { params: { id: String(approval.entityId) }, body: {}, user: actingUser });
   approval.status = 'approved';
   approval.decidedBy = actingUser._id;
   approval.decidedAt = new Date();
@@ -79,8 +81,8 @@ async function handleApprove(approval, actingUser) {
 }
 
 async function handleReject(approval, actingUser, reason) {
-  const cfg = ACTIONS[approval.approvalType];
-  await runController(cfg.rejectFn, { params: { id: String(approval.entityId) }, body: { reason }, user: actingUser });
+  const { rejectFn } = CONTROLLER_FNS[approval.approvalType];
+  await runController(rejectFn, { params: { id: String(approval.entityId) }, body: { reason }, user: actingUser });
   approval.status = 'rejected';
   approval.decidedBy = actingUser._id;
   approval.decidedAt = new Date();
@@ -104,8 +106,8 @@ exports.handleInteraction = async (req, res) => {
       if (!approval || approval.status !== 'pending') return;
       const actingUser = await resolveActingUser(payload.user.id);
       if (!actingUser) return;
-      const cfg = ACTIONS[approval.approvalType];
-      if (!can(actingUser, cfg.module, cfg.action, ...cfg.roles)) return;
+      const stage = STAGES[approval.approvalType];
+      if (!can(actingUser, stage.module, stage.action, ...stage.roles)) return;
       try {
         await handleReject(approval, actingUser, reason);
       } catch (err) {
@@ -143,8 +145,8 @@ exports.handleInteraction = async (req, res) => {
         if (!actingUser) {
           return postEphemeral(payload.channel.id, payload.user.id, "Your Slack account isn't linked to a portal user — contact an admin.");
         }
-        const cfg = ACTIONS[approval.approvalType];
-        if (!can(actingUser, cfg.module, cfg.action, ...cfg.roles)) {
+        const stage = STAGES[approval.approvalType];
+        if (!can(actingUser, stage.module, stage.action, ...stage.roles)) {
           return postEphemeral(payload.channel.id, payload.user.id, "You don't have permission to approve this.");
         }
         try {

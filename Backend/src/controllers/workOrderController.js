@@ -16,33 +16,14 @@ const { milestonesExceedContract } = require('../utils/validateMilestones');
 const { documentsExceedLimit } = require('../utils/validateDocuments');
 const { logAudit, diffFields } = require('../utils/auditLog');
 const { sumActiveQty, applyVarianceGate, recomputeParentFromSubItems } = require('../utils/progressHelpers');
-const { createApprovalAndNotify, resolveApproverUser } = require('../utils/slackApprovals');
+const { notifyStagePending } = require('../utils/slackApprovals');
 
 // Fire-and-forget (matches emitEvent's un-awaited call sites above) — a failed
 // or unconfigured Slack push must never block the real approval-chain write
-// that already happened. Silently does nothing if no owner has slackUserId set.
-function notifyOwnerApprovalNeeded(workOrder) {
-  resolveApproverUser('work-orders', 'ceo-approve')
-    .then((approver) => {
-      if (!approver) return;
-      return createApprovalAndNotify({
-        approvalType: 'WORK_ORDER_OWNER_APPROVAL',
-        entityType: 'WorkOrder',
-        entityId: workOrder._id,
-        approverUser: approver,
-        title: 'Work Order — L4 Owner Approval Required',
-        lines: [
-          { label: 'Project', value: workOrder.projectName || '—' },
-          { label: 'Contractor', value: workOrder.vendorName || '—' },
-          { label: 'Work Order', value: workOrder.workOrderNo },
-          { label: 'Work Description', value: (workOrder.scopeOfWork || '—').slice(0, 200) },
-          { label: 'Work Order Value', value: `₹${(workOrder.contractValue || 0).toLocaleString('en-IN')}` },
-          { label: 'Current Approval', value: 'L4 Owner' },
-        ],
-        deepLinkPath: `/work-items/${workOrder._id}`,
-      });
-    })
-    .catch((err) => console.error('[slack] WORK_ORDER_OWNER_APPROVAL notify failed', err.message));
+// that already happened.
+function notifySlack(approvalType, workOrder) {
+  notifyStagePending(approvalType, workOrder)
+    .catch((err) => console.error(`[slack] ${approvalType} notify failed`, err.message));
 }
 
 // vendorName/ownerName/mobile are snapshotted onto a WO at creation time, but
@@ -497,6 +478,8 @@ exports.submitWorkOrder = asyncHandler(async (req, res) => {
     vendorCode: workOrder.vendorCode, vendorName: workOrder.vendorName, user: req.user,
   });
 
+  notifySlack('WORK_ORDER_CHECKER_APPROVAL', workOrder);
+
   success(res, { workOrder }, 'Submitted — awaiting checker review');
 });
 
@@ -527,6 +510,8 @@ exports.checkerApprove = asyncHandler(async (req, res) => {
     projectId: workOrder.projectId, workOrderId: workOrder._id, workOrderNo: workOrder.workOrderNo,
     vendorCode: workOrder.vendorCode, vendorName: workOrder.vendorName, user: req.user,
   });
+
+  notifySlack('WORK_ORDER_APPROVER_APPROVAL', workOrder);
 
   success(res, { workOrder }, 'Verified & approved — forwarded to approver');
 });
@@ -559,7 +544,7 @@ exports.approverApprove = asyncHandler(async (req, res) => {
     vendorCode: workOrder.vendorCode, vendorName: workOrder.vendorName, user: req.user,
   });
 
-  notifyOwnerApprovalNeeded(workOrder);
+  notifySlack('WORK_ORDER_OWNER_APPROVAL', workOrder);
 
   success(res, { workOrder }, 'Approved — forwarded for final approval');
 });

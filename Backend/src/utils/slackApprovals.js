@@ -1,18 +1,22 @@
 const SlackApproval = require('../models/SlackApproval');
 const User = require('../models/User');
+const { STAGES } = require('../config/approvalStages');
 
 const SLACK_API = 'https://slack.com/api';
 
-// Finds whoever should get this approval in Slack — prefers the 'owner' role
-// (today, that's the one person these two stages are gated to: see
-// authorizeOr('work-orders','ceo-approve','owner') / authorizeOr('accounts-payment',
-// 'l2-director-approve','owner') on the real routes), falling back to anyone
-// individually granted the permission via User Management. Not hardcoded to a
-// specific name/email so this keeps working if that assignment ever changes.
-async function resolveApproverUser(module, action) {
-  const owner = await User.findOne({ role: 'owner', isActive: true, slackUserId: { $ne: null } });
-  if (owner) return owner;
-  return User.findOne({ isActive: true, slackUserId: { $ne: null }, permissions: { $elemMatch: { module, actions: action } } });
+// Everyone eligible to act on a given stage — role bypass (e.g. 'owner') OR
+// an explicit module+action permission grant via User Management — and who
+// has actually linked their Slack account (slackUserId set). Not hardcoded to
+// a specific name/email so this keeps working if assignments change.
+async function resolveApproverUsers(module, action, ...roles) {
+  return User.find({
+    isActive: true,
+    slackUserId: { $ne: null },
+    $or: [
+      { role: { $in: roles } },
+      { permissions: { $elemMatch: { module, actions: action } } },
+    ],
+  });
 }
 
 // Mirrors mailer.js's style — a single fetch attempt, throws on failure with
@@ -58,62 +62,86 @@ function buildBlocks({ title, lines, deepLinkUrl, approvalId, footer }) {
   return blocks;
 }
 
-// Creates the tracking row, posts the Slack message, and saves the returned
-// channel/ts back onto it so the message can be updated later. Called right
-// after an entity flips into a stage that's Rahul's (or whoever's) turn —
-// see workOrderController.approverApprove / billController.l1AgmApprove.
-async function createApprovalAndNotify({ approvalType, entityType, entityId, approverUser, title, lines, deepLinkPath }) {
+// The one function every controller hook calls, right after an entity flips
+// into a stage that's someone's turn (see approvalStages.js for the full
+// list). Resolves everyone eligible, DMs each of them individually, and posts
+// once more to the shared group channel — every posted copy's channel/ts is
+// saved so a decision from any one of them can update all of them together.
+async function notifyStagePending(approvalType, entityDoc) {
+  const stage = STAGES[approvalType];
+  if (!stage) throw new Error(`Unknown Slack approval stage: ${approvalType}`);
+  if (!process.env.SLACK_BOT_TOKEN) return; // Slack not configured (e.g. local dev) — silently skip
+
+  const recipients = await resolveApproverUsers(stage.module, stage.action, ...stage.roles);
+  // Reuses the already-configured, already-working channel (originally set
+  // up as #rahul-approvals) as the one shared group every stage now posts
+  // to — everyone's individual DM already covers per-person targeting, so
+  // this just needs to be "the one place everyone can see everything".
+  const groupChannel = process.env.SLACK_APPROVAL_CHANNEL_ID;
+  if (!recipients.length && !groupChannel) return; // nobody to notify anywhere
+
+  const title = stage.title;
+  const lines = stage.buildLines(entityDoc);
+  const deepLinkPath = stage.deepLinkPath(entityDoc);
+
   const approval = await SlackApproval.create({
-    approvalType, entityType, entityId,
-    approverUserId: approverUser._id,
+    approvalType, entityType: stage.entityType, entityId: entityDoc._id,
+    approverUserIds: recipients.map(u => u._id),
     title, lines, deepLinkPath,
   });
 
   const deepLinkUrl = `${process.env.FRONTEND_URL.split(',')[0].trim()}${deepLinkPath}`;
   const blocks = buildBlocks({ title, lines, deepLinkUrl, approvalId: String(approval._id) });
 
-  const posted = await slackCall('chat.postMessage', {
-    channel: process.env.SLACK_APPROVAL_CHANNEL_ID,
-    text: title, // fallback for notifications
-    blocks,
-  });
+  const targets = [...recipients.map(u => u.slackUserId), ...(groupChannel ? [groupChannel] : [])];
+  const messages = [];
+  for (const channel of targets) {
+    try {
+      const posted = await slackCall('chat.postMessage', { channel, text: title, blocks });
+      messages.push({ channel: posted.channel, ts: posted.ts });
+    } catch (err) {
+      console.error(`[slackApprovals] postMessage failed for ${channel}`, err.message);
+    }
+  }
 
-  approval.slackChannel = posted.channel;
-  approval.slackMessageTs = posted.ts;
+  approval.messages = messages;
   await approval.save();
   return approval;
 }
 
-// Replaces the action buttons with a plain decided-state line — called after
-// the real approve/reject write has already succeeded.
+// Replaces the action buttons with a plain decided-state line on EVERY posted
+// copy (each DM + the group) — called after the real approve/reject write has
+// already succeeded, so acting from one copy visibly settles all of them.
 async function updateApprovalMessage(approval, { decidedByName, verb, remarks }) {
-  if (!approval.slackChannel || !approval.slackMessageTs) return;
+  if (!approval.messages?.length) return;
   const icon = verb === 'Approved' ? '✅' : '❌';
   const footer = `${icon} *${verb} by ${decidedByName}* — ${new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}` +
     (remarks ? `\n_${remarks}_` : '');
   const blocks = buildBlocks({ title: approval.title, lines: approval.lines, footer });
-  await slackCall('chat.update', {
-    channel: approval.slackChannel,
-    ts: approval.slackMessageTs,
-    text: `${approval.title} — ${verb}`,
-    blocks,
-  });
+  for (const m of approval.messages) {
+    try {
+      await slackCall('chat.update', { channel: m.channel, ts: m.ts, text: `${approval.title} — ${verb}`, blocks });
+    } catch (err) {
+      console.error(`[slackApprovals] chat.update failed for ${m.channel}`, err.message);
+    }
+  }
 }
 
-// Re-renders a still-pending message from its own saved snapshot (title/lines/
-// deepLinkPath) — used by scripts/fix_slack_deeplinks.js to correct messages
-// that were posted with the wrong FRONTEND_URL (e.g. a one-off script run
-// locally against production data, picking up the local dev URL by mistake).
+// Re-renders a still-pending message (every copy) from its own saved snapshot
+// — used by one-off scripts to correct messages that were posted wrong (e.g.
+// a local run picking up the wrong FRONTEND_URL) or to re-sync after a config
+// change.
 async function refreshApprovalMessage(approval) {
-  if (!approval.slackChannel || !approval.slackMessageTs) return;
+  if (!approval.messages?.length) return;
   const deepLinkUrl = `${process.env.FRONTEND_URL.split(',')[0].trim()}${approval.deepLinkPath}`;
   const blocks = buildBlocks({ title: approval.title, lines: approval.lines, deepLinkUrl, approvalId: String(approval._id) });
-  await slackCall('chat.update', {
-    channel: approval.slackChannel,
-    ts: approval.slackMessageTs,
-    text: approval.title,
-    blocks,
-  });
+  for (const m of approval.messages) {
+    try {
+      await slackCall('chat.update', { channel: m.channel, ts: m.ts, text: approval.title, blocks });
+    } catch (err) {
+      console.error(`[slackApprovals] refresh failed for ${m.channel}`, err.message);
+    }
+  }
 }
 
 async function openReasonModal(triggerId, approvalId) {
@@ -144,4 +172,7 @@ async function postEphemeral(channel, user, text) {
   }
 }
 
-module.exports = { createApprovalAndNotify, updateApprovalMessage, refreshApprovalMessage, openReasonModal, postEphemeral, resolveApproverUser };
+module.exports = {
+  notifyStagePending, updateApprovalMessage, refreshApprovalMessage,
+  openReasonModal, postEphemeral, resolveApproverUsers,
+};

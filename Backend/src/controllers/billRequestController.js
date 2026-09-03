@@ -13,6 +13,15 @@ const { nextBillNo } = require('../utils/codeGen');
 const { recomputeAfterInvalidate, expandBillableCandidates, recomputeParentFromSubItems } = require('../utils/progressHelpers');
 const { resolvePayee } = require('../utils/vendorGroupHelpers');
 const { applyAdvanceRecoveries } = require('../utils/advanceRecovery');
+const { notifyStagePending } = require('../utils/slackApprovals');
+
+// Fire-and-forget (matches emitEvent's un-awaited call sites below) — a failed
+// or unconfigured Slack push must never block the real approval-chain write
+// that already happened.
+function notifySlack(approvalType, entityDoc) {
+  notifyStagePending(approvalType, entityDoc)
+    .catch((err) => console.error(`[slack] ${approvalType} notify failed`, err.message));
+}
 
 // Gathers the DRI's day-to-day notes for whichever progress entries on this
 // exact billable target (a particular, or a plain scope item with none)
@@ -215,6 +224,8 @@ exports.createBillRequest = asyncHandler(async (req, res) => {
     entityType: 'BillRequest', entityId: billRequest._id, entityLabel: reqNo,
   });
 
+  notifySlack('BILL_REQUEST_AGM_APPROVAL', billRequest);
+
   created(res, { billRequest }, `Stage ${stageNo} bill request ${reqNo} submitted successfully`);
 });
 
@@ -305,6 +316,8 @@ exports.agmApprove = asyncHandler(async (req, res) => {
     entityType: 'BillRequest', entityId: br._id, entityLabel: br.reqNo,
     changes: { retentionAmount: { from: null, to: retentionAmount }, advanceRecovery: { from: null, to: advanceRecovery } },
   });
+
+  notifySlack('BILL_REQUEST_GM_APPROVAL', br);
 
   success(res, { billRequest: br }, `AGM approved — Stage ${br.stageNo} forwarded to GM`);
 });
@@ -461,6 +474,12 @@ exports.gmApprove = asyncHandler(async (req, res) => {
     description: `GM approved ${br.reqNo} — generated bill ${billNo} (₹${totalAmount.toLocaleString('en-IN')})`,
     entityType: 'BillRequest', entityId: br._id, entityLabel: br.reqNo,
   });
+
+  // Born with manualApprovalStatus already 'approved' (progress-driven, not a
+  // manually-typed bill — see RunningBill model default), so it's immediately
+  // ready for Accounts to verify, same as any manual bill past its own
+  // AGM/GM sign-off (see billController.manualGmApprove's own notify below).
+  notifySlack('PAYMENT_VERIFY_APPROVAL', runningBill);
 
   success(res, { billRequest: br, bill: runningBill }, `Approved — Bill ${billNo} generated for Stage ${br.stageNo}`);
 });

@@ -1,85 +1,53 @@
 // One-off: the Slack-approvals feature only pushes a notification at the
-// moment a Work Order/Bill *transitions* into pending-final / l1-approved
-// (see workOrderController.approverApprove / billController.l1AgmApprove).
-// Anything that was already sitting at that stage before the feature shipped
-// never triggered that hook, so this backfills those into #rahul-approvals.
-// Safe to re-run — skips anything that already has a SlackApproval row.
+// moment an entity *transitions* into a given stage (see the notifySlack/
+// notifyStagePending call sites in workOrderController.js, billController.js
+// and billRequestController.js). Anything already sitting at one of those
+// stages before this hook existed (or before a new stage was added) never
+// triggered it — this finds everything currently pending at every stage in
+// approvalStages.js and posts it. Safe to re-run — skips anything that
+// already has a pending SlackApproval row for that entity+stage.
 require('dotenv').config();
 const mongoose = require('mongoose');
 const WorkOrder = require('../src/models/WorkOrder');
 const RunningBill = require('../src/models/RunningBill');
+const BillRequest = require('../src/models/BillRequest');
 const SlackApproval = require('../src/models/SlackApproval');
-const { createApprovalAndNotify, resolveApproverUser } = require('../src/utils/slackApprovals');
+const { notifyStagePending } = require('../src/utils/slackApprovals');
 
-async function backfillWorkOrders() {
-  const approver = await resolveApproverUser('work-orders', 'ceo-approve');
-  if (!approver) {
-    console.log('No owner has a slackUserId set yet — skipping Work Order backfill.');
-    return;
-  }
-
-  const pending = await WorkOrder.find({ approvalStatus: 'pending-final' });
-  for (const workOrder of pending) {
-    const already = await SlackApproval.findOne({ entityType: 'WorkOrder', entityId: workOrder._id, status: 'pending' });
-    if (already) { console.log(`Skipped (already posted): ${workOrder.workOrderNo}`); continue; }
-
-    await createApprovalAndNotify({
-      approvalType: 'WORK_ORDER_OWNER_APPROVAL',
-      entityType: 'WorkOrder',
-      entityId: workOrder._id,
-      approverUser: approver,
-      title: 'Work Order — L4 Owner Approval Required',
-      lines: [
-        { label: 'Project', value: workOrder.projectName || '—' },
-        { label: 'Contractor', value: workOrder.vendorName || '—' },
-        { label: 'Work Order', value: workOrder.workOrderNo },
-        { label: 'Work Description', value: (workOrder.scopeOfWork || '—').slice(0, 200) },
-        { label: 'Work Order Value', value: `₹${(workOrder.contractValue || 0).toLocaleString('en-IN')}` },
-        { label: 'Current Approval', value: 'L4 Owner' },
-      ],
-      deepLinkPath: `/work-items/${workOrder._id}`,
-    });
-    console.log(`Posted: ${workOrder.workOrderNo}`);
-  }
-}
-
-async function backfillBills() {
-  const approver = await resolveApproverUser('accounts-payment', 'l2-director-approve');
-  if (!approver) {
-    console.log('No owner has a slackUserId set yet — skipping Bill backfill.');
-    return;
-  }
-
-  const pending = await RunningBill.find({ status: 'l1-approved' }).populate('l1ApprovedBy', 'name role');
-  for (const bill of pending) {
-    const already = await SlackApproval.findOne({ entityType: 'RunningBill', entityId: bill._id, status: 'pending' });
-    if (already) { console.log(`Skipped (already posted): ${bill.billNo}`); continue; }
-
-    await createApprovalAndNotify({
-      approvalType: 'PAYMENT_L2_GM_APPROVAL',
-      entityType: 'RunningBill',
-      entityId: bill._id,
-      approverUser: approver,
-      title: 'Accounts Payment — L2 GM Approval Required',
-      lines: [
-        { label: 'Project', value: bill.projectName || '—' },
-        { label: 'Contractor', value: bill.vendorName || '—' },
-        { label: 'Bill', value: bill.billNo },
-        { label: 'Work Order', value: bill.workOrderNo || '—' },
-        { label: 'Bill Amount', value: `₹${(bill.amount || 0).toLocaleString('en-IN')}` },
-        { label: 'Previous Approval', value: `L1 AGM${bill.l1ApprovedBy?.name ? ` — ${bill.l1ApprovedBy.name}` : ''}` },
-        { label: 'Current Approval', value: 'L2 GM' },
-      ],
-      deepLinkPath: `/accounts-payment?bill=${bill._id}`,
-    });
-    console.log(`Posted: ${bill.billNo}`);
-  }
-}
+// One finder per approvalType — mirrors the exact status each controller
+// hook fires at (see approvalStages.js for the shared line/title/deep-link
+// config those hooks and this script both read).
+const FINDERS = {
+  WORK_ORDER_CHECKER_APPROVAL:  () => WorkOrder.find({ approvalStatus: 'pending-checker' }),
+  WORK_ORDER_APPROVER_APPROVAL: () => WorkOrder.find({ approvalStatus: 'pending-approver' }),
+  WORK_ORDER_OWNER_APPROVAL:    () => WorkOrder.find({ approvalStatus: 'pending-final' }),
+  BILL_REQUEST_AGM_APPROVAL:    () => BillRequest.find({ status: 'pending' }),
+  BILL_REQUEST_GM_APPROVAL:     () => BillRequest.find({ status: 'pending-gm' }),
+  PAYMENT_MANUAL_AGM_APPROVAL:  () => RunningBill.find({ manualApprovalStatus: 'pending' }),
+  PAYMENT_MANUAL_GM_APPROVAL:   () => RunningBill.find({ manualApprovalStatus: 'pending-gm' }),
+  PAYMENT_VERIFY_APPROVAL:      () => RunningBill.find({ status: 'draft', manualApprovalStatus: 'approved' }),
+  PAYMENT_L1_AGM_APPROVAL:      () => RunningBill.find({ status: 'verify-done' }),
+  PAYMENT_L2_GM_APPROVAL:       () => RunningBill.find({ status: 'l1-approved' }).populate('l1ApprovedBy', 'name role'),
+};
 
 async function run() {
   await mongoose.connect(process.env.MONGO_URI);
-  await backfillWorkOrders();
-  await backfillBills();
+
+  for (const [approvalType, find] of Object.entries(FINDERS)) {
+    const entities = await find();
+    for (const entity of entities) {
+      const already = await SlackApproval.findOne({ approvalType, entityId: entity._id, status: 'pending' });
+      if (already) { console.log(`Skipped (already posted): ${approvalType} ${entity._id}`); continue; }
+
+      try {
+        const posted = await notifyStagePending(approvalType, entity);
+        console.log(posted ? `Posted: ${approvalType} ${entity._id}` : `No recipients configured — skipped: ${approvalType} ${entity._id}`);
+      } catch (err) {
+        console.error(`Failed: ${approvalType} ${entity._id} — ${err.message}`);
+      }
+    }
+  }
+
   await mongoose.disconnect();
 }
 
