@@ -1,600 +1,1400 @@
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
-import { Check, X, Eye, Trophy, Inbox, FileText } from "lucide-react";
+import {
+  FileText, Eye, Printer, CheckCircle2, XCircle, Check, X, Clock,
+  Archive as ArchiveIcon, Trophy,
+} from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import dayjs from "dayjs";
 import apiClient from "../../services/apiClient";
-import { selectableProjects } from "../../utils/projectOptions";
-import { useAuth } from "../../context/AuthContext";
-import WorkflowInstanceStepper from "../../components/WorkflowInstanceStepper";
-import type { WorkflowInstance } from "../../types/Workflow";
-import { billFinancials } from "../../shared/utils/billMath";
-import PageHeader from "../../ui/PageHeader";
-import Btn from "../../ui/Btn";
-import Badge from "../../ui/Badge";
-import NxBtn from "../../ui/nexora/Btn";
-import NxBadge from "../../ui/nexora/Badge";
-import Segmented from "../../ui/Segmented";
-import Switch from "../../ui/Switch";
-import Field from "../../ui/Field";
 import { SearchFilter, DropdownSelectFilter } from "../../ui/Filters";
-import Modal from "../../ui/Modal";
-import ConfirmModal from "../../ui/ConfirmModal";
-import Checkbox from "../../ui/Checkbox";
-import Spinner from "../../ui/Spinner";
+import { useAuth } from "../../context/AuthContext";
+import type { AuthUser } from "../../context/AuthContext";
+import { selectableProjects } from "../../utils/projectOptions";
+import { printBill, resolvePrintParty } from "../../shared/utils/printBill";
+import type { PrintableBill } from "../../shared/utils/printBill";
+import type { Contractor } from "../../types/VendorBilling";
+import { billFinancials } from "../../shared/utils/billMath";
+import { BillStageCell } from "../../components/BillDetailModal";
+import { BILL_STATUS_LABEL } from "../../shared/constants/billStatus";
+import { Descriptions, DescItem } from "../../ui/Descriptions";
+import type { NxBadgeColor } from "../../ui/nexora/Badge";
+import SField from "../../ui/SField";
+import UISwitch from "../../ui/Switch";
+import UIBadge from "../../ui/Badge";
+import Btn from "../../ui/Btn";
+import Segmented from "../../ui/Segmented";
 import EmptyState from "../../ui/EmptyState";
+import ConfirmModal from "../../ui/ConfirmModal";
+import Spinner from "../../ui/Spinner";
+import PageHeader from "../../ui/PageHeader";
+import Modal from "../../ui/Modal";
+import Field from "../../ui/Field";
+import { Table, Thead, Tbody, Tfoot, Tr, Th, Td } from "../../ui/Table";
+import { usePagination } from "../../ui/usePagination";
+import Pagination from "../../ui/Pagination";
+import NxBadge from "../../ui/nexora/Badge";
+import NxBtn from "../../ui/nexora/Btn";
+import NxStatCard from "../../ui/nexora/StatCard";
 import DropdownMenu from "../../ui/DropdownMenu";
 import type { DropdownMenuItem } from "../../ui/DropdownMenu";
-import { Table, Thead, Tbody, Tr, Th, Td, TdText } from "../../ui/Table";
-import Pagination from "../../ui/Pagination";
 
-const fmt = (n: number) => "₹" + (n).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-// Per-unit rates are fractional far more often than totals are — rounding
-// them for display (as fmt() does) silently turns 130.5 into 131.
-const fmtRate = (n: number) => "₹" + (n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-const STATUS_CFG: Record<string, { color: "orange" | "blue" | "green" | "red"; label: string }> = {
-  pending:      { color: "orange", label: "Pending (L1 — AGM)"  },
-  "pending-gm": { color: "blue",   label: "Pending (L2 — GM)"   },
-  approved:     { color: "green",  label: "Approved" },
-  rejected:     { color: "red",    label: "Rejected" },
-};
-
-const PAGE_SIZE = 20;
-
+// ── Types ─────────────────────────────────────────────────────────────────────
 interface BillItem {
-  scopeItemId?: string;
-  description: string;
-  unit: string;
-  billedQty: number;
-  rate?: number;
-  amount?: number;
+  scopeItemId?: string; description: string; unit: string; billedQty: number;
+  rate?: number; amount?: number; progressRemarks?: string; location?: string;
 }
-
-interface BillRequest {
-  _id: string;
-  reqNo: string;
-  stageNo?: number;
-  workOrderId?: string;
-  workOrderNo: string;
-  projectId?: string;
-  projectName: string;
-  projectLocation?: string;
-  vendorCode?: string;
-  vendorName: string;
-  category: string;
-  subCategory: string;
-  items: BillItem[];
-  remarks: string;
-  periodFrom?: string;
-  periodTo?: string;
+interface ApprovalHistoryEntry {
+  stage: "agm" | "gm"; action: "approved" | "rejected";
+  by?: { _id: string; name: string } | string | null;
+  at?: string; remarks?: string;
+}
+interface BillRequestRow {
+  _id: string; reqNo: string; stageNo?: number;
+  workOrderId?: string; workOrderNo: string;
+  projectId?: string; projectName: string; projectLocation?: string;
+  vendorCode?: string; vendorName: string; companyName?: string; category?: string; subCategory?: string;
+  department?: string; customDepartment?: string;
+  items: BillItem[]; remarks?: string;
+  periodFrom?: string; periodTo?: string;
   status: "pending" | "pending-gm" | "approved" | "rejected";
-  rejectReason?: string;
   requestedBy?: { name: string; email: string };
-  billId?: { billNo: string; status: string; amount: number; paidAmount?: number; retentionPercent?: number; retentionAmount?: number; advanceRecovery?: number; gstPercent?: number; tdsAmount?: number; adjustmentAmount?: number; adjustmentRemark?: string; paymentDate?: string; paymentMode?: string; paymentUTR?: string; paymentBank?: string; paymentReleasedBy?: string };
+  agmApprovedBy?: { name: string; role?: string } | string | null;
+  agmApprovedAt?: string;
+  retentionAmount?: number;
+  advanceRecovery?: number;
+  gstPercentOverride?: number | null;
+  payeeVendorCode?: string;
+  payeeVendorName?: string;
+  rejectReason?: string;
+  approvalHistory?: ApprovalHistoryEntry[];
+  billId?: { _id: string; billNo: string; status: string; amount: number; paidAmount?: number; retentionPercent?: number; retentionAmount?: number; advanceRecovery?: number; gstPercent?: number; tdsAmount?: number; paymentDate?: string; paymentMode?: string; paymentUTR?: string; paymentBank?: string; paymentReleasedBy?: string };
   milestoneAchieved?: boolean;
   milestoneDate?: string;
   createdAt: string;
   isArchived?: boolean;
-  archivedAt?: string;
 }
 
-export default function BillRequests() {
-  const navigate = useNavigate();
+// A bill created directly via Billing -> New Bill, not from DRI progress —
+// carries no BillRequest of its own, so it needs this separate pre-Accounts
+// AGM/GM sign-off tracked right on the bill itself (see billController's
+// manualAgmApprove/manualGmApprove/manualReject).
+interface ManualBillRow {
+  _id: string; billNo: string; amount: number; workOrderId?: string;
+  projectName?: string; vendorName?: string; billDate: string; createdAt: string;
+  manualApprovalStatus: "pending" | "pending-gm" | "approved" | "rejected";
+  department?: string; customDepartment?: string;
+}
+
+interface ProjectOption { _id: string; name: string; code?: string; parentId?: string | null; }
+// Just enough of a Work Order to resolve which department a bill request/
+// manual bill belongs to (via its workOrderId) — not the full WO shape used
+// elsewhere in the app.
+interface WorkOrderDeptRow { _id: string; department?: string; customDepartment?: string; }
+
+// ── Helpers ────────────────────────────────────────────────────────────────────
+const fmt = (n: number) => "₹" + (n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+// Per-unit rates are fractional far more often than totals are — rounding
+// them for display (as fmt() does) silently turns 130.5 into 131.
+const fmtRate = (n: number) => "₹" + (n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+const DEPARTMENT_LABEL: Record<string, string> = {
+  civil: "Civil Team", marketing: "Marketing Team", planning: "Planning Team",
+  maintenance: "Maintenance Team",
+};
+function departmentLabel(wo?: WorkOrderDeptRow): string {
+  if (!wo || !wo.department) return "—";
+  if (wo.department === "custom") return wo.customDepartment || "Custom Team";
+  return DEPARTMENT_LABEL[wo.department] || "—";
+}
+
+const STATUS_CFG: Record<string, { color: string; label: string }> = {
+  pending: { color: "orange", label: "Pending L1" },
+  "pending-gm": { color: "blue", label: "Pending L2" },
+  approved: { color: "green", label: "Approved" },
+  rejected: { color: "red", label: "Rejected" },
+};
+
+// Same mapping Billing's own read-only bill view uses (RunningBill.status,
+// not the AGM/GM BillRequest status above) — this is the Accounts Payment
+// side pipeline (Verification -> L1 AGM -> L2 Director -> TMS -> Paid).
+const BILL_STATUS_BADGE_COLOR: Record<string, NxBadgeColor> = {
+  draft: "gray",
+  "verify-done": "amber",
+  "l1-approved": "blue",
+  approved: "indigo",
+  "sent-to-tms": "cyan",
+  hold: "orange",
+  paid: "green",
+  rejected: "red",
+};
+
+// The subset of RunningBill fields the read-only Manual Bill view needs —
+// PrintableBill (used for the print template) is missing the Accounts
+// Payment stage timestamps, so this extends it locally rather than widening
+// that shared type for one screen.
+interface ManualBillDetail extends PrintableBill {
+  workOrderNo?: string;
+  verificationBy?: { name?: string } | null;
+  verificationAt?: string;
+  l1ApprovedBy?: { name?: string } | null;
+  l1ApprovedAt?: string;
+  l2ApprovedBy?: { name?: string } | null;
+  l2ApprovedAt?: string;
+  tmsSentAt?: string;
+  tmsCallbackReceivedAt?: string;
+  _id: string;
+  manualApprovalStatus: "pending" | "pending-gm" | "approved" | "rejected";
+  // The pre-Accounts L1/L2 sign-off (this page's own AGM/GM-equivalent
+  // chain) — role is whatever the approver's actual role/custom-role was at
+  // the time, never a hardcoded "AGM"/"GM" label.
+  manualAgmApprovedBy?: { name?: string; role?: string } | null;
+  manualAgmApprovedAt?: string;
+  manualGmApprovedBy?: { name?: string; role?: string } | null;
+  manualGmApprovedAt?: string;
+  department?: string;
+  customDepartment?: string;
+}
+
+function actorName(by?: { name: string } | string | null): string | undefined {
+  if (!by || typeof by === "string") return undefined;
+  return by.name;
+}
+function actorRole(by?: { name: string; role?: string } | string | null): string | undefined {
+  if (!by || typeof by === "string") return undefined;
+  return by.role;
+}
+
+// A grant for module 'bill-requests' with the given action — Owner always
+// bypasses; agm/gm roles get their own stage's action even without an
+// explicit checklist grant, matching the backend route's hardcoded fallback.
+function hasPerm(user: AuthUser | null, action: string): boolean {
+  if (!user) return false;
+  if (user.role === "owner") return true;
+  return !!user.permissions?.find(p => p.module === "bill-requests")?.actions.includes(action);
+}
+
+// Append-only approvalHistory timeline — mirrors the pattern already used for
+// WorkOrder/RunningBill approval chains elsewhere in this app.
+function ApprovalHistoryTimeline({ history }: { history?: ApprovalHistoryEntry[] }) {
+  if (!history || history.length === 0) return null;
+  const stageLabel = (s: string) => (s === "agm" ? "AGM" : "GM");
+  return (
+    <div className="mt-1">
+      {history.map((h, i) => {
+        const isReject = h.action === "rejected";
+        return (
+          <div key={i} className="flex gap-2 items-start py-1">
+            <span className={`w-5 h-5 rounded-full border-[1.5px] flex items-center justify-center text-[10px] font-bold shrink-0 ${isReject ? "bg-red-50 dark:bg-red-500/10 border-red-600 text-red-600" : "bg-emerald-50 dark:bg-emerald-500/10 border-emerald-600 text-emerald-600"}`}>
+              {isReject ? "✕" : "✓"}
+            </span>
+            <div className="text-[12.5px]">
+              <strong>{stageLabel(h.stage)} {isReject ? "rejected" : "approved"}</strong>
+              <span className="text-gray-400 ml-1.5">
+                {actorName(h.by) || ""}{h.at ? ` · ${dayjs(h.at).format("DD MMM YYYY, hh:mm a")}` : ""}
+              </span>
+              {h.remarks && <div className="text-gray-500 dark:text-gray-400 mt-0.5">{h.remarks}</div>}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// Prints a bill request through the exact same template Accounts Payment uses
+// for a real RunningBill (printBill), so the two look identical. Once a
+// RunningBill exists (br.billId) we fetch and print that directly — its own
+// AGM/GM/Accounts/Initiated/Paid ticks are already point-in-time accurate.
+// Before that (still pending/pending-gm/rejected pre-GM), there's no
+// RunningBill yet, so we build an equivalent pseudo-bill from the request
+// itself — only the AGM tick can ever be true at that point, which is what
+// br.agmApprovedBy already, correctly, reflects.
+async function printBillRequest(br: BillRequestRow) {
+  try {
+    const contractor = await resolvePrintParty(br.vendorCode);
+
+    if (br.billId?._id) {
+      const bRes = await apiClient.get<{ bill: PrintableBill }>(`/bills/${br.billId._id}`);
+      const bill = bRes.data.bill;
+      printBill(bill, contractor, bill.status === "paid" ? "post" : "pre");
+      return;
+    }
+
+    const agmDone = !!br.agmApprovedBy;
+    const pseudoBill: PrintableBill = {
+      billNo: br.reqNo,
+      workOrderNo: br.workOrderNo,
+      projectName: br.projectName,
+      projectLocation: br.projectLocation,
+      vendorCode: br.vendorCode,
+      vendorName: br.vendorName,
+      companyName: br.companyName,
+      generatedBy: br.requestedBy?.name,
+      billDate: br.createdAt,
+      lineItems: br.items.map(it => ({ description: it.description, progressRemarks: it.progressRemarks, location: it.location, unit: it.unit, billedQty: it.billedQty, rate: it.rate ?? 0, amount: (it.rate ?? 0) * it.billedQty })),
+      amount: br.items.reduce((s, it) => s + (it.rate ?? 0) * it.billedQty, 0),
+      retentionAmount: br.retentionAmount ?? 0,
+      advanceRecovery: br.advanceRecovery ?? 0,
+      gstPercent: br.gstPercentOverride ?? undefined,
+      remarks: br.rejectReason ? `${br.remarks ? br.remarks + " — " : ""}Rejected: ${br.rejectReason}` : br.remarks,
+      status: br.status,
+      agmApprovedBy: agmDone ? { name: actorName(br.agmApprovedBy) || "—", role: actorRole(br.agmApprovedBy) } : null,
+      agmApprovedAt: br.agmApprovedAt,
+      verifiedBy: null,
+      approvedBy: null,
+      paymentInitiatedBy: null,
+    };
+    const statusLabel = br.status === "rejected" ? "Rejected" : br.status === "pending-gm" ? "Awaiting GM Approval" : "Awaiting AGM Approval";
+    printBill(pseudoBill, contractor, "pre", statusLabel);
+  } catch {
+    toast.error("Failed to prepare print view");
+  }
+}
+
+// A "Manual Bill" row is already a real RunningBill (created via Billing →
+// New Bill, just still pending its own AGM/GM sign-off) — no pseudo-bill
+// needed here, just fetch the full record (ManualBillRow is a summary row,
+// missing lineItems/vendorCode/etc.) and print it through the same template.
+async function printManualBill(b: ManualBillRow) {
+  try {
+    const bRes = await apiClient.get<{ bill: ManualBillDetail }>(`/bills/${b._id}`);
+    const bill = bRes.data.bill;
+    // A manual bill's own L1/L2 sign-off lives in manualAgmApprovedBy/
+    // manualGmApprovedBy — printBill's signature block only ever reads the
+    // agmApprovedBy/verifiedBy fields a progress-driven bill uses, so without
+    // this the name/role never shows on a manual bill's print, even once
+    // fully approved.
+    const printableBill: PrintableBill = {
+      ...bill,
+      agmApprovedBy: bill.agmApprovedBy ?? (bill.manualAgmApprovedBy ? { name: bill.manualAgmApprovedBy.name, role: bill.manualAgmApprovedBy.role } : null),
+      agmApprovedAt: bill.agmApprovedAt ?? bill.manualAgmApprovedAt,
+      verifiedBy: bill.verifiedBy ?? (bill.manualGmApprovedBy ? { name: bill.manualGmApprovedBy.name, role: bill.manualGmApprovedBy.role } : null),
+      verifiedAt: bill.verifiedAt ?? bill.manualGmApprovedAt,
+    };
+    const contractor = await resolvePrintParty(bill.vendorCode);
+    printBill(printableBill, contractor, bill.status === "paid" ? "post" : "pre");
+  } catch {
+    toast.error("Failed to prepare print view");
+  }
+}
+
+// ── Main component ─────────────────────────────────────────────────────────────
+export default function BillApproval() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const openId = searchParams.get("open");
-  const [requests,      setRequests]      = useState<BillRequest[]>([]);
-  const [loading,       setLoading]       = useState(false);
-  const [tab,           setTab]           = useState(openId ? "all" : "pending");
+  const openReqId = searchParams.get("open");
 
-  const [viewReq,       setViewReq]       = useState<BillRequest | null>(null);
-  const [slaInstance,   setSlaInstance]   = useState<WorkflowInstance | null>(null);
-  const [rejectModal,   setRejectModal]   = useState(false);
-  const [rejectTarget,  setRejectTarget]  = useState<string | null>(null);
-  const [rejectReason,  setRejectReason]  = useState("");
-  const [saving,        setSaving]        = useState(false);
+  const canAgmApprove = user?.role === "agm" || hasPerm(user, "agm-approve");
+  const canGmApprove = user?.role === "gm" || hasPerm(user, "gm-approve");
+  const canRejectAny = canAgmApprove || canGmApprove || user?.role === "accounts" || hasPerm(user, "reject");
 
-  // AGM's approval — first stage of the bill chain: sets the hold/advance breakdown.
-  const [approveModal,     setApproveModal]     = useState(false);
-  const [approveTarget,    setApproveTarget]    = useState<string | null>(null);
-  const [approveRetention, setApproveRetention] = useState("");
-  const [approveAdvance,   setApproveAdvance]   = useState("");
+  const [loading, setLoading] = useState(true);
+  const [projects, setProjects] = useState<ProjectOption[]>([]);
+  const [billReqs, setBillReqs] = useState<BillRequestRow[]>([]);
+  const [manualBills, setManualBills] = useState<ManualBillRow[]>([]);
+  const [woDeptMap, setWoDeptMap] = useState<Map<string, WorkOrderDeptRow>>(new Map());
+  const [allUsers, setAllUsers] = useState<{ _id: string; name: string; role: string; department?: string; customDepartment?: string; permissions?: { module: string; actions: string[] }[] }[]>([]);
 
-  const [search,            setSearch]            = useState("");
-  const [projectFilter,     setProjectFilter]     = useState("");
-  const [projectOptions,    setProjectOptions]    = useState<{ label: string; value: string }[]>([]);
-  const [showArchived,      setShowArchived]      = useState(false);
-  const [selectedIds,       setSelectedIds]       = useState<string[]>([]);
-  const [archiving,         setArchiving]         = useState(false);
-  const [archiveTarget,     setArchiveTarget]     = useState<BillRequest | null>(null);
-  const [bulkArchiveConfirm, setBulkArchiveConfirm] = useState(false);
-  const [page,               setPage]               = useState(1);
-
-  const load = async (status?: string, archived?: boolean) => {
+  const load = () => {
     setLoading(true);
-    setSelectedIds([]);
-    try {
-      const params = new URLSearchParams();
-      if (status && status !== "all") params.set("status", status);
-      if (archived) params.set("archived", "true");
-      const qs = params.toString();
-      const res = await apiClient.get(`/bill-requests${qs ? `?${qs}` : ""}`);
-      setRequests(res.data.billRequests ?? []);
-    } catch { toast.error("Failed to load bill requests"); }
-    finally { setLoading(false); }
+    Promise.all([
+      apiClient.get("/projects"),
+      apiClient.get("/bill-requests", { params: { scope: "approval" } }),
+      apiClient.get("/bills", { params: { manualApprovalStatus: "pending" } }),
+      apiClient.get("/bills", { params: { manualApprovalStatus: "pending-gm" } }),
+      apiClient.get("/bills", { params: { manualApprovalStatus: "approved" } }),
+      apiClient.get("/bills", { params: { manualApprovalStatus: "rejected" } }),
+      apiClient.get("/work-orders"),
+      apiClient.get("/auth/users"),
+    ])
+      .then(([projR, brR, manualPendingR, manualGmR, manualApprovedR, manualRejectedR, woR, usersR]) => {
+        setProjects(projR.data.projects ?? []);
+        setBillReqs(brR.data.billRequests ?? []);
+        setManualBills([
+          ...(manualPendingR.data.bills ?? []),
+          ...(manualGmR.data.bills ?? []),
+          ...(manualApprovedR.data.bills ?? []),
+          ...(manualRejectedR.data.bills ?? []),
+        ]);
+        const wos = (woR.data.workOrders ?? []) as WorkOrderDeptRow[];
+        setWoDeptMap(new Map(wos.map(wo => [wo._id, wo])));
+        setAllUsers((usersR.data.users ?? []) as any);
+      })
+      .catch(() => toast.error("Failed to load bill approvals"))
+      .finally(() => setLoading(false));
   };
+  useEffect(load, []);
 
-  useEffect(() => { load(tab === "all" ? undefined : tab, showArchived); }, [tab, showArchived]);
+  // Candidate L2 approvers — anyone with L2 (gm-approve) authority on the
+  // bill-requests module, either via an explicit permission grant or the
+  // built-in gm/owner role. Narrowed to the given bill's own department once
+  // it has one; a user with no department assigned yet is shown regardless
+  // (same rollout-safety fallback used everywhere else in this feature).
+  function l2ApproverOptions(department?: string, customDepartment?: string) {
+    return allUsers.filter((u) => {
+      if (department && u.department) {
+        if (u.department !== department) return false;
+        if (department === "custom" && (u.customDepartment || "") !== customDepartment) return false;
+      }
+      if (u.role === "owner" || u.role === "gm") return true;
+      const perm = u.permissions?.find((p) => p.module === "bill-requests");
+      return !!perm?.actions.includes("gm-approve");
+    });
+  }
+
+  const pendingAgmReqs = useMemo(() => billReqs.filter(r => r.status === "pending" && !r.isArchived), [billReqs]);
+  const pendingGmReqs = useMemo(() => billReqs.filter(r => r.status === "pending-gm" && !r.isArchived), [billReqs]);
+  const pendingManualAgm = useMemo(() => manualBills.filter(b => b.manualApprovalStatus === "pending"), [manualBills]);
+  const pendingManualGm = useMemo(() => manualBills.filter(b => b.manualApprovalStatus === "pending-gm"), [manualBills]);
+  // Which manual bills belong under a given reqTab — mirrors the BillRequest
+  // status tabs above (pending/pending-gm/approved/rejected/all).
+  function manualBillsForTab(tab: string): ManualBillRow[] {
+    if (tab === "all") return manualBills;
+    return manualBills.filter(b => b.manualApprovalStatus === tab);
+  }
+
+  // ── Dashboard flashcards (Pending / Approved / Rejected) — counts across
+  // both bill requests and manual bills, both approval stages combined for
+  // Pending. Archived requests are excluded, matching the default list view.
+  const totalPendingCount = pendingAgmReqs.length + pendingGmReqs.length + pendingManualAgm.length + pendingManualGm.length;
+  const totalApprovedCount = useMemo(
+    () => billReqs.filter(r => r.status === "approved" && !r.isArchived).length + manualBills.filter(b => b.manualApprovalStatus === "approved").length,
+    [billReqs, manualBills]
+  );
+  const totalRejectedCount = useMemo(
+    () => billReqs.filter(r => r.status === "rejected" && !r.isArchived).length + manualBills.filter(b => b.manualApprovalStatus === "rejected").length,
+    [billReqs, manualBills]
+  );
+  const totalCount = useMemo(
+    () => billReqs.filter(r => !r.isArchived).length + manualBills.length,
+    [billReqs, manualBills]
+  );
+
+  // ── Bill request view / approve / reject ────────────────────────────────────
+  const [viewReq, setViewReq] = useState<BillRequestRow | null>(null);
+  const [printingReqId, setPrintingReqId] = useState<string | null>(null);
 
   // Deep link from other pages (e.g. the SLA Report's Ongoing Workflows
-  // table) — ?open=<billRequestId> auto-opens that request's view modal
-  // once the list has loaded.
+  // table) — ?open=<billRequestId> opens that request's view modal once the
+  // list has loaded.
   useEffect(() => {
-    if (!openId || requests.length === 0) return;
-    const match = requests.find(r => r._id === openId);
+    if (!openReqId || billReqs.length === 0) return;
+    const match = billReqs.find(r => r._id === openReqId);
     if (match) setViewReq(match);
-  }, [openId, requests]);
+  }, [openReqId, billReqs]);
 
-  useEffect(() => {
-    apiClient.get("/projects")
-      .then(res => setProjectOptions(
-        selectableProjects((res.data.projects ?? []) as { _id: string; name: string; code: string; parentId?: string | null }[])
-          .map(p => ({ label: `${p.name} (${p.code})`, value: p._id }))
-      ))
-      .catch(() => {});
-  }, []);
+  async function handlePrintReq(r: BillRequestRow) {
+    setPrintingReqId(r._id);
+    try { await printBillRequest(r); } finally { setPrintingReqId(null); }
+  }
+  // Manual Bills' Print — reuses printingReqId for the loading spinner since
+  // a Manual Bill's _id is a different collection's id and never collides
+  // with a BillRequestRow's.
+  async function handlePrintManualBill(b: ManualBillRow) {
+    setPrintingReqId(b._id);
+    try { await printManualBill(b); } finally { setPrintingReqId(null); }
+  }
+  // View — a Manual Bill has no BillRequest, so "View" here means the same
+  // read-only RunningBill summary Billing's own list shows (status, dates,
+  // Accounts Payment's Verification/L1 AGM/L2 Director/TMS/Paid stages,
+  // scope items, financial breakdown) — not a print/download action.
+  const [viewManualBill, setViewManualBill] = useState<ManualBillDetail | null>(null);
+  const [viewManualBillLoadingId, setViewManualBillLoadingId] = useState<string | null>(null);
+  async function openManualBillView(b: ManualBillRow) {
+    setViewManualBillLoadingId(b._id);
+    try {
+      const res = await apiClient.get<{ bill: ManualBillDetail }>(`/bills/${b._id}`);
+      setViewManualBill(res.data.bill);
+    } catch {
+      toast.error("Failed to load bill details");
+    } finally {
+      setViewManualBillLoadingId(null);
+    }
+  }
+  // View — same fix as printBillRequest already applies to Print: once a
+  // RunningBill exists (r.billId), its own lineItems/retention/advance/GST
+  // are the authoritative "as billed" record, not the request's own items
+  // snapshot. Fetches it and merges those fields onto the row before opening
+  // the existing, unchanged viewReq Modal — no new modal, same JSX.
+  async function openViewReq(r: BillRequestRow) {
+    if (!r.billId?._id) return setViewReq(r);
+    try {
+      const bRes = await apiClient.get<{ bill: PrintableBill }>(`/bills/${r.billId._id}`);
+      const bill = bRes.data.bill;
+      setViewReq({
+        ...r,
+        items: bill.lineItems.map(li => ({
+          description: li.description, unit: li.unit || "", billedQty: li.billedQty,
+          rate: li.rate, amount: li.amount, progressRemarks: li.progressRemarks,
+          location: li.location,
+        })),
+        retentionAmount: bill.retentionAmount ?? r.retentionAmount,
+        advanceRecovery: bill.advanceRecovery ?? r.advanceRecovery,
+        gstPercentOverride: bill.gstPercent ?? r.gstPercentOverride,
+      });
+    } catch {
+      setViewReq(r);
+    }
+  }
+  const [approveModal, setApproveModal] = useState(false); // AGM (L1)
+  const [approveTarget, setApproveTarget] = useState<string | null>(null);
+  const [approveRetention, setApproveRetention] = useState<number | null>(null);
+  const [approveAdvance, setApproveAdvance] = useState<number | null>(null);
+  // Who to route this request to for L2 sign-off once L1 approves — see
+  // l2ApproverOptions. Purely informational routing, not an exclusivity lock.
+  const [approveSentForL2To, setApproveSentForL2To] = useState<string>("");
+  // Lets AGM set/override GST% on this bill — mainly for a work order that
+  // has no GST% configured at all. Blank means "use the work order's own".
+  const [approveGst, setApproveGst] = useState<number | null>(null);
+  // Who this bill's payment actually goes to — normally the work order's own
+  // vendor, but a fellow Vendor Group member can be picked instead.
+  const [approvePayeeCode, setApprovePayeeCode] = useState<string>("");
+  const [approveGroupSiblings, setApproveGroupSiblings] = useState<{ vendorCode: string; companyName: string }[]>([]);
+  // Outstanding advance slips for whoever is CURRENTLY selected as payee — so
+  // AGM's "Advance Recovery Amount" actually links back to a real slip
+  // instead of being a bare number no AdvanceSlip ever finds out about.
+  const [approvePendingAdvances, setApprovePendingAdvances] = useState<{ _id: string; slipNo: string; balance: number }[]>([]);
+  const [approveProjectId, setApproveProjectId] = useState<string>("");
+  const [gmModal, setGmModal] = useState(false); // GM (L2)
+  const [gmTarget, setGmTarget] = useState<string | null>(null);
+  const [gmRemarks, setGmRemarks] = useState("");
+  // GM has final say on who gets paid — can confirm AGM's Stage 1 choice (or
+  // the work order's own vendor, if neither ever set one) or override it.
+  const [gmPayeeCode, setGmPayeeCode] = useState<string>("");
+  const [gmGroupSiblings, setGmGroupSiblings] = useState<{ vendorCode: string; companyName: string }[]>([]);
+  const [rejectModal, setRejectModal] = useState(false);
+  const [rejectTarget, setRejectTarget] = useState<string | null>(null);
+  const [rejectReason, setRejectReason] = useState("");
+  const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    if (!viewReq) { setSlaInstance(null); return; }
-    apiClient.get("/workflows/instances", { params: { entityType: "BillRequest", entityId: viewReq._id } })
-      .then(res => setSlaInstance(res.data.instances?.[0] ?? null))
-      .catch(() => setSlaInstance(null));
-  }, [viewReq]);
-
-  const openApprove = (id: string) => {
-    setApproveTarget(id);
-    setApproveRetention("");
-    setApproveAdvance("");
-    setApproveModal(true);
+  const fetchPendingAdvances = async (projectId: string, vendorCode: string) => {
+    if (!projectId || !vendorCode) { setApprovePendingAdvances([]); return; }
+    try {
+      const res = await apiClient.get<{ advanceSlips: { _id: string; slipNo: string; balance: number }[] }>(
+        "/advance-slips/pending", { params: { projectId, vendorCode } }
+      );
+      setApprovePendingAdvances(res.data.advanceSlips || []);
+    } catch { setApprovePendingAdvances([]); }
   };
 
-  const handleApprove = async () => {
+  const selectApprovePayee = (vendorCode: string) => {
+    setApprovePayeeCode(vendorCode);
+    fetchPendingAdvances(approveProjectId, vendorCode);
+  };
+
+  const openApprove = async (id: string) => {
+    setApproveTarget(id); setApproveRetention(null); setApproveAdvance(null); setApproveGst(null); setApproveModal(true);
+    setApprovePayeeCode(""); setApproveGroupSiblings([]); setApprovePendingAdvances([]); setApproveSentForL2To("");
+    const br = billReqs.find(r => r._id === id);
+    if (!br?.vendorCode) return;
+    setApprovePayeeCode(br.vendorCode);
+    const projectId = br.projectId ?? "";
+    setApproveProjectId(projectId);
+    fetchPendingAdvances(projectId, br.vendorCode);
+    try {
+      const cRes = await apiClient.get<{ contractors: Contractor[] }>("/contractors", { params: { search: br.vendorCode } });
+      const contractor = cRes.data.contractors.find(c => c.vendorCode === br.vendorCode);
+      if (!contractor?.groupId) return;
+      const gRes = await apiClient.get<{ members: { vendorCode: string; companyName: string }[] }>(`/vendor-groups/${contractor.groupId}`);
+      setApproveGroupSiblings(gRes.data.members || []);
+    } catch { /* group lookup is best-effort — approval still works without it */ }
+  };
+  const handleAgmApprove = async () => {
     if (!approveTarget) return;
     setSaving(true);
     try {
-      const body: Record<string, number> = {};
-      if (approveRetention !== "") body.retentionAmount = Number(approveRetention);
-      if (approveAdvance   !== "") body.advanceRecovery = Number(approveAdvance);
+      const body: Record<string, unknown> = {};
+      if (approveRetention != null) body.retentionAmount = approveRetention;
+      if (approveGst != null) body.gstPercent = approveGst;
+      if (approvePayeeCode) body.payeeVendorCode = approvePayeeCode;
+      if (approveSentForL2To) body.sentForL2ApprovalTo = approveSentForL2To;
+      if (approveAdvance != null) {
+        body.advanceRecovery = approveAdvance;
+        // Distribute the entered recovery across outstanding slips
+        // oldest-first, capped at each slip's own balance — same allocation
+        // the manual New Bill drawer already uses.
+        const recoveries: { slipId: string; amount: number }[] = [];
+        let remaining = approveAdvance;
+        for (const slip of approvePendingAdvances) {
+          if (remaining <= 0) break;
+          const take = Math.min(remaining, slip.balance);
+          if (take > 0) recoveries.push({ slipId: slip._id, amount: take });
+          remaining -= take;
+        }
+        if (recoveries.length) body.advanceRecoveries = recoveries;
+      }
       const res = await apiClient.put(`/bill-requests/${approveTarget}/agm-approve`, body);
-      toast.success(res.data.message || "Approved & bill generated");
-      setApproveModal(false);
-      setApproveTarget(null);
-      load(tab === "all" ? undefined : tab, showArchived);
-      if (viewReq?._id === approveTarget) setViewReq(null);
-    } catch (e: unknown) {
-      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message || "Failed to approve";
-      toast.error(msg);
+      toast.success(res.data.message || "L1 approved — moved to L2 approval");
+      setApproveModal(false); setApproveTarget(null); setViewReq(null);
+      load();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || "Failed to approve");
     } finally { setSaving(false); }
   };
-
+  const openGmApprove = async (id: string) => {
+    setGmTarget(id); setGmRemarks(""); setGmModal(true);
+    setGmPayeeCode(""); setGmGroupSiblings([]);
+    const br = billReqs.find(r => r._id === id);
+    if (!br?.vendorCode) return;
+    setGmPayeeCode(br.payeeVendorCode || br.vendorCode);
+    try {
+      const cRes = await apiClient.get<{ contractors: Contractor[] }>("/contractors", { params: { search: br.vendorCode } });
+      const contractor = cRes.data.contractors.find(c => c.vendorCode === br.vendorCode);
+      if (!contractor?.groupId) return;
+      const gRes = await apiClient.get<{ members: { vendorCode: string; companyName: string }[] }>(`/vendor-groups/${contractor.groupId}`);
+      setGmGroupSiblings(gRes.data.members || []);
+    } catch { /* group lookup is best-effort — approval still works without it */ }
+  };
+  const handleGmApprove = async () => {
+    if (!gmTarget) return;
+    setSaving(true);
+    try {
+      const body: Record<string, unknown> = { remarks: gmRemarks };
+      if (gmPayeeCode) body.payeeVendorCode = gmPayeeCode;
+      const res = await apiClient.put(`/bill-requests/${gmTarget}/gm-approve`, body);
+      toast.success(res.data.message || "Approved & bill generated");
+      setGmModal(false); setGmTarget(null); setViewReq(null);
+      load();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || "Failed to approve");
+    } finally { setSaving(false); }
+  };
   const handleReject = async () => {
     if (!rejectTarget) return;
     setSaving(true);
     try {
       await apiClient.put(`/bill-requests/${rejectTarget}/reject`, { rejectReason });
       toast.success("Request rejected");
-      setRejectModal(false);
-      setRejectReason("");
-      setRejectTarget(null);
-      load(tab === "all" ? undefined : tab, showArchived);
-      if (viewReq?._id === rejectTarget) setViewReq(null);
+      setRejectModal(false); setRejectReason(""); setRejectTarget(null); setViewReq(null);
+      load();
     } catch { toast.error("Failed to reject"); }
     finally { setSaving(false); }
   };
 
-  async function archiveOne() {
-    if (!archiveTarget) return;
-    try {
-      await apiClient.patch(`/bill-requests/${archiveTarget._id}/${showArchived ? "unarchive" : "archive"}`);
-      toast.success(showArchived ? `${archiveTarget.reqNo} unarchived` : `${archiveTarget.reqNo} archived`);
-      setArchiveTarget(null);
-      load(tab === "all" ? undefined : tab, showArchived);
-    } catch (e: unknown) {
-      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message || "Action failed";
-      toast.error(msg);
-    }
-  }
+  // ── Manual bills (Billing -> New Bill) awaiting their own AGM/GM sign-off —
+  // same reviewers, same permissions, just a plain approve (no retention/GST/
+  // advance to decide — those were already set when the bill was created).
+  const [manualApproveTarget, setManualApproveTarget] = useState<ManualBillRow | null>(null);
+  const [manualRejectTarget, setManualRejectTarget] = useState<ManualBillRow | null>(null);
+  const [manualRejectReason, setManualRejectReason] = useState("");
+  // Who to route this manual bill to for L2 sign-off once L1 approves it —
+  // same informational-only routing as the BillRequest AGM modal's own field.
+  const [manualSentForL2To, setManualSentForL2To] = useState("");
+  useEffect(() => { setManualSentForL2To(""); }, [manualApproveTarget]);
 
-  async function archiveSelected() {
-    if (selectedIds.length === 0) return;
+  const handleManualApprove = async (bill: ManualBillRow) => {
+    setSaving(true);
+    try {
+      const endpoint = bill.manualApprovalStatus === "pending" ? "manual-agm-approve" : "manual-gm-approve";
+      const body = bill.manualApprovalStatus === "pending" && manualSentForL2To ? { sentForL2ApprovalTo: manualSentForL2To } : {};
+      const res = await apiClient.patch(`/bills/${bill._id}/${endpoint}`, body);
+      toast.success(res.data.message || "Approved");
+      setManualApproveTarget(null);
+      load();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || "Failed to approve");
+    } finally { setSaving(false); }
+  };
+  const handleManualReject = async () => {
+    if (!manualRejectTarget) return;
+    setSaving(true);
+    try {
+      await apiClient.patch(`/bills/${manualRejectTarget._id}/manual-reject`, { reason: manualRejectReason });
+      toast.success("Bill rejected");
+      setManualRejectTarget(null); setManualRejectReason("");
+      load();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || "Failed to reject");
+    } finally { setSaving(false); }
+  };
+
+  const [archiveTarget, setArchiveTarget] = useState<BillRequestRow | null>(null);
+  const [archiving, setArchiving] = useState(false);
+
+  async function archiveOne(r: BillRequestRow) {
     setArchiving(true);
     try {
-      await apiClient.patch(`/bill-requests/${showArchived ? "unarchive-bulk" : "archive-bulk"}`, { ids: selectedIds });
-      toast.success(`${selectedIds.length} request(s) ${showArchived ? "unarchived" : "archived"}`);
-      setBulkArchiveConfirm(false);
-      load(tab === "all" ? undefined : tab, showArchived);
-    } catch (e: unknown) {
-      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message || "Action failed";
-      toast.error(msg);
+      await apiClient.patch(`/bill-requests/${r._id}/${r.isArchived ? "unarchive" : "archive"}`);
+      toast.success(r.isArchived ? `${r.reqNo} unarchived` : `${r.reqNo} archived`);
+      setArchiveTarget(null);
+      load();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || "Action failed");
     } finally {
       setArchiving(false);
     }
   }
 
-  const filtered = (() => {
-    let byTab = tab === "all" ? requests : requests.filter(r => r.status === tab);
-    if (projectFilter) byTab = byTab.filter(r => r.projectId === projectFilter);
-    const q = search.trim().toLowerCase();
+  const viewTotal = viewReq ? viewReq.items.reduce((s, it) => s + (it.rate ?? 0) * it.billedQty, 0) : 0;
+
+  // ── Requests list (filters + pagination) ────────────────────────────────────
+  const [reqTab, setReqTab] = useState("pending");
+  const [reqSearch, setReqSearch] = useState("");
+  const [reqProjectFilter, setReqProjectFilter] = useState<string | undefined>(undefined);
+  const [reqDeptFilter, setReqDeptFilter] = useState<string | undefined>(undefined);
+  const [showArchived, setShowArchived] = useState(false);
+  const projectOptions = useMemo(
+    () => selectableProjects(projects).map(p => ({ label: `${p.name} (${p.code ?? ""})`, value: p._id })),
+    [projects]
+  );
+  const departmentOptions = [
+    { value: "civil", label: "Civil Team" },
+    { value: "marketing", label: "Marketing Team" },
+    { value: "planning", label: "Planning Team" },
+    { value: "maintenance", label: "Maintenance Team" },
+    { value: "custom", label: "Custom Team" },
+  ];
+  // A request/bill's OWN department field (set directly on standalone bills,
+  // or copied from its Work Order at creation time) is the source of truth —
+  // matches what the backend's own visibility filter uses. Falls back to the
+  // linked Work Order's current department only for older records that
+  // predate this field ever being denormalized onto the bill itself.
+  const resolveDeptRow = (row: { department?: string; customDepartment?: string; workOrderId?: string }): WorkOrderDeptRow | undefined => {
+    if (row.department) return { _id: "", department: row.department, customDepartment: row.customDepartment };
+    return row.workOrderId ? woDeptMap.get(row.workOrderId) : undefined;
+  };
+  const matchesDept = (row: { department?: string; customDepartment?: string; workOrderId?: string }) => {
+    if (!reqDeptFilter) return true;
+    return resolveDeptRow(row)?.department === reqDeptFilter;
+  };
+
+  const filteredReqs = useMemo(() => {
+    let list = billReqs.filter(r => showArchived ? r.isArchived : !r.isArchived);
+    list = reqTab === "all" ? list : list.filter(r => r.status === reqTab);
+    if (reqProjectFilter) list = list.filter(r => r.projectId === reqProjectFilter);
+    if (reqDeptFilter) list = list.filter(r => matchesDept(r));
+    const q = reqSearch.trim().toLowerCase();
     if (q) {
-      byTab = byTab.filter(r =>
+      list = list.filter(r =>
         r.reqNo.toLowerCase().includes(q) ||
         r.workOrderNo.toLowerCase().includes(q) ||
         r.vendorName.toLowerCase().includes(q) ||
         (r.vendorCode || "").toLowerCase().includes(q) ||
-        r.projectName.toLowerCase().includes(q) ||
-        (r.category || "").toLowerCase().includes(q)
+        r.projectName.toLowerCase().includes(q)
       );
     }
-    return byTab;
-  })();
-  const paged = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-  const viewTotal = viewReq ? viewReq.items.reduce((s, it) => s + (it.rate ?? 0) * it.billedQty, 0) : 0;
+    return [...list].sort((a, b) => parseInt(b.reqNo.replace(/\D/g, ""), 10) - parseInt(a.reqNo.replace(/\D/g, ""), 10));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [billReqs, reqTab, reqProjectFilter, reqDeptFilter, reqSearch, showArchived, woDeptMap]);
 
-  const pendingCount = requests.filter(r => r.status === "pending").length;
-  const allSelected = paged.length > 0 && selectedIds.length === paged.length;
-  const toggleAll = () => setSelectedIds(allSelected ? [] : paged.map(r => r._id));
-  const toggleOne = (id: string) => setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  const reqPager = usePagination(filteredReqs, 20);
+
+  if (loading) {
+    return <div className="flex justify-center py-20"><Spinner size="large" /></div>;
+  }
 
   return (
     <div>
       <PageHeader
-        title="Bill Requests"
-        subtitle="DRI payment requests reviewed and converted to running bills."
         icon={FileText}
+        title="Bill Approval"
+        subtitle="Review bill requests raised from DRI progress and manual bills, and carry them through AGM (L1) and GM (L2) approval."
       />
 
-      <div className="bg-white/90 dark:bg-gray-800/95 backdrop-blur-xl border border-gray-100 dark:border-gray-700/50 rounded-xl shadow-sm p-5">
-        <div className="flex items-center justify-end flex-wrap gap-2.5 mb-3">
-          <Segmented
-            value={tab}
-            onChange={v => { setTab(v); setPage(1); }}
-            options={[
-              { value: "pending", label: <span className="flex items-center gap-1.5">Pending {pendingCount > 0 && <NxBadge color="amber">{pendingCount}</NxBadge>}</span> },
-              { value: "approved", label: "Approved" },
-              { value: "rejected", label: "Rejected" },
-              { value: "all", label: "All" },
-            ]}
-          />
-        </div>
-
-        <div className="bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700/40 rounded-lg p-3.5 mb-4">
-          <div className="flex gap-2.5 items-center flex-wrap">
-            <SearchFilter value={search} onChange={v => { setSearch(v); setPage(1); }} placeholder="Search by request no, work order, contractor, vendor code or project…" />
-            <DropdownSelectFilter
-              value={projectFilter}
-              onChange={v => { setProjectFilter(v); setPage(1); }}
-              placeholder="All Projects"
-              resetValue=""
-              options={projectOptions}
-            />
-            <Switch checked={showArchived} onChange={setShowArchived} onLabel="Archived" offLabel="Active" />
-            {selectedIds.length > 0 && (
-              <NxBtn color="secondary" icon={Inbox} loading={archiving} label={`${showArchived ? "Unarchive" : "Archive"} Selected (${selectedIds.length})`} onClick={() => setBulkArchiveConfirm(true)} />
-            )}
-            <span className="ml-auto text-gray-400 text-xs whitespace-nowrap">
-              {filtered.length} request{filtered.length !== 1 ? "s" : ""}
-            </span>
-          </div>
-        </div>
-
-        {loading ? (
-          <Spinner label="Loading bill requests…" />
-        ) : filtered.length === 0 ? (
-          <EmptyState icon={FileText} title={search ? `No results for "${search}"` : `No ${tab === "all" ? "" : tab} bill requests`} />
-        ) : (
-          <>
-            <Table>
-              <Thead>
-                <Tr>
-                  <Th><Checkbox checked={allSelected} onChange={toggleAll} /></Th>
-                  <Th>Stage / Request</Th>
-                  <Th>Work Order</Th>
-                  <Th>Project</Th>
-                  <Th>Contractor</Th>
-                  <Th>Period</Th>
-                  <Th>Items</Th>
-                  <Th>Requested By</Th>
-                  <Th>Date</Th>
-                  <Th>Status</Th>
-                  <Th>Actions</Th>
-                </Tr>
-              </Thead>
-              <Tbody>
-                {paged.map(r => {
-                  const cfg = STATUS_CFG[r.status] ?? { color: "orange" as const, label: r.status };
-                  const menuItems: DropdownMenuItem[] = [
-                    { key: "archive", label: showArchived ? "Unarchive" : "Archive", icon: Inbox, onClick: () => setArchiveTarget(r) },
-                  ];
-                  return (
-                    <Tr key={r._id}>
-                      <Td><Checkbox checked={selectedIds.includes(r._id)} onChange={() => toggleOne(r._id)} /></Td>
-                      <Td>
-                        <div className="flex gap-1.5 items-center">
-                          {r.stageNo && <NxBadge color="orange">S{r.stageNo}</NxBadge>}
-                          <button type="button" onClick={() => setViewReq(r)} className="bg-transparent border-none cursor-pointer text-primary font-bold text-[13px] p-0">
-                            {r.reqNo}
-                          </button>
-                        </div>
-                        {r.milestoneAchieved && <span className="text-[10px] text-primary flex items-center gap-1"><Trophy className="w-2.5 h-2.5" /> Milestone</span>}
-                      </Td>
-                      <Td>
-                        <span
-                          className="cursor-pointer text-blue-600 dark:text-blue-400"
-                          onClick={() => r.workOrderId && navigate(`/work-items/${r.workOrderId}`)}
-                        >
-                          {r.workOrderNo}
-                        </span>
-                      </Td>
-                      <Td>
-                        <TdText>{r.projectName}</TdText>
-                        {r.projectLocation && <div className="text-[11px] text-gray-400 dark:text-gray-500">{r.projectLocation}</div>}
-                      </Td>
-                      <Td><TdText>{r.vendorName}</TdText></Td>
-                      <Td>
-                        {r.periodFrom ? (
-                          <span className="text-xs text-gray-500 dark:text-gray-400">{dayjs(r.periodFrom).format("DD MMM")} → {dayjs(r.periodTo ?? r.createdAt).format("DD MMM YYYY")}</span>
-                        ) : <span className="text-gray-300 dark:text-gray-600">—</span>}
-                      </Td>
-                      <Td><TdText>{r.items.length} item{r.items.length !== 1 ? "s" : ""}</TdText></Td>
-                      <Td><TdText>{r.requestedBy?.name || "—"}</TdText></Td>
-                      <Td><TdText>{dayjs(r.createdAt).format("DD MMM YYYY")}</TdText></Td>
-                      <Td><NxBadge color={cfg.color}>{cfg.label}</NxBadge></Td>
-                      <Td>
-                        <div className="flex items-center gap-1 flex-wrap">
-                          <NxBtn color="icon-blue" title="View" icon={Eye} onClick={() => setViewReq(r)} />
-                          {r.status === "pending" && (
-                            <>
-                              <NxBtn color="icon-green" title="Approve" icon={Check} onClick={() => openApprove(r._id)} />
-                              <NxBtn color="icon-red" title="Reject" icon={X} onClick={() => { setRejectTarget(r._id); setRejectModal(true); }} />
-                            </>
-                          )}
-                          <DropdownMenu items={menuItems} />
-                        </div>
-                      </Td>
-                    </Tr>
-                  );
-                })}
-              </Tbody>
-            </Table>
-            {filtered.length > PAGE_SIZE && (
-              <div className="flex items-center justify-between mt-4">
-                <span className="text-xs text-gray-400">{filtered.length} requests</span>
-                <Pagination page={page} totalPages={Math.ceil(filtered.length / PAGE_SIZE)} onChange={setPage} />
-              </div>
-            )}
-          </>
-        )}
+      {/* ── KPI flashcards ── */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-5">
+        <NxStatCard
+          label="Total" value={totalCount} icon={FileText}
+          active={reqTab === "all"}
+          onClick={() => setReqTab("all")}
+        />
+        <NxStatCard
+          label="Pending" value={totalPendingCount} icon={Clock}
+          active={reqTab === "pending" || reqTab === "pending-gm"}
+          onClick={() => setReqTab("pending")}
+        />
+        <NxStatCard
+          label="Approved" value={totalApprovedCount} icon={CheckCircle2}
+          active={reqTab === "approved"}
+          onClick={() => setReqTab("approved")}
+        />
+        <NxStatCard
+          label="Rejected" value={totalRejectedCount} icon={XCircle}
+          active={reqTab === "rejected"}
+          onClick={() => setReqTab("rejected")}
+        />
       </div>
 
-      {/* View / Approve Modal */}
-      {viewReq && (
-        <Modal
-          title={
-            <div className="flex items-center gap-2">
-              <span>Bill Request — {viewReq.reqNo}</span>
-              {viewReq.stageNo && <Badge color="orange" small>Stage {viewReq.stageNo}</Badge>}
-              {viewReq.milestoneAchieved && (
-                <span className="inline-flex items-center gap-1 bg-primary text-white text-[11px] font-bold px-2 py-0.5 rounded-md"><Trophy className="w-3 h-3" /> Milestone</span>
-              )}
-            </div>
-          }
-          extraWide
-          onClose={() => setViewReq(null)}
-          footer={
-            viewReq.status === "pending" ? (
-              <div className="flex gap-2 justify-end">
-                <Btn label="Close" outline onClick={() => setViewReq(null)} />
-                <Btn label="Reject" color="red" onClick={() => { setRejectTarget(viewReq._id); setRejectModal(true); setViewReq(null); }} />
-                <Btn label="Approve & Generate Bill" color="primary" onClick={() => { openApprove(viewReq._id); setViewReq(null); }} />
-              </div>
-            ) : viewReq.status === "approved" && !viewReq.milestoneAchieved ? (
-              <div className="flex gap-2 justify-end">
-                <Btn label="Close" outline onClick={() => setViewReq(null)} />
-                <Btn label="Manage in Accounts Payment →" icon={Trophy} color="primary" onClick={() => { setViewReq(null); navigate("/accounts-payment"); }} />
-              </div>
-            ) : (
-              <Btn label="Close" outline onClick={() => setViewReq(null)} />
-            )
-          }
-        >
-          <div className="flex flex-col gap-3.5">
-            {/* Header info */}
-            <div className="grid grid-cols-2 gap-2 bg-gray-50 dark:bg-gray-800/40 p-3.5 rounded-lg">
-              {[
-                ["Work Order",    viewReq.workOrderNo],
-                ["Project",       viewReq.projectLocation ? `${viewReq.projectName} — ${viewReq.projectLocation}` : viewReq.projectName],
-                ["Contractor",    viewReq.vendorName],
-                ["Category",      [viewReq.category, viewReq.subCategory].filter(Boolean).join(" › ")],
-                ["Requested By",  viewReq.requestedBy?.name || "—"],
-                ["Date",          dayjs(viewReq.createdAt).format("DD MMM YYYY")],
-                ...(viewReq.periodFrom ? [["Period", `${dayjs(viewReq.periodFrom).format("DD MMM YYYY")} → ${dayjs(viewReq.periodTo ?? viewReq.createdAt).format("DD MMM YYYY")}`] as [string, string]] : []),
-                ...(viewReq.billId ? [["Bill No.", viewReq.billId.billNo + " — " + fmt(viewReq.billId.amount)] as [string, string]] : []),
-              ].map(([label, val]) => (
-                <div key={label}>
-                  <div className="text-[10px] text-gray-500 dark:text-gray-400 uppercase tracking-wide">{label}</div>
-                  <div className="font-semibold text-[#1A1A2E] dark:text-[#F1F5F9] text-[13px]">{val}</div>
-                </div>
-              ))}
-            </div>
+      <div className="mb-4">
+        <Segmented
+          value={reqTab}
+          onChange={setReqTab}
+          options={[
+            { value: "pending", label: <span className="inline-flex items-center gap-1.5">Pending L1 {pendingAgmReqs.length + pendingManualAgm.length > 0 && <NxBadge color="amber">{pendingAgmReqs.length + pendingManualAgm.length}</NxBadge>}</span> },
+            { value: "pending-gm", label: <span className="inline-flex items-center gap-1.5">Pending L2 {pendingGmReqs.length + pendingManualGm.length > 0 && <NxBadge color="blue">{pendingGmReqs.length + pendingManualGm.length}</NxBadge>}</span> },
+            { value: "approved", label: "Approved" },
+            { value: "rejected", label: "Rejected" },
+            { value: "all", label: "All" },
+          ]}
+        />
+      </div>
+      <div className="bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700/40 rounded-lg p-3.5 mb-4">
+        <div className="flex gap-2.5 flex-wrap items-center">
+          <SearchFilter
+            placeholder="Search by request no, work order, contractor, or project…"
+            value={reqSearch} onChange={setReqSearch}
+          />
+          <DropdownSelectFilter
+            value={reqProjectFilter ?? ""} onChange={v => setReqProjectFilter(v || undefined)}
+            placeholder="All projects" resetValue=""
+            options={projectOptions}
+          />
+          <DropdownSelectFilter
+            value={reqDeptFilter ?? ""} onChange={v => setReqDeptFilter(v || undefined)}
+            placeholder="All departments" resetValue=""
+            options={departmentOptions}
+          />
+          <UISwitch checked={showArchived} onChange={setShowArchived} onLabel="Archived" offLabel="Show Archived" />
+        </div>
+      </div>
 
-            {slaInstance && (
-              <WorkflowInstanceStepper
-                instance={slaInstance}
-                userRole={user?.role}
-                userId={user?.id}
-                onChanged={() => {
-                  apiClient.get("/workflows/instances", { params: { entityType: "BillRequest", entityId: viewReq._id } })
-                    .then(res => setSlaInstance(res.data.instances?.[0] ?? null))
-                    .catch(() => {});
-                }}
-                compact
-              />
-            )}
-
-            {/* Items table */}
-            <div>
-              <div className="font-bold text-xs text-gray-600 dark:text-gray-300 mb-1.5 uppercase tracking-wide">Scope Items</div>
-              <Table>
-                <Thead>
-                  <Tr>
-                    <Th>Description</Th>
-                    <Th>Unit</Th>
-                    <Th className="text-right">Qty Billed</Th>
-                    <Th className="text-right">Rate</Th>
-                    <Th className="text-right">Amount</Th>
-                  </Tr>
-                </Thead>
-                <Tbody>
-                  {viewReq.items.map((it, i) => {
-                    const amt = (it.rate ?? 0) * it.billedQty;
-                    return (
-                      <Tr key={i}>
-                        <Td>{it.description}</Td>
-                        <Td>{it.unit}</Td>
-                        <Td className="text-right font-mono">{it.billedQty.toLocaleString("en-IN")}</Td>
-                        <Td className="text-right">{it.rate ? fmtRate(it.rate) : <span className="text-gray-400">pending</span>}</Td>
-                        <Td className="text-right font-semibold">{it.rate ? fmt(amt) : <span className="text-gray-400">—</span>}</Td>
-                      </Tr>
-                    );
-                  })}
-                </Tbody>
-                {viewTotal > 0 && (
-                  <tfoot>
-                    <Tr className="bg-primary/5">
-                      <Td colSpan={4} className="font-bold text-right text-primary">Gross Total</Td>
-                      <Td className="font-bold text-right text-[#1A1A2E] dark:text-[#F1F5F9]">{fmt(viewTotal)}</Td>
-                    </Tr>
-                    {(viewReq.billId?.retentionPercent ?? 0) > 0 && (
-                      <Tr className="bg-red-50 dark:bg-red-500/10">
-                        <Td colSpan={4} className="text-right font-semibold text-red-600 dark:text-red-400">Retention @ {viewReq.billId!.retentionPercent}%</Td>
-                        <Td className="text-right font-semibold font-mono text-red-600 dark:text-red-400">
-                          − {fmt(viewReq.billId!.retentionAmount ?? Math.round(viewTotal * (viewReq.billId!.retentionPercent ?? 0) / 100))}
-                        </Td>
-                      </Tr>
-                    )}
-                    {(viewReq.billId?.retentionPercent ?? 0) > 0 && (
-                      <Tr className="bg-emerald-50 dark:bg-emerald-500/10">
-                        <Td colSpan={4} className="font-bold text-right text-emerald-600 dark:text-emerald-400">Net Release</Td>
-                        <Td className="font-bold text-right font-mono text-emerald-600 dark:text-emerald-400">
-                          {fmt(viewTotal - (viewReq.billId!.retentionAmount ?? Math.round(viewTotal * (viewReq.billId!.retentionPercent ?? 0) / 100)))}
-                        </Td>
-                      </Tr>
-                    )}
-                  </tfoot>
-                )}
-              </Table>
-            </div>
-
-            {viewReq.remarks && (
-              <div className="bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 rounded-md px-2.5 py-2 text-sm text-amber-800 dark:text-amber-300">
-                <strong>Remarks:</strong> {viewReq.remarks}
-              </div>
-            )}
-
-            {viewReq.status === "approved" && viewReq.billId && (() => {
-              const b = viewReq.billId;
-              const gross   = b.amount || 0;
-              const retAmt  = b.retentionAmount ?? 0;
-              const advRec  = b.advanceRecovery ?? 0;
-              const { gstAmount: gstAmt, netAfterHold: netPay } = billFinancials({ gross, gstPercent: b.gstPercent ?? 0, retentionAmount: retAmt, advanceRecovery: advRec });
-              const paid    = b.paidAmount;
-              const tdsAmt  = paid != null ? Math.max(0, Math.round(netPay - paid)) : 0;
-              return (
-                <div className="bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-300 dark:border-emerald-500/30 rounded-lg p-3 text-sm">
-                  <div className="font-bold mb-2 text-emerald-800 dark:text-emerald-300">Running Bill: {b.billNo}</div>
-                  <div className="font-mono text-xs flex flex-col gap-0.5">
-                    <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">Gross Billed</span><span className="font-semibold">{fmt(gross)}</span></div>
-                    {retAmt > 0 && <div className="flex justify-between text-red-600 dark:text-red-400"><span>Hold / Retention{(b.retentionPercent ?? 0) > 0 ? ` @ ${b.retentionPercent}%` : ""}</span><span>− {fmt(retAmt)}</span></div>}
-                    {advRec > 0 && <div className="flex justify-between text-amber-600 dark:text-amber-400"><span>Less: Advance Recovery</span><span>− {fmt(advRec)}</span></div>}
-                    {gstAmt > 0 && <div className="flex justify-between text-emerald-600 dark:text-emerald-400"><span>GST @ {b.gstPercent}%</span><span>+ {fmt(gstAmt)}</span></div>}
-                    <div className="flex justify-between border-t border-emerald-300 dark:border-emerald-500/30 pt-1 mt-0.5 font-bold"><span>Net Payable</span><span>{fmt(netPay)}</span></div>
-                    {tdsAmt > 0 && <div className="flex justify-between text-red-600 dark:text-red-400"><span>Less: TDS Deducted</span><span>− {fmt(tdsAmt)}</span></div>}
-                    {(b.adjustmentAmount ?? 0) !== 0 && <div className={`flex justify-between ${(b.adjustmentAmount ?? 0) > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}><span>Adjustment{b.adjustmentRemark ? ` (${b.adjustmentRemark})` : ""}</span><span>{(b.adjustmentAmount ?? 0) > 0 ? "+" : "−"} {fmt(Math.abs(b.adjustmentAmount ?? 0))}</span></div>}
-                    {paid != null && <div className="flex justify-between font-bold text-emerald-600 dark:text-emerald-400 text-[13px] mt-1 border-t border-emerald-300 dark:border-emerald-500/30 pt-1"><span>Actually Paid</span><span>{fmt(paid)}</span></div>}
-                  </div>
-                  {viewReq.milestoneAchieved && viewReq.milestoneDate && (
-                    <div className="mt-2 text-primary font-semibold flex items-center gap-1.5">
-                      <Trophy className="w-3.5 h-3.5" /> Payment Released: {dayjs(viewReq.milestoneDate).format("DD MMM YYYY")}
-                      {b.paymentUTR && <span className="ml-2 text-xs text-purple-600 dark:text-purple-400">UTR: {b.paymentUTR}</span>}
+      {/* Manual bills (Billing -> New Bill) — no BillRequest of their own, so
+          they're never in billReqs above; this is their own AGM/GM sign-off,
+          tracked directly on the bill. */}
+      {manualBillsForTab(reqTab).filter(b => matchesDept(b)).length > 0 && (
+        <div className="mb-5">
+          <div className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">
+            Manual Bills — Billing → New Bill
+          </div>
+          <Table>
+            <Thead>
+              <Tr>
+                <Th>Bill No</Th>
+                <Th>Project</Th>
+                <Th>Department</Th>
+                <Th>Vendor</Th>
+                <Th>Amount</Th>
+                <Th>Date</Th>
+                <Th>Stage</Th>
+                <Th>Actions</Th>
+              </Tr>
+            </Thead>
+            <Tbody>
+              {manualBillsForTab(reqTab).filter(b => matchesDept(b)).map(b => (
+                <Tr key={b._id}>
+                  <Td><span className="text-primary font-bold text-[13px]">{b.billNo}</span></Td>
+                  <Td>{b.projectName || "—"}</Td>
+                  <Td>{departmentLabel(resolveDeptRow(b))}</Td>
+                  <Td>{b.vendorName || "—"}</Td>
+                  <Td className="font-mono">{fmt(b.amount)}</Td>
+                  <Td>{dayjs(b.billDate || b.createdAt).format("DD MMM YYYY")}</Td>
+                  <Td><NxBadge color={STATUS_CFG[b.manualApprovalStatus]?.color as any ?? "gray"}>{STATUS_CFG[b.manualApprovalStatus]?.label ?? b.manualApprovalStatus}</NxBadge></Td>
+                  <Td>
+                    <div className="flex items-center gap-1">
+                      <NxBtn color="icon-blue" title="View" icon={Eye} loading={viewManualBillLoadingId === b._id} onClick={() => openManualBillView(b)} />
+                      <NxBtn color="icon" title="Print" icon={Printer} loading={printingReqId === b._id} onClick={() => handlePrintManualBill(b)} />
+                      {b.manualApprovalStatus === "pending" && canAgmApprove && (
+                        <NxBtn color="icon-green" title="L1 Approve" icon={Check} onClick={() => setManualApproveTarget(b)} />
+                      )}
+                      {b.manualApprovalStatus === "pending-gm" && canGmApprove && (
+                        <NxBtn color="icon-green" title="L2 Approve" icon={Check} onClick={() => setManualApproveTarget(b)} />
+                      )}
+                      {canRejectAny && (
+                        <NxBtn color="icon-red" title="Reject" icon={X} onClick={() => setManualRejectTarget(b)} />
+                      )}
                     </div>
-                  )}
-                </div>
-              );
-            })()}
-
-            {viewReq.status === "rejected" && viewReq.rejectReason && (
-              <div className="bg-red-50 dark:bg-red-500/10 border border-red-300 dark:border-red-500/30 rounded-md px-2.5 py-2 text-sm text-red-700 dark:text-red-300">
-                <strong>Reject Reason:</strong> {viewReq.rejectReason}
-              </div>
-            )}
-          </div>
-        </Modal>
+                  </Td>
+                </Tr>
+              ))}
+            </Tbody>
+          </Table>
+        </div>
       )}
 
-      {/* AGM Approve Modal — stage 1: sets hold/advance breakdown, then approves */}
-      {approveModal && (
-        <Modal
-          title="Approve Bill Request — AGM Sign-off"
-          onClose={() => { setApproveModal(false); setApproveTarget(null); }}
-          footer={<Btn label="Approve & Generate Bill" color="primary" loading={saving} onClick={handleApprove} />}
-        >
-          <div className="text-xs text-gray-500 dark:text-gray-400 mb-3.5">
-            A running bill will be generated for the amounts below. Leave a field blank to use the work order's automatic retention calculation.
-          </div>
-          <div className="flex flex-col gap-3">
-            <Field
-              label="Hold / Retention Amount (₹)" type="number" min={0}
-              placeholder="Auto-calculated from work order retention %"
-              value={approveRetention} onChange={e => setApproveRetention(e.target.value)}
-            />
-            <Field
-              label="Advance Recovery Amount (₹)" type="number" min={0}
-              placeholder="0"
-              value={approveAdvance} onChange={e => setApproveAdvance(e.target.value)}
-            />
-          </div>
-        </Modal>
-      )}
-
-      {/* Reject Modal */}
-      {rejectModal && (
-        <Modal
-          title="Reject Bill Request"
-          onClose={() => { setRejectModal(false); setRejectReason(""); setRejectTarget(null); }}
-          footer={<Btn label="Confirm Rejection" color="red" loading={saving} onClick={handleReject} />}
-        >
-          <Field textarea rows={3} placeholder="Reason for rejection (optional)" value={rejectReason} onChange={e => setRejectReason(e.target.value)} />
-        </Modal>
+      {filteredReqs.length === 0 ? (
+        <EmptyState title={`No ${reqTab === "all" ? "" : STATUS_CFG[reqTab]?.label.toLowerCase() || reqTab} bill requests`} />
+      ) : (
+        <>
+          <Table>
+            <Thead>
+              <Tr>
+                <Th>Stage / Request</Th>
+                <Th>Work Order</Th>
+                <Th>Project</Th>
+                <Th>Department</Th>
+                <Th>Contractor</Th>
+                <Th>Items</Th>
+                <Th>Date</Th>
+                <Th>Status</Th>
+                <Th>Actions</Th>
+              </Tr>
+            </Thead>
+            <Tbody>
+              {reqPager.pageItems.map(r => {
+                const cfg = STATUS_CFG[r.status] ?? { color: "gray", label: r.status };
+                const menuItems: DropdownMenuItem[] = [
+                  { key: "archive", label: r.isArchived ? "Unarchive" : "Archive", icon: ArchiveIcon, onClick: () => setArchiveTarget(r) },
+                ];
+                return (
+                  <Tr key={r._id} className="cursor-pointer" onClick={() => openViewReq(r)}>
+                    <Td>
+                      <div className="flex gap-1.5 items-center">
+                        {r.stageNo && <NxBadge color="orange">S{r.stageNo}</NxBadge>}
+                        <span className="text-primary font-bold text-[13px]">{r.reqNo}</span>
+                      </div>
+                      {r.milestoneAchieved && (
+                        <span className="text-[10px] text-primary inline-flex items-center gap-0.5"><Trophy className="w-2.5 h-2.5" /> Milestone</span>
+                      )}
+                    </Td>
+                    <Td>
+                      <code
+                        className="cursor-pointer text-blue-600 dark:text-blue-400"
+                        onClick={e => { e.stopPropagation(); if (r.workOrderId) navigate(`/work-items/${r.workOrderId}`); }}
+                      >
+                        {r.workOrderNo}
+                      </code>
+                    </Td>
+                    <Td>{r.projectName}</Td>
+                    <Td>{departmentLabel(resolveDeptRow(r))}</Td>
+                    <Td>{r.vendorName}</Td>
+                    <Td>{r.items.length} item{r.items.length !== 1 ? "s" : ""}</Td>
+                    <Td>{dayjs(r.createdAt).format("DD MMM YYYY")}</Td>
+                    <Td><UIBadge color={cfg.color as any}>{cfg.label}</UIBadge></Td>
+                    <Td>
+                      <div onClick={e => e.stopPropagation()} className="flex items-center gap-1">
+                        <NxBtn color="icon-blue" title="View" icon={Eye} onClick={() => openViewReq(r)} />
+                        <NxBtn color="icon" title="Print" icon={Printer} loading={printingReqId === r._id} onClick={() => handlePrintReq(r)} />
+                        {r.status === "pending" && canAgmApprove && (
+                          <NxBtn color="icon-green" title="L1 Approve" icon={Check} onClick={() => openApprove(r._id)} />
+                        )}
+                        {r.status === "pending-gm" && canGmApprove && (
+                          <NxBtn color="icon-green" title="L2 Approve" icon={Check} onClick={() => openGmApprove(r._id)} />
+                        )}
+                        {["pending", "pending-gm"].includes(r.status) && canRejectAny && (
+                          <NxBtn color="icon-red" title="Reject" icon={X} onClick={() => { setRejectTarget(r._id); setRejectModal(true); }} />
+                        )}
+                        <DropdownMenu items={menuItems} />
+                      </div>
+                    </Td>
+                  </Tr>
+                );
+              })}
+            </Tbody>
+          </Table>
+          {reqPager.totalPages > 1 && (
+            <div className="mt-3"><Pagination page={reqPager.page} totalPages={reqPager.totalPages} onChange={reqPager.setPage} /></div>
+          )}
+        </>
       )}
 
       {archiveTarget && (
         <ConfirmModal
-          title={showArchived ? `Unarchive ${archiveTarget.reqNo}?` : `Archive ${archiveTarget.reqNo}?`}
-          message={showArchived ? "It will reappear in the normal list." : "It will be hidden from the normal list (and its linked bill, if any), but not deleted."}
-          confirmLabel={showArchived ? "Unarchive" : "Archive"}
-          onConfirm={archiveOne} onCancel={() => setArchiveTarget(null)}
+          title={archiveTarget.isArchived ? `Unarchive ${archiveTarget.reqNo}?` : `Archive ${archiveTarget.reqNo}?`}
+          message={archiveTarget.isArchived ? "This will move it back into the active list." : "This will move it out of the active list — you can unarchive it later."}
+          confirmLabel={archiveTarget.isArchived ? "Unarchive" : "Archive"}
+          loading={archiving}
+          onConfirm={() => archiveOne(archiveTarget)}
+          onCancel={() => setArchiveTarget(null)}
         />
       )}
 
-      {bulkArchiveConfirm && (
-        <ConfirmModal
-          title={showArchived ? `Unarchive ${selectedIds.length} request(s)?` : `Archive ${selectedIds.length} request(s)?`}
-          message={showArchived ? "They will reappear in the normal list." : "They will be hidden from the normal list, but not deleted."}
-          confirmLabel={showArchived ? "Unarchive" : "Archive"}
-          loading={archiving}
-          onConfirm={archiveSelected} onCancel={() => setBulkArchiveConfirm(false)}
-        />
+      {/* ── Bill request view modal ── */}
+      {viewReq && (
+        <Modal
+          icon={FileText}
+          title={
+            <span className="inline-flex items-center gap-2">
+              <span>Bill Request — {viewReq.reqNo}</span>
+              <UIBadge color={STATUS_CFG[viewReq.status]?.color as any}>{STATUS_CFG[viewReq.status]?.label}</UIBadge>
+              {viewReq.milestoneAchieved && <UIBadge color="orange" small>🏆 Milestone</UIBadge>}
+            </span>
+          }
+          extraWide
+          onClose={() => setViewReq(null)}
+          footer={
+            <div className="flex gap-2 justify-end flex-wrap">
+              <Btn outline label="Close" onClick={() => setViewReq(null)} />
+              <Btn outline icon={Printer} label="Print" loading={printingReqId === viewReq._id} onClick={() => handlePrintReq(viewReq)} />
+              {viewReq.status === "pending" && (
+                <>
+                  {canRejectAny && <Btn color="red" label="Reject" onClick={() => { setRejectTarget(viewReq._id); setRejectModal(true); setViewReq(null); }} />}
+                  {canAgmApprove && <Btn color="primary" label="L1 Approve →" onClick={() => { openApprove(viewReq._id); setViewReq(null); }} />}
+                </>
+              )}
+              {viewReq.status === "pending-gm" && (
+                <>
+                  {canRejectAny && <Btn color="red" label="Reject" onClick={() => { setRejectTarget(viewReq._id); setRejectModal(true); setViewReq(null); }} />}
+                  {canGmApprove && <Btn color="blue" label="L2 Approve →" onClick={() => { openGmApprove(viewReq._id); setViewReq(null); }} />}
+                </>
+              )}
+            </div>
+          }
+        >
+          <div className="flex flex-col gap-3.5">
+            <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-[13px]">
+              <div><span className="text-gray-500 dark:text-gray-400">Work Order: </span>{viewReq.workOrderNo}</div>
+              <div><span className="text-gray-500 dark:text-gray-400">Project: </span>{viewReq.projectName}</div>
+              <div><span className="text-gray-500 dark:text-gray-400">Contractor: </span>{viewReq.vendorName}</div>
+              <div><span className="text-gray-500 dark:text-gray-400">Requested By: </span>{viewReq.requestedBy?.name || "—"}</div>
+              <div><span className="text-gray-500 dark:text-gray-400">Date: </span>{dayjs(viewReq.createdAt).format("DD MMM YYYY")}</div>
+              {(() => {
+                // The specific site location (Tower/Floor/Plot…) the DRI
+                // actually logged this progress against is more useful here
+                // than the work order's own generic overall location — fall
+                // back to that only when none of the billed items have one.
+                const itemLocations = [...new Set(viewReq.items.map(it => it.location).filter(Boolean))];
+                const location = itemLocations.length > 0 ? itemLocations.join(" · ") : viewReq.projectLocation;
+                return location ? (
+                  <div><span className="text-gray-500 dark:text-gray-400">Location: </span>{location}</div>
+                ) : null;
+              })()}
+              {viewReq.periodFrom && (
+                <div><span className="text-gray-500 dark:text-gray-400">Period: </span>{`${dayjs(viewReq.periodFrom).format("DD MMM YYYY")} → ${dayjs(viewReq.periodTo ?? viewReq.createdAt).format("DD MMM YYYY")}`}</div>
+              )}
+              {viewReq.billId && (
+                <div><span className="text-gray-500 dark:text-gray-400">Bill No.: </span>{viewReq.billId.billNo + " — " + fmt(viewReq.billId.amount)}</div>
+              )}
+            </div>
+
+            {viewReq.status === "pending-gm" && (
+              <div className="rounded-lg border border-blue-200 dark:border-blue-500/30 bg-blue-50 dark:bg-blue-500/10 p-3">
+                <div className="text-[11px] font-bold text-blue-700 dark:text-blue-300 mb-2 uppercase">AGM already set (read-only)</div>
+                <div className="grid grid-cols-3 gap-2 text-[13px]">
+                  <div><span className="text-gray-500 dark:text-gray-400">Hold / Retention: </span><span className="font-bold">{fmt(viewReq.retentionAmount ?? 0)}</span></div>
+                  <div><span className="text-gray-500 dark:text-gray-400">Advance Recovery: </span><span className="font-bold">{fmt(viewReq.advanceRecovery ?? 0)}</span></div>
+                  <div>
+                    <span className="text-gray-500 dark:text-gray-400">GST %: </span>
+                    {viewReq.gstPercentOverride != null ? <span className="font-bold">{viewReq.gstPercentOverride}%</span> : <span className="text-gray-400">Work order default</span>}
+                  </div>
+                </div>
+                {viewReq.payeeVendorCode && (
+                  <div className="mt-2 text-xs">
+                    <span className="text-gray-500 dark:text-gray-400">Pay To: </span>
+                    <span className="font-bold">{viewReq.payeeVendorName} ({viewReq.payeeVendorCode})</span>
+                  </div>
+                )}
+                <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-1.5">
+                  {actorName(viewReq.agmApprovedBy) || "AGM"}{viewReq.agmApprovedAt ? ` · ${dayjs(viewReq.agmApprovedAt).format("DD MMM YYYY")}` : ""}
+                </div>
+              </div>
+            )}
+
+            <Table>
+              <Thead>
+                <Tr>
+                  <Th>Description</Th><Th>Unit</Th><Th className="text-right">Qty Billed</Th><Th className="text-right">Rate</Th><Th className="text-right">Amount</Th>
+                </Tr>
+              </Thead>
+              <Tbody>
+                {viewReq.items.map((it, i) => {
+                  const amt = (it.rate ?? 0) * it.billedQty;
+                  return (
+                    <Tr key={i}>
+                      <Td>
+                        {it.description}
+                        {it.progressRemarks && (
+                          <ul className="text-[11px] text-blue-600 mt-0.5 pl-3.5 list-disc">
+                            {it.progressRemarks.split("\n").filter(Boolean).map((note, ni) => <li key={ni}>{note}</li>)}
+                          </ul>
+                        )}
+                      </Td>
+                      <Td>{it.unit}</Td>
+                      <Td className="text-right font-mono">{it.billedQty.toLocaleString("en-IN")}</Td>
+                      <Td className="text-right">{it.rate ? fmtRate(it.rate) : <span className="text-gray-400">pending</span>}</Td>
+                      <Td className="text-right font-semibold">{it.rate ? fmt(amt) : <span className="text-gray-400">—</span>}</Td>
+                    </Tr>
+                  );
+                })}
+              </Tbody>
+              {viewTotal > 0 && (
+                <Tfoot>
+                  <Tr className="!bg-primary/5">
+                    <Td colSpan={4} className="font-bold text-right text-primary">Gross Total</Td>
+                    <Td className="font-bold text-right">{fmt(viewTotal)}</Td>
+                  </Tr>
+                </Tfoot>
+              )}
+            </Table>
+
+            {viewTotal > 0 && (() => {
+              const retAmt = viewReq.retentionAmount ?? 0;
+              const advRec = viewReq.advanceRecovery ?? 0;
+              const gstPct = viewReq.gstPercentOverride ?? 0;
+              const { gstAmount, netAfterHold } = billFinancials({ gross: viewTotal, gstPercent: gstPct, retentionAmount: retAmt, advanceRecovery: advRec });
+              return (
+                <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 font-mono text-[13px]">
+                  <div className="flex justify-between text-gray-500 dark:text-gray-400">
+                    <span>Gross Total</span><span>{fmt(viewTotal)}</span>
+                  </div>
+                  {retAmt > 0 && (
+                    <div className="flex justify-between text-red-600">
+                      <span>Hold / Retention</span><span>− {fmt(retAmt)}</span>
+                    </div>
+                  )}
+                  {advRec > 0 && (
+                    <div className="flex justify-between text-amber-600">
+                      <span>Less: Advance Recovery</span><span>− {fmt(advRec)}</span>
+                    </div>
+                  )}
+                  {gstAmount > 0 && (
+                    <div className="flex justify-between text-emerald-600">
+                      <span>GST @ {gstPct}%</span><span>+ {fmt(gstAmount)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between font-bold text-primary border-t border-primary/20 pt-1 mt-1">
+                    <span>Final Amount</span><span>{fmt(netAfterHold)}</span>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {viewReq.remarks && (
+              <div className="rounded-md border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 p-2.5 text-[13px]">
+                <strong>Remarks:</strong> {viewReq.remarks}
+              </div>
+            )}
+
+            {viewReq.rejectReason && (
+              <div className="rounded-md border border-red-200 dark:border-red-500/30 bg-red-50 dark:bg-red-500/10 p-2.5 text-[13px]">
+                <strong>Reject Reason:</strong> {viewReq.rejectReason}
+              </div>
+            )}
+
+            {(viewReq.approvalHistory?.length ?? 0) > 0 && (
+              <div>
+                <div className="font-bold text-[11px] text-gray-500 dark:text-gray-400 uppercase mb-1.5">History</div>
+                <ApprovalHistoryTimeline history={viewReq.approvalHistory} />
+              </div>
+            )}
+          </div>
+        </Modal>
+      )}
+
+      {/* ── AGM approve modal (L1) — hold/retention + advance, both optional ── */}
+      {approveModal && (
+        <Modal
+          icon={CheckCircle2}
+          title="L1 Approve — Stage 1"
+          onClose={() => { setApproveModal(false); setApproveTarget(null); }}
+          footer={
+            <div className="flex justify-end gap-2">
+              <Btn outline label="Cancel" onClick={() => { setApproveModal(false); setApproveTarget(null); }} />
+              <Btn color="primary" label="Approve & Forward to GM" loading={saving} onClick={handleAgmApprove} />
+            </div>
+          }
+        >
+          <div className="text-xs text-gray-500 dark:text-gray-400 mb-3.5">
+            Sets the hold/advance figures GM will see at Stage 2. Leave a field blank to use the work order's automatic retention calculation.
+          </div>
+          {approveGroupSiblings.length > 1 && (
+            <div className="mb-3">
+              <SField
+                label="Pay To (Vendor Group)"
+                value={approvePayeeCode}
+                onChange={selectApprovePayee}
+                options={approveGroupSiblings.map(c => ({ value: c.vendorCode, label: `${c.companyName} (${c.vendorCode})` }))}
+              />
+            </div>
+          )}
+          <div className="mb-3">
+            <Field
+              label="Hold / Retention Amount (₹, optional)"
+              type="number" min="0"
+              placeholder="Auto-calculated from work order retention %"
+              value={approveRetention ?? ""}
+              onChange={(e) => setApproveRetention(e.target.value ? Number(e.target.value) : null)}
+            />
+          </div>
+          <div className="mb-3">
+            <Field
+              label="Advance Recovery Amount (₹, optional)"
+              type="number" min="0"
+              max={approvePendingAdvances.length ? approvePendingAdvances.reduce((s, sl) => s + sl.balance, 0) : undefined}
+              placeholder="0"
+              value={approveAdvance ?? ""}
+              onChange={(e) => setApproveAdvance(e.target.value ? Number(e.target.value) : null)}
+              hint={approvePendingAdvances.length > 0
+                ? `Outstanding for this payee: ${approvePendingAdvances.map(sl => `${sl.slipNo} (${fmt(sl.balance)})`).join(", ")} — settled oldest-first.`
+                : "No outstanding advance slips for this payee on this project."}
+            />
+          </div>
+          <Field
+            label="GST % (optional)"
+            type="number" min="0" max="100"
+            placeholder="Leave blank to use the work order's GST%"
+            value={approveGst ?? ""}
+            onChange={(e) => setApproveGst(e.target.value ? Number(e.target.value) : null)}
+          />
+          {(() => {
+            const br = billReqs.find(r => r._id === approveTarget);
+            const candidates = l2ApproverOptions(br?.department, br?.customDepartment);
+            return (
+              <div className="mt-3">
+                <SField
+                  label="Send for L2 Approval to (optional)"
+                  placeholder={candidates.length === 0 ? "No one with L2 authority yet" : "Select a person…"}
+                  value={approveSentForL2To}
+                  onChange={setApproveSentForL2To}
+                  disabled={candidates.length === 0}
+                  options={[{ value: "", label: "— Any L2 approver —" }, ...candidates.map((u) => ({ value: u._id, label: `${u.name} (${u.role})` }))]}
+                  hint="Anyone with L2 authority can still approve it — this just flags who it's meant for."
+                />
+              </div>
+            );
+          })()}
+        </Modal>
+      )}
+
+      {/* ── GM approve modal (L2) — final, creates the RunningBill ── */}
+      {gmModal && (
+        <Modal
+          icon={CheckCircle2}
+          title="L2 Approve — Stage 2 (Final)"
+          onClose={() => { setGmModal(false); setGmTarget(null); }}
+          footer={
+            <div className="flex justify-end gap-2">
+              <Btn outline label="Cancel" onClick={() => { setGmModal(false); setGmTarget(null); }} />
+              <Btn color="blue" label="Approve & Generate Bill" loading={saving} onClick={handleGmApprove} />
+            </div>
+          }
+        >
+          <div className="text-xs text-gray-500 dark:text-gray-400 mb-3.5">
+            This creates the running bill using the retention/advance/GST AGM already set. It then moves to Accounts Payment.
+          </div>
+          {gmGroupSiblings.length > 1 && (
+            <div className="mb-3">
+              <SField
+                label="Pay To (Vendor Group) — final confirmation"
+                value={gmPayeeCode}
+                onChange={setGmPayeeCode}
+                options={gmGroupSiblings.map(c => ({ value: c.vendorCode, label: `${c.companyName} (${c.vendorCode})` }))}
+              />
+            </div>
+          )}
+          <Field textarea label="Remarks (optional)" placeholder="Remarks (optional)" value={gmRemarks} onChange={(e) => setGmRemarks(e.target.value)} />
+        </Modal>
+      )}
+
+      {rejectModal && (
+        <Modal
+          icon={XCircle}
+          title="Reject Bill Request"
+          onClose={() => { setRejectModal(false); setRejectReason(""); setRejectTarget(null); }}
+          footer={
+            <div className="flex justify-end gap-2">
+              <Btn outline label="Cancel" onClick={() => { setRejectModal(false); setRejectReason(""); setRejectTarget(null); }} />
+              <Btn color="red" label="Confirm Rejection" loading={saving} onClick={handleReject} />
+            </div>
+          }
+        >
+          <Field textarea label="Reason for rejection (optional)" placeholder="Reason for rejection (optional)" value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} />
+        </Modal>
+      )}
+
+      {manualApproveTarget && (
+        <Modal
+          icon={CheckCircle2}
+          title={manualApproveTarget.manualApprovalStatus === "pending" ? "L1 Approve this bill?" : "L2 Approve this bill?"}
+          onClose={() => setManualApproveTarget(null)}
+          footer={
+            <div className="flex justify-end gap-2">
+              <Btn outline label="Cancel" onClick={() => setManualApproveTarget(null)} />
+              <Btn color="primary" label="Approve" loading={saving} onClick={() => handleManualApprove(manualApproveTarget)} />
+            </div>
+          }
+        >
+          <div className="text-xs text-gray-500 dark:text-gray-400 mb-3.5">
+            {manualApproveTarget.billNo} ({fmt(manualApproveTarget.amount)}) will move {manualApproveTarget.manualApprovalStatus === "pending" ? "to L2 for final sign-off" : "to Accounts for verification"}.
+          </div>
+          {manualApproveTarget.manualApprovalStatus === "pending" && (() => {
+            const candidates = l2ApproverOptions(manualApproveTarget.department, manualApproveTarget.customDepartment);
+            return (
+              <SField
+                label="Send for L2 Approval to (optional)"
+                placeholder={candidates.length === 0 ? "No one with L2 authority yet" : "Select a person…"}
+                value={manualSentForL2To}
+                onChange={setManualSentForL2To}
+                disabled={candidates.length === 0}
+                options={[{ value: "", label: "— Any L2 approver —" }, ...candidates.map((u) => ({ value: u._id, label: `${u.name} (${u.role})` }))]}
+                hint="Anyone with L2 authority can still approve it — this just flags who it's meant for."
+              />
+            );
+          })()}
+        </Modal>
+      )}
+
+      {manualRejectTarget && (
+        <Modal
+          icon={XCircle}
+          title={`Reject ${manualRejectTarget.billNo}`}
+          onClose={() => { setManualRejectTarget(null); setManualRejectReason(""); }}
+          footer={
+            <div className="flex justify-end gap-2">
+              <Btn outline label="Cancel" onClick={() => { setManualRejectTarget(null); setManualRejectReason(""); }} />
+              <Btn color="red" label="Confirm Rejection" loading={saving} onClick={handleManualReject} />
+            </div>
+          }
+        >
+          <Field textarea label="Reason for rejection" placeholder="Why is this bill being rejected?" value={manualRejectReason} onChange={(e) => setManualRejectReason(e.target.value)} />
+        </Modal>
+      )}
+
+      {/* ── Manual Bill view — read-only RunningBill summary, same layout as
+          Billing's own view (status/dates, Accounts Payment's stage chain,
+          scope items, financial breakdown). Not a print/download action. ── */}
+      {viewManualBill && (
+        <Modal
+          extraWide
+          icon={FileText}
+          title={viewManualBill.billNo}
+          subtitle="Read-only — process this bill in Accounts Payment"
+          onClose={() => setViewManualBill(null)}
+          footer={
+            <div className="flex justify-end gap-2">
+              <Btn outline label="Close" onClick={() => setViewManualBill(null)} />
+              {["pending", "pending-gm"].includes(viewManualBill.manualApprovalStatus) && canRejectAny && (
+                <Btn color="red" label="Reject" onClick={() => {
+                  setManualRejectTarget({ _id: viewManualBill._id, billNo: viewManualBill.billNo, amount: viewManualBill.amount, billDate: viewManualBill.billDate || "", createdAt: viewManualBill.billDate || "", manualApprovalStatus: viewManualBill.manualApprovalStatus });
+                  setViewManualBill(null);
+                }} />
+              )}
+              {viewManualBill.manualApprovalStatus === "pending" && canAgmApprove && (
+                <Btn color="primary" label="L1 Approve" onClick={() => {
+                  setManualApproveTarget({ _id: viewManualBill._id, billNo: viewManualBill.billNo, amount: viewManualBill.amount, billDate: viewManualBill.billDate || "", createdAt: viewManualBill.billDate || "", manualApprovalStatus: viewManualBill.manualApprovalStatus, department: viewManualBill.department, customDepartment: viewManualBill.customDepartment });
+                  setViewManualBill(null);
+                }} />
+              )}
+              {viewManualBill.manualApprovalStatus === "pending-gm" && canGmApprove && (
+                <Btn color="blue" label="L2 Approve" onClick={() => {
+                  setManualApproveTarget({ _id: viewManualBill._id, billNo: viewManualBill.billNo, amount: viewManualBill.amount, billDate: viewManualBill.billDate || "", createdAt: viewManualBill.billDate || "", manualApprovalStatus: viewManualBill.manualApprovalStatus, department: viewManualBill.department, customDepartment: viewManualBill.customDepartment });
+                  setViewManualBill(null);
+                }} />
+              )}
+            </div>
+          }
+        >
+          <Descriptions columns={2}>
+            <DescItem label="Status"><NxBadge color={BILL_STATUS_BADGE_COLOR[viewManualBill.status] ?? "gray"}>{BILL_STATUS_LABEL[viewManualBill.status] || viewManualBill.status}</NxBadge></DescItem>
+            <DescItem label="Bill Date">{viewManualBill.billDate ? dayjs(viewManualBill.billDate).format("DD MMM YYYY") : "—"}</DescItem>
+            <DescItem label="Project">{viewManualBill.projectName || "—"}</DescItem>
+            <DescItem label="Work Order">{viewManualBill.workOrderNo || "—"}</DescItem>
+            <DescItem label="Vendor">{viewManualBill.vendorName || "—"}</DescItem>
+            <DescItem label="Generated By">{viewManualBill.generatedBy || "—"}</DescItem>
+            {viewManualBill.projectLocation && <DescItem label="Location">{viewManualBill.projectLocation}</DescItem>}
+          </Descriptions>
+
+          {(viewManualBill.manualAgmApprovedBy || viewManualBill.manualGmApprovedBy) && (
+            <div className="mt-3 flex flex-col gap-1 text-[12.5px]">
+              {viewManualBill.manualAgmApprovedBy && (
+                <div>
+                  <span className="font-bold text-gray-600 dark:text-gray-300">
+                    L1 Approval{viewManualBill.manualAgmApprovedBy.role ? `(${viewManualBill.manualAgmApprovedBy.role})` : ""}
+                  </span>
+                  <span className="text-gray-400 ml-1.5">
+                    {viewManualBill.manualAgmApprovedBy.name || ""}{viewManualBill.manualAgmApprovedAt ? ` · ${dayjs(viewManualBill.manualAgmApprovedAt).format("DD MMM YYYY, hh:mm a")}` : ""}
+                  </span>
+                </div>
+              )}
+              {viewManualBill.manualGmApprovedBy && (
+                <div>
+                  <span className="font-bold text-gray-600 dark:text-gray-300">
+                    L2 Approval{viewManualBill.manualGmApprovedBy.role ? `(${viewManualBill.manualGmApprovedBy.role})` : ""}
+                  </span>
+                  <span className="text-gray-400 ml-1.5">
+                    {viewManualBill.manualGmApprovedBy.name || ""}{viewManualBill.manualGmApprovedAt ? ` · ${dayjs(viewManualBill.manualGmApprovedAt).format("DD MMM YYYY, hh:mm a")}` : ""}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="border-t border-gray-200 dark:border-gray-700/40 my-4" />
+
+          <div className="mb-4">
+            <div className="font-bold text-xs text-gray-600 dark:text-gray-300 mb-1.5 uppercase tracking-wide">
+              Bill Approvals
+            </div>
+            <Table>
+              <Thead>
+                <Tr>
+                  <Th>Verification</Th>
+                  <Th>L1 AGM</Th>
+                  <Th>L2 Director</Th>
+                  <Th>Sent to TMS</Th>
+                  <Th>Paid</Th>
+                </Tr>
+              </Thead>
+              <Tbody>
+                <Tr>
+                  <Td className="align-top"><BillStageCell by={viewManualBill.verificationBy?.name} at={viewManualBill.verificationAt} /></Td>
+                  <Td className="align-top"><BillStageCell by={viewManualBill.l1ApprovedBy?.name} at={viewManualBill.l1ApprovedAt} /></Td>
+                  <Td className="align-top"><BillStageCell by={viewManualBill.l2ApprovedBy?.name} at={viewManualBill.l2ApprovedAt} /></Td>
+                  <Td className="align-top"><BillStageCell at={viewManualBill.tmsSentAt} /></Td>
+                  <Td className="align-top"><BillStageCell at={viewManualBill.tmsCallbackReceivedAt} /></Td>
+                </Tr>
+              </Tbody>
+            </Table>
+          </div>
+
+          <div className="font-bold text-xs text-gray-600 dark:text-gray-300 mb-1.5 uppercase tracking-wide">Scope Items</div>
+          <div className="mb-4">
+            <Table>
+              <Thead>
+                <Tr>
+                  <Th>Description</Th>
+                  <Th>Unit</Th>
+                  <Th className="text-right">Qty Billed</Th>
+                  <Th className="text-right">Rate</Th>
+                  <Th className="text-right">Amount</Th>
+                </Tr>
+              </Thead>
+              <Tbody>
+                {(viewManualBill.lineItems || []).map((li, i) => (
+                  <Tr key={i}>
+                    <Td>{li.description}</Td>
+                    <Td>{li.unit}</Td>
+                    <Td className="text-right font-mono">{li.billedQty.toLocaleString("en-IN")}</Td>
+                    <Td className="text-right">{fmtRate(li.rate)}</Td>
+                    <Td className="text-right font-bold">{fmt(li.amount)}</Td>
+                  </Tr>
+                ))}
+              </Tbody>
+              <Tfoot>
+                <Tr className="!bg-primary/5">
+                  <Td colSpan={4} className="font-bold text-right text-primary">Gross Total</Td>
+                  <Td className="font-bold text-right">{fmt(viewManualBill.amount)}</Td>
+                </Tr>
+              </Tfoot>
+            </Table>
+          </div>
+
+          {(() => {
+            const gross = viewManualBill.amount || 0;
+            const retAmt = viewManualBill.retentionAmount ?? 0;
+            const advRec = viewManualBill.advanceRecovery ?? 0;
+            const { gstAmount, netAfterHold } = billFinancials({ gross, gstPercent: viewManualBill.gstPercent ?? 0, retentionAmount: retAmt, advanceRecovery: advRec });
+            return (
+              <div className="rounded-lg border border-emerald-300 dark:border-emerald-500/30 bg-emerald-50 dark:bg-emerald-500/10 p-3 font-mono text-[13px]">
+                <div className="font-bold mb-2 text-emerald-800 dark:text-emerald-300">
+                  Running Bill: {viewManualBill.billNo}
+                </div>
+                <div className="flex justify-between text-gray-500 dark:text-gray-400">
+                  <span>Gross Billed</span><span>{fmt(gross)}</span>
+                </div>
+                {retAmt > 0 && (
+                  <div className="flex justify-between text-red-600">
+                    <span>Hold / Retention{(viewManualBill.retentionPercent ?? 0) > 0 ? ` @ ${viewManualBill.retentionPercent}%` : ""}</span><span>− {fmt(retAmt)}</span>
+                  </div>
+                )}
+                {advRec > 0 && (
+                  <div className="flex justify-between text-amber-600">
+                    <span>Less: Advance Recovery</span><span>− {fmt(advRec)}</span>
+                  </div>
+                )}
+                {gstAmount > 0 && (
+                  <div className="flex justify-between text-emerald-600">
+                    <span>GST @ {viewManualBill.gstPercent ?? 0}%</span><span>+ {fmt(gstAmount)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between font-bold text-primary border-t border-emerald-200 dark:border-emerald-500/30 pt-1 mt-1">
+                  <span>Net Payable</span><span>{fmt(netAfterHold)}</span>
+                </div>
+              </div>
+            );
+          })()}
+        </Modal>
       )}
     </div>
   );

@@ -256,6 +256,11 @@ export interface WorkOrder {
   issuedUnder?: "company" | "owner";
   category?: WorkCategory;
   subCategory?: string;
+  // Which internal team this work order belongs to — a fixed short list
+  // (civil/marketing/planning/maintenance) plus 'custom' for a team not on
+  // that list, whose actual name is then in customDepartment.
+  department?: "" | "civil" | "marketing" | "planning" | "maintenance" | "custom";
+  customDepartment?: string;
   assignedDRI?: ({ _id: string; name: string; email?: string; mobile?: string } | string)[];
   scopeOfWork?: string;
   totalTenure?: string;

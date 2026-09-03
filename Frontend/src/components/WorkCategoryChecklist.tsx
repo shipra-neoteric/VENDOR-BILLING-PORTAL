@@ -20,9 +20,15 @@ interface Props {
   // no session token to sign an upload with otherwise (see
   // Backend/src/routes/uploads.js vs routes/public.js's separate signer).
   uploadClient?: AxiosInstance;
+  // No labour on site that day means no work photos to take either — the
+  // mandatory-photo rule (and this hint) only apply once there's actually a
+  // crew present. Defaults to true so callers that don't pass it keep the
+  // original always-mandatory behaviour.
+  photosRequired?: boolean;
 }
 
-export default function WorkCategoryChecklist({ entries, onChange, uploadClient = apiClient }: Props) {
+export default function WorkCategoryChecklist({ entries, onChange, uploadClient = apiClient, photosRequired = true }: Props) {
+  const minImages = photosRequired ? MIN_IMAGES_PER_CATEGORY : 0;
   const [uploadingFor, setUploadingFor] = useState<string | null>(null);
   const inputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
@@ -143,12 +149,14 @@ export default function WorkCategoryChecklist({ entries, onChange, uploadClient 
       {entries.length > 0 && (
         <div className="flex flex-col gap-3 mt-5">
           <div className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide border-t border-gray-100 dark:border-gray-700/40 pt-4">
-            {entries.length} categor{entries.length === 1 ? "y" : "ies"} selected — add at least {MIN_IMAGES_PER_CATEGORY} work photo{MIN_IMAGES_PER_CATEGORY === 1 ? "" : "s"} to each (before &amp; after photos are optional)
+            {photosRequired
+              ? `${entries.length} categor${entries.length === 1 ? "y" : "ies"} selected — add at least ${minImages} work photo${minImages === 1 ? "" : "s"} to each (before & after photos are optional)`
+              : `${entries.length} categor${entries.length === 1 ? "y" : "ies"} selected — photos optional (no labour reported today)`}
           </div>
           {entries.map(entry => (
             <div key={entry.workType} className="border rounded-lg p-3 border-gray-200 dark:border-gray-700/40">
               <span className="font-semibold text-sm text-[#1A1A2E] dark:text-[#F1F5F9]">{entry.workType}</span>
-              <PhotoRow entry={entry} kind="images" label="Work Photos" min={MIN_IMAGES_PER_CATEGORY} max={MAX_IMAGES_PER_CATEGORY} />
+              <PhotoRow entry={entry} kind="images" label="Work Photos" min={minImages} max={MAX_IMAGES_PER_CATEGORY} />
               <PhotoRow entry={entry} kind="beforeImages" label="Before Photo" min={MIN_BEFORE_AFTER_IMAGES} max={MAX_BEFORE_AFTER_IMAGES} />
               <PhotoRow entry={entry} kind="afterImages" label="After Photo" min={MIN_BEFORE_AFTER_IMAGES} max={MAX_BEFORE_AFTER_IMAGES} />
             </div>

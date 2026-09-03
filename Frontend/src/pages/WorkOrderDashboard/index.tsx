@@ -79,6 +79,24 @@ interface BillRequestStage {
   processedAt?: string;
 }
 
+// A bill created directly via Billing -> New Bill and linked straight to this
+// Work Order — no BillRequest/stage exists for it at all (that pipeline is
+// only for progress-driven bills), so without this it never showed up here:
+// neither in the Bills tab nor counted in Billed Amount below.
+interface ManualBillRow {
+  _id: string; billNo: string; amount: number; status: string; remarks?: string;
+  paymentDate?: string; paidAmount?: number; retentionPercent?: number; retentionAmount?: number;
+  advanceRecovery?: number; gstPercent?: number; tdsAmount?: number; paymentUTR?: string;
+  verificationBy?: { name: string } | null; verificationAt?: string;
+  l1ApprovedBy?: { name: string } | null; l1ApprovedAt?: string;
+  l2ApprovedBy?: { name: string } | null; l2ApprovedAt?: string;
+  tmsSentAt?: string; tmsCallbackReceivedAt?: string;
+  manualApprovalStatus: "pending" | "pending-gm" | "approved" | "rejected";
+  manualAgmApprovedBy?: { name: string } | null; manualAgmApprovedAt?: string;
+  manualGmApprovedBy?: { name: string } | null; manualGmApprovedAt?: string;
+  lineItems: BillItem[];
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const fmtMoney = (n: number) => "₹" + (n).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 // Per-unit rates are fractional far more often than totals are — rounding
@@ -87,7 +105,7 @@ const fmtRate  = (n: number) => "₹" + (n || 0).toLocaleString("en-IN", { minim
 
 // Net of GST, hold/retention and advance recovery — the amount actually due to the
 // contractor before TDS, not the raw gross bill figure. Matches Bills/Ledger/Approvals.
-const netPayable = (b: NonNullable<BillRequestStage["billId"]>) =>
+const netPayable = (b: { amount: number; gstPercent?: number; retentionAmount?: number; advanceRecovery?: number }) =>
   billFinancials({
     gross: b.amount, gstPercent: b.gstPercent ?? 0,
     retentionAmount: b.retentionAmount ?? 0, advanceRecovery: b.advanceRecovery ?? 0,
@@ -227,6 +245,7 @@ export default function WorkOrderDashboard() {
 
   const [wo,      setWO]      = useState<WODetail | null>(null);
   const [stages,  setStages]  = useState<BillRequestStage[]>([]);
+  const [manualBills, setManualBills] = useState<ManualBillRow[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [activeTab,       setActiveTab]       = useState<TabKey>("items");
@@ -235,10 +254,16 @@ export default function WorkOrderDashboard() {
   const load = async () => {
     if (!id) return;
     try {
-      const [woRes, brRes] = await Promise.all([
+      // archived=all — both endpoints exclude archived rows by default (a
+      // list-view convenience elsewhere), but this page is this Work Order's
+      // own complete billing history, so an archived bill request/bill must
+      // still count and show here.
+      const [woRes, brRes, billsRes] = await Promise.all([
         apiClient.get(`/work-orders/${id}`),
-        apiClient.get(`/bill-requests?workOrderId=${id}`),
+        apiClient.get(`/bill-requests?workOrderId=${id}&archived=all`),
+        apiClient.get(`/bills?workOrderId=${id}&archived=all`),
       ]);
+      setManualBills(billsRes.data.bills ?? []);
       setWO(woRes.data.workOrder);
       setStages(brRes.data.billRequests ?? []);
     } catch {
@@ -260,9 +285,17 @@ export default function WorkOrderDashboard() {
   const avgPct = wo.scopeItems.length
     ? Math.round(wo.scopeItems.reduce((s, si) => s + pctOf(si.completedQty, si.plannedQty), 0) / wo.scopeItems.length)
     : 0;
+  // Manual bills (Billing -> New Bill, linked straight to this WO) have no
+  // BillRequest stage of their own — matched to a stage by billNo where one
+  // exists (a progress-driven bill that already cleared L1/L2), so those
+  // aren't double-counted or shown twice; whatever's left over is genuinely
+  // manual-only and needs including here to not undercount what's billed.
+  const stageBillNos = new Set(stages.map(s => s.billId?.billNo).filter(Boolean));
+  const manualOnlyBills = manualBills.filter(b => !stageBillNos.has(b.billNo) && b.status !== "rejected");
   const billedAmount = stages
     .filter(s => s.status === "approved")
-    .reduce((sum, s) => sum + s.items.reduce((si, it) => si + (it.amount || 0), 0), 0);
+    .reduce((sum, s) => sum + s.items.reduce((si, it) => si + (it.amount || 0), 0), 0)
+    + manualOnlyBills.reduce((sum, b) => sum + (b.amount || 0), 0);
   const unbilledValue = wo.scopeItems.reduce((sum, si) => {
     const pending = Math.max(0, si.completedQty - (si.lastBilledQty || 0));
     return sum + pending * (si.rate || 0);
@@ -411,21 +444,45 @@ export default function WorkOrderDashboard() {
 
           {/* Bills tab — every bill generated for this work order */}
           {activeTab === "bills" && (() => {
-            const bills = stages.filter(s => s.billId).map(s => ({ stage: s, bill: s.billId! }));
-            const openBill = (stage: BillRequestStage) => setViewBill({
-              _id: stage._id, reqNo: stage.reqNo, stageNo: stage.stageNo,
-              workOrderNo: wo.workOrderNo, projectName: wo.projectName, vendorName: wo.vendorName,
-              category: wo.category, subCategory: wo.subCategory ?? "",
-              items: stage.items, remarks: stage.remarks ?? "",
-              periodFrom: stage.periodFrom, periodTo: stage.periodTo,
-              status: stage.status, rejectReason: stage.rejectReason,
-              requestedBy: stage.requestedBy, billId: stage.billId ?? undefined,
-              milestoneAchieved: stage.milestoneAchieved, milestoneDate: stage.milestoneDate,
-              createdAt: stage.createdAt,
-              agmApprovedBy: stage.agmApprovedBy, agmApprovedAt: stage.agmApprovedAt,
-              approvalHistory: stage.approvalHistory,
-              processedBy: stage.processedBy, processedAt: stage.processedAt,
-            });
+            const bills: { stage: BillRequestStage | null; bill: NonNullable<BillRequestStage["billId"]> | ManualBillRow }[] = [
+              ...stages.filter(s => s.billId).map(s => ({ stage: s as BillRequestStage | null, bill: s.billId! })),
+              ...manualOnlyBills.map(b => ({ stage: null as BillRequestStage | null, bill: b })),
+            ];
+            const openBill = (stage: BillRequestStage | null, bill: NonNullable<BillRequestStage["billId"]> | ManualBillRow) => {
+              if (stage) {
+                setViewBill({
+                  _id: stage._id, reqNo: stage.reqNo, stageNo: stage.stageNo,
+                  workOrderNo: wo.workOrderNo, projectName: wo.projectName, vendorName: wo.vendorName,
+                  category: wo.category, subCategory: wo.subCategory ?? "",
+                  items: stage.items, remarks: stage.remarks ?? "",
+                  periodFrom: stage.periodFrom, periodTo: stage.periodTo,
+                  status: stage.status, rejectReason: stage.rejectReason,
+                  requestedBy: stage.requestedBy, billId: stage.billId ?? undefined,
+                  milestoneAchieved: stage.milestoneAchieved, milestoneDate: stage.milestoneDate,
+                  createdAt: stage.createdAt,
+                  agmApprovedBy: stage.agmApprovedBy, agmApprovedAt: stage.agmApprovedAt,
+                  approvalHistory: stage.approvalHistory,
+                  processedBy: stage.processedBy, processedAt: stage.processedAt,
+                });
+                return;
+              }
+              // A manual bill has no BillRequest/stage — its own L1/L2
+              // sign-off (manualAgmApprovedBy/manualGmApprovedBy) stands in
+              // for the stage's agmApprovedBy/processedBy here.
+              const b = bill as ManualBillRow;
+              setViewBill({
+                _id: b._id, reqNo: b.billNo,
+                workOrderNo: wo.workOrderNo, projectName: wo.projectName, vendorName: wo.vendorName,
+                category: wo.category, subCategory: wo.subCategory ?? "",
+                items: b.lineItems, remarks: b.remarks ?? "",
+                status: b.manualApprovalStatus === "pending-gm" ? "pending" : b.manualApprovalStatus,
+                requestedBy: undefined, billId: b,
+                milestoneAchieved: false,
+                createdAt: b.manualAgmApprovedAt ?? "",
+                agmApprovedBy: b.manualAgmApprovedBy, agmApprovedAt: b.manualAgmApprovedAt,
+                processedBy: b.manualGmApprovedBy, processedAt: b.manualGmApprovedAt,
+              });
+            };
             return (
               <>
                 <div className="px-6 py-4 flex justify-between items-center">
@@ -450,7 +507,7 @@ export default function WorkOrderDashboard() {
                           return (
                             <Tr key={bill.billNo}>
                               <Td><span className="font-bold text-primary">{bill.billNo}</span></Td>
-                              <Td><TdText>Stage {stage.stageNo}</TdText></Td>
+                              <Td><TdText>{stage ? `Stage ${stage.stageNo}` : "Manual"}</TdText></Td>
                               <Td><span className="font-mono font-semibold text-[#1A1A2E] dark:text-[#F1F5F9]">{fmtMoney(bill.amount)}</span></Td>
                               <Td><NxBadge color={cfg.color}>{cfg.label}</NxBadge></Td>
                               <Td>
@@ -459,7 +516,7 @@ export default function WorkOrderDashboard() {
                                 </span>
                               </Td>
                               <Td><TdText>{fmtDate(bill.paymentDate)}</TdText></Td>
-                              <Td><Btn small outline label="View" onClick={() => openBill(stage)} /></Td>
+                              <Td><Btn small outline label="View" onClick={() => openBill(stage, bill)} /></Td>
                             </Tr>
                           );
                         })}

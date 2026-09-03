@@ -4,7 +4,6 @@ import { ChevronDown } from "lucide-react";
 import dayjs from "dayjs";
 import type { Dayjs } from "dayjs";
 import type { DPRReport } from "../../../types/DPR";
-import { downloadDPRPDF } from "../../../components/DPRPDFReport";
 import { downloadDPRCsv } from "../utils/dprExport";
 import { formatDprDateRange } from "../utils/dprDateRange";
 import { useReportSchedules } from "../hooks/useReportSchedules";
@@ -57,6 +56,7 @@ export function ReportToolbar({ report, viewType, projectLabel, projectId }: { r
     if (confirmAction === "pdf") {
       setPdfLoading(true);
       try {
+        const { downloadDPRPDF } = await import("../../../components/DPRPDFReport");
         await downloadDPRPDF(viewType, report, projectLabel);
       } catch {
         message.error("Failed to generate PDF");

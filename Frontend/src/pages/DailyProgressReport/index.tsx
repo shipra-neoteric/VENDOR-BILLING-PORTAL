@@ -8,7 +8,6 @@ import { useAuth } from "../../context/AuthContext";
 import WorkCategoryChecklist from "../../components/WorkCategoryChecklist";
 import DrawingRequestButton from "../../components/DrawingRequestButton";
 import DateRangeFilter, { inDateRange } from "../../components/DateRangeFilter";
-import { downloadDailyProgressReportPDF } from "../../components/DailyProgressReportPDF";
 import { buildDailyProgressReportSummary, periodLabel } from "../../utils/dailyProgressReportSummary";
 import { firstMissingProgressField, MIN_IMAGES_PER_CATEGORY } from "../../shared/constants/dailyProgressReportOptions";
 import type { DailyProgressReportFormValues, WorkEntry } from "../../shared/constants/dailyProgressReportOptions";
@@ -217,6 +216,7 @@ export default function DailyProgressReport() {
         filterDriName,
         preparedBy: user?.name || "—",
       });
+      const { downloadDailyProgressReportPDF } = await import("../../components/DailyProgressReportPDF");
       await downloadDailyProgressReportPDF(summary);
     } catch {
       toast.error("Failed to generate report");
@@ -242,8 +242,13 @@ export default function DailyProgressReport() {
     const missing = firstMissingProgressField(form);
     if (missing) return toast.error(`Select ${missing}`);
     if (form.workEntries.length === 0) return toast.error("Check at least one work type");
-    const short = form.workEntries.find(e => e.images.length < MIN_IMAGES_PER_CATEGORY);
-    if (short) return toast.error(`"${short.workType}" needs at least ${MIN_IMAGES_PER_CATEGORY} photo${MIN_IMAGES_PER_CATEGORY === 1 ? "" : "s"}`);
+    // No labour on site that day means no work photos to take either — the
+    // mandatory-photo rule only makes sense once there's actually a crew
+    // present being reported on.
+    if (Number(form.labourCount) > 0) {
+      const short = form.workEntries.find(e => e.images.length < MIN_IMAGES_PER_CATEGORY);
+      if (short) return toast.error(`"${short.workType}" needs at least ${MIN_IMAGES_PER_CATEGORY} photo${MIN_IMAGES_PER_CATEGORY === 1 ? "" : "s"}`);
+    }
 
     setSubmitting(true);
     try {
@@ -697,7 +702,7 @@ export default function DailyProgressReport() {
 
           <Card>
             <SectionHeading>Work Type — check what happened today</SectionHeading>
-            <WorkCategoryChecklist entries={form.workEntries} onChange={setEntries} />
+            <WorkCategoryChecklist entries={form.workEntries} onChange={setEntries} photosRequired={Number(form.labourCount) > 0} />
           </Card>
         </Modal>
       )}

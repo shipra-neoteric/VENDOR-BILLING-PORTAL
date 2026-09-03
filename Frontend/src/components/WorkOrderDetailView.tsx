@@ -28,6 +28,16 @@ const fmt = (n: number) => "₹" + (n).toLocaleString("en-IN", { minimumFraction
 // silently turns 130.5 into 131. This keeps up to 2 decimal places instead.
 const fmtRate = (n: number) => "₹" + (n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+const DEPARTMENT_LABEL: Record<string, string> = {
+  civil: "Civil Team", marketing: "Marketing Team", planning: "Planning Team",
+  maintenance: "Maintenance Team",
+};
+function departmentLabel(department?: string, customDepartment?: string): string | undefined {
+  if (!department) return undefined;
+  if (department === "custom") return customDepartment || "Custom Team";
+  return DEPARTMENT_LABEL[department];
+}
+
 // ── Tabular info blocks — label and value sit side by side in the SAME row
 // (not stacked), several label|value pairs per row, separated only by
 // vertical rules — no horizontal lines between rows.
@@ -235,6 +245,7 @@ export default function WorkOrderDetailView({
               ),
             },
             { label: "Work Category", value: wo.category ? `${wo.category}${wo.subCategory ? ` / ${wo.subCategory}` : ""}` : undefined },
+            { label: "Department", value: departmentLabel(wo.department, wo.customDepartment) },
           ]}
         />
         {wo.isLocked && (

@@ -15,7 +15,6 @@ import Modal from "../../ui/Modal";
 import NxBtn from "../../ui/nexora/Btn";
 import { Descriptions, DescItem, SectionHeading } from "../../ui/Descriptions";
 import { Table, Thead, Tbody, Tr, Th, Td } from "../../ui/Table";
-import { useAuth } from "../../context/AuthContext";
 
 // ── Helpers ──────────────────────────────────────────────────────
 function fmtMinutes(min: number): string {
@@ -108,11 +107,9 @@ function PipelineFunnel({ p }: { p: MISPipeline }) {
 
 export default function SlaDashboard() {
   const navigate = useNavigate();
-  const { user } = useAuth();
-  // Bill Requests live on a different page depending on role — /bill-requests
-  // is only reachable for site-dri; every other role manages them from the
-  // Requests tab inside Site Progress.
-  const billRequestPath = (id: string) => user?.role === "site-dri" ? `/bill-requests?open=${id}` : `/site-progress?open=${id}`;
+  // Bill Requests are reviewed/approved on the Bill Approval page for every
+  // role — ?open=<id> deep-links straight to that request's view modal.
+  const billRequestPath = (id: string) => `/bill-requests?open=${id}`;
   const [report, setReport] = useState<WorkflowMISReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");

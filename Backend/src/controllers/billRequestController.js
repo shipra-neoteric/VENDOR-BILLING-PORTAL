@@ -14,6 +14,7 @@ const { recomputeAfterInvalidate, expandBillableCandidates, recomputeParentFromS
 const { resolvePayee } = require('../utils/vendorGroupHelpers');
 const { applyAdvanceRecoveries } = require('../utils/advanceRecovery');
 const { notifyStagePending, settleAllPendingForEntity } = require('../utils/slackApprovals');
+const { canActOnDepartment } = require('../utils/departmentAccess');
 
 // Fire-and-forget (matches emitEvent's un-awaited call sites below) — a failed
 // or unconfigured Slack push must never block the real approval-chain write
@@ -30,19 +31,34 @@ function notifySlack(approvalType, entityDoc) {
 // of staying trapped on the WorkOrder document.
 function collectAndMarkProgressRemarks(target, billRequestId) {
   const notes = [];
+  const locations = [];
   for (const entry of target.progressEntries) {
     if (entry.billedInRequestId || entry.invalidated?.done) continue;
+    // Same "Tower X · Floor Y · ..." format Site Progress's own entry log
+    // already shows — kept as its own field (not embedded in the remark
+    // text), separate from the work order's own overall projectLocation.
+    const location = [
+      entry.tower && `Tower ${entry.tower}`,
+      entry.floor && `Floor ${entry.floor}`,
+      entry.flatNo && `Flat ${entry.flatNo}`,
+      entry.plotNo && `Plot ${entry.plotNo}`,
+      entry.locationNote,
+    ].filter(Boolean).join(" · ");
+    if (location && !locations.includes(location)) locations.push(location);
     if (entry.remarks && entry.remarks.trim()) notes.push(entry.remarks.trim());
     entry.billedInRequestId = billRequestId;
   }
-  return notes.join('; ');
+  // Newline-separated (not '; ') — several days' worth of separate remarks
+  // run together into one unreadable sentence otherwise once they land on a
+  // bill; the frontend renders this as a bullet list, one line per entry.
+  return { remarks: notes.join('\n'), location: locations.join(' · ') };
 }
 
 const nextReqNo = () => nextCode('billRequestReqNo', 'BR-', 4);
 
 // GET /api/bill-requests
 exports.listBillRequests = asyncHandler(async (req, res) => {
-  const { status, workOrderId, vendorCode, projectId, archived } = req.query;
+  const { status, workOrderId, vendorCode, projectId, archived, scope } = req.query;
   const filter = {};
 
   if (req.user.role === 'site-dri') filter.requestedBy = req.user._id;
@@ -51,13 +67,30 @@ exports.listBillRequests = asyncHandler(async (req, res) => {
   if (vendorCode)  filter.vendorCode  = vendorCode;
   if (projectId)   filter.projectId   = projectId;
   if (archived === 'true') filter.isArchived = true;
-  else             filter.isArchived = { $ne: true };
+  else if (archived !== 'all') filter.isArchived = { $ne: true };
+  // archived === 'all' → no isArchived filter, returns both
+  // Department-scoped visibility — but ONLY for the L1/L2 approval queue
+  // (Bill Approval's own load, and My Tasks' pending/pending-gm widgets),
+  // never for the many other screens (Work Order Dashboard, DRI Dashboard,
+  // Site Progress, SLA Dashboard, Projects, Work Progress) that also hit
+  // this same endpoint needing every request regardless of department —
+  // scope=approval / a pending status is how those two opt in explicitly.
+  // Owner and Accounts see everything regardless (Owner by design, Accounts
+  // because payment processing runs across every department once a bill
+  // clears L1/L2). Users not yet assigned a department (the field is new)
+  // see everything too, so rollout doesn't silently empty their queue until
+  // an admin assigns one.
+  const isApprovalQueue = scope === 'approval' || status === 'pending' || status === 'pending-gm';
+  if (isApprovalQueue && !['owner', 'accounts'].includes(req.user.role) && req.user.department) {
+    filter.department = req.user.department;
+  }
 
   const requests = await BillRequest.find(filter)
     .populate('requestedBy', 'name email')
     .populate('processedBy', 'name')
-    .populate('agmApprovedBy', 'name')
-    .populate('approvalHistory.by', 'name')
+    .populate('agmApprovedBy', 'name role')
+    .populate('sentForL2ApprovalTo', 'name role')
+    .populate('approvalHistory.by', 'name role')
     .populate({
       path: 'billId',
       select: 'billNo status amount paidAmount retentionPercent retentionAmount advanceRecovery gstPercent tdsPercent tdsAmount paymentDate paymentMode paymentUTR paymentBank paymentReleasedBy verificationBy verificationAt l1ApprovedBy l1ApprovedAt l2ApprovedBy l2ApprovedAt tmsSentAt tmsCallbackReceivedAt agmApprovedBy agmApprovedAt lineItems',
@@ -170,6 +203,8 @@ exports.createBillRequest = asyncHandler(async (req, res) => {
     companyName: wo.companyName,
     category:    wo.category    || '',
     subCategory: wo.subCategory || '',
+    department:       wo.department       || '',
+    customDepartment: wo.customDepartment || '',
     periodFrom,
     periodTo,
     items: pendingItems.map(it => ({
@@ -180,7 +215,8 @@ exports.createBillRequest = asyncHandler(async (req, res) => {
       billedQty:   it.billedQty,
       rate:        it.rate,
       amount:      it.rate * it.billedQty,
-      progressRemarks: progressRemarksByItem.get(String(it.subItemId || it.scopeItemId)) || '',
+      progressRemarks: progressRemarksByItem.get(String(it.subItemId || it.scopeItemId))?.remarks || '',
+      location:        progressRemarksByItem.get(String(it.subItemId || it.scopeItemId))?.location || '',
     })),
     remarks:     remarks || '',
     requestedBy: req.user._id,
@@ -235,6 +271,7 @@ exports.createBillRequest = asyncHandler(async (req, res) => {
 exports.agmApprove = asyncHandler(async (req, res) => {
   const br = await BillRequest.findById(req.params.id);
   if (!br) return notFound(res, 'Bill request not found');
+  if (!canActOnDepartment(req.user, br)) return forbidden(res, 'This bill request belongs to a different department.');
   if (br.status !== 'pending') return badRequest(res, `Request is already ${br.status}`);
 
   const wo = await WorkOrder.findById(br.workOrderId);
@@ -292,8 +329,9 @@ exports.agmApprove = asyncHandler(async (req, res) => {
   br.payeeVendorName = payee.overridden ? payee.vendorName : '';
   br.agmApprovedBy   = req.user._id;
   br.agmApprovedAt   = new Date();
+  if (req.body.sentForL2ApprovalTo) br.sentForL2ApprovalTo = req.body.sentForL2ApprovalTo;
   br.status          = 'pending-gm';
-  br.approvalHistory.push({ stage: 'agm', action: 'approved', by: req.user._id, remarks: req.body.remarks || '' });
+  br.approvalHistory.push({ stage: 'agm', action: 'approved', by: req.user._id, byName: req.user.name, byRole: req.user.role, remarks: req.body.remarks || '' });
   await br.save();
 
   emitEvent('BILL_REQUEST_AGM_APPROVED', {
@@ -308,18 +346,18 @@ exports.agmApprove = asyncHandler(async (req, res) => {
     metadata:      { reqNo: br.reqNo, totalAmount },
   });
 
-  await advanceInstance('BillRequest', br._id, req.user._id, 'AGM approved');
+  await advanceInstance('BillRequest', br._id, req.user._id, 'L1 approved');
 
   await logAudit({
     action: 'APPROVE', module: 'bill-requests', user: req.user,
-    description: `AGM approved ${br.reqNo} — forwarded to GM`,
+    description: `L1 approved ${br.reqNo} — moved to L2 approval`,
     entityType: 'BillRequest', entityId: br._id, entityLabel: br.reqNo,
     changes: { retentionAmount: { from: null, to: retentionAmount }, advanceRecovery: { from: null, to: advanceRecovery } },
   });
 
   notifySlack('BILL_REQUEST_GM_APPROVAL', br);
 
-  success(res, { billRequest: br }, `AGM approved — Stage ${br.stageNo} forwarded to GM`);
+  success(res, { billRequest: br }, `L1 approved — Stage ${br.stageNo} moved to L2 approval`);
 });
 
 // PUT /api/bill-requests/:id/gm-approve — Stage 2 (L2), final. This is where
@@ -328,6 +366,7 @@ exports.agmApprove = asyncHandler(async (req, res) => {
 exports.gmApprove = asyncHandler(async (req, res) => {
   const br = await BillRequest.findById(req.params.id);
   if (!br) return notFound(res, 'Bill request not found');
+  if (!canActOnDepartment(req.user, br)) return forbidden(res, 'This bill request belongs to a different department.');
   if (br.status !== 'pending-gm') return badRequest(res, `Request is already ${br.status}`);
   if (br.agmApprovedBy && br.agmApprovedBy.toString() === req.user._id.toString() && req.user.role !== 'owner') {
     return badRequest(res, 'The AGM who approved this cannot also give GM sign-off — segregation of duties requires a different approver.');
@@ -378,6 +417,7 @@ exports.gmApprove = asyncHandler(async (req, res) => {
       description: item.description,
       remarks:     target?.remarks   || '',
       progressRemarks: item.progressRemarks || '',
+      location:        item.location || '',
       unit:        item.unit,
       plannedQty,
       billedQty:   item.billedQty,
@@ -414,6 +454,8 @@ exports.gmApprove = asyncHandler(async (req, res) => {
     vendorCode:  br.payeeVendorCode || wo.vendorCode,
     vendorName:  br.payeeVendorName || wo.vendorName,
     companyName: wo.companyName,
+    department:       wo.department       || '',
+    customDepartment: wo.customDepartment || '',
     billDate:    new Date(),
     lineItems,
     amount:           totalAmount,
@@ -445,7 +487,7 @@ exports.gmApprove = asyncHandler(async (req, res) => {
   br.billId      = runningBill._id;
   br.processedBy = req.user._id;
   br.processedAt = new Date();
-  br.approvalHistory.push({ stage: 'gm', action: 'approved', by: req.user._id, remarks: req.body.remarks || '' });
+  br.approvalHistory.push({ stage: 'gm', action: 'approved', by: req.user._id, byName: req.user.name, byRole: req.user.role, remarks: req.body.remarks || '' });
   await br.save();
 
   // Apply AGM's advance-slip recoveries now that the bill actually exists —
@@ -488,6 +530,7 @@ exports.gmApprove = asyncHandler(async (req, res) => {
 exports.rejectBillRequest = asyncHandler(async (req, res) => {
   const br = await BillRequest.findById(req.params.id);
   if (!br) return notFound(res, 'Bill request not found');
+  if (!canActOnDepartment(req.user, br)) return forbidden(res, 'This bill request belongs to a different department.');
   if (!['pending', 'pending-gm'].includes(br.status)) return badRequest(res, `Request is already ${br.status}`);
   const rejectedStage = br.status === 'pending-gm' ? 'gm' : 'agm';
 
@@ -532,7 +575,7 @@ exports.rejectBillRequest = asyncHandler(async (req, res) => {
   br.rejectReason = rejectReason;
   br.processedBy  = req.user._id;
   br.processedAt  = new Date();
-  br.approvalHistory.push({ stage: rejectedStage, action: 'rejected', by: req.user._id, remarks: rejectReason });
+  br.approvalHistory.push({ stage: rejectedStage, action: 'rejected', by: req.user._id, byName: req.user.name, byRole: req.user.role, remarks: rejectReason });
   await br.save();
 
   emitEvent('BILL_REQUEST_REJECTED', {
@@ -645,7 +688,8 @@ exports.createBatchBillRequest = asyncHandler(async (req, res) => {
         billedQty:   it.billedQty,
         rate:        it.rate,
         amount:      it.rate * it.billedQty,
-        progressRemarks: progressRemarksByItem.get(String(it.subItemId || it.scopeItemId)) || '',
+        progressRemarks: progressRemarksByItem.get(String(it.subItemId || it.scopeItemId))?.remarks || '',
+        location:        progressRemarksByItem.get(String(it.subItemId || it.scopeItemId))?.location || '',
       })),
       remarks:     remarks || '',
       requestedBy: req.user._id,
@@ -687,6 +731,8 @@ exports.createBatchBillRequest = asyncHandler(async (req, res) => {
       description: `Bill request ${reqNo} created`,
       entityType: 'BillRequest', entityId: br._id, entityLabel: reqNo,
     });
+
+    notifySlack('BILL_REQUEST_AGM_APPROVAL', br);
 
     created.push(br);
   }

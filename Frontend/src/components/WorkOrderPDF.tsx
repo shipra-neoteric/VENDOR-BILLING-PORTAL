@@ -137,6 +137,8 @@ interface WOData {
   projectLocation?: string;
   category?: string;
   subCategory?: string;
+  department?: string;
+  customDepartment?: string;
   scopeOfWork?: string;
   totalTenure?: string;
   internalRemark?: string;
@@ -244,6 +246,16 @@ const TERMS = [
   "No extra work or variation will be paid without written approval before execution.",
   "Workers must maintain discipline, follow site timings, and keep the site clean. Alcohol, smoking, or misbehavior is strictly prohibited.",
 ];
+
+const DEPARTMENT_LABEL: Record<string, string> = {
+  civil: "Civil Team", marketing: "Marketing Team", planning: "Planning Team",
+  maintenance: "Maintenance Team",
+};
+function departmentLabel(department?: string, customDepartment?: string): string | undefined {
+  if (!department) return undefined;
+  if (department === "custom") return customDepartment || "Custom Team";
+  return DEPARTMENT_LABEL[department];
+}
 
 // ── Row helpers ────────────────────────────────────────────────
 function InfoRow({ label, value, mono = false, last = false }: { label: string; value?: string; mono?: boolean; last?: boolean }) {
@@ -361,6 +373,7 @@ export function WorkOrderDocument({ wo, company, contractor }: Props) {
           {wo.projectLocation ? <InfoRow label="Location" value={wo.projectLocation} /> : null}
           <InfoRow label="Category"          value={wo.category} />
           {wo.subCategory ? <InfoRow label="Sub-category" value={wo.subCategory} /> : null}
+          {departmentLabel(wo.department, wo.customDepartment) ? <InfoRow label="Department" value={departmentLabel(wo.department, wo.customDepartment)} /> : null}
           <InfoRow label="Work Title / Scope" value={wo.description || wo.scopeOfWork} />
           <InfoRow label="Total Tenure of Entire Work" value={wo.totalTenure} />
           <InfoRow label="Remarks" value={wo.internalRemark} last />

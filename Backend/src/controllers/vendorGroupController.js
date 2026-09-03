@@ -9,8 +9,10 @@ const { logAudit, diffFields } = require('../utils/auditLog');
 
 exports.listVendorGroups = asyncHandler(async (req, res) => {
   const groups = await VendorGroup.find().sort({ name: 1 }).lean();
+  // Inactive (archived) contractors don't count as active group members —
+  // matches getVendorGroup's own member list below.
   const counts = await Contractor.aggregate([
-    { $match: { groupId: { $ne: null } } },
+    { $match: { groupId: { $ne: null }, status: 'active' } },
     { $group: { _id: '$groupId', count: { $sum: 1 } } },
   ]);
   const countMap = new Map(counts.map(c => [String(c._id), c.count]));
@@ -22,7 +24,9 @@ exports.listVendorGroups = asyncHandler(async (req, res) => {
 exports.getVendorGroup = asyncHandler(async (req, res) => {
   const group = await VendorGroup.findById(req.params.id).lean();
   if (!group) return notFound(res, 'Vendor group not found');
-  const members = await Contractor.find({ groupId: group._id })
+  // Archived (inactive) contractors are excluded — a group's "members" means
+  // its currently-active ones, not every vendor code ever assigned to it.
+  const members = await Contractor.find({ groupId: group._id, status: 'active' })
     .select('vendorCode companyName ownerName mobile status').sort({ vendorCode: 1 }).lean();
   success(res, { group, members });
 });
@@ -71,7 +75,7 @@ exports.getVendorGroupProgress = asyncHandler(async (req, res) => {
   const group = await VendorGroup.findById(req.params.id).lean();
   if (!group) return notFound(res, 'Vendor group not found');
 
-  const members = await Contractor.find({ groupId: group._id })
+  const members = await Contractor.find({ groupId: group._id, status: 'active' })
     .select('vendorCode companyName').lean();
   const vendorCodes = members.map(m => m.vendorCode);
   const nameByCode = new Map(members.map(m => [m.vendorCode, m.companyName]));

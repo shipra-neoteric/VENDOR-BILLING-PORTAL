@@ -1,6 +1,7 @@
 const SlackApproval = require('../models/SlackApproval');
 const User = require('../models/User');
 const { STAGES } = require('../config/approvalStages');
+const { canActOnDepartment } = require('./departmentAccess');
 
 const SLACK_API = 'https://slack.com/api';
 
@@ -121,7 +122,13 @@ async function notifyStagePending(approvalType, entityDoc) {
   // from the first pass would wrongly block the real re-notification.
   await settleStaleApprovals(entityDoc._id, approvalType);
 
-  const recipients = await resolveApproverUsers(stage.module, stage.action, ...stage.roles);
+  let recipients = await resolveApproverUsers(stage.module, stage.action, ...stage.roles);
+  // A handful of stages additionally gate on department (canActOnDepartment,
+  // called inside their real controller function) — a permission holder in
+  // the wrong department would just get rejected on click, so don't DM them
+  // an approval they can't act on in the first place.
+  if (stage.departmentScoped) recipients = recipients.filter((u) => canActOnDepartment(u, entityDoc));
+
   // Reuses the already-configured, already-working channel (originally set
   // up as #rahul-approvals) as the one shared group every stage now posts
   // to — everyone's individual DM already covers per-person targeting, so

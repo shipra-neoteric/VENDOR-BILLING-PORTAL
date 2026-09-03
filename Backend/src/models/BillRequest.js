@@ -15,6 +15,10 @@ const itemSchema = new Schema({
   // Notes the DRI wrote against the specific progress entries being billed
   // here — distinct from the scope item's own static instruction remarks.
   progressRemarks: { type: String, default: '' },
+  // Where on site this was actually logged (Tower/Floor/Flat/Plot/Note),
+  // carried from the progress entries billed here — distinct from the work
+  // order's own overall projectLocation, and often more specific than it.
+  location: { type: String, default: '' },
 }, { _id: false });
 
 const billRequestSchema = new Schema(
@@ -35,6 +39,15 @@ const billRequestSchema = new Schema(
     companyName: { type: String, default: '' },
     category:    { type: String, default: '' },
     subCategory: { type: String, default: '' },
+    // Denormalized from WorkOrder.department — drives which users can see
+    // and approve this request in the Bill Approval flow (see User.department).
+    department:       { type: String, default: '' },
+    customDepartment: { type: String, default: '' },
+    // Who the AGM/L1 approver specifically routed this to for L2 sign-off,
+    // picked from that department's own L2-authority holders at the moment
+    // they approved — informational (anyone in the department with L2
+    // authority can still act on it), not an exclusivity lock.
+    sentForL2ApprovalTo: { type: Schema.Types.ObjectId, ref: 'User', default: null },
     items:       { type: [itemSchema], default: [] },
     remarks:     { type: String, default: '' },
     periodFrom:  { type: Date },
@@ -87,6 +100,13 @@ const billRequestSchema = new Schema(
       stage:   { type: String, enum: ['agm', 'gm'], required: true },
       action:  { type: String, enum: ['approved', 'rejected'], required: true },
       by:      { type: Schema.Types.ObjectId, ref: 'User' },
+      // Snapshotted from the actual approver at the moment they acted (same
+      // pattern as WorkOrder.approvalHistory) — the real name and whatever
+      // role/custom-role they held then, not a hardcoded "AGM"/"GM" label.
+      // A user's role can change or their account can be deactivated later;
+      // this keeps the history entry accurate to what actually happened.
+      byName:  { type: String, default: '' },
+      byRole:  { type: String, default: '' },
       at:      { type: Date, default: Date.now },
       remarks: { type: String, default: '' },
       _id: false,

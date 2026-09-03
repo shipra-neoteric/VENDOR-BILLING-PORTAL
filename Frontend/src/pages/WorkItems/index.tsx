@@ -39,8 +39,6 @@ import { useAuth } from "../../context/AuthContext";
 import { useCategories } from "../../hooks/useCategories";
 import { createCategory } from "../../features/categories/api";
 import DateRangeFilter, { inDateRange } from "../../components/DateRangeFilter";
-import { downloadWorkOrderPDF } from "../../components/WorkOrderPDF";
-import { downloadWorkOrderPDFHindi } from "../../components/WorkOrderPDFHindi";
 import { selectableProjects, getWorkOrderProjectId } from "../../utils/projectOptions";
 import { vendorLabel } from "../../utils/vendorLabel";
 import PaymentMilestonesBuilder, { calcPayable, calcGrandTotal } from "../../components/PaymentMilestonesBuilder";
@@ -1077,6 +1075,8 @@ interface WOFormValues {
   vendorCode: string;
   category: string;
   subCategory: string;
+  department: string;
+  customDepartment: string;
   status: string;
   gstPercent: number;
   retentionPercent: number;
@@ -1094,6 +1094,7 @@ interface WOFormValues {
 const blankWOForm = (): WOFormValues => ({
   contractType: "execution", workOrderNo: "", companyId: "", projectId: "", projectName: "",
   projectLocation: "", issueDate: "", vendorCode: "", category: "", subCategory: "",
+  department: "", customDepartment: "",
   status: "draft", gstPercent: 18, retentionPercent: 0, assignedDRI: [], vendorName: "",
   ownerName: "", mobile: "", issuedUnder: "company", description: "", totalTenure: "",
   documents: [], internalRemark: "",
@@ -1241,19 +1242,45 @@ function WOFormFields({
             options={selectableProjects(projectsList).map(p => ({ label: p.name, value: (p as any)._id || p.id }))}
             error={errors?.projectId}
           />
-          <div className="mt-4">
-            <Field
-              label="Location" placeholder="e.g. Tower A, Ground Floor"
-              value={values.projectLocation} onChange={e => onChange({ projectLocation: e.target.value })}
-              hint="Exact site location for this work order (e.g. tower, plot no., landmark)"
-            />
-          </div>
         </div>
         <div>
           <DatePicker label="Issue Date *" value={values.issueDate} onChange={v => onChange({ issueDate: v })} />
           {errors?.issueDate && <span className="block text-xs text-red-500 mt-1">{errors.issueDate}</span>}
         </div>
       </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+        <Field
+          label="Location" placeholder="e.g. Tower A, Ground Floor"
+          value={values.projectLocation} onChange={e => onChange({ projectLocation: e.target.value })}
+          hint="Exact site location for this work order (e.g. tower, plot no., landmark)"
+        />
+        <SField
+          label="Department"
+          placeholder="Select department (optional)"
+          value={values.department}
+          onChange={v => onChange({ department: v, ...(v !== "custom" ? { customDepartment: "" } : {}) })}
+          options={[
+            { value: "", label: "— None —" },
+            { value: "civil", label: "Civil Team" },
+            { value: "marketing", label: "Marketing Team" },
+            { value: "planning", label: "Planning Team" },
+            { value: "maintenance", label: "Maintenance Team" },
+            { value: "custom", label: "Custom Team" },
+          ]}
+        />
+      </div>
+
+      {values.department === "custom" && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+          <Field
+            label="Custom Team Name"
+            placeholder="e.g. Legal, IT, Procurement"
+            value={values.customDepartment}
+            onChange={e => onChange({ customDepartment: e.target.value })}
+          />
+        </div>
+      )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
         <SField
@@ -1263,7 +1290,12 @@ function WOFormFields({
           onChange={isProfessionalServices ? fillConsultant : fillVendor}
           options={isProfessionalServices
             ? consultantsList.map(c => ({ label: `${c.consultantCode} — ${c.firmName}`, value: c.consultantCode }))
-            : contractorsList.map(c => ({ label: `${c.vendorCode} — ${vendorLabel(c.companyName, c.shortCode)}`, value: c.vendorCode }))}
+            // Archived (inactive) vendors shouldn't be pickable for a new/changed
+            // assignment — but keep the already-selected one visible so editing an
+            // existing WO whose vendor has since gone inactive doesn't blank out.
+            : contractorsList
+                .filter(c => c.status !== 'inactive' || c.vendorCode === values.vendorCode)
+                .map(c => ({ label: `${c.vendorCode} — ${vendorLabel(c.companyName, c.shortCode)}`, value: c.vendorCode }))}
           error={errors?.vendorCode}
         />
         <SField
@@ -1436,6 +1468,7 @@ export default function WorkItems() {
   const [statusFilter,        setStatusFilter]        = useState<string>("all");
   const [stepFilter,          setStepFilter]          = useState<string>("all");
   const [categoryFilter,      setCategoryFilter]      = useState<string>("all");
+  const [deptFilter,          setDeptFilter]          = useState<string>("all");
   const [progressFilter,      setProgressFilter]      = useState<string>("all");
   const [projectFilter,       setProjectFilter]       = useState<string[]>([]);
   const [dateFrom,            setDateFrom]            = useState<Dayjs | null>(null);
@@ -1639,13 +1672,14 @@ export default function WorkItems() {
       const matchDate    = inDateRange(wo.issueDate, dateFrom, dateTo);
       const matchProject = projectFilter.length === 0 || projectFilter.includes(getWorkOrderProjectId(wo.projectId) ?? "");
       const matchContractType = contractTypeFilter === "all" || (wo.contractType || "execution") === contractTypeFilter;
-      return matchSearch && matchStatus && matchStep && matchCategory && matchProgress && matchDate && matchProject && matchContractType;
+      const matchDept = deptFilter === "all" || (wo.department || "") === deptFilter;
+      return matchSearch && matchStatus && matchStep && matchCategory && matchProgress && matchDate && matchProject && matchContractType && matchDept;
     }).sort((a, b) => {
       const numA = parseInt(a.workOrderNo.replace(/\D/g, ""), 10) || 0;
       const numB = parseInt(b.workOrderNo.replace(/\D/g, ""), 10) || 0;
       return numB - numA;
     });
-  }, [workOrders, search, statusFilter, stepFilter, categoryFilter, progressFilter, projectFilter, subCatsOfSelected, dateFrom, dateTo, contractTypeFilter, woBillsMap]);
+  }, [workOrders, search, statusFilter, stepFilter, categoryFilter, deptFilter, progressFilter, projectFilter, subCatsOfSelected, dateFrom, dateTo, contractTypeFilter, woBillsMap]);
 
   // Stat-card counts — computed off the full unfiltered list (matching the
   // "shortcut filter" convention used elsewhere, e.g. Projects' StatCard
@@ -1784,6 +1818,8 @@ export default function WorkItems() {
       issuedUnder:  values.issuedUnder || "company",
       category:     values.category    || "",
       subCategory:  values.subCategory  || "",
+      department:   values.department  || "",
+      customDepartment: values.department === "custom" ? (values.customDepartment?.trim() || "") : "",
       companyId:    values.companyId   || null,
       assignedDRI:  values.assignedDRI || [],
       description:  values.description?.trim() || "",
@@ -1843,6 +1879,8 @@ export default function WorkItems() {
       vendorCode: wo.vendorCode || "",
       category: wo.category || "",
       subCategory: wo.subCategory || "",
+      department: wo.department || "",
+      customDepartment: wo.customDepartment || "",
       status: wo.status || "draft",
       gstPercent: wo.gstPercent ?? 18,
       retentionPercent: (wo as any).retentionPercent ?? 0,
@@ -1902,6 +1940,10 @@ export default function WorkItems() {
       issuedUnder:  values.issuedUnder  || currentEditWO.issuedUnder || "company",
       category:     values.category     ?? currentEditWO.category ?? "",
       subCategory:  values.subCategory  ?? currentEditWO.subCategory ?? "",
+      department:   values.department   ?? currentEditWO.department ?? "",
+      customDepartment: (values.department ?? currentEditWO.department) === "custom"
+        ? (values.customDepartment?.trim() || currentEditWO.customDepartment || "")
+        : "",
       companyId:    values.companyId    ?? (currentEditWO as any).companyId ?? null,
       assignedDRI:  values.assignedDRI  ?? (currentEditWO as any).assignedDRI ?? [],
       issueDate:    values.issueDate || currentEditWO.issueDate,
@@ -2000,6 +2042,7 @@ export default function WorkItems() {
       const company    = companies.find((c: any) => c._id === (wo as any).companyId) ?? null;
       const contractor = contractors.find(c => c.vendorCode === wo.vendorCode) ?? null;
       const userMap    = await fetchUserMap();
+      const { downloadWorkOrderPDF } = await import("../../components/WorkOrderPDF");
       await downloadWorkOrderPDF({ ...wo, approvals: buildApprovals(wo, userMap) } as any, company, contractor as any);
     } catch {
       toast.error("Failed to generate PDF");
@@ -2015,6 +2058,7 @@ export default function WorkItems() {
       const company    = companies.find((c: any) => c._id === (wo as any).companyId) ?? null;
       const contractor = contractors.find(c => c.vendorCode === wo.vendorCode) ?? null;
       const userMap    = await fetchUserMap();
+      const { downloadWorkOrderPDFHindi } = await import("../../components/WorkOrderPDFHindi");
       await downloadWorkOrderPDFHindi({ ...wo, approvals: buildApprovals(wo, userMap) } as any, company, contractor as any);
     } catch {
       toast.error("Failed to generate Hindi PDF");
@@ -2079,13 +2123,13 @@ export default function WorkItems() {
   }
 
   const hasActiveFilters =
-    statusFilter !== "all" || stepFilter !== "all" || categoryFilter !== "all" || progressFilter !== "all" ||
+    statusFilter !== "all" || stepFilter !== "all" || categoryFilter !== "all" || deptFilter !== "all" || progressFilter !== "all" ||
     projectFilter.length > 0 || search !== "";
 
   const clearAllFilters = () => {
     setSearch("");
     setStatusFilter("all"); setStepFilter("all");
-    setCategoryFilter("all"); setProgressFilter("all"); setProjectFilter([]);
+    setCategoryFilter("all"); setDeptFilter("all"); setProgressFilter("all"); setProjectFilter([]);
   };
 
   const listPager = usePagination(filtered, 10);
@@ -2168,6 +2212,16 @@ export default function WorkItems() {
               options={topLevelCats.filter(c => c.isActive).map(c => ({ label: c.name, value: c.name }))}
             />
             <DropdownSelectFilter
+              value={deptFilter} onChange={setDeptFilter} placeholder="All Departments"
+              options={[
+                { label: "Civil Team", value: "civil" },
+                { label: "Marketing Team", value: "marketing" },
+                { label: "Planning Team", value: "planning" },
+                { label: "Maintenance Team", value: "maintenance" },
+                { label: "Custom Team", value: "custom" },
+              ]}
+            />
+            <DropdownSelectFilter
               value={progressFilter} onChange={setProgressFilter} placeholder="All Progress"
               options={[
                 { label: "Not Started", value: "not-started" }, { label: "In Progress", value: "running" },
@@ -2198,6 +2252,12 @@ export default function WorkItems() {
                 <span className="bg-blue-50 dark:bg-blue-500/10 border border-blue-600 text-blue-600 text-[11px] px-2 py-0.5 rounded flex items-center gap-1">
                   Category: {categoryFilter}
                   <button type="button" onClick={() => setCategoryFilter("all")} className="text-blue-600">×</button>
+                </span>
+              )}
+              {deptFilter !== "all" && (
+                <span className="bg-purple-50 dark:bg-purple-500/10 border border-purple-600 text-purple-600 text-[11px] px-2 py-0.5 rounded flex items-center gap-1">
+                  Department: {deptFilter === "civil" ? "Civil Team" : deptFilter === "marketing" ? "Marketing Team" : deptFilter === "planning" ? "Planning Team" : deptFilter === "maintenance" ? "Maintenance Team" : "Custom Team"}
+                  <button type="button" onClick={() => setDeptFilter("all")} className="text-purple-600">×</button>
                 </span>
               )}
               {progressFilter !== "all" && (
