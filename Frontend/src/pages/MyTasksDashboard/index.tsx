@@ -170,8 +170,8 @@ export default function MyTasksDashboard() {
       {(role === "gm" || role === "agm") && (
         <>
           <div className="grid gap-3.5 [grid-template-columns:repeat(auto-fit,minmax(178px,1fr))] mb-5">
-            <KPICard label="Pending L1 (AGM)" value={billReqs.length} icon={Clock} accent="#d97706" />
-            <KPICard label="Pending L2 (GM)" value={billReqsGm.length} icon={Clock} accent="#2563eb" />
+            <KPICard label="Pending L1" value={billReqs.length} icon={Clock} accent="#d97706" />
+            <KPICard label="Pending L2" value={billReqsGm.length} icon={Clock} accent="#2563eb" />
             <KPICard label="Today's Progress Entries" value={kpis.progressEntriesToday} icon={FileText} accent="#16a34a" />
             <KPICard label="Active DRIs Today" value={kpis.drisActiveToday} icon={Users} accent="#7c3aed" />
             <KPICard label="Active Projects Today" value={kpis.projectsActiveToday} icon={Network} accent="#0d9488" />
@@ -181,7 +181,7 @@ export default function MyTasksDashboard() {
             <div>
               <div className="font-bold text-sm text-[#1A1A2E] dark:text-[#F1F5F9]">Site Progress</div>
               <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                See what DRI has been logging project-by-project, approve any over-plan progress, and carry a bill through AGM (L1) and GM (L2) approval.
+                See what DRI has been logging project-by-project, approve any over-plan progress, and carry a bill through L1 and L2 approval.
               </div>
             </div>
             <Btn label="Open Site Progress →" color="primary" onClick={() => navigate("/site-progress")} />

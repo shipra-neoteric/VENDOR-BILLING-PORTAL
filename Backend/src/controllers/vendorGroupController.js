@@ -75,7 +75,12 @@ exports.getVendorGroupProgress = asyncHandler(async (req, res) => {
   const group = await VendorGroup.findById(req.params.id).lean();
   if (!group) return notFound(res, 'Vendor group not found');
 
-  const members = await Contractor.find({ groupId: group._id, status: 'active' })
+  // Unlike getVendorGroup's own member list (active only), this progress
+  // rollup deliberately includes every vendor code ever assigned to the
+  // group — an inactive vendor's past work orders/billing still happened
+  // and must still count toward the group's totals, even though that vendor
+  // no longer shows up as a current "member" elsewhere.
+  const members = await Contractor.find({ groupId: group._id })
     .select('vendorCode companyName').lean();
   const vendorCodes = members.map(m => m.vendorCode);
   const nameByCode = new Map(members.map(m => [m.vendorCode, m.companyName]));

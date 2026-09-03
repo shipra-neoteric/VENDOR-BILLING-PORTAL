@@ -1028,12 +1028,12 @@ export default function AccountsPayment() {
     switch (bill.status) {
       case "draft": {
         if (bill.manualApprovalStatus && bill.manualApprovalStatus !== "approved") {
-          const stageText = bill.manualApprovalStatus === "pending-gm" ? "GM" : bill.manualApprovalStatus === "rejected" ? null : "AGM";
+          const stageText = bill.manualApprovalStatus === "pending-gm" ? "L2" : bill.manualApprovalStatus === "rejected" ? null : "L1";
           return (
             <MutedNote text={
               stageText
                 ? `This manually-created bill needs ${stageText} sign-off on Site Progress's Bill Requests tab before it can be verified.`
-                : "This manually-created bill was rejected during AGM/GM sign-off — see Site Progress's Bill Requests tab."
+                : "This manually-created bill was rejected during L1/L2 sign-off — see Site Progress's Bill Requests tab."
             } />
           );
         }

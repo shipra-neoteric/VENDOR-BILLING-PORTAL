@@ -13,7 +13,13 @@ function canActOnDepartment(user, doc) {
   if (!user || ['owner', 'accounts'].includes(user.role)) return true;
   if (!user.department) return true;
   if (!doc || !doc.department) return true;
-  return doc.department === user.department;
+  if (doc.department !== user.department) return false;
+  // "Custom" isn't one team — it's an escape hatch for whatever team name
+  // was typed in, so two different custom departments must not be treated
+  // as the same one just because both picked "custom" (see the same check
+  // in NewBillDrawer/BillRequests' own l1/l2ApproverOptions on the frontend).
+  if (user.department === 'custom' && (doc.customDepartment || '') !== (user.customDepartment || '')) return false;
+  return true;
 }
 
 module.exports = { canActOnDepartment };

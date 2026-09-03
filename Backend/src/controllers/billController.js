@@ -65,21 +65,35 @@ exports.listBills = asyncHandler(async (req, res) => {
     // set, which a progress-driven bill never does — 'pending'/'pending-gm'
     // need no such guard since createBill always sets that status explicitly
     // only for genuinely manual bills.
+    // $and (not two separate top-level $or keys, which would collide —
+    // object keys are unique, so a second filter.$or here would silently
+    // overwrite the marker-guard one above) collects every OR-shaped
+    // condition below so both apply together.
+    filter.$and = [];
     const statuses = Array.isArray(manualApprovalStatus) ? manualApprovalStatus : [manualApprovalStatus];
     if (statuses.every((s) => ['approved', 'rejected'].includes(s))) {
-      filter.$or = [
+      filter.$and.push({ $or: [
         { manualAgmApprovedBy: { $exists: true, $ne: null } },
         { manualRejectedBy:    { $exists: true, $ne: null } },
-      ];
+      ] });
     }
     // Department-scoped visibility — only applied to this manual-bill L1/L2
     // approval queue (identified by the manualApprovalStatus filter itself),
     // never to the plain bill list Billing/Accounts Payment use, since those
     // legitimately need every bill regardless of department. Same bypasses
-    // and empty-department fallback as the BillRequest queue — see there.
+    // and empty-department fallback as the BillRequest queue — see there. A
+    // bill with no department of its own stays visible to everyone (it
+    // belongs to no one yet), and "custom" only matches the same custom
+    // team name, not every custom department.
     if (!['owner', 'accounts'].includes(req.user.role) && req.user.department) {
-      filter.department = req.user.department;
+      filter.$and.push({ $or: [
+        { department: { $in: ['', null] } },
+        req.user.department === 'custom'
+          ? { department: 'custom', customDepartment: req.user.customDepartment || '' }
+          : { department: req.user.department },
+      ] });
     }
+    if (filter.$and.length === 0) delete filter.$and;
   }
   if (archived === 'true') filter.isArchived = true;
   else if (archived !== 'all') filter.isArchived = { $ne: true };
@@ -103,6 +117,7 @@ exports.listBills = asyncHandler(async (req, res) => {
 exports.getBill = asyncHandler(async (req, res) => {
   let query = RunningBill.findById(req.params.id);
   for (const f of POPULATE_FIELDS) query = query.populate(f, 'name role');
+  query = query.populate('approvalHistory.by', 'name role');
   const bill = await query.lean();
   if (!bill) return notFound(res, 'Bill not found');
   success(res, { bill });

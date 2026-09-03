@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
-import { Plus, Trash2, Archive, ArchiveRestore, Wallet } from "lucide-react";
+import { Plus, Trash2, Wallet } from "lucide-react";
 import dayjs from "dayjs";
 import apiClient from "../../services/apiClient";
 import { selectableProjects } from "../../utils/projectOptions";
@@ -10,15 +10,12 @@ import Btn from "../../ui/Btn";
 import NxBtn from "../../ui/nexora/Btn";
 import NxBadge from "../../ui/nexora/Badge";
 import type { NxBadgeColor } from "../../ui/nexora/Badge";
-import Checkbox from "../../ui/Checkbox";
 import Switch from "../../ui/Switch";
 import Field from "../../ui/Field";
 import SField from "../../ui/SField";
 import { DatePicker } from "../../ui/DatePicker";
 import Modal from "../../ui/Modal";
 import ConfirmModal from "../../ui/ConfirmModal";
-import DropdownMenu from "../../ui/DropdownMenu";
-import type { DropdownMenuItem } from "../../ui/DropdownMenu";
 import EmptyState from "../../ui/EmptyState";
 import Spinner from "../../ui/Spinner";
 import { Table, Thead, Tbody, Tr, Th, Td, TdText } from "../../ui/Table";
@@ -63,15 +60,10 @@ export default function AdvancePayments() {
   const [projects,     setProjects]     = useState<{ _id: string; name: string; parentId?: string | null }[]>([]);
   const [contractors,  setContractors]  = useState<{ vendorCode: string; companyName: string; shortCode?: string }[]>([]);
   const [showArchived, setShowArchived] = useState(false);
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [archiving,   setArchiving]     = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<AdvanceSlip | null>(null);
-  const [archiveTarget, setArchiveTarget] = useState<AdvanceSlip | null>(null);
-  const [bulkArchiveConfirm, setBulkArchiveConfirm] = useState(false);
 
   const load = async (archived: boolean) => {
     setLoading(true);
-    setSelectedIds([]);
     try {
       const res = await apiClient.get(`/advance-slips${archived ? "?archived=true" : ""}`);
       setSlips(res.data.advanceSlips ?? []);
@@ -130,38 +122,7 @@ export default function AdvancePayments() {
     }
   };
 
-  const archiveOne = async () => {
-    if (!archiveTarget) return;
-    try {
-      await apiClient.patch(`/advance-slips/${archiveTarget._id}/${showArchived ? "unarchive" : "archive"}`);
-      toast.success(showArchived ? `${archiveTarget.slipNo} unarchived` : `${archiveTarget.slipNo} archived`);
-      setArchiveTarget(null);
-      load(showArchived);
-    } catch (e: unknown) {
-      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message || "Action failed";
-      toast.error(msg);
-    }
-  };
 
-  const archiveSelected = async () => {
-    if (selectedIds.length === 0) return;
-    setArchiving(true);
-    try {
-      await apiClient.patch(`/advance-slips/${showArchived ? "unarchive-bulk" : "archive-bulk"}`, { ids: selectedIds });
-      toast.success(`${selectedIds.length} slip(s) ${showArchived ? "unarchived" : "archived"}`);
-      setBulkArchiveConfirm(false);
-      load(showArchived);
-    } catch (e: unknown) {
-      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message || "Action failed";
-      toast.error(msg);
-    } finally {
-      setArchiving(false);
-    }
-  };
-
-  const allSelected = slips.length > 0 && selectedIds.length === slips.length;
-  const toggleAll = () => setSelectedIds(allSelected ? [] : slips.map(s => s._id));
-  const toggleOne = (id: string) => setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   const pager = usePagination(slips, 10);
 
   return (
@@ -175,14 +136,6 @@ export default function AdvancePayments() {
 
       <div className="flex items-center gap-3 flex-wrap mb-4">
         <Switch checked={showArchived} onChange={setShowArchived} onLabel="Archived" offLabel="Active" />
-        {selectedIds.length > 0 && (
-          <NxBtn
-            color="secondary" icon={showArchived ? ArchiveRestore : Archive}
-            label={`${showArchived ? "Unarchive" : "Archive"} Selected (${selectedIds.length})`}
-            loading={archiving}
-            onClick={() => setBulkArchiveConfirm(true)}
-          />
-        )}
       </div>
 
       {loading ? (
@@ -193,7 +146,6 @@ export default function AdvancePayments() {
         <Table className="min-w-[1200px]">
           <Thead>
             <Tr>
-              <Th className="w-[4%]"><Checkbox checked={allSelected} onChange={toggleAll} /></Th>
               <Th className="w-[9%]">Slip No</Th>
               <Th className="w-[10%]">Date</Th>
               <Th className="w-[14%]">Project</Th>
@@ -202,26 +154,16 @@ export default function AdvancePayments() {
               <Th className="text-right w-[10%]">Recovered</Th>
               <Th className="text-right w-[10%]">Balance</Th>
               <Th className="w-[9%]">Reference</Th>
-              <Th className="w-[8%]">Status</Th>
-              <Th className="w-[10%]">Actions</Th>
+              <Th className="w-[10%]">Status</Th>
+              <Th className="w-[8%] text-center">Actions</Th>
             </Tr>
           </Thead>
           <Tbody>
             {pager.pageItems.map(s => {
               const live = contractors.find(c => c.vendorCode === s.contractorCode);
               const cfg = STATUS_CFG[s.status] ?? { color: "orange" as const, label: s.status };
-              const menuItems: DropdownMenuItem[] = [
-                { key: "archive", label: showArchived ? "Unarchive" : "Archive", icon: showArchived ? ArchiveRestore : Archive, onClick: () => setArchiveTarget(s) },
-                {
-                  key: "delete", label: "Delete", icon: Trash2, danger: true,
-                  disabled: s.amountRecovered !== 0,
-                  title: s.amountRecovered !== 0 ? "Has recoveries — cannot delete" : undefined,
-                  onClick: () => setDeleteTarget(s),
-                },
-              ];
               return (
                 <Tr key={s._id}>
-                  <Td><Checkbox checked={selectedIds.includes(s._id)} onChange={() => toggleOne(s._id)} /></Td>
                   <Td className="whitespace-nowrap truncate"><span className="font-bold text-primary">{s.slipNo}</span></Td>
                   <Td className="whitespace-nowrap truncate"><TdText>{dayjs(s.date).format("DD MMM YYYY")}</TdText></Td>
                   <Td className="whitespace-nowrap truncate"><TdText>{s.projectName}</TdText></Td>
@@ -233,9 +175,13 @@ export default function AdvancePayments() {
                   <Td className="text-right whitespace-nowrap"><span className="font-mono text-emerald-600 dark:text-emerald-400">{fmt(s.amountRecovered)}</span></Td>
                   <Td className="text-right whitespace-nowrap"><span className={`font-mono font-bold ${s.balance > 0 ? "text-red-600 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400"}`}>{fmt(s.balance)}</span></Td>
                   <Td className="whitespace-nowrap truncate">{s.reference || <span className="text-gray-300 dark:text-gray-600">—</span>}</Td>
-                  <Td className="whitespace-nowrap truncate"><NxBadge color={cfg.color}>{cfg.label}</NxBadge></Td>
-                  <Td>
-                    <DropdownMenu items={menuItems} />
+                  <Td className="whitespace-nowrap"><NxBadge color={cfg.color}>{cfg.label}</NxBadge></Td>
+                  <Td className="text-center">
+                    <NxBtn
+                      color="icon-red" title={s.amountRecovered !== 0 ? "Has recoveries — cannot delete" : "Delete"}
+                      icon={Trash2} disabled={s.amountRecovered !== 0}
+                      onClick={() => setDeleteTarget(s)}
+                    />
                   </Td>
                 </Tr>
               );
@@ -298,24 +244,6 @@ export default function AdvancePayments() {
         />
       )}
 
-      {archiveTarget && (
-        <ConfirmModal
-          title={showArchived ? `Unarchive ${archiveTarget.slipNo}?` : `Archive ${archiveTarget.slipNo}?`}
-          message={showArchived ? "It will reappear in the normal list." : "It will be hidden from the normal list, but not deleted."}
-          confirmLabel={showArchived ? "Unarchive" : "Archive"}
-          onConfirm={archiveOne} onCancel={() => setArchiveTarget(null)}
-        />
-      )}
-
-      {bulkArchiveConfirm && (
-        <ConfirmModal
-          title={showArchived ? `Unarchive ${selectedIds.length} slip(s)?` : `Archive ${selectedIds.length} slip(s)?`}
-          message={showArchived ? "They will reappear in the normal list." : "They will be hidden from the normal list, but not deleted."}
-          confirmLabel={showArchived ? "Unarchive" : "Archive"}
-          loading={archiving}
-          onConfirm={archiveSelected} onCancel={() => setBulkArchiveConfirm(false)}
-        />
-      )}
     </div>
   );
 }

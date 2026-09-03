@@ -82,12 +82,25 @@ exports.listBillRequests = asyncHandler(async (req, res) => {
   // an admin assigns one.
   const isApprovalQueue = scope === 'approval' || status === 'pending' || status === 'pending-gm';
   if (isApprovalQueue && !['owner', 'accounts'].includes(req.user.role) && req.user.department) {
-    filter.department = req.user.department;
+    // A request with no department of its own (an older work order that
+    // predates this field, or a standalone bill nobody classified) belongs
+    // to no one yet — it must stay visible to everyone, not just Owner/
+    // Accounts, or it becomes stuck and un-actionable in every department's
+    // queue. "Custom" also isn't one team — it's an escape hatch for
+    // whatever name was typed in, so two different custom departments must
+    // never match each other just because both picked "custom" (mirrors
+    // canActOnDepartment's own check on the action side).
+    filter.$or = [
+      { department: { $in: ['', null] } },
+      req.user.department === 'custom'
+        ? { department: 'custom', customDepartment: req.user.customDepartment || '' }
+        : { department: req.user.department },
+    ];
   }
 
   const requests = await BillRequest.find(filter)
     .populate('requestedBy', 'name email')
-    .populate('processedBy', 'name')
+    .populate('processedBy', 'name role')
     .populate('agmApprovedBy', 'name role')
     .populate('sentForL2ApprovalTo', 'name role')
     .populate('approvalHistory.by', 'name role')

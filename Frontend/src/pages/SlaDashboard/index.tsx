@@ -506,7 +506,7 @@ export default function SlaDashboard() {
 
               {brDetail.billId && (
                 <>
-                  <SectionHeading>Hold / Advance (AGM-set)</SectionHeading>
+                  <SectionHeading>Hold / Advance (L1-set)</SectionHeading>
                   <Descriptions columns={3}>
                     <DescItem label="Hold / Retention">{fmtMoney(brDetail.billId.retentionAmount ?? 0)}</DescItem>
                     <DescItem label="Advance Recovery">{fmtMoney(brDetail.billId.advanceRecovery ?? 0)}</DescItem>

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import {
   FileText, Eye, Printer, CheckCircle2, XCircle, Check, X, Clock,
-  Archive as ArchiveIcon, Trophy,
+  Trophy,
 } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import dayjs from "dayjs";
@@ -36,8 +36,6 @@ import Pagination from "../../ui/Pagination";
 import NxBadge from "../../ui/nexora/Badge";
 import NxBtn from "../../ui/nexora/Btn";
 import NxStatCard from "../../ui/nexora/StatCard";
-import DropdownMenu from "../../ui/DropdownMenu";
-import type { DropdownMenuItem } from "../../ui/DropdownMenu";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface BillItem {
@@ -45,8 +43,8 @@ interface BillItem {
   rate?: number; amount?: number; progressRemarks?: string; location?: string;
 }
 interface ApprovalHistoryEntry {
-  stage: "agm" | "gm"; action: "approved" | "rejected";
-  by?: { _id: string; name: string } | string | null;
+  stage: string; action: "approved" | "rejected";
+  by?: { _id: string; name: string; role?: string } | string | null;
   at?: string; remarks?: string;
 }
 interface BillRequestRow {
@@ -61,6 +59,8 @@ interface BillRequestRow {
   requestedBy?: { name: string; email: string };
   agmApprovedBy?: { name: string; role?: string } | string | null;
   agmApprovedAt?: string;
+  processedBy?: { name: string; role?: string } | string | null;
+  processedAt?: string;
   retentionAmount?: number;
   advanceRecovery?: number;
   gstPercentOverride?: number | null;
@@ -80,7 +80,7 @@ interface BillRequestRow {
 // AGM/GM sign-off tracked right on the bill itself (see billController's
 // manualAgmApprove/manualGmApprove/manualReject).
 interface ManualBillRow {
-  _id: string; billNo: string; amount: number; workOrderId?: string;
+  _id: string; billNo: string; amount: number; workOrderId?: string; workOrderNo?: string;
   projectName?: string; vendorName?: string; billDate: string; createdAt: string;
   manualApprovalStatus: "pending" | "pending-gm" | "approved" | "rejected";
   department?: string; customDepartment?: string;
@@ -154,6 +154,7 @@ interface ManualBillDetail extends PrintableBill {
   manualGmApprovedAt?: string;
   department?: string;
   customDepartment?: string;
+  approvalHistory?: ApprovalHistoryEntry[];
 }
 
 function actorName(by?: { name: string } | string | null): string | undefined {
@@ -178,11 +179,17 @@ function hasPerm(user: AuthUser | null, action: string): boolean {
 // WorkOrder/RunningBill approval chains elsewhere in this app.
 function ApprovalHistoryTimeline({ history }: { history?: ApprovalHistoryEntry[] }) {
   if (!history || history.length === 0) return null;
-  const stageLabel = (s: string) => (s === "agm" ? "AGM" : "GM");
+  // Exact stage matches only (not endsWith) — 'l1-agm'/'l2-director' are the
+  // separate Accounts Payment pipeline's own stages and must never be
+  // mislabeled as this app's L1/L2 sign-off just because they share a suffix.
+  const L1_STAGES = new Set(["agm", "manual-agm"]);
+  const L2_STAGES = new Set(["gm", "manual-gm"]);
+  const stageLabel = (s: string) => (L1_STAGES.has(s) ? "L1" : L2_STAGES.has(s) ? "L2" : s);
   return (
     <div className="mt-1">
       {history.map((h, i) => {
         const isReject = h.action === "rejected";
+        const role = actorRole(h.by);
         return (
           <div key={i} className="flex gap-2 items-start py-1">
             <span className={`w-5 h-5 rounded-full border-[1.5px] flex items-center justify-center text-[10px] font-bold shrink-0 ${isReject ? "bg-red-50 dark:bg-red-500/10 border-red-600 text-red-600" : "bg-emerald-50 dark:bg-emerald-500/10 border-emerald-600 text-emerald-600"}`}>
@@ -191,7 +198,7 @@ function ApprovalHistoryTimeline({ history }: { history?: ApprovalHistoryEntry[]
             <div className="text-[12.5px]">
               <strong>{stageLabel(h.stage)} {isReject ? "rejected" : "approved"}</strong>
               <span className="text-gray-400 ml-1.5">
-                {actorName(h.by) || ""}{h.at ? ` · ${dayjs(h.at).format("DD MMM YYYY, hh:mm a")}` : ""}
+                {actorName(h.by) || ""}{role ? ` (${role})` : ""}{h.at ? ` · ${dayjs(h.at).format("DD MMM YYYY, hh:mm a")}` : ""}
               </span>
               {h.remarks && <div className="text-gray-500 dark:text-gray-400 mt-0.5">{h.remarks}</div>}
             </div>
@@ -217,7 +224,16 @@ async function printBillRequest(br: BillRequestRow) {
     if (br.billId?._id) {
       const bRes = await apiClient.get<{ bill: PrintableBill }>(`/bills/${br.billId._id}`);
       const bill = bRes.data.bill;
-      printBill(bill, contractor, bill.status === "paid" ? "post" : "pre");
+      // The RunningBill's own verifiedBy/verifiedAt are legacy fields no
+      // current action writes — a progress-driven bill's real L2 (GM)
+      // sign-off lives on the BillRequest itself (processedBy/processedAt,
+      // set by gmApprove), so that's what the signature block needs here.
+      const printableBill: PrintableBill = {
+        ...bill,
+        verifiedBy: bill.verifiedBy ?? (actorName(br.processedBy) ? { name: actorName(br.processedBy), role: actorRole(br.processedBy) } : null),
+        verifiedAt: bill.verifiedAt ?? br.processedAt,
+      };
+      printBill(printableBill, contractor, bill.status === "paid" ? "post" : "pre");
       return;
     }
 
@@ -245,7 +261,7 @@ async function printBillRequest(br: BillRequestRow) {
       approvedBy: null,
       paymentInitiatedBy: null,
     };
-    const statusLabel = br.status === "rejected" ? "Rejected" : br.status === "pending-gm" ? "Awaiting GM Approval" : "Awaiting AGM Approval";
+    const statusLabel = br.status === "rejected" ? "Rejected" : br.status === "pending-gm" ? "Awaiting L2 Approval" : "Awaiting L1 Approval";
     printBill(pseudoBill, contractor, "pre", statusLabel);
   } catch {
     toast.error("Failed to prepare print view");
@@ -717,7 +733,7 @@ export default function BillApproval() {
         />
       </div>
 
-      <div className="mb-4">
+      <div className="mb-4 flex gap-2.5 flex-wrap items-center justify-between">
         <Segmented
           value={reqTab}
           onChange={setReqTab}
@@ -728,6 +744,11 @@ export default function BillApproval() {
             { value: "rejected", label: "Rejected" },
             { value: "all", label: "All" },
           ]}
+        />
+        <DropdownSelectFilter
+          value={reqDeptFilter ?? ""} onChange={v => setReqDeptFilter(v || undefined)}
+          placeholder="All departments" resetValue=""
+          options={departmentOptions}
         />
       </div>
       <div className="bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700/40 rounded-lg p-3.5 mb-4">
@@ -740,11 +761,6 @@ export default function BillApproval() {
             value={reqProjectFilter ?? ""} onChange={v => setReqProjectFilter(v || undefined)}
             placeholder="All projects" resetValue=""
             options={projectOptions}
-          />
-          <DropdownSelectFilter
-            value={reqDeptFilter ?? ""} onChange={v => setReqDeptFilter(v || undefined)}
-            placeholder="All departments" resetValue=""
-            options={departmentOptions}
           />
           <UISwitch checked={showArchived} onChange={setShowArchived} onLabel="Archived" offLabel="Show Archived" />
         </div>
@@ -762,26 +778,28 @@ export default function BillApproval() {
             <Thead>
               <Tr>
                 <Th>Bill No</Th>
+                <Th>Work Order</Th>
                 <Th>Project</Th>
                 <Th>Department</Th>
                 <Th>Vendor</Th>
                 <Th>Amount</Th>
                 <Th>Date</Th>
-                <Th>Stage</Th>
+                <Th>Status</Th>
                 <Th>Actions</Th>
               </Tr>
             </Thead>
             <Tbody>
               {manualBillsForTab(reqTab).filter(b => matchesDept(b)).map(b => (
-                <Tr key={b._id}>
+                <Tr key={b._id} className="cursor-pointer" onClick={() => openManualBillView(b)}>
                   <Td><span className="text-primary font-bold text-[13px]">{b.billNo}</span></Td>
+                  <Td>{b.workOrderNo || <span className="text-gray-300 dark:text-gray-600">—</span>}</Td>
                   <Td>{b.projectName || "—"}</Td>
                   <Td>{departmentLabel(resolveDeptRow(b))}</Td>
                   <Td>{b.vendorName || "—"}</Td>
                   <Td className="font-mono">{fmt(b.amount)}</Td>
                   <Td>{dayjs(b.billDate || b.createdAt).format("DD MMM YYYY")}</Td>
                   <Td><NxBadge color={STATUS_CFG[b.manualApprovalStatus]?.color as any ?? "gray"}>{STATUS_CFG[b.manualApprovalStatus]?.label ?? b.manualApprovalStatus}</NxBadge></Td>
-                  <Td>
+                  <Td onClick={e => e.stopPropagation()}>
                     <div className="flex items-center gap-1">
                       <NxBtn color="icon-blue" title="View" icon={Eye} loading={viewManualBillLoadingId === b._id} onClick={() => openManualBillView(b)} />
                       <NxBtn color="icon" title="Print" icon={Printer} loading={printingReqId === b._id} onClick={() => handlePrintManualBill(b)} />
@@ -791,7 +809,7 @@ export default function BillApproval() {
                       {b.manualApprovalStatus === "pending-gm" && canGmApprove && (
                         <NxBtn color="icon-green" title="L2 Approve" icon={Check} onClick={() => setManualApproveTarget(b)} />
                       )}
-                      {canRejectAny && (
+                      {["pending", "pending-gm"].includes(b.manualApprovalStatus) && canRejectAny && (
                         <NxBtn color="icon-red" title="Reject" icon={X} onClick={() => setManualRejectTarget(b)} />
                       )}
                     </div>
@@ -814,8 +832,7 @@ export default function BillApproval() {
                 <Th>Work Order</Th>
                 <Th>Project</Th>
                 <Th>Department</Th>
-                <Th>Contractor</Th>
-                <Th>Items</Th>
+                <Th>Vendor</Th>
                 <Th>Date</Th>
                 <Th>Status</Th>
                 <Th>Actions</Th>
@@ -824,9 +841,6 @@ export default function BillApproval() {
             <Tbody>
               {reqPager.pageItems.map(r => {
                 const cfg = STATUS_CFG[r.status] ?? { color: "gray", label: r.status };
-                const menuItems: DropdownMenuItem[] = [
-                  { key: "archive", label: r.isArchived ? "Unarchive" : "Archive", icon: ArchiveIcon, onClick: () => setArchiveTarget(r) },
-                ];
                 return (
                   <Tr key={r._id} className="cursor-pointer" onClick={() => openViewReq(r)}>
                     <Td>
@@ -849,7 +863,6 @@ export default function BillApproval() {
                     <Td>{r.projectName}</Td>
                     <Td>{departmentLabel(resolveDeptRow(r))}</Td>
                     <Td>{r.vendorName}</Td>
-                    <Td>{r.items.length} item{r.items.length !== 1 ? "s" : ""}</Td>
                     <Td>{dayjs(r.createdAt).format("DD MMM YYYY")}</Td>
                     <Td><UIBadge color={cfg.color as any}>{cfg.label}</UIBadge></Td>
                     <Td>
@@ -865,7 +878,6 @@ export default function BillApproval() {
                         {["pending", "pending-gm"].includes(r.status) && canRejectAny && (
                           <NxBtn color="icon-red" title="Reject" icon={X} onClick={() => { setRejectTarget(r._id); setRejectModal(true); }} />
                         )}
-                        <DropdownMenu items={menuItems} />
                       </div>
                     </Td>
                   </Tr>
@@ -950,7 +962,7 @@ export default function BillApproval() {
 
             {viewReq.status === "pending-gm" && (
               <div className="rounded-lg border border-blue-200 dark:border-blue-500/30 bg-blue-50 dark:bg-blue-500/10 p-3">
-                <div className="text-[11px] font-bold text-blue-700 dark:text-blue-300 mb-2 uppercase">AGM already set (read-only)</div>
+                <div className="text-[11px] font-bold text-blue-700 dark:text-blue-300 mb-2 uppercase">L1 already set (read-only)</div>
                 <div className="grid grid-cols-3 gap-2 text-[13px]">
                   <div><span className="text-gray-500 dark:text-gray-400">Hold / Retention: </span><span className="font-bold">{fmt(viewReq.retentionAmount ?? 0)}</span></div>
                   <div><span className="text-gray-500 dark:text-gray-400">Advance Recovery: </span><span className="font-bold">{fmt(viewReq.advanceRecovery ?? 0)}</span></div>
@@ -966,7 +978,7 @@ export default function BillApproval() {
                   </div>
                 )}
                 <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-1.5">
-                  {actorName(viewReq.agmApprovedBy) || "AGM"}{viewReq.agmApprovedAt ? ` · ${dayjs(viewReq.agmApprovedAt).format("DD MMM YYYY")}` : ""}
+                  {actorName(viewReq.agmApprovedBy) || "L1 Approval"}{actorRole(viewReq.agmApprovedBy) ? ` (${actorRole(viewReq.agmApprovedBy)})` : ""}{viewReq.agmApprovedAt ? ` · ${dayjs(viewReq.agmApprovedAt).format("DD MMM YYYY")}` : ""}
                 </div>
               </div>
             )}
@@ -1053,7 +1065,7 @@ export default function BillApproval() {
             )}
 
             {(viewReq.approvalHistory?.length ?? 0) > 0 && (
-              <div>
+              <div className="rounded-md border border-gray-200 dark:border-gray-700/40 p-3">
                 <div className="font-bold text-[11px] text-gray-500 dark:text-gray-400 uppercase mb-1.5">History</div>
                 <ApprovalHistoryTimeline history={viewReq.approvalHistory} />
               </div>
@@ -1151,7 +1163,7 @@ export default function BillApproval() {
           }
         >
           <div className="text-xs text-gray-500 dark:text-gray-400 mb-3.5">
-            This creates the running bill using the retention/advance/GST AGM already set. It then moves to Accounts Payment.
+            This creates the running bill using the retention/advance/GST L1 already set. It then moves to Accounts Payment.
           </div>
           {gmGroupSiblings.length > 1 && (
             <div className="mb-3">
@@ -1275,30 +1287,6 @@ export default function BillApproval() {
             {viewManualBill.projectLocation && <DescItem label="Location">{viewManualBill.projectLocation}</DescItem>}
           </Descriptions>
 
-          {(viewManualBill.manualAgmApprovedBy || viewManualBill.manualGmApprovedBy) && (
-            <div className="mt-3 flex flex-col gap-1 text-[12.5px]">
-              {viewManualBill.manualAgmApprovedBy && (
-                <div>
-                  <span className="font-bold text-gray-600 dark:text-gray-300">
-                    L1 Approval{viewManualBill.manualAgmApprovedBy.role ? `(${viewManualBill.manualAgmApprovedBy.role})` : ""}
-                  </span>
-                  <span className="text-gray-400 ml-1.5">
-                    {viewManualBill.manualAgmApprovedBy.name || ""}{viewManualBill.manualAgmApprovedAt ? ` · ${dayjs(viewManualBill.manualAgmApprovedAt).format("DD MMM YYYY, hh:mm a")}` : ""}
-                  </span>
-                </div>
-              )}
-              {viewManualBill.manualGmApprovedBy && (
-                <div>
-                  <span className="font-bold text-gray-600 dark:text-gray-300">
-                    L2 Approval{viewManualBill.manualGmApprovedBy.role ? `(${viewManualBill.manualGmApprovedBy.role})` : ""}
-                  </span>
-                  <span className="text-gray-400 ml-1.5">
-                    {viewManualBill.manualGmApprovedBy.name || ""}{viewManualBill.manualGmApprovedAt ? ` · ${dayjs(viewManualBill.manualGmApprovedAt).format("DD MMM YYYY, hh:mm a")}` : ""}
-                  </span>
-                </div>
-              )}
-            </div>
-          )}
 
           <div className="border-t border-gray-200 dark:border-gray-700/40 my-4" />
 
@@ -1391,6 +1379,22 @@ export default function BillApproval() {
                 <div className="flex justify-between font-bold text-primary border-t border-emerald-200 dark:border-emerald-500/30 pt-1 mt-1">
                   <span>Net Payable</span><span>{fmt(netAfterHold)}</span>
                 </div>
+              </div>
+            );
+          })()}
+
+          {(() => {
+            // Just this bill's own pre-Accounts L1/L2 sign-off — the same
+            // approvalHistory array also carries the later Accounts Payment
+            // stages (verify/l1-agm/l2-director/hold/tms) shown separately
+            // above in the "Bill Approvals" table, so only 'manual-*' entries
+            // belong in this history.
+            const manualHistory = (viewManualBill.approvalHistory ?? []).filter(h => h.stage.startsWith("manual-"));
+            if (manualHistory.length === 0) return null;
+            return (
+              <div className="mt-4 rounded-md border border-gray-200 dark:border-gray-700/40 p-3">
+                <div className="font-bold text-[11px] text-gray-500 dark:text-gray-400 uppercase mb-1.5">History</div>
+                <ApprovalHistoryTimeline history={manualHistory} />
               </div>
             );
           })()}

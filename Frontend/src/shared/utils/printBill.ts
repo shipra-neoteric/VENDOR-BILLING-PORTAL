@@ -330,18 +330,21 @@ ${bill.remarks ? `<div style="border:1px solid #e8e8e8;border-radius:6px;padding
 ${mode === 'pre' ? `<div style="display:flex;justify-content:space-around;margin-top:40px;padding-top:48px;border-top:1px solid #eee">
   <div style="text-align:center">
     <div style="border-top:1px solid #333;width:180px;margin:0 auto 6px"></div>
-    <p style="font-size:12px;color:#666;font-weight:600">Contractor${bill.vendorName ? ` — ${bill.vendorName}` : ""}</p>
-    <p style="font-size:12px;color:#999">&nbsp;</p>
+    <p style="font-size:12px;color:#333;font-weight:700">Contractor</p>
+    <p style="font-size:11px;color:#666">${bill.vendorName || "—"}</p>
+    <p style="font-size:11px;color:#999">&nbsp;</p>
   </div>
   <div style="text-align:center">
     <div style="border-top:1px solid #333;width:180px;margin:0 auto 6px"></div>
-    <p style="font-size:12px;color:#666;font-weight:600">${bill.agmApprovedBy ? `${bill.agmApprovedBy.role || "L1 Approval"} — ${bill.agmApprovedBy.name}` : "L1 Approval"}</p>
-    <p style="font-size:12px;color:#999">${bill.agmApprovedAt ? `Approved ${dayjs(bill.agmApprovedAt).format("DD/MM/YYYY")}` : "&nbsp;"}</p>
+    <p style="font-size:12px;color:#333;font-weight:700">L1 Approval</p>
+    <p style="font-size:11px;color:#666">${bill.agmApprovedBy ? `${bill.agmApprovedBy.name}${bill.agmApprovedBy.role ? ` (${bill.agmApprovedBy.role})` : ""}` : "—"}</p>
+    <p style="font-size:11px;color:${bill.agmApprovedAt ? "#16a34a" : "#999"}">${bill.agmApprovedAt ? `Approved ${dayjs(bill.agmApprovedAt).format("DD/MM/YYYY, hh:mm A")}` : "&nbsp;"}</p>
   </div>
   <div style="text-align:center">
     <div style="border-top:1px solid #333;width:180px;margin:0 auto 6px"></div>
-    <p style="font-size:12px;color:#666;font-weight:600">${bill.verifiedBy ? `${bill.verifiedBy.role || "L2 Approval"} — ${bill.verifiedBy.name}` : "L2 Approval"}</p>
-    <p style="font-size:12px;color:#999">${bill.verifiedAt ? `Approved ${dayjs(bill.verifiedAt).format("DD/MM/YYYY")}` : "&nbsp;"}</p>
+    <p style="font-size:12px;color:#333;font-weight:700">L2 Approval</p>
+    <p style="font-size:11px;color:#666">${bill.verifiedBy ? `${bill.verifiedBy.name}${bill.verifiedBy.role ? ` (${bill.verifiedBy.role})` : ""}` : "—"}</p>
+    <p style="font-size:11px;color:${bill.verifiedAt ? "#16a34a" : "#999"}">${bill.verifiedAt ? `Approved ${dayjs(bill.verifiedAt).format("DD/MM/YYYY, hh:mm A")}` : "&nbsp;"}</p>
   </div>
 </div>` : ""}
 

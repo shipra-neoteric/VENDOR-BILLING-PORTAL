@@ -848,10 +848,10 @@ function DRIDashboard() {
         </div>
         {hasPending && (
           <span
-            title="AGM/GM review your logged progress and decide when to generate a bill request — not done from here anymore."
+            title="L1/L2 review your logged progress and decide when to generate a bill request — not done from here anymore."
             className="bg-primary/10 border border-primary/30 text-primary font-semibold text-xs px-3.5 py-1.5 rounded-lg"
           >
-            🧾 {pendingWODetails.reduce((s, d) => s + d.scopeItems.filter(si => Math.max(0, (si.completedQty || 0) - (si.lastBilledQty || 0)) > 0).length, 0)} item(s) awaiting AGM/GM bill review
+            🧾 {pendingWODetails.reduce((s, d) => s + d.scopeItems.filter(si => Math.max(0, (si.completedQty || 0) - (si.lastBilledQty || 0)) > 0).length, 0)} item(s) awaiting L1/L2 bill review
           </span>
         )}
       </div>
@@ -1205,7 +1205,7 @@ function DRIDashboard() {
           )}
           <Field
             label={`Quantity Added (${progModalTarget?.unit ?? ""})`} type="number" min="0.00001" step="0.00001"
-            hint={progModalTarget?.unit === "per-hr" ? "Tip: enter decimals for minutes — e.g. 13.67 = 13 hr 40 min" : "Progress can exceed the planned qty (e.g. a correction, or ground reality running over) — AGM/GM sign off on the overage before it's billed."}
+            hint={progModalTarget?.unit === "per-hr" ? "Tip: enter decimals for minutes — e.g. 13.67 = 13 hr 40 min" : "Progress can exceed the planned qty (e.g. a correction, or ground reality running over) — L1/L2 sign off on the overage before it's billed."}
             placeholder={progModalTarget?.unit === "per-hr" ? "e.g. 13.6667" : "e.g. 500"}
             value={progFormValues.qtyAdded} onChange={(e) => setProgFormValues(prev => ({ ...prev, qtyAdded: e.target.value }))}
             error={progErrors.errors.qtyAdded}

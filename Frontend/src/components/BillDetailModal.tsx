@@ -30,7 +30,7 @@ export function BillStageCell({ by, at }: { by?: string; at?: string }) {
 export interface BillApprovalHistoryEntry {
   stage: "agm" | "gm";
   action: "approved" | "rejected";
-  by?: { name: string } | string | null;
+  by?: { name: string; role?: string } | string | null;
   at?: string;
   remarks?: string;
 }
@@ -42,12 +42,13 @@ export interface BillApprovalHistoryEntry {
 // shape and rendering convention as SiteProgress's own ApprovalHistoryTimeline.
 export function BillApprovalHistoryList({ history }: { history?: BillApprovalHistoryEntry[] }) {
   if (!history || history.length === 0) return null;
-  const stageLabel = (s: string) => (s === "agm" ? "AGM" : "GM");
+  const stageLabel = (s: string) => (s === "agm" ? "L1" : "L2");
   return (
     <div className="flex flex-col gap-2.5">
       {history.map((h, i) => {
         const isReject = h.action === "rejected";
         const name = h.by && typeof h.by !== "string" ? h.by.name : undefined;
+        const role = h.by && typeof h.by !== "string" ? h.by.role : undefined;
         return (
           <div key={i} className="flex items-start gap-2.5">
             <div
@@ -64,7 +65,7 @@ export function BillApprovalHistoryList({ history }: { history?: BillApprovalHis
                 {stageLabel(h.stage)} {isReject ? "rejected" : "approved"}
               </span>
               <span className="text-gray-400 dark:text-gray-500 ml-1.5">
-                {name ? `${name} · ` : ""}{h.at ? dayjs(h.at).format("DD MMM YYYY, hh:mm A") : ""}
+                {name ? `${name}${role ? ` (${role})` : ""} · ` : ""}{h.at ? dayjs(h.at).format("DD MMM YYYY, hh:mm A") : ""}
               </span>
               {h.remarks && <div className="text-gray-500 dark:text-gray-400 mt-0.5">{h.remarks}</div>}
             </div>
@@ -168,12 +169,12 @@ export interface BillDetailRequest {
   // Whoever did the LAST terminal action (gmApprove, or a reject at either
   // stage) — the closest thing to a "GM approved" actor for bills whose
   // approvalHistory is empty (see the fallback in the render body below).
-  processedBy?: { name: string } | null;
+  processedBy?: { name: string; role?: string } | null;
   processedAt?: string;
   // Site Progress's own AGM→GM sign-off, before this request ever becomes a
   // RunningBill — see BillApprovalHistoryList for why this is a separate
   // chain from billId's Verification/L1/L2 fields below.
-  agmApprovedBy?: { name: string } | null;
+  agmApprovedBy?: { name: string; role?: string } | null;
   agmApprovedAt?: string;
   approvalHistory?: BillApprovalHistoryEntry[];
   billId?: {
@@ -200,7 +201,7 @@ export interface BillDetailRequest {
     tmsCallbackReceivedAt?: string;
     // Pre-redesign, RunningBill-level fallback for the AGM stamp — see the
     // approvalHistory fallback below for why this gets read.
-    agmApprovedBy?: { name: string } | null;
+    agmApprovedBy?: { name: string; role?: string } | null;
     agmApprovedAt?: string;
     // The bill's own line items — same shape as BillDetailItem, but this is
     // the authoritative "as actually billed" record (rate is re-read fresh

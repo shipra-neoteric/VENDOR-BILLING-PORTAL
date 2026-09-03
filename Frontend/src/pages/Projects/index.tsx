@@ -107,8 +107,8 @@ const EVENT_CONFIG: Record<string, { icon: string; color: string; label: string 
   WORK_ORDER_COMPLETED:    { icon: "✅", color: "#16a34a", label: "Work Order Completed" },
   PROGRESS_ADDED:          { icon: "📊", color: "#FF7A00", label: "Progress Recorded" },
   BILL_REQUESTED:          { icon: "🧾", color: "#f59e0b", label: "Bill Request Submitted" },
-  BILL_REQUEST_AGM_APPROVED: { icon: "📝", color: "#0ea5e9", label: "AGM Approved" },
-  BILL_REQUEST_APPROVED:   { icon: "✅", color: "#16a34a", label: "GM Approved — Bill Raised" },
+  BILL_REQUEST_AGM_APPROVED: { icon: "📝", color: "#0ea5e9", label: "L1 Approved" },
+  BILL_REQUEST_APPROVED:   { icon: "✅", color: "#16a34a", label: "L2 Approved — Bill Raised" },
   BILL_REQUEST_REJECTED:   { icon: "❌", color: "#ef4444", label: "Bill Request Rejected" },
   RUNNING_BILL_CREATED:    { icon: "📄", color: "#3b82f6", label: "Running Bill Created" },
   RUNNING_BILL_SUBMITTED:  { icon: "📤", color: "#6366f1", label: "Running Bill Submitted" },
@@ -138,7 +138,7 @@ function woStatusBadge(status: string): { label: string; color: NxBadgeColor } {
 function billReqStatusBadge(status: string): { label: string; color: NxBadgeColor } {
   if (status === "approved") return { label: "Approved", color: "green" };
   if (status === "rejected") return { label: "Rejected", color: "red" };
-  if (status === "pending-gm") return { label: "Pending GM", color: "amber" };
+  if (status === "pending-gm") return { label: "Pending L2", color: "amber" };
   return { label: "Pending", color: "amber" };
 }
 
@@ -150,8 +150,8 @@ const WF_STEPS: { key: string; name: string; icon: string; types: string[] }[] =
   { key: "wo_created",   name: "Work Order\nGenerated",   icon: "📋", types: ["WORK_ORDER_CREATED"] },
   { key: "dri_viewed",   name: "Issued\nto DRI",          icon: "👷", types: ["WORK_ORDER_ISSUED"] },
   { key: "bill_req",     name: "Stage 1\nBill Request",   icon: "🧾", types: ["BILL_REQUESTED"] },
-  { key: "agm_approved", name: "AGM\nApproved",           icon: "📝", types: ["BILL_REQUEST_AGM_APPROVED"] },
-  { key: "gm_bill_approved", name: "GM Approved &\nBill Raised", icon: "📄", types: ["BILL_REQUEST_APPROVED"] },
+  { key: "agm_approved", name: "L1\nApproved",           icon: "📝", types: ["BILL_REQUEST_AGM_APPROVED"] },
+  { key: "gm_bill_approved", name: "L2 Approved &\nBill Raised", icon: "📄", types: ["BILL_REQUEST_APPROVED"] },
   { key: "rb_approved",  name: "Running Bill\nApproved",  icon: "🔏", types: ["RUNNING_BILL_APPROVED", "RUNNING_BILL_VERIFIED"] },
   { key: "pay_init",     name: "Payment\nInitiated",      icon: "💸", types: ["PAYMENT_INITIATED"] },
   { key: "pay_out",      name: "Payment\nReleased",       icon: "💰", types: ["PAYMENT_RELEASED", "MILESTONE_ACHIEVED"] },

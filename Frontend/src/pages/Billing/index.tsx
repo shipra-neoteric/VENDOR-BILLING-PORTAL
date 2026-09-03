@@ -249,7 +249,7 @@ export default function Billing() {
       <PageHeader
         icon={Receipt}
         title="Billing"
-        subtitle="Every bill in the system — from DRI-progress → AGM → GM approvals, or created directly here — still processed through Accounts Payment"
+        subtitle="Every bill in the system — from DRI-progress → L1 → L2 approvals, or created directly here — still processed through Accounts Payment"
         actions={
           canCreate ? (
             <NxBtn color="primary" icon={Plus} label="New Bill" onClick={() => setNewOpen(true)} />
@@ -340,9 +340,9 @@ export default function Billing() {
                     <Td>
                       {(r.manualApprovalStatus === "pending" || r.manualApprovalStatus === "pending-gm" || r.manualApprovalStatus === "rejected") ? (
                         <>
-                          {r.manualApprovalStatus === "pending" && <NxBadge color="orange">Pending L1 (AGM)</NxBadge>}
-                          {r.manualApprovalStatus === "pending-gm" && <NxBadge color="orange">Pending L2 (GM)</NxBadge>}
-                          {r.manualApprovalStatus === "rejected" && <NxBadge color="red">AGM/GM Rejected</NxBadge>}
+                          {r.manualApprovalStatus === "pending" && <NxBadge color="orange">Pending L1</NxBadge>}
+                          {r.manualApprovalStatus === "pending-gm" && <NxBadge color="orange">Pending L2</NxBadge>}
+                          {r.manualApprovalStatus === "rejected" && <NxBadge color="red">L1/L2 Rejected</NxBadge>}
                         </>
                       ) : (
                         <span className="text-gray-300 dark:text-gray-600">—</span>

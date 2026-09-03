@@ -109,8 +109,8 @@ const fmtN = (n: number) => (n ?? 0).toLocaleString("en-IN");
 const pctOf = (c: number, p: number) => p > 0 ? Math.min(100, Math.round((c / p) * 100)) : 0;
 
 const STATUS_CFG: Record<string, { color: string; label: string }> = {
-  pending: { color: "orange", label: "Pending L1 (AGM)" },
-  "pending-gm": { color: "blue", label: "Pending L2 (GM)" },
+  pending: { color: "orange", label: "Pending L1" },
+  "pending-gm": { color: "blue", label: "Pending L2" },
   approved: { color: "green", label: "Approved" },
   rejected: { color: "red", label: "Rejected" },
 };
@@ -375,7 +375,7 @@ export default function SiteProgress() {
       <PageHeader
         icon={TrendingUp}
         title="Site Progress"
-        subtitle="See what DRI has been logging, and raise bill requests for AGM/GM to approve on the Bill Approval page."
+        subtitle="See what DRI has been logging, and raise bill requests for L1/L2 to approve on the Bill Approval page."
       />
 
       {/* ── KPI flashcards ── */}
