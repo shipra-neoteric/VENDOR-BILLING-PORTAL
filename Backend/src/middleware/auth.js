@@ -32,12 +32,19 @@ const authorize = (...roles) => (req, res, next) => {
   next();
 };
 
+// Core permission check shared by authorizeOr/authorizeAnyOr and by anything
+// (e.g. the Slack interaction handler) that needs to ask "can this user do X"
+// outside of an Express middleware chain.
+const can = (user, module, action, ...roles) => {
+  if (roles.includes(user.role)) return true;
+  const perm = (user.permissions || []).find(p => p.module === module);
+  return !!(perm && perm.actions.includes(action));
+};
+
 // Like authorize, but also passes if the user has an explicit module+action permission grant
 // (set via User Management). Allows admins to extend access to DRI/other roles per-user.
 const authorizeOr = (module, action, ...roles) => (req, res, next) => {
-  if (roles.includes(req.user.role)) return next();
-  const perm = (req.user.permissions || []).find(p => p.module === module);
-  if (perm && perm.actions.includes(action)) return next();
+  if (can(req.user, module, action, ...roles)) return next();
   return res.status(403).json({
     message: `Role '${req.user.role}' does not have access to this action`,
   });
@@ -55,4 +62,4 @@ const authorizeAnyOr = (module, actions, ...roles) => (req, res, next) => {
   });
 };
 
-module.exports = { authenticate, authorize, authorizeOr, authorizeAnyOr };
+module.exports = { authenticate, authorize, authorizeOr, authorizeAnyOr, can };

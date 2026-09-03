@@ -18,7 +18,7 @@ apiClient.interceptors.request.use((config) => {
   // their own Authorization header — the "switch account" flow needs to send
   // the stashed admin token for one specific call while impersonating.
   if (!config.headers.Authorization) {
-    const token = sessionStorage.getItem("token");
+    const token = localStorage.getItem("token");
     if (token) config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
@@ -30,8 +30,8 @@ let sessionExpiredPending = false;
 function forceReLogin(msg: string) {
   if (sessionExpiredPending) return;
   sessionExpiredPending = true;
-  sessionStorage.removeItem("token");
-  sessionStorage.removeItem("user");
+  localStorage.removeItem("token");
+  localStorage.removeItem("user");
   toast.error(msg);
   setTimeout(() => {
     sessionExpiredPending = false;

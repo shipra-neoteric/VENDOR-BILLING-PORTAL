@@ -15,8 +15,17 @@ const { recomputeAfterInvalidate, recomputeParentFromSubItems, deriveStatus } = 
 const { applyAdvanceRecoveries } = require('../utils/advanceRecovery');
 const AdvanceSlip  = require('../models/AdvanceSlip');
 const { nextCode } = require('../utils/sequence');
+const { notifyStagePending } = require('../utils/slackApprovals');
 
 const MODULE = 'accounts-payment';
+
+// Fire-and-forget (mirrors emitEvent's un-awaited call sites) — a failed or
+// unconfigured Slack push must never block the real approval-chain write that
+// already happened.
+function notifySlack(approvalType, bill) {
+  notifyStagePending(approvalType, bill)
+    .catch((err) => console.error(`[slack] ${approvalType} notify failed`, err.message));
+}
 
 // Advances the SLA tracker for whichever BillRequest generated this RunningBill —
 // no-ops silently if there's no linked request or no in-progress instance, so it's
@@ -311,6 +320,11 @@ exports.createBill = asyncHandler(async (req, res) => {
     entityType: 'RunningBill', entityId: bill._id, entityLabel: bill.billNo,
   });
 
+  // This manual-entry path always starts manualApprovalStatus at 'pending'
+  // (line 223 above) — a progress-driven bill (see billRequestController's
+  // gmApprove) is born already past this and never reaches createBill at all.
+  notifySlack('PAYMENT_MANUAL_AGM_APPROVAL', bill);
+
   created(res, { bill }, 'Bill created — awaiting maker confirmation');
 });
 
@@ -429,6 +443,8 @@ exports.verifyBill = asyncHandler(async (req, res) => {
     metadata:     { billNo: bill.billNo, amount: bill.amount },
   });
 
+  notifySlack('PAYMENT_L1_AGM_APPROVAL', bill);
+
   success(res, { bill }, 'Verified — ready for L1 AGM approval');
 });
 
@@ -457,6 +473,8 @@ exports.manualAgmApprove = asyncHandler(async (req, res) => {
     entityType: 'RunningBill', entityId: bill._id, entityLabel: bill.billNo,
   });
 
+  notifySlack('PAYMENT_MANUAL_GM_APPROVAL', bill);
+
   success(res, { bill }, 'AGM approved — forwarded to GM');
 });
 
@@ -479,6 +497,8 @@ exports.manualGmApprove = asyncHandler(async (req, res) => {
     description: `GM signed off on manually-created bill ${bill.billNo} — ready for Accounts to verify`,
     entityType: 'RunningBill', entityId: bill._id, entityLabel: bill.billNo,
   });
+
+  notifySlack('PAYMENT_VERIFY_APPROVAL', bill);
 
   success(res, { bill }, 'GM approved — ready for Accounts to verify');
 });
@@ -537,6 +557,8 @@ exports.l1AgmApprove = asyncHandler(async (req, res) => {
     description: `L1 AGM approved bill ${bill.billNo}`,
     entityType: 'RunningBill', entityId: bill._id, entityLabel: bill.billNo,
   });
+
+  notifySlack('PAYMENT_L2_GM_APPROVAL', bill);
 
   success(res, { bill }, 'L1 AGM approved — ready for L2 Director approval');
 });

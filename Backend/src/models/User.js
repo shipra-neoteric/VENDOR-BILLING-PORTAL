@@ -19,6 +19,11 @@ const userSchema = new mongoose.Schema(
     vendorCode: { type: String, default: null },
     mobile: { type: String, default: '' },
     isActive: { type: Boolean, default: true },
+    // Slack member ID (e.g. "U0123ABC") — links a Slack account to this user so
+    // an Approve/Reject click on a Slack approval message can be attributed to
+    // the real person, not a generic bot identity. Found on Slack via the
+    // person's profile → "More" → "Copy member ID".
+    slackUserId: { type: String, default: null },
     permissions: [{
       module:  { type: String, required: true },
       actions: [{ type: String }],

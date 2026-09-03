@@ -25,3 +25,9 @@ services:
         sync: false
       - key: BACKUP_CRON_SECRET
         sync: false
+      - key: SLACK_BOT_TOKEN
+        sync: false
+      - key: SLACK_SIGNING_SECRET
+        sync: false
+      - key: SLACK_APPROVAL_CHANNEL_ID
+        sync: false

@@ -16,6 +16,15 @@ const { milestonesExceedContract } = require('../utils/validateMilestones');
 const { documentsExceedLimit } = require('../utils/validateDocuments');
 const { logAudit, diffFields } = require('../utils/auditLog');
 const { sumActiveQty, applyVarianceGate, recomputeParentFromSubItems } = require('../utils/progressHelpers');
+const { notifyStagePending } = require('../utils/slackApprovals');
+
+// Fire-and-forget (matches emitEvent's un-awaited call sites above) — a failed
+// or unconfigured Slack push must never block the real approval-chain write
+// that already happened.
+function notifySlack(approvalType, workOrder) {
+  notifyStagePending(approvalType, workOrder)
+    .catch((err) => console.error(`[slack] ${approvalType} notify failed`, err.message));
+}
 
 // vendorName/ownerName/mobile are snapshotted onto a WO at creation time, but
 // address/GST/PAN/bank details never were — both listWorkOrders and
@@ -469,6 +478,8 @@ exports.submitWorkOrder = asyncHandler(async (req, res) => {
     vendorCode: workOrder.vendorCode, vendorName: workOrder.vendorName, user: req.user,
   });
 
+  notifySlack('WORK_ORDER_CHECKER_APPROVAL', workOrder);
+
   success(res, { workOrder }, 'Submitted — awaiting checker review');
 });
 
@@ -500,6 +511,8 @@ exports.checkerApprove = asyncHandler(async (req, res) => {
     vendorCode: workOrder.vendorCode, vendorName: workOrder.vendorName, user: req.user,
   });
 
+  notifySlack('WORK_ORDER_APPROVER_APPROVAL', workOrder);
+
   success(res, { workOrder }, 'Verified & approved — forwarded to approver');
 });
 
@@ -530,6 +543,8 @@ exports.approverApprove = asyncHandler(async (req, res) => {
     projectId: workOrder.projectId, workOrderId: workOrder._id, workOrderNo: workOrder.workOrderNo,
     vendorCode: workOrder.vendorCode, vendorName: workOrder.vendorName, user: req.user,
   });
+
+  notifySlack('WORK_ORDER_OWNER_APPROVAL', workOrder);
 
   success(res, { workOrder }, 'Approved — forwarded for final approval');
 });
