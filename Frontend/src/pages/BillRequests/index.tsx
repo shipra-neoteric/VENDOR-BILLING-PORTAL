@@ -232,7 +232,7 @@ async function printBillRequest(br: BillRequestRow) {
       companyName: br.companyName,
       generatedBy: br.requestedBy?.name,
       billDate: br.createdAt,
-      lineItems: br.items.map(it => ({ description: it.description, progressRemarks: it.progressRemarks, unit: it.unit, billedQty: it.billedQty, rate: it.rate ?? 0, amount: (it.rate ?? 0) * it.billedQty })),
+      lineItems: br.items.map(it => ({ description: it.description, progressRemarks: it.progressRemarks, location: it.location, unit: it.unit, billedQty: it.billedQty, rate: it.rate ?? 0, amount: (it.rate ?? 0) * it.billedQty })),
       amount: br.items.reduce((s, it) => s + (it.rate ?? 0) * it.billedQty, 0),
       retentionAmount: br.retentionAmount ?? 0,
       advanceRecovery: br.advanceRecovery ?? 0,
