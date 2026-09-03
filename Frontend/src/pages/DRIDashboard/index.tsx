@@ -23,6 +23,7 @@ import EmptyState from "../../ui/EmptyState";
 import Alert from "../../ui/Alert";
 import { Descriptions, DescItem } from "../../ui/Descriptions";
 import { Table, Thead, Tbody, Tr, Th, Td } from "../../ui/Table";
+import RemarksListInput from "../../components/RemarksListInput";
 import dayjs from "dayjs";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -425,10 +426,9 @@ export default function DRIDashboard() {
   const billableWODetails = useMemo(
     () => Array.from(woDetails.values()).filter(d =>
       getPendingBillableRows(d.scopeItems).length > 0 &&
-      !projectBills.some(br => br.workOrderId === d._id && br.status === "pending") &&
-      !hasBill(d._id)
+      !projectBills.some(br => br.workOrderId === d._id && br.status === "pending")
     ),
-    [woDetails, projectBills, woBillsMap]
+    [woDetails, projectBills]
   );
 
   const progProjectType: "apartment" | "plot" = useMemo(() => {
@@ -1146,11 +1146,7 @@ export default function DRIDashboard() {
             error={progErrors.errors.qtyAdded}
           />
           <div className="mt-3.5">
-            <Field
-              textarea label="Remarks (optional)" placeholder="Notes for today's work…"
-              value={progFormValues.remarks}
-              onChange={(e) => setProgFormValues(prev => ({ ...prev, remarks: e.target.value }))}
-            />
+            <RemarksListInput value={progFormValues.remarks} onChange={(v) => setProgFormValues(prev => ({ ...prev, remarks: v }))} />
           </div>
           {progModalTarget && (
             <div className="mt-3.5 bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700/40 rounded-lg p-3">

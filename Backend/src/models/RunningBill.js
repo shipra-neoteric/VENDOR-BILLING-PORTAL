@@ -11,6 +11,10 @@ const lineItemSchema = new mongoose.Schema({
   // Notes from the actual progress entries billed here — distinct from
   // `remarks` above, which is the scope item's static instruction note.
   progressRemarks: { type: String, default: '' },
+  // Where on site this was actually logged (Tower/Floor/Flat/Plot/Note),
+  // carried from the progress entries billed here — distinct from the work
+  // order's own overall projectLocation, and often more specific than it.
+  location: { type: String, default: '' },
   unit:        { type: String, default: '' },
   plannedQty:  { type: Number, default: 0 },
   billedQty:   { type: Number, required: true },
@@ -125,6 +129,24 @@ const runningBillSchema = new mongoose.Schema(
     billingCycle:  { type: Number, default: 1 },
     isActive:      { type: Boolean, default: true },
     supersededBy:  { type: mongoose.Schema.Types.ObjectId, ref: 'RunningBill', default: null },
+    // Which internal team this bill belongs to — same fixed list as
+    // WorkOrder.department, entered directly here since a bill (especially
+    // a standalone one with no work order) has no WO to inherit it from.
+    department: {
+      type: String,
+      enum: ['', 'civil', 'marketing', 'planning', 'maintenance', 'custom'],
+      default: '',
+    },
+    customDepartment: { type: String, default: '' },
+    // Who the maker specifically routed this bill to for L1 sign-off, picked
+    // from that department's own L1-authority holders — informational
+    // (anyone in the department with L1 authority can still act on it), not
+    // an exclusivity lock.
+    sentForApprovalTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    // Who the L1 approver specifically routed this to for L2 sign-off,
+    // picked at approval time from that department's own L2-authority
+    // holders — same informational-only routing as sentForApprovalTo above.
+    sentForL2ApprovalTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     // ─────────────────────────────────────────────────────────
 
     // draft = awaiting Verification · verify-done = the single Verification

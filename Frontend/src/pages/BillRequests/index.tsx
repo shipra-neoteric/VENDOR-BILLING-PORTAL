@@ -15,6 +15,10 @@ import { printBill, resolvePrintParty } from "../../shared/utils/printBill";
 import type { PrintableBill } from "../../shared/utils/printBill";
 import type { Contractor } from "../../types/VendorBilling";
 import { billFinancials } from "../../shared/utils/billMath";
+import { BillStageCell } from "../../components/BillDetailModal";
+import { BILL_STATUS_LABEL } from "../../shared/constants/billStatus";
+import { Descriptions, DescItem } from "../../ui/Descriptions";
+import type { NxBadgeColor } from "../../ui/nexora/Badge";
 import SField from "../../ui/SField";
 import UISwitch from "../../ui/Switch";
 import UIBadge from "../../ui/Badge";
@@ -38,7 +42,7 @@ import type { DropdownMenuItem } from "../../ui/DropdownMenu";
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface BillItem {
   scopeItemId?: string; description: string; unit: string; billedQty: number;
-  rate?: number; amount?: number; progressRemarks?: string;
+  rate?: number; amount?: number; progressRemarks?: string; location?: string;
 }
 interface ApprovalHistoryEntry {
   stage: "agm" | "gm"; action: "approved" | "rejected";
@@ -50,11 +54,12 @@ interface BillRequestRow {
   workOrderId?: string; workOrderNo: string;
   projectId?: string; projectName: string; projectLocation?: string;
   vendorCode?: string; vendorName: string; companyName?: string; category?: string; subCategory?: string;
+  department?: string; customDepartment?: string;
   items: BillItem[]; remarks?: string;
   periodFrom?: string; periodTo?: string;
   status: "pending" | "pending-gm" | "approved" | "rejected";
   requestedBy?: { name: string; email: string };
-  agmApprovedBy?: { name: string } | string | null;
+  agmApprovedBy?: { name: string; role?: string } | string | null;
   agmApprovedAt?: string;
   retentionAmount?: number;
   advanceRecovery?: number;
@@ -78,6 +83,7 @@ interface ManualBillRow {
   _id: string; billNo: string; amount: number; workOrderId?: string;
   projectName?: string; vendorName?: string; billDate: string; createdAt: string;
   manualApprovalStatus: "pending" | "pending-gm" | "approved" | "rejected";
+  department?: string; customDepartment?: string;
 }
 
 interface ProjectOption { _id: string; name: string; code?: string; parentId?: string | null; }
@@ -103,15 +109,60 @@ function departmentLabel(wo?: WorkOrderDeptRow): string {
 }
 
 const STATUS_CFG: Record<string, { color: string; label: string }> = {
-  pending: { color: "orange", label: "Pending L1 (AGM)" },
-  "pending-gm": { color: "blue", label: "Pending L2 (GM)" },
+  pending: { color: "orange", label: "Pending L1" },
+  "pending-gm": { color: "blue", label: "Pending L2" },
   approved: { color: "green", label: "Approved" },
   rejected: { color: "red", label: "Rejected" },
 };
 
+// Same mapping Billing's own read-only bill view uses (RunningBill.status,
+// not the AGM/GM BillRequest status above) — this is the Accounts Payment
+// side pipeline (Verification -> L1 AGM -> L2 Director -> TMS -> Paid).
+const BILL_STATUS_BADGE_COLOR: Record<string, NxBadgeColor> = {
+  draft: "gray",
+  "verify-done": "amber",
+  "l1-approved": "blue",
+  approved: "indigo",
+  "sent-to-tms": "cyan",
+  hold: "orange",
+  paid: "green",
+  rejected: "red",
+};
+
+// The subset of RunningBill fields the read-only Manual Bill view needs —
+// PrintableBill (used for the print template) is missing the Accounts
+// Payment stage timestamps, so this extends it locally rather than widening
+// that shared type for one screen.
+interface ManualBillDetail extends PrintableBill {
+  workOrderNo?: string;
+  verificationBy?: { name?: string } | null;
+  verificationAt?: string;
+  l1ApprovedBy?: { name?: string } | null;
+  l1ApprovedAt?: string;
+  l2ApprovedBy?: { name?: string } | null;
+  l2ApprovedAt?: string;
+  tmsSentAt?: string;
+  tmsCallbackReceivedAt?: string;
+  _id: string;
+  manualApprovalStatus: "pending" | "pending-gm" | "approved" | "rejected";
+  // The pre-Accounts L1/L2 sign-off (this page's own AGM/GM-equivalent
+  // chain) — role is whatever the approver's actual role/custom-role was at
+  // the time, never a hardcoded "AGM"/"GM" label.
+  manualAgmApprovedBy?: { name?: string; role?: string } | null;
+  manualAgmApprovedAt?: string;
+  manualGmApprovedBy?: { name?: string; role?: string } | null;
+  manualGmApprovedAt?: string;
+  department?: string;
+  customDepartment?: string;
+}
+
 function actorName(by?: { name: string } | string | null): string | undefined {
   if (!by || typeof by === "string") return undefined;
   return by.name;
+}
+function actorRole(by?: { name: string; role?: string } | string | null): string | undefined {
+  if (!by || typeof by === "string") return undefined;
+  return by.role;
 }
 
 // A grant for module 'bill-requests' with the given action — Owner always
@@ -188,7 +239,7 @@ async function printBillRequest(br: BillRequestRow) {
       gstPercent: br.gstPercentOverride ?? undefined,
       remarks: br.rejectReason ? `${br.remarks ? br.remarks + " — " : ""}Rejected: ${br.rejectReason}` : br.remarks,
       status: br.status,
-      agmApprovedBy: agmDone ? { name: actorName(br.agmApprovedBy) || "AGM" } : null,
+      agmApprovedBy: agmDone ? { name: actorName(br.agmApprovedBy) || "—", role: actorRole(br.agmApprovedBy) } : null,
       agmApprovedAt: br.agmApprovedAt,
       verifiedBy: null,
       approvedBy: null,
@@ -207,10 +258,22 @@ async function printBillRequest(br: BillRequestRow) {
 // missing lineItems/vendorCode/etc.) and print it through the same template.
 async function printManualBill(b: ManualBillRow) {
   try {
-    const bRes = await apiClient.get<{ bill: PrintableBill }>(`/bills/${b._id}`);
+    const bRes = await apiClient.get<{ bill: ManualBillDetail }>(`/bills/${b._id}`);
     const bill = bRes.data.bill;
+    // A manual bill's own L1/L2 sign-off lives in manualAgmApprovedBy/
+    // manualGmApprovedBy — printBill's signature block only ever reads the
+    // agmApprovedBy/verifiedBy fields a progress-driven bill uses, so without
+    // this the name/role never shows on a manual bill's print, even once
+    // fully approved.
+    const printableBill: PrintableBill = {
+      ...bill,
+      agmApprovedBy: bill.agmApprovedBy ?? (bill.manualAgmApprovedBy ? { name: bill.manualAgmApprovedBy.name, role: bill.manualAgmApprovedBy.role } : null),
+      agmApprovedAt: bill.agmApprovedAt ?? bill.manualAgmApprovedAt,
+      verifiedBy: bill.verifiedBy ?? (bill.manualGmApprovedBy ? { name: bill.manualGmApprovedBy.name, role: bill.manualGmApprovedBy.role } : null),
+      verifiedAt: bill.verifiedAt ?? bill.manualGmApprovedAt,
+    };
     const contractor = await resolvePrintParty(bill.vendorCode);
-    printBill(bill, contractor, bill.status === "paid" ? "post" : "pre");
+    printBill(printableBill, contractor, bill.status === "paid" ? "post" : "pre");
   } catch {
     toast.error("Failed to prepare print view");
   }
@@ -232,32 +295,65 @@ export default function BillApproval() {
   const [billReqs, setBillReqs] = useState<BillRequestRow[]>([]);
   const [manualBills, setManualBills] = useState<ManualBillRow[]>([]);
   const [woDeptMap, setWoDeptMap] = useState<Map<string, WorkOrderDeptRow>>(new Map());
+  const [allUsers, setAllUsers] = useState<{ _id: string; name: string; role: string; department?: string; customDepartment?: string; permissions?: { module: string; actions: string[] }[] }[]>([]);
 
   const load = () => {
     setLoading(true);
     Promise.all([
       apiClient.get("/projects"),
-      apiClient.get("/bill-requests"),
+      apiClient.get("/bill-requests", { params: { scope: "approval" } }),
       apiClient.get("/bills", { params: { manualApprovalStatus: "pending" } }),
       apiClient.get("/bills", { params: { manualApprovalStatus: "pending-gm" } }),
+      apiClient.get("/bills", { params: { manualApprovalStatus: "approved" } }),
+      apiClient.get("/bills", { params: { manualApprovalStatus: "rejected" } }),
       apiClient.get("/work-orders"),
+      apiClient.get("/auth/users"),
     ])
-      .then(([projR, brR, manualPendingR, manualGmR, woR]) => {
+      .then(([projR, brR, manualPendingR, manualGmR, manualApprovedR, manualRejectedR, woR, usersR]) => {
         setProjects(projR.data.projects ?? []);
         setBillReqs(brR.data.billRequests ?? []);
-        setManualBills([...(manualPendingR.data.bills ?? []), ...(manualGmR.data.bills ?? [])]);
+        setManualBills([
+          ...(manualPendingR.data.bills ?? []),
+          ...(manualGmR.data.bills ?? []),
+          ...(manualApprovedR.data.bills ?? []),
+          ...(manualRejectedR.data.bills ?? []),
+        ]);
         const wos = (woR.data.workOrders ?? []) as WorkOrderDeptRow[];
         setWoDeptMap(new Map(wos.map(wo => [wo._id, wo])));
+        setAllUsers((usersR.data.users ?? []) as any);
       })
       .catch(() => toast.error("Failed to load bill approvals"))
       .finally(() => setLoading(false));
   };
   useEffect(load, []);
 
+  // Candidate L2 approvers — anyone with L2 (gm-approve) authority on the
+  // bill-requests module, either via an explicit permission grant or the
+  // built-in gm/owner role. Narrowed to the given bill's own department once
+  // it has one; a user with no department assigned yet is shown regardless
+  // (same rollout-safety fallback used everywhere else in this feature).
+  function l2ApproverOptions(department?: string, customDepartment?: string) {
+    return allUsers.filter((u) => {
+      if (department && u.department) {
+        if (u.department !== department) return false;
+        if (department === "custom" && (u.customDepartment || "") !== customDepartment) return false;
+      }
+      if (u.role === "owner" || u.role === "gm") return true;
+      const perm = u.permissions?.find((p) => p.module === "bill-requests");
+      return !!perm?.actions.includes("gm-approve");
+    });
+  }
+
   const pendingAgmReqs = useMemo(() => billReqs.filter(r => r.status === "pending" && !r.isArchived), [billReqs]);
   const pendingGmReqs = useMemo(() => billReqs.filter(r => r.status === "pending-gm" && !r.isArchived), [billReqs]);
   const pendingManualAgm = useMemo(() => manualBills.filter(b => b.manualApprovalStatus === "pending"), [manualBills]);
   const pendingManualGm = useMemo(() => manualBills.filter(b => b.manualApprovalStatus === "pending-gm"), [manualBills]);
+  // Which manual bills belong under a given reqTab — mirrors the BillRequest
+  // status tabs above (pending/pending-gm/approved/rejected/all).
+  function manualBillsForTab(tab: string): ManualBillRow[] {
+    if (tab === "all") return manualBills;
+    return manualBills.filter(b => b.manualApprovalStatus === tab);
+  }
 
   // ── Dashboard flashcards (Pending / Approved / Rejected) — counts across
   // both bill requests and manual bills, both approval stages combined for
@@ -300,6 +396,23 @@ export default function BillApproval() {
     setPrintingReqId(b._id);
     try { await printManualBill(b); } finally { setPrintingReqId(null); }
   }
+  // View — a Manual Bill has no BillRequest, so "View" here means the same
+  // read-only RunningBill summary Billing's own list shows (status, dates,
+  // Accounts Payment's Verification/L1 AGM/L2 Director/TMS/Paid stages,
+  // scope items, financial breakdown) — not a print/download action.
+  const [viewManualBill, setViewManualBill] = useState<ManualBillDetail | null>(null);
+  const [viewManualBillLoadingId, setViewManualBillLoadingId] = useState<string | null>(null);
+  async function openManualBillView(b: ManualBillRow) {
+    setViewManualBillLoadingId(b._id);
+    try {
+      const res = await apiClient.get<{ bill: ManualBillDetail }>(`/bills/${b._id}`);
+      setViewManualBill(res.data.bill);
+    } catch {
+      toast.error("Failed to load bill details");
+    } finally {
+      setViewManualBillLoadingId(null);
+    }
+  }
   // View — same fix as printBillRequest already applies to Print: once a
   // RunningBill exists (r.billId), its own lineItems/retention/advance/GST
   // are the authoritative "as billed" record, not the request's own items
@@ -315,6 +428,7 @@ export default function BillApproval() {
         items: bill.lineItems.map(li => ({
           description: li.description, unit: li.unit || "", billedQty: li.billedQty,
           rate: li.rate, amount: li.amount, progressRemarks: li.progressRemarks,
+          location: li.location,
         })),
         retentionAmount: bill.retentionAmount ?? r.retentionAmount,
         advanceRecovery: bill.advanceRecovery ?? r.advanceRecovery,
@@ -328,6 +442,9 @@ export default function BillApproval() {
   const [approveTarget, setApproveTarget] = useState<string | null>(null);
   const [approveRetention, setApproveRetention] = useState<number | null>(null);
   const [approveAdvance, setApproveAdvance] = useState<number | null>(null);
+  // Who to route this request to for L2 sign-off once L1 approves — see
+  // l2ApproverOptions. Purely informational routing, not an exclusivity lock.
+  const [approveSentForL2To, setApproveSentForL2To] = useState<string>("");
   // Lets AGM set/override GST% on this bill — mainly for a work order that
   // has no GST% configured at all. Blank means "use the work order's own".
   const [approveGst, setApproveGst] = useState<number | null>(null);
@@ -369,7 +486,7 @@ export default function BillApproval() {
 
   const openApprove = async (id: string) => {
     setApproveTarget(id); setApproveRetention(null); setApproveAdvance(null); setApproveGst(null); setApproveModal(true);
-    setApprovePayeeCode(""); setApproveGroupSiblings([]); setApprovePendingAdvances([]);
+    setApprovePayeeCode(""); setApproveGroupSiblings([]); setApprovePendingAdvances([]); setApproveSentForL2To("");
     const br = billReqs.find(r => r._id === id);
     if (!br?.vendorCode) return;
     setApprovePayeeCode(br.vendorCode);
@@ -392,6 +509,7 @@ export default function BillApproval() {
       if (approveRetention != null) body.retentionAmount = approveRetention;
       if (approveGst != null) body.gstPercent = approveGst;
       if (approvePayeeCode) body.payeeVendorCode = approvePayeeCode;
+      if (approveSentForL2To) body.sentForL2ApprovalTo = approveSentForL2To;
       if (approveAdvance != null) {
         body.advanceRecovery = approveAdvance;
         // Distribute the entered recovery across outstanding slips
@@ -408,7 +526,7 @@ export default function BillApproval() {
         if (recoveries.length) body.advanceRecoveries = recoveries;
       }
       const res = await apiClient.put(`/bill-requests/${approveTarget}/agm-approve`, body);
-      toast.success(res.data.message || "AGM approved — forwarded to GM");
+      toast.success(res.data.message || "L1 approved — moved to L2 approval");
       setApproveModal(false); setApproveTarget(null); setViewReq(null);
       load();
     } catch (e: any) {
@@ -461,12 +579,17 @@ export default function BillApproval() {
   const [manualApproveTarget, setManualApproveTarget] = useState<ManualBillRow | null>(null);
   const [manualRejectTarget, setManualRejectTarget] = useState<ManualBillRow | null>(null);
   const [manualRejectReason, setManualRejectReason] = useState("");
+  // Who to route this manual bill to for L2 sign-off once L1 approves it —
+  // same informational-only routing as the BillRequest AGM modal's own field.
+  const [manualSentForL2To, setManualSentForL2To] = useState("");
+  useEffect(() => { setManualSentForL2To(""); }, [manualApproveTarget]);
 
   const handleManualApprove = async (bill: ManualBillRow) => {
     setSaving(true);
     try {
       const endpoint = bill.manualApprovalStatus === "pending" ? "manual-agm-approve" : "manual-gm-approve";
-      const res = await apiClient.patch(`/bills/${bill._id}/${endpoint}`);
+      const body = bill.manualApprovalStatus === "pending" && manualSentForL2To ? { sentForL2ApprovalTo: manualSentForL2To } : {};
+      const res = await apiClient.patch(`/bills/${bill._id}/${endpoint}`, body);
       toast.success(res.data.message || "Approved");
       setManualApproveTarget(null);
       load();
@@ -523,17 +646,25 @@ export default function BillApproval() {
     { value: "maintenance", label: "Maintenance Team" },
     { value: "custom", label: "Custom Team" },
   ];
-  const matchesDept = (workOrderId?: string) => {
+  // A request/bill's OWN department field (set directly on standalone bills,
+  // or copied from its Work Order at creation time) is the source of truth —
+  // matches what the backend's own visibility filter uses. Falls back to the
+  // linked Work Order's current department only for older records that
+  // predate this field ever being denormalized onto the bill itself.
+  const resolveDeptRow = (row: { department?: string; customDepartment?: string; workOrderId?: string }): WorkOrderDeptRow | undefined => {
+    if (row.department) return { _id: "", department: row.department, customDepartment: row.customDepartment };
+    return row.workOrderId ? woDeptMap.get(row.workOrderId) : undefined;
+  };
+  const matchesDept = (row: { department?: string; customDepartment?: string; workOrderId?: string }) => {
     if (!reqDeptFilter) return true;
-    if (!workOrderId) return false;
-    return woDeptMap.get(workOrderId)?.department === reqDeptFilter;
+    return resolveDeptRow(row)?.department === reqDeptFilter;
   };
 
   const filteredReqs = useMemo(() => {
     let list = billReqs.filter(r => showArchived ? r.isArchived : !r.isArchived);
     list = reqTab === "all" ? list : list.filter(r => r.status === reqTab);
     if (reqProjectFilter) list = list.filter(r => r.projectId === reqProjectFilter);
-    if (reqDeptFilter) list = list.filter(r => matchesDept(r.workOrderId));
+    if (reqDeptFilter) list = list.filter(r => matchesDept(r));
     const q = reqSearch.trim().toLowerCase();
     if (q) {
       list = list.filter(r =>
@@ -622,7 +753,7 @@ export default function BillApproval() {
       {/* Manual bills (Billing -> New Bill) — no BillRequest of their own, so
           they're never in billReqs above; this is their own AGM/GM sign-off,
           tracked directly on the bill. */}
-      {(reqTab === "pending" ? pendingManualAgm : reqTab === "pending-gm" ? pendingManualGm : reqTab === "all" ? manualBills : []).filter(b => matchesDept(b.workOrderId)).length > 0 && (
+      {manualBillsForTab(reqTab).filter(b => matchesDept(b)).length > 0 && (
         <div className="mb-5">
           <div className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">
             Manual Bills — Billing → New Bill
@@ -641,24 +772,24 @@ export default function BillApproval() {
               </Tr>
             </Thead>
             <Tbody>
-              {(reqTab === "pending" ? pendingManualAgm : reqTab === "pending-gm" ? pendingManualGm : manualBills).filter(b => matchesDept(b.workOrderId)).map(b => (
+              {manualBillsForTab(reqTab).filter(b => matchesDept(b)).map(b => (
                 <Tr key={b._id}>
                   <Td><span className="text-primary font-bold text-[13px]">{b.billNo}</span></Td>
                   <Td>{b.projectName || "—"}</Td>
-                  <Td>{departmentLabel(b.workOrderId ? woDeptMap.get(b.workOrderId) : undefined)}</Td>
+                  <Td>{departmentLabel(resolveDeptRow(b))}</Td>
                   <Td>{b.vendorName || "—"}</Td>
                   <Td className="font-mono">{fmt(b.amount)}</Td>
                   <Td>{dayjs(b.billDate || b.createdAt).format("DD MMM YYYY")}</Td>
-                  <Td><NxBadge color={b.manualApprovalStatus === "pending-gm" ? "blue" : "orange"}>{b.manualApprovalStatus === "pending-gm" ? "Pending L2" : "Pending L1"}</NxBadge></Td>
+                  <Td><NxBadge color={STATUS_CFG[b.manualApprovalStatus]?.color as any ?? "gray"}>{STATUS_CFG[b.manualApprovalStatus]?.label ?? b.manualApprovalStatus}</NxBadge></Td>
                   <Td>
                     <div className="flex items-center gap-1">
-                      <NxBtn color="icon-blue" title="View" icon={Eye} loading={printingReqId === b._id} onClick={() => handlePrintManualBill(b)} />
+                      <NxBtn color="icon-blue" title="View" icon={Eye} loading={viewManualBillLoadingId === b._id} onClick={() => openManualBillView(b)} />
                       <NxBtn color="icon" title="Print" icon={Printer} loading={printingReqId === b._id} onClick={() => handlePrintManualBill(b)} />
                       {b.manualApprovalStatus === "pending" && canAgmApprove && (
-                        <NxBtn color="icon-green" title="AGM Approve" icon={Check} onClick={() => setManualApproveTarget(b)} />
+                        <NxBtn color="icon-green" title="L1 Approve" icon={Check} onClick={() => setManualApproveTarget(b)} />
                       )}
                       {b.manualApprovalStatus === "pending-gm" && canGmApprove && (
-                        <NxBtn color="icon-green" title="GM Approve" icon={Check} onClick={() => setManualApproveTarget(b)} />
+                        <NxBtn color="icon-green" title="L2 Approve" icon={Check} onClick={() => setManualApproveTarget(b)} />
                       )}
                       {canRejectAny && (
                         <NxBtn color="icon-red" title="Reject" icon={X} onClick={() => setManualRejectTarget(b)} />
@@ -716,7 +847,7 @@ export default function BillApproval() {
                       </code>
                     </Td>
                     <Td>{r.projectName}</Td>
-                    <Td>{departmentLabel(r.workOrderId ? woDeptMap.get(r.workOrderId) : undefined)}</Td>
+                    <Td>{departmentLabel(resolveDeptRow(r))}</Td>
                     <Td>{r.vendorName}</Td>
                     <Td>{r.items.length} item{r.items.length !== 1 ? "s" : ""}</Td>
                     <Td>{dayjs(r.createdAt).format("DD MMM YYYY")}</Td>
@@ -726,10 +857,10 @@ export default function BillApproval() {
                         <NxBtn color="icon-blue" title="View" icon={Eye} onClick={() => openViewReq(r)} />
                         <NxBtn color="icon" title="Print" icon={Printer} loading={printingReqId === r._id} onClick={() => handlePrintReq(r)} />
                         {r.status === "pending" && canAgmApprove && (
-                          <NxBtn color="icon-green" title="AGM Approve" icon={Check} onClick={() => openApprove(r._id)} />
+                          <NxBtn color="icon-green" title="L1 Approve" icon={Check} onClick={() => openApprove(r._id)} />
                         )}
                         {r.status === "pending-gm" && canGmApprove && (
-                          <NxBtn color="icon-green" title="GM Approve" icon={Check} onClick={() => openGmApprove(r._id)} />
+                          <NxBtn color="icon-green" title="L2 Approve" icon={Check} onClick={() => openGmApprove(r._id)} />
                         )}
                         {["pending", "pending-gm"].includes(r.status) && canRejectAny && (
                           <NxBtn color="icon-red" title="Reject" icon={X} onClick={() => { setRejectTarget(r._id); setRejectModal(true); }} />
@@ -779,13 +910,13 @@ export default function BillApproval() {
               {viewReq.status === "pending" && (
                 <>
                   {canRejectAny && <Btn color="red" label="Reject" onClick={() => { setRejectTarget(viewReq._id); setRejectModal(true); setViewReq(null); }} />}
-                  {canAgmApprove && <Btn color="primary" label="AGM Approve →" onClick={() => { openApprove(viewReq._id); setViewReq(null); }} />}
+                  {canAgmApprove && <Btn color="primary" label="L1 Approve →" onClick={() => { openApprove(viewReq._id); setViewReq(null); }} />}
                 </>
               )}
               {viewReq.status === "pending-gm" && (
                 <>
                   {canRejectAny && <Btn color="red" label="Reject" onClick={() => { setRejectTarget(viewReq._id); setRejectModal(true); setViewReq(null); }} />}
-                  {canGmApprove && <Btn color="blue" label="GM Approve →" onClick={() => { openGmApprove(viewReq._id); setViewReq(null); }} />}
+                  {canGmApprove && <Btn color="blue" label="L2 Approve →" onClick={() => { openGmApprove(viewReq._id); setViewReq(null); }} />}
                 </>
               )}
             </div>
@@ -794,10 +925,21 @@ export default function BillApproval() {
           <div className="flex flex-col gap-3.5">
             <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-[13px]">
               <div><span className="text-gray-500 dark:text-gray-400">Work Order: </span>{viewReq.workOrderNo}</div>
-              <div><span className="text-gray-500 dark:text-gray-400">Project: </span>{viewReq.projectLocation ? `${viewReq.projectName} — ${viewReq.projectLocation}` : viewReq.projectName}</div>
+              <div><span className="text-gray-500 dark:text-gray-400">Project: </span>{viewReq.projectName}</div>
               <div><span className="text-gray-500 dark:text-gray-400">Contractor: </span>{viewReq.vendorName}</div>
               <div><span className="text-gray-500 dark:text-gray-400">Requested By: </span>{viewReq.requestedBy?.name || "—"}</div>
               <div><span className="text-gray-500 dark:text-gray-400">Date: </span>{dayjs(viewReq.createdAt).format("DD MMM YYYY")}</div>
+              {(() => {
+                // The specific site location (Tower/Floor/Plot…) the DRI
+                // actually logged this progress against is more useful here
+                // than the work order's own generic overall location — fall
+                // back to that only when none of the billed items have one.
+                const itemLocations = [...new Set(viewReq.items.map(it => it.location).filter(Boolean))];
+                const location = itemLocations.length > 0 ? itemLocations.join(" · ") : viewReq.projectLocation;
+                return location ? (
+                  <div><span className="text-gray-500 dark:text-gray-400">Location: </span>{location}</div>
+                ) : null;
+              })()}
               {viewReq.periodFrom && (
                 <div><span className="text-gray-500 dark:text-gray-400">Period: </span>{`${dayjs(viewReq.periodFrom).format("DD MMM YYYY")} → ${dayjs(viewReq.periodTo ?? viewReq.createdAt).format("DD MMM YYYY")}`}</div>
               )}
@@ -842,7 +984,11 @@ export default function BillApproval() {
                     <Tr key={i}>
                       <Td>
                         {it.description}
-                        {it.progressRemarks && <div className="text-[11px] text-blue-600 mt-0.5">👷 {it.progressRemarks}</div>}
+                        {it.progressRemarks && (
+                          <ul className="text-[11px] text-blue-600 mt-0.5 pl-3.5 list-disc">
+                            {it.progressRemarks.split("\n").filter(Boolean).map((note, ni) => <li key={ni}>{note}</li>)}
+                          </ul>
+                        )}
                       </Td>
                       <Td>{it.unit}</Td>
                       <Td className="text-right font-mono">{it.billedQty.toLocaleString("en-IN")}</Td>
@@ -920,7 +1066,7 @@ export default function BillApproval() {
       {approveModal && (
         <Modal
           icon={CheckCircle2}
-          title="AGM Approve — Stage 1"
+          title="L1 Approve — Stage 1"
           onClose={() => { setApproveModal(false); setApproveTarget(null); }}
           footer={
             <div className="flex justify-end gap-2">
@@ -971,6 +1117,23 @@ export default function BillApproval() {
             value={approveGst ?? ""}
             onChange={(e) => setApproveGst(e.target.value ? Number(e.target.value) : null)}
           />
+          {(() => {
+            const br = billReqs.find(r => r._id === approveTarget);
+            const candidates = l2ApproverOptions(br?.department, br?.customDepartment);
+            return (
+              <div className="mt-3">
+                <SField
+                  label="Send for L2 Approval to (optional)"
+                  placeholder={candidates.length === 0 ? "No one with L2 authority yet" : "Select a person…"}
+                  value={approveSentForL2To}
+                  onChange={setApproveSentForL2To}
+                  disabled={candidates.length === 0}
+                  options={[{ value: "", label: "— Any L2 approver —" }, ...candidates.map((u) => ({ value: u._id, label: `${u.name} (${u.role})` }))]}
+                  hint="Anyone with L2 authority can still approve it — this just flags who it's meant for."
+                />
+              </div>
+            );
+          })()}
         </Modal>
       )}
 
@@ -978,7 +1141,7 @@ export default function BillApproval() {
       {gmModal && (
         <Modal
           icon={CheckCircle2}
-          title="GM Approve — Stage 2 (Final)"
+          title="L2 Approve — Stage 2 (Final)"
           onClose={() => { setGmModal(false); setGmTarget(null); }}
           footer={
             <div className="flex justify-end gap-2">
@@ -1021,14 +1184,35 @@ export default function BillApproval() {
       )}
 
       {manualApproveTarget && (
-        <ConfirmModal
-          title={manualApproveTarget.manualApprovalStatus === "pending" ? "AGM Approve this bill?" : "GM Approve this bill?"}
-          message={`${manualApproveTarget.billNo} (${fmt(manualApproveTarget.amount)}) will move ${manualApproveTarget.manualApprovalStatus === "pending" ? "to GM for final sign-off" : "to Accounts for verification"}.`}
-          confirmLabel="Approve"
-          loading={saving}
-          onConfirm={() => handleManualApprove(manualApproveTarget)}
-          onCancel={() => setManualApproveTarget(null)}
-        />
+        <Modal
+          icon={CheckCircle2}
+          title={manualApproveTarget.manualApprovalStatus === "pending" ? "L1 Approve this bill?" : "L2 Approve this bill?"}
+          onClose={() => setManualApproveTarget(null)}
+          footer={
+            <div className="flex justify-end gap-2">
+              <Btn outline label="Cancel" onClick={() => setManualApproveTarget(null)} />
+              <Btn color="primary" label="Approve" loading={saving} onClick={() => handleManualApprove(manualApproveTarget)} />
+            </div>
+          }
+        >
+          <div className="text-xs text-gray-500 dark:text-gray-400 mb-3.5">
+            {manualApproveTarget.billNo} ({fmt(manualApproveTarget.amount)}) will move {manualApproveTarget.manualApprovalStatus === "pending" ? "to L2 for final sign-off" : "to Accounts for verification"}.
+          </div>
+          {manualApproveTarget.manualApprovalStatus === "pending" && (() => {
+            const candidates = l2ApproverOptions(manualApproveTarget.department, manualApproveTarget.customDepartment);
+            return (
+              <SField
+                label="Send for L2 Approval to (optional)"
+                placeholder={candidates.length === 0 ? "No one with L2 authority yet" : "Select a person…"}
+                value={manualSentForL2To}
+                onChange={setManualSentForL2To}
+                disabled={candidates.length === 0}
+                options={[{ value: "", label: "— Any L2 approver —" }, ...candidates.map((u) => ({ value: u._id, label: `${u.name} (${u.role})` }))]}
+                hint="Anyone with L2 authority can still approve it — this just flags who it's meant for."
+              />
+            );
+          })()}
+        </Modal>
       )}
 
       {manualRejectTarget && (
@@ -1044,6 +1228,172 @@ export default function BillApproval() {
           }
         >
           <Field textarea label="Reason for rejection" placeholder="Why is this bill being rejected?" value={manualRejectReason} onChange={(e) => setManualRejectReason(e.target.value)} />
+        </Modal>
+      )}
+
+      {/* ── Manual Bill view — read-only RunningBill summary, same layout as
+          Billing's own view (status/dates, Accounts Payment's stage chain,
+          scope items, financial breakdown). Not a print/download action. ── */}
+      {viewManualBill && (
+        <Modal
+          extraWide
+          icon={FileText}
+          title={viewManualBill.billNo}
+          subtitle="Read-only — process this bill in Accounts Payment"
+          onClose={() => setViewManualBill(null)}
+          footer={
+            <div className="flex justify-end gap-2">
+              <Btn outline label="Close" onClick={() => setViewManualBill(null)} />
+              {["pending", "pending-gm"].includes(viewManualBill.manualApprovalStatus) && canRejectAny && (
+                <Btn color="red" label="Reject" onClick={() => {
+                  setManualRejectTarget({ _id: viewManualBill._id, billNo: viewManualBill.billNo, amount: viewManualBill.amount, billDate: viewManualBill.billDate || "", createdAt: viewManualBill.billDate || "", manualApprovalStatus: viewManualBill.manualApprovalStatus });
+                  setViewManualBill(null);
+                }} />
+              )}
+              {viewManualBill.manualApprovalStatus === "pending" && canAgmApprove && (
+                <Btn color="primary" label="L1 Approve" onClick={() => {
+                  setManualApproveTarget({ _id: viewManualBill._id, billNo: viewManualBill.billNo, amount: viewManualBill.amount, billDate: viewManualBill.billDate || "", createdAt: viewManualBill.billDate || "", manualApprovalStatus: viewManualBill.manualApprovalStatus, department: viewManualBill.department, customDepartment: viewManualBill.customDepartment });
+                  setViewManualBill(null);
+                }} />
+              )}
+              {viewManualBill.manualApprovalStatus === "pending-gm" && canGmApprove && (
+                <Btn color="blue" label="L2 Approve" onClick={() => {
+                  setManualApproveTarget({ _id: viewManualBill._id, billNo: viewManualBill.billNo, amount: viewManualBill.amount, billDate: viewManualBill.billDate || "", createdAt: viewManualBill.billDate || "", manualApprovalStatus: viewManualBill.manualApprovalStatus, department: viewManualBill.department, customDepartment: viewManualBill.customDepartment });
+                  setViewManualBill(null);
+                }} />
+              )}
+            </div>
+          }
+        >
+          <Descriptions columns={2}>
+            <DescItem label="Status"><NxBadge color={BILL_STATUS_BADGE_COLOR[viewManualBill.status] ?? "gray"}>{BILL_STATUS_LABEL[viewManualBill.status] || viewManualBill.status}</NxBadge></DescItem>
+            <DescItem label="Bill Date">{viewManualBill.billDate ? dayjs(viewManualBill.billDate).format("DD MMM YYYY") : "—"}</DescItem>
+            <DescItem label="Project">{viewManualBill.projectName || "—"}</DescItem>
+            <DescItem label="Work Order">{viewManualBill.workOrderNo || "—"}</DescItem>
+            <DescItem label="Vendor">{viewManualBill.vendorName || "—"}</DescItem>
+            <DescItem label="Generated By">{viewManualBill.generatedBy || "—"}</DescItem>
+            {viewManualBill.projectLocation && <DescItem label="Location">{viewManualBill.projectLocation}</DescItem>}
+          </Descriptions>
+
+          {(viewManualBill.manualAgmApprovedBy || viewManualBill.manualGmApprovedBy) && (
+            <div className="mt-3 flex flex-col gap-1 text-[12.5px]">
+              {viewManualBill.manualAgmApprovedBy && (
+                <div>
+                  <span className="font-bold text-gray-600 dark:text-gray-300">
+                    L1 Approval{viewManualBill.manualAgmApprovedBy.role ? `(${viewManualBill.manualAgmApprovedBy.role})` : ""}
+                  </span>
+                  <span className="text-gray-400 ml-1.5">
+                    {viewManualBill.manualAgmApprovedBy.name || ""}{viewManualBill.manualAgmApprovedAt ? ` · ${dayjs(viewManualBill.manualAgmApprovedAt).format("DD MMM YYYY, hh:mm a")}` : ""}
+                  </span>
+                </div>
+              )}
+              {viewManualBill.manualGmApprovedBy && (
+                <div>
+                  <span className="font-bold text-gray-600 dark:text-gray-300">
+                    L2 Approval{viewManualBill.manualGmApprovedBy.role ? `(${viewManualBill.manualGmApprovedBy.role})` : ""}
+                  </span>
+                  <span className="text-gray-400 ml-1.5">
+                    {viewManualBill.manualGmApprovedBy.name || ""}{viewManualBill.manualGmApprovedAt ? ` · ${dayjs(viewManualBill.manualGmApprovedAt).format("DD MMM YYYY, hh:mm a")}` : ""}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="border-t border-gray-200 dark:border-gray-700/40 my-4" />
+
+          <div className="mb-4">
+            <div className="font-bold text-xs text-gray-600 dark:text-gray-300 mb-1.5 uppercase tracking-wide">
+              Bill Approvals
+            </div>
+            <Table>
+              <Thead>
+                <Tr>
+                  <Th>Verification</Th>
+                  <Th>L1 AGM</Th>
+                  <Th>L2 Director</Th>
+                  <Th>Sent to TMS</Th>
+                  <Th>Paid</Th>
+                </Tr>
+              </Thead>
+              <Tbody>
+                <Tr>
+                  <Td className="align-top"><BillStageCell by={viewManualBill.verificationBy?.name} at={viewManualBill.verificationAt} /></Td>
+                  <Td className="align-top"><BillStageCell by={viewManualBill.l1ApprovedBy?.name} at={viewManualBill.l1ApprovedAt} /></Td>
+                  <Td className="align-top"><BillStageCell by={viewManualBill.l2ApprovedBy?.name} at={viewManualBill.l2ApprovedAt} /></Td>
+                  <Td className="align-top"><BillStageCell at={viewManualBill.tmsSentAt} /></Td>
+                  <Td className="align-top"><BillStageCell at={viewManualBill.tmsCallbackReceivedAt} /></Td>
+                </Tr>
+              </Tbody>
+            </Table>
+          </div>
+
+          <div className="font-bold text-xs text-gray-600 dark:text-gray-300 mb-1.5 uppercase tracking-wide">Scope Items</div>
+          <div className="mb-4">
+            <Table>
+              <Thead>
+                <Tr>
+                  <Th>Description</Th>
+                  <Th>Unit</Th>
+                  <Th className="text-right">Qty Billed</Th>
+                  <Th className="text-right">Rate</Th>
+                  <Th className="text-right">Amount</Th>
+                </Tr>
+              </Thead>
+              <Tbody>
+                {(viewManualBill.lineItems || []).map((li, i) => (
+                  <Tr key={i}>
+                    <Td>{li.description}</Td>
+                    <Td>{li.unit}</Td>
+                    <Td className="text-right font-mono">{li.billedQty.toLocaleString("en-IN")}</Td>
+                    <Td className="text-right">{fmtRate(li.rate)}</Td>
+                    <Td className="text-right font-bold">{fmt(li.amount)}</Td>
+                  </Tr>
+                ))}
+              </Tbody>
+              <Tfoot>
+                <Tr className="!bg-primary/5">
+                  <Td colSpan={4} className="font-bold text-right text-primary">Gross Total</Td>
+                  <Td className="font-bold text-right">{fmt(viewManualBill.amount)}</Td>
+                </Tr>
+              </Tfoot>
+            </Table>
+          </div>
+
+          {(() => {
+            const gross = viewManualBill.amount || 0;
+            const retAmt = viewManualBill.retentionAmount ?? 0;
+            const advRec = viewManualBill.advanceRecovery ?? 0;
+            const { gstAmount, netAfterHold } = billFinancials({ gross, gstPercent: viewManualBill.gstPercent ?? 0, retentionAmount: retAmt, advanceRecovery: advRec });
+            return (
+              <div className="rounded-lg border border-emerald-300 dark:border-emerald-500/30 bg-emerald-50 dark:bg-emerald-500/10 p-3 font-mono text-[13px]">
+                <div className="font-bold mb-2 text-emerald-800 dark:text-emerald-300">
+                  Running Bill: {viewManualBill.billNo}
+                </div>
+                <div className="flex justify-between text-gray-500 dark:text-gray-400">
+                  <span>Gross Billed</span><span>{fmt(gross)}</span>
+                </div>
+                {retAmt > 0 && (
+                  <div className="flex justify-between text-red-600">
+                    <span>Hold / Retention{(viewManualBill.retentionPercent ?? 0) > 0 ? ` @ ${viewManualBill.retentionPercent}%` : ""}</span><span>− {fmt(retAmt)}</span>
+                  </div>
+                )}
+                {advRec > 0 && (
+                  <div className="flex justify-between text-amber-600">
+                    <span>Less: Advance Recovery</span><span>− {fmt(advRec)}</span>
+                  </div>
+                )}
+                {gstAmount > 0 && (
+                  <div className="flex justify-between text-emerald-600">
+                    <span>GST @ {viewManualBill.gstPercent ?? 0}%</span><span>+ {fmt(gstAmount)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between font-bold text-primary border-t border-emerald-200 dark:border-emerald-500/30 pt-1 mt-1">
+                  <span>Net Payable</span><span>{fmt(netAfterHold)}</span>
+                </div>
+              </div>
+            );
+          })()}
         </Modal>
       )}
     </div>

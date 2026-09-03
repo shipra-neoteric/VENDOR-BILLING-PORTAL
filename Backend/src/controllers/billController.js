@@ -5,7 +5,8 @@ const WorkOrder    = require('../models/WorkOrder');
 const Company      = require('../models/Company');
 const { resolvePayee } = require('../utils/vendorGroupHelpers');
 const asyncHandler = require('../utils/asyncHandler');
-const { success, created, notFound, badRequest, conflict } = require('../utils/responseFormatter');
+const { success, created, notFound, badRequest, conflict, forbidden } = require('../utils/responseFormatter');
+const { canActOnDepartment } = require('../utils/departmentAccess');
 const { nextBillNo } = require('../utils/codeGen');
 const emitEvent    = require('../utils/emitEvent');
 const { advanceInstance, cancelInstance } = require('../utils/slaEngine');
@@ -44,7 +45,7 @@ function pushHistory(bill, stage, action, by, remarks) {
   bill.approvalHistory.push({ stage, action, by, remarks: remarks || '' });
 }
 
-const POPULATE_FIELDS = ['agmApprovedBy', 'makerBy', 'verifiedBy', 'checkerBy', 'approvedBy', 'paymentInitiatedBy', 'rejectedBy', 'verificationBy', 'l1ApprovedBy', 'l2ApprovedBy', 'holdBy', 'holdReleasedBy', 'lineItems.varianceApprovedBy', 'manualAgmApprovedBy', 'manualGmApprovedBy', 'manualRejectedBy'];
+const POPULATE_FIELDS = ['agmApprovedBy', 'makerBy', 'verifiedBy', 'checkerBy', 'approvedBy', 'paymentInitiatedBy', 'rejectedBy', 'verificationBy', 'l1ApprovedBy', 'l2ApprovedBy', 'holdBy', 'holdReleasedBy', 'lineItems.varianceApprovedBy', 'manualAgmApprovedBy', 'manualGmApprovedBy', 'manualRejectedBy', 'sentForApprovalTo', 'sentForL2ApprovalTo'];
 
 exports.listBills = asyncHandler(async (req, res) => {
   const { workOrderId, vendorCode, projectId, status, manualApprovalStatus, search, archived } = req.query;
@@ -55,6 +56,30 @@ exports.listBills = asyncHandler(async (req, res) => {
   if (status)      filter.status      = status;
   if (manualApprovalStatus) {
     filter.manualApprovalStatus = Array.isArray(manualApprovalStatus) ? { $in: manualApprovalStatus } : manualApprovalStatus;
+    // 'approved'/'rejected' are also the schema's own default/end state for
+    // every non-manual, progress-driven bill (manualApprovalStatus just sits
+    // at 'approved' forever since nothing ever touches it) — so asking for
+    // those two statuses alone would flood this manual-bill queue with bills
+    // that were never actually manual. A bill that genuinely went through
+    // manual-agm-approve/manual-reject always has one of these two fields
+    // set, which a progress-driven bill never does — 'pending'/'pending-gm'
+    // need no such guard since createBill always sets that status explicitly
+    // only for genuinely manual bills.
+    const statuses = Array.isArray(manualApprovalStatus) ? manualApprovalStatus : [manualApprovalStatus];
+    if (statuses.every((s) => ['approved', 'rejected'].includes(s))) {
+      filter.$or = [
+        { manualAgmApprovedBy: { $exists: true, $ne: null } },
+        { manualRejectedBy:    { $exists: true, $ne: null } },
+      ];
+    }
+    // Department-scoped visibility — only applied to this manual-bill L1/L2
+    // approval queue (identified by the manualApprovalStatus filter itself),
+    // never to the plain bill list Billing/Accounts Payment use, since those
+    // legitimately need every bill regardless of department. Same bypasses
+    // and empty-department fallback as the BillRequest queue — see there.
+    if (!['owner', 'accounts'].includes(req.user.role) && req.user.department) {
+      filter.department = req.user.department;
+    }
   }
   if (archived === 'true') filter.isArchived = true;
   else if (archived !== 'all') filter.isArchived = { $ne: true };
@@ -456,12 +481,14 @@ exports.verifyBill = asyncHandler(async (req, res) => {
 exports.manualAgmApprove = asyncHandler(async (req, res) => {
   const bill = await RunningBill.findById(req.params.id);
   if (!bill) return notFound(res, 'Bill not found');
+  if (!canActOnDepartment(req.user, bill)) return forbidden(res, 'This bill belongs to a different department.');
   if (bill.manualApprovalStatus !== 'pending') {
     return badRequest(res, `This bill's AGM/GM sign-off is already ${bill.manualApprovalStatus}`);
   }
 
   bill.manualAgmApprovedBy = req.user._id;
   bill.manualAgmApprovedAt = new Date();
+  if (req.body.sentForL2ApprovalTo) bill.sentForL2ApprovalTo = req.body.sentForL2ApprovalTo;
   bill.manualApprovalStatus = 'pending-gm';
   pushHistory(bill, 'manual-agm', 'approved', req.user._id, req.body.remarks || '');
   await bill.save();
@@ -469,18 +496,19 @@ exports.manualAgmApprove = asyncHandler(async (req, res) => {
 
   await logAudit({
     action: 'APPROVE', module: MODULE, user: req.user,
-    description: `AGM signed off on manually-created bill ${bill.billNo} — forwarded to GM`,
+    description: `L1 sign-off given on manually-created bill ${bill.billNo} — moved to L2 approval`,
     entityType: 'RunningBill', entityId: bill._id, entityLabel: bill.billNo,
   });
 
   notifySlack('PAYMENT_MANUAL_GM_APPROVAL', bill);
 
-  success(res, { bill }, 'AGM approved — forwarded to GM');
+  success(res, { bill }, 'L1 approved — moved to L2 approval');
 });
 
 exports.manualGmApprove = asyncHandler(async (req, res) => {
   const bill = await RunningBill.findById(req.params.id);
   if (!bill) return notFound(res, 'Bill not found');
+  if (!canActOnDepartment(req.user, bill)) return forbidden(res, 'This bill belongs to a different department.');
   if (bill.manualApprovalStatus !== 'pending-gm') {
     return badRequest(res, `This bill's AGM/GM sign-off is already ${bill.manualApprovalStatus}`);
   }
@@ -494,18 +522,19 @@ exports.manualGmApprove = asyncHandler(async (req, res) => {
 
   await logAudit({
     action: 'APPROVE', module: MODULE, user: req.user,
-    description: `GM signed off on manually-created bill ${bill.billNo} — ready for Accounts to verify`,
+    description: `L2 sign-off given on manually-created bill ${bill.billNo} — ready for Accounts to verify`,
     entityType: 'RunningBill', entityId: bill._id, entityLabel: bill.billNo,
   });
 
   notifySlack('PAYMENT_VERIFY_APPROVAL', bill);
 
-  success(res, { bill }, 'GM approved — ready for Accounts to verify');
+  success(res, { bill }, 'L2 approved — ready for Accounts to verify');
 });
 
 exports.manualReject = asyncHandler(async (req, res) => {
   const bill = await RunningBill.findById(req.params.id);
   if (!bill) return notFound(res, 'Bill not found');
+  if (!canActOnDepartment(req.user, bill)) return forbidden(res, 'This bill belongs to a different department.');
   if (!['pending', 'pending-gm'].includes(bill.manualApprovalStatus)) {
     return badRequest(res, `This bill's AGM/GM sign-off is already ${bill.manualApprovalStatus}`);
   }

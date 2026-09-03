@@ -39,8 +39,6 @@ import { useAuth } from "../../context/AuthContext";
 import { useCategories } from "../../hooks/useCategories";
 import { createCategory } from "../../features/categories/api";
 import DateRangeFilter, { inDateRange } from "../../components/DateRangeFilter";
-import { downloadWorkOrderPDF } from "../../components/WorkOrderPDF";
-import { downloadWorkOrderPDFHindi } from "../../components/WorkOrderPDFHindi";
 import { selectableProjects, getWorkOrderProjectId } from "../../utils/projectOptions";
 import { vendorLabel } from "../../utils/vendorLabel";
 import PaymentMilestonesBuilder, { calcPayable, calcGrandTotal } from "../../components/PaymentMilestonesBuilder";
@@ -1292,7 +1290,12 @@ function WOFormFields({
           onChange={isProfessionalServices ? fillConsultant : fillVendor}
           options={isProfessionalServices
             ? consultantsList.map(c => ({ label: `${c.consultantCode} — ${c.firmName}`, value: c.consultantCode }))
-            : contractorsList.map(c => ({ label: `${c.vendorCode} — ${vendorLabel(c.companyName, c.shortCode)}`, value: c.vendorCode }))}
+            // Archived (inactive) vendors shouldn't be pickable for a new/changed
+            // assignment — but keep the already-selected one visible so editing an
+            // existing WO whose vendor has since gone inactive doesn't blank out.
+            : contractorsList
+                .filter(c => c.status !== 'inactive' || c.vendorCode === values.vendorCode)
+                .map(c => ({ label: `${c.vendorCode} — ${vendorLabel(c.companyName, c.shortCode)}`, value: c.vendorCode }))}
           error={errors?.vendorCode}
         />
         <SField
@@ -2039,6 +2042,7 @@ export default function WorkItems() {
       const company    = companies.find((c: any) => c._id === (wo as any).companyId) ?? null;
       const contractor = contractors.find(c => c.vendorCode === wo.vendorCode) ?? null;
       const userMap    = await fetchUserMap();
+      const { downloadWorkOrderPDF } = await import("../../components/WorkOrderPDF");
       await downloadWorkOrderPDF({ ...wo, approvals: buildApprovals(wo, userMap) } as any, company, contractor as any);
     } catch {
       toast.error("Failed to generate PDF");
@@ -2054,6 +2058,7 @@ export default function WorkItems() {
       const company    = companies.find((c: any) => c._id === (wo as any).companyId) ?? null;
       const contractor = contractors.find(c => c.vendorCode === wo.vendorCode) ?? null;
       const userMap    = await fetchUserMap();
+      const { downloadWorkOrderPDFHindi } = await import("../../components/WorkOrderPDFHindi");
       await downloadWorkOrderPDFHindi({ ...wo, approvals: buildApprovals(wo, userMap) } as any, company, contractor as any);
     } catch {
       toast.error("Failed to generate Hindi PDF");

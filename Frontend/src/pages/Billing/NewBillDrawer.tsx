@@ -56,7 +56,7 @@ interface CompanyOpt { id: string; name: string; shortCode: string; isActive?: b
 interface SubItemOpt { id: string; description: string; unit: string; plannedQty: number; lastBilledQty: number; rate?: number; }
 interface ScopeItemOpt { id: string; description: string; unit: string; plannedQty: number; lastBilledQty: number; rate?: number; subItems?: SubItemOpt[]; }
 interface PaymentMilestoneOpt { _id: string; stage: string; type?: string; amount: number; date?: string; scopeItemIds?: string[]; }
-interface WorkOrderOpt { id: string; workOrderNo: string; projectId: string; projectName: string; vendorCode: string; vendorName: string; contractType?: string; scopeItems: ScopeItemOpt[]; paymentMilestones?: PaymentMilestoneOpt[]; }
+interface WorkOrderOpt { id: string; workOrderNo: string; projectId: string; projectName: string; vendorCode: string; vendorName: string; contractType?: string; department?: string; customDepartment?: string; scopeItems: ScopeItemOpt[]; paymentMilestones?: PaymentMilestoneOpt[]; }
 interface AdvanceSlipOpt { _id: string; slipNo: string; amount: number; amountRecovered: number; balance: number; date?: string; reference?: string; }
 
 const fmt = (n: number) => "₹" + (n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -116,7 +116,7 @@ export default function NewBillDrawer({
   onCreated: (bill: Record<string, unknown>) => void;
 }) {
   const [saving, setSaving] = useState(false);
-  const formErrors = useFormErrors<"contractorId" | "billDate" | "generatedBy" | "companyId">();
+  const formErrors = useFormErrors<"contractorId" | "billDate" | "generatedBy" | "companyId" | "department">();
 
   const [projects, setProjects] = useState<ProjectOpt[]>([]);
   const [contractors, setContractors] = useState<Contractor[]>([]);
@@ -143,6 +143,18 @@ export default function NewBillDrawer({
   const [gstPercent, setGstPercent] = useState<number>(18);
   const [isCustomGst, setIsCustomGst] = useState(false);
   const [billType, setBillType] = useState<string>("running");
+  // Which internal team this bill belongs to — same fixed list as Work
+  // Order's own Department field, entered directly here since a bill
+  // (especially a standalone one with no work order) has no WO to inherit
+  // it from.
+  const [department, setDepartment] = useState<string>("");
+  const [customDepartment, setCustomDepartment] = useState<string>("");
+  // Who to route this bill to for L1 sign-off — narrowed to this bill's own
+  // department's L1-authority holders (see the candidate filter near the
+  // field below). Purely informational routing, not an exclusivity lock —
+  // anyone in that department with L1 authority can still act on it.
+  const [sentForApprovalTo, setSentForApprovalTo] = useState<string>("");
+  const [allUsers, setAllUsers] = useState<{ _id: string; name: string; role: string; department?: string; customDepartment?: string; permissions?: { module: string; actions: string[] }[] }[]>([]);
   const [relType, setRelType] = useState<string>("NONE");
   const [linkedBillIds, setLinkedBillIds] = useState<string[]>([]);
   const [selectedWOId, setSelectedWOId] = useState<string>("");
@@ -201,6 +213,9 @@ export default function NewBillDrawer({
     setGstPercent(18);
     setIsCustomGst(false);
     setBillType("running");
+    setDepartment("");
+    setCustomDepartment("");
+    setSentForApprovalTo("");
     setRelType("NONE");
     setLinkedBillIds([]);
     setSelectedWOId("");
@@ -232,14 +247,60 @@ export default function NewBillDrawer({
     apiClient.get<{ companies: Record<string, unknown>[] }>("/companies")
       .then((r) => setCompanies((r.data.companies || []).map((c) => normalizeId(c) as unknown as CompanyOpt).filter((c) => c.isActive !== false)))
       .catch(() => { });
+    apiClient.get<{ users: Record<string, unknown>[] }>("/auth/users")
+      .then((r) => setAllUsers((r.data.users || []) as any))
+      .catch(() => { });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  // No project selected means no work order can be linked either (the WO
-  // list below is only ever fetched once a project is picked) — so this bill
-  // is standalone and needs its own company selection instead of inheriting
-  // one from a work order.
-  const isStandalone = !projectId;
+  // Candidate L1 approvers — anyone with L1 (agm-approve) authority on the
+  // bill-requests module, either via an explicit permission grant or the
+  // built-in agm/owner role. Narrowed to this bill's own department once one
+  // is picked, but the dropdown itself is always available — this bill's
+  // department is optional, and a user with no department assigned yet (the
+  // field is new — most existing accounts haven't been migrated) is shown
+  // regardless, same "don't lock anyone out before rollout" fallback the
+  // backend visibility filter uses.
+  const l1ApproverOptions = useMemo(() => {
+    return allUsers.filter((u) => {
+      if (department && u.department) {
+        if (u.department !== department) return false;
+        // "Custom" isn't one team — it's an escape hatch for whatever team
+        // name was typed in, so two different custom departments must not be
+        // treated as the same one just because both picked "custom".
+        if (department === "custom" && (u.customDepartment || "") !== customDepartment) return false;
+      }
+      if (u.role === "owner" || u.role === "agm") return true;
+      const perm = u.permissions?.find((p) => p.module === "bill-requests");
+      return !!perm?.actions.includes("agm-approve");
+    });
+  }, [allUsers, department, customDepartment]);
+
+  // "Standalone" means what the backend actually checks: no Work Order
+  // ends up linked to this bill (see the workOrderId payload line below),
+  // in which case there's no WO to inherit a company from, so one must be
+  // picked here directly. A Project can be selected with no Work Order
+  // chosen under it (e.g. a standalone Mobilisation Advance) — that still
+  // needs a Company, so this can't just check "is a project picked".
+  const isStandalone = !selectedWOId && !importedFromWOId;
+
+  // Once a Work Order is linked, its own Department is authoritative — pull
+  // it in automatically instead of asking the maker to redundantly pick the
+  // same thing again (and possibly disagree with the WO's own value).
+  const linkedWO = useMemo(() => {
+    const linkedWOId = importedFromWOId || selectedWOId;
+    return linkedWOId ? woList.find((w) => w.id === linkedWOId) : undefined;
+  }, [importedFromWOId, selectedWOId, woList]);
+  useEffect(() => {
+    if (!linkedWO) return;
+    setDepartment(linkedWO.department || "");
+    setCustomDepartment(linkedWO.customDepartment || "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [linkedWO]);
+  // A linked WO with no department of its own (an older WO predating this
+  // field) leaves the maker stuck with a required-but-empty, disabled field
+  // otherwise — let them fill it in directly in just that case.
+  const departmentLocked = !isStandalone && !!linkedWO?.department;
 
   const selectedContractor = useMemo(
     () => contractors.find((c) => c.id === contractorId) || null,
@@ -521,6 +582,10 @@ export default function NewBillDrawer({
       formErrors.setError("companyId", "Select which company this bill is raised through");
       hasError = true;
     }
+    if (department === "custom" && !customDepartment.trim()) {
+      formErrors.setError("department", "Enter the custom team's name");
+      hasError = true;
+    }
     if (hasError) return;
 
     const project = projects.find((p) => p.id === projectId);
@@ -556,7 +621,15 @@ export default function NewBillDrawer({
       gstPercent,
       tdsPercent: 0,
       billType,
-      relationshipType: linkedBills.length > 0 ? relType : "NONE",
+      department,
+      customDepartment: department === "custom" ? (customDepartment.trim() || "") : "",
+      ...(sentForApprovalTo ? { sentForApprovalTo } : {}),
+      // ADVANCE_FOR never has an existing bill to link to — it's raised
+      // before any other bill on the WO exists (that's the whole point of
+      // an advance) — so it must pass through even with linkedBills empty.
+      // Every other relationship type genuinely references another bill and
+      // is meaningless without one, so those still fall back to NONE.
+      relationshipType: (relType === "ADVANCE_FOR" || linkedBills.length > 0) ? relType : "NONE",
       linkedBills: linkedBills.length > 0 ? linkedBills : [],
       workOrderId: linkedToScopeItems ? (importedFromWOId || selectedWOId || undefined) : (selectedWOId || undefined),
       ...(milestoneId ? { milestoneId } : {}),
@@ -671,18 +744,53 @@ export default function NewBillDrawer({
           </div>
 
           {isStandalone && (
-            <div className="mb-4 max-w-xs">
-              <SField
-                label="Company" required
-                placeholder="Select billing company…"
-                value={companyId}
-                onChange={setCompanyId}
-                options={companies.map((c) => ({ value: c.id, label: `${c.name} (${c.shortCode})` }))}
-                error={formErrors.errors.companyId}
-                hint="No project/work order linked — pick which group company this bill is raised through."
-              />
+            <div className="mb-4 flex gap-4 flex-wrap">
+              <div className="max-w-xs flex-1 min-w-[200px]">
+                <SField
+                  label="Company" required
+                  placeholder="Select billing company…"
+                  value={companyId}
+                  onChange={setCompanyId}
+                  options={companies.map((c) => ({ value: c.id, label: `${c.name} (${c.shortCode})` }))}
+                  error={formErrors.errors.companyId}
+                  hint="No project/work order linked — pick which group company this bill is raised through."
+                />
+              </div>
             </div>
           )}
+
+          <div className="mb-4 flex gap-4 flex-wrap">
+            <div className="max-w-xs flex-1 min-w-[200px]">
+              <SField
+                label="Department"
+                placeholder="Select department (optional)"
+                value={department}
+                onChange={(v) => { setDepartment(v); if (v !== "custom") setCustomDepartment(""); }}
+                disabled={departmentLocked}
+                error={formErrors.errors.department}
+                options={[
+                  { value: "", label: "— None —" },
+                  { value: "civil", label: "Civil Team" },
+                  { value: "marketing", label: "Marketing Team" },
+                  { value: "planning", label: "Planning Team" },
+                  { value: "maintenance", label: "Maintenance Team" },
+                  { value: "custom", label: "Custom Team" },
+                ]}
+                hint={isStandalone ? undefined : "Inherited from the linked work order."}
+              />
+            </div>
+            {department === "custom" && (
+              <div className="max-w-xs flex-1 min-w-[200px]">
+                <Field
+                  label="Custom Team Name"
+                  placeholder="e.g. Legal, IT, Procurement"
+                  value={customDepartment}
+                  onChange={(e) => setCustomDepartment(e.target.value)}
+                  disabled={departmentLocked}
+                />
+              </div>
+            )}
+          </div>
 
           {partyType === "contractor" && groupSiblings.length > 1 && (
             <div className="mb-4 max-w-md">
@@ -1098,6 +1206,20 @@ export default function NewBillDrawer({
           textarea label="Remarks" placeholder="Describe the scope of work covered in this bill…"
           value={remarksInput} onChange={(e) => setRemarksInput(e.target.value)}
         />
+
+        <div className="mt-4">
+          <SField
+            label="Send for L1 Approval to (optional)"
+            placeholder={l1ApproverOptions.length === 0 ? "No one with L1 authority yet" : "Select a person…"}
+            value={sentForApprovalTo}
+            onChange={setSentForApprovalTo}
+            disabled={l1ApproverOptions.length === 0}
+            options={[{ value: "", label: "— Any L1 approver —" }, ...l1ApproverOptions.map((u) => ({ value: u._id, label: `${u.name} (${u.role})` }))]}
+            hint={department
+              ? "Only people with L1 authority in this bill's own department are listed — anyone among them can still approve it, this just flags who it's meant for."
+              : "People with L1 authority — anyone among them can still approve it, this just flags who it's meant for."}
+          />
+        </div>
       </Modal>
 
       {confirmRemoveKey != null && (

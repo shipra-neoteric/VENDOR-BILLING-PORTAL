@@ -24,6 +24,17 @@ const userSchema = new mongoose.Schema(
     // the real person, not a generic bot identity. Found on Slack via the
     // person's profile → "More" → "Copy member ID".
     slackUserId: { type: String, default: null },
+    // Which internal team this user belongs to — same fixed list as
+    // WorkOrder/RunningBill's own Department field. Drives which bills a
+    // user can see/approve in the Bill Approval flow (only their own
+    // department's bills) and who shows up as a candidate L1 approver when
+    // a bill in that department is created.
+    department: {
+      type: String,
+      enum: ['', 'civil', 'marketing', 'planning', 'maintenance', 'custom'],
+      default: '',
+    },
+    customDepartment: { type: String, default: '' },
     permissions: [{
       module:  { type: String, required: true },
       actions: [{ type: String }],

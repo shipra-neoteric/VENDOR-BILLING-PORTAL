@@ -3,7 +3,6 @@ import toast from "react-hot-toast";
 import { Download, Plus, Eye, Pencil, Trash2, Upload, Search, Loader2, HardHat, Users, UserCheck, UserX } from "lucide-react";
 
 import ContractorDetailView from "../../components/ContractorDetailView";
-import { downloadContractorListPDF } from "../../components/ContractorListPDF";
 import apiClient from "../../services/apiClient";
 import { uploadToCloudinary } from "../../utils/cloudinaryUpload";
 import type { Contractor, VendorGroup } from "../../types/VendorBilling";
@@ -344,7 +343,7 @@ export default function Contractors() {
         icon={HardHat}
         actions={
           <div className="flex items-center gap-2">
-            <NxBtn label="Download List" icon={Download} color="secondary" onClick={() => downloadContractorListPDF(contractors, vendorGroups)} />
+            <NxBtn label="Download List" icon={Download} color="secondary" onClick={() => import("../../components/ContractorListPDF").then(m => m.downloadContractorListPDF(contractors, vendorGroups))} />
             <NxBtn
               label="Register Contractor" icon={Plus} color="primary"
               onClick={() => { setFormValues(blankForm()); formErrors.clearAll(); setGroupId(null); setEditingContractor(null); setRegisterOpen(true); }}

@@ -37,6 +37,8 @@ interface AppUser {
   email: string;
   mobile?: string;
   slackUserId?: string;
+  department?: string;
+  customDepartment?: string;
   role: UserRole;
   isActive: boolean;
   createdAt: string;
@@ -66,8 +68,10 @@ const ACTION_CFG: Record<PermAction, { label: string; bg: string }> = {
   reject:   { label: "Reject",      bg: "#dc2626" },
   "ceo-approve": { label: "L4 Final Approval", bg: "#7c3aed" },
   "send-back":   { label: "Send Back",         bg: "#dc2626" },
-  "agm-approve": { label: "L1 AGM Approve",     bg: "#0891b2" },
-  "gm-approve":  { label: "L2 GM Approve",      bg: "#2563eb" },
+  // Labels are stage-based, not role-based — this permission works for
+  // anyone it's granted to, not just users literally named/roled "AGM"/"GM".
+  "agm-approve": { label: "L1 Approval",     bg: "#0891b2" },
+  "gm-approve":  { label: "L2 Approval",      bg: "#2563eb" },
   verify:   { label: "Verify",      bg: "#0891b2" },
   "l1-agm-approve":      { label: "L1 AGM Approve",      bg: "#0d9488" },
   "l2-director-approve": { label: "L2 Director Approve", bg: "#7c3aed" },
@@ -280,6 +284,8 @@ export default function UserManagement() {
   const [emailField, setEmailField]   = useState("");
   const [mobileField, setMobileField] = useState("");
   const [slackUserIdField, setSlackUserIdField] = useState("");
+  const [departmentField, setDepartmentField] = useState("");
+  const [customDepartmentField, setCustomDepartmentField] = useState("");
   const [passwordField, setPasswordField] = useState("");
   const [roleField, setRoleField]     = useState<UserRole>("site-dri");
   // Drives the role picker's "type a new role name" input — shown only while
@@ -359,6 +365,7 @@ export default function UserManagement() {
     setEditUser(null);
     formErrors.clearAll();
     setNameField(""); setEmailField(""); setMobileField(""); setSlackUserIdField(""); setPasswordField("");
+    setDepartmentField(""); setCustomDepartmentField("");
     setRoleField("site-dri"); setIsActiveField(true);
     setIsCustomRole(false); setCustomRoleInput("");
     setPerms({});
@@ -369,6 +376,7 @@ export default function UserManagement() {
     setEditUser(u);
     formErrors.clearAll();
     setNameField(u.name); setEmailField(u.email); setMobileField(u.mobile || ""); setSlackUserIdField(u.slackUserId || "");
+    setDepartmentField(u.department || ""); setCustomDepartmentField(u.customDepartment || "");
     setPasswordField(""); setRoleField(u.role); setIsActiveField(u.isActive);
     const existingIsCustom = !isKnownRole(u.role);
     setIsCustomRole(existingIsCustom);
@@ -400,6 +408,8 @@ export default function UserManagement() {
       const payload: Record<string, unknown> = {
         name: nameField, email: emailField, mobile: mobileField, slackUserId: slackUserIdField, role: roleField, isActive: isActiveField,
         permissions: permsToArray(perms),
+        department: departmentField,
+        customDepartment: departmentField === "custom" ? customDepartmentField : "",
       };
       if (!editUser) payload.password = passwordField;
 
@@ -626,6 +636,29 @@ export default function UserManagement() {
               label="Slack Member ID" placeholder="e.g. U0123ABCDE"
               value={slackUserIdField} onChange={(e) => setSlackUserIdField(e.target.value)}
             />
+            <SField
+              label="Department"
+              placeholder="Select department (optional)"
+              value={departmentField}
+              onChange={(v) => { setDepartmentField(v); if (v !== "custom") setCustomDepartmentField(""); }}
+              options={[
+                { value: "", label: "— None —" },
+                { value: "civil", label: "Civil Team" },
+                { value: "marketing", label: "Marketing Team" },
+                { value: "planning", label: "Planning Team" },
+                { value: "maintenance", label: "Maintenance Team" },
+                { value: "custom", label: "Custom Team" },
+              ]}
+              hint="Which team's bills this person should see and be able to approve in Bill Approval."
+            />
+            {departmentField === "custom" && (
+              <Field
+                label="Custom Team Name"
+                placeholder="e.g. Legal, IT, Procurement"
+                value={customDepartmentField}
+                onChange={(e) => setCustomDepartmentField(e.target.value)}
+              />
+            )}
             {!editUser && (
               <Field
                 label="Password" required type="password" placeholder="Set initial password"

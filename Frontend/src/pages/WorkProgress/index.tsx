@@ -23,6 +23,7 @@ import PageHeader from "../../ui/PageHeader";
 import NxBadge from "../../ui/nexora/Badge";
 import NxBtn from "../../ui/nexora/Btn";
 import NxStatCard from "../../ui/nexora/StatCard";
+import RemarksListInput from "../../components/RemarksListInput";
 
 dayjs.extend(isoWeek);
 
@@ -1210,7 +1211,7 @@ function DRIDashboard() {
             error={progErrors.errors.qtyAdded}
           />
           <div className="mt-3.5">
-            <Field textarea label="Remarks (optional)" placeholder="Notes for today's work…" value={progFormValues.remarks} onChange={(e) => setProgFormValues(prev => ({ ...prev, remarks: e.target.value }))} />
+            <RemarksListInput value={progFormValues.remarks} onChange={(v) => setProgFormValues(prev => ({ ...prev, remarks: v }))} />
           </div>
           {progModalTarget && (
             <div className="mt-3.5 bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700/40 rounded-lg p-3 text-xs">

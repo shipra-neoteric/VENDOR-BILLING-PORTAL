@@ -54,8 +54,13 @@ export default function PublicDailyProgressReportForm() {
     const missing = firstMissingProgressField(form);
     if (missing) return toast.error(`Select ${missing}`);
     if (form.workEntries.length === 0) return toast.error("Check at least one work type");
-    const short = form.workEntries.find(e => e.images.length < MIN_IMAGES_PER_CATEGORY);
-    if (short) return toast.error(`"${short.workType}" needs at least ${MIN_IMAGES_PER_CATEGORY} photo${MIN_IMAGES_PER_CATEGORY === 1 ? "" : "s"}`);
+    // No labour on site that day means no work photos to take either — the
+    // mandatory-photo rule only makes sense once there's actually a crew
+    // present being reported on.
+    if (Number(form.labourCount) > 0) {
+      const short = form.workEntries.find(e => e.images.length < MIN_IMAGES_PER_CATEGORY);
+      if (short) return toast.error(`"${short.workType}" needs at least ${MIN_IMAGES_PER_CATEGORY} photo${MIN_IMAGES_PER_CATEGORY === 1 ? "" : "s"}`);
+    }
 
     setSubmitting(true);
     try {
@@ -167,7 +172,7 @@ export default function PublicDailyProgressReportForm() {
 
         <Card className="mb-5">
           <div className="font-bold text-sm text-[#1a1f2e] mb-3">Work Type — check what happened today</div>
-          <WorkCategoryChecklist entries={form.workEntries} onChange={setEntries} uploadClient={pub} />
+          <WorkCategoryChecklist entries={form.workEntries} onChange={setEntries} uploadClient={pub} photosRequired={Number(form.labourCount) > 0} />
         </Card>
 
         <Btn
