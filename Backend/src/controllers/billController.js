@@ -16,7 +16,7 @@ const { recomputeAfterInvalidate, recomputeParentFromSubItems, deriveStatus } = 
 const { applyAdvanceRecoveries } = require('../utils/advanceRecovery');
 const AdvanceSlip  = require('../models/AdvanceSlip');
 const { nextCode } = require('../utils/sequence');
-const { notifyStagePending } = require('../utils/slackApprovals');
+const { notifyStagePending, settleAllPendingForEntity } = require('../utils/slackApprovals');
 
 const MODULE = 'accounts-payment';
 
@@ -574,6 +574,9 @@ exports.manualReject = asyncHandler(async (req, res) => {
     entityType: 'RunningBill', entityId: bill._id, entityLabel: bill.billNo,
   });
 
+  settleAllPendingForEntity(bill._id, { verb: 'Rejected', decidedByName: req.user.name })
+    .catch((err) => console.error('[slack] settle on manual reject failed', err.message));
+
   success(res, { bill }, 'Bill rejected');
 });
 
@@ -897,6 +900,10 @@ exports.rejectBill = asyncHandler(async (req, res) => {
       description: `Rejected bill ${bill.billNo} — ${reason}`,
       entityType: 'RunningBill', entityId: bill._id, entityLabel: bill.billNo,
     });
+
+    settleAllPendingForEntity(bill._id, { verb: 'Rejected', decidedByName: req.user.name })
+      .catch((err) => console.error('[slack] settle on reject failed', err.message));
+
     return success(res, { bill }, 'Bill rejected');
   }
 
@@ -917,6 +924,9 @@ exports.rejectBill = asyncHandler(async (req, res) => {
     description: `Bill ${bill.billNo} sent back from ${fromStatus} to ${target.to} — ${reason}`,
     entityType: 'RunningBill', entityId: bill._id, entityLabel: bill.billNo,
   });
+
+  settleAllPendingForEntity(bill._id, { verb: 'Rejected', decidedByName: req.user.name })
+    .catch((err) => console.error('[slack] settle on send-back failed', err.message));
 
   success(res, { bill }, `Sent back — ${reason}`);
 });

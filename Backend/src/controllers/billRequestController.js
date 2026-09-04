@@ -13,7 +13,7 @@ const { nextBillNo } = require('../utils/codeGen');
 const { recomputeAfterInvalidate, expandBillableCandidates, recomputeParentFromSubItems } = require('../utils/progressHelpers');
 const { resolvePayee } = require('../utils/vendorGroupHelpers');
 const { applyAdvanceRecoveries } = require('../utils/advanceRecovery');
-const { notifyStagePending } = require('../utils/slackApprovals');
+const { notifyStagePending, settleAllPendingForEntity } = require('../utils/slackApprovals');
 const { canActOnDepartment } = require('../utils/departmentAccess');
 
 // Fire-and-forget (matches emitEvent's un-awaited call sites below) — a failed
@@ -611,6 +611,9 @@ exports.rejectBillRequest = asyncHandler(async (req, res) => {
     entityType: 'BillRequest', entityId: br._id, entityLabel: br.reqNo,
   });
 
+  settleAllPendingForEntity(br._id, { verb: 'Rejected', decidedByName: req.user.name })
+    .catch((err) => console.error('[slack] settle on reject failed', err.message));
+
   success(res, { billRequest: br }, `Stage ${br.stageNo} rejected — DRI can re-submit after corrections`);
 });
 
@@ -741,6 +744,8 @@ exports.createBatchBillRequest = asyncHandler(async (req, res) => {
       description: `Bill request ${reqNo} created`,
       entityType: 'BillRequest', entityId: br._id, entityLabel: reqNo,
     });
+
+    notifySlack('BILL_REQUEST_AGM_APPROVAL', br);
 
     created.push(br);
   }

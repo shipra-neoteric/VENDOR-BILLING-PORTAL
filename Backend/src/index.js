@@ -36,10 +36,16 @@ app.use(cors({
   credentials: true,
 }));
 app.use(compression());
-// Slack signs the raw request body, so its route needs the raw bytes captured
+// Slack signs the raw request body, so its routes need the raw bytes captured
 // (via `verify`) before the global express.json() below would otherwise
-// consume the stream — must be mounted first, with its own parser.
-app.use('/api/slack', express.urlencoded({ extended: true, verify: (req, _res, buf) => { req.rawBody = buf; } }), require('./routes/slack'));
+// consume the stream — must be mounted first, with its own parsers. Button
+// clicks (interactions) arrive urlencoded; the Events API (DM messages) sends
+// plain JSON — both parsers are scoped here so either Content-Type works,
+// each only actually parsing (and no-oping otherwise) if it matches.
+const slackRawBodyVerify = (req, _res, buf) => { req.rawBody = buf; };
+app.use('/api/slack', express.json({ verify: slackRawBodyVerify }));
+app.use('/api/slack', express.urlencoded({ extended: true, verify: slackRawBodyVerify }));
+app.use('/api/slack', require('./routes/slack'));
 app.use(express.json({ limit: '25mb' }));
 app.use(morgan('dev'));
 

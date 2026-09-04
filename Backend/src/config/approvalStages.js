@@ -67,26 +67,33 @@ const STAGES = {
     buildLines: (wo) => workOrderLines(wo, 'L4 Owner'),
     deepLinkPath: workOrderDeepLink,
   },
+  // departmentScoped: these 4 stages' real controller functions
+  // (billRequestController.agmApprove/gmApprove, billController.
+  // manualAgmApprove/manualGmApprove) additionally call departmentAccess.js's
+  // canActOnDepartment(user, doc) on top of the permission check — a
+  // permission holder in the wrong department gets rejected. Recipient
+  // resolution filters by the same check (see slackApprovals.js) so nobody
+  // gets DMed an approval they'd immediately be blocked from acting on.
   BILL_REQUEST_AGM_APPROVAL: {
-    entityType: 'BillRequest', module: 'bill-requests', action: 'agm-approve', roles: ['owner', 'agm'],
+    entityType: 'BillRequest', module: 'bill-requests', action: 'agm-approve', roles: ['owner', 'agm'], departmentScoped: true,
     title: 'Bill Request — AGM Approval Required',
     buildLines: (br) => billRequestLines(br, 'AGM'),
     deepLinkPath: billRequestDeepLink,
   },
   BILL_REQUEST_GM_APPROVAL: {
-    entityType: 'BillRequest', module: 'bill-requests', action: 'gm-approve', roles: ['owner', 'gm'],
+    entityType: 'BillRequest', module: 'bill-requests', action: 'gm-approve', roles: ['owner', 'gm'], departmentScoped: true,
     title: 'Bill Request — GM Approval Required',
     buildLines: (br) => billRequestLines(br, 'GM'),
     deepLinkPath: billRequestDeepLink,
   },
   PAYMENT_MANUAL_AGM_APPROVAL: {
-    entityType: 'RunningBill', module: 'bill-requests', action: 'agm-approve', roles: ['owner', 'agm'],
+    entityType: 'RunningBill', module: 'bill-requests', action: 'agm-approve', roles: ['owner', 'agm'], departmentScoped: true,
     title: 'Accounts Payment — Manual Bill AGM Sign-off Required',
     buildLines: (bill) => runningBillLines(bill, 'AGM Sign-off'),
     deepLinkPath: runningBillDeepLink,
   },
   PAYMENT_MANUAL_GM_APPROVAL: {
-    entityType: 'RunningBill', module: 'bill-requests', action: 'gm-approve', roles: ['owner', 'gm'],
+    entityType: 'RunningBill', module: 'bill-requests', action: 'gm-approve', roles: ['owner', 'gm'], departmentScoped: true,
     title: 'Accounts Payment — Manual Bill GM Sign-off Required',
     buildLines: (bill) => runningBillLines(bill, 'GM Sign-off', 'AGM Sign-off'),
     deepLinkPath: runningBillDeepLink,
