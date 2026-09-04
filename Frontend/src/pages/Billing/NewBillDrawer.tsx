@@ -6,7 +6,7 @@ import dayjs from "dayjs";
 import apiClient from "../../services/apiClient";
 import { selectableProjects } from "../../utils/projectOptions";
 import { vendorLabel } from "../../utils/vendorLabel";
-import { formatThousands, parseThousands, formatPercent, parsePercent } from "../../utils/numberFormat";
+import { formatThousands, formatPercent, parsePercent } from "../../utils/numberFormat";
 import { useFormErrors } from "../../hooks/useFormErrors";
 import Modal from "../../ui/Modal";
 import ConfirmModal from "../../ui/ConfirmModal";
@@ -46,6 +46,13 @@ interface LineItem {
   percentComplete?: number;
   billedQty: number;
   rate: number;
+  // Raw text the user is currently typing into the Rate field, kept
+  // separate from the numeric `rate` above — round-tripping every
+  // keystroke through Number() (via updateLineItem) silently drops an
+  // in-progress "." or trailing "0" after it, making it impossible to
+  // type a decimal rate at all. Undefined once nothing's been hand-typed
+  // yet (e.g. imported from a work order), so display falls back to `rate`.
+  rateInput?: string;
   amount: number;
 }
 
@@ -388,6 +395,21 @@ export default function NewBillDrawer({
           updated.amount = Math.round((Number(updated.billedQty) || 0) * (Number(updated.rate) || 0) * 100) / 100;
         }
         return updated;
+      })
+    );
+  }
+
+  // Dedicated handler for the Rate field — see LineItem.rateInput for why
+  // this can't just go through updateLineItem("rate", ...) like the other
+  // numeric fields.
+  function handleRateChange(key: number, raw: string) {
+    const clean = raw.replace(/,/g, "");
+    if (clean !== "" && !/^\d*\.?\d*$/.test(clean)) return;
+    setLineItems((prev) =>
+      prev.map((li) => {
+        if (li.key !== key) return li;
+        const rate = Number(clean) || 0;
+        return { ...li, rateInput: clean, rate, amount: Math.round((Number(li.billedQty) || 0) * rate * 100) / 100 };
       })
     );
   }
@@ -1080,9 +1102,9 @@ export default function NewBillDrawer({
                         </Td>
                         <Td>
                           <input
-                            value={formatThousands(item.rate || "")}
+                            value={item.rateInput !== undefined ? formatThousands(item.rateInput) : formatThousands(item.rate || "")}
                             placeholder="0.00"
-                            onChange={(e) => updateLineItem(item.key, "rate", parseThousands(e.target.value))}
+                            onChange={(e) => handleRateChange(item.key, e.target.value)}
                             className={`${cellInputClass} text-right`}
                           />
                         </Td>
