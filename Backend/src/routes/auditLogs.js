@@ -4,7 +4,7 @@ const { listAuditLogs, listAuditLogSummary } = require('../controllers/auditLogC
 
 router.use(authenticate);
 
-router.get('/',         authorizeOr('audit-logs', 'view', 'owner'), listAuditLogs);
-router.get('/summary',  authorizeOr('audit-logs', 'view', 'owner'), listAuditLogSummary);
+router.get('/',         authorizeOr('audit-logs', 'view'), listAuditLogs);
+router.get('/summary',  authorizeOr('audit-logs', 'view'), listAuditLogSummary);
 
 module.exports = router;

@@ -8,8 +8,8 @@ router.use(authenticate);
 
 router.get('/',     listCompanies);
 router.get('/:id',  getCompany);
-router.post('/',      authorizeOr('companies', 'create', 'owner', 'gm'), createCompany);
-router.put('/:id',    authorizeOr('companies', 'edit',   'owner', 'gm'), updateCompany);
-router.delete('/:id', authorizeOr('companies', 'delete', 'owner'), deleteCompany);
+router.post('/',      authorizeOr('companies', 'create'), createCompany);
+router.put('/:id',    authorizeOr('companies', 'edit'), updateCompany);
+router.delete('/:id', authorizeOr('companies', 'delete'), deleteCompany);
 
 module.exports = router;

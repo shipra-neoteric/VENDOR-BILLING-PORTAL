@@ -19,12 +19,13 @@ function isValidRole(role) {
   return /^[A-Za-z0-9 _-]{2,40}$/.test(trimmed);
 }
 
-// Both routes here (/users POST and PUT) are reachable two ways: via the
-// 'owner'/'gm' role bypass (the existing, already-trusted admin path — see
-// authorizeOr('user-management', 'edit', 'owner', 'gm') in routes/users.js),
-// or via a narrow delegated 'user-management' permission grant handed to
-// some other role. Only that second, limited-permission path is what needs
-// restricting — 'owner' and 'gm' keep managing users exactly as before.
+// Both routes here (/users POST and PUT) are reached purely via an explicit
+// 'user-management' permission grant (see authorizeOr('user-management',
+// 'edit') in routes/users.js — no role-name bypass exists there anymore).
+// owner/gm are trusted with this regardless, since granting someone the
+// 'owner' role is itself the one privilege-escalation this file still
+// explicitly guards against — see canAssignRole below, which the user has
+// asked to keep exactly as-is.
 const TRUSTED_USER_MANAGER_ROLES = ['owner', 'gm'];
 
 // A limited-permission caller must never be able to hand out the Owner role
@@ -40,7 +41,7 @@ function canAssignRole(caller, role) {
 // explicit request: whoever has been granted 'user-management' access via
 // the role/permission matrix is now trusted the same way owner/gm always
 // were — reaching this route at all already requires that explicit grant
-// (see authorizeOr('user-management', 'edit', ...) in routes/users.js).
+// (see authorizeOr('user-management', 'edit') in routes/users.js).
 function canGrantPermissions() {
   return true;
 }

@@ -10,12 +10,12 @@ router.use(authenticate);
 
 router.get('/',    listProjects);
 // sub-resource routes BEFORE /:id to avoid Express treating 'stats'/'activity' as an id
-router.get('/activity',     authorizeOr('bill-review', 'view', 'owner', 'gm', 'agm'), getAllProjectsActivity);
+router.get('/activity',     authorizeOr('bill-review', 'view'), getAllProjectsActivity);
 router.get('/:id/stats',    getProjectStats);
 router.get('/:id/activity', getProjectActivity);
 router.get('/:id', getProject);
-router.post('/',      authorizeOr('projects', 'create', 'owner', 'gm', 'accounts'), createProjectRules, createProject);
-router.put('/:id',    authorizeOr('projects', 'edit',   'owner', 'gm', 'accounts'), updateProject);
-router.delete('/:id', authorizeOr('projects', 'delete', 'owner'), deleteProject);
+router.post('/',      authorizeOr('projects', 'create'), createProjectRules, createProject);
+router.put('/:id',    authorizeOr('projects', 'edit'), updateProject);
+router.delete('/:id', authorizeOr('projects', 'delete'), deleteProject);
 
 module.exports = router;

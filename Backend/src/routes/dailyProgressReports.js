@@ -12,6 +12,6 @@ router.use(authenticate);
 // (consultants.js, contractors.js, ...) — only mutations require a grant.
 router.get('/',    listReports);
 router.get('/:id', getReport);
-router.post('/',   authorizeOr('daily-progress-report', 'create', 'owner', 'gm', 'agm', 'site-dri'), createReport);
+router.post('/',   authorizeOr('daily-progress-report', 'create'), createReport);
 
 module.exports = router;

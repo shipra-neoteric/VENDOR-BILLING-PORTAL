@@ -9,7 +9,7 @@ router.use(authenticate);
 router.get('/',            listVendorGroups);
 router.get('/:id',         getVendorGroup);
 router.get('/:id/progress', getVendorGroupProgress);
-router.post('/',           authorizeOr('vendor-groups', 'create', 'owner', 'gm', 'accounts'), createVendorGroup);
-router.put('/:id',         authorizeOr('vendor-groups', 'edit',   'owner', 'gm', 'accounts'), updateVendorGroup);
+router.post('/',           authorizeOr('vendor-groups', 'create'), createVendorGroup);
+router.put('/:id',         authorizeOr('vendor-groups', 'edit'), updateVendorGroup);
 
 module.exports = router;

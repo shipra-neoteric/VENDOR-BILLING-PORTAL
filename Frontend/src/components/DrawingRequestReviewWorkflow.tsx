@@ -22,11 +22,9 @@ const RETURN_STAGE_LABEL: Record<string, string> = {
   "l1-gm": "GM (L1)", "l3-gm": "GM (L3)", "l4-gm": "GM (L4)",
 };
 
-// A grant for module 'drawing-requests' with the given action name — Owner
-// always bypasses, matching every other permission check in this codebase.
+// A grant for module 'drawing-requests' with the given action name.
 function hasPerm(user: { role?: string; permissions?: { module: string; actions: string[] }[] } | null, action: string): boolean {
   if (!user) return false;
-  if (user.role === "owner") return true;
   return !!user.permissions?.find((p) => p.module === "drawing-requests")?.actions.includes(action);
 }
 

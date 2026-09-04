@@ -9,9 +9,9 @@ router.use(authenticate);
 
 router.get('/',      listContractors);
 router.get('/:id',   getContractor);
-router.post('/',     authorizeOr('contractors', 'create', 'owner', 'gm', 'accounts'), createContractorRules, createContractor);
-router.post('/bulk', authorizeOr('contractors', 'create', 'owner', 'gm', 'accounts'), bulkImport);
-router.put('/:id',   authorizeOr('contractors', 'edit',   'owner', 'gm', 'accounts'), updateContractor);
-router.delete('/:id', authorizeOr('contractors', 'delete', 'owner'), deleteContractor);
+router.post('/',     authorizeOr('contractors', 'create'), createContractorRules, createContractor);
+router.post('/bulk', authorizeOr('contractors', 'create'), bulkImport);
+router.put('/:id',   authorizeOr('contractors', 'edit'), updateContractor);
+router.delete('/:id', authorizeOr('contractors', 'delete'), deleteContractor);
 
 module.exports = router;

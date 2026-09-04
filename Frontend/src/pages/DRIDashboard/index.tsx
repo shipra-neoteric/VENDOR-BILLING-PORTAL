@@ -250,8 +250,7 @@ const emptyProgForm: ProgFormValues = {
 
 export default function DRIDashboard() {
   const { user } = useAuth();
-  const canEdit = user?.role === "owner"
-    || !!user?.permissions?.find(p => p.module === "dri-dashboard")?.actions.includes("edit");
+  const canEdit = !!user?.permissions?.find(p => p.module === "dri-dashboard")?.actions.includes("edit");
 
   const [allDRIs,  setAllDRIs]  = useState<DRIUser[]>([]);
   const [allWOs,   setAllWOs]   = useState<WORow[]>([]);

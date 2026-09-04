@@ -196,18 +196,16 @@ const normalizeFullWO = (wo: Record<string, unknown>): WorkOrder => ({
   paymentMilestones: ((wo.paymentMilestones as Record<string, unknown>[]) || []).map(normalizeId),
 } as unknown as WorkOrder);
 
-// A grant for module 'accounts-payment' with the given action name — Owner always
-// bypasses, matching every other permission check in this codebase.
+// A grant for module 'accounts-payment' with the given action name.
 function hasPerm(user: AuthUser | null, action: string): boolean {
   if (!user) return false;
-  if (user.role === "owner") return true;
   return !!user.permissions?.find((p) => p.module === "accounts-payment")?.actions.includes(action);
 }
 
 // Segregation-of-duties guard: is `user` the same person who acted as `actor` at the
-// previous stage? Owner is exempt, mirroring the backend's own bypass for owner.
+// previous stage?
 function sameActor(user: AuthUser | null, actor?: BillUser | null): boolean {
-  if (!user || !actor?._id || user.role === "owner") return false;
+  if (!user || !actor?._id) return false;
   return actor._id === user.id;
 }
 
@@ -486,7 +484,7 @@ const PAYMENT_MODE_LABEL: Record<string, string> = {
   neft: "NEFT", rtgs: "RTGS", imps: "IMPS", internet_banking: "Internet Banking", upi: "UPI", cheque: "Cheque", dd: "DD", cash: "Cash",
 };
 
-function PaidPanel({ bill, isOwner, onUpdated }: { bill: Bill; isOwner: boolean; onUpdated: (b: Bill) => void }) {
+function PaidPanel({ bill, canEditDeductions, onUpdated }: { bill: Bill; canEditDeductions: boolean; onUpdated: (b: Bill) => void }) {
   const [editing, setEditing] = useState(false);
   const [retention, setRetention] = useState(bill.retentionAmount ?? 0);
   const [advance, setAdvance] = useState(bill.advanceRecovery ?? 0);
@@ -519,7 +517,7 @@ function PaidPanel({ bill, isOwner, onUpdated }: { bill: Bill; isOwner: boolean;
     <div className="mt-4 bg-purple-50 dark:bg-purple-500/10 border border-purple-200 dark:border-purple-500/30 rounded-lg p-3.5">
       <div className="flex justify-between items-center mb-2.5">
         <div className="font-bold text-[13px] text-purple-700 dark:text-purple-300">Paid — confirmed by TMS</div>
-        {isOwner && !editing && (
+        {canEditDeductions && !editing && (
           <Btn small outline icon={Pencil} label="Edit Deductions" onClick={() => setEditing(true)} />
         )}
       </div>
@@ -561,7 +559,7 @@ export default function AccountsPayment() {
   const canReleaseHold = hasPerm(user, "release-hold");
   const canRetryTms = hasPerm(user, "retry-tms");
   const canRejectAny = canVerify || canL1Agm || canL2Director || hasPerm(user, "reject");
-  const isOwner = user?.role === "owner";
+  const canEditDeductions = hasPerm(user, "edit");
 
   const [bills, setBills] = useState<Bill[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1221,7 +1219,7 @@ export default function AccountsPayment() {
         );
 
       case "paid":
-        return <PaidPanel bill={bill} isOwner={isOwner} onUpdated={updateBillInList} />;
+        return <PaidPanel bill={bill} canEditDeductions={canEditDeductions} onUpdated={updateBillInList} />;
 
       case "rejected":
         return bill.rejectReason ? (

@@ -448,8 +448,8 @@ export function WorkOrderDocumentHindi({ wo, company, contractor }: Props) {
         <View style={S.sigBlock} wrap={false}>
           {([
             ["ठेकेदार", null],
-            ["एजीएम – प्रोजेक्ट", wo.approvals?.checker],
-            ["जीएम – प्रोजेक्ट", wo.approvals?.approver],
+            ["L1 स्वीकृति", wo.approvals?.checker],
+            ["L2 स्वीकृति", wo.approvals?.approver],
           ] as const).map(([role, approval], i, arr) => (
             <View key={role} style={i === arr.length - 1 ? S.sigCellL : S.sigCell}>
               <Text style={S.sigRole}>{role}</Text>

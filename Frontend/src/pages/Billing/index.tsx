@@ -130,7 +130,6 @@ const BILL_STATUS_BADGE_COLOR: Record<string, NxBadgeColor> = {
 
 function hasPerm(user: AuthUser | null, action: string): boolean {
   if (!user) return false;
-  if (user.role === "owner") return true;
   return !!user.permissions?.find((p) => p.module === "billing")?.actions.includes(action);
 }
 

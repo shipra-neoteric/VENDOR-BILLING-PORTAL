@@ -534,18 +534,19 @@ export function WorkOrderDocument({ wo, company, contractor }: Props) {
           ))}
         </View>
 
-        {/* ── Signature block — "AGM"/"GM" map to the in-system Checker/Approver
-            stages, each showing "Approved" + the real name/date of whoever
-            actually did it once that stage is done. "Contractor" is
-            deliberately never linked to any in-system stage — the Maker who
-            enters the work order is Neoteric staff acting on the contractor's
-            behalf, not the contractor themselves, so this stays a blank line
-            for their own physical signature. ── */}
+        {/* ── Signature block — stage-based labels (like the in-app approval
+            table), not tied to a specific job title, since checker/approver
+            isn't always literally an AGM/GM. Each shows "Approved" + the real
+            name/date of whoever actually did it once that stage is done.
+            "Contractor" is deliberately never linked to any in-system stage —
+            the Maker who enters the work order is Neoteric staff acting on
+            the contractor's behalf, not the contractor themselves, so this
+            stays a blank line for their own physical signature. ── */}
         <View style={S.sigBlock} wrap={false}>
           {([
             ["Contractor", null],
-            ["AGM – Project", wo.approvals?.checker],
-            ["GM – Project", wo.approvals?.approver],
+            ["L1 Approval", wo.approvals?.checker],
+            ["L2 Approval", wo.approvals?.approver],
           ] as const).map(([role, approval], i, arr) => (
             <View key={role} style={i === arr.length - 1 ? S.sigCellL : S.sigCell}>
               <Text style={S.sigRole}>{role}</Text>

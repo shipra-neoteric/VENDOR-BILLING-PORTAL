@@ -168,16 +168,18 @@ export default function NewBillDrawer({
   const [woExistingBills, setWoExistingBills] = useState<ExistingBill[]>([]);
   // Which of the selected Work Order's own Payment Milestones (defined at WO
   // creation, see PaymentMilestonesBuilder) this bill is raised against —
-  // saved as a tag on the bill, AND auto-fills a line item for its amount
-  // below so it actually reflects in the bill total (see handleMilestoneSelect).
-  const [milestoneId, setMilestoneId] = useState<string>("");
-  // Which line item rows (by key) were auto-added for the currently-selected
+  // multiple can be billed at once (e.g. two consultancy stages clearing
+  // together), each with its own "how much of it to bill now" percentage.
+  const [selectedMilestoneIds, setSelectedMilestoneIds] = useState<string[]>([]);
+  const [milestonePercents, setMilestonePercents] = useState<Record<string, number>>({});
+  // Which line item rows (by key) were auto-added for each selected
   // milestone — either the actual scope-item-linked rows it covers (so they
   // get genuinely marked billed on submit), or a single freeform lump-sum
-  // row when the milestone has no scope items assigned to it. Tracked so
-  // re-picking a different milestone replaces these rows instead of piling
-  // up duplicates, and picking "— None —" removes them cleanly.
-  const [milestoneRowKeys, setMilestoneRowKeys] = useState<number[]>([]);
+  // row when the milestone has no scope items assigned to it. Tracked per
+  // milestone id so un-checking just one only removes its own rows, and
+  // changing its % rebuilds just that milestone's rows.
+  const [milestoneRowKeys, setMilestoneRowKeysMap] = useState<Record<string, number[]>>({});
+  const allMilestoneRowKeys = useMemo(() => Object.values(milestoneRowKeys).flat(), [milestoneRowKeys]);
   // The WO scope items were actually imported from — kept separate from
   // selectedWOId (the "Bill Relationship" picker) so changing that picker
   // afterward can't silently disconnect the imported qty/variance checks
@@ -227,7 +229,9 @@ export default function NewBillDrawer({
     setLinkedBillIds([]);
     setSelectedWOId("");
     setWoExistingBills([]);
-    setMilestoneId("");
+    setSelectedMilestoneIds([]);
+    setMilestonePercents({});
+    setMilestoneRowKeysMap({});
     setImportedFromWOId("");
     setExpandedGroups(new Set());
     setImportWOPick("");
@@ -447,25 +451,26 @@ export default function NewBillDrawer({
   // bail out in that case instead of proceeding to import/replace rows on
   // top of the ones that were supposed to be cleared.
   function clearMilestoneRows(): boolean {
-    if (milestoneRowKeys.length === 0) return true;
+    if (allMilestoneRowKeys.length === 0) return true;
     const hasEnteredData = lineItems.some(
-      (li) => milestoneRowKeys.includes(li.key) && (Number(li.billedQty) > 0 || Number(li.percentComplete) > 0)
+      (li) => allMilestoneRowKeys.includes(li.key) && (Number(li.billedQty) > 0 || Number(li.percentComplete) > 0)
     );
-    if (hasEnteredData && !window.confirm("Switching this will discard the quantity/% you already entered for the current milestone's items. Continue?")) {
+    if (hasEnteredData && !window.confirm("Switching this will discard the quantity/% you already entered for the currently-selected milestones' items. Continue?")) {
       return false;
     }
-    setLineItems((prev) => prev.filter((li) => !milestoneRowKeys.includes(li.key)));
-    setMilestoneRowKeys([]);
+    setLineItems((prev) => prev.filter((li) => !allMilestoneRowKeys.includes(li.key)));
+    setMilestoneRowKeysMap({});
     return true;
   }
 
   async function handleWOSelectForLinking(woId: string) {
-    // Changing which WO this bill relates to invalidates whatever milestone
-    // (and its auto-filled rows) was picked for the previous one — bail out
-    // without switching WOs if the user declines to discard entered data.
+    // Changing which WO this bill relates to invalidates whatever milestones
+    // (and their auto-filled rows) were picked for the previous one — bail
+    // out without switching WOs if the user declines to discard entered data.
     if (!clearMilestoneRows()) return;
     setSelectedWOId(woId);
-    setMilestoneId("");
+    setSelectedMilestoneIds([]);
+    setMilestonePercents({});
     if (!woId) { setWoExistingBills([]); return; }
     try {
       const res = await apiClient.get<{ bills: Record<string, unknown>[] }>(`/bills/chain/${woId}`);
@@ -474,46 +479,39 @@ export default function NewBillDrawer({
     } catch { setWoExistingBills([]); }
   }
 
-  // Picking a milestone now actually reflects in the bill:
-  // - If the milestone has specific Work Items assigned to it (set at WO
-  //   creation, see PaymentMilestonesBuilder's "Covers Work Item(s)"), those
-  //   are imported as real scope-item-linked rows (same as "import from WO"),
-  //   so completing/billing them here genuinely marks those items billed on
-  //   submit — not just a cosmetic total.
-  // - Otherwise (older milestones with no items assigned) it falls back to a
-  //   single freeform lump-sum row for the milestone's own amount, same as
-  //   before — purely reflects in the total, doesn't mark anything billed.
-  // Re-picking a different milestone replaces whichever rows the previous
-  // one added instead of piling up duplicates; "— None —" removes them.
-  function handleMilestoneSelect(id: string) {
-    if (!clearMilestoneRows()) return;
-    setMilestoneId(id);
-    if (!id) return;
-    const wo = woList.find((w) => w.id === selectedWOId);
-    const milestone = wo?.paymentMilestones?.find((m) => m._id === id);
-    if (!wo || !milestone) return;
-
+  // Builds this one milestone's rows at the given % — the actual Work Items
+  // it covers (set at WO creation, see PaymentMilestonesBuilder's "Covers
+  // Work Item(s)"), scaled to that %, so completing/billing them here
+  // genuinely marks those items billed on submit — not just a cosmetic
+  // total. Falls back to a single freeform lump-sum row (also scaled by %)
+  // when the milestone has no scope items assigned to it.
+  function buildMilestoneRows(milestone: PaymentMilestoneOpt, wo: WorkOrderOpt, percent: number): LineItem[] {
+    const pct = Math.max(0, Math.min(100, percent)) / 100;
     const coveredIds = milestone.scopeItemIds ?? [];
     const coveredItems = wo.scopeItems.filter((si) => coveredIds.includes(si.id));
 
     if (coveredItems.length > 0) {
-      const imported: LineItem[] = coveredItems.flatMap((si) => {
+      return coveredItems.flatMap((si) => {
         if (si.subItems && si.subItems.length > 0) {
-          return si.subItems.map((sub) => ({
-            key: nextKey(),
-            scopeItemId: si.id,
-            subItemId: sub.id,
-            groupLabel: si.description,
-            description: sub.description,
-            unit: sub.unit || "",
-            plannedQty: sub.plannedQty || 0,
-            lastBilledQty: sub.lastBilledQty || 0,
-            percentComplete: 0,
-            billedQty: 0,
-            rate: sub.rate || 0,
-            amount: 0,
-          }));
+          return si.subItems.map((sub) => {
+            const billedQty = Math.round((sub.plannedQty || 0) * pct * 100) / 100;
+            return {
+              key: nextKey(),
+              scopeItemId: si.id,
+              subItemId: sub.id,
+              groupLabel: si.description,
+              description: sub.description,
+              unit: sub.unit || "",
+              plannedQty: sub.plannedQty || 0,
+              lastBilledQty: sub.lastBilledQty || 0,
+              percentComplete: Math.round(pct * 10000) / 100,
+              billedQty,
+              rate: sub.rate || 0,
+              amount: Math.round(billedQty * (sub.rate || 0) * 100) / 100,
+            };
+          });
         }
+        const billedQty = Math.round((si.plannedQty || 0) * pct * 100) / 100;
         return [{
           key: nextKey(),
           scopeItemId: si.id,
@@ -521,31 +519,56 @@ export default function NewBillDrawer({
           unit: si.unit || "",
           plannedQty: si.plannedQty || 0,
           lastBilledQty: si.lastBilledQty || 0,
-          percentComplete: 0,
-          billedQty: 0,
+          percentComplete: Math.round(pct * 10000) / 100,
+          billedQty,
           rate: si.rate || 0,
-          amount: 0,
+          amount: Math.round(billedQty * (si.rate || 0) * 100) / 100,
         }];
       });
-      setMilestoneRowKeys(imported.map((li) => li.key));
-      setLineItems((prev) => [...prev.filter((li) => li.description.trim()), ...imported]);
-      toast.success(`${imported.length} work item${imported.length === 1 ? "" : "s"} imported from this milestone — enter % complete or quantity`);
-      return;
     }
 
-    // No items assigned to this milestone — fall back to a plain lump-sum row.
+    // No items assigned to this milestone — a plain lump-sum row, its
+    // amount scaled to the chosen %.
     const label = milestone.stage || milestone.type || "Milestone Payment";
-    const amount = Math.round((milestone.amount || 0) * 100) / 100;
-    const fill = { description: label, billedQty: 1, rate: amount, amount };
-    const firstRow = lineItems[0];
-    if (lineItems.length === 1 && firstRow && !firstRow.description.trim() && !firstRow.billedQty) {
-      setMilestoneRowKeys([firstRow.key]);
-      setLineItems([{ ...firstRow, ...fill }]);
-      return;
+    const amount = Math.round((milestone.amount || 0) * pct * 100) / 100;
+    return [{ ...blankRow(), description: label, billedQty: 1, rate: amount, amount }];
+  }
+
+  // Rebuilds every currently-checked milestone's rows from scratch, keyed
+  // off `ids`/`percents` passed in explicitly (rather than reading the
+  // state setters just made, which wouldn't be visible yet in this same
+  // tick) — replaces whatever milestone rows existed before, so toggling a
+  // milestone off or changing its % never leaves stale/duplicate rows.
+  function recomputeMilestoneRows(ids: string[], percents: Record<string, number>) {
+    const wo = woList.find((w) => w.id === selectedWOId);
+    if (!wo) return;
+    const nextRowKeys: Record<string, number[]> = {};
+    const nextRows: LineItem[] = [];
+    for (const id of ids) {
+      const milestone = wo.paymentMilestones?.find((m) => m._id === id);
+      if (!milestone) continue;
+      const rows = buildMilestoneRows(milestone, wo, percents[id] ?? 100);
+      nextRowKeys[id] = rows.map((r) => r.key);
+      nextRows.push(...rows);
     }
-    const row = { ...blankRow(), ...fill };
-    setMilestoneRowKeys([row.key]);
-    setLineItems((prev) => [...prev, row]);
+    setMilestoneRowKeysMap(nextRowKeys);
+    setLineItems((prev) => [...prev.filter((li) => li.description.trim() && !allMilestoneRowKeys.includes(li.key)), ...nextRows]);
+  }
+
+  function toggleMilestone(id: string, checked: boolean) {
+    if (!clearMilestoneRows()) return;
+    const nextIds = checked ? [...selectedMilestoneIds, id] : selectedMilestoneIds.filter((mid) => mid !== id);
+    const nextPercents = checked ? { ...milestonePercents, [id]: milestonePercents[id] ?? 100 } : milestonePercents;
+    setSelectedMilestoneIds(nextIds);
+    setMilestonePercents(nextPercents);
+    recomputeMilestoneRows(nextIds, nextPercents);
+  }
+
+  function setMilestonePercentFor(id: string, percent: number) {
+    const clamped = Math.max(0, Math.min(100, percent || 0));
+    const nextPercents = { ...milestonePercents, [id]: clamped };
+    setMilestonePercents(nextPercents);
+    recomputeMilestoneRows(selectedMilestoneIds, nextPercents);
   }
 
   const totalLineAmount = useMemo(
@@ -637,7 +660,7 @@ export default function NewBillDrawer({
       relationshipType: (relType === "ADVANCE_FOR" || linkedBills.length > 0) ? relType : "NONE",
       linkedBills: linkedBills.length > 0 ? linkedBills : [],
       workOrderId: linkedToScopeItems ? (importedFromWOId || selectedWOId || undefined) : (selectedWOId || undefined),
-      ...(milestoneId ? { milestoneId } : {}),
+      ...(selectedMilestoneIds.length ? { milestoneIds: selectedMilestoneIds } : {}),
       ...(isStandalone ? { companyId } : {}),
       retentionPercent: holdMode === "percent" ? (holdPercent || 0) : (gross > 0 ? Math.round((holdAmount / gross) * 10000) / 100 : 0),
       retentionAmount: holdAmount,
@@ -926,8 +949,9 @@ export default function NewBillDrawer({
           {/* Payment Milestone — its own standalone box (same visual
               pattern as the WO-import box below), independent of the Bill
               Relationship box above. Needs a WO selected there first
-              (milestones belong to one), so it's disabled with a hint until
-              then, rather than hidden entirely. */}
+              (milestones belong to one). Multiple milestones can be checked
+              at once (e.g. two consultancy stages clearing together), each
+              with its own "% of this milestone to bill now". */}
           {woList.length > 0 && (() => {
             const milestones = woList.find((wo) => wo.id === selectedWOId)?.paymentMilestones ?? [];
             return (
@@ -935,16 +959,41 @@ export default function NewBillDrawer({
                 <div className="font-semibold text-xs text-purple-700 dark:text-purple-300 mb-2">
                   Payment Milestone (optional)
                 </div>
-                <SField
-                  placeholder={!selectedWOId ? "Select a Work Order above first…" : milestones.length === 0 ? "This work order has no payment milestones" : "Select milestone…"}
-                  value={milestoneId}
-                  onChange={handleMilestoneSelect}
-                  disabled={!selectedWOId || milestones.length === 0}
-                  options={[
-                    { value: "", label: "— None —" },
-                    ...milestones.map((m) => ({ value: m._id, label: `${m.stage || m.type || "Milestone"} — ${fmt(m.amount)}` })),
-                  ]}
-                />
+                {!selectedWOId ? (
+                  <div className="text-[12px] text-gray-500 dark:text-gray-400">Select a Work Order above first…</div>
+                ) : milestones.length === 0 ? (
+                  <div className="text-[12px] text-gray-500 dark:text-gray-400">This work order has no payment milestones</div>
+                ) : (
+                  <div className="flex flex-col gap-2">
+                    {milestones.map((m) => {
+                      const checked = selectedMilestoneIds.includes(m._id);
+                      return (
+                        <div key={m._id} className="flex items-center gap-2.5">
+                          <label className="flex items-center gap-2 flex-1 min-w-0 text-[13px] text-[#1A1A2E] dark:text-[#F1F5F9] cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={(e) => toggleMilestone(m._id, e.target.checked)}
+                              className="w-4 h-4 shrink-0 accent-purple-600"
+                            />
+                            <span className="truncate">{m.stage || m.type || "Milestone"} — {fmt(m.amount)}</span>
+                          </label>
+                          {checked && (
+                            <div className="flex items-center gap-1 shrink-0">
+                              <input
+                                type="number" min="0" max="100"
+                                value={milestonePercents[m._id] ?? 100}
+                                onChange={(e) => setMilestonePercentFor(m._id, Number(e.target.value))}
+                                className="w-16 text-[12px] text-right rounded-md border border-purple-200 dark:border-purple-500/30 bg-white dark:bg-gray-800 px-2 py-1"
+                              />
+                              <span className="text-[12px] text-purple-700 dark:text-purple-300">% now</span>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             );
           })()}

@@ -4,13 +4,15 @@ const asyncHandler = require('../utils/asyncHandler');
 const { success, created, notFound, badRequest, conflict } = require('../utils/responseFormatter');
 const { logAudit, diffFields } = require('../utils/auditLog');
 
-// The 6 built-in roles behave the way they do through hardcoded bypasses
-// scattered across the app (authorizeOr('module','action','owner','gm'),
-// role-specific UI, etc.) — not through any permissions array. They're
-// seeded here as read-only entries purely so the Roles library shows every
-// role that exists, custom ones alongside built-in ones; their own
-// `permissions` array is intentionally left empty rather than guessed at,
-// so it's never mistaken for the actual source of truth on what they can do.
+// The 6 built-in roles are seeded here as read-only entries purely so the
+// Roles library shows every role that exists, custom ones alongside
+// built-in ones. Access is now decided purely by each role's `permissions`
+// array (merged into every user on that role at request time — see
+// mergeRolePermissions in middleware/auth.js): no module/action is granted
+// through a hardcoded role-name check anymore, so this array (populated via
+// a one-off migration for owner/gm, and via the Roles-tab UI or targeted
+// backfills for the others) is the actual source of truth for what each
+// built-in role can do.
 const SYSTEM_ROLES = [
   { name: 'owner', description: 'Full system access — all modules, user management.' },
   { name: 'gm', description: 'Reviews DRI progress, generates bill requests, work order sign-off & Accounts Payment checker stage.' },
@@ -79,11 +81,8 @@ exports.createRole = asyncHandler(async (req, res) => {
 // name — see renameRole). Built-in roles ARE allowed here, unlike rename/
 // delete: the auth middleware (see mergeRolePermissions) merges a role's
 // permissions into every user on it at request time, so editing e.g.
-// "accounts" here genuinely changes access for every accounts-role user on
-// whatever modules aren't already covered by a hardcoded authorizeOr bypass
-// (owner/gm's role-name bypasses still apply on top and can't be edited away
-// by unchecking a box here — this only ever adds reach, never removes the
-// hardcoded kind).
+// "accounts" here genuinely changes access for every accounts-role user —
+// there is no hardcoded role-name bypass left anywhere to fall back on.
 exports.updateRole = asyncHandler(async (req, res) => {
   const role = await Role.findById(req.params.id);
   if (!role) return notFound(res, 'Role not found');

@@ -574,7 +574,7 @@ async function gmApproveHandler(req, res) {
   if (!br) return notFound(res, 'Bill request not found');
   if (!canActOnDepartment(req.user, br)) return forbidden(res, 'This bill request belongs to a different department.');
   if (br.status !== 'pending-gm') return badRequest(res, `Request is already ${br.status}`);
-  if (br.agmApprovedBy && br.agmApprovedBy.toString() === req.user._id.toString() && req.user.role !== 'owner') {
+  if (br.agmApprovedBy && br.agmApprovedBy.toString() === req.user._id.toString()) {
     return badRequest(res, 'The AGM who approved this cannot also give GM sign-off — segregation of duties requires a different approver.');
   }
 
@@ -631,7 +631,7 @@ async function l3ApproveHandler(req, res) {
   // Same segregation-of-duty rule agmApprove/gmApprove already enforce
   // between L1 and L2 — the person who just signed off at L2 can't also be
   // the one signing off at L3.
-  if (br.gmApprovedBy && br.gmApprovedBy.toString() === req.user._id.toString() && req.user.role !== 'owner') {
+  if (br.gmApprovedBy && br.gmApprovedBy.toString() === req.user._id.toString()) {
     return badRequest(res, 'The GM who approved this cannot also give L3 sign-off — segregation of duties requires a different approver.');
   }
 
@@ -681,7 +681,7 @@ async function l4ApproveHandler(req, res) {
   if (!br) return notFound(res, 'Bill request not found');
   if (!canActOnDepartment(req.user, br)) return forbidden(res, 'This bill request belongs to a different department.');
   if (br.status !== 'pending-l4') return badRequest(res, `Request is already ${br.status}`);
-  if (br.l3ApprovedBy && br.l3ApprovedBy.toString() === req.user._id.toString() && req.user.role !== 'owner') {
+  if (br.l3ApprovedBy && br.l3ApprovedBy.toString() === req.user._id.toString()) {
     return badRequest(res, 'The L3 approver cannot also give L4 sign-off — segregation of duties requires a different approver.');
   }
 

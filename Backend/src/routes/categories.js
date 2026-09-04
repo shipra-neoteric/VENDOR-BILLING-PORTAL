@@ -8,8 +8,8 @@ const {
 router.use(authenticate);
 
 router.get('/',     listCategories);
-router.post('/',      authorizeOr('categories', 'create', 'owner', 'gm', 'accounts'), createCategoryRules, createCategory);
-router.put('/:id',    authorizeOr('categories', 'edit',   'owner', 'gm', 'accounts'), updateCategory);
-router.delete('/:id', authorizeOr('categories', 'delete', 'owner', 'gm'), deleteCategory);
+router.post('/',      authorizeOr('categories', 'create'), createCategoryRules, createCategory);
+router.put('/:id',    authorizeOr('categories', 'edit'), updateCategory);
+router.delete('/:id', authorizeOr('categories', 'delete'), deleteCategory);
 
 module.exports = router;

@@ -9,7 +9,7 @@ router.use(authenticate);
 
 router.get('/',    listConsultants);
 router.get('/:id', getConsultant);
-router.post('/',   authorizeOr('consultants', 'create', 'owner', 'gm', 'accounts'), createConsultantRules, createConsultant);
-router.put('/:id', authorizeOr('consultants', 'edit',   'owner', 'gm', 'accounts'), updateConsultant);
+router.post('/',   authorizeOr('consultants', 'create'), createConsultantRules, createConsultant);
+router.put('/:id', authorizeOr('consultants', 'edit'), updateConsultant);
 
 module.exports = router;

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Dropdown, message } from "antd";
-import { LogOut, ArrowLeftRight, Undo2, Menu } from "lucide-react";
+import { LogOut, ArrowLeftRight, Undo2, Menu, ChevronRight, ChevronLeft } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import type { AuthUser } from "../../context/AuthContext";
 import apiClient from "../../services/apiClient";
@@ -85,11 +85,18 @@ export default function Header({ onToggleSidebar }: HeaderProps) {
     .filter(u => u.isActive && u._id !== user?.id)
     .sort((a, b) => a.role.localeCompare(b.role) || a.name.localeCompare(b.name));
 
+  // Two-step like the menu it replaces: the main panel just has a "Switch
+  // Account" row, which drills into the actual (scrollable) user list —
+  // rather than dumping every user into the first screen you see.
+  const [switchListOpen, setSwitchListOpen] = useState(false);
+
   // Built by hand (not antd Menu's `children` submenu) because that
   // submenu renders as its own popup portal that a className scoped to the
   // Dropdown never reaches — with dozens of users it ran off the bottom of
-  // the screen with no way to scroll it back into view.
-  const rowClass = "flex items-center gap-2.5 w-full text-left px-3 py-2 text-[13px] rounded-md hover:bg-gray-100 dark:hover:bg-gray-700/50 transition-colors";
+  // the screen with no way to scroll it back into view. Styled to match this
+  // app's own DropdownMenu.tsx (row-action menus elsewhere in the app), not
+  // antd's default look.
+  const rowClass = "flex items-center gap-2.5 w-full text-left px-3 py-2 text-[13px] rounded-md text-[#1A1A2E] dark:text-[#F1F5F9] hover:bg-gray-50 dark:hover:bg-gray-700/40 transition-colors";
 
   return (
     <div
@@ -147,24 +154,44 @@ export default function Header({ onToggleSidebar }: HeaderProps) {
         <Dropdown
           trigger={["click"]}
           placement="bottomRight"
-          onOpenChange={(open) => { if (open) loadSwitchable(); }}
+          onOpenChange={(open) => { if (open) loadSwitchable(); else setSwitchListOpen(false); }}
           popupRender={() => (
-            <div className="min-w-[240px] bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700/50 p-1.5">
-              {isImpersonating && (
+            <div className="user-menu-panel min-w-[250px] bg-white dark:bg-[#1E293B] rounded-lg shadow-lg border border-gray-200 dark:border-gray-700/40 p-1.5">
+              {!switchListOpen ? (
                 <>
-                  <button type="button" className={rowClass} onClick={handleBackToAdmin}>
-                    <Undo2 className="w-4 h-4 shrink-0" />
-                    <span className="truncate">Back to Admin ({stashedAdmin!.user.name})</span>
+                  {isImpersonating && (
+                    <>
+                      <button type="button" className={rowClass} onClick={handleBackToAdmin}>
+                        <Undo2 className="w-4 h-4 shrink-0" />
+                        <span className="truncate">Back to Admin ({stashedAdmin!.user.name})</span>
+                      </button>
+                      <div className="my-1 border-t border-gray-200 dark:border-gray-700/40" />
+                    </>
+                  )}
+                  {canSwitch && otherUsers.length > 0 && (
+                    <>
+                      <button type="button" className={`${rowClass} justify-between`} onClick={() => setSwitchListOpen(true)}>
+                        <span className="flex items-center gap-2.5">
+                          <ArrowLeftRight className="w-4 h-4 shrink-0" /> Switch Account
+                        </span>
+                        <ChevronRight className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                      </button>
+                      <div className="my-1 border-t border-gray-200 dark:border-gray-700/40" />
+                    </>
+                  )}
+                  <button type="button" className={`${rowClass} text-red-600! dark:text-red-400!`} onClick={handleLogout}>
+                    <LogOut className="w-4 h-4 shrink-0" />
+                    <span>Sign out</span>
                   </button>
-                  <div className="my-1 border-t border-gray-200 dark:border-gray-700/50" />
                 </>
-              )}
-              {canSwitch && otherUsers.length > 0 && (
+              ) : (
                 <>
-                  <div className="flex items-center gap-2.5 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-gray-400">
-                    <ArrowLeftRight className="w-3.5 h-3.5" /> Switch Account
-                  </div>
-                  <div className="max-h-[320px] overflow-y-auto">
+                  <button type="button" className={`${rowClass} font-semibold`} onClick={() => setSwitchListOpen(false)}>
+                    <ChevronLeft className="w-4 h-4 shrink-0" />
+                    <span>Switch Account</span>
+                  </button>
+                  <div className="my-1 border-t border-gray-200 dark:border-gray-700/40" />
+                  <div className="user-menu-scroll max-h-[280px] overflow-y-auto pr-0.5">
                     {otherUsers.map(u => (
                       <button key={u._id} type="button" className={rowClass} onClick={() => handleSwitch(u._id)}>
                         <span className="truncate">
@@ -173,13 +200,15 @@ export default function Header({ onToggleSidebar }: HeaderProps) {
                       </button>
                     ))}
                   </div>
-                  <div className="my-1 border-t border-gray-200 dark:border-gray-700/50" />
                 </>
               )}
-              <button type="button" className={`${rowClass} text-red-600 dark:text-red-400`} onClick={handleLogout}>
-                <LogOut className="w-4 h-4 shrink-0" />
-                <span>Sign out</span>
-              </button>
+              <style>{`
+                .user-menu-scroll { scrollbar-width: thin; scrollbar-color: var(--nx-border, #d1d5db) transparent; }
+                .user-menu-scroll::-webkit-scrollbar { width: 5px; }
+                .user-menu-scroll::-webkit-scrollbar-track { background: transparent; }
+                .user-menu-scroll::-webkit-scrollbar-thumb { background: var(--nx-border, #d1d5db); border-radius: 999px; }
+                .user-menu-scroll::-webkit-scrollbar-thumb:hover { background: var(--nx-text-2, #9ca3af); }
+              `}</style>
             </div>
           )}
         >

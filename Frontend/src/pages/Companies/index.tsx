@@ -69,7 +69,7 @@ const emptyForm = {
 
 export default function Companies() {
   const { user } = useAuth();
-  const isOwner  = user?.role === "owner";
+  const canDelete = !!user?.permissions?.find(p => p.module === "companies")?.actions.includes("delete");
 
   const [companies, setCompanies]     = useState<Company[]>([]);
   const [loading, setLoading]         = useState(true);
@@ -247,7 +247,7 @@ export default function Companies() {
 
                 <div className="flex gap-1 shrink-0">
                   <NxBtn color="icon" title="Edit Company" icon={Pencil} onClick={() => openEdit(co)} />
-                  {isOwner && <NxBtn color="icon" title="Delete Company" icon={Trash2} onClick={() => setDeleteTarget(co)} />}
+                  {canDelete && <NxBtn color="icon" title="Delete Company" icon={Trash2} onClick={() => setDeleteTarget(co)} />}
                 </div>
               </div>
 

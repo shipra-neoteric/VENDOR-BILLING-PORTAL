@@ -93,16 +93,11 @@ const DRI_OWN_ITEMS: NavItem[] = [
 ];
 
 // ── Permission helpers ─────────────────────────────────────────────────────────
-// Owner always sees every module regardless of what's in their stored permissions
-// array — otherwise a newly-added module (like Accounts Payment) stays invisible to
-// existing Owner accounts until someone remembers to backfill their permissions,
-// even though the backend already lets Owner bypass every authorizeOr check.
 function canView(moduleId: string, perms: PermEntry[] | undefined, role?: string): boolean {
   // Whole-database export/wipe-and-replace — never leak this to a role that
   // simply hasn't been assigned granular permissions yet (canView's own
   // fallback below treats an empty perms array as "can see everything").
   if (moduleId === "backup") return role === "owner";
-  if (role === "owner") return true;
   if (!perms || perms.length === 0) return true;
   const entry = perms.find(p => p.module === moduleId);
   return entry ? entry.actions.includes("view") : false;

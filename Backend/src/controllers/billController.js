@@ -215,23 +215,33 @@ exports.createBill = asyncHandler(async (req, res) => {
 
   // Snapshotted from the WO's own paymentMilestones subdoc (embedded, not a
   // separate collection) at creation time — purely a display/reference tag,
-  // doesn't feed into amount/GST/retention.
-  const milestone = (workOrder && req.body.milestoneId)
-    ? workOrder.paymentMilestones.id(req.body.milestoneId)
-    : null;
+  // doesn't feed into amount/GST/retention. `milestoneIds` (plural) lets more
+  // than one be billed together (e.g. two consultancy stages clearing at
+  // once); `milestoneId`/`milestoneStage` (singular) still get set to the
+  // first one for any older code/UI that only reads those.
+  const requestedMilestoneIds = Array.isArray(req.body.milestoneIds) && req.body.milestoneIds.length
+    ? req.body.milestoneIds
+    : (req.body.milestoneId ? [req.body.milestoneId] : []);
+  const milestones = workOrder
+    ? requestedMilestoneIds.map((id) => workOrder.paymentMilestones.id(id)).filter(Boolean)
+    : [];
+  const milestone = milestones[0] || null;
 
   // A milestone with no scope items linked to it (lineItems here carry no
   // scopeItemId) has no plannedQty/lastBilledQty to guard against double
   // billing — findOverbilledLineItem above only checks scope-item-linked
   // lines. So for that lump-sum case specifically, block raising a second
   // bill against the same milestone outright (one active bill per milestone).
-  if (milestone && !lineItems.some((li) => li.scopeItemId)) {
-    const alreadyBilled = await RunningBill.exists({
-      workOrderId: workOrder._id, milestoneId: milestone._id,
-      isActive: { $ne: false }, status: { $ne: 'rejected' },
-    });
-    if (alreadyBilled) {
-      return badRequest(res, `"${milestone.stage || milestone.type || 'This milestone'}" has already been billed — a lump-sum milestone can only be billed once.`);
+  if (milestones.length && !lineItems.some((li) => li.scopeItemId)) {
+    for (const m of milestones) {
+      const alreadyBilled = await RunningBill.exists({
+        workOrderId: workOrder._id,
+        $or: [{ milestoneId: m._id }, { milestoneIds: m._id }],
+        isActive: { $ne: false }, status: { $ne: 'rejected' },
+      });
+      if (alreadyBilled) {
+        return badRequest(res, `"${m.stage || m.type || 'This milestone'}" has already been billed — a lump-sum milestone can only be billed once.`);
+      }
     }
   }
 
@@ -244,6 +254,8 @@ exports.createBill = asyncHandler(async (req, res) => {
     billingCycle: cycleCount + 1,
     milestoneId:    milestone ? milestone._id : null,
     milestoneStage: milestone ? (milestone.stage || milestone.type || '') : '',
+    milestoneIds:    milestones.map((m) => m._id),
+    milestoneStages: milestones.map((m) => m.stage || m.type || ''),
     ...(workOrder ? {
       workOrderNo: workOrder.workOrderNo,
       projectId:   workOrder.projectId,
@@ -744,7 +756,7 @@ exports.l1AgmApprove = asyncHandler(async (req, res) => {
   if (bill.status !== 'verify-done') {
     return badRequest(res, `Cannot give L1 AGM approval for a bill with status '${bill.status}'`);
   }
-  if (bill.verificationBy && bill.verificationBy.toString() === req.user._id.toString() && req.user.role !== 'owner') {
+  if (bill.verificationBy && bill.verificationBy.toString() === req.user._id.toString()) {
     return badRequest(res, 'Whoever verified this bill cannot also give L1 AGM approval — segregation of duties requires a different approver.');
   }
   bill.status       = 'l1-approved';
@@ -778,7 +790,7 @@ exports.l2DirectorApprove = asyncHandler(async (req, res) => {
   if (bill.status !== 'l1-approved') {
     return badRequest(res, `Cannot give L2 Director approval for a bill with status '${bill.status}'`);
   }
-  if (bill.l1ApprovedBy && bill.l1ApprovedBy.toString() === req.user._id.toString() && req.user.role !== 'owner') {
+  if (bill.l1ApprovedBy && bill.l1ApprovedBy.toString() === req.user._id.toString()) {
     return badRequest(res, 'The L1 AGM approver cannot also give L2 Director approval — segregation of duties requires a different approver.');
   }
   bill.status       = 'approved';
@@ -965,13 +977,11 @@ exports.tmsCallback = asyncHandler(async (req, res) => {
   success(res, { bill }, 'Payment confirmed');
 });
 
-// Does this user hold the given module+action via the permission checklist
-// (Owner always passes) — for the in-controller, status-dependent checks
-// below, where the required permission isn't known until after the bill's
-// current status is read, so the route-level authorizeOr/authorizeAnyOr
-// gate has to stay broad.
+// Does this user hold the given module+action via the permission checklist —
+// for the in-controller, status-dependent checks below, where the required
+// permission isn't known until after the bill's current status is read, so
+// the route-level authorizeOr/authorizeAnyOr gate has to stay broad.
 function hasAction(user, module, action) {
-  if (user.role === 'owner') return true;
   const perm = (user.permissions || []).find(p => p.module === module);
   return !!perm?.actions?.includes(action);
 }

@@ -4,6 +4,7 @@ const User = require('../models/User');
 const asyncHandler = require('../utils/asyncHandler');
 const { success, created, fail, badRequest, unauthorized, forbidden, notFound } = require('../utils/responseFormatter');
 const { logAudit } = require('../utils/auditLog');
+const { mergeRolePermissions } = require('../middleware/auth');
 
 const clientIp = (req) => (req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '').toString().split(',')[0].trim();
 
@@ -41,6 +42,7 @@ exports.register = asyncHandler(async (req, res) => {
     ip: clientIp(req),
   });
 
+  await mergeRolePermissions(user);
   created(res, { token, user: userPayload(user) }, 'Registration successful');
 });
 
@@ -66,6 +68,7 @@ exports.login = asyncHandler(async (req, res) => {
     entityType: 'User', entityId: user._id, entityLabel: user.email,
     ip: clientIp(req),
   });
+  await mergeRolePermissions(user);
   success(res, { token, user: userPayload(user) }, 'Login successful');
 });
 
@@ -88,6 +91,7 @@ exports.switchUser = asyncHandler(async (req, res) => {
     entityType: 'User', entityId: target._id, entityLabel: target.email,
     ip: clientIp(req),
   });
+  await mergeRolePermissions(target);
   success(res, { token, user: userPayload(target) }, `Switched to ${target.name}`);
 });
 

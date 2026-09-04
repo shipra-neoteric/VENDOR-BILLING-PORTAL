@@ -7,15 +7,15 @@ const {
 
 router.use(authenticate);
 
-router.get('/templates',     authorizeOr('sla-settings', 'view', 'owner', 'gm'), listTemplates);
-router.post('/templates',    authorizeOr('sla-settings', 'create', 'owner', 'gm'), createTemplate);
-router.put('/templates/:id', authorizeOr('sla-settings', 'edit', 'owner', 'gm'), updateTemplate);
-router.delete('/templates/:id', authorizeOr('sla-settings', 'delete', 'owner', 'gm'), deleteTemplate);
+router.get('/templates',     authorizeOr('sla-settings', 'view'), listTemplates);
+router.post('/templates',    authorizeOr('sla-settings', 'create'), createTemplate);
+router.put('/templates/:id', authorizeOr('sla-settings', 'edit'), updateTemplate);
+router.delete('/templates/:id', authorizeOr('sla-settings', 'delete'), deleteTemplate);
 
-router.get('/instances',     authorizeOr('sla-dashboard', 'view', 'owner', 'gm', 'agm', 'accounts', 'process-coordinator', 'site-dri'), listInstances);
-router.get('/instances/:id', authorizeOr('sla-dashboard', 'view', 'owner', 'gm', 'agm', 'accounts', 'process-coordinator', 'site-dri'), getInstance);
+router.get('/instances',     authorizeOr('sla-dashboard', 'view'), listInstances);
+router.get('/instances/:id', authorizeOr('sla-dashboard', 'view'), getInstance);
 router.patch('/instances/:id/complete-stage', completeStage); // stage-assignment check happens in the controller
 
-router.get('/mis-report', authorizeOr('sla-dashboard', 'view', 'owner', 'gm', 'agm', 'accounts', 'process-coordinator', 'site-dri'), getMISReport);
+router.get('/mis-report', authorizeOr('sla-dashboard', 'view'), getMISReport);
 
 module.exports = router;

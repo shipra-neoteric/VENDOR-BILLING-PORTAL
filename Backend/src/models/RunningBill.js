@@ -52,6 +52,12 @@ const runningBillSchema = new mongoose.Schema(
     // into amount/GST/retention calculation, which are unaffected by this.
     milestoneId:    { type: mongoose.Schema.Types.ObjectId, default: null },
     milestoneStage: { type: String, default: '' },
+    // Same idea as milestoneId/milestoneStage above, but for billing more
+    // than one milestone in the same bill (e.g. two consultancy stages
+    // clearing together) — milestoneId/milestoneStage above still get set
+    // to the first one for any older code/UI that only reads those.
+    milestoneIds:     [{ type: mongoose.Schema.Types.ObjectId }],
+    milestoneStages:  [{ type: String }],
     projectId:   { type: mongoose.Schema.Types.ObjectId, ref: 'Project' },
     projectName: { type: String },
     projectLocation: { type: String, default: '' },

@@ -51,18 +51,15 @@ async function getApprovalConfig(doc) {
   return DepartmentApprovalConfig.findOne({ department: dept }).lean();
 }
 
-// owner always passes, regardless of any configured role list — matches
-// every existing hardcoded owner-bypass elsewhere in the approval chain.
 function roleAllowed(role, configuredRoles, fallbackRoles) {
-  if (role === 'owner') return true;
   const list = configuredRoles && configuredRoles.length ? configuredRoles : fallbackRoles;
   return list.includes(role);
 }
 
 // Named approvers are a stronger, more specific choice than a role list —
 // when a department DELIBERATELY names specific people or roles for a
-// stage, that narrows access down to exactly them (plus Owner), even over
-// someone who already holds an explicit module-permission grant — naming a
+// stage, that narrows access down to exactly them, even over someone who
+// already holds an explicit module-permission grant — naming a
 // department's approvers is a more specific decision than a blanket
 // checkbox. But when a department has configured NOTHING for this stage
 // (no named people, no role list — the default, unconfigured case), this
@@ -73,7 +70,6 @@ function roleAllowed(role, configuredRoles, fallbackRoles) {
 // explicitly granted 'agm-approve' via User Management — the hardcoded
 // role list alone silently ignored that grant.
 function approverAllowed(user, config, stage) {
-  if (user.role === 'owner') return true;
   if (!DEPARTMENT_APPROVER_RESTRICTIONS_ENABLED) return true;
   const fields = STAGE_FIELDS[stage];
   const userIds = config?.[fields.userIds];

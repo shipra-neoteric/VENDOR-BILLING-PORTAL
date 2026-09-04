@@ -205,12 +205,9 @@ function actorRole(by?: { name: string; role?: string } | string | null): string
   return by.role;
 }
 
-// A grant for module 'bill-requests' with the given action — Owner always
-// bypasses; agm/gm roles get their own stage's action even without an
-// explicit checklist grant, matching the backend route's hardcoded fallback.
+// A grant for module 'bill-requests' with the given action.
 function hasPerm(user: AuthUser | null, action: string): boolean {
   if (!user) return false;
-  if (user.role === "owner") return true;
   return !!user.permissions?.find(p => p.module === "bill-requests")?.actions.includes(action);
 }
 
@@ -341,11 +338,11 @@ export default function BillApproval() {
   const [searchParams] = useSearchParams();
   const openReqId = searchParams.get("open");
 
-  const canAgmApprove = user?.role === "agm" || hasPerm(user, "agm-approve");
-  const canGmApprove = user?.role === "gm" || hasPerm(user, "gm-approve");
+  const canAgmApprove = hasPerm(user, "agm-approve");
+  const canGmApprove = hasPerm(user, "gm-approve");
   // L3/L4 have no hardcoded role the way agm/gm do — only ever reachable via
-  // an explicit permission grant (or Owner, via hasPerm's own bypass), same
-  // as approverAllowed's own no-hardcoded-default on the backend.
+  // an explicit permission grant, same as approverAllowed's own
+  // no-hardcoded-default on the backend.
   const canL3Approve = hasPerm(user, "l3-approve");
   const canL4Approve = hasPerm(user, "l4-approve");
   const canRejectAny = canAgmApprove || canGmApprove || canL3Approve || canL4Approve || user?.role === "accounts" || hasPerm(user, "reject");
@@ -1004,6 +1001,7 @@ export default function BillApproval() {
                 <Th>Project</Th>
                 <Th>Department</Th>
                 <Th>Vendor</Th>
+                <Th>Amount</Th>
                 <Th>Date</Th>
                 <Th>Status</Th>
                 <Th>Actions</Th>
@@ -1012,6 +1010,7 @@ export default function BillApproval() {
             <Tbody>
               {reqPager.pageItems.map(r => {
                 const cfg = STATUS_CFG[r.status] ?? { color: "gray", label: r.status };
+                const reqAmount = r.items.reduce((s, it) => s + (it.amount ?? (it.rate ?? 0) * it.billedQty), 0);
                 return (
                   <Tr key={r._id} className="cursor-pointer" onClick={() => openViewReq(r)}>
                     <Td>
@@ -1034,6 +1033,7 @@ export default function BillApproval() {
                     <Td>{r.projectName}</Td>
                     <Td>{departmentLabel(resolveDeptRow(r))}</Td>
                     <Td>{r.vendorName}</Td>
+                    <Td className="font-mono">{fmt(reqAmount)}</Td>
                     <Td>{dayjs(r.createdAt).format("DD MMM YYYY")}</Td>
                     <Td className="whitespace-nowrap">
                       <div className="flex flex-wrap items-center gap-1">

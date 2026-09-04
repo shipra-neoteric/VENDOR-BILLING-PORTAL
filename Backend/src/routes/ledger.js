@@ -4,7 +4,7 @@ const { getSummary, getWorkOrderLedger } = require('../controllers/ledgerControl
 
 router.use(authenticate);
 
-router.get('/summary',      authorizeOr('ledger', 'view', 'owner', 'gm', 'agm', 'accounts'), getSummary);
-router.get('/:workOrderId', authorizeOr('ledger', 'view', 'owner', 'gm', 'agm', 'accounts'), getWorkOrderLedger);
+router.get('/summary',      authorizeOr('ledger', 'view'), getSummary);
+router.get('/:workOrderId', authorizeOr('ledger', 'view'), getWorkOrderLedger);
 
 module.exports = router;

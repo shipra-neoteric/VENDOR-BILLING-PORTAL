@@ -5,12 +5,11 @@ const Role = require('../models/Role');
 // Merges a role's library permissions (Backend/src/models/Role.js) into a
 // user's own permissions array — union per module, so a permission granted
 // either on the Role or directly on the User is honored either way. This is
-// what actually makes the Roles-tab UI's "Manage Permissions" page live: a
-// role's own hardcoded bypasses (owner/gm's `authorizeOr(...,'owner','gm')`
-// call sites) still apply on top and can't be edited away here — but for
-// modules gated purely by a permissions check (which is most of the app for
-// accounts/process-coordinator/site-dri, and quite a few for gm/agm too),
-// editing the role now genuinely changes what everyone on it can do.
+// what actually makes the Roles-tab UI's "Manage Permissions" page live:
+// access everywhere in the app is now decided purely by this merged
+// permissions array (no hardcoded owner/gm/agm/etc. role-name bypasses
+// remain in authorizeOr/authorizeAnyOr call sites), so editing a role here
+// genuinely changes what everyone on it can do.
 async function mergeRolePermissions(user) {
   const role = await Role.findOne({ name: user.role }).select('permissions').lean();
   if (!role || !role.permissions?.length) return user;
@@ -87,4 +86,4 @@ const authorizeAnyOr = (module, actions, ...roles) => (req, res, next) => {
   });
 };
 
-module.exports = { authenticate, authorize, authorizeOr, authorizeAnyOr, can };
+module.exports = { authenticate, authorize, authorizeOr, authorizeAnyOr, can, mergeRolePermissions };

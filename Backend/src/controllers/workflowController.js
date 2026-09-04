@@ -136,8 +136,7 @@ exports.completeStage = asyncHandler(async (req, res) => {
   const role = req.user.role;
   const isAssignedUser = stage.assignedUserId && String(stage.assignedUserId) === String(req.user._id);
   const isAssignedRole = stage.assignedRole === 'any' || stage.assignedRole === role;
-  const isOwner = role === 'owner';
-  if (!isOwner && !isAssignedUser && !isAssignedRole) {
+  if (!isAssignedUser && !isAssignedRole) {
     return forbidden(res, `Only ${stage.assignedRole === 'any' ? 'the assigned person' : stage.assignedRole} can complete this stage`);
   }
 

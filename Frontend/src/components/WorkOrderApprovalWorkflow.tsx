@@ -55,12 +55,9 @@ export interface ApprovalWorkOrder {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-// A grant for module 'work-orders' with the given action name — Owner always
-// bypasses, matching every other permission check in this codebase (e.g.
-// AccountsPayment's own hasPerm).
+// A grant for module 'work-orders' with the given action name.
 function hasPerm(user: AuthUser | null, action: string): boolean {
   if (!user) return false;
-  if (user.role === "owner") return true;
   return !!user.permissions?.find((p) => p.module === "work-orders")?.actions.includes(action);
 }
 
@@ -70,10 +67,12 @@ function idOf(by?: ActorRef): string | undefined {
 }
 
 const STAGE_ORDER: ApprovalStage[] = ["maker", "checker", "approver", "final"];
-// Human-facing role titles for the approval table (matches how this org
-// actually refers to these sign-offs).
+// Stage-based, not role-based — like Bill Approval's own L1-L4 labels, these
+// name the checkpoint (whoever's granted maker/checker/approver/ceo-approve
+// can act on it), not a specific job title, since checker/approver isn't
+// always literally an AGM/GM.
 const TABLE_ROLE_LABEL: Record<ApprovalStage, string> = {
-  maker: "Maker (L1)", checker: "AGM (L2)", approver: "GM (L3)", final: "Director (L4)",
+  maker: "L1 (Maker)", checker: "L2", approver: "L3", final: "L4 (Final)",
 };
 
 function MutedText({ text }: { text: string }) {
