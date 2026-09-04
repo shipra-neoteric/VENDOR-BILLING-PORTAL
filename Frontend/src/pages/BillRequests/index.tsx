@@ -391,21 +391,12 @@ export default function BillApproval() {
   };
   useEffect(load, []);
 
-  // Candidate L2 approvers — anyone with L2 (gm-approve) authority on the
-  // bill-requests module, either via an explicit permission grant or the
-  // built-in gm/owner role. Narrowed to the given bill's own department once
-  // it has one; a user with no department assigned yet is shown regardless
-  // (same rollout-safety fallback used everywhere else in this feature).
-  function l2ApproverOptions(department?: string, customDepartment?: string) {
-    return allUsers.filter((u) => {
-      if (department && u.department) {
-        if (u.department !== department) return false;
-        if (department === "custom" && (u.customDepartment || "") !== customDepartment) return false;
-      }
-      if (u.role === "owner" || u.role === "gm") return true;
-      const perm = u.permissions?.find((p) => p.module === "bill-requests");
-      return !!perm?.actions.includes("gm-approve");
-    });
+  // Every user is a candidate L2 approver — this is purely informational
+  // routing (whoever actually has L2 authority can still approve it
+  // regardless of who it's addressed to), so narrowing the list by role,
+  // permission, or department just hid people who should've been pickable.
+  function l2ApproverOptions(_department?: string, _customDepartment?: string) {
+    return allUsers;
   }
 
   const pendingAgmReqs = useMemo(() => billReqs.filter(r => r.status === "pending" && !r.isArchived), [billReqs]);

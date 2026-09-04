@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Dropdown, message } from "antd";
-import type { MenuProps } from "antd";
 import { LogOut, ArrowLeftRight, Undo2, Menu } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import type { AuthUser } from "../../context/AuthContext";
@@ -86,34 +85,11 @@ export default function Header({ onToggleSidebar }: HeaderProps) {
     .filter(u => u.isActive && u._id !== user?.id)
     .sort((a, b) => a.role.localeCompare(b.role) || a.name.localeCompare(b.name));
 
-  const menuItems: MenuProps["items"] = [
-    ...(isImpersonating ? [{
-      key: "back-to-admin",
-      icon: <Undo2 className="w-4 h-4" />,
-      label: `Back to Admin (${stashedAdmin!.user.name})`,
-    }] : []),
-    ...(canSwitch && otherUsers.length > 0 ? [{
-      key: "switch-account",
-      icon: <ArrowLeftRight className="w-4 h-4" />,
-      label: "Switch Account",
-      children: otherUsers.map(u => ({
-        key: `switch-${u._id}`,
-        label: (
-          <span>
-            {u.name} <span style={{ color: "var(--nx-text-2)", textTransform: "capitalize" }}>— {u.role}</span>
-          </span>
-        ),
-      })),
-    }] : []),
-    ...(isImpersonating || (canSwitch && otherUsers.length > 0) ? [{ type: "divider" as const }] : []),
-    { key: "logout", icon: <LogOut className="w-4 h-4" />, label: "Sign out", danger: true },
-  ];
-
-  const onMenuClick: MenuProps["onClick"] = ({ key }) => {
-    if (key === "logout") handleLogout();
-    else if (key === "back-to-admin") handleBackToAdmin();
-    else if (key.startsWith("switch-")) handleSwitch(key.replace("switch-", ""));
-  };
+  // Built by hand (not antd Menu's `children` submenu) because that
+  // submenu renders as its own popup portal that a className scoped to the
+  // Dropdown never reaches — with dozens of users it ran off the bottom of
+  // the screen with no way to scroll it back into view.
+  const rowClass = "flex items-center gap-2.5 w-full text-left px-3 py-2 text-[13px] rounded-md hover:bg-gray-100 dark:hover:bg-gray-700/50 transition-colors";
 
   return (
     <div
@@ -169,10 +145,43 @@ export default function Header({ onToggleSidebar }: HeaderProps) {
 
         {/* User dropdown */}
         <Dropdown
-          menu={{ items: menuItems, onClick: onMenuClick }}
           trigger={["click"]}
           placement="bottomRight"
           onOpenChange={(open) => { if (open) loadSwitchable(); }}
+          popupRender={() => (
+            <div className="min-w-[240px] bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700/50 p-1.5">
+              {isImpersonating && (
+                <>
+                  <button type="button" className={rowClass} onClick={handleBackToAdmin}>
+                    <Undo2 className="w-4 h-4 shrink-0" />
+                    <span className="truncate">Back to Admin ({stashedAdmin!.user.name})</span>
+                  </button>
+                  <div className="my-1 border-t border-gray-200 dark:border-gray-700/50" />
+                </>
+              )}
+              {canSwitch && otherUsers.length > 0 && (
+                <>
+                  <div className="flex items-center gap-2.5 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-gray-400">
+                    <ArrowLeftRight className="w-3.5 h-3.5" /> Switch Account
+                  </div>
+                  <div className="max-h-[320px] overflow-y-auto">
+                    {otherUsers.map(u => (
+                      <button key={u._id} type="button" className={rowClass} onClick={() => handleSwitch(u._id)}>
+                        <span className="truncate">
+                          {u.name} <span className="capitalize" style={{ color: "var(--nx-text-2)" }}>— {u.role}</span>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                  <div className="my-1 border-t border-gray-200 dark:border-gray-700/50" />
+                </>
+              )}
+              <button type="button" className={`${rowClass} text-red-600 dark:text-red-400`} onClick={handleLogout}>
+                <LogOut className="w-4 h-4 shrink-0" />
+                <span>Sign out</span>
+              </button>
+            </div>
+          )}
         >
           <div data-testid="user-menu-trigger" style={{ display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }}>
             {!isMobile && (

@@ -34,16 +34,15 @@ function canAssignRole(caller, role) {
   return role !== 'owner';
 }
 
-// A limited-permission caller can only grant a permission (module+action)
-// they themselves already hold — otherwise anyone with a narrow
-// 'user-management' grant could hand out capabilities they were never given,
-// e.g. granting someone else full 'accounts-payment' access.
-function canGrantPermissions(caller, permissions) {
-  if (TRUSTED_USER_MANAGER_ROLES.includes(caller.role)) return true;
-  const callerPerms = caller.permissions || [];
-  const callerHasAction = (module, action) =>
-    !!callerPerms.find((p) => p.module === module)?.actions?.includes(action);
-  return (permissions || []).every((p) => (p.actions || []).every((a) => callerHasAction(p.module, a)));
+// Previously restricted a limited-permission caller (anyone reaching this
+// route via a delegated 'user-management' grant rather than owner/gm) to
+// only handing out permissions they themselves already held. Removed per
+// explicit request: whoever has been granted 'user-management' access via
+// the role/permission matrix is now trusted the same way owner/gm always
+// were — reaching this route at all already requires that explicit grant
+// (see authorizeOr('user-management', 'edit', ...) in routes/users.js).
+function canGrantPermissions() {
+  return true;
 }
 
 // GET /api/users

@@ -56,7 +56,7 @@ const ADMIN_GROUPS: NavGroup[] = [
     label: "Professional Services",
     items: [
       { name: "Consultants",        path: "/consultants",   icon: <Ruler className="w-4 h-4" />,     moduleId: "consultants" },
-      { name: "Consultancy Orders", path: "/work-items?type=professional-services", icon: <FileText className="w-4 h-4" />, moduleId: "work-orders" },
+      { name: "Consultancy Orders", path: "/work-items?type=professional-services", icon: <FileText className="w-4 h-4" />, moduleId: "consultancy-orders" },
     ],
   },
   {

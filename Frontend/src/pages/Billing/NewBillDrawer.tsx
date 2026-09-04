@@ -260,28 +260,11 @@ export default function NewBillDrawer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  // Candidate L1 approvers — anyone with L1 (agm-approve) authority on the
-  // bill-requests module, either via an explicit permission grant or the
-  // built-in agm/owner role. Narrowed to this bill's own department once one
-  // is picked, but the dropdown itself is always available — this bill's
-  // department is optional, and a user with no department assigned yet (the
-  // field is new — most existing accounts haven't been migrated) is shown
-  // regardless, same "don't lock anyone out before rollout" fallback the
-  // backend visibility filter uses.
-  const l1ApproverOptions = useMemo(() => {
-    return allUsers.filter((u) => {
-      if (department && u.department) {
-        if (u.department !== department) return false;
-        // "Custom" isn't one team — it's an escape hatch for whatever team
-        // name was typed in, so two different custom departments must not be
-        // treated as the same one just because both picked "custom".
-        if (department === "custom" && (u.customDepartment || "") !== customDepartment) return false;
-      }
-      if (u.role === "owner" || u.role === "agm") return true;
-      const perm = u.permissions?.find((p) => p.module === "bill-requests");
-      return !!perm?.actions.includes("agm-approve");
-    });
-  }, [allUsers, department, customDepartment]);
+  // Every user is a candidate L1 approver — this is purely informational
+  // routing (whoever actually has L1 authority can still approve it
+  // regardless of who it's addressed to), so narrowing the list by role,
+  // permission, or department just hid people who should've been pickable.
+  const l1ApproverOptions = useMemo(() => allUsers, [allUsers]);
 
   // "Standalone" means what the backend actually checks: no Work Order
   // ends up linked to this bill (see the workOrderId payload line below),
