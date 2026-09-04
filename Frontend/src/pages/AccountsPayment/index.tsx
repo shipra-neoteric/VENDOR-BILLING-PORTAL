@@ -172,6 +172,11 @@ const netPayableFinal = (b: Bill) =>
     retentionAmount: b.retentionAmount ?? 0, advanceRecovery: b.advanceRecovery ?? 0,
     tdsAmount: b.tdsAmount ?? 0, adjustmentAmount: b.adjustmentAmount ?? 0,
   }).netPayable;
+// What the list/search should treat as "the amount" for a bill — once a bill
+// is Paid, that's its actual paidAmount (post-TDS/adjustment, from TMS), not
+// the pre-TDS netAfterAdvance figure still shown for bills in earlier stages.
+const displayAmount = (b: Bill) =>
+  b.status === "paid" ? (b.paidAmount ?? netPayableFinal(b)) : netAfterAdvance(b);
 const getLineItemsGross = (bill: Bill) =>
   (bill.lineItems || []).reduce(
     (sum, li) => sum + (Number(li.amount) || 0),
@@ -720,9 +725,13 @@ export default function AccountsPayment() {
         !search ||
         (b.billNo || "").toLowerCase().includes(q) ||
         (b.vendorName || "").toLowerCase().includes(q) ||
+        (b.vendorCode || "").toLowerCase().includes(q) ||
+        (b.companyName || "").toLowerCase().includes(q) ||
         (b.workOrderNo || "").toLowerCase().includes(q) ||
         (b.projectName || "").toLowerCase().includes(q) ||
-        (b.generatedBy || "").toLowerCase().includes(q);
+        (b.generatedBy || "").toLowerCase().includes(q) ||
+        (b.amount ?? 0).toFixed(2).includes(q) ||
+        displayAmount(b).toFixed(2).includes(q);
       const matchTab = matchesTab(b, activeTab);
       const matchProject = !projectFilter || b.projectId === projectFilter;
       const matchVendor = !vendorFilter || b.vendorCode === vendorFilter;
@@ -1423,7 +1432,7 @@ export default function AccountsPayment() {
                       ) : (r.vendorName || <span className="text-gray-300">—</span>)}
                     </Td>
                     <Td className="whitespace-nowrap truncate">{r.projectName || <span className="text-gray-300">—</span>}</Td>
-                    <Td className="text-right font-mono font-bold whitespace-nowrap">{fmt(netAfterAdvance(r))}</Td>
+                    <Td className="text-right font-mono font-bold whitespace-nowrap">{fmt(displayAmount(r))}</Td>
                     <Td className="whitespace-nowrap truncate"><NxBadge color={BILL_LIST_STATUS_CFG[r.status].color}>{BILL_LIST_STATUS_CFG[r.status].label}</NxBadge></Td>
                     <Td className="whitespace-nowrap">{r.billDate ? dayjs(r.billDate).format("DD MMM YYYY") : "—"}</Td>
                     <Td onClick={(e) => e.stopPropagation()}>

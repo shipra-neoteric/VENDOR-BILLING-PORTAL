@@ -9,6 +9,7 @@ const ctrl = require('../controllers/userController');
 // owner/gm only with no checklist fallback at all, so granting e.g. "User
 // Management: Create" to another role silently did nothing.
 router.get('/',               authenticate, authorizeOr('user-management', 'view',   'owner', 'gm'), ctrl.listUsers);
+router.get('/:id',            authenticate, authorizeOr('user-management', 'view',   'owner', 'gm'), ctrl.getUser);
 router.post('/',              authenticate, authorizeOr('user-management', 'create', 'owner', 'gm'), ctrl.createUser);
 router.put('/:id',            authenticate, authorizeOr('user-management', 'edit',   'owner', 'gm'), ctrl.updateUser);
 router.patch('/:id/password', authenticate, authorizeOr('user-management', 'edit',   'owner', 'gm'), ctrl.changePassword);

@@ -1,5 +1,29 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const Role = require('../models/Role');
+
+// Merges a role's library permissions (Backend/src/models/Role.js) into a
+// user's own permissions array — union per module, so a permission granted
+// either on the Role or directly on the User is honored either way. This is
+// what actually makes the Roles-tab UI's "Manage Permissions" page live: a
+// role's own hardcoded bypasses (owner/gm's `authorizeOr(...,'owner','gm')`
+// call sites) still apply on top and can't be edited away here — but for
+// modules gated purely by a permissions check (which is most of the app for
+// accounts/process-coordinator/site-dri, and quite a few for gm/agm too),
+// editing the role now genuinely changes what everyone on it can do.
+async function mergeRolePermissions(user) {
+  const role = await Role.findOne({ name: user.role }).select('permissions').lean();
+  if (!role || !role.permissions?.length) return user;
+
+  const merged = new Map((user.permissions || []).map(p => [p.module, new Set(p.actions)]));
+  for (const { module, actions } of role.permissions) {
+    const set = merged.get(module) || new Set();
+    for (const a of actions) set.add(a);
+    merged.set(module, set);
+  }
+  user.permissions = [...merged.entries()].map(([module, actions]) => ({ module, actions: [...actions] }));
+  return user;
+}
 
 const authenticate = async (req, res, next) => {
   let token;
@@ -17,6 +41,7 @@ const authenticate = async (req, res, next) => {
     req.user = await User.findById(decoded.id).select('-password');
     if (!req.user) return res.status(401).json({ message: 'User no longer exists' });
     if (!req.user.isActive) return res.status(403).json({ message: 'Account is deactivated' });
+    await mergeRolePermissions(req.user);
     next();
   } catch {
     res.status(401).json({ message: 'Not authorized — token invalid or expired' });

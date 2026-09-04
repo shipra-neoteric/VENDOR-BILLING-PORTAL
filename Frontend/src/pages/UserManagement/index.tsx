@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
-  Plus, Pencil, KeyRound, User, CheckCircle2, Ban, Users,
+  Plus, Pencil, KeyRound, CheckCircle2, Ban, Users, ShieldAlert, Trash2, Key,
 } from "lucide-react";
 import apiClient from "../../services/apiClient";
 import { useAuth } from "../../context/AuthContext";
@@ -14,24 +15,22 @@ import NxBadge from "../../ui/nexora/Badge";
 import type { NxBadgeColor } from "../../ui/nexora/Badge";
 import NxStatCard from "../../ui/nexora/StatCard";
 import Field from "../../ui/Field";
-import SField from "../../ui/SField";
 import UISwitch from "../../ui/Switch";
 import Modal from "../../ui/Modal";
 import ConfirmModal from "../../ui/ConfirmModal";
 import Card from "../../ui/Card";
-import Badge from "../../ui/Badge";
 import EmptyState from "../../ui/EmptyState";
 import DropdownMenu from "../../ui/DropdownMenu";
 import type { DropdownMenuItem } from "../../ui/DropdownMenu";
-import { Descriptions, DescItem } from "../../ui/Descriptions";
 import { Table, Thead, Tbody, Tr, Th, Td } from "../../ui/Table";
 import { usePagination } from "../../ui/usePagination";
 import Pagination from "../../ui/Pagination";
+import Segmented from "../../ui/Segmented";
 import dayjs from "dayjs";
 
 // ── Types ─────────────────────────────────────────────────────────
 
-interface AppUser {
+export interface AppUser {
   _id: string;
   name: string;
   email: string;
@@ -45,7 +44,20 @@ interface AppUser {
   permissions?: { module: string; actions: string[] }[];
 }
 
-type PermAction = "view" | "create" | "edit" | "delete" | "approve" | "request" | "maker" | "checker" | "approver" | "reject" | "ceo-approve" | "send-back" | "agm-approve" | "gm-approve" | "verify" | "l1-agm-approve" | "l2-director-approve" | "hold" | "release-hold" | "retry-tms" | "l1-review" | "l2-draw" | "l3-review" | "l4-approve";
+// A reusable permission set from the Roles library (see Backend/src/models/
+// Role.js) — Phase 1 of moving off per-user-only permissions. Assigning one
+// to a user (below) copies its permissions onto that user once; it does not
+// keep them in sync afterwards — see the Roles tab's own note on why.
+export interface RoleDoc {
+  _id: string;
+  name: string;
+  description?: string;
+  permissions: { module: string; actions: string[] }[];
+  isSystem: boolean;
+  userCount: number;
+}
+
+export type PermAction = "view" | "create" | "edit" | "delete" | "approve" | "request" | "maker" | "checker" | "approver" | "reject" | "ceo-approve" | "send-back" | "agm-approve" | "gm-approve" | "verify" | "l1-agm-approve" | "l2-director-approve" | "hold" | "release-hold" | "retry-tms" | "l1-review" | "l2-draw" | "l3-review" | "l4-approve";
 
 interface ModuleDef {
   id: string;
@@ -55,7 +67,7 @@ interface ModuleDef {
   actions: PermAction[];
 }
 
-const ACTION_CFG: Record<PermAction, { label: string; bg: string }> = {
+export const ACTION_CFG: Record<PermAction, { label: string; bg: string }> = {
   view:     { label: "View",     bg: "#6366f1" },
   create:   { label: "Create",   bg: "#16a34a" },
   edit:     { label: "Edit",     bg: "#2563eb" },
@@ -84,41 +96,45 @@ const ACTION_CFG: Record<PermAction, { label: string; bg: string }> = {
   "l4-approve": { label: "L4 GM Final Approval",bg: "#0d9488" },
 };
 
-const MODULE_DEFS: ModuleDef[] = [
+// Grouped and ordered to match the left Sidebar's own section layout
+// (Frontend/src/layouts/Sidebar/Sidebar.tsx's ADMIN_GROUPS) — so this
+// checklist reads the same way the nav a granted user will actually see
+// is laid out, not an arbitrary permissions-only grouping.
+export const MODULE_DEFS: ModuleDef[] = [
   { id: "dashboard",        name: "Dashboard",         icon: "▦",  group: "Overview",      actions: ["view"] },
-  { id: "companies",        name: "Companies",          icon: "🏢", group: "Project Setup", actions: ["view","create","edit","delete"] },
-  { id: "projects",         name: "Projects",           icon: "🏗️", group: "Project Setup", actions: ["view","create","edit","delete"] },
-  { id: "contractors",      name: "Contractors",        icon: "👷", group: "Project Setup", actions: ["view","create","edit","delete"] },
-  { id: "consultants",      name: "Consultants",        icon: "📐", group: "Project Setup", actions: ["view","create","edit","delete"] },
-  { id: "vendor-groups",    name: "Vendor Groups",      icon: "🔗", group: "Project Setup", actions: ["view","create","edit"] },
-  { id: "categories",       name: "Categories",         icon: "🏷️", group: "Project Setup", actions: ["view","create","edit","delete"] },
+  { id: "sla-dashboard",    name: "SLA Report",        icon: "⏱️", group: "Overview",      actions: ["view"] },
+  { id: "projects",         name: "Projects",           icon: "🏗️", group: "Overview",      actions: ["view","create","edit","delete"] },
+  { id: "contractors",      name: "Contractors",        icon: "👷", group: "Execution",     actions: ["view","create","edit","delete"] },
+  { id: "vendor-groups",    name: "Vendor Groups",      icon: "🔗", group: "Execution",     actions: ["view","create","edit"] },
   { id: "work-orders",      name: "Work Orders",        icon: "📋", group: "Execution",     actions: ["view","create","edit","delete","maker","checker","approver","ceo-approve","send-back"] },
   { id: "quotation-comparison", name: "Quotation Comparison", icon: "📑", group: "Execution", actions: ["view","create","approve"] },
   { id: "work-progress",    name: "Work Progress",      icon: "📊", group: "Execution",     actions: ["view","create","edit","delete"] },
   { id: "daily-progress-report", name: "Daily Progress Report", icon: "📅", group: "Execution", actions: ["view","create"] },
   { id: "drawing-requests", name: "Drawing Requests",   icon: "✏️", group: "Execution",     actions: ["view","create","edit","delete","l1-review","l2-draw","l3-review","l4-approve"] },
-  { id: "bill-requests",    name: "Bill Requests",      icon: "📨", group: "Billing",       actions: ["view","create","agm-approve","gm-approve","reject"] },
-  { id: "accounts-payment", name: "Accounts Payment",   icon: "💰", group: "Billing",       actions: ["view","edit","verify","l1-agm-approve","l2-director-approve","hold","release-hold","retry-tms","reject"] },
-  { id: "billing",          name: "Billing",            icon: "🧮", group: "Billing",       actions: ["view","create"] },
-  { id: "procurement-tracker", name: "Procurement Tracker", icon: "🔗", group: "Billing",   actions: ["view"] },
-  { id: "advance-payments", name: "Advance Payments",   icon: "🏦", group: "Billing",       actions: ["view","create","edit","delete"] },
+  { id: "consultants",      name: "Consultants",        icon: "📐", group: "Professional Services", actions: ["view","create","edit","delete"] },
   { id: "bill-review",      name: "Site Progress",      icon: "🧾", group: "Billing",       actions: ["view","approve"] },
+  { id: "bill-requests",    name: "Bill Approval",      icon: "📨", group: "Billing",       actions: ["view","create","agm-approve","gm-approve","reject"] },
+  { id: "billing",          name: "Billing",            icon: "🧮", group: "Billing",       actions: ["view","create"] },
+  { id: "accounts-payment", name: "Accounts Payment",   icon: "💰", group: "Billing",       actions: ["view","edit","verify","l1-agm-approve","l2-director-approve","hold","release-hold","retry-tms","reject"] },
+  { id: "procurement-tracker", name: "Procurement Tracker", icon: "🔗", group: "Billing",   actions: ["view"] },
   { id: "ledger",           name: "Ledger",             icon: "📒", group: "Billing",       actions: ["view"] },
-  { id: "user-management",  name: "User Management",    icon: "👥", group: "Admin",         actions: ["view","create","edit","delete"] },
+  { id: "advance-payments", name: "Advance Payments",   icon: "🏦", group: "Billing",       actions: ["view","create","edit","delete"] },
+  { id: "companies",        name: "Companies",          icon: "🏢", group: "Admin",         actions: ["view","create","edit","delete"] },
+  { id: "categories",       name: "Categories",         icon: "🏷️", group: "Admin",         actions: ["view","create","edit","delete"] },
   { id: "dri-dashboard",    name: "DRI Work Dashboard", icon: "🏗️", group: "Admin",         actions: ["view","create","edit"] },
   { id: "public-forms",     name: "Public Forms",       icon: "🔗", group: "Admin",         actions: ["view"] },
   { id: "audit-logs",       name: "Audit Logs",         icon: "🕘", group: "Admin",         actions: ["view"] },
-  { id: "sla-settings",     name: "SLA Settings",       icon: "⚙️", group: "SLA",           actions: ["view","create","edit","delete"] },
-  { id: "sla-dashboard",    name: "SLA Dashboard",      icon: "⏱️", group: "SLA",           actions: ["view"] },
+  { id: "user-management",  name: "User Management",    icon: "👥", group: "Admin",         actions: ["view","create","edit","delete"] },
+  { id: "sla-settings",     name: "SLA Settings",       icon: "⚙️", group: "Admin",         actions: ["view","create","edit","delete"] },
 ];
 
-function permsToMap(arr: { module: string; actions: string[] }[]): Record<string, PermAction[]> {
+export function permsToMap(arr: { module: string; actions: string[] }[]): Record<string, PermAction[]> {
   const out: Record<string, PermAction[]> = {};
   for (const { module, actions } of (arr ?? [])) out[module] = actions as PermAction[];
   return out;
 }
 
-function permsToArray(map: Record<string, PermAction[]>): { module: string; actions: PermAction[] }[] {
+export function permsToArray(map: Record<string, PermAction[]>): { module: string; actions: PermAction[] }[] {
   return Object.entries(map).filter(([, a]) => a.length > 0).map(([module, actions]) => ({ module, actions }));
 }
 
@@ -127,20 +143,20 @@ function permsToArray(map: Record<string, PermAction[]>): { module: string; acti
 // allows any custom role name typed in below, while still preserving
 // autocomplete on the 6 known literals wherever this type is used.
 type FixedRole = "owner" | "gm" | "agm" | "accounts" | "process-coordinator" | "site-dri";
-type UserRole = FixedRole | (string & {});
+export type UserRole = FixedRole | (string & {});
 
 // A sentinel option value (never a real role name) that the role picker below
 // uses to reveal the "type a new role name" input — kept out of ROLE_CFG so
 // it never gets treated as an actual assignable role.
-const CUSTOM_ROLE_OPTION = "__custom_role__";
-const isKnownRole = (r: string): boolean => Object.prototype.hasOwnProperty.call(ROLE_CFG, r);
+export const CUSTOM_ROLE_OPTION = "__custom_role__";
+export const isKnownRole = (r: string): boolean => Object.prototype.hasOwnProperty.call(ROLE_CFG, r);
 
 // ── Role config ───────────────────────────────────────────────────
 // `color` values are ui/Badge color names (not antd Tag color names).
 
-type BadgeColor = "gray" | "orange" | "green" | "red" | "amber" | "blue" | "purple" | "teal";
+export type BadgeColor = "gray" | "orange" | "green" | "red" | "amber" | "blue" | "purple" | "teal";
 
-const ROLE_CFG: Record<UserRole, { label: string; color: BadgeColor; description: string }> = {
+export const ROLE_CFG: Record<UserRole, { label: string; color: BadgeColor; description: string }> = {
   owner:      { label: "Owner / Admin",    color: "red",     description: "Full system access — all modules, user management" },
   gm:         { label: "General Manager",  color: "purple",  description: "Reviews DRI progress, generates bill requests, work order sign-off & Accounts Payment checker stage" },
   agm:        { label: "AGM",              color: "amber",   description: "Reviews DRI progress, generates bill requests, work order sign-off & first stage of bill approval" },
@@ -149,7 +165,7 @@ const ROLE_CFG: Record<UserRole, { label: string; color: BadgeColor; description
   "site-dri": { label: "Site DRI",         color: "orange",  description: "DRI Work Dashboard — logs daily progress only" },
 };
 
-const ROLE_OPTIONS = Object.entries(ROLE_CFG).map(([value, { label, description }]) => ({
+export const ROLE_OPTIONS = Object.entries(ROLE_CFG).map(([value, { label, description }]) => ({
   value: value as UserRole,
   label,
   description,
@@ -159,6 +175,13 @@ const ROLE_OPTIONS = Object.entries(ROLE_CFG).map(([value, { label, description 
 // maps each role onto the closest allowed Nexora badge color for the list-view
 // pills below — ROLE_CFG itself (and its "purple" for gm) stays untouched since
 // the create/edit modal's own role picker still renders through the old Badge.
+const DEPARTMENT_LABEL: Record<string, string> = {
+  civil: "Civil Team", marketing: "Marketing Team", planning: "Planning Team", maintenance: "Maintenance Team",
+};
+function departmentLabelForUser(dept: string): string {
+  return DEPARTMENT_LABEL[dept] || dept;
+}
+
 const NX_ROLE_COLOR: Record<UserRole, NxBadgeColor> = {
   owner: "red",
   gm: "indigo",
@@ -184,80 +207,123 @@ const initials = (name: string) =>
 
 // ── Module Permission Grid ────────────────────────────────────────
 
-function ModulePermsGrid({
+// One flattened "node" = one module+action pair, the actual unit this grid
+// grants/revokes — each gets its own card (module name folded into the
+// label) rather than being nested inside a per-module box.
+interface PermNode { modId: string; label: string; kind: string; }
+
+// Cosmetic-only categorization of an action, purely for the small "Read
+// node / Logic write / Purge data" subtext under each permission's label —
+// has no bearing on what the toggle actually grants.
+function actionKind(action: PermAction): string {
+  if (action === "view") return "Read node";
+  if (action === "delete") return "Purge data";
+  return "Logic write";
+}
+
+export function ModulePermsGrid({
   perms,
   onToggle,
 }: {
   perms: Record<string, PermAction[]>;
   onToggle: (mod: string, action: PermAction) => void;
 }) {
-  const groups = [...new Set(MODULE_DEFS.map(m => m.group))];
+  const [search, setSearch] = useState("");
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+
+  // Each individual module (Contractors, Work Orders, ...) is its own
+  // division — not the broader sidebar section (Execution, Billing, ...)
+  // those modules sit under. MODULE_DEFS' own declaration order already
+  // matches the sidebar's item order, so no re-sorting needed here.
+  const nodesByGroup = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return MODULE_DEFS.map(mod => {
+      const nodes: (PermNode & { action: PermAction })[] = [];
+      for (const action of mod.actions) {
+        const label = ACTION_CFG[action].label;
+        if (q && !`${mod.name} ${label}`.toLowerCase().includes(q)) continue;
+        nodes.push({ modId: mod.id, action, label, kind: actionKind(action) });
+      }
+      return { group: mod.name, nodes };
+    }).filter(g => g.nodes.length > 0);
+  }, [search]);
+
+  const assignedCount = Object.values(perms).reduce((s, actions) => s + actions.length, 0);
+  const isOn = (n: { modId: string; action: PermAction }) => (perms[n.modId] ?? []).includes(n.action);
+
+  function toggleGroup(nodes: { modId: string; action: PermAction }[], turnOn: boolean) {
+    for (const n of nodes) {
+      const on = isOn(n);
+      if (turnOn && !on) onToggle(n.modId, n.action);
+      if (!turnOn && on) onToggle(n.modId, n.action);
+    }
+  }
 
   return (
     <div className="border border-gray-200 dark:border-gray-700/40 rounded-lg overflow-hidden">
-      {/* Header */}
-      <div className="px-3.5 py-2.5 bg-gray-50 dark:bg-gray-800/40 border-b border-gray-200 dark:border-gray-700/40">
-        <div className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
-          Module Permissions
+      <div className="px-3.5 py-3 bg-gray-50 dark:bg-gray-800/40 border-b border-gray-200 dark:border-gray-700/40 flex items-center justify-between gap-3 flex-wrap">
+        <div>
+          <div className="text-[13px] font-bold text-[#1A1A2E] dark:text-[#F1F5F9]">Role Permission Matrix</div>
+          <div className="text-[11px] text-gray-400 font-mono mt-0.5">Assigned authorizations: {assignedCount}</div>
         </div>
-        <div className="text-[11.5px] text-gray-400 mt-0.5">
-          Tick exactly what this person should be able to do — nothing is granted automatically by role.
+        <div className="w-full sm:w-auto sm:min-w-[220px]">
+          <Field placeholder="Search matrix…" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
       </div>
 
-      {/* Module rows grouped */}
-      <div className="py-1">
-        {groups.map((group, gi) => (
-          <div key={group}>
-            {/* Group label */}
-            <div className={`text-[9.5px] font-bold text-gray-400 uppercase tracking-wider px-3.5 ${gi === 0 ? "pt-2 pb-1" : "pt-2.5 pb-1"}`}>
-              {group}
-            </div>
-            {MODULE_DEFS.filter(m => m.group === group).map(mod => {
-              const activeActions = perms[mod.id] ?? [];
-
-              return (
-                <div
-                  key={mod.id}
-                  className={`flex items-start gap-2.5 px-3.5 py-2 border-t border-gray-200 dark:border-gray-700/40 ${activeActions.length > 0 ? "bg-white dark:bg-transparent" : "bg-gray-50 dark:bg-gray-800/20"}`}
-                >
-                  {/* Icon + Name */}
-                  <div className="flex items-center gap-1.5 w-[150px] shrink-0 pt-0.5">
-                    <span className="text-sm shrink-0">{mod.icon}</span>
-                    <span className="text-[12.5px] font-semibold text-[#1A1A2E] dark:text-[#F1F5F9]">
-                      {mod.name}
-                    </span>
+      <div className="p-3 flex flex-col gap-3">
+        {nodesByGroup.map(({ group, nodes }) => {
+          const allOn = nodes.every(isOn);
+          const isCollapsed = !!collapsed[group];
+          return (
+            <div key={group} className="rounded-lg border border-gray-200 dark:border-gray-700/40 bg-white dark:bg-transparent overflow-hidden">
+              <div className="flex items-center justify-between gap-2 px-3.5 py-2.5 bg-gray-100 dark:bg-gray-800/60 border-b border-gray-200 dark:border-gray-700/40">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700/40 flex items-center justify-center shrink-0">
+                    <Key className="w-3.5 h-3.5 text-gray-400" />
                   </div>
-
-                  {/* Checklist of actions — full labels, real checkboxes, never ambiguous */}
-                  <div className="flex gap-x-3.5 gap-y-1.5 flex-wrap flex-1">
-                    {mod.actions.map(action => {
-                      const cfg = ACTION_CFG[action];
-                      const on  = activeActions.includes(action);
-                      return (
-                        <label key={action} className="flex items-center gap-1.5 cursor-pointer select-none">
-                          <span
-                            onClick={() => onToggle(mod.id, action)}
-                            className="w-[15px] h-[15px] rounded flex items-center justify-center shrink-0 text-[10px] text-white font-bold transition-colors"
-                            style={{
-                              border: `1.5px solid ${on ? cfg.bg : "var(--nx-border, #E5E7EB)"}`,
-                              background: on ? cfg.bg : "transparent",
-                            }}
-                          >
-                            {on ? "✓" : ""}
-                          </span>
-                          <span className={`text-xs ${on ? "text-[#1A1A2E] dark:text-[#F1F5F9] font-semibold" : "text-gray-400 dark:text-gray-500"}`}>
-                            {cfg.label}
-                          </span>
-                        </label>
-                      );
-                    })}
+                  <div>
+                    <div className="text-[13px] font-bold text-[#1A1A2E] dark:text-[#F1F5F9]">{group}</div>
+                    <div className="text-[10.5px] text-gray-400">{nodes.length} Node{nodes.length !== 1 ? "s" : ""}</div>
                   </div>
                 </div>
-              );
-            })}
-          </div>
-        ))}
+                <div className="flex items-center gap-3 shrink-0">
+                  <span className="text-[11px] text-gray-400 whitespace-nowrap hidden sm:inline">Select unit</span>
+                  <UISwitch checked={allOn} onChange={(v) => toggleGroup(nodes, v)} onLabel="" offLabel="" />
+                  <button type="button" onClick={() => setCollapsed(c => ({ ...c, [group]: !c[group] }))} className="text-gray-400 hover:text-primary w-5 text-center">
+                    {isCollapsed ? "▾" : "▴"}
+                  </button>
+                </div>
+              </div>
+              {!isCollapsed && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 px-3.5 pt-3.5 pb-3.5">
+                  {nodes.map(n => {
+                    const on = isOn(n);
+                    return (
+                      <div
+                        key={`${n.modId}:${n.action}`}
+                        className={`flex items-center justify-between gap-3 rounded-lg border px-3.5 py-3 ${on ? "border-orange-300 dark:border-orange-500/40 bg-orange-50 dark:bg-orange-500/10" : "border-gray-200 dark:border-gray-700/40 bg-white dark:bg-transparent"}`}
+                      >
+                        <div className="min-w-0">
+                          <div className={`text-[13px] font-semibold truncate ${on ? "text-orange-700 dark:text-orange-300" : "text-[#1A1A2E] dark:text-[#F1F5F9]"}`}>
+                            {n.label}
+                          </div>
+                          <div className="text-[10.5px] text-gray-400 flex items-center gap-1 mt-0.5">
+                            <span className="w-1 h-1 rounded-full bg-gray-300 inline-block shrink-0" /> {n.kind}
+                          </div>
+                        </div>
+                        <span className="shrink-0"><UISwitch checked={on} onChange={() => onToggle(n.modId, n.action)} onLabel="" offLabel="" /></span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
+        {nodesByGroup.length === 0 && (
+          <div className="text-center py-10 text-gray-400 text-sm">No matching permissions</div>
+        )}
       </div>
     </div>
   );
@@ -267,42 +333,105 @@ function ModulePermsGrid({
 
 export default function UserManagement() {
   const { user: me } = useAuth();
+  const navigate = useNavigate();
+
+  // ── Roles library (Phase 1 — additive; Users tab below is untouched) ──
+  const [mainTab, setMainTab] = useState<"users" | "roles">("users");
+  const [roles, setRoles] = useState<RoleDoc[]>([]);
+  const [rolesLoading, setRolesLoading] = useState(false);
+  // Create modal — name + description only; permissions are set afterwards
+  // via "Manage Permissions" below.
+  const [roleModalOpen, setRoleModalOpen] = useState(false);
+  const [roleNameField, setRoleNameField] = useState("");
+  const [roleDescField, setRoleDescField] = useState("");
+  const [roleSaving, setRoleSaving] = useState(false);
+  // Rename — the pencil icon's own narrow action, separate from the
+  // permissions modal below.
+  const [renameTarget, setRenameTarget] = useState<RoleDoc | null>(null);
+  const [renameField, setRenameField] = useState("");
+  const [renaming, setRenaming] = useState(false);
+  const [deleteRoleTarget, setDeleteRoleTarget] = useState<RoleDoc | null>(null);
+  const [deletingRole, setDeletingRole] = useState(false);
+  const roleFormErrors = useFormErrors<"name">();
+  const renameFormErrors = useFormErrors<"name">();
+
+  const loadRoles = useCallback(() => {
+    setRolesLoading(true);
+    apiClient.get<{ roles: RoleDoc[] }>("/roles")
+      .then(r => setRoles(r.data.roles || []))
+      .catch(() => toast.error("Failed to load roles"))
+      .finally(() => setRolesLoading(false));
+  }, []);
+  // Loaded on mount regardless of tab — the Add/Edit User form's own
+  // "copy from role" picker below needs the list too, not just the Roles tab.
+  useEffect(() => { loadRoles(); }, [loadRoles]);
+
+  function openCreateRole() {
+    roleFormErrors.clearAll();
+    setRoleNameField(""); setRoleDescField("");
+    setRoleModalOpen(true);
+  }
+  async function handleSaveRole() {
+    if (!roleNameField.trim()) {
+      roleFormErrors.setError("name", "Role name is required");
+      return;
+    }
+    setRoleSaving(true);
+    try {
+      await apiClient.post<{ role: RoleDoc }>("/roles", { name: roleNameField, description: roleDescField });
+      toast.success("Role created");
+      setRoleModalOpen(false);
+      loadRoles();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || "Failed to create role");
+    } finally {
+      setRoleSaving(false);
+    }
+  }
+
+  function openRenameRole(r: RoleDoc) {
+    setRenameTarget(r);
+    renameFormErrors.clearAll();
+    setRenameField(r.name);
+  }
+  async function handleRenameRole() {
+    if (!renameTarget) return;
+    if (!renameField.trim()) {
+      renameFormErrors.setError("name", "Role name is required");
+      return;
+    }
+    setRenaming(true);
+    try {
+      await apiClient.patch(`/roles/${renameTarget._id}/rename`, { name: renameField });
+      toast.success("Role renamed");
+      setRenameTarget(null);
+      loadRoles();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || "Failed to rename role");
+    } finally {
+      setRenaming(false);
+    }
+  }
+  async function handleDeleteRole() {
+    if (!deleteRoleTarget) return;
+    setDeletingRole(true);
+    try {
+      await apiClient.delete(`/roles/${deleteRoleTarget._id}`);
+      toast.success("Role deleted");
+      setDeleteRoleTarget(null);
+      loadRoles();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || "Failed to delete role");
+    } finally {
+      setDeletingRole(false);
+    }
+  }
 
   const [users, setUsers]     = useState<AppUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch]   = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
   const [activeFilter, setActiveFilter] = useState<"all" | "active" | "inactive">("all");
-
-  // Create / Edit modal
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [editUser, setEditUser]     = useState<AppUser | null>(null);
-  const [saving, setSaving]         = useState(false);
-  const [perms, setPerms]           = useState<Record<string, PermAction[]>>({});
-
-  const [nameField, setNameField]     = useState("");
-  const [emailField, setEmailField]   = useState("");
-  const [mobileField, setMobileField] = useState("");
-  const [slackUserIdField, setSlackUserIdField] = useState("");
-  const [departmentField, setDepartmentField] = useState("");
-  const [customDepartmentField, setCustomDepartmentField] = useState("");
-  const [passwordField, setPasswordField] = useState("");
-  const [roleField, setRoleField]     = useState<UserRole>("site-dri");
-  // Drives the role picker's "type a new role name" input — shown only while
-  // creating/editing with a role outside the fixed 6 (either the sentinel was
-  // just picked, or an existing user's own role turns out to already be a
-  // custom one).
-  const [isCustomRole, setIsCustomRole] = useState(false);
-  const [customRoleInput, setCustomRoleInput] = useState("");
-  const [isActiveField, setIsActiveField] = useState(true);
-  const formErrors = useFormErrors<"name" | "email" | "mobile" | "password" | "role">();
-
-  function togglePerm(mod: string, action: PermAction) {
-    setPerms(prev => {
-      const cur = prev[mod] ?? [];
-      return { ...prev, [mod]: cur.includes(action) ? cur.filter(a => a !== action) : [...cur, action] };
-    });
-  }
 
   // Password modal
   const [pwdOpen, setPwdOpen]     = useState(false);
@@ -341,6 +470,7 @@ export default function UserManagement() {
         !q ||
         u.name.toLowerCase().includes(q) ||
         u.email.toLowerCase().includes(q) ||
+        u._id.toLowerCase().includes(q) ||
         ROLE_CFG[u.role]?.label.toLowerCase().includes(q);
       const matchRole = roleFilter === "all" || u.role === roleFilter;
       const matchActive = activeFilter === "all" || (activeFilter === "active" ? u.isActive : !u.isActive);
@@ -362,73 +492,11 @@ export default function UserManagement() {
   // ── Handlers ──────────────────────────────────────────────────
 
   function openCreate() {
-    setEditUser(null);
-    formErrors.clearAll();
-    setNameField(""); setEmailField(""); setMobileField(""); setSlackUserIdField(""); setPasswordField("");
-    setDepartmentField(""); setCustomDepartmentField("");
-    setRoleField("site-dri"); setIsActiveField(true);
-    setIsCustomRole(false); setCustomRoleInput("");
-    setPerms({});
-    setDrawerOpen(true);
+    navigate("/users/new");
   }
 
   function openEdit(u: AppUser) {
-    setEditUser(u);
-    formErrors.clearAll();
-    setNameField(u.name); setEmailField(u.email); setMobileField(u.mobile || ""); setSlackUserIdField(u.slackUserId || "");
-    setDepartmentField(u.department || ""); setCustomDepartmentField(u.customDepartment || "");
-    setPasswordField(""); setRoleField(u.role); setIsActiveField(u.isActive);
-    const existingIsCustom = !isKnownRole(u.role);
-    setIsCustomRole(existingIsCustom);
-    setCustomRoleInput(existingIsCustom ? u.role : "");
-    setPerms(u.permissions ? permsToMap(u.permissions) : {});
-    setDrawerOpen(true);
-  }
-
-  function validateForm(): boolean {
-    formErrors.clearAll();
-    let ok = true;
-    if (!nameField.trim()) { formErrors.setError("name", "Name is required"); ok = false; }
-    if (!emailField.trim()) { formErrors.setError("email", "Email is required"); ok = false; }
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailField.trim())) { formErrors.setError("email", "Enter a valid email"); ok = false; }
-    if (mobileField.trim() && !/^[0-9+\-\s]{6,15}$/.test(mobileField.trim())) { formErrors.setError("mobile", "Enter a valid mobile number"); ok = false; }
-    if (!editUser) {
-      if (!passwordField) { formErrors.setError("password", "Password is required"); ok = false; }
-      else if (passwordField.length < 6) { formErrors.setError("password", "At least 6 characters"); ok = false; }
-    }
-    if (!roleField) { formErrors.setError("role", "Select a role"); ok = false; }
-    return ok;
-  }
-
-  async function handleSave() {
-    if (!validateForm()) return;
-
-    setSaving(true);
-    try {
-      const payload: Record<string, unknown> = {
-        name: nameField, email: emailField, mobile: mobileField, slackUserId: slackUserIdField, role: roleField, isActive: isActiveField,
-        permissions: permsToArray(perms),
-        department: departmentField,
-        customDepartment: departmentField === "custom" ? customDepartmentField : "",
-      };
-      if (!editUser) payload.password = passwordField;
-
-      if (editUser) {
-        const res = await apiClient.put<{ user: AppUser }>(`/users/${editUser._id}`, payload);
-        setUsers((prev) => prev.map((u) => u._id === editUser._id ? res.data.user : u));
-        toast.success("User updated");
-      } else {
-        const res = await apiClient.post<{ user: AppUser }>("/users", payload);
-        setUsers((prev) => [res.data.user, ...prev]);
-        toast.success(`User ${res.data.user.name} created`);
-      }
-      setDrawerOpen(false);
-    } catch (err: unknown) {
-      const e = err as { response?: { data?: { message?: string } } };
-      toast.error(e?.response?.data?.message || "Save failed");
-    } finally {
-      setSaving(false);
-    }
+    navigate(`/users/${u._id}/edit`);
   }
 
   function openPassword(u: AppUser) {
@@ -492,11 +560,76 @@ export default function UserManagement() {
     <div>
       <PageHeader
         icon={Users}
-        title="User Management"
-        subtitle="Manage team members, roles, and access levels"
-        actions={<NxBtn color="primary" icon={Plus} label="Add User" onClick={openCreate} />}
+        title="System Access Control"
+        subtitle="Manage user accounts, roles, and granular permissions"
+        actions={mainTab === "users"
+          ? <NxBtn color="primary" icon={Plus} label="Register New User" onClick={openCreate} />
+          : <NxBtn color="primary" icon={Plus} label="Define New Role" onClick={openCreateRole} />}
       />
 
+      <div className="mb-4">
+        <Segmented
+          value={mainTab}
+          onChange={(v) => setMainTab(v as "users" | "roles")}
+          options={[
+            { value: "users", label: "Users" },
+            { value: "roles", label: "Roles" },
+          ]}
+        />
+      </div>
+
+      {mainTab === "roles" ? (
+        <>
+          {rolesLoading ? (
+            <div className="flex justify-center py-16 text-gray-400 text-sm">Loading…</div>
+          ) : roles.length === 0 ? (
+            <EmptyState icon={ShieldAlert} title="No roles yet" />
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+              {roles.map((r) => {
+                const authNodes = r.permissions.reduce((s, p) => s + p.actions.length, 0);
+                return (
+                <Card key={r._id} className="relative overflow-hidden flex flex-col gap-3">
+                  <ShieldAlert className="absolute -right-3 -top-3 w-24 h-24 text-orange-50 dark:text-orange-500/5 pointer-events-none" strokeWidth={1} />
+                  <div className="flex items-start justify-between gap-2 relative">
+                    <div className="w-11 h-11 rounded-xl bg-orange-50 dark:bg-orange-500/10 flex items-center justify-center shrink-0">
+                      <ShieldAlert className="w-5 h-5 text-primary" />
+                    </div>
+                    <div className="flex items-center gap-2.5">
+                      <span className="text-[11px] font-mono text-gray-400">{authNodes} Auth Node{authNodes !== 1 ? "s" : ""}</span>
+                      <div className="flex items-center gap-1">
+                        <button type="button" title="Rename" onClick={() => openRenameRole(r)} className="text-gray-400 hover:text-primary">
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                        <button type="button" title="Delete" onClick={() => setDeleteRoleTarget(r)} className="text-gray-400 hover:text-red-600">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="relative">
+                    <div className="font-bold text-[15px] text-[#1A1A2E] dark:text-[#F1F5F9]">
+                      {ROLE_CFG[r.name]?.label || r.name}
+                    </div>
+                    <p className="text-[13px] text-gray-500 dark:text-gray-400 mt-1">
+                      {r.description || "Configure global access rights for this role type."}
+                    </p>
+                  </div>
+                  <div className="relative flex items-center justify-between gap-2">
+                    <Btn
+                      outline small icon={Users} label="Manage Users"
+                      onClick={() => setMainTab("users")}
+                    />
+                    <span className="text-[11px] text-gray-400">{r.userCount} user{r.userCount !== 1 ? "s" : ""}</span>
+                  </div>
+                </Card>
+                );
+              })}
+            </div>
+          )}
+        </>
+      ) : (
+        <>
       {/* ── Stats ── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-5">
         <NxStatCard label="Total Users" value={stats.total} icon={Users} active={activeFilter === "all"} onClick={() => setActiveFilter("all")} />
@@ -527,7 +660,7 @@ export default function UserManagement() {
 
       {/* ── Filters ── */}
       <div className="flex gap-2.5 flex-wrap items-center mb-3.5">
-        <SearchFilter placeholder="Search by name or email…" value={search} onChange={setSearch} />
+        <SearchFilter placeholder="Search by Name, Email, or UID…" value={search} onChange={setSearch} />
         <DropdownSelectFilter
           value={roleFilter}
           onChange={setRoleFilter}
@@ -549,11 +682,11 @@ export default function UserManagement() {
           <Table className="min-w-[900px]">
             <Thead>
               <Tr>
-                <Th className="w-[30%]">User</Th>
-                <Th className="w-[18%]">Role</Th>
-                <Th className="w-[18%]">Status</Th>
-                <Th className="w-[16%]">Joined</Th>
-                <Th className="w-[18%]">Actions</Th>
+                <Th className="w-[26%]">Identity</Th>
+                <Th className="w-[24%]">Contact Info</Th>
+                <Th className="w-[20%]">Department / Role</Th>
+                <Th className="w-[14%]">Account State</Th>
+                <Th className="w-[16%]">Actions</Th>
               </Tr>
             </Thead>
             <Tbody>
@@ -578,13 +711,23 @@ export default function UserManagement() {
                             {u.name}
                             {myId === u._id && <span className="ml-2 align-middle"><NxBadge color="orange">You</NxBadge></span>}
                           </div>
-                          <div className="text-[13px] text-gray-400 mt-0.5 truncate" title={u.email}>{u.email}</div>
+                          <div className="text-[11px] text-gray-400 mt-0.5 font-mono truncate">UID: {u._id.slice(-8)}</div>
                         </div>
                       </div>
                     </Td>
-                    <Td><NxBadge color={NX_ROLE_COLOR[u.role] || "gray"}>{ROLE_CFG[u.role]?.label || u.role}</NxBadge></Td>
+                    <Td>
+                      <div className="text-[13px] text-[#1A1A2E] dark:text-[#F1F5F9] truncate" title={u.email}>{u.email}</div>
+                      <div className="text-[11px] text-gray-400 mt-0.5">Joined {dayjs(u.createdAt).format("DD MMM YYYY")}</div>
+                    </Td>
+                    <Td>
+                      <div className="flex flex-col gap-1 items-start">
+                        {u.department && (
+                          <NxBadge color="slate">{u.department === "custom" ? (u.customDepartment || "Custom") : departmentLabelForUser(u.department)}</NxBadge>
+                        )}
+                        <NxBadge color={NX_ROLE_COLOR[u.role] || "gray"}>{ROLE_CFG[u.role]?.label || u.role}</NxBadge>
+                      </div>
+                    </Td>
                     <Td><UISwitch checked={u.isActive} onChange={() => handleToggleActive(u)} onLabel="Active" offLabel="Inactive" /></Td>
-                    <Td className="text-[13px] text-gray-400">{dayjs(u.createdAt).format("DD MMM YYYY")}</Td>
                     <Td>
                       <div className="flex items-center gap-1">
                         <NxBtn color="icon" title="Edit" icon={Pencil} onClick={() => openEdit(u)} />
@@ -600,152 +743,70 @@ export default function UserManagement() {
           {totalPages > 1 && <div className="mt-4"><Pagination page={page} totalPages={totalPages} onChange={setPage} /></div>}
         </>
       )}
+        </>
+      )}
 
-      {/* ── Create / Edit Modal ── */}
-      {drawerOpen && (
+      {/* ── Create Role Modal — name + description only; permissions are set
+          next, via "Manage Permissions" on the new role's card. ── */}
+      {roleModalOpen && (
         <Modal
-          icon={User}
-          title={editUser ? "Edit User" : "Add New User"}
-          subtitle={editUser ? `Editing account for ${editUser.name}` : "Create a new team member account"}
-          extraWide
-          onClose={() => setDrawerOpen(false)}
+          icon={ShieldAlert}
+          title="Define New Role"
+          onClose={() => setRoleModalOpen(false)}
           footer={
             <div className="flex justify-end gap-2">
-              <Btn outline label="Cancel" onClick={() => setDrawerOpen(false)} />
-              <Btn color="primary" label={editUser ? "Save Changes" : "Create User"} loading={saving} onClick={handleSave} />
+              <Btn outline label="Cancel" onClick={() => setRoleModalOpen(false)} />
+              <Btn color="primary" label="Create Role" loading={roleSaving} onClick={handleSaveRole} />
             </div>
           }
         >
           <div className="flex flex-col gap-4">
             <Field
-              label="Full Name" required placeholder="e.g. Rahul Sharma"
-              value={nameField} onChange={(e) => setNameField(e.target.value)}
-              error={formErrors.errors.name}
+              label="Role Name" required placeholder="e.g. Purchase Coordinator"
+              value={roleNameField} onChange={(e) => setRoleNameField(e.target.value)}
+              error={roleFormErrors.errors.name}
             />
             <Field
-              label="Email Address" required placeholder="e.g. rahul@neotericgrp.in"
-              value={emailField} onChange={(e) => setEmailField(e.target.value)}
-              error={formErrors.errors.email}
+              label="Description" placeholder="What is this role for?"
+              value={roleDescField} onChange={(e) => setRoleDescField(e.target.value)}
             />
-            <Field
-              label="Mobile" placeholder="e.g. 9876543210"
-              value={mobileField} onChange={(e) => setMobileField(e.target.value)}
-              error={formErrors.errors.mobile}
-            />
-            <Field
-              label="Slack Member ID" placeholder="e.g. U0123ABCDE"
-              value={slackUserIdField} onChange={(e) => setSlackUserIdField(e.target.value)}
-            />
-            <SField
-              label="Department"
-              placeholder="Select department (optional)"
-              value={departmentField}
-              onChange={(v) => { setDepartmentField(v); if (v !== "custom") setCustomDepartmentField(""); }}
-              options={[
-                { value: "", label: "— None —" },
-                { value: "civil", label: "Civil Team" },
-                { value: "marketing", label: "Marketing Team" },
-                { value: "planning", label: "Planning Team" },
-                { value: "maintenance", label: "Maintenance Team" },
-                { value: "custom", label: "Custom Team" },
-              ]}
-              hint="Which team's bills this person should see and be able to approve in Bill Approval."
-            />
-            {departmentField === "custom" && (
-              <Field
-                label="Custom Team Name"
-                placeholder="e.g. Legal, IT, Procurement"
-                value={customDepartmentField}
-                onChange={(e) => setCustomDepartmentField(e.target.value)}
-              />
-            )}
-            {!editUser && (
-              <Field
-                label="Password" required type="password" placeholder="Set initial password"
-                value={passwordField} onChange={(e) => setPasswordField(e.target.value)}
-                error={formErrors.errors.password}
-              />
-            )}
-            <SField
-              label="Role" required
-              placeholder="Select role…"
-              value={isCustomRole ? CUSTOM_ROLE_OPTION : roleField}
-              onChange={(v) => {
-                if (v === CUSTOM_ROLE_OPTION) {
-                  setIsCustomRole(true);
-                  setCustomRoleInput("");
-                  setRoleField("");
-                  // A brand-new custom role starts with zero permissions —
-                  // only applies the moment it's freshly picked here, not
-                  // when merely re-opening an existing custom-role user (see
-                  // openEdit, which never touches isCustomRole this way).
-                  setPerms({});
-                } else {
-                  setIsCustomRole(false);
-                  setCustomRoleInput("");
-                  setRoleField(v as UserRole);
-                }
-              }}
-              options={[
-                ...ROLE_OPTIONS.map((r) => ({ value: r.value, label: ROLE_CFG[r.value]?.label })),
-                { value: CUSTOM_ROLE_OPTION, label: "+ Create custom role…" },
-              ]}
-              renderOption={(o) => {
-                if (o.value === CUSTOM_ROLE_OPTION) {
-                  return (
-                    <div className="py-0.5">
-                      <Badge color="gray">+ Create custom role…</Badge>
-                      <div className="text-xs text-gray-400 mt-1">Define a new role and assign its permissions below</div>
-                    </div>
-                  );
-                }
-                const role = o.value as UserRole;
-                return (
-                  <div className="py-0.5">
-                    <Badge color={ROLE_CFG[role]?.color}>{ROLE_CFG[role]?.label}</Badge>
-                    <div className="text-xs text-gray-400 mt-1">{ROLE_CFG[role]?.description}</div>
-                  </div>
-                );
-              }}
-              error={formErrors.errors.role}
-            />
-            {isCustomRole && (
-              <Field
-                label="Custom Role Name" required placeholder="e.g. Site Supervisor"
-                value={customRoleInput}
-                onChange={(e) => { setCustomRoleInput(e.target.value); setRoleField(e.target.value.trim()); }}
-                error={formErrors.errors.role}
-                hint="This role starts with zero permissions — tick what it should access below."
-              />
-            )}
-            <div>
-              <span className="block text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wide mb-1.5">Account Status</span>
-              <UISwitch
-                checked={isActiveField} onChange={setIsActiveField}
-                onLabel="Active" offLabel="Inactive"
-              />
-            </div>
-
-            {/* ── Module Permissions ── */}
-            <ModulePermsGrid perms={perms} onToggle={togglePerm} />
-
-            {editUser && (
-              <div className="bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700/40 rounded-lg p-3.5">
-                <div className="text-[13px] text-primary font-bold mb-2">Account Info</div>
-                <Descriptions columns={1}>
-                  <DescItem label="Member Since">{dayjs(editUser.createdAt).format("DD MMM YYYY")}</DescItem>
-                  <DescItem label="Status">
-                    <Badge color={editUser.isActive ? "green" : "red"}>{editUser.isActive ? "Active" : "Inactive"}</Badge>
-                  </DescItem>
-                </Descriptions>
-                <div className="mt-2.5 text-[13px] text-gray-400">
-                  Use the <strong className="text-gray-600 dark:text-gray-300">Password</strong> button on the table to change this user's password.
-                </div>
-              </div>
-            )}
           </div>
         </Modal>
       )}
+
+      {/* ── Rename Role Modal — the pencil icon's own narrow action ── */}
+      {renameTarget && (
+        <Modal
+          icon={Pencil}
+          title={`Rename Role — ${ROLE_CFG[renameTarget.name]?.label || renameTarget.name}`}
+          onClose={() => setRenameTarget(null)}
+          footer={
+            <div className="flex justify-end gap-2">
+              <Btn outline label="Cancel" onClick={() => setRenameTarget(null)} />
+              <Btn color="primary" label="Save" loading={renaming} onClick={handleRenameRole} />
+            </div>
+          }
+        >
+          <Field
+            label="Role Name" required
+            value={renameField} onChange={(e) => setRenameField(e.target.value)}
+            error={renameFormErrors.errors.name}
+            hint="Every user currently on this role moves to the new name automatically."
+          />
+        </Modal>
+      )}
+
+
+      {deleteRoleTarget && (
+        <ConfirmModal
+          title={`Delete role "${deleteRoleTarget.name}"?`}
+          message="This cannot be undone. Reassign any users on this role first — deleting a role still in use is blocked."
+          confirmLabel="Delete" danger
+          loading={deletingRole}
+          onConfirm={handleDeleteRole} onCancel={() => setDeleteRoleTarget(null)}
+        />
+      )}
+
 
       {/* ── Change Password Modal ── */}
       {pwdOpen && (

@@ -15,7 +15,10 @@ import Modal from "../../ui/Modal";
 import { Table, Thead, Tbody, Tr, Th, Td, TdText } from "../../ui/Table";
 import Spinner from "../../ui/Spinner";
 import NxBtn from "../../ui/nexora/Btn";
+import NxBadge from "../../ui/nexora/Badge";
+import type { NxBadgeColor } from "../../ui/nexora/Badge";
 import { SearchFilter } from "../../ui/Filters";
+import dayjs from "dayjs";
 
 const normalizeId = <T extends { _id?: string; id?: string }>(obj: T) => ({ ...obj, id: obj._id || obj.id });
 const fmt = (n: number) => "₹" + (n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -36,6 +39,9 @@ interface MemberProgress {
   contractValue: number;
   billed: number;
   paid: number;
+  advanceGiven: number;
+  advanceRecovered: number;
+  advanceBalance: number;
 }
 
 interface ProgressSummary {
@@ -43,7 +49,30 @@ interface ProgressSummary {
   contractValue: number;
   billed: number;
   paid: number;
+  advanceGiven: number;
+  advanceRecovered: number;
+  advanceBalance: number;
 }
+
+interface AdvanceSlip {
+  _id: string;
+  slipNo: string;
+  date: string;
+  projectName: string;
+  contractorCode: string;
+  contractorName: string;
+  amount: number;
+  amountRecovered: number;
+  balance: number;
+  reference?: string;
+  status: "outstanding" | "partial" | "recovered";
+}
+
+const ADVANCE_STATUS_CFG: Record<string, { color: NxBadgeColor; label: string }> = {
+  outstanding: { color: "orange", label: "Outstanding" },
+  partial:     { color: "amber",  label: "Partial" },
+  recovered:   { color: "green",  label: "Recovered" },
+};
 
 export default function VendorGroups() {
   const [groups, setGroups] = useState<VendorGroup[]>([]);
@@ -61,6 +90,7 @@ export default function VendorGroups() {
   const [progressLoading, setProgressLoading] = useState(false);
   const [summary, setSummary] = useState<ProgressSummary | null>(null);
   const [perMember, setPerMember] = useState<MemberProgress[]>([]);
+  const [advanceSlips, setAdvanceSlips] = useState<AdvanceSlip[]>([]);
 
   const [contractors, setContractors] = useState<Contractor[]>([]);
   const [addMemberIds, setAddMemberIds] = useState<string[]>([]);
@@ -114,6 +144,7 @@ export default function VendorGroups() {
     setProjectId("");
     setSummary(null);
     setPerMember([]);
+    setAdvanceSlips([]);
     setAddMemberIds([]);
     loadMembers(group.id);
     loadProgress(group.id, "");
@@ -161,11 +192,11 @@ export default function VendorGroups() {
 
   function loadProgress(groupId: string, forProjectId: string) {
     setProgressLoading(true);
-    apiClient.get<{ summary: ProgressSummary; perMember: MemberProgress[] }>(
+    apiClient.get<{ summary: ProgressSummary; perMember: MemberProgress[]; advanceSlips: AdvanceSlip[] }>(
       `/vendor-groups/${groupId}/progress`, { params: forProjectId ? { projectId: forProjectId } : {} }
     )
-      .then((r) => { setSummary(r.data.summary); setPerMember(r.data.perMember || []); })
-      .catch(() => { setSummary(null); setPerMember([]); })
+      .then((r) => { setSummary(r.data.summary); setPerMember(r.data.perMember || []); setAdvanceSlips(r.data.advanceSlips || []); })
+      .catch(() => { setSummary(null); setPerMember([]); setAdvanceSlips([]); })
       .finally(() => setProgressLoading(false));
   }
 
@@ -335,14 +366,16 @@ export default function VendorGroups() {
           ) : (
             <>
               {summary && (
-                <div className="flex gap-3 mb-4">
+                <div className="flex gap-3 mb-4 flex-wrap">
                   {[
                     { label: "Work Orders", value: summary.workOrderCount, color: "text-gray-700 dark:text-gray-300" },
                     { label: "Contract Value", value: fmt(summary.contractValue), color: "text-gray-700 dark:text-gray-300" },
                     { label: "Billed", value: fmt(summary.billed), color: "text-amber-600 dark:text-amber-400" },
                     { label: "Paid", value: fmt(summary.paid), color: "text-emerald-600 dark:text-emerald-400" },
+                    { label: "Advance Given", value: fmt(summary.advanceGiven), color: "text-purple-600 dark:text-purple-400" },
+                    { label: "Advance Balance", value: fmt(summary.advanceBalance), color: summary.advanceBalance > 0 ? "text-red-600 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400" },
                   ].map((s) => (
-                    <div key={s.label} className="flex-1 bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700/40 rounded-lg px-3.5 py-2.5">
+                    <div key={s.label} className="flex-1 min-w-[140px] bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700/40 rounded-lg px-3.5 py-2.5">
                       <div className="text-[11px] text-gray-400 uppercase tracking-wide">{s.label}</div>
                       <div className={`text-[15px] font-bold mt-0.5 ${s.color}`}>{s.value}</div>
                     </div>
@@ -352,7 +385,7 @@ export default function VendorGroups() {
               {perMember.length === 0 ? (
                 <div className="text-center py-8 text-gray-400 text-sm">No work orders for this group yet</div>
               ) : (
-                <Table>
+                <Table className="mb-6">
                   <Thead>
                     <Tr>
                       <Th>Vendor Code</Th>
@@ -361,6 +394,8 @@ export default function VendorGroups() {
                       <Th className="text-right">Contract Value</Th>
                       <Th className="text-right">Billed</Th>
                       <Th className="text-right">Paid</Th>
+                      <Th className="text-right">Advance Given</Th>
+                      <Th className="text-right">Advance Balance</Th>
                     </Tr>
                   </Thead>
                   <Tbody>
@@ -372,8 +407,54 @@ export default function VendorGroups() {
                         <Td className="text-right"><TdText>{fmt(m.contractValue)}</TdText></Td>
                         <Td className="text-right"><TdText>{fmt(m.billed)}</TdText></Td>
                         <Td className="text-right"><span className="text-emerald-600 dark:text-emerald-400 font-semibold">{fmt(m.paid)}</span></Td>
+                        <Td className="text-right"><TdText>{fmt(m.advanceGiven)}</TdText></Td>
+                        <Td className="text-right">
+                          <span className={`font-semibold ${m.advanceBalance > 0 ? "text-red-600 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400"}`}>{fmt(m.advanceBalance)}</span>
+                        </Td>
                       </Tr>
                     ))}
+                  </Tbody>
+                </Table>
+              )}
+
+              <div className="font-bold text-[13px] text-gray-700 dark:text-gray-300 mb-2">Advance Slips</div>
+              {advanceSlips.length === 0 ? (
+                <div className="text-center py-8 text-gray-400 text-sm">No advance slips for this group yet</div>
+              ) : (
+                <Table>
+                  <Thead>
+                    <Tr>
+                      <Th>Slip No</Th>
+                      <Th>Date</Th>
+                      <Th>Project</Th>
+                      <Th>Contractor</Th>
+                      <Th className="text-right">Advance Given</Th>
+                      <Th className="text-right">Recovered</Th>
+                      <Th className="text-right">Balance</Th>
+                      <Th>Reference</Th>
+                      <Th>Status</Th>
+                    </Tr>
+                  </Thead>
+                  <Tbody>
+                    {advanceSlips.map(s => {
+                      const cfg = ADVANCE_STATUS_CFG[s.status] ?? { color: "orange" as const, label: s.status };
+                      return (
+                        <Tr key={s._id}>
+                          <Td><span className="font-bold text-primary">{s.slipNo}</span></Td>
+                          <Td><TdText>{dayjs(s.date).format("DD MMM YYYY")}</TdText></Td>
+                          <Td><TdText>{s.projectName}</TdText></Td>
+                          <Td>
+                            <div className="text-sm text-[#1A1A2E] dark:text-[#F1F5F9]">{s.contractorName}</div>
+                            <div className="text-[11px] text-gray-400">{s.contractorCode}</div>
+                          </Td>
+                          <Td className="text-right"><span className="font-mono font-semibold"><TdText>{fmt(s.amount)}</TdText></span></Td>
+                          <Td className="text-right"><span className="font-mono text-emerald-600 dark:text-emerald-400">{fmt(s.amountRecovered)}</span></Td>
+                          <Td className="text-right"><span className={`font-mono font-bold ${s.balance > 0 ? "text-red-600 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400"}`}>{fmt(s.balance)}</span></Td>
+                          <Td>{s.reference || <span className="text-gray-300 dark:text-gray-600">—</span>}</Td>
+                          <Td><NxBadge color={cfg.color}>{cfg.label}</NxBadge></Td>
+                        </Tr>
+                      );
+                    })}
                   </Tbody>
                 </Table>
               )}

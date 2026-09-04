@@ -2,6 +2,7 @@ const VendorGroup  = require('../models/VendorGroup');
 const Contractor   = require('../models/Contractor');
 const WorkOrder    = require('../models/WorkOrder');
 const RunningBill  = require('../models/RunningBill');
+const AdvanceSlip  = require('../models/AdvanceSlip');
 const asyncHandler = require('../utils/asyncHandler');
 const { success, created, notFound, badRequest } = require('../utils/responseFormatter');
 const { nextVendorGroupCode } = require('../utils/codeGen');
@@ -120,13 +121,34 @@ exports.getVendorGroupProgress = asyncHandler(async (req, res) => {
     }
   }
 
+  // Advance slips given to any member vendor — same "every code ever
+  // assigned" scope as the work-order rollup above, so a member removed
+  // from the group after taking an advance doesn't silently drop it.
+  const advanceFilter = { contractorCode: { $in: vendorCodes }, isArchived: { $ne: true } };
+  if (req.query.projectId) advanceFilter.projectId = req.query.projectId;
+  // .lean() skips the schema's `balance` virtual, so it's added back here.
+  const advanceSlips = (await AdvanceSlip.find(advanceFilter).sort({ date: -1 }).lean())
+    .map(s => ({ ...s, balance: (s.amount || 0) - (s.amountRecovered || 0) }));
+
+  for (const row of perMember.values()) { row.advanceGiven = 0; row.advanceRecovered = 0; row.advanceBalance = 0; }
+  for (const slip of advanceSlips) {
+    const row = perMember.get(slip.contractorCode);
+    if (!row) continue;
+    row.advanceGiven += slip.amount || 0;
+    row.advanceRecovered += slip.amountRecovered || 0;
+    row.advanceBalance += (slip.amount || 0) - (slip.amountRecovered || 0);
+  }
+
   const perMemberArr = Array.from(perMember.values());
   const summary = perMemberArr.reduce((s, r) => ({
     workOrderCount: s.workOrderCount + r.workOrderCount,
     contractValue:  s.contractValue  + r.contractValue,
     billed:         s.billed         + r.billed,
     paid:           s.paid           + r.paid,
-  }), { workOrderCount: 0, contractValue: 0, billed: 0, paid: 0 });
+    advanceGiven:     s.advanceGiven     + r.advanceGiven,
+    advanceRecovered: s.advanceRecovered + r.advanceRecovered,
+    advanceBalance:   s.advanceBalance   + r.advanceBalance,
+  }), { workOrderCount: 0, contractValue: 0, billed: 0, paid: 0, advanceGiven: 0, advanceRecovered: 0, advanceBalance: 0 });
 
-  success(res, { group, summary, perMember: perMemberArr, workOrders });
+  success(res, { group, summary, perMember: perMemberArr, workOrders, advanceSlips });
 });

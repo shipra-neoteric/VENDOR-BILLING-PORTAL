@@ -52,6 +52,13 @@ exports.listUsers = asyncHandler(async (req, res) => {
   success(res, { users });
 });
 
+// GET /api/users/:id — single user, for the standalone Edit User page.
+exports.getUser = asyncHandler(async (req, res) => {
+  const user = await User.findById(req.params.id).select('-password');
+  if (!user) return notFound(res, 'User not found');
+  success(res, { user });
+});
+
 // POST /api/users
 exports.createUser = asyncHandler(async (req, res) => {
   const { name, email, password, role, permissions, mobile, department, customDepartment } = req.body;

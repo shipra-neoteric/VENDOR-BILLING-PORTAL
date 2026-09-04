@@ -30,6 +30,8 @@ const AdvancePayments   = lazy(() => import("../pages/AdvancePayments"));
 const WorkOrderDashboard = lazy(() => import("../pages/WorkOrderDashboard"));
 const Ledger            = lazy(() => import("../features/ledger"));
 const UserManagement    = lazy(() => import("../pages/UserManagement"));
+const RolePermissions   = lazy(() => import("../pages/UserManagement/RolePermissions"));
+const EditUser          = lazy(() => import("../pages/UserManagement/EditUser"));
 const DRIDashboard      = lazy(() => import("../pages/DRIDashboard"));
 const PublicForms       = lazy(() => import("../pages/PublicForms"));
 const SlaSettings       = lazy(() => import("../pages/SlaSettings"));
@@ -126,6 +128,9 @@ function AdminRoutes() {
             <Route path="/advance-payments" element={<AdvancePayments />} />
             <Route path="/ledger"           element={<Ledger />} />
             <Route path="/users"            element={<UserManagement />} />
+            <Route path="/users/roles/:id"  element={<RolePermissions />} />
+            <Route path="/users/new"        element={<EditUser />} />
+            <Route path="/users/:id/edit"   element={<EditUser />} />
             <Route path="/dri-dashboard"   element={<DRIDashboard />} />
             <Route path="/public-forms"    element={<PublicForms />} />
             <Route path="/sla-settings"    element={<SlaSettings />} />
