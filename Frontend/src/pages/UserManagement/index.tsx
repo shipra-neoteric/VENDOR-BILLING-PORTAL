@@ -222,16 +222,6 @@ function departmentLabelForUser(dept: string): string {
   return DEPARTMENT_LABEL[dept] || dept;
 }
 
-// A user's own effective team name — same resolution the backend uses
-// (Backend/src/utils/approvalRules.js's effectiveDepartment): "custom"
-// itself is never a team, only the typed customDepartment name is. Used to
-// scope the Departments tab's specific-approver picker to only that
-// department's own people, not the whole company.
-function userEffectiveDepartment(u: AppUser): string {
-  if (!u.department) return "";
-  return u.department === "custom" ? (u.customDepartment || "") : u.department;
-}
-
 const NX_ROLE_COLOR: Record<UserRole, NxBadgeColor> = {
   owner: "red",
   gm: "indigo",
@@ -994,11 +984,13 @@ export default function UserManagement() {
       )}
 
       {editRuleTarget && (() => {
-        // Owner accounts are cross-department by nature and usually carry no
-        // department of their own (empty department field) — excluding them
-        // from this department-scoped list would make "assign Owner as this
-        // department's approver" impossible to actually select, silently.
-        const departmentUsers = users.filter(u => u.role === "owner" || userEffectiveDepartment(u) === editRuleTarget.department);
+        // Every user is selectable here, not just ones whose own `department`
+        // field happens to match — most accounts never get that field set at
+        // all, which silently narrowed this picker down to owner/whoever did
+        // have it set (often just the AGM who created the department). Naming
+        // someone a specific approver for a department has nothing to do with
+        // which department they're personally tagged under.
+        const departmentUsers = users;
         return (
         <Modal
           icon={ShieldAlert}
@@ -1033,11 +1025,6 @@ export default function UserManagement() {
                 Bill requests and manually-created bills in this department stop at whichever level is checked highest — the RunningBill is created right after that level's sign-off, with no further stage.
               </div>
             </div>
-            {departmentUsers.length === 0 && (
-              <div className="text-[11px] text-amber-600 dark:text-amber-400">
-                No users are assigned to this department yet — assign it to a user (Edit User → Department) before naming specific approvers here.
-              </div>
-            )}
             {(() => {
               const STAGE_STATE = {
                 agm: { roles: editRuleAgmRoles, setRoles: setEditRuleAgmRoles, userIds: editRuleAgmUserIds, setUserIds: setEditRuleAgmUserIds, defaults: approvalDefaults.agmRoles },
