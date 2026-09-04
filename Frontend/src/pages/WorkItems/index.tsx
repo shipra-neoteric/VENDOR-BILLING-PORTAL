@@ -1751,6 +1751,23 @@ export default function WorkItems() {
     cancelled: acc.cancelled + r.cancelled, billed: acc.billed + r.billed,
   }), { count: 0, contractValue: 0, draft: 0, issued: 0, inProgress: 0, completed: 0, cancelled: 0, billed: 0 }), [monthlyReport]);
 
+  // Plain client-side CSV — same rows/columns as the Monthly Report table,
+  // no server round-trip needed since monthlyReport is already computed here.
+  function downloadMonthlyReportCSV() {
+    const header = ["Month", "WOs", "Contract Value", "Billed", "Draft", "Issued", "In Progress", "Completed", "Cancelled"];
+    const rows = monthlyReport.map(r => [r.label, r.count, r.contractValue, r.billed, r.draft, r.issued, r.inProgress, r.completed, r.cancelled]);
+    rows.push(["Total", monthlyReportTotals.count, monthlyReportTotals.contractValue, monthlyReportTotals.billed,
+      monthlyReportTotals.draft, monthlyReportTotals.issued, monthlyReportTotals.inProgress, monthlyReportTotals.completed, monthlyReportTotals.cancelled]);
+    const csv = [header, ...rows].map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(",")).join("\r\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `work-orders-monthly-report-${dayjs().format("YYYY-MM-DD")}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   const nextWONo = useMemo(() => {
     const max = workOrders.reduce((m, wo) => {
       const match = wo.workOrderNo.match(/^WO-(\d+)/);
@@ -2443,8 +2460,12 @@ export default function WorkItems() {
           ) : monthlyReport.length === 0 ? (
             <EmptyState icon={BarChart3} title="No work orders match the current filters" />
           ) : (
-            <Table className="min-w-[1100px]">
-              <Thead>
+            <>
+            <div className="flex justify-end mb-3">
+              <Btn small outline icon={Download} label="Download CSV" onClick={downloadMonthlyReportCSV} />
+            </div>
+            <Table className="min-w-[1100px]" containerClassName="max-h-[65vh] overflow-y-auto">
+              <Thead className="sticky top-0 z-20">
                 <Tr>
                   <Th stickyLeft className="w-[12%]">Month</Th>
                   <Th className="text-right w-[8%]">WOs</Th>
@@ -2486,6 +2507,7 @@ export default function WorkItems() {
                 </Tr>
               </Tfoot>
             </Table>
+            </>
           )}
         </Modal>
       )}

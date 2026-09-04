@@ -176,6 +176,17 @@ const runningBillSchema = new mongoose.Schema(
     // new L1 AGM Approval stage below.
     agmApprovedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     agmApprovedAt: { type: Date },
+    // Same idea as agmApprovedBy above, for a progress-cycle bill whose
+    // department was configured for 3/4 approval levels (Users → Departments)
+    // — carries the BillRequest's own gmApprovedBy/l3ApprovedBy/l4ApprovedBy
+    // onto the finished bill. Unset (undefined) for the default 2-level
+    // department, exactly like agmApprovedBy already is for a manual bill.
+    gmApprovedBy:  { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    gmApprovedAt:  { type: Date },
+    l3ApprovedBy:  { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    l3ApprovedAt:  { type: Date },
+    l4ApprovedBy:  { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    l4ApprovedAt:  { type: Date },
     makerBy:  { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     makerAt:  { type: Date },
     verifiedBy:  { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
@@ -221,11 +232,15 @@ const runningBillSchema = new mongoose.Schema(
     // bill until this reaches 'approved', so Accounts can't touch it before
     // AGM then GM have — the same order a progress-driven bill already goes
     // through, just happening here instead of on a separate BillRequest.
-    manualApprovalStatus: { type: String, enum: ['pending', 'pending-gm', 'approved', 'rejected'], default: 'approved' },
+    manualApprovalStatus: { type: String, enum: ['pending', 'pending-gm', 'pending-l3', 'pending-l4', 'approved', 'rejected'], default: 'approved' },
     manualAgmApprovedBy:  { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     manualAgmApprovedAt:  { type: Date },
     manualGmApprovedBy:   { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     manualGmApprovedAt:   { type: Date },
+    manualL3ApprovedBy:   { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    manualL3ApprovedAt:   { type: Date },
+    manualL4ApprovedBy:   { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    manualL4ApprovedAt:   { type: Date },
     manualRejectedBy:     { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     manualRejectReason:   { type: String, default: '' },
 

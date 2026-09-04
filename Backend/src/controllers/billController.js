@@ -17,6 +17,7 @@ const { applyAdvanceRecoveries } = require('../utils/advanceRecovery');
 const AdvanceSlip  = require('../models/AdvanceSlip');
 const { nextCode } = require('../utils/sequence');
 const { notifyStagePending, settleAllPendingForEntity } = require('../utils/slackApprovals');
+const { getApprovalConfig, approverAllowed } = require('../utils/approvalRules');
 
 const MODULE = 'accounts-payment';
 
@@ -501,26 +502,62 @@ exports.manualAgmApprove = asyncHandler(async (req, res) => {
     return badRequest(res, `This bill's AGM/GM sign-off is already ${bill.manualApprovalStatus}`);
   }
 
+  // Departments with no Approval Rule configured (Users → Departments) keep
+  // today's exact behavior untouched.
+  const approvalConfig = await getApprovalConfig(bill);
+  if (!approverAllowed(req.user, approvalConfig, 'agm')) {
+    return forbidden(res, "You're not configured as an L1 (AGM) approver for this department.");
+  }
+
+  // AGM can re-edit the hold/GST that were set when this bill was created —
+  // advance recovery is deliberately NOT editable here: it's already been
+  // applied against real AdvanceSlip balances at creation time (see
+  // billController.createBill), and changing it here without also
+  // reconciling those slips would desync the two.
+  if (req.body.retentionAmount != null) bill.retentionAmount = Number(req.body.retentionAmount);
+  // Simple overwrite, same as the existing patchDeductions endpoint (used to
+  // correct a paid bill) — not reconciled against any AdvanceSlip's own
+  // amountRecovered/balance, consistent with that same existing precedent.
+  if (req.body.advanceRecovery != null) bill.advanceRecovery = Number(req.body.advanceRecovery);
+  if (req.body.gstPercent != null) {
+    const gst = Number(req.body.gstPercent);
+    if (Number.isNaN(gst) || gst < 0 || gst > 100) return badRequest(res, 'GST% must be a number between 0 and 100');
+    bill.gstPercent = gst;
+  }
+
   bill.manualAgmApprovedBy = req.user._id;
   bill.manualAgmApprovedAt = new Date();
   if (req.body.sentForL2ApprovalTo) bill.sentForL2ApprovalTo = req.body.sentForL2ApprovalTo;
-  bill.manualApprovalStatus = 'pending-gm';
   pushHistory(bill, 'manual-agm', 'approved', req.user._id, req.body.remarks || '');
+
+  // Single-approval department — AGM's own sign-off above is already final,
+  // so finalize straight to 'approved' in one write. Never routes through
+  // manualGmApproveHandler for this — that used to also stamp a phantom
+  // bill.manualGmApprovedBy/'manual-gm' history entry onto this same AGM's
+  // action, which is wrong for a department with no real L2 stage at all.
+  const isFinal = approvalConfig?.requiredApprovals === 1;
+  bill.manualApprovalStatus = isFinal ? 'approved' : 'pending-gm';
   await bill.save();
   await bill.populate('manualAgmApprovedBy', 'name role');
 
   await logAudit({
     action: 'APPROVE', module: MODULE, user: req.user,
-    description: `L1 sign-off given on manually-created bill ${bill.billNo} — moved to L2 approval`,
+    description: isFinal
+      ? `L1 sign-off given on manually-created bill ${bill.billNo} — ready for Accounts to verify (single-approval department)`
+      : `L1 sign-off given on manually-created bill ${bill.billNo} — moved to L2 approval`,
     entityType: 'RunningBill', entityId: bill._id, entityLabel: bill.billNo,
   });
 
-  notifySlack('PAYMENT_MANUAL_GM_APPROVAL', bill);
+  notifySlack(isFinal ? 'PAYMENT_VERIFY_APPROVAL' : 'PAYMENT_MANUAL_GM_APPROVAL', bill);
 
-  success(res, { bill }, 'L1 approved — moved to L2 approval');
+  success(res, { bill }, isFinal ? 'Approved — ready for Accounts to verify' : 'L1 approved — moved to L2 approval');
 });
 
-exports.manualGmApprove = asyncHandler(async (req, res) => {
+// Plain named function (not directly exports.manualGmApprove) purely so its
+// body reads the same way as the L3/L4 handlers below; asyncHandler wraps it
+// for the actual route. For the default 2-level department this finalizes;
+// a 3/4-level department instead moves on to L3.
+async function manualGmApproveHandler(req, res) {
   const bill = await RunningBill.findById(req.params.id);
   if (!bill) return notFound(res, 'Bill not found');
   if (!canActOnDepartment(req.user, bill)) return forbidden(res, 'This bill belongs to a different department.');
@@ -528,10 +565,35 @@ exports.manualGmApprove = asyncHandler(async (req, res) => {
     return badRequest(res, `This bill's AGM/GM sign-off is already ${bill.manualApprovalStatus}`);
   }
 
+  const approvalConfig = await getApprovalConfig(bill);
+  if (!approverAllowed(req.user, approvalConfig, 'gm')) {
+    return forbidden(res, "You're not configured as an L2 (GM) approver for this department.");
+  }
+
+  if (req.body.retentionAmount != null) bill.retentionAmount = Number(req.body.retentionAmount);
+  // Simple overwrite, same as the existing patchDeductions endpoint (used to
+  // correct a paid bill) — not reconciled against any AdvanceSlip's own
+  // amountRecovered/balance, consistent with that same existing precedent.
+  if (req.body.advanceRecovery != null) bill.advanceRecovery = Number(req.body.advanceRecovery);
+  if (req.body.gstPercent != null) {
+    const gst = Number(req.body.gstPercent);
+    if (Number.isNaN(gst) || gst < 0 || gst > 100) return badRequest(res, 'GST% must be a number between 0 and 100');
+    bill.gstPercent = gst;
+  }
+
   bill.manualGmApprovedBy = req.user._id;
   bill.manualGmApprovedAt = new Date();
-  bill.manualApprovalStatus = 'approved';
   pushHistory(bill, 'manual-gm', 'approved', req.user._id, req.body.remarks || '');
+
+  const totalLevels = approvalConfig?.requiredApprovals ?? 2;
+  if (totalLevels >= 3) {
+    bill.manualApprovalStatus = 'pending-l3';
+    await bill.save();
+    notifySlack('PAYMENT_MANUAL_L3_APPROVAL', bill);
+    return success(res, { bill }, 'L2 approved — moved to L3 approval');
+  }
+
+  bill.manualApprovalStatus = 'approved';
   await bill.save();
   await bill.populate('manualGmApprovedBy', 'name role');
 
@@ -544,13 +606,108 @@ exports.manualGmApprove = asyncHandler(async (req, res) => {
   notifySlack('PAYMENT_VERIFY_APPROVAL', bill);
 
   success(res, { bill }, 'L2 approved — ready for Accounts to verify');
+}
+exports.manualGmApprove = asyncHandler(manualGmApproveHandler);
+
+// Only reached when this department is configured for 3/4 approval levels —
+// a 2-level department's bill can never actually sit at 'pending-l3'.
+async function manualL3ApproveHandler(req, res) {
+  const bill = await RunningBill.findById(req.params.id);
+  if (!bill) return notFound(res, 'Bill not found');
+  if (!canActOnDepartment(req.user, bill)) return forbidden(res, 'This bill belongs to a different department.');
+  if (bill.manualApprovalStatus !== 'pending-l3') {
+    return badRequest(res, `This bill's AGM/GM sign-off is already ${bill.manualApprovalStatus}`);
+  }
+
+  const approvalConfig = await getApprovalConfig(bill);
+  if (!approverAllowed(req.user, approvalConfig, 'l3')) {
+    return forbidden(res, "You're not configured as an L3 approver for this department.");
+  }
+
+  if (req.body.retentionAmount != null) bill.retentionAmount = Number(req.body.retentionAmount);
+  // Simple overwrite, same as the existing patchDeductions endpoint (used to
+  // correct a paid bill) — not reconciled against any AdvanceSlip's own
+  // amountRecovered/balance, consistent with that same existing precedent.
+  if (req.body.advanceRecovery != null) bill.advanceRecovery = Number(req.body.advanceRecovery);
+  if (req.body.gstPercent != null) {
+    const gst = Number(req.body.gstPercent);
+    if (Number.isNaN(gst) || gst < 0 || gst > 100) return badRequest(res, 'GST% must be a number between 0 and 100');
+    bill.gstPercent = gst;
+  }
+
+  bill.manualL3ApprovedBy = req.user._id;
+  bill.manualL3ApprovedAt = new Date();
+  pushHistory(bill, 'manual-l3', 'approved', req.user._id, req.body.remarks || '');
+
+  const totalLevels = approvalConfig?.requiredApprovals ?? 2;
+  if (totalLevels >= 4) {
+    bill.manualApprovalStatus = 'pending-l4';
+    await bill.save();
+    notifySlack('PAYMENT_MANUAL_L4_APPROVAL', bill);
+    return success(res, { bill }, 'L3 approved — moved to L4 approval');
+  }
+
+  bill.manualApprovalStatus = 'approved';
+  await bill.save();
+  await bill.populate('manualL3ApprovedBy', 'name role');
+
+  await logAudit({
+    action: 'APPROVE', module: MODULE, user: req.user,
+    description: `L3 sign-off given on manually-created bill ${bill.billNo} — ready for Accounts to verify`,
+    entityType: 'RunningBill', entityId: bill._id, entityLabel: bill.billNo,
+  });
+
+  notifySlack('PAYMENT_VERIFY_APPROVAL', bill);
+  success(res, { bill }, 'L3 approved — ready for Accounts to verify');
+}
+exports.manualL3Approve = asyncHandler(manualL3ApproveHandler);
+
+// Always the final stage (4 is the max configurable level today).
+exports.manualL4Approve = asyncHandler(async (req, res) => {
+  const bill = await RunningBill.findById(req.params.id);
+  if (!bill) return notFound(res, 'Bill not found');
+  if (!canActOnDepartment(req.user, bill)) return forbidden(res, 'This bill belongs to a different department.');
+  if (bill.manualApprovalStatus !== 'pending-l4') {
+    return badRequest(res, `This bill's AGM/GM sign-off is already ${bill.manualApprovalStatus}`);
+  }
+
+  const approvalConfig = await getApprovalConfig(bill);
+  if (!approverAllowed(req.user, approvalConfig, 'l4')) {
+    return forbidden(res, "You're not configured as an L4 approver for this department.");
+  }
+
+  if (req.body.retentionAmount != null) bill.retentionAmount = Number(req.body.retentionAmount);
+  if (req.body.advanceRecovery != null) bill.advanceRecovery = Number(req.body.advanceRecovery);
+  if (req.body.gstPercent != null) {
+    const gst = Number(req.body.gstPercent);
+    if (Number.isNaN(gst) || gst < 0 || gst > 100) return badRequest(res, 'GST% must be a number between 0 and 100');
+    bill.gstPercent = gst;
+  }
+
+  bill.manualL4ApprovedBy = req.user._id;
+  bill.manualL4ApprovedAt = new Date();
+  bill.manualApprovalStatus = 'approved';
+  pushHistory(bill, 'manual-l4', 'approved', req.user._id, req.body.remarks || '');
+  await bill.save();
+  await bill.populate('manualL4ApprovedBy', 'name role');
+
+  await logAudit({
+    action: 'APPROVE', module: MODULE, user: req.user,
+    description: `L4 sign-off given on manually-created bill ${bill.billNo} — ready for Accounts to verify`,
+    entityType: 'RunningBill', entityId: bill._id, entityLabel: bill.billNo,
+  });
+
+  notifySlack('PAYMENT_VERIFY_APPROVAL', bill);
+  success(res, { bill }, 'L4 approved — ready for Accounts to verify');
 });
 
 exports.manualReject = asyncHandler(async (req, res) => {
   const bill = await RunningBill.findById(req.params.id);
   if (!bill) return notFound(res, 'Bill not found');
   if (!canActOnDepartment(req.user, bill)) return forbidden(res, 'This bill belongs to a different department.');
-  if (!['pending', 'pending-gm'].includes(bill.manualApprovalStatus)) {
+  const REJECTABLE_STAGES = { pending: 'manual-agm', 'pending-gm': 'manual-gm', 'pending-l3': 'manual-l3', 'pending-l4': 'manual-l4' };
+  const rejectingStage = REJECTABLE_STAGES[bill.manualApprovalStatus];
+  if (!rejectingStage) {
     return badRequest(res, `This bill's AGM/GM sign-off is already ${bill.manualApprovalStatus}`);
   }
   const reason = req.body.reason || 'No reason provided';
@@ -565,7 +722,7 @@ exports.manualReject = asyncHandler(async (req, res) => {
   bill.status = 'rejected';
   bill.rejectedBy = req.user._id;
   bill.rejectReason = reason;
-  pushHistory(bill, bill.manualAgmApprovedAt ? 'manual-gm' : 'manual-agm', 'rejected', req.user._id, reason);
+  pushHistory(bill, rejectingStage, 'rejected', req.user._id, reason);
   await bill.save();
 
   await logAudit({

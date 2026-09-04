@@ -55,7 +55,7 @@ interface BillRequestRow {
   department?: string; customDepartment?: string;
   items: BillItem[]; remarks?: string;
   periodFrom?: string; periodTo?: string;
-  status: "pending" | "pending-gm" | "approved" | "rejected";
+  status: "pending" | "pending-gm" | "pending-l3" | "pending-l4" | "approved" | "rejected";
   requestedBy?: { name: string; email: string };
   agmApprovedBy?: { name: string; role?: string } | string | null;
   agmApprovedAt?: string;
@@ -72,6 +72,7 @@ interface BillRequestRow {
   milestoneAchieved?: boolean;
   milestoneDate?: string;
   createdAt: string;
+  updatedAt?: string;
   isArchived?: boolean;
 }
 
@@ -81,9 +82,11 @@ interface BillRequestRow {
 // manualAgmApprove/manualGmApprove/manualReject).
 interface ManualBillRow {
   _id: string; billNo: string; amount: number; workOrderId?: string; workOrderNo?: string;
-  projectName?: string; vendorName?: string; billDate: string; createdAt: string;
-  manualApprovalStatus: "pending" | "pending-gm" | "approved" | "rejected";
+  projectId?: string; projectName?: string; vendorCode?: string; vendorName?: string; billDate: string; createdAt: string;
+  manualApprovalStatus: "pending" | "pending-gm" | "pending-l3" | "pending-l4" | "approved" | "rejected";
   department?: string; customDepartment?: string;
+  retentionAmount?: number; advanceRecovery?: number; gstPercent?: number;
+  updatedAt?: string;
 }
 
 interface ProjectOption { _id: string; name: string; code?: string; parentId?: string | null; }
@@ -111,9 +114,26 @@ function departmentLabel(wo?: WorkOrderDeptRow): string {
 const STATUS_CFG: Record<string, { color: string; label: string }> = {
   pending: { color: "orange", label: "Pending L1" },
   "pending-gm": { color: "blue", label: "Pending L2" },
+  "pending-l3": { color: "amber", label: "Pending L3" },
+  "pending-l4": { color: "teal", label: "Pending L4" },
   approved: { color: "green", label: "Approved" },
   rejected: { color: "red", label: "Rejected" },
 };
+
+const PENDING_STATUSES = ["pending", "pending-gm", "pending-l3", "pending-l4"];
+const OVERDUE_MS = 24 * 60 * 60 * 1000;
+// "Pending for >1 day" — updatedAt is bumped by every approval action (each
+// stage's handler does a bill/request .save()), so it doubles as "since when
+// this has been sitting at its current stage" without needing a dedicated
+// per-stage timestamp.
+function isOverdue(status: string, updatedAt?: string): boolean {
+  if (!PENDING_STATUSES.includes(status) || !updatedAt) return false;
+  return Date.now() - new Date(updatedAt).getTime() > OVERDUE_MS;
+}
+function OverdueBadge({ status, updatedAt }: { status: string; updatedAt?: string }) {
+  if (!isOverdue(status, updatedAt)) return null;
+  return <NxBadge color="red">Overdue</NxBadge>;
+}
 
 // Same mapping Billing's own read-only bill view uses (RunningBill.status,
 // not the AGM/GM BillRequest status above) — this is the Accounts Payment
@@ -144,7 +164,7 @@ interface ManualBillDetail extends PrintableBill {
   tmsSentAt?: string;
   tmsCallbackReceivedAt?: string;
   _id: string;
-  manualApprovalStatus: "pending" | "pending-gm" | "approved" | "rejected";
+  manualApprovalStatus: "pending" | "pending-gm" | "pending-l3" | "pending-l4" | "approved" | "rejected";
   // The pre-Accounts L1/L2 sign-off (this page's own AGM/GM-equivalent
   // chain) — role is whatever the approver's actual role/custom-role was at
   // the time, never a hardcoded "AGM"/"GM" label.
@@ -261,7 +281,7 @@ async function printBillRequest(br: BillRequestRow) {
       approvedBy: null,
       paymentInitiatedBy: null,
     };
-    const statusLabel = br.status === "rejected" ? "Rejected" : br.status === "pending-gm" ? "Awaiting L2 Approval" : "Awaiting L1 Approval";
+    const statusLabel = br.status === "rejected" ? "Rejected" : `Awaiting ${STATUS_CFG[br.status]?.label ?? "L1 Approval"}`;
     printBill(pseudoBill, contractor, "pre", statusLabel);
   } catch {
     toast.error("Failed to prepare print view");
@@ -304,7 +324,12 @@ export default function BillApproval() {
 
   const canAgmApprove = user?.role === "agm" || hasPerm(user, "agm-approve");
   const canGmApprove = user?.role === "gm" || hasPerm(user, "gm-approve");
-  const canRejectAny = canAgmApprove || canGmApprove || user?.role === "accounts" || hasPerm(user, "reject");
+  // L3/L4 have no hardcoded role the way agm/gm do — only ever reachable via
+  // an explicit permission grant (or Owner, via hasPerm's own bypass), same
+  // as approverAllowed's own no-hardcoded-default on the backend.
+  const canL3Approve = hasPerm(user, "l3-approve");
+  const canL4Approve = hasPerm(user, "l4-approve");
+  const canRejectAny = canAgmApprove || canGmApprove || canL3Approve || canL4Approve || user?.role === "accounts" || hasPerm(user, "reject");
 
   const [loading, setLoading] = useState(true);
   const [projects, setProjects] = useState<ProjectOption[]>([]);
@@ -320,17 +345,21 @@ export default function BillApproval() {
       apiClient.get("/bill-requests", { params: { scope: "approval" } }),
       apiClient.get("/bills", { params: { manualApprovalStatus: "pending" } }),
       apiClient.get("/bills", { params: { manualApprovalStatus: "pending-gm" } }),
+      apiClient.get("/bills", { params: { manualApprovalStatus: "pending-l3" } }),
+      apiClient.get("/bills", { params: { manualApprovalStatus: "pending-l4" } }),
       apiClient.get("/bills", { params: { manualApprovalStatus: "approved" } }),
       apiClient.get("/bills", { params: { manualApprovalStatus: "rejected" } }),
       apiClient.get("/work-orders"),
       apiClient.get("/auth/users"),
     ])
-      .then(([projR, brR, manualPendingR, manualGmR, manualApprovedR, manualRejectedR, woR, usersR]) => {
+      .then(([projR, brR, manualPendingR, manualGmR, manualL3R, manualL4R, manualApprovedR, manualRejectedR, woR, usersR]) => {
         setProjects(projR.data.projects ?? []);
         setBillReqs(brR.data.billRequests ?? []);
         setManualBills([
           ...(manualPendingR.data.bills ?? []),
           ...(manualGmR.data.bills ?? []),
+          ...(manualL3R.data.bills ?? []),
+          ...(manualL4R.data.bills ?? []),
           ...(manualApprovedR.data.bills ?? []),
           ...(manualRejectedR.data.bills ?? []),
         ]);
@@ -362,8 +391,12 @@ export default function BillApproval() {
 
   const pendingAgmReqs = useMemo(() => billReqs.filter(r => r.status === "pending" && !r.isArchived), [billReqs]);
   const pendingGmReqs = useMemo(() => billReqs.filter(r => r.status === "pending-gm" && !r.isArchived), [billReqs]);
+  const pendingL3Reqs = useMemo(() => billReqs.filter(r => r.status === "pending-l3" && !r.isArchived), [billReqs]);
+  const pendingL4Reqs = useMemo(() => billReqs.filter(r => r.status === "pending-l4" && !r.isArchived), [billReqs]);
   const pendingManualAgm = useMemo(() => manualBills.filter(b => b.manualApprovalStatus === "pending"), [manualBills]);
   const pendingManualGm = useMemo(() => manualBills.filter(b => b.manualApprovalStatus === "pending-gm"), [manualBills]);
+  const pendingManualL3 = useMemo(() => manualBills.filter(b => b.manualApprovalStatus === "pending-l3"), [manualBills]);
+  const pendingManualL4 = useMemo(() => manualBills.filter(b => b.manualApprovalStatus === "pending-l4"), [manualBills]);
   // Which manual bills belong under a given reqTab — mirrors the BillRequest
   // status tabs above (pending/pending-gm/approved/rejected/all).
   function manualBillsForTab(tab: string): ManualBillRow[] {
@@ -374,7 +407,8 @@ export default function BillApproval() {
   // ── Dashboard flashcards (Pending / Approved / Rejected) — counts across
   // both bill requests and manual bills, both approval stages combined for
   // Pending. Archived requests are excluded, matching the default list view.
-  const totalPendingCount = pendingAgmReqs.length + pendingGmReqs.length + pendingManualAgm.length + pendingManualGm.length;
+  const totalPendingCount = pendingAgmReqs.length + pendingGmReqs.length + pendingL3Reqs.length + pendingL4Reqs.length
+    + pendingManualAgm.length + pendingManualGm.length + pendingManualL3.length + pendingManualL4.length;
   const totalApprovedCount = useMemo(
     () => billReqs.filter(r => r.status === "approved" && !r.isArchived).length + manualBills.filter(b => b.manualApprovalStatus === "approved").length,
     [billReqs, manualBills]
@@ -480,6 +514,14 @@ export default function BillApproval() {
   // the work order's own vendor, if neither ever set one) or override it.
   const [gmPayeeCode, setGmPayeeCode] = useState<string>("");
   const [gmGroupSiblings, setGmGroupSiblings] = useState<{ vendorCode: string; companyName: string }[]>([]);
+  // Same hold/advance/GST fields as L1 — pre-filled with whatever AGM already
+  // set, so GM can either leave them as-is, fill in what AGM left blank, or
+  // re-edit them outright; nothing is locked in until the bill is actually
+  // created (see gmApproveHandler on the backend).
+  const [gmRetention, setGmRetention] = useState<number | null>(null);
+  const [gmAdvance, setGmAdvance] = useState<number | null>(null);
+  const [gmGst, setGmGst] = useState<number | null>(null);
+  const [gmPendingAdvances, setGmPendingAdvances] = useState<{ _id: string; slipNo: string; balance: number }[]>([]);
   const [rejectModal, setRejectModal] = useState(false);
   const [rejectTarget, setRejectTarget] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState("");
@@ -553,8 +595,20 @@ export default function BillApproval() {
     setGmTarget(id); setGmRemarks(""); setGmModal(true);
     setGmPayeeCode(""); setGmGroupSiblings([]);
     const br = billReqs.find(r => r._id === id);
+    // Pre-fill with whatever AGM already set (0/blank shows as blank, not
+    // "0", so GM can tell "never set" apart from "AGM deliberately set 0").
+    setGmRetention(br?.retentionAmount || null);
+    setGmAdvance(br?.advanceRecovery || null);
+    setGmGst(br?.gstPercentOverride ?? null);
+    setGmPendingAdvances([]);
     if (!br?.vendorCode) return;
-    setGmPayeeCode(br.payeeVendorCode || br.vendorCode);
+    const payee = br.payeeVendorCode || br.vendorCode;
+    setGmPayeeCode(payee);
+    if (br.projectId) {
+      apiClient.get<{ advanceSlips: { _id: string; slipNo: string; balance: number }[] }>(
+        "/advance-slips/pending", { params: { projectId: br.projectId, vendorCode: payee } }
+      ).then(res => setGmPendingAdvances(res.data.advanceSlips || [])).catch(() => setGmPendingAdvances([]));
+    }
     try {
       const cRes = await apiClient.get<{ contractors: Contractor[] }>("/contractors", { params: { search: br.vendorCode } });
       const contractor = cRes.data.contractors.find(c => c.vendorCode === br.vendorCode);
@@ -569,9 +623,82 @@ export default function BillApproval() {
     try {
       const body: Record<string, unknown> = { remarks: gmRemarks };
       if (gmPayeeCode) body.payeeVendorCode = gmPayeeCode;
+      if (gmRetention != null) body.retentionAmount = gmRetention;
+      if (gmGst != null) body.gstPercent = gmGst;
+      if (gmAdvance != null) {
+        body.advanceRecovery = gmAdvance;
+        const recoveries: { slipId: string; amount: number }[] = [];
+        let remaining = gmAdvance;
+        for (const slip of gmPendingAdvances) {
+          if (remaining <= 0) break;
+          const take = Math.min(remaining, slip.balance);
+          if (take > 0) recoveries.push({ slipId: slip._id, amount: take });
+          remaining -= take;
+        }
+        if (recoveries.length) body.advanceRecoveries = recoveries;
+      }
       const res = await apiClient.put(`/bill-requests/${gmTarget}/gm-approve`, body);
       toast.success(res.data.message || "Approved & bill generated");
       setGmModal(false); setGmTarget(null); setViewReq(null);
+      load();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || "Failed to approve");
+    } finally { setSaving(false); }
+  };
+  // ── L3/L4 approve — only ever reachable for a department configured for
+  // 3/4 approval levels (Users → Departments); simpler than L1/L2 since
+  // retention/advance/GST were already decided there — just a sign-off.
+  const [l3Modal, setL3Modal] = useState(false);
+  const [l3Target, setL3Target] = useState<string | null>(null);
+  const [l3Remarks, setL3Remarks] = useState("");
+  const [l3Retention, setL3Retention] = useState<number | null>(null);
+  const [l3Advance, setL3Advance] = useState<number | null>(null);
+  const [l3Gst, setL3Gst] = useState<number | null>(null);
+  useEffect(() => {
+    const br = billReqs.find(r => r._id === l3Target);
+    setL3Retention(br?.retentionAmount ?? null);
+    setL3Advance(br?.advanceRecovery ?? null);
+    setL3Gst(br?.gstPercentOverride ?? null);
+  }, [l3Target]);
+  const handleL3Approve = async () => {
+    if (!l3Target) return;
+    setSaving(true);
+    try {
+      const body: Record<string, unknown> = { remarks: l3Remarks };
+      if (l3Retention != null) body.retentionAmount = l3Retention;
+      if (l3Advance != null) body.advanceRecovery = l3Advance;
+      if (l3Gst != null) body.gstPercent = l3Gst;
+      const res = await apiClient.put(`/bill-requests/${l3Target}/l3-approve`, body);
+      toast.success(res.data.message || "L3 approved");
+      setL3Modal(false); setL3Target(null); setViewReq(null);
+      load();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || "Failed to approve");
+    } finally { setSaving(false); }
+  };
+  const [l4Modal, setL4Modal] = useState(false);
+  const [l4Target, setL4Target] = useState<string | null>(null);
+  const [l4Remarks, setL4Remarks] = useState("");
+  const [l4Retention, setL4Retention] = useState<number | null>(null);
+  const [l4Advance, setL4Advance] = useState<number | null>(null);
+  const [l4Gst, setL4Gst] = useState<number | null>(null);
+  useEffect(() => {
+    const br = billReqs.find(r => r._id === l4Target);
+    setL4Retention(br?.retentionAmount ?? null);
+    setL4Advance(br?.advanceRecovery ?? null);
+    setL4Gst(br?.gstPercentOverride ?? null);
+  }, [l4Target]);
+  const handleL4Approve = async () => {
+    if (!l4Target) return;
+    setSaving(true);
+    try {
+      const body: Record<string, unknown> = { remarks: l4Remarks };
+      if (l4Retention != null) body.retentionAmount = l4Retention;
+      if (l4Advance != null) body.advanceRecovery = l4Advance;
+      if (l4Gst != null) body.gstPercent = l4Gst;
+      const res = await apiClient.put(`/bill-requests/${l4Target}/l4-approve`, body);
+      toast.success(res.data.message || "L4 approved & bill generated");
+      setL4Modal(false); setL4Target(null); setViewReq(null);
       load();
     } catch (e: any) {
       toast.error(e?.response?.data?.message || "Failed to approve");
@@ -598,13 +725,31 @@ export default function BillApproval() {
   // Who to route this manual bill to for L2 sign-off once L1 approves it —
   // same informational-only routing as the BillRequest AGM modal's own field.
   const [manualSentForL2To, setManualSentForL2To] = useState("");
-  useEffect(() => { setManualSentForL2To(""); }, [manualApproveTarget]);
+  // Same hold/advance/GST fields as the BillRequest flow's own approve
+  // modals — pre-filled with whatever this bill already has (set at
+  // creation, or by an earlier stage), editable at every stage.
+  const [manualRetention, setManualRetention] = useState<number | null>(null);
+  const [manualAdvance, setManualAdvance] = useState<number | null>(null);
+  const [manualGst, setManualGst] = useState<number | null>(null);
+  useEffect(() => {
+    setManualSentForL2To("");
+    setManualRetention(manualApproveTarget?.retentionAmount || null);
+    setManualAdvance(manualApproveTarget?.advanceRecovery || null);
+    setManualGst(manualApproveTarget?.gstPercent ?? null);
+  }, [manualApproveTarget]);
 
   const handleManualApprove = async (bill: ManualBillRow) => {
     setSaving(true);
     try {
-      const endpoint = bill.manualApprovalStatus === "pending" ? "manual-agm-approve" : "manual-gm-approve";
-      const body = bill.manualApprovalStatus === "pending" && manualSentForL2To ? { sentForL2ApprovalTo: manualSentForL2To } : {};
+      const MANUAL_APPROVE_ENDPOINT: Record<string, string> = {
+        pending: "manual-agm-approve", "pending-gm": "manual-gm-approve",
+        "pending-l3": "manual-l3-approve", "pending-l4": "manual-l4-approve",
+      };
+      const endpoint = MANUAL_APPROVE_ENDPOINT[bill.manualApprovalStatus] || "manual-agm-approve";
+      const body: Record<string, unknown> = bill.manualApprovalStatus === "pending" && manualSentForL2To ? { sentForL2ApprovalTo: manualSentForL2To } : {};
+      if (manualRetention != null) body.retentionAmount = manualRetention;
+      if (manualAdvance != null) body.advanceRecovery = manualAdvance;
+      if (manualGst != null) body.gstPercent = manualGst;
       const res = await apiClient.patch(`/bills/${bill._id}/${endpoint}`, body);
       toast.success(res.data.message || "Approved");
       setManualApproveTarget(null);
@@ -718,7 +863,7 @@ export default function BillApproval() {
         />
         <NxStatCard
           label="Pending" value={totalPendingCount} icon={Clock}
-          active={reqTab === "pending" || reqTab === "pending-gm"}
+          active={["pending", "pending-gm", "pending-l3", "pending-l4"].includes(reqTab)}
           onClick={() => setReqTab("pending")}
         />
         <NxStatCard
@@ -740,15 +885,15 @@ export default function BillApproval() {
           options={[
             { value: "pending", label: <span className="inline-flex items-center gap-1.5">Pending L1 {pendingAgmReqs.length + pendingManualAgm.length > 0 && <NxBadge color="amber">{pendingAgmReqs.length + pendingManualAgm.length}</NxBadge>}</span> },
             { value: "pending-gm", label: <span className="inline-flex items-center gap-1.5">Pending L2 {pendingGmReqs.length + pendingManualGm.length > 0 && <NxBadge color="blue">{pendingGmReqs.length + pendingManualGm.length}</NxBadge>}</span> },
+            // Only shown when there's actually a request sitting at that
+            // stage — most departments never reach L3/L4 (2 is the
+            // default), so these tabs would otherwise just be dead weight.
+            ...(pendingL3Reqs.length + pendingManualL3.length > 0 ? [{ value: "pending-l3", label: <span className="inline-flex items-center gap-1.5">Pending L3 <NxBadge color="amber">{pendingL3Reqs.length + pendingManualL3.length}</NxBadge></span> }] : []),
+            ...(pendingL4Reqs.length + pendingManualL4.length > 0 ? [{ value: "pending-l4", label: <span className="inline-flex items-center gap-1.5">Pending L4 <NxBadge color="teal">{pendingL4Reqs.length + pendingManualL4.length}</NxBadge></span> }] : []),
             { value: "approved", label: "Approved" },
             { value: "rejected", label: "Rejected" },
             { value: "all", label: "All" },
           ]}
-        />
-        <DropdownSelectFilter
-          value={reqDeptFilter ?? ""} onChange={v => setReqDeptFilter(v || undefined)}
-          placeholder="All departments" resetValue=""
-          options={departmentOptions}
         />
       </div>
       <div className="bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700/40 rounded-lg p-3.5 mb-4">
@@ -761,6 +906,11 @@ export default function BillApproval() {
             value={reqProjectFilter ?? ""} onChange={v => setReqProjectFilter(v || undefined)}
             placeholder="All projects" resetValue=""
             options={projectOptions}
+          />
+          <DropdownSelectFilter
+            value={reqDeptFilter ?? ""} onChange={v => setReqDeptFilter(v || undefined)}
+            placeholder="All departments" resetValue=""
+            options={departmentOptions}
           />
           <UISwitch checked={showArchived} onChange={setShowArchived} onLabel="Archived" offLabel="Show Archived" />
         </div>
@@ -798,7 +948,12 @@ export default function BillApproval() {
                   <Td>{b.vendorName || "—"}</Td>
                   <Td className="font-mono">{fmt(b.amount)}</Td>
                   <Td>{dayjs(b.billDate || b.createdAt).format("DD MMM YYYY")}</Td>
-                  <Td><NxBadge color={STATUS_CFG[b.manualApprovalStatus]?.color as any ?? "gray"}>{STATUS_CFG[b.manualApprovalStatus]?.label ?? b.manualApprovalStatus}</NxBadge></Td>
+                  <Td>
+                    <div className="flex items-center gap-1.5">
+                      <NxBadge color={STATUS_CFG[b.manualApprovalStatus]?.color as any ?? "gray"}>{STATUS_CFG[b.manualApprovalStatus]?.label ?? b.manualApprovalStatus}</NxBadge>
+                      <OverdueBadge status={b.manualApprovalStatus} updatedAt={b.updatedAt} />
+                    </div>
+                  </Td>
                   <Td onClick={e => e.stopPropagation()}>
                     <div className="flex items-center gap-1">
                       <NxBtn color="icon-blue" title="View" icon={Eye} loading={viewManualBillLoadingId === b._id} onClick={() => openManualBillView(b)} />
@@ -809,7 +964,13 @@ export default function BillApproval() {
                       {b.manualApprovalStatus === "pending-gm" && canGmApprove && (
                         <NxBtn color="icon-green" title="L2 Approve" icon={Check} onClick={() => setManualApproveTarget(b)} />
                       )}
-                      {["pending", "pending-gm"].includes(b.manualApprovalStatus) && canRejectAny && (
+                      {b.manualApprovalStatus === "pending-l3" && canL3Approve && (
+                        <NxBtn color="icon-green" title="L3 Approve" icon={Check} onClick={() => setManualApproveTarget(b)} />
+                      )}
+                      {b.manualApprovalStatus === "pending-l4" && canL4Approve && (
+                        <NxBtn color="icon-green" title="L4 Approve" icon={Check} onClick={() => setManualApproveTarget(b)} />
+                      )}
+                      {["pending", "pending-gm", "pending-l3", "pending-l4"].includes(b.manualApprovalStatus) && canRejectAny && (
                         <NxBtn color="icon-red" title="Reject" icon={X} onClick={() => setManualRejectTarget(b)} />
                       )}
                     </div>
@@ -864,7 +1025,12 @@ export default function BillApproval() {
                     <Td>{departmentLabel(resolveDeptRow(r))}</Td>
                     <Td>{r.vendorName}</Td>
                     <Td>{dayjs(r.createdAt).format("DD MMM YYYY")}</Td>
-                    <Td><UIBadge color={cfg.color as any}>{cfg.label}</UIBadge></Td>
+                    <Td>
+                      <div className="flex items-center gap-1.5">
+                        <UIBadge color={cfg.color as any}>{cfg.label}</UIBadge>
+                        <OverdueBadge status={r.status} updatedAt={r.updatedAt} />
+                      </div>
+                    </Td>
                     <Td>
                       <div onClick={e => e.stopPropagation()} className="flex items-center gap-1">
                         <NxBtn color="icon-blue" title="View" icon={Eye} onClick={() => openViewReq(r)} />
@@ -875,7 +1041,13 @@ export default function BillApproval() {
                         {r.status === "pending-gm" && canGmApprove && (
                           <NxBtn color="icon-green" title="L2 Approve" icon={Check} onClick={() => openGmApprove(r._id)} />
                         )}
-                        {["pending", "pending-gm"].includes(r.status) && canRejectAny && (
+                        {r.status === "pending-l3" && canL3Approve && (
+                          <NxBtn color="icon-green" title="L3 Approve" icon={Check} onClick={() => { setL3Target(r._id); setL3Remarks(""); setL3Modal(true); }} />
+                        )}
+                        {r.status === "pending-l4" && canL4Approve && (
+                          <NxBtn color="icon-green" title="L4 Approve" icon={Check} onClick={() => { setL4Target(r._id); setL4Remarks(""); setL4Modal(true); }} />
+                        )}
+                        {["pending", "pending-gm", "pending-l3", "pending-l4"].includes(r.status) && canRejectAny && (
                           <NxBtn color="icon-red" title="Reject" icon={X} onClick={() => { setRejectTarget(r._id); setRejectModal(true); }} />
                         )}
                       </div>
@@ -910,6 +1082,7 @@ export default function BillApproval() {
             <span className="inline-flex items-center gap-2">
               <span>Bill Request — {viewReq.reqNo}</span>
               <UIBadge color={STATUS_CFG[viewReq.status]?.color as any}>{STATUS_CFG[viewReq.status]?.label}</UIBadge>
+              <OverdueBadge status={viewReq.status} updatedAt={viewReq.updatedAt} />
               {viewReq.milestoneAchieved && <UIBadge color="orange" small>🏆 Milestone</UIBadge>}
             </span>
           }
@@ -929,6 +1102,18 @@ export default function BillApproval() {
                 <>
                   {canRejectAny && <Btn color="red" label="Reject" onClick={() => { setRejectTarget(viewReq._id); setRejectModal(true); setViewReq(null); }} />}
                   {canGmApprove && <Btn color="blue" label="L2 Approve →" onClick={() => { openGmApprove(viewReq._id); setViewReq(null); }} />}
+                </>
+              )}
+              {viewReq.status === "pending-l3" && (
+                <>
+                  {canRejectAny && <Btn color="red" label="Reject" onClick={() => { setRejectTarget(viewReq._id); setRejectModal(true); setViewReq(null); }} />}
+                  {canL3Approve && <Btn color="blue" label="L3 Approve →" onClick={() => { setL3Target(viewReq._id); setL3Remarks(""); setL3Modal(true); setViewReq(null); }} />}
+                </>
+              )}
+              {viewReq.status === "pending-l4" && (
+                <>
+                  {canRejectAny && <Btn color="red" label="Reject" onClick={() => { setRejectTarget(viewReq._id); setRejectModal(true); setViewReq(null); }} />}
+                  {canL4Approve && <Btn color="blue" label="L4 Approve →" onClick={() => { setL4Target(viewReq._id); setL4Remarks(""); setL4Modal(true); setViewReq(null); }} />}
                 </>
               )}
             </div>
@@ -1163,7 +1348,7 @@ export default function BillApproval() {
           }
         >
           <div className="text-xs text-gray-500 dark:text-gray-400 mb-3.5">
-            This creates the running bill using the retention/advance/GST L1 already set. It then moves to Accounts Payment.
+            This creates the running bill. Whatever L1 already set below carries over as-is — fill in anything L1 left blank, or edit it outright.
           </div>
           {gmGroupSiblings.length > 1 && (
             <div className="mb-3">
@@ -1175,7 +1360,135 @@ export default function BillApproval() {
               />
             </div>
           )}
+          <div className="mb-3">
+            <Field
+              label="Hold / Retention Amount (₹, optional)"
+              type="number" min="0"
+              placeholder="Auto-calculated from work order retention %"
+              value={gmRetention ?? ""}
+              onChange={(e) => setGmRetention(e.target.value ? Number(e.target.value) : null)}
+            />
+          </div>
+          <div className="mb-3">
+            <Field
+              label="Advance Recovery Amount (₹, optional)"
+              type="number" min="0"
+              max={gmPendingAdvances.length ? gmPendingAdvances.reduce((s, sl) => s + sl.balance, 0) : undefined}
+              placeholder="0"
+              value={gmAdvance ?? ""}
+              onChange={(e) => setGmAdvance(e.target.value ? Number(e.target.value) : null)}
+              hint={gmPendingAdvances.length > 0
+                ? `Outstanding for this payee: ${gmPendingAdvances.map(sl => `${sl.slipNo} (${fmt(sl.balance)})`).join(", ")} — settled oldest-first.`
+                : "No outstanding advance slips for this payee on this project."}
+            />
+          </div>
+          <div className="mb-3">
+            <Field
+              label="GST % (optional)"
+              type="number" min="0" max="100"
+              placeholder="Leave blank to use the work order's GST%"
+              value={gmGst ?? ""}
+              onChange={(e) => setGmGst(e.target.value ? Number(e.target.value) : null)}
+            />
+          </div>
           <Field textarea label="Remarks (optional)" placeholder="Remarks (optional)" value={gmRemarks} onChange={(e) => setGmRemarks(e.target.value)} />
+        </Modal>
+      )}
+
+      {/* ── L3 approve modal — only reachable for a department configured
+          for 3/4 approval levels; a plain sign-off, retention/advance/GST
+          were already locked in at L1/L2. ── */}
+      {l3Modal && (
+        <Modal
+          icon={CheckCircle2}
+          title="L3 Approve"
+          onClose={() => { setL3Modal(false); setL3Target(null); }}
+          footer={
+            <div className="flex justify-end gap-2">
+              <Btn outline label="Cancel" onClick={() => { setL3Modal(false); setL3Target(null); }} />
+              <Btn color="blue" label="Approve" loading={saving} onClick={handleL3Approve} />
+            </div>
+          }
+        >
+          <div className="text-xs text-gray-500 dark:text-gray-400 mb-3.5">
+            Moves this request on — to L4 if this department needs it, otherwise this creates the running bill. Whatever's already set below carries over as-is — fill in anything left blank, or edit it outright.
+          </div>
+          <div className="mb-3">
+            <Field
+              label="Hold / Retention Amount (₹, optional)"
+              type="number" min="0"
+              placeholder="Auto-calculated from work order retention %"
+              value={l3Retention ?? ""}
+              onChange={(e) => setL3Retention(e.target.value ? Number(e.target.value) : null)}
+            />
+          </div>
+          <div className="mb-3">
+            <Field
+              label="Advance Recovery Amount (₹, optional)"
+              type="number" min="0"
+              placeholder="0"
+              value={l3Advance ?? ""}
+              onChange={(e) => setL3Advance(e.target.value ? Number(e.target.value) : null)}
+            />
+          </div>
+          <div className="mb-3">
+            <Field
+              label="GST % (optional)"
+              type="number" min="0" max="100"
+              placeholder="Leave blank to use the work order's GST%"
+              value={l3Gst ?? ""}
+              onChange={(e) => setL3Gst(e.target.value ? Number(e.target.value) : null)}
+            />
+          </div>
+          <Field textarea label="Remarks (optional)" placeholder="Remarks (optional)" value={l3Remarks} onChange={(e) => setL3Remarks(e.target.value)} />
+        </Modal>
+      )}
+
+      {/* ── L4 approve modal — always the final stage (4 is the max
+          configurable level today), so this always creates the bill. ── */}
+      {l4Modal && (
+        <Modal
+          icon={CheckCircle2}
+          title="L4 Approve — Final"
+          onClose={() => { setL4Modal(false); setL4Target(null); }}
+          footer={
+            <div className="flex justify-end gap-2">
+              <Btn outline label="Cancel" onClick={() => { setL4Modal(false); setL4Target(null); }} />
+              <Btn color="blue" label="Approve & Generate Bill" loading={saving} onClick={handleL4Approve} />
+            </div>
+          }
+        >
+          <div className="text-xs text-gray-500 dark:text-gray-400 mb-3.5">
+            This creates the running bill. It then moves to Accounts Payment. Whatever's already set below carries over as-is — fill in anything left blank, or edit it outright.
+          </div>
+          <div className="mb-3">
+            <Field
+              label="Hold / Retention Amount (₹, optional)"
+              type="number" min="0"
+              placeholder="Auto-calculated from work order retention %"
+              value={l4Retention ?? ""}
+              onChange={(e) => setL4Retention(e.target.value ? Number(e.target.value) : null)}
+            />
+          </div>
+          <div className="mb-3">
+            <Field
+              label="Advance Recovery Amount (₹, optional)"
+              type="number" min="0"
+              placeholder="0"
+              value={l4Advance ?? ""}
+              onChange={(e) => setL4Advance(e.target.value ? Number(e.target.value) : null)}
+            />
+          </div>
+          <div className="mb-3">
+            <Field
+              label="GST % (optional)"
+              type="number" min="0" max="100"
+              placeholder="Leave blank to use the work order's GST%"
+              value={l4Gst ?? ""}
+              onChange={(e) => setL4Gst(e.target.value ? Number(e.target.value) : null)}
+            />
+          </div>
+          <Field textarea label="Remarks (optional)" placeholder="Remarks (optional)" value={l4Remarks} onChange={(e) => setL4Remarks(e.target.value)} />
         </Modal>
       )}
 
@@ -1198,7 +1511,7 @@ export default function BillApproval() {
       {manualApproveTarget && (
         <Modal
           icon={CheckCircle2}
-          title={manualApproveTarget.manualApprovalStatus === "pending" ? "L1 Approve this bill?" : "L2 Approve this bill?"}
+          title={`${STATUS_CFG[manualApproveTarget.manualApprovalStatus]?.label ?? "Approve"} this bill?`}
           onClose={() => setManualApproveTarget(null)}
           footer={
             <div className="flex justify-end gap-2">
@@ -1208,7 +1521,34 @@ export default function BillApproval() {
           }
         >
           <div className="text-xs text-gray-500 dark:text-gray-400 mb-3.5">
-            {manualApproveTarget.billNo} ({fmt(manualApproveTarget.amount)}) will move {manualApproveTarget.manualApprovalStatus === "pending" ? "to L2 for final sign-off" : "to Accounts for verification"}.
+            {manualApproveTarget.billNo} ({fmt(manualApproveTarget.amount)}) will move to the next stage — or to Accounts for verification if this is the last one.
+          </div>
+          <div className="mb-3">
+            <Field
+              label="Hold / Retention Amount (₹, optional)"
+              type="number" min="0"
+              placeholder="0"
+              value={manualRetention ?? ""}
+              onChange={(e) => setManualRetention(e.target.value ? Number(e.target.value) : null)}
+            />
+          </div>
+          <div className="mb-3">
+            <Field
+              label="Advance Recovery Amount (₹, optional)"
+              type="number" min="0"
+              placeholder="0"
+              value={manualAdvance ?? ""}
+              onChange={(e) => setManualAdvance(e.target.value ? Number(e.target.value) : null)}
+            />
+          </div>
+          <div className="mb-3">
+            <Field
+              label="GST % (optional)"
+              type="number" min="0" max="100"
+              placeholder="Leave blank to keep current GST%"
+              value={manualGst ?? ""}
+              onChange={(e) => setManualGst(e.target.value ? Number(e.target.value) : null)}
+            />
           </div>
           {manualApproveTarget.manualApprovalStatus === "pending" && (() => {
             const candidates = l2ApproverOptions(manualApproveTarget.department, manualApproveTarget.customDepartment);
@@ -1256,7 +1596,7 @@ export default function BillApproval() {
           footer={
             <div className="flex justify-end gap-2">
               <Btn outline label="Close" onClick={() => setViewManualBill(null)} />
-              {["pending", "pending-gm"].includes(viewManualBill.manualApprovalStatus) && canRejectAny && (
+              {["pending", "pending-gm", "pending-l3", "pending-l4"].includes(viewManualBill.manualApprovalStatus) && canRejectAny && (
                 <Btn color="red" label="Reject" onClick={() => {
                   setManualRejectTarget({ _id: viewManualBill._id, billNo: viewManualBill.billNo, amount: viewManualBill.amount, billDate: viewManualBill.billDate || "", createdAt: viewManualBill.billDate || "", manualApprovalStatus: viewManualBill.manualApprovalStatus });
                   setViewManualBill(null);
@@ -1270,6 +1610,18 @@ export default function BillApproval() {
               )}
               {viewManualBill.manualApprovalStatus === "pending-gm" && canGmApprove && (
                 <Btn color="blue" label="L2 Approve" onClick={() => {
+                  setManualApproveTarget({ _id: viewManualBill._id, billNo: viewManualBill.billNo, amount: viewManualBill.amount, billDate: viewManualBill.billDate || "", createdAt: viewManualBill.billDate || "", manualApprovalStatus: viewManualBill.manualApprovalStatus, department: viewManualBill.department, customDepartment: viewManualBill.customDepartment });
+                  setViewManualBill(null);
+                }} />
+              )}
+              {viewManualBill.manualApprovalStatus === "pending-l3" && canL3Approve && (
+                <Btn color="blue" label="L3 Approve" onClick={() => {
+                  setManualApproveTarget({ _id: viewManualBill._id, billNo: viewManualBill.billNo, amount: viewManualBill.amount, billDate: viewManualBill.billDate || "", createdAt: viewManualBill.billDate || "", manualApprovalStatus: viewManualBill.manualApprovalStatus, department: viewManualBill.department, customDepartment: viewManualBill.customDepartment });
+                  setViewManualBill(null);
+                }} />
+              )}
+              {viewManualBill.manualApprovalStatus === "pending-l4" && canL4Approve && (
+                <Btn color="blue" label="L4 Approve" onClick={() => {
                   setManualApproveTarget({ _id: viewManualBill._id, billNo: viewManualBill.billNo, amount: viewManualBill.amount, billDate: viewManualBill.billDate || "", createdAt: viewManualBill.billDate || "", manualApprovalStatus: viewManualBill.manualApprovalStatus, department: viewManualBill.department, customDepartment: viewManualBill.customDepartment });
                   setViewManualBill(null);
                 }} />

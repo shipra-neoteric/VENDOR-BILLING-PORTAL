@@ -15,6 +15,7 @@ const { resolvePayee } = require('../utils/vendorGroupHelpers');
 const { applyAdvanceRecoveries } = require('../utils/advanceRecovery');
 const { notifyStagePending, settleAllPendingForEntity } = require('../utils/slackApprovals');
 const { canActOnDepartment } = require('../utils/departmentAccess');
+const { getApprovalConfig, approverAllowed } = require('../utils/approvalRules');
 
 // Fire-and-forget (matches emitEvent's un-awaited call sites below) — a failed
 // or unconfigured Slack push must never block the real approval-chain write
@@ -80,7 +81,7 @@ exports.listBillRequests = asyncHandler(async (req, res) => {
   // clears L1/L2). Users not yet assigned a department (the field is new)
   // see everything too, so rollout doesn't silently empty their queue until
   // an admin assigns one.
-  const isApprovalQueue = scope === 'approval' || status === 'pending' || status === 'pending-gm';
+  const isApprovalQueue = scope === 'approval' || ['pending', 'pending-gm', 'pending-l3', 'pending-l4'].includes(status);
   if (isApprovalQueue && !['owner', 'accounts'].includes(req.user.role) && req.user.department) {
     // A request with no department of its own (an older work order that
     // predates this field, or a standalone bill nobody classified) belongs
@@ -102,6 +103,9 @@ exports.listBillRequests = asyncHandler(async (req, res) => {
     .populate('requestedBy', 'name email')
     .populate('processedBy', 'name role')
     .populate('agmApprovedBy', 'name role')
+    .populate('gmApprovedBy', 'name role')
+    .populate('l3ApprovedBy', 'name role')
+    .populate('l4ApprovedBy', 'name role')
     .populate('sentForL2ApprovalTo', 'name role')
     .populate('approvalHistory.by', 'name role')
     .populate({
@@ -145,7 +149,7 @@ exports.createBillRequest = asyncHandler(async (req, res) => {
   }
 
   // Check no request already in flight (either stage) exists
-  const existing = await BillRequest.findOne({ workOrderId: wo._id, status: { $in: ['pending', 'pending-gm'] } });
+  const existing = await BillRequest.findOne({ workOrderId: wo._id, status: { $in: ['pending', 'pending-gm', 'pending-l3', 'pending-l4'] } });
   if (existing) {
     return badRequest(res, `Stage ${existing.stageNo} (${existing.reqNo}) is already pending approval. Wait for admin review before submitting a new request.`);
   }
@@ -287,6 +291,15 @@ exports.agmApprove = asyncHandler(async (req, res) => {
   if (!canActOnDepartment(req.user, br)) return forbidden(res, 'This bill request belongs to a different department.');
   if (br.status !== 'pending') return badRequest(res, `Request is already ${br.status}`);
 
+  // Departments with no Approval Rule configured (Users → Departments) keep
+  // today's exact behavior untouched — 2 stages, owner+agm/owner+gm only.
+  // A configured department can narrow who approves at this stage, and/or
+  // collapse to a single approval (see the requiredApprovals check below).
+  const approvalConfig = await getApprovalConfig(br);
+  if (!approverAllowed(req.user, approvalConfig, 'agm')) {
+    return forbidden(res, "You're not configured as an L1 (AGM) approver for this department.");
+  }
+
   const wo = await WorkOrder.findById(br.workOrderId);
   if (!wo) return notFound(res, 'Associated work order not found');
 
@@ -368,34 +381,39 @@ exports.agmApprove = asyncHandler(async (req, res) => {
     changes: { retentionAmount: { from: null, to: retentionAmount }, advanceRecovery: { from: null, to: advanceRecovery } },
   });
 
+  // This department is configured for a single approval — AGM's own
+  // sign-off just above is already final, so finalize immediately instead
+  // of waiting on a separate GM click. Calls finalizeBillRequest directly
+  // (not gmApproveHandler) — routing through the GM handler used to also
+  // stamp a phantom br.gmApprovedBy/'gm' history entry onto this same AGM's
+  // action, which is wrong for a department with no real L2 stage at all.
+  if (approvalConfig?.requiredApprovals === 1) {
+    const result = await finalizeBillRequest(br, wo, req, res, 'agm');
+    if (!result) return;
+    return success(res, result, result.message);
+  }
+
   notifySlack('BILL_REQUEST_GM_APPROVAL', br);
 
   success(res, { billRequest: br }, `L1 approved — Stage ${br.stageNo} moved to L2 approval`);
 });
 
-// PUT /api/bill-requests/:id/gm-approve — Stage 2 (L2), final. This is where
-// the RunningBill actually gets created, using the retention/advance figures
-// AGM already set at L1.
-exports.gmApprove = asyncHandler(async (req, res) => {
-  const br = await BillRequest.findById(req.params.id);
-  if (!br) return notFound(res, 'Bill request not found');
-  if (!canActOnDepartment(req.user, br)) return forbidden(res, 'This bill request belongs to a different department.');
-  if (br.status !== 'pending-gm') return badRequest(res, `Request is already ${br.status}`);
-  if (br.agmApprovedBy && br.agmApprovedBy.toString() === req.user._id.toString() && req.user.role !== 'owner') {
-    return badRequest(res, 'The AGM who approved this cannot also give GM sign-off — segregation of duties requires a different approver.');
-  }
-
-  const wo = await WorkOrder.findById(br.workOrderId);
-  if (!wo) return notFound(res, 'Associated work order not found');
-
+// The actual bill-creation logic — reached from whichever stage handler
+// (gm/l3/l4) turns out to be this department's LAST configured level. On
+// failure it sends the error response itself and returns null (mirroring
+// every other early-return check in this file); on success it returns
+// { billRequest, bill, message } WITHOUT sending a response, so each caller
+// can shape its own success() call — a caller must check for null.
+async function finalizeBillRequest(br, wo, req, res, finalStage) {
   // Re-check at the actual bill-creation moment, not just when the request
   // was first raised — an edit to Scope of Work/Payment Milestones between
   // then and now can reset the WO back into its own approval chain.
   if (!isWorkOrderApproved(wo)) {
-    return badRequest(res, `"${wo.workOrderNo}" is no longer fully approved (currently ${wo.approvalStatus}) — it must clear its own approval chain again before this request can become a bill.`);
+    badRequest(res, `"${wo.workOrderNo}" is no longer fully approved (currently ${wo.approvalStatus}) — it must clear its own approval chain again before this request can become a bill.`);
+    return null;
   }
 
-  // GM has final say on who actually gets paid — can confirm AGM's choice or
+  // Final-stage approver has last say on who actually gets paid — can
   // override it with a different fellow Vendor Group member. Only re-resolved
   // when GM explicitly sends a payeeVendorCode; otherwise AGM's choice (or the
   // work order's own vendor, if neither ever set one) stands unchanged.
@@ -481,11 +499,17 @@ exports.gmApprove = asyncHandler(async (req, res) => {
     status:      'draft',
     agmApprovedBy: br.agmApprovedBy,
     agmApprovedAt: br.agmApprovedAt,
-    // The GM who just approved this at L2 (gmApprove) — carried onto the bill
-    // itself exactly like the AGM's L1 sign-off above, so the bill's own
-    // AGM/GM pills reflect the pre-Accounts gate that already happened
-    // rather than staying permanently blank until some later, unrelated
-    // Accounts-side checker action (a separate stage — see checkerBy).
+    // Carried onto the bill itself exactly like the AGM's L1 sign-off above
+    // — only ever set for the levels this department's config actually used
+    // (br.gmApprovedBy/l3ApprovedBy/l4ApprovedBy stay unset otherwise), so
+    // the bill's own pills reflect the pre-Accounts gate that already
+    // happened rather than staying permanently blank.
+    gmApprovedBy: br.gmApprovedBy,
+    gmApprovedAt: br.gmApprovedAt,
+    l3ApprovedBy: br.l3ApprovedBy,
+    l3ApprovedAt: br.l3ApprovedAt,
+    l4ApprovedBy: br.l4ApprovedBy,
+    l4ApprovedAt: br.l4ApprovedAt,
     verifiedBy:  req.user._id,
     verifiedAt:  new Date(),
     createdBy:   req.user._id,
@@ -500,7 +524,7 @@ exports.gmApprove = asyncHandler(async (req, res) => {
   br.billId      = runningBill._id;
   br.processedBy = req.user._id;
   br.processedAt = new Date();
-  br.approvalHistory.push({ stage: 'gm', action: 'approved', by: req.user._id, byName: req.user.name, byRole: req.user.role, remarks: req.body.remarks || '' });
+  br.approvalHistory.push({ stage: finalStage, action: 'approved', by: req.user._id, byName: req.user.name, byRole: req.user.role, remarks: req.body.remarks || '' });
   await br.save();
 
   // Apply AGM's advance-slip recoveries now that the bill actually exists —
@@ -522,11 +546,11 @@ exports.gmApprove = asyncHandler(async (req, res) => {
     metadata:      { reqNo: br.reqNo, billNo, totalAmount },
   });
 
-  await advanceInstance('BillRequest', br._id, req.user._id, 'GM approved');
+  await advanceInstance('BillRequest', br._id, req.user._id, `${finalStage.toUpperCase()} approved`);
 
   await logAudit({
     action: 'APPROVE', module: 'bill-requests', user: req.user,
-    description: `GM approved ${br.reqNo} — generated bill ${billNo} (₹${totalAmount.toLocaleString('en-IN')})`,
+    description: `${finalStage.toUpperCase()} approved ${br.reqNo} — generated bill ${billNo} (₹${totalAmount.toLocaleString('en-IN')})`,
     entityType: 'BillRequest', entityId: br._id, entityLabel: br.reqNo,
   });
 
@@ -536,16 +560,169 @@ exports.gmApprove = asyncHandler(async (req, res) => {
   // AGM/GM sign-off (see billController.manualGmApprove's own notify below).
   notifySlack('PAYMENT_VERIFY_APPROVAL', runningBill);
 
-  success(res, { billRequest: br, bill: runningBill }, `Approved — Bill ${billNo} generated for Stage ${br.stageNo}`);
-});
+  return { billRequest: br, bill: runningBill, message: `Approved — Bill ${billNo} generated for Stage ${br.stageNo}` };
+}
 
-// PUT /api/bill-requests/:id/reject — from either L1 (pending) or L2 (pending-gm).
+// PUT /api/bill-requests/:id/gm-approve — Stage 2 (L2). For the default
+// 2-level department this is the final stage and creates the RunningBill
+// (via finalizeBillRequest); a department configured for 3/4 levels instead
+// moves the request on to L3. Defined as a plain named function (not
+// directly exports.gmApprove) purely so its body reads the same way as the
+// l3/l4 handlers below; asyncHandler wraps it for the actual route.
+async function gmApproveHandler(req, res) {
+  const br = await BillRequest.findById(req.params.id);
+  if (!br) return notFound(res, 'Bill request not found');
+  if (!canActOnDepartment(req.user, br)) return forbidden(res, 'This bill request belongs to a different department.');
+  if (br.status !== 'pending-gm') return badRequest(res, `Request is already ${br.status}`);
+  if (br.agmApprovedBy && br.agmApprovedBy.toString() === req.user._id.toString() && req.user.role !== 'owner') {
+    return badRequest(res, 'The AGM who approved this cannot also give GM sign-off — segregation of duties requires a different approver.');
+  }
+
+  const approvalConfig = await getApprovalConfig(br);
+  if (!approverAllowed(req.user, approvalConfig, 'gm')) {
+    return forbidden(res, "You're not configured as an L2 (GM) approver for this department.");
+  }
+
+  const wo = await WorkOrder.findById(br.workOrderId);
+  if (!wo) return notFound(res, 'Associated work order not found');
+
+  // GM can fill in whatever AGM left blank, or re-edit AGM's own figures —
+  // these aren't locked in until the bill actually gets created (finalize-
+  // BillRequest reads them straight off `br`), so it's safe to overwrite
+  // here right up to that point, at any stage this department's chain has.
+  if (req.body.retentionAmount != null) br.retentionAmount = Number(req.body.retentionAmount);
+  if (req.body.gstPercent != null) {
+    const gst = Number(req.body.gstPercent);
+    if (Number.isNaN(gst) || gst < 0 || gst > 100) return badRequest(res, 'GST% must be a number between 0 and 100');
+    br.gstPercentOverride = gst;
+  }
+  if (req.body.advanceRecovery != null) {
+    br.advanceRecovery = Number(req.body.advanceRecovery);
+    br.advanceRecoveries = Array.isArray(req.body.advanceRecoveries) ? req.body.advanceRecoveries : [];
+  }
+
+  br.gmApprovedBy = req.user._id;
+  br.gmApprovedAt = new Date();
+  br.approvalHistory.push({ stage: 'gm', action: 'approved', by: req.user._id, byName: req.user.name, byRole: req.user.role, remarks: req.body.remarks || '' });
+
+  const totalLevels = approvalConfig?.requiredApprovals ?? 2;
+  if (totalLevels >= 3) {
+    br.status = 'pending-l3';
+    await br.save();
+    notifySlack('BILL_REQUEST_L3_APPROVAL', br);
+    return success(res, { billRequest: br }, `L2 approved — Stage ${br.stageNo} moved to L3 approval`);
+  }
+
+  const result = await finalizeBillRequest(br, wo, req, res, 'gm');
+  if (!result) return; // finalizeBillRequest already sent the error response
+  success(res, result, result.message);
+}
+exports.gmApprove = asyncHandler(gmApproveHandler);
+
+// PUT /api/bill-requests/:id/l3-approve — only reached when this department
+// is configured for 3 or 4 approval levels (Users → Departments); the route
+// itself is open to everyone, but a 2-level (or unconfigured) department's
+// request can never actually reach status 'pending-l3' for this to act on.
+async function l3ApproveHandler(req, res) {
+  const br = await BillRequest.findById(req.params.id);
+  if (!br) return notFound(res, 'Bill request not found');
+  if (!canActOnDepartment(req.user, br)) return forbidden(res, 'This bill request belongs to a different department.');
+  if (br.status !== 'pending-l3') return badRequest(res, `Request is already ${br.status}`);
+  // Same segregation-of-duty rule agmApprove/gmApprove already enforce
+  // between L1 and L2 — the person who just signed off at L2 can't also be
+  // the one signing off at L3.
+  if (br.gmApprovedBy && br.gmApprovedBy.toString() === req.user._id.toString() && req.user.role !== 'owner') {
+    return badRequest(res, 'The GM who approved this cannot also give L3 sign-off — segregation of duties requires a different approver.');
+  }
+
+  const approvalConfig = await getApprovalConfig(br);
+  if (!approverAllowed(req.user, approvalConfig, 'l3')) {
+    return forbidden(res, "You're not configured as an L3 approver for this department.");
+  }
+
+  const wo = await WorkOrder.findById(br.workOrderId);
+  if (!wo) return notFound(res, 'Associated work order not found');
+
+  // Same fill-in-or-re-edit ability as the AGM/GM stages above — nothing is
+  // locked in until finalizeBillRequest actually creates the RunningBill.
+  if (req.body.retentionAmount != null) br.retentionAmount = Number(req.body.retentionAmount);
+  if (req.body.gstPercent != null) {
+    const gst = Number(req.body.gstPercent);
+    if (Number.isNaN(gst) || gst < 0 || gst > 100) return badRequest(res, 'GST% must be a number between 0 and 100');
+    br.gstPercentOverride = gst;
+  }
+  if (req.body.advanceRecovery != null) {
+    br.advanceRecovery = Number(req.body.advanceRecovery);
+    br.advanceRecoveries = Array.isArray(req.body.advanceRecoveries) ? req.body.advanceRecoveries : [];
+  }
+
+  br.l3ApprovedBy = req.user._id;
+  br.l3ApprovedAt = new Date();
+  br.approvalHistory.push({ stage: 'l3', action: 'approved', by: req.user._id, byName: req.user.name, byRole: req.user.role, remarks: req.body.remarks || '' });
+
+  const totalLevels = approvalConfig?.requiredApprovals ?? 2;
+  if (totalLevels >= 4) {
+    br.status = 'pending-l4';
+    await br.save();
+    notifySlack('BILL_REQUEST_L4_APPROVAL', br);
+    return success(res, { billRequest: br }, `L3 approved — Stage ${br.stageNo} moved to L4 approval`);
+  }
+
+  const result = await finalizeBillRequest(br, wo, req, res, 'l3');
+  if (!result) return;
+  success(res, result, result.message);
+}
+exports.l3Approve = asyncHandler(l3ApproveHandler);
+
+// PUT /api/bill-requests/:id/l4-approve — always the final stage (4 is the
+// max configurable level today), so this always finalizes the bill.
+async function l4ApproveHandler(req, res) {
+  const br = await BillRequest.findById(req.params.id);
+  if (!br) return notFound(res, 'Bill request not found');
+  if (!canActOnDepartment(req.user, br)) return forbidden(res, 'This bill request belongs to a different department.');
+  if (br.status !== 'pending-l4') return badRequest(res, `Request is already ${br.status}`);
+  if (br.l3ApprovedBy && br.l3ApprovedBy.toString() === req.user._id.toString() && req.user.role !== 'owner') {
+    return badRequest(res, 'The L3 approver cannot also give L4 sign-off — segregation of duties requires a different approver.');
+  }
+
+  const approvalConfig = await getApprovalConfig(br);
+  if (!approverAllowed(req.user, approvalConfig, 'l4')) {
+    return forbidden(res, "You're not configured as an L4 approver for this department.");
+  }
+
+  const wo = await WorkOrder.findById(br.workOrderId);
+  if (!wo) return notFound(res, 'Associated work order not found');
+
+  if (req.body.retentionAmount != null) br.retentionAmount = Number(req.body.retentionAmount);
+  if (req.body.gstPercent != null) {
+    const gst = Number(req.body.gstPercent);
+    if (Number.isNaN(gst) || gst < 0 || gst > 100) return badRequest(res, 'GST% must be a number between 0 and 100');
+    br.gstPercentOverride = gst;
+  }
+  if (req.body.advanceRecovery != null) {
+    br.advanceRecovery = Number(req.body.advanceRecovery);
+    br.advanceRecoveries = Array.isArray(req.body.advanceRecoveries) ? req.body.advanceRecoveries : [];
+  }
+
+  br.l4ApprovedBy = req.user._id;
+  br.l4ApprovedAt = new Date();
+  br.approvalHistory.push({ stage: 'l4', action: 'approved', by: req.user._id, byName: req.user.name, byRole: req.user.role, remarks: req.body.remarks || '' });
+
+  const result = await finalizeBillRequest(br, wo, req, res, 'l4');
+  if (!result) return;
+  success(res, result, result.message);
+}
+exports.l4Approve = asyncHandler(l4ApproveHandler);
+
+// PUT /api/bill-requests/:id/reject — from any pending stage (pending,
+// pending-gm, pending-l3, pending-l4).
 exports.rejectBillRequest = asyncHandler(async (req, res) => {
   const br = await BillRequest.findById(req.params.id);
   if (!br) return notFound(res, 'Bill request not found');
   if (!canActOnDepartment(req.user, br)) return forbidden(res, 'This bill request belongs to a different department.');
-  if (!['pending', 'pending-gm'].includes(br.status)) return badRequest(res, `Request is already ${br.status}`);
-  const rejectedStage = br.status === 'pending-gm' ? 'gm' : 'agm';
+  const REJECTABLE_STAGES = { pending: 'agm', 'pending-gm': 'gm', 'pending-l3': 'l3', 'pending-l4': 'l4' };
+  const rejectedStage = REJECTABLE_STAGES[br.status];
+  if (!rejectedStage) return badRequest(res, `Request is already ${br.status}`);
 
   const rejectReason = req.body.rejectReason || 'No reason provided';
 
@@ -651,7 +828,7 @@ exports.createBatchBillRequest = asyncHandler(async (req, res) => {
       continue;
     }
 
-    const existing = await BillRequest.findOne({ workOrderId: wo._id, status: { $in: ['pending', 'pending-gm'] } });
+    const existing = await BillRequest.findOne({ workOrderId: wo._id, status: { $in: ['pending', 'pending-gm', 'pending-l3', 'pending-l4'] } });
     if (existing) { skipped.push({ workOrderId, reason: `Stage ${existing.stageNo} already pending` }); continue; }
 
     const pendingItems = expandBillableCandidates(wo.scopeItems)
@@ -692,6 +869,8 @@ exports.createBatchBillRequest = asyncHandler(async (req, res) => {
       companyName: wo.companyName,
       category:    wo.category    || '',
       subCategory: wo.subCategory || '',
+      department:       wo.department       || '',
+      customDepartment: wo.customDepartment || '',
       periodFrom, periodTo,
       items: pendingItems.map(it => ({
         scopeItemId: it.scopeItemId,

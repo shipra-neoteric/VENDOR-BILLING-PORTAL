@@ -6,6 +6,8 @@ const {
   createBatchBillRequest,
   agmApprove,
   gmApprove,
+  l3Approve,
+  l4Approve,
   rejectBillRequest,
   archiveBillRequest,
   unarchiveBillRequest,
@@ -23,11 +25,19 @@ router.post('/batch',          authorizeOr('bill-requests', 'create', 'owner', '
 router.post('/',               authorizeOr('bill-requests', 'create', 'owner', 'gm', 'agm'), createBillRequest);
 // Stage 1 (AGM sets hold/advance, forwards to GM) — AGM/owner only.
 router.put('/:id/agm-approve', authorizeOr('bill-requests', 'agm-approve', 'owner', 'agm'), agmApprove);
-// Stage 2 (GM signs off — this is what actually creates the RunningBill) — GM/owner only.
+// Stage 2 (GM signs off) — finalizes the bill for the default 2-level
+// department, or moves on to L3 for a department configured for 3/4.
 router.put('/:id/gm-approve',  authorizeOr('bill-requests', 'gm-approve', 'owner', 'gm'), gmApprove);
-// Reject's target status depends on which stage it's at (pending vs pending-gm) —
-// authorizeAnyOr since either an AGM or a GM action-holder can reject at their stage.
-router.put('/:id/reject',    authorizeAnyOr('bill-requests', ['agm-approve', 'gm-approve'], 'owner', 'agm', 'gm', 'accounts'), rejectBillRequest);
+// Stages 3/4 — only ever reachable when a department's Approval Rule (Users
+// → Departments) is configured for 3/4 levels; no hardcoded role bypass
+// beyond owner, since no role in this org is inherently "the L3/L4 approver"
+// (approverAllowed's per-department config is what actually decides who
+// qualifies once the request is genuinely at that stage).
+router.put('/:id/l3-approve',  authorizeOr('bill-requests', 'l3-approve', 'owner'), l3Approve);
+router.put('/:id/l4-approve',  authorizeOr('bill-requests', 'l4-approve', 'owner'), l4Approve);
+// Reject's target status depends on which stage it's at —
+// authorizeAnyOr since any stage's action-holder can reject at their stage.
+router.put('/:id/reject',    authorizeAnyOr('bill-requests', ['agm-approve', 'gm-approve', 'l3-approve', 'l4-approve'], 'owner', 'agm', 'gm', 'accounts'), rejectBillRequest);
 // Payment release lives entirely in the Accounts Payment module now (see
 // billController.releasePayment) — no milestone route here anymore.
 router.patch('/archive-bulk',   authorizeOr('bill-requests', 'edit', 'owner', 'gm', 'accounts'), archiveBillRequestsBulk);

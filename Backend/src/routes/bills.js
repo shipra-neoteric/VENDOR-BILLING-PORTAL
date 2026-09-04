@@ -5,7 +5,7 @@ const {
   listBills, getBill, createBill, updateBill,
   verifyBill, l1AgmApprove, l2DirectorApprove, holdBill, releaseHold, sendToTms,
   rejectBill, patchDeductions,
-  manualAgmApprove, manualGmApprove, manualReject,
+  manualAgmApprove, manualGmApprove, manualL3Approve, manualL4Approve, manualReject,
   getBillingChain, archiveBill, unarchiveBill, archiveBillsBulk, unarchiveBillsBulk,
 } = require('../controllers/billController');
 
@@ -25,7 +25,11 @@ router.put('/:id',           authorizeOr('accounts-payment', 'edit',    'owner')
 // Accounts can act, just for the Billing -> New Bill path.
 router.patch('/:id/manual-agm-approve', authorizeOr('bill-requests', 'agm-approve', 'owner', 'agm'), manualAgmApprove);
 router.patch('/:id/manual-gm-approve',  authorizeOr('bill-requests', 'gm-approve', 'owner', 'gm'), manualGmApprove);
-router.patch('/:id/manual-reject',      authorizeAnyOr('bill-requests', ['agm-approve', 'gm-approve'], 'owner', 'agm', 'gm'), manualReject);
+// Only ever reachable once a department's Approval Rule (Users → Departments)
+// is configured for 3/4 levels — see billController's own note on this.
+router.patch('/:id/manual-l3-approve',  authorizeOr('bill-requests', 'l3-approve', 'owner'), manualL3Approve);
+router.patch('/:id/manual-l4-approve',  authorizeOr('bill-requests', 'l4-approve', 'owner'), manualL4Approve);
+router.patch('/:id/manual-reject',      authorizeAnyOr('bill-requests', ['agm-approve', 'gm-approve', 'l3-approve', 'l4-approve'], 'owner', 'agm', 'gm'), manualReject);
 router.patch('/:id/verify',              authorizeOr('accounts-payment', 'verify', 'owner'), verifyBill);
 router.patch('/:id/l1-agm-approve',      authorizeOr('accounts-payment', 'l1-agm-approve', 'owner'), l1AgmApprove);
 router.patch('/:id/l2-director-approve', authorizeOr('accounts-payment', 'l2-director-approve', 'owner'), l2DirectorApprove);

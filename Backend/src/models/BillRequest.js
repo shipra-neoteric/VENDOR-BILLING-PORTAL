@@ -53,18 +53,33 @@ const billRequestSchema = new Schema(
     periodFrom:  { type: Date },
     periodTo:    { type: Date },
     // pending = awaiting L1 (AGM) · pending-gm = AGM approved, awaiting L2 (GM)
-    // · approved = GM approved, RunningBill created · rejected = terminal, a
-    // fresh request must be raised from new progress (this one never revives).
+    // · pending-l3/pending-l4 = only reached when the request's department is
+    // configured (Users → Departments) for 3 or 4 approval levels — GM (or
+    // L3) isn't the final sign-off for that department, so the RunningBill
+    // isn't created yet · approved = the LAST configured level approved,
+    // RunningBill created · rejected = terminal, a fresh request must be
+    // raised from new progress (this one never revives).
     status: {
       type:    String,
-      enum:    ['pending', 'pending-gm', 'approved', 'rejected'],
+      enum:    ['pending', 'pending-gm', 'pending-l3', 'pending-l4', 'approved', 'rejected'],
       default: 'pending',
     },
     // Set by agmApprove (L1) — retention/advance are decided here but not
-    // acted on until gmApprove (L2) actually builds the RunningBill, so they
-    // have to be persisted rather than staying a one-time req.body value.
+    // acted on until whichever stage is this department's final one actually
+    // builds the RunningBill, so they have to be persisted rather than
+    // staying a one-time req.body value.
     agmApprovedBy:    { type: Schema.Types.ObjectId, ref: 'User' },
     agmApprovedAt:    { type: Date },
+    // Only set once GM's sign-off has happened — for a 2-level department
+    // (the default) this is set at the same moment the RunningBill is
+    // created; for a 3/4-level department it's set earlier, at L2, while the
+    // request moves on to L3/L4 instead of finalizing yet.
+    gmApprovedBy:     { type: Schema.Types.ObjectId, ref: 'User' },
+    gmApprovedAt:     { type: Date },
+    l3ApprovedBy:     { type: Schema.Types.ObjectId, ref: 'User' },
+    l3ApprovedAt:     { type: Date },
+    l4ApprovedBy:     { type: Schema.Types.ObjectId, ref: 'User' },
+    l4ApprovedAt:     { type: Date },
     retentionAmount:  { type: Number, default: 0 },
     advanceRecovery:  { type: Number, default: 0 },
     // Which real AdvanceSlip(s) advanceRecovery is actually settling — set by
@@ -97,7 +112,7 @@ const billRequestSchema = new Schema(
     // Append-only, mirrors WorkOrder.approvalHistory/RunningBill.approvalHistory —
     // 'rejected' (not 'sent-back': this is terminal, the document never revives).
     approvalHistory: [{
-      stage:   { type: String, enum: ['agm', 'gm'], required: true },
+      stage:   { type: String, enum: ['agm', 'gm', 'l3', 'l4'], required: true },
       action:  { type: String, enum: ['approved', 'rejected'], required: true },
       by:      { type: Schema.Types.ObjectId, ref: 'User' },
       // Snapshotted from the actual approver at the moment they acted (same

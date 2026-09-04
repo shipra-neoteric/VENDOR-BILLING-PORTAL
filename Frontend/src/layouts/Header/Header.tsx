@@ -32,16 +32,17 @@ export default function Header({ onToggleSidebar }: HeaderProps) {
   const canSwitch = user?.role === "owner" || isImpersonating;
 
   const [switchable, setSwitchable] = useState<SwitchableUser[]>([]);
-  useEffect(() => {
+  // While impersonating, the active session's own token may not have
+  // user-management access (e.g. an AGM test account) — always list
+  // switchable users as the stashed admin, not the current role.
+  function loadSwitchable() {
     if (!canSwitch) return;
-    // While impersonating, the active session's own token may not have
-    // user-management access (e.g. an AGM test account) — always list
-    // switchable users as the stashed admin, not the current role.
     const authOverride = isImpersonating && stashedAdmin
       ? { headers: { Authorization: `Bearer ${stashedAdmin.token}` } }
       : undefined;
     apiClient.get("/auth/users", authOverride).then(res => setSwitchable(res.data.users ?? [])).catch(() => {});
-  }, [canSwitch, isImpersonating, stashedAdmin]);
+  }
+  useEffect(loadSwitchable, [canSwitch, isImpersonating, stashedAdmin]);
 
   const handleLogout = () => {
     sessionStorage.removeItem(ADMIN_SESSION_KEY);
@@ -171,6 +172,7 @@ export default function Header({ onToggleSidebar }: HeaderProps) {
           menu={{ items: menuItems, onClick: onMenuClick }}
           trigger={["click"]}
           placement="bottomRight"
+          onOpenChange={(open) => { if (open) loadSwitchable(); }}
         >
           <div data-testid="user-menu-trigger" style={{ display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }}>
             {!isMobile && (

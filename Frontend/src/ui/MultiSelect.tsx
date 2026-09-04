@@ -9,9 +9,16 @@ interface MultiSelectProps {
   onChange: (values: string[]) => void;
   options: SFieldOption[];
   disabled?: boolean;
+  // Individual option values that can't be toggled — shown dimmed with a
+  // strikethrough-free "locked" look instead of being left out of the list
+  // entirely, so the full set of possible levels/choices stays visible even
+  // when some aren't selectable yet. Clicking one calls onDisabledOptionClick
+  // instead of toggling it, e.g. to surface a "coming soon" toast.
+  disabledValues?: string[];
+  onDisabledOptionClick?: (value: string) => void;
 }
 
-export default function MultiSelect({ label, placeholder = "Select…", values, onChange, options, disabled }: MultiSelectProps) {
+export default function MultiSelect({ label, placeholder = "Select…", values, onChange, options, disabled, disabledValues, onDisabledOptionClick }: MultiSelectProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const rootRef = useRef<HTMLDivElement>(null);
@@ -79,12 +86,16 @@ export default function MultiSelect({ label, placeholder = "Select…", values, 
             )}
             {filtered.map((o) => {
               const checked = values.includes(o.value);
+              const isDisabled = disabledValues?.includes(o.value);
               return (
                 <button
                   key={o.value}
                   type="button"
-                  onClick={() => toggle(o.value)}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-[13px] text-left text-[#1A1A2E]! dark:text-[#F1F5F9]! hover:bg-gray-50 dark:hover:bg-gray-700/40"
+                  onClick={() => isDisabled ? onDisabledOptionClick?.(o.value) : toggle(o.value)}
+                  className={[
+                    "w-full flex items-center gap-2 px-3 py-2 text-[13px] text-left hover:bg-gray-50 dark:hover:bg-gray-700/40",
+                    isDisabled ? "opacity-40 text-[#1A1A2E]! dark:text-[#F1F5F9]!" : "text-[#1A1A2E]! dark:text-[#F1F5F9]!",
+                  ].join(" ")}
                 >
                   <span
                     className={[

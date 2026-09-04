@@ -86,6 +86,24 @@ const STAGES = {
     buildLines: (br) => billRequestLines(br, 'GM'),
     deepLinkPath: billRequestDeepLink,
   },
+  // Only ever reached when a department's Approval Rule (Users →
+  // Departments) is configured for 3/4 levels — recipient resolution here
+  // stays role-based (owner, same as l3/l4's own no-hardcoded-role default in
+  // approvalRules.js) even though the real gate is per-department config;
+  // a department that names specific L3/L4 approvers still authorizes them
+  // correctly in the controller, they just won't get a Slack DM for it yet.
+  BILL_REQUEST_L3_APPROVAL: {
+    entityType: 'BillRequest', module: 'bill-requests', action: 'l3-approve', roles: ['owner'], departmentScoped: true,
+    title: 'Bill Request — L3 Approval Required',
+    buildLines: (br) => billRequestLines(br, 'L3'),
+    deepLinkPath: billRequestDeepLink,
+  },
+  BILL_REQUEST_L4_APPROVAL: {
+    entityType: 'BillRequest', module: 'bill-requests', action: 'l4-approve', roles: ['owner'], departmentScoped: true,
+    title: 'Bill Request — L4 Approval Required',
+    buildLines: (br) => billRequestLines(br, 'L4'),
+    deepLinkPath: billRequestDeepLink,
+  },
   PAYMENT_MANUAL_AGM_APPROVAL: {
     entityType: 'RunningBill', module: 'bill-requests', action: 'agm-approve', roles: ['owner', 'agm'], departmentScoped: true,
     title: 'Accounts Payment — Manual Bill AGM Sign-off Required',
@@ -96,6 +114,18 @@ const STAGES = {
     entityType: 'RunningBill', module: 'bill-requests', action: 'gm-approve', roles: ['owner', 'gm'], departmentScoped: true,
     title: 'Accounts Payment — Manual Bill GM Sign-off Required',
     buildLines: (bill) => runningBillLines(bill, 'GM Sign-off', 'AGM Sign-off'),
+    deepLinkPath: runningBillDeepLink,
+  },
+  PAYMENT_MANUAL_L3_APPROVAL: {
+    entityType: 'RunningBill', module: 'bill-requests', action: 'l3-approve', roles: ['owner'], departmentScoped: true,
+    title: 'Accounts Payment — Manual Bill L3 Sign-off Required',
+    buildLines: (bill) => runningBillLines(bill, 'L3 Sign-off', 'GM Sign-off'),
+    deepLinkPath: runningBillDeepLink,
+  },
+  PAYMENT_MANUAL_L4_APPROVAL: {
+    entityType: 'RunningBill', module: 'bill-requests', action: 'l4-approve', roles: ['owner'], departmentScoped: true,
+    title: 'Accounts Payment — Manual Bill L4 Sign-off Required',
+    buildLines: (bill) => runningBillLines(bill, 'L4 Sign-off', 'L3 Sign-off'),
     deepLinkPath: runningBillDeepLink,
   },
   PAYMENT_VERIFY_APPROVAL: {

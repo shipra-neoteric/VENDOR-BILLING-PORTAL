@@ -22,9 +22,9 @@ export function Table({ children, className = "", containerClassName = "", ...re
   );
 }
 
-export function Thead({ children, ...rest }: HTMLAttributes<HTMLTableSectionElement>) {
+export function Thead({ children, className = "", ...rest }: HTMLAttributes<HTMLTableSectionElement>) {
   return (
-    <thead className="bg-gray-50 dark:bg-[#1E293B]" {...rest}>
+    <thead className={["bg-gray-50 dark:bg-[#1E293B]", className].join(" ")} {...rest}>
       {children}
     </thead>
   );

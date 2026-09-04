@@ -172,7 +172,7 @@ exports.getDPR = asyncHandler(async (req, res) => {
   // Counts everything still in flight (L1 AGM + L2 GM), not just L1 — a
   // request sitting at pending-gm is just as much "pending" from this KPI's
   // point of view as one still waiting on AGM.
-  const pendingApprovalsList = billRequests.filter(b => ['pending', 'pending-gm'].includes(b.status));
+  const pendingApprovalsList = billRequests.filter(b => ['pending', 'pending-gm', 'pending-l3', 'pending-l4'].includes(b.status));
   const operationalDetails = {
     woCreatedToday: woToday.map(w => ({ id: w._id, label: w.workOrderNo, project: w.projectName, vendor: w.vendorName, value: w.contractValue || 0 })),
     billRequestsToday: brToday.map(b => ({ id: b._id, label: b.reqNo, project: b.projectName, vendor: b.vendorName, value: sum(b.items || [], it => (it.rate || 0) * it.billedQty) })),

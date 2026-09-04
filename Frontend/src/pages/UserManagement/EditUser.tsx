@@ -47,6 +47,11 @@ export default function EditUser() {
   // Role library silently stops reaching anyone who was ever saved from here.
   const [rolePerms, setRolePerms] = useState<Record<string, PermAction[]>>({});
   const [allRoleNames, setAllRoleNames] = useState<string[]>([]);
+  // department -> requiredApprovals, from Users → Departments (Backend/src/
+  // models/DepartmentApprovalConfig.js) — hides whichever L1-L4 Bill
+  // Approval nodes are beyond this user's own department's configured level
+  // count, since that department's bills never actually reach those stages.
+  const [approvalLevelsByDept, setApprovalLevelsByDept] = useState<Record<string, number>>({});
   const formErrors = useFormErrors<"name" | "email" | "mobile" | "password" | "role">();
 
   function togglePerm(mod: string, action: PermAction) {
@@ -63,6 +68,14 @@ export default function EditUser() {
   useEffect(() => {
     apiClient.get<{ roles: RoleDoc[] }>("/roles")
       .then(r => setAllRoleNames((r.data.roles ?? []).map(role => role.name)))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    apiClient.get<{ rules: { department: string; requiredApprovals: number }[] }>("/approval-rules")
+      .then(r => setApprovalLevelsByDept(
+        Object.fromEntries((r.data.rules ?? []).map(rule => [rule.department, rule.requiredApprovals]))
+      ))
       .catch(() => {});
   }, []);
 
@@ -315,7 +328,32 @@ export default function EditUser() {
           Shown below is everything this person can currently do, including anything coming from their role — saving here fixes it directly onto their own account.
         </div>
       )}
-      <ModulePermsGrid perms={perms} onToggle={togglePerm} />
+      <ModulePermsGrid
+        perms={perms}
+        onToggle={togglePerm}
+        hiddenActionsByModule={(() => {
+          const effectiveDept = departmentField === "custom" ? customDepartmentField : departmentField;
+          if (!effectiveDept) return undefined; // no department picked yet — nothing to hide against
+          const cap = approvalLevelsByDept[effectiveDept] ?? 2;
+          // Each module's own ordered L1→L4 sign-off chain. Note: only Bill
+          // Approval's chain actually reads this department config on the
+          // backend (Backend/src/utils/approvalRules.js) — Work Orders,
+          // Drawing Requests and Accounts Payment always run their own full,
+          // fixed-length chain regardless of department. Capping them here
+          // too is a display-only choice (hides the checkbox, never revokes
+          // an already-granted one), not a reflection of their real approval
+          // flow being department-scoped.
+          const LEVEL_CHAINS: Record<string, PermAction[]> = {
+            "work-orders":      ["maker", "checker", "approver", "ceo-approve"],
+            "drawing-requests": ["l1-review", "l2-draw", "l3-review", "l4-approve"],
+            "bill-requests":    ["agm-approve", "gm-approve", "l3-approve", "l4-approve"],
+            "accounts-payment": ["verify", "l1-agm-approve", "l2-director-approve"],
+          };
+          return Object.fromEntries(
+            Object.entries(LEVEL_CHAINS).map(([mod, chain]) => [mod, chain.slice(cap)])
+          );
+        })()}
+      />
 
       <div className="flex justify-end gap-2 mt-2">
         <Btn outline label="Cancel" onClick={() => navigate("/users")} />

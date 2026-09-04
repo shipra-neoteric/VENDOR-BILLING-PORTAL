@@ -19,6 +19,7 @@ import UISwitch from "../../ui/Switch";
 import Modal from "../../ui/Modal";
 import ConfirmModal from "../../ui/ConfirmModal";
 import Card from "../../ui/Card";
+import MultiSelect from "../../ui/MultiSelect";
 import EmptyState from "../../ui/EmptyState";
 import DropdownMenu from "../../ui/DropdownMenu";
 import type { DropdownMenuItem } from "../../ui/DropdownMenu";
@@ -57,7 +58,42 @@ export interface RoleDoc {
   userCount: number;
 }
 
-export type PermAction = "view" | "create" | "edit" | "delete" | "approve" | "request" | "maker" | "checker" | "approver" | "reject" | "ceo-approve" | "send-back" | "agm-approve" | "gm-approve" | "verify" | "l1-agm-approve" | "l2-director-approve" | "hold" | "release-hold" | "retry-tms" | "l1-review" | "l2-draw" | "l3-review" | "l4-approve";
+// A department's approval rule (Backend/src/models/DepartmentApprovalConfig.js)
+// — isDefault means no doc exists yet for this department, so it's running on
+// the original hardcoded behavior (2 approvals, owner+agm / owner+gm) shown
+// here only as a preview of what's currently in effect.
+export interface ApprovalRule {
+  department: string;
+  isCustom: boolean;
+  requiredApprovals: 1 | 2 | 3 | 4;
+  agmRoles: string[];
+  gmRoles: string[];
+  l3Roles: string[];
+  l4Roles: string[];
+  // Specific named approvers — when set, ONLY these people (plus Owner) can
+  // act at that stage for this department, regardless of the matching *Roles.
+  agmUsers: { _id: string; name: string; email: string }[];
+  gmUsers:  { _id: string; name: string; email: string }[];
+  l3Users:  { _id: string; name: string; email: string }[];
+  l4Users:  { _id: string; name: string; email: string }[];
+  isDefault: boolean;
+}
+
+// Ordered so `.slice(0, requiredApprovals)` always yields exactly the
+// levels that department's config actually uses — same order the backend's
+// gm/l3/l4-approve handlers advance through (billRequestController.js).
+const APPROVAL_LEVEL_STAGES: {
+  stage: "agm" | "gm" | "l3" | "l4"; short: string;
+  rolesKey: "agmRoles" | "gmRoles" | "l3Roles" | "l4Roles";
+  usersKey: "agmUsers" | "gmUsers" | "l3Users" | "l4Users";
+}[] = [
+  { stage: "agm", short: "L1 (AGM)", rolesKey: "agmRoles", usersKey: "agmUsers" },
+  { stage: "gm",  short: "L2 (GM)",  rolesKey: "gmRoles",  usersKey: "gmUsers" },
+  { stage: "l3",  short: "L3",       rolesKey: "l3Roles",  usersKey: "l3Users" },
+  { stage: "l4",  short: "L4",       rolesKey: "l4Roles",  usersKey: "l4Users" },
+];
+
+export type PermAction = "view" | "create" | "edit" | "delete" | "approve" | "request" | "maker" | "checker" | "approver" | "reject" | "ceo-approve" | "send-back" | "agm-approve" | "gm-approve" | "l3-approve" | "verify" | "l1-agm-approve" | "l2-director-approve" | "hold" | "release-hold" | "retry-tms" | "l1-review" | "l2-draw" | "l3-review" | "l4-approve" | "co-l1-approve" | "co-l2-approve";
 
 interface ModuleDef {
   id: string;
@@ -84,6 +120,7 @@ export const ACTION_CFG: Record<PermAction, { label: string; bg: string }> = {
   // anyone it's granted to, not just users literally named/roled "AGM"/"GM".
   "agm-approve": { label: "L1 Approval",     bg: "#0891b2" },
   "gm-approve":  { label: "L2 Approval",      bg: "#2563eb" },
+  "l3-approve":  { label: "L3 Approval",      bg: "#7c3aed" },
   verify:   { label: "Verify",      bg: "#0891b2" },
   "l1-agm-approve":      { label: "L1 AGM Approve",      bg: "#0d9488" },
   "l2-director-approve": { label: "L2 Director Approve", bg: "#7c3aed" },
@@ -94,6 +131,8 @@ export const ACTION_CFG: Record<PermAction, { label: string; bg: string }> = {
   "l2-draw":    { label: "L2 Architect Draw",   bg: "#2563eb" },
   "l3-review":  { label: "L3 GM Cross-Check",   bg: "#7c3aed" },
   "l4-approve": { label: "L4 GM Final Approval",bg: "#0d9488" },
+  "co-l1-approve": { label: "L1 Approval", bg: "#0891b2" },
+  "co-l2-approve": { label: "L2 Approval", bg: "#2563eb" },
 };
 
 // Grouped and ordered to match the left Sidebar's own section layout
@@ -112,8 +151,9 @@ export const MODULE_DEFS: ModuleDef[] = [
   { id: "daily-progress-report", name: "Daily Progress Report", icon: "📅", group: "Execution", actions: ["view","create"] },
   { id: "drawing-requests", name: "Drawing Requests",   icon: "✏️", group: "Execution",     actions: ["view","create","edit","delete","l1-review","l2-draw","l3-review","l4-approve"] },
   { id: "consultants",      name: "Consultants",        icon: "📐", group: "Professional Services", actions: ["view","create","edit","delete"] },
+  { id: "consultancy-orders", name: "Consultancy Orders", icon: "📝", group: "Professional Services", actions: ["view","edit","co-l1-approve","co-l2-approve","reject"] },
   { id: "bill-review",      name: "Site Progress",      icon: "🧾", group: "Billing",       actions: ["view","approve"] },
-  { id: "bill-requests",    name: "Bill Approval",      icon: "📨", group: "Billing",       actions: ["view","create","agm-approve","gm-approve","reject"] },
+  { id: "bill-requests",    name: "Bill Approval",      icon: "📨", group: "Billing",       actions: ["view","create","agm-approve","gm-approve","l3-approve","l4-approve","reject"] },
   { id: "billing",          name: "Billing",            icon: "🧮", group: "Billing",       actions: ["view","create"] },
   { id: "accounts-payment", name: "Accounts Payment",   icon: "💰", group: "Billing",       actions: ["view","edit","verify","l1-agm-approve","l2-director-approve","hold","release-hold","retry-tms","reject"] },
   { id: "procurement-tracker", name: "Procurement Tracker", icon: "🔗", group: "Billing",   actions: ["view"] },
@@ -182,6 +222,16 @@ function departmentLabelForUser(dept: string): string {
   return DEPARTMENT_LABEL[dept] || dept;
 }
 
+// A user's own effective team name — same resolution the backend uses
+// (Backend/src/utils/approvalRules.js's effectiveDepartment): "custom"
+// itself is never a team, only the typed customDepartment name is. Used to
+// scope the Departments tab's specific-approver picker to only that
+// department's own people, not the whole company.
+function userEffectiveDepartment(u: AppUser): string {
+  if (!u.department) return "";
+  return u.department === "custom" ? (u.customDepartment || "") : u.department;
+}
+
 const NX_ROLE_COLOR: Record<UserRole, NxBadgeColor> = {
   owner: "red",
   gm: "indigo",
@@ -224,9 +274,17 @@ function actionKind(action: PermAction): string {
 export function ModulePermsGrid({
   perms,
   onToggle,
+  hiddenActionsByModule,
 }: {
   perms: Record<string, PermAction[]>;
   onToggle: (mod: string, action: PermAction) => void;
+  // Drops specific action-nodes from a module's division entirely — e.g. a
+  // department set to 1 approval level (Users → Departments) means this
+  // user's Bill Approval division should never even show L2/L3/L4 sign-off
+  // toggles, since that department's bills never reach those stages. Purely
+  // a display filter — has no effect on perms already granted beyond what's
+  // shown; leave a module's key out entirely to show every one of its actions.
+  hiddenActionsByModule?: Record<string, PermAction[]>;
 }) {
   const [search, setSearch] = useState("");
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
@@ -239,14 +297,16 @@ export function ModulePermsGrid({
     const q = search.trim().toLowerCase();
     return MODULE_DEFS.map(mod => {
       const nodes: (PermNode & { action: PermAction })[] = [];
+      const hidden = hiddenActionsByModule?.[mod.id];
       for (const action of mod.actions) {
+        if (hidden?.includes(action)) continue;
         const label = ACTION_CFG[action].label;
         if (q && !`${mod.name} ${label}`.toLowerCase().includes(q)) continue;
         nodes.push({ modId: mod.id, action, label, kind: actionKind(action) });
       }
       return { group: mod.name, nodes };
     }).filter(g => g.nodes.length > 0);
-  }, [search]);
+  }, [search, hiddenActionsByModule]);
 
   const assignedCount = Object.values(perms).reduce((s, actions) => s + actions.length, 0);
   const isOn = (n: { modId: string; action: PermAction }) => (perms[n.modId] ?? []).includes(n.action);
@@ -276,8 +336,8 @@ export function ModulePermsGrid({
           const allOn = nodes.every(isOn);
           const isCollapsed = !!collapsed[group];
           return (
-            <div key={group} className="rounded-lg border border-gray-200 dark:border-gray-700/40 bg-white dark:bg-transparent overflow-hidden">
-              <div className="flex items-center justify-between gap-2 px-3.5 py-2.5 bg-gray-100 dark:bg-gray-800/60 border-b border-gray-200 dark:border-gray-700/40">
+            <div key={group} className="rounded-lg border border-orange-100 dark:border-orange-500/20 bg-white dark:bg-transparent overflow-hidden">
+              <div className="flex items-center justify-between gap-2 px-3.5 py-2.5 bg-orange-50 dark:bg-orange-500/10 border-b border-orange-100 dark:border-orange-500/20">
                 <div className="flex items-center gap-2.5">
                   <div className="w-8 h-8 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700/40 flex items-center justify-center shrink-0">
                     <Key className="w-3.5 h-3.5 text-gray-400" />
@@ -336,7 +396,7 @@ export default function UserManagement() {
   const navigate = useNavigate();
 
   // ── Roles library (Phase 1 — additive; Users tab below is untouched) ──
-  const [mainTab, setMainTab] = useState<"users" | "roles">("users");
+  const [mainTab, setMainTab] = useState<"users" | "roles" | "departments">("users");
   const [roles, setRoles] = useState<RoleDoc[]>([]);
   const [rolesLoading, setRolesLoading] = useState(false);
   // Create modal — name + description only; permissions are set afterwards
@@ -427,6 +487,68 @@ export default function UserManagement() {
     }
   }
 
+  // ── Departments — per-department approval rules ────────────────
+  const [approvalRules, setApprovalRules] = useState<ApprovalRule[]>([]);
+  const [approvalRulesLoading, setApprovalRulesLoading] = useState(false);
+  const [approvalDefaults, setApprovalDefaults] = useState<{ agmRoles: string[]; gmRoles: string[]; l3Roles: string[]; l4Roles: string[] }>({ agmRoles: [], gmRoles: [], l3Roles: [], l4Roles: [] });
+  const [editRuleTarget, setEditRuleTarget] = useState<ApprovalRule | null>(null);
+  const [editRuleRequired, setEditRuleRequired] = useState<1 | 2 | 3 | 4>(2);
+  const [editRuleAgmRoles, setEditRuleAgmRoles] = useState<string[]>([]);
+  const [editRuleGmRoles, setEditRuleGmRoles] = useState<string[]>([]);
+  const [editRuleL3Roles, setEditRuleL3Roles] = useState<string[]>([]);
+  const [editRuleL4Roles, setEditRuleL4Roles] = useState<string[]>([]);
+  const [editRuleAgmUserIds, setEditRuleAgmUserIds] = useState<string[]>([]);
+  const [editRuleGmUserIds, setEditRuleGmUserIds] = useState<string[]>([]);
+  const [editRuleL3UserIds, setEditRuleL3UserIds] = useState<string[]>([]);
+  const [editRuleL4UserIds, setEditRuleL4UserIds] = useState<string[]>([]);
+  const [savingRule, setSavingRule] = useState(false);
+
+  const loadApprovalRules = useCallback(() => {
+    setApprovalRulesLoading(true);
+    apiClient.get<{ rules: ApprovalRule[]; defaults: { agmRoles: string[]; gmRoles: string[]; l3Roles: string[]; l4Roles: string[] } }>("/approval-rules")
+      .then(r => { setApprovalRules(r.data.rules || []); setApprovalDefaults(r.data.defaults); })
+      .catch(() => toast.error("Failed to load approval rules"))
+      .finally(() => setApprovalRulesLoading(false));
+  }, []);
+  useEffect(() => { loadApprovalRules(); }, [loadApprovalRules]);
+
+  function openEditRule(rule: ApprovalRule) {
+    setEditRuleTarget(rule);
+    setEditRuleRequired(rule.requiredApprovals);
+    setEditRuleAgmRoles(rule.agmRoles);
+    setEditRuleGmRoles(rule.gmRoles);
+    setEditRuleL3Roles(rule.l3Roles);
+    setEditRuleL4Roles(rule.l4Roles);
+    setEditRuleAgmUserIds(rule.agmUsers.map(u => u._id));
+    setEditRuleGmUserIds(rule.gmUsers.map(u => u._id));
+    setEditRuleL3UserIds(rule.l3Users.map(u => u._id));
+    setEditRuleL4UserIds(rule.l4Users.map(u => u._id));
+  }
+  async function handleSaveRule() {
+    if (!editRuleTarget) return;
+    setSavingRule(true);
+    try {
+      await apiClient.put(`/approval-rules/${encodeURIComponent(editRuleTarget.department)}`, {
+        requiredApprovals: editRuleRequired,
+        agmRoles: editRuleAgmRoles,
+        gmRoles: editRuleGmRoles,
+        l3Roles: editRuleL3Roles,
+        l4Roles: editRuleL4Roles,
+        agmUserIds: editRuleAgmUserIds,
+        gmUserIds: editRuleGmUserIds,
+        l3UserIds: editRuleL3UserIds,
+        l4UserIds: editRuleL4UserIds,
+      });
+      toast.success(`Approval rule for "${departmentLabelForUser(editRuleTarget.department)}" saved`);
+      setEditRuleTarget(null);
+      loadApprovalRules();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || "Failed to save approval rule");
+    } finally {
+      setSavingRule(false);
+    }
+  }
+
   const [users, setUsers]     = useState<AppUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch]   = useState("");
@@ -480,14 +602,23 @@ export default function UserManagement() {
 
   const { page, totalPages, setPage, pageItems: pagedUsers } = usePagination(filtered, 15);
 
+  // Scoped by roleFilter only (not activeFilter) — Total/Active/Inactive are
+  // themselves the activeFilter toggle, so they need a base that still lets
+  // switching between them show a real split; "By Role" stays off the full
+  // `users` list below since those pills are for changing roleFilter itself.
+  const roleScoped = useMemo(
+    () => roleFilter === "all" ? users : users.filter((u) => u.role === roleFilter),
+    [users, roleFilter]
+  );
+
   const stats = useMemo(() => ({
-    total:    users.length,
-    active:   users.filter((u) => u.isActive).length,
-    inactive: users.filter((u) => !u.isActive).length,
+    total:    roleScoped.length,
+    active:   roleScoped.filter((u) => u.isActive).length,
+    inactive: roleScoped.filter((u) => !u.isActive).length,
     byRole:   ROLE_OPTIONS
       .map((r) => ({ ...r, count: users.filter((u) => u.role === r.value).length }))
       .filter((r) => r.count > 0),
-  }), [users]);
+  }), [users, roleScoped]);
 
   // ── Handlers ──────────────────────────────────────────────────
 
@@ -564,17 +695,21 @@ export default function UserManagement() {
         subtitle="Manage user accounts, roles, and granular permissions"
         actions={mainTab === "users"
           ? <NxBtn color="primary" icon={Plus} label="Register New User" onClick={openCreate} />
-          : <NxBtn color="primary" icon={Plus} label="Define New Role" onClick={openCreateRole} />}
+          : mainTab === "roles"
+          ? <NxBtn color="primary" icon={Plus} label="Define New Role" onClick={openCreateRole} />
+          : undefined}
       />
 
       <div className="mb-4">
         <Segmented
           value={mainTab}
-          onChange={(v) => setMainTab(v as "users" | "roles")}
+          onChange={(v) => setMainTab(v as "users" | "roles" | "departments")}
           options={[
             { value: "users", label: "Users" },
             { value: "roles", label: "Roles" },
+            { value: "departments", label: "Departments" },
           ]}
+          divided
         />
       </div>
 
@@ -590,7 +725,6 @@ export default function UserManagement() {
                 const authNodes = r.permissions.reduce((s, p) => s + p.actions.length, 0);
                 return (
                 <Card key={r._id} className="relative overflow-hidden flex flex-col gap-3">
-                  <ShieldAlert className="absolute -right-3 -top-3 w-24 h-24 text-orange-50 dark:text-orange-500/5 pointer-events-none" strokeWidth={1} />
                   <div className="flex items-start justify-between gap-2 relative">
                     <div className="w-11 h-11 rounded-xl bg-orange-50 dark:bg-orange-500/10 flex items-center justify-center shrink-0">
                       <ShieldAlert className="w-5 h-5 text-primary" />
@@ -618,7 +752,7 @@ export default function UserManagement() {
                   <div className="relative flex items-center justify-between gap-2">
                     <Btn
                       outline small icon={Users} label="Manage Users"
-                      onClick={() => setMainTab("users")}
+                      onClick={() => { setRoleFilter(r.name); setMainTab("users"); }}
                     />
                     <span className="text-[11px] text-gray-400">{r.userCount} user{r.userCount !== 1 ? "s" : ""}</span>
                   </div>
@@ -628,22 +762,74 @@ export default function UserManagement() {
             </div>
           )}
         </>
+      ) : mainTab === "departments" ? (
+        <>
+          {approvalRulesLoading ? (
+            <div className="flex justify-center py-16 text-gray-400 text-sm">Loading…</div>
+          ) : approvalRules.length === 0 ? (
+            <EmptyState icon={ShieldAlert} title="No departments yet" message="Departments show up here once a work order is assigned to one." />
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+              {approvalRules.map((rule) => (
+                <Card key={rule.department} className="relative overflow-hidden flex flex-col gap-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="w-11 h-11 rounded-xl bg-orange-50 dark:bg-orange-500/10 flex items-center justify-center shrink-0">
+                      <ShieldAlert className="w-5 h-5 text-primary" />
+                    </div>
+                    <button type="button" title="Edit" onClick={() => openEditRule(rule)} className="text-gray-400 hover:text-primary">
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                  <div>
+                    <div className="font-bold text-[15px] text-[#1A1A2E] dark:text-[#F1F5F9]">
+                      {departmentLabelForUser(rule.department)}
+                    </div>
+                    <p className="text-[13px] text-gray-500 dark:text-gray-400 mt-1">
+                      {rule.requiredApprovals} approval{rule.requiredApprovals !== 1 ? "s" : ""} — {APPROVAL_LEVEL_STAGES.slice(0, rule.requiredApprovals).map(s => s.short).join(" → ")}
+                      {rule.isDefault && <span className="text-gray-400"> (default, not customized)</span>}
+                    </p>
+                  </div>
+                  <div className="text-[11px] text-gray-400">
+                    {APPROVAL_LEVEL_STAGES.slice(0, rule.requiredApprovals).map(s => {
+                      const users = rule[s.usersKey], roles = rule[s.rolesKey];
+                      const fallbackRoles = approvalDefaults[s.rolesKey];
+                      return (
+                        <div key={s.stage}>
+                          {s.short}: {users.length
+                            ? users.map(u => u.name).join(", ")
+                            : (roles.length ? roles : fallbackRoles).map(r => ROLE_CFG[r as UserRole]?.label || r).join(", ")}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
+        </>
       ) : (
         <>
       {/* ── Stats ── */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-5">
-        <NxStatCard label="Total Users" value={stats.total} icon={Users} active={activeFilter === "all"} onClick={() => setActiveFilter("all")} />
+      <div className="flex flex-wrap gap-2.5 mb-5">
+        <NxStatCard size="sm" label="Total Users" value={stats.total} icon={Users} active={activeFilter === "all"} onClick={() => setActiveFilter("all")} />
         <NxStatCard
-          label="Active" value={stats.active} icon={CheckCircle2}
+          size="sm" label="Active" value={stats.active} icon={CheckCircle2}
           active={activeFilter === "active"} onClick={() => setActiveFilter(activeFilter === "active" ? "all" : "active")}
         />
         <NxStatCard
-          label="Inactive" value={stats.inactive} icon={Ban}
+          size="sm" label="Inactive" value={stats.inactive} icon={Ban}
           active={activeFilter === "inactive"} onClick={() => setActiveFilter(activeFilter === "inactive" ? "all" : "inactive")}
         />
-        <Card>
-          <div className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-2.5">By Role</div>
-          <div className="flex flex-wrap gap-1.5">
+        <Card padded={false} className="p-2.5 flex-1 min-w-[220px]">
+          <div className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-2">By Role</div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setRoleFilter("all")}
+              className={roleFilter === "all" ? "ring-2 ring-primary rounded-full" : ""}
+            >
+              <NxBadge color="gray">Total · {users.length}</NxBadge>
+            </button>
             {stats.byRole.map((r) => (
               <button
                 key={r.value}
@@ -806,6 +992,90 @@ export default function UserManagement() {
           onConfirm={handleDeleteRole} onCancel={() => setDeleteRoleTarget(null)}
         />
       )}
+
+      {editRuleTarget && (() => {
+        // Owner accounts are cross-department by nature and usually carry no
+        // department of their own (empty department field) — excluding them
+        // from this department-scoped list would make "assign Owner as this
+        // department's approver" impossible to actually select, silently.
+        const departmentUsers = users.filter(u => u.role === "owner" || userEffectiveDepartment(u) === editRuleTarget.department);
+        return (
+        <Modal
+          icon={ShieldAlert}
+          title={`Approval Rule — ${departmentLabelForUser(editRuleTarget.department)}`}
+          onClose={() => setEditRuleTarget(null)}
+          footer={
+            <div className="flex justify-end gap-2">
+              <Btn outline label="Cancel" onClick={() => setEditRuleTarget(null)} />
+              <Btn color="primary" label="Save" loading={savingRule} onClick={handleSaveRule} />
+            </div>
+          }
+        >
+          <div className="flex flex-col gap-4">
+            <div>
+              <MultiSelect
+                label="Approval Levels"
+                placeholder="L1 only"
+                values={APPROVAL_LEVEL_STAGES.slice(0, editRuleRequired).map((_, i) => String(i + 1))}
+                onChange={(vals) => {
+                  // "1" (L1/AGM) is the non-negotiable baseline — every bill
+                  // needs at least one sign-off — so it can't actually be
+                  // unchecked. Otherwise the highest level checked wins (e.g.
+                  // checking L3 alone still means "L1 through L3", 3 total).
+                  const highest = Math.max(1, ...vals.map(Number));
+                  setEditRuleRequired(Math.min(4, highest) as 1 | 2 | 3 | 4);
+                }}
+                options={APPROVAL_LEVEL_STAGES.map((s, i) => ({ value: String(i + 1), label: s.short }))}
+                disabledValues={["1"]}
+                onDisabledOptionClick={() => toast("L1 (AGM) is always required — a bill needs at least one sign-off.")}
+              />
+              <div className="text-[11px] text-gray-400 mt-1.5">
+                Bill requests and manually-created bills in this department stop at whichever level is checked highest — the RunningBill is created right after that level's sign-off, with no further stage.
+              </div>
+            </div>
+            {departmentUsers.length === 0 && (
+              <div className="text-[11px] text-amber-600 dark:text-amber-400">
+                No users are assigned to this department yet — assign it to a user (Edit User → Department) before naming specific approvers here.
+              </div>
+            )}
+            {(() => {
+              const STAGE_STATE = {
+                agm: { roles: editRuleAgmRoles, setRoles: setEditRuleAgmRoles, userIds: editRuleAgmUserIds, setUserIds: setEditRuleAgmUserIds, defaults: approvalDefaults.agmRoles },
+                gm:  { roles: editRuleGmRoles,  setRoles: setEditRuleGmRoles,  userIds: editRuleGmUserIds,  setUserIds: setEditRuleGmUserIds,  defaults: approvalDefaults.gmRoles },
+                l3:  { roles: editRuleL3Roles,  setRoles: setEditRuleL3Roles,  userIds: editRuleL3UserIds,  setUserIds: setEditRuleL3UserIds,  defaults: approvalDefaults.l3Roles },
+                l4:  { roles: editRuleL4Roles,  setRoles: setEditRuleL4Roles,  userIds: editRuleL4UserIds,  setUserIds: setEditRuleL4UserIds,  defaults: approvalDefaults.l4Roles },
+              } as const;
+              return APPROVAL_LEVEL_STAGES.slice(0, editRuleRequired).map(s => {
+                const st = STAGE_STATE[s.stage];
+                return (
+                  <div key={s.stage} className="flex flex-col gap-2 pt-1 border-t border-gray-100 dark:border-gray-700/40 first:border-t-0 first:pt-0">
+                    <MultiSelect
+                      label={`Specific ${s.short} approvers (optional)`}
+                      placeholder="Leave blank to allow by role instead"
+                      values={st.userIds}
+                      onChange={st.setUserIds}
+                      options={departmentUsers.map(u => ({ label: `${u.name} (${ROLE_CFG[u.role]?.label || u.role})`, value: u._id }))}
+                    />
+                    {st.userIds.length === 0 && (
+                      <MultiSelect
+                        label={`Or, who can approve at ${s.short} by role`}
+                        placeholder={st.defaults.length ? `Default: ${st.defaults.map(r => ROLE_CFG[r as UserRole]?.label || r).join(", ")}` : "Default: Owner / Admin only"}
+                        values={st.roles}
+                        onChange={st.setRoles}
+                        options={ROLE_OPTIONS.map(r => ({ label: r.label, value: r.value }))}
+                      />
+                    )}
+                  </div>
+                );
+              });
+            })()}
+            <div className="text-[11px] text-gray-400">
+              Owner can always approve regardless of these lists. Leaving a list empty keeps the original default roles for that stage — L3/L4 default to Owner-only until named, since no role in this org is inherently "the L3/L4 approver".
+            </div>
+          </div>
+        </Modal>
+        );
+      })()}
 
 
       {/* ── Change Password Modal ── */}

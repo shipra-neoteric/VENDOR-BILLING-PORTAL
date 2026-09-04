@@ -70,6 +70,7 @@ app.use('/api/advance-slips',  require('./routes/advanceSlips'));
 app.use('/api/bill-requests', require('./routes/billRequests'));
 app.use('/api/users',        require('./routes/users'));
 app.use('/api/roles',        require('./routes/roles'));
+app.use('/api/approval-rules', require('./routes/approvalRules'));
 app.use('/api/workflows',    require('./routes/workflows'));
 app.use('/api/dpr',          require('./routes/dpr'));
 app.use('/api/report-schedules', require('./routes/reportSchedules'));
