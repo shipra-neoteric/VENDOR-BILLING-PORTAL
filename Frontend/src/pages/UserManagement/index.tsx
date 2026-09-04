@@ -13,7 +13,7 @@ import Btn from "../../ui/Btn";
 import NxBtn from "../../ui/nexora/Btn";
 import NxBadge from "../../ui/nexora/Badge";
 import type { NxBadgeColor } from "../../ui/nexora/Badge";
-import NxStatCard from "../../ui/nexora/StatCard";
+import StatCard from "../../ui/StatCard";
 import Field from "../../ui/Field";
 import UISwitch from "../../ui/Switch";
 import Modal from "../../ui/Modal";
@@ -730,7 +730,7 @@ export default function UserManagement() {
                       <ShieldAlert className="w-5 h-5 text-primary" />
                     </div>
                     <div className="flex items-center gap-2.5">
-                      <span className="text-[11px] font-mono text-gray-400">{authNodes} Auth Node{authNodes !== 1 ? "s" : ""}</span>
+                      <span className="text-[11px] text-gray-400">{authNodes} Auth Node{authNodes !== 1 ? "s" : ""}</span>
                       <div className="flex items-center gap-1">
                         <button type="button" title="Rename" onClick={() => openRenameRole(r)} className="text-gray-400 hover:text-primary">
                           <Pencil className="w-3.5 h-3.5" />
@@ -745,7 +745,7 @@ export default function UserManagement() {
                     <div className="font-bold text-[15px] text-[#1A1A2E] dark:text-[#F1F5F9]">
                       {ROLE_CFG[r.name]?.label || r.name}
                     </div>
-                    <p className="text-[13px] text-gray-500 dark:text-gray-400 mt-1">
+                    <p className="text-[13px] text-gray-500 dark:text-gray-400 mt-2 leading-relaxed">
                       {r.description || "Configure global access rights for this role type."}
                     </p>
                   </div>
@@ -810,17 +810,17 @@ export default function UserManagement() {
       ) : (
         <>
       {/* ── Stats ── */}
-      <div className="flex flex-wrap gap-2.5 mb-5">
-        <NxStatCard size="sm" label="Total Users" value={stats.total} icon={Users} active={activeFilter === "all"} onClick={() => setActiveFilter("all")} />
-        <NxStatCard
-          size="sm" label="Active" value={stats.active} icon={CheckCircle2}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5 mb-5">
+        <StatCard label="Total Users" value={stats.total} icon={Users} active={activeFilter === "all"} onClick={() => setActiveFilter("all")} />
+        <StatCard
+          label="Active" value={stats.active} icon={CheckCircle2} iconColorClass="text-emerald-500"
           active={activeFilter === "active"} onClick={() => setActiveFilter(activeFilter === "active" ? "all" : "active")}
         />
-        <NxStatCard
-          size="sm" label="Inactive" value={stats.inactive} icon={Ban}
+        <StatCard
+          label="Inactive" value={stats.inactive} icon={Ban} iconColorClass="text-red-500"
           active={activeFilter === "inactive"} onClick={() => setActiveFilter(activeFilter === "inactive" ? "all" : "inactive")}
         />
-        <Card padded={false} className="p-2.5 flex-1 min-w-[220px]">
+        <Card padded={false} className="p-2.5">
           <div className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-2">By Role</div>
           <div className="flex flex-wrap gap-2">
             <button

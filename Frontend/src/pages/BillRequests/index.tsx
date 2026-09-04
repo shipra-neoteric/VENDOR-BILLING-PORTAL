@@ -59,6 +59,8 @@ interface BillRequestRow {
   requestedBy?: { name: string; email: string };
   agmApprovedBy?: { name: string; role?: string } | string | null;
   agmApprovedAt?: string;
+  gmApprovedAt?: string;
+  l3ApprovedAt?: string;
   processedBy?: { name: string; role?: string } | string | null;
   processedAt?: string;
   retentionAmount?: number;
@@ -87,6 +89,9 @@ interface ManualBillRow {
   department?: string; customDepartment?: string;
   retentionAmount?: number; advanceRecovery?: number; gstPercent?: number;
   updatedAt?: string;
+  manualAgmApprovedAt?: string;
+  manualGmApprovedAt?: string;
+  manualL3ApprovedAt?: string;
 }
 
 interface ProjectOption { _id: string; name: string; code?: string; parentId?: string | null; }
@@ -122,16 +127,30 @@ const STATUS_CFG: Record<string, { color: string; label: string }> = {
 
 const PENDING_STATUSES = ["pending", "pending-gm", "pending-l3", "pending-l4"];
 const OVERDUE_MS = 24 * 60 * 60 * 1000;
-// "Pending for >1 day" — updatedAt is bumped by every approval action (each
-// stage's handler does a bill/request .save()), so it doubles as "since when
-// this has been sitting at its current stage" without needing a dedicated
-// per-stage timestamp.
-function isOverdue(status: string, updatedAt?: string): boolean {
-  if (!PENDING_STATUSES.includes(status) || !updatedAt) return false;
-  return Date.now() - new Date(updatedAt).getTime() > OVERDUE_MS;
+// "Pending for >1 day" — deliberately NOT based on updatedAt: that field is
+// bumped by any unrelated save on the document (editing a manual bill via
+// updateBill while it's still pending, archiving it, etc.), which would
+// silently reset this clock without the approval actually having moved.
+// Each stage's own "entered this stage at" timestamp (already recorded by
+// every approve handler) is stable under those unrelated edits — falls back
+// to createdAt for the first stage, which is never touched post-creation.
+function stageEnteredAt(row: {
+  status?: string; manualApprovalStatus?: string; createdAt?: string;
+  agmApprovedAt?: string; gmApprovedAt?: string; l3ApprovedAt?: string;
+  manualAgmApprovedAt?: string; manualGmApprovedAt?: string; manualL3ApprovedAt?: string;
+}): string | undefined {
+  const status = row.status ?? row.manualApprovalStatus;
+  if (status === "pending-gm") return row.agmApprovedAt ?? row.manualAgmApprovedAt ?? row.createdAt;
+  if (status === "pending-l3") return row.gmApprovedAt ?? row.manualGmApprovedAt ?? row.createdAt;
+  if (status === "pending-l4") return row.l3ApprovedAt ?? row.manualL3ApprovedAt ?? row.createdAt;
+  return row.createdAt;
 }
-function OverdueBadge({ status, updatedAt }: { status: string; updatedAt?: string }) {
-  if (!isOverdue(status, updatedAt)) return null;
+function isOverdue(status: string, since?: string): boolean {
+  if (!PENDING_STATUSES.includes(status) || !since) return false;
+  return Date.now() - new Date(since).getTime() > OVERDUE_MS;
+}
+function OverdueBadge({ status, since }: { status: string; since?: string }) {
+  if (!isOverdue(status, since)) return null;
   return <NxBadge color="red">Overdue</NxBadge>;
 }
 
@@ -948,10 +967,10 @@ export default function BillApproval() {
                   <Td>{b.vendorName || "—"}</Td>
                   <Td className="font-mono">{fmt(b.amount)}</Td>
                   <Td>{dayjs(b.billDate || b.createdAt).format("DD MMM YYYY")}</Td>
-                  <Td>
-                    <div className="flex items-center gap-1.5">
+                  <Td className="whitespace-nowrap">
+                    <div className="flex flex-wrap items-center gap-1">
                       <NxBadge color={STATUS_CFG[b.manualApprovalStatus]?.color as any ?? "gray"}>{STATUS_CFG[b.manualApprovalStatus]?.label ?? b.manualApprovalStatus}</NxBadge>
-                      <OverdueBadge status={b.manualApprovalStatus} updatedAt={b.updatedAt} />
+                      <OverdueBadge status={b.manualApprovalStatus} since={stageEnteredAt(b)} />
                     </div>
                   </Td>
                   <Td onClick={e => e.stopPropagation()}>
@@ -1025,10 +1044,10 @@ export default function BillApproval() {
                     <Td>{departmentLabel(resolveDeptRow(r))}</Td>
                     <Td>{r.vendorName}</Td>
                     <Td>{dayjs(r.createdAt).format("DD MMM YYYY")}</Td>
-                    <Td>
-                      <div className="flex items-center gap-1.5">
+                    <Td className="whitespace-nowrap">
+                      <div className="flex flex-wrap items-center gap-1">
                         <UIBadge color={cfg.color as any}>{cfg.label}</UIBadge>
-                        <OverdueBadge status={r.status} updatedAt={r.updatedAt} />
+                        <OverdueBadge status={r.status} since={stageEnteredAt(r)} />
                       </div>
                     </Td>
                     <Td>
@@ -1082,7 +1101,7 @@ export default function BillApproval() {
             <span className="inline-flex items-center gap-2">
               <span>Bill Request — {viewReq.reqNo}</span>
               <UIBadge color={STATUS_CFG[viewReq.status]?.color as any}>{STATUS_CFG[viewReq.status]?.label}</UIBadge>
-              <OverdueBadge status={viewReq.status} updatedAt={viewReq.updatedAt} />
+              <OverdueBadge status={viewReq.status} since={stageEnteredAt(viewReq)} />
               {viewReq.milestoneAchieved && <UIBadge color="orange" small>🏆 Milestone</UIBadge>}
             </span>
           }
