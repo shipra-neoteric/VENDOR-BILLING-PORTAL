@@ -571,6 +571,22 @@ export default function NewBillDrawer({
     recomputeMilestoneRows(selectedMilestoneIds, nextPercents);
   }
 
+  // A freeform milestone entry, independent of any Work Order — for a bill
+  // with no linked WO, or a WO whose milestones were never set up there.
+  // Adds a plain lump-sum row the same way an unlinked WO milestone would,
+  // just without a real _id/scopeItemIds to look up.
+  const [customMilestoneLabel, setCustomMilestoneLabel] = useState("");
+  const [customMilestoneAmount, setCustomMilestoneAmount] = useState<number | null>(null);
+  function addCustomMilestoneRow() {
+    if (!customMilestoneLabel.trim() || !customMilestoneAmount) return;
+    const amount = Math.round(customMilestoneAmount * 100) / 100;
+    const row: LineItem = { ...blankRow(), description: customMilestoneLabel.trim(), billedQty: 1, rate: amount, amount };
+    setLineItems((prev) => [...prev.filter((li) => li.description.trim()), row]);
+    setCustomMilestoneLabel("");
+    setCustomMilestoneAmount(null);
+    toast.success("Milestone added as a line item");
+  }
+
   const totalLineAmount = useMemo(
     () => lineItems.reduce((s, li) => s + (li.amount || 0), 0),
     [lineItems]
@@ -948,23 +964,21 @@ export default function NewBillDrawer({
 
           {/* Payment Milestone — its own standalone box (same visual
               pattern as the WO-import box below), independent of the Bill
-              Relationship box above. Needs a WO selected there first
-              (milestones belong to one). Multiple milestones can be checked
-              at once (e.g. two consultancy stages clearing together), each
-              with its own "% of this milestone to bill now". */}
-          {woList.length > 0 && (() => {
+              Relationship box above. Always usable, whether or not a Work
+              Order is selected/has any milestones set up on it — a WO's own
+              milestones (when it has any) can be checked, each with its own
+              "% of this milestone to bill now"; a freeform one can always be
+              added too, for a standalone bill or a WO that never had its
+              milestones set up there. */}
+          {(() => {
             const milestones = woList.find((wo) => wo.id === selectedWOId)?.paymentMilestones ?? [];
             return (
               <div className="rounded-lg border border-purple-200 dark:border-purple-500/30 bg-purple-50 dark:bg-purple-500/10 p-3 mb-3">
                 <div className="font-semibold text-xs text-purple-700 dark:text-purple-300 mb-2">
                   Payment Milestone (optional)
                 </div>
-                {!selectedWOId ? (
-                  <div className="text-[12px] text-gray-500 dark:text-gray-400">Select a Work Order above first…</div>
-                ) : milestones.length === 0 ? (
-                  <div className="text-[12px] text-gray-500 dark:text-gray-400">This work order has no payment milestones</div>
-                ) : (
-                  <div className="flex flex-col gap-2">
+                {selectedWOId && milestones.length > 0 && (
+                  <div className="flex flex-col gap-2 mb-3">
                     {milestones.map((m) => {
                       const checked = selectedMilestoneIds.includes(m._id);
                       return (
@@ -994,6 +1008,29 @@ export default function NewBillDrawer({
                     })}
                   </div>
                 )}
+                {selectedWOId && milestones.length === 0 && (
+                  <div className="text-[12px] text-gray-500 dark:text-gray-400 mb-2">
+                    This work order has no payment milestones set up — add one below instead.
+                  </div>
+                )}
+                {/* Freeform milestone — always available, not tied to any WO's own list. */}
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    placeholder="Milestone name (e.g. Design Stage 2)"
+                    value={customMilestoneLabel}
+                    onChange={(e) => setCustomMilestoneLabel(e.target.value)}
+                    className="flex-1 min-w-0 text-[13px] rounded-md border border-purple-200 dark:border-purple-500/30 bg-white dark:bg-gray-800 px-2.5 py-1.5"
+                  />
+                  <input
+                    type="number" min="0"
+                    placeholder="Amount"
+                    value={customMilestoneAmount ?? ""}
+                    onChange={(e) => setCustomMilestoneAmount(e.target.value ? Number(e.target.value) : null)}
+                    className="w-28 text-[13px] text-right rounded-md border border-purple-200 dark:border-purple-500/30 bg-white dark:bg-gray-800 px-2.5 py-1.5"
+                  />
+                  <Btn small color="primary" label="Add" onClick={addCustomMilestoneRow} />
+                </div>
               </div>
             );
           })()}
