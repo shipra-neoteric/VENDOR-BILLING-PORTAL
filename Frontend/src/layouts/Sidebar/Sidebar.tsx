@@ -246,7 +246,7 @@ export default function Sidebar({ open = false, onClose }: SidebarProps) {
                 Nexora ERP
               </div>
               <div style={{ fontSize: 12, color: "var(--nx-sidebar-sub-color)", marginTop: 2, lineHeight: 1.2, whiteSpace: "nowrap" }}>
-                {isDRI ? "Site Progress Portal" : "Project Cost Center"}
+                {isDRI ? "Site Progress Portal" : "Vendor Management System"}
               </div>
             </div>
           )}
