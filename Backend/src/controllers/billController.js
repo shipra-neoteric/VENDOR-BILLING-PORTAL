@@ -13,7 +13,7 @@ const { advanceInstance, cancelInstance } = require('../utils/slaEngine');
 const { logAudit, diffFields } = require('../utils/auditLog');
 const { hasUnapprovedVarianceForLineItem, resolveBillableItem, findOverbilledLineItem, isWorkOrderApproved } = require('../utils/varianceCheck');
 const { recomputeAfterInvalidate, recomputeParentFromSubItems, deriveStatus } = require('../utils/progressHelpers');
-const { applyAdvanceRecoveries } = require('../utils/advanceRecovery');
+const { applyAdvanceRecoveries, reverseAdvanceRecoveries } = require('../utils/advanceRecovery');
 const AdvanceSlip  = require('../models/AdvanceSlip');
 const { nextCode } = require('../utils/sequence');
 const { notifyStagePending, settleAllPendingForEntity } = require('../utils/slackApprovals');
@@ -733,13 +733,45 @@ exports.manualReject = asyncHandler(async (req, res) => {
   }
   const reason = req.body.reason || 'No reason provided';
 
+  // Roll back lastBilledQty for scope-linked line items — createBill already
+  // added it at creation time (same as a BillRequest does), so a rejection
+  // must undo it the same way rejectBillRequest does, or that quantity is
+  // permanently locked out of ever being re-billed. Manual bills bypass DRI
+  // progress logging entirely (see createBill's own comment), so there are
+  // no progressEntries/billedInRequestId to invalidate here — only the
+  // running lastBilledQty counter itself needs unwinding.
+  const workOrder = bill.workOrderId ? await WorkOrder.findById(bill.workOrderId) : null;
+  if (workOrder) {
+    const touchedParents = new Set();
+    for (const li of bill.lineItems) {
+      if (!li.scopeItemId || !li.billedQty) continue;
+      const si = workOrder.scopeItems.id(li.scopeItemId);
+      if (!si) continue;
+      const target = resolveBillableItem(si, li.subItemId);
+      if (!target) continue;
+      target.lastBilledQty = Math.max(0, (target.lastBilledQty || 0) - Number(li.billedQty));
+      target.status = deriveStatus(target);
+      if (li.subItemId) touchedParents.add(li.scopeItemId);
+    }
+    for (const scopeItemId of touchedParents) {
+      const si = workOrder.scopeItems.id(scopeItemId);
+      if (si) recomputeParentFromSubItems(si);
+    }
+    await workOrder.save();
+  }
+
+  // createBill applies any advance recovery immediately (real-time, not
+  // deferred until the bill is actually paid — see applyAdvanceRecoveries'
+  // own call site) — a bill rejected before ever being paid must have that
+  // reversed, or the vendor's AdvanceSlip balance stays wrongly debited.
+  if (bill.advanceRecovery) await reverseAdvanceRecoveries(bill.billNo);
+
   bill.manualApprovalStatus = 'rejected';
   bill.manualRejectedBy = req.user._id;
   bill.manualRejectReason = reason;
   // Terminal — same as a draft bill rejected in Accounts Payment (rejectBill
-  // above); nothing downstream has happened yet for a bill still awaiting
-  // this sign-off, so there's no WO progress or advance recovery to unwind
-  // beyond what createBill already applied at creation time.
+  // above); the advance-recovery debit and the scope-item quantity lock are
+  // both rolled back above.
   bill.status = 'rejected';
   bill.rejectedBy = req.user._id;
   bill.rejectReason = reason;
@@ -1025,7 +1057,31 @@ exports.rejectBill = asyncHandler(async (req, res) => {
   const reason = req.body.reason || 'No reason provided';
 
   if (bill.status === 'draft') {
-    // Terminal kill — the only case with no prior stage to send back to.
+    // Terminal kill — the only case with no prior stage to send back to. The
+    // bill dies here, so both createBill-time effects must be unwound: the
+    // scope-item quantity lock (lastBilledQty — every scope-linked bill gets
+    // this regardless of whether it came via a BillRequest) and any advance
+    // recovery already applied (real-time at creation, not deferred to
+    // payment — see applyAdvanceRecoveries' own call site). Previously only
+    // the BillRequest-linked lastBilledQty rollback existed here, and advance
+    // recovery was never reversed at all — the same gap manualReject had.
+    if (bill.workOrderId) {
+      const wo = await WorkOrder.findById(bill.workOrderId);
+      if (wo) {
+        let changed = false;
+        for (const li of bill.lineItems || []) {
+          if (!li.scopeItemId || !li.billedQty) continue;
+          const si = wo.scopeItems.id(li.scopeItemId);
+          if (si) {
+            si.lastBilledQty = Math.max(0, (si.lastBilledQty || 0) - Number(li.billedQty));
+            changed = true;
+          }
+        }
+        if (changed) await wo.save();
+      }
+    }
+    if (bill.advanceRecovery) await reverseAdvanceRecoveries(bill.billNo);
+
     bill.status       = 'rejected';
     bill.rejectedBy   = req.user._id;
     bill.rejectReason = reason;
@@ -1040,19 +1096,20 @@ exports.rejectBill = asyncHandler(async (req, res) => {
       await br.save();
       await cancelInstance('BillRequest', br._id, `Rejected: ${br.rejectReason}`);
 
+      // A killed bill means the progress it was made from was wrong —
+      // auto-invalidate those entries (reason = the rejection reason) rather
+      // than just freeing them, so they stay visible as history but never
+      // count toward progress/billing again. Only meaningful for a
+      // BillRequest-linked bill — a plain manual bill's line items were
+      // never tied to logged progress entries in the first place.
       if (bill.workOrderId) {
         const wo = await WorkOrder.findById(bill.workOrderId);
         if (wo) {
           let changed = false;
           for (const li of bill.lineItems || []) {
-            if (!li.scopeItemId || !li.billedQty) continue;
+            if (!li.scopeItemId) continue;
             const si = wo.scopeItems.id(li.scopeItemId);
             if (si) {
-              si.lastBilledQty = Math.max(0, (si.lastBilledQty || 0) - Number(li.billedQty));
-              // A killed bill means the progress it was made from was wrong —
-              // auto-invalidate those entries (reason = the rejection reason)
-              // rather than just freeing them, so they stay visible as
-              // history but never count toward progress/billing again.
               const sources = (si.subItems && si.subItems.length > 0) ? si.subItems : [si];
               for (const src of sources) {
                 for (const entry of src.progressEntries) {

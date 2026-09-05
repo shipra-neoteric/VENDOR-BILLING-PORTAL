@@ -23,4 +23,29 @@ async function applyAdvanceRecoveries(recoveries, { billNo, releasedBy }) {
   return applied;
 }
 
-module.exports = { applyAdvanceRecoveries };
+// Undoes whatever applyAdvanceRecoveries applied for a given bill — needed
+// because that function runs at CREATION time (real-time reducing the
+// AdvanceSlip's balance), not deferred until the bill is actually paid, so a
+// bill that gets rejected before payment must have its recovery unwound or
+// the vendor's AdvanceSlip balance stays permanently (and wrongly) debited
+// for a bill that never went anywhere. There's no per-recovery id stored on
+// the bill itself — only the AdvanceSlip's own `recoveries` array, tagged
+// with the bill's billNo — so this looks each one up by that tag.
+async function reverseAdvanceRecoveries(billNo) {
+  if (!billNo) return;
+  const AdvanceSlip = require('../models/AdvanceSlip');
+  const slips = await AdvanceSlip.find({ 'recoveries.billNo': billNo });
+  for (const slip of slips) {
+    const matching = slip.recoveries.filter((r) => r.billNo === billNo);
+    if (!matching.length) continue;
+    const total = matching.reduce((sum, r) => sum + (r.amount || 0), 0);
+    slip.recoveries = slip.recoveries.filter((r) => r.billNo !== billNo);
+    slip.amountRecovered = Math.max(0, slip.amountRecovered - total);
+    slip.status = slip.amountRecovered >= slip.amount
+      ? 'recovered'
+      : slip.amountRecovered > 0 ? 'partial' : 'outstanding';
+    await slip.save();
+  }
+}
+
+module.exports = { applyAdvanceRecoveries, reverseAdvanceRecoveries };
