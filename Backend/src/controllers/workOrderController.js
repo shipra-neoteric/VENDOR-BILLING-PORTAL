@@ -491,6 +491,9 @@ exports.checkerApprove = asyncHandler(async (req, res) => {
   if (workOrder.approvalStatus !== 'pending-checker') {
     return badRequest(res, `Cannot check a work order with approval status '${workOrder.approvalStatus}'`);
   }
+  if (workOrder.makerBy && workOrder.makerBy.toString() === req.user._id.toString()) {
+    return badRequest(res, 'The maker who submitted this cannot also give checker sign-off — segregation of duties requires a different approver.');
+  }
   workOrder.approvalStatus = 'pending-approver';
   workOrder.checkerBy = req.user._id;
   workOrder.checkerAt = new Date();
@@ -523,6 +526,9 @@ exports.approverApprove = asyncHandler(async (req, res) => {
   if (!workOrder) return notFound(res, 'Work order not found');
   if (workOrder.approvalStatus !== 'pending-approver') {
     return badRequest(res, `Cannot approve a work order with approval status '${workOrder.approvalStatus}'`);
+  }
+  if (workOrder.checkerBy && workOrder.checkerBy.toString() === req.user._id.toString()) {
+    return badRequest(res, 'The checker who verified this cannot also give approver sign-off — segregation of duties requires a different approver.');
   }
   workOrder.approvalStatus = 'pending-final';
   workOrder.approverBy = req.user._id;
@@ -557,6 +563,9 @@ exports.finalApprove = asyncHandler(async (req, res) => {
   if (!workOrder) return notFound(res, 'Work order not found');
   if (workOrder.approvalStatus !== 'pending-final') {
     return badRequest(res, `Cannot give final approval to a work order with approval status '${workOrder.approvalStatus}'`);
+  }
+  if (workOrder.approverBy && workOrder.approverBy.toString() === req.user._id.toString()) {
+    return badRequest(res, 'The approver who signed off on this cannot also give final approval — segregation of duties requires a different approver.');
   }
   workOrder.approvalStatus = 'approved';
   workOrder.finalApprovedBy = req.user._id;

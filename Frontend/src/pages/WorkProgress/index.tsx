@@ -183,8 +183,11 @@ function WorkProgressAdmin() {
   const [projects,   setProjects]   = useState<Project[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
-  const [selProject,   setSelProject]   = useState<string | undefined>();
-  const [selCategory,  setSelCategory]  = useState<string | undefined>();
+  // Empty string means "All" for both — a valid default selection, not
+  // "nothing chosen yet" (previously required an explicit pick before any
+  // data could load at all).
+  const [selProject,   setSelProject]   = useState<string>("");
+  const [selCategory,  setSelCategory]  = useState<string>("");
   const [selWorkOrder, setSelWorkOrder] = useState<string | undefined>();
   const [woDetail, setWODetail] = useState<WODetail | null>(null);
   const [billReqs, setBillReqs] = useState<BRSummary[]>([]);
@@ -197,9 +200,16 @@ function WorkProgressAdmin() {
     apiClient.get("/categories").then(r => setCategories(r.data.categories ?? []));
   }, []);
 
+  // Project/Category both default to "All" now (not "nothing picked yet"),
+  // so the overview can just load immediately on open instead of making
+  // the user press "Load Progress" on a filter set that's already valid.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { loadProgress(); }, []);
+
   useEffect(() => {
-    if (!selProject) { setWorkOrders([]); return; }
-    apiClient.get(`/work-orders?projectId=${selProject}`).then(r => {
+    // Empty selProject means "All Projects" now, not "nothing chosen yet" —
+    // just omit the projectId filter entirely rather than skipping the fetch.
+    apiClient.get(selProject ? `/work-orders?projectId=${selProject}` : "/work-orders").then(r => {
       let wos = r.data.workOrders ?? [];
       if (selCategory) {
         const cat = categories.find(c => c._id === selCategory);
@@ -210,7 +220,6 @@ function WorkProgressAdmin() {
   }, [selProject, selCategory, categories]);
 
   const loadProgress = async () => {
-    if (!selProject || !selCategory) { toast.error("Select a Project and Category first"); return; }
     setLoading(true);
     try {
       if (selWorkOrder) {
@@ -224,7 +233,7 @@ function WorkProgressAdmin() {
         setMode("detail");
       } else {
         const cat = categories.find(c => c._id === selCategory);
-        const r   = await apiClient.get(`/work-orders?projectId=${selProject}`);
+        const r   = await apiClient.get(selProject ? `/work-orders?projectId=${selProject}` : "/work-orders");
         let wos   = r.data.workOrders ?? [];
         if (cat) wos = wos.filter((w: WorkOrder) => w.category === cat.name);
         setWOList(wos);
@@ -259,18 +268,18 @@ function WorkProgressAdmin() {
       <Card className="mb-6 flex gap-3 flex-wrap items-end">
         <div className="flex-1 min-w-[180px]">
           <SField
-            label="Project" required placeholder="Select project"
-            value={selProject ?? null}
+            label="Project" placeholder="Select project"
+            value={selProject}
             onChange={v => { setSelProject(v); setSelWorkOrder(undefined); setMode("idle"); setWODetail(null); setBillReqs([]); setWOList([]); }}
-            options={selectableProjects(projects).map(p => ({ value: p._id, label: p.name }))}
+            options={[{ value: "", label: "All Projects" }, ...selectableProjects(projects).map(p => ({ value: p._id, label: p.name }))]}
           />
         </div>
         <div className="flex-1 min-w-[180px]">
           <SField
-            label="Category" required placeholder="Select category"
-            value={selCategory ?? null}
+            label="Category" placeholder="Select category"
+            value={selCategory}
             onChange={v => { setSelCategory(v); setSelWorkOrder(undefined); setMode("idle"); }}
-            options={categories.map(c => ({ value: c._id, label: c.name }))}
+            options={[{ value: "", label: "All Categories" }, ...categories.map(c => ({ value: c._id, label: c.name }))]}
           />
         </div>
         <div className="flex-1 min-w-[200px]">

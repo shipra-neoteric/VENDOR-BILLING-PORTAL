@@ -931,18 +931,18 @@ export default function BillApproval() {
           <div className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">
             Manual Bills — Billing → New Bill
           </div>
-          <Table>
+          <Table className="min-w-[960px]">
             <Thead>
               <Tr>
-                <Th>Bill No</Th>
-                <Th>Work Order</Th>
-                <Th>Project</Th>
-                <Th>Department</Th>
-                <Th>Vendor</Th>
-                <Th>Amount</Th>
-                <Th>Date</Th>
-                <Th>Status</Th>
-                <Th>Actions</Th>
+                <Th className="w-[10%]">Bill No</Th>
+                <Th className="w-[9%]">Work Order</Th>
+                <Th className="w-[13%]">Project</Th>
+                <Th className="w-[11%]">Department</Th>
+                <Th className="w-[14%]">Vendor</Th>
+                <Th className="w-[11%]">Amount</Th>
+                <Th className="w-[10%]">Date</Th>
+                <Th className="w-[10%]">Status</Th>
+                <Th className="w-[12%]">Actions</Th>
               </Tr>
             </Thead>
             <Tbody>
@@ -993,18 +993,18 @@ export default function BillApproval() {
         <EmptyState title={`No ${reqTab === "all" ? "" : STATUS_CFG[reqTab]?.label.toLowerCase() || reqTab} bill requests`} />
       ) : (
         <>
-          <Table>
+          <Table className="min-w-[960px]">
             <Thead>
               <Tr>
-                <Th>Stage / Request</Th>
-                <Th>Work Order</Th>
-                <Th>Project</Th>
-                <Th>Department</Th>
-                <Th>Vendor</Th>
-                <Th>Amount</Th>
-                <Th>Date</Th>
-                <Th>Status</Th>
-                <Th>Actions</Th>
+                <Th className="w-[10%]">Stage / Request</Th>
+                <Th className="w-[9%]">Work Order</Th>
+                <Th className="w-[13%]">Project</Th>
+                <Th className="w-[11%]">Department</Th>
+                <Th className="w-[14%]">Vendor</Th>
+                <Th className="w-[11%]">Amount</Th>
+                <Th className="w-[10%]">Date</Th>
+                <Th className="w-[10%]">Status</Th>
+                <Th className="w-[12%]">Actions</Th>
               </Tr>
             </Thead>
             <Tbody>

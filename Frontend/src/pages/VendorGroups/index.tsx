@@ -385,17 +385,17 @@ export default function VendorGroups() {
               {perMember.length === 0 ? (
                 <div className="text-center py-8 text-gray-400 text-sm">No work orders for this group yet</div>
               ) : (
-                <Table className="mb-6">
+                <Table className="mb-6 min-w-[880px]">
                   <Thead>
                     <Tr>
-                      <Th>Vendor Code</Th>
-                      <Th>Company</Th>
-                      <Th className="text-right">Work Orders</Th>
-                      <Th className="text-right">Contract Value</Th>
-                      <Th className="text-right">Billed</Th>
-                      <Th className="text-right">Paid</Th>
-                      <Th className="text-right">Advance Given</Th>
-                      <Th className="text-right">Advance Balance</Th>
+                      <Th className="w-[10%]">Vendor Code</Th>
+                      <Th className="w-[16%]">Company</Th>
+                      <Th className="text-right w-[10%]">Work Orders</Th>
+                      <Th className="text-right w-[16%]">Contract Value</Th>
+                      <Th className="text-right w-[12%]">Billed</Th>
+                      <Th className="text-right w-[12%]">Paid</Th>
+                      <Th className="text-right w-[12%]">Advance Given</Th>
+                      <Th className="text-right w-[12%]">Advance Balance</Th>
                     </Tr>
                   </Thead>
                   <Tbody>
@@ -421,18 +421,18 @@ export default function VendorGroups() {
               {advanceSlips.length === 0 ? (
                 <div className="text-center py-8 text-gray-400 text-sm">No advance slips for this group yet</div>
               ) : (
-                <Table>
+                <Table className="min-w-[920px]">
                   <Thead>
                     <Tr>
-                      <Th>Slip No</Th>
-                      <Th>Date</Th>
-                      <Th>Project</Th>
-                      <Th>Contractor</Th>
-                      <Th className="text-right">Advance Given</Th>
-                      <Th className="text-right">Recovered</Th>
-                      <Th className="text-right">Balance</Th>
-                      <Th>Reference</Th>
-                      <Th>Status</Th>
+                      <Th className="w-[10%]">Slip No</Th>
+                      <Th className="w-[10%]">Date</Th>
+                      <Th className="w-[14%]">Project</Th>
+                      <Th className="w-[16%]">Contractor</Th>
+                      <Th className="text-right w-[12%]">Advance Given</Th>
+                      <Th className="text-right w-[12%]">Recovered</Th>
+                      <Th className="text-right w-[12%]">Balance</Th>
+                      <Th className="w-[8%]">Reference</Th>
+                      <Th className="w-[8%]">Status</Th>
                     </Tr>
                   </Thead>
                   <Tbody>

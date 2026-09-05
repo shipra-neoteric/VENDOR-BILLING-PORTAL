@@ -34,7 +34,11 @@ export default function NxStatCard({ label, value, icon: Icon, active = false, o
       style={active ? { boxShadow: "0 0 0 2px var(--theme-primary)" } : undefined}
     >
       <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 truncate">{label}</p>
-      <p className="text-lg sm:text-xl font-medium text-gray-900 dark:text-white mt-2 tabular-nums break-words leading-tight">{value}</p>
+      {/* A plain <div>, not <p> — several call sites (e.g. Ledger's stat
+          cards) pass a Fragment containing a sub-label <div> alongside the
+          value, which a <p> can't legally contain (invalid HTML nesting,
+          React hydration warning). */}
+      <div className="text-lg sm:text-xl font-medium text-gray-900 dark:text-white mt-2 tabular-nums break-words leading-tight">{value}</div>
       {delta && (
         <p className={`text-xs font-semibold mt-1.5 flex items-center gap-1 ${deltaDown ? "text-red-500" : "text-emerald-600 dark:text-emerald-400"}`}>
           <DeltaIcon className="w-3 h-3" /> {delta}
