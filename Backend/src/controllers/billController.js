@@ -576,6 +576,9 @@ async function manualGmApproveHandler(req, res) {
   if (bill.manualApprovalStatus !== 'pending-gm') {
     return badRequest(res, `This bill's AGM/GM sign-off is already ${bill.manualApprovalStatus}`);
   }
+  if (bill.manualAgmApprovedBy && bill.manualAgmApprovedBy.toString() === req.user._id.toString()) {
+    return badRequest(res, 'The L1 approver cannot also give L2 sign-off — segregation of duties requires a different approver.');
+  }
 
   const approvalConfig = await getApprovalConfig(bill);
   if (!approverAllowed(req.user, approvalConfig, 'gm')) {
@@ -630,6 +633,9 @@ async function manualL3ApproveHandler(req, res) {
   if (bill.manualApprovalStatus !== 'pending-l3') {
     return badRequest(res, `This bill's AGM/GM sign-off is already ${bill.manualApprovalStatus}`);
   }
+  if (bill.manualGmApprovedBy && bill.manualGmApprovedBy.toString() === req.user._id.toString()) {
+    return badRequest(res, 'The L2 approver cannot also give L3 sign-off — segregation of duties requires a different approver.');
+  }
 
   const approvalConfig = await getApprovalConfig(bill);
   if (!approverAllowed(req.user, approvalConfig, 'l3')) {
@@ -681,6 +687,9 @@ exports.manualL4Approve = asyncHandler(async (req, res) => {
   if (!canActOnDepartment(req.user, bill)) return forbidden(res, 'This bill belongs to a different department.');
   if (bill.manualApprovalStatus !== 'pending-l4') {
     return badRequest(res, `This bill's AGM/GM sign-off is already ${bill.manualApprovalStatus}`);
+  }
+  if (bill.manualL3ApprovedBy && bill.manualL3ApprovedBy.toString() === req.user._id.toString()) {
+    return badRequest(res, 'The L3 approver cannot also give L4 sign-off — segregation of duties requires a different approver.');
   }
 
   const approvalConfig = await getApprovalConfig(bill);
