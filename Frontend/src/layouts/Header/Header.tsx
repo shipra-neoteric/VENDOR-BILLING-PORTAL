@@ -138,7 +138,7 @@ export default function Header({ onToggleSidebar }: HeaderProps) {
               Neoteric Properties
             </div>
             <div style={{ fontSize: 11, color: "var(--nx-text-2)", lineHeight: 1.2, whiteSpace: "nowrap" }}>
-              Project Cost Center
+              Vendor Management System
             </div>
           </div>
         )}
