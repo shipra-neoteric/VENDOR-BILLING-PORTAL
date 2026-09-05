@@ -234,12 +234,12 @@ export default function SlaDashboard() {
         {recentActivity.length === 0 ? (
           <div className="text-gray-400 dark:text-gray-500 text-[13px] text-center py-2.5">No activity yet.</div>
         ) : (
-          <div className="flex flex-col max-h-[220px] overflow-y-auto">
+          <div className="flex flex-col pr-3" style={{ maxHeight: 220, overflowY: "scroll" }}>
             {recentActivity.map((e, i) => (
               <div key={i} className={`flex gap-2.5 py-2 ${i < recentActivity.length - 1 ? "border-b border-gray-100 dark:border-gray-700/40" : ""}`}>
                 <span className="text-[11px] text-gray-400 dark:text-gray-500 w-[70px] shrink-0">{dayjs(e.time).format("h:mm A")}</span>
                 <span className="text-[12.5px] text-gray-700 dark:text-gray-300 flex-1">{e.text}</span>
-                <span>{e.type === "breach" ? "🔴" : e.type === "late" ? "🟡" : "✔️"}</span>
+                <span className="shrink-0">{e.type === "breach" ? "🔴" : e.type === "late" ? "🟡" : "✔️"}</span>
               </div>
             ))}
           </div>

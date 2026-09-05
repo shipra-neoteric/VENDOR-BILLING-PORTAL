@@ -184,6 +184,45 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* ── Global scrollbar ─────────────────────────────────────────────────────
+   One consistent, always-visible scrollbar app-wide (matching the Filters
+   dropdown's own look) — not the OS's hover-only overlay one, which reads
+   as "no scrollbar at all" on a short-lived popup/dropdown/table. Applies
+   everywhere by default; no per-component scrollbar class needed. */
+* {
+  scrollbar-width: auto;
+  scrollbar-color: #b0b0b0 #f1f1f1;
+}
+*::-webkit-scrollbar {
+  width: 12px !important;
+  height: 12px !important;
+}
+*::-webkit-scrollbar-track {
+  background: #f1f1f1 !important;
+  border-radius: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: #b0b0b0 !important;
+  border-radius: 8px;
+  border: 2px solid #f1f1f1;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: #8a8a8a !important;
+}
+[data-theme="dark"] * {
+  scrollbar-color: #475569 #1e293b;
+}
+[data-theme="dark"] *::-webkit-scrollbar-track {
+  background: #1e293b;
+}
+[data-theme="dark"] *::-webkit-scrollbar-thumb {
+  background: #475569;
+  border-color: #1e293b;
+}
+[data-theme="dark"] *::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
+
 /* ── Ant Design global overrides ─────────────────────────── */
 
 /* Tables */

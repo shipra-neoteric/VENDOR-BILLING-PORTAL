@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { Calendar as CalendarIcon, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
+import { Calendar as CalendarIcon, ChevronDown, ChevronLeft, ChevronRight, Check } from "lucide-react";
 import type { Dayjs } from "dayjs";
 import dayjs from "dayjs";
 import Calendar from "../ui/Calendar";
@@ -153,7 +153,7 @@ export default function DateRangeFilter({ onChange }: Props) {
         ref={btnRef}
         type="button"
         onClick={() => { measure(btnRef, MENU_WIDTH); setMenuOpen(o => !o); }}
-        className="h-9 px-3 flex items-center gap-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-[#0F172A] text-sm text-[#1A1A2E] dark:text-[#F1F5F9] hover:border-primary/50"
+        className="h-9 px-3 flex items-center gap-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-[#0F172A] text-sm text-[#1A1A2E] dark:text-[#F1F5F9] hover:border-primary/50 outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
       >
         <CalendarIcon className="w-3.5 h-3.5 text-gray-400" />
         {PRESET_LABEL[preset]}
@@ -179,11 +179,12 @@ export default function DateRangeFilter({ onChange }: Props) {
               {MENU_ORDER.map(p => (
                 <button
                   key={p} type="button" onClick={() => pick(p)}
-                  className={`text-left px-2.5 py-1.5 rounded-md text-[13px] font-medium ${
-                    p === preset ? "bg-primary/10 text-primary! font-bold" : "text-[#1A1A2E] dark:text-[#F1F5F9] hover:bg-gray-100 dark:hover:bg-gray-800"
+                  className={`flex items-center justify-between gap-2 text-left px-2.5 py-1.5 rounded-md text-[13px] font-medium text-[#1A1A2E] dark:text-[#F1F5F9] ${
+                    p === preset ? "" : "hover:bg-gray-100 dark:hover:bg-gray-800"
                   }`}
                 >
                   {PRESET_LABEL[p]}
+                  {p === preset && <Check className="w-3.5 h-3.5 shrink-0 text-primary" />}
                 </button>
               ))}
             </div>

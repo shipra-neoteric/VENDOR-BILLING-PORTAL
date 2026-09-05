@@ -213,7 +213,7 @@ export default function Header({ onToggleSidebar }: HeaderProps) {
                       className="w-full text-[13px] bg-transparent outline-none text-[#1A1A2E] dark:text-[#F1F5F9] placeholder:text-gray-400"
                     />
                   </div>
-                  <div className="user-menu-scroll py-1" style={{ maxHeight: 280, overflowY: "scroll" }}>
+                  <div className="py-1" style={{ maxHeight: 280, overflowY: "scroll" }}>
                     {/* The current account, shown first with an orange
                         checkmark — not clickable (you can't "switch" into
                         the session you're already in), just orients this
@@ -241,18 +241,6 @@ export default function Header({ onToggleSidebar }: HeaderProps) {
                   </div>
                 </div>
               )}
-
-              {/* A classic always-visible scrollbar (not the OS's auto-hide
-                  overlay one) — matches how this looked before, since a
-                  hover-only overlay scrollbar reads as "no scrollbar at all"
-                  in a short-lived dropdown like this. */}
-              <style>{`
-                .user-menu-scroll { scrollbar-width: auto; scrollbar-color: #b0b0b0 #f1f1f1; }
-                .user-menu-scroll::-webkit-scrollbar { width: 12px; }
-                .user-menu-scroll::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 8px; }
-                .user-menu-scroll::-webkit-scrollbar-thumb { background: #b0b0b0; border-radius: 8px; border: 2px solid #f1f1f1; }
-                .user-menu-scroll::-webkit-scrollbar-thumb:hover { background: #8a8a8a; }
-              `}</style>
             </div>
           )}
         >

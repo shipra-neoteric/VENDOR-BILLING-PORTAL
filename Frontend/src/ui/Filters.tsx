@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { ChevronDown, Search } from "lucide-react";
+import { ChevronDown, Search, Check } from "lucide-react";
 import type { SFieldOption } from "./SField";
 
 export function FilterRow({ children }: { children: ReactNode }) {
@@ -35,23 +35,67 @@ interface SelectFilterProps {
   disabled?: boolean;
 }
 
-// Plain native <select> — lighter than SField for simple filter-bar dropdowns
-// (no search needed, few options, no in-form label).
+// Custom-built (not a native <select>) — lighter than DropdownSelectFilter
+// (no search box) for simple filter-bar dropdowns, but still themed the same
+// way: an open panel with a plain text list and a small tick on whichever
+// option is selected, instead of a native <select> popup, whose selected-
+// option highlight is drawn by the OS/browser and can't be restyled to match.
 export function SelectFilter({ value, onChange, options, placeholder = "All", disabled }: SelectFilterProps) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function onDocClick(e: MouseEvent) {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, []);
+
+  function select(v: string) {
+    onChange(v);
+    setOpen(false);
+  }
+
+  const isReset = value === "";
+  const summary = isReset ? placeholder : options.find((o) => o.value === value)?.label ?? placeholder;
+
   return (
-    <select
-      value={value}
-      disabled={disabled}
-      onChange={(e) => onChange(e.target.value)}
-      className="h-10 px-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0F172A] text-[13px] text-gray-500! dark:text-gray-400! focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary disabled:opacity-50"
-    >
-      <option value="">{placeholder}</option>
-      {options.map((o) => (
-        <option key={o.value} value={o.value}>
-          {o.label}
-        </option>
-      ))}
-    </select>
+    <div className="relative" ref={rootRef}>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => setOpen((o) => !o)}
+        className="h-10 px-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0F172A] text-[13px] min-w-[130px] flex items-center justify-between gap-2 outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:border-primary disabled:opacity-50"
+      >
+        <span className="text-gray-500! dark:text-gray-400!">{summary}</span>
+        <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform shrink-0 ${open ? "rotate-180" : ""}`} />
+      </button>
+
+      {open && (
+        <div className="absolute z-20 mt-1 min-w-[160px] bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700/40 rounded-lg shadow-lg overflow-hidden py-1">
+          <button
+            type="button"
+            onClick={() => select("")}
+            className="w-full flex items-center justify-between gap-2 px-3 py-2 text-[13px] text-left text-[#1A1A2E]! dark:text-[#F1F5F9]! hover:bg-gray-50 dark:hover:bg-gray-700/40"
+          >
+            {placeholder}
+            {isReset && <Check className="w-3.5 h-3.5 shrink-0 text-primary" />}
+          </button>
+          {options.map((o) => (
+            <button
+              key={o.value}
+              type="button"
+              onClick={() => select(o.value)}
+              className="w-full flex items-center justify-between gap-2 px-3 py-2 text-[13px] text-left text-[#1A1A2E]! dark:text-[#F1F5F9]! hover:bg-gray-50 dark:hover:bg-gray-700/40"
+            >
+              {o.label}
+              {value === o.value && <Check className="w-3.5 h-3.5 shrink-0 text-primary" />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -125,9 +169,10 @@ export function DropdownSelectFilter({ value, onChange, options, placeholder = "
             <button
               type="button"
               onClick={() => select(resetValue)}
-              className={["w-full flex items-center px-3 py-2 text-[13px] text-left hover:bg-gray-50 dark:hover:bg-gray-700/40", isReset ? "text-primary! font-semibold" : "text-[#1A1A2E]! dark:text-[#F1F5F9]!"].join(" ")}
+              className="w-full flex items-center justify-between gap-2 px-3 py-2 text-[13px] text-left text-[#1A1A2E]! dark:text-[#F1F5F9]! hover:bg-gray-50 dark:hover:bg-gray-700/40"
             >
               {placeholder}
+              {isReset && <Check className="w-3.5 h-3.5 shrink-0 text-primary" />}
             </button>
             {filtered.length === 0 && (
               <div className="px-3 py-2 text-[13px] text-gray-400">No matches</div>
@@ -137,9 +182,10 @@ export function DropdownSelectFilter({ value, onChange, options, placeholder = "
                 key={o.value}
                 type="button"
                 onClick={() => select(o.value)}
-                className={["w-full flex items-center px-3 py-2 text-[13px] text-left hover:bg-gray-50 dark:hover:bg-gray-700/40", value === o.value ? "text-primary! font-semibold" : "text-[#1A1A2E]! dark:text-[#F1F5F9]!"].join(" ")}
+                className="w-full flex items-center justify-between gap-2 px-3 py-2 text-[13px] text-left text-[#1A1A2E]! dark:text-[#F1F5F9]! hover:bg-gray-50 dark:hover:bg-gray-700/40"
               >
                 {o.label}
+                {value === o.value && <Check className="w-3.5 h-3.5 shrink-0 text-primary" />}
               </button>
             ))}
           </div>
