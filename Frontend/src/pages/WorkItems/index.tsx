@@ -1681,6 +1681,58 @@ export default function WorkItems() {
     });
   }, [workOrders, search, statusFilter, stepFilter, categoryFilter, deptFilter, progressFilter, projectFilter, subCatsOfSelected, dateFrom, dateTo, contractTypeFilter, woBillsMap]);
 
+  // Same as `filtered` above but ignoring the step-pill's own selection —
+  // the step pills (All Steps/L1-L4 Pending/Approved) need to show what
+  // EACH pill would contain under the other active filters (search,
+  // category, contract type/Execution-vs-Professional-Services tab, etc.),
+  // not just how many match whichever pill happens to be selected right
+  // now. Without this, switching to the Professional Services tab still
+  // showed the Execution-inclusive global counts on every pill.
+  const filteredIgnoringStep = useMemo(() => {
+    const q = search.toLowerCase();
+    return workOrders.filter(wo => {
+      const matchSearch =
+        !q ||
+        wo.workOrderNo.toLowerCase().includes(q) ||
+        wo.projectName.toLowerCase().includes(q) ||
+        wo.vendorCode.toLowerCase().includes(q) ||
+        wo.vendorName.toLowerCase().includes(q);
+      const matchStatus =
+        statusFilter === "all" ||
+        (statusFilter === "in-progress"
+          ? (wo.status === "in-progress" || wo.status === "issued") && !hasBill(wo.id)
+          : statusFilter === "draft"
+            ? wo.status === "draft" && !hasBill(wo.id)
+            : wo.status === statusFilter);
+      let matchCategory = true;
+      if (categoryFilter !== "all") {
+        const childNames = subCatsOfSelected.map(c => c.name);
+        matchCategory = wo.category === categoryFilter || childNames.includes(wo.subCategory ?? "");
+      }
+      let matchProgress = true;
+      if (progressFilter !== "all") {
+        const items = wo.scopeItems || [];
+        if (progressFilter === "not-started") {
+          matchProgress = items.length === 0 || items.every(i => i.status === "pending");
+        } else if (progressFilter === "running") {
+          matchProgress = items.some(i => i.status === "running");
+        } else if (progressFilter === "completed") {
+          matchProgress = wo.status === "completed" ||
+            (items.length > 0 && items.every(i => i.status === "completed"));
+        } else if (progressFilter === "overdue") {
+          matchProgress = countDelays(wo) > 0;
+        } else if (progressFilter === "cancelled") {
+          matchProgress = wo.status === "cancelled";
+        }
+      }
+      const matchDate    = inDateRange(wo.issueDate, dateFrom, dateTo);
+      const matchProject = projectFilter.length === 0 || projectFilter.includes(getWorkOrderProjectId(wo.projectId) ?? "");
+      const matchContractType = contractTypeFilter === "all" || (wo.contractType || "execution") === contractTypeFilter;
+      const matchDept = deptFilter === "all" || (wo.department || "") === deptFilter;
+      return matchSearch && matchStatus && matchCategory && matchProgress && matchDate && matchProject && matchContractType && matchDept;
+    });
+  }, [workOrders, search, statusFilter, categoryFilter, deptFilter, progressFilter, projectFilter, subCatsOfSelected, dateFrom, dateTo, contractTypeFilter, woBillsMap]);
+
   // Stat-card counts — computed off the full unfiltered list (matching the
   // "shortcut filter" convention used elsewhere, e.g. Projects' StatCard
   // row), not the already-filtered list, so clicking one always shows the
@@ -1705,12 +1757,12 @@ export default function WorkItems() {
   const stepCounts = useMemo(() => {
     const c: Record<string, number> = { approved: 0 };
     for (const key of STEP_KEYS) c[key] = 0;
-    for (const wo of workOrders) {
+    for (const wo of filteredIgnoringStep) {
       const st = approvalStatusOf(wo);
       if (st in c) c[st]++;
     }
     return c;
-  }, [workOrders]);
+  }, [filteredIgnoringStep]);
 
   // Rolls the currently-filtered work orders up by issue month — respects
   // every filter above (project/category/date-range/contract type/etc.) so
@@ -2306,7 +2358,7 @@ export default function WorkItems() {
             }
             style={stepFilter === "all" ? { backgroundColor: "var(--theme-primary-tint)" } : undefined}
           >
-            All Steps <span className="ml-1 opacity-75">{workOrders.length}</span>
+            All Steps <span className="ml-1 opacity-75">{filteredIgnoringStep.length}</span>
           </button>
           {STEP_KEYS.map((key) => {
             const cfg = APPROVAL_STATUS_CFG[key];

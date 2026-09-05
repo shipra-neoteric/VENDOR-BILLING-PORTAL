@@ -798,7 +798,7 @@ export default function BillApproval() {
   const viewTotal = viewReq ? viewReq.items.reduce((s, it) => s + (it.rate ?? 0) * it.billedQty, 0) : 0;
 
   // ── Requests list (filters + pagination) ────────────────────────────────────
-  const [reqTab, setReqTab] = useState("pending");
+  const [reqTab, setReqTab] = useState("all");
   const [reqSearch, setReqSearch] = useState("");
   const [reqProjectFilter, setReqProjectFilter] = useState<string | undefined>(undefined);
   const [reqDeptFilter, setReqDeptFilter] = useState<string | undefined>(undefined);
