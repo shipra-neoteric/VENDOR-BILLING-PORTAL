@@ -16,6 +16,7 @@ import type { PrintableBill } from "../../shared/utils/printBill";
 import type { Contractor } from "../../types/VendorBilling";
 import { billFinancials } from "../../shared/utils/billMath";
 import { BillStageCell } from "../../components/BillDetailModal";
+import SlaTimeline from "../../components/SlaTimeline";
 import { BILL_STATUS_LABEL } from "../../shared/constants/billStatus";
 import { Descriptions, DescItem } from "../../ui/Descriptions";
 import type { NxBadgeColor } from "../../ui/nexora/Badge";
@@ -1265,6 +1266,8 @@ export default function BillApproval() {
                 <ApprovalHistoryTimeline history={viewReq.approvalHistory} />
               </div>
             )}
+
+            <SlaTimeline entityType="BillRequest" entityId={viewReq._id} />
           </div>
         </Modal>
       )}

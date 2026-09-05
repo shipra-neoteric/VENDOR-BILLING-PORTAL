@@ -10,6 +10,7 @@ import Btn from "../ui/Btn";
 import Field from "../ui/Field";
 import Badge from "../ui/Badge";
 import { Table, Thead, Tbody, Tr, Th, Td } from "../ui/Table";
+import SlaTimeline from "./SlaTimeline";
 
 // ── Shared types ──────────────────────────────────────────────────────────────
 // A `by` actor field only ever comes back as a raw ObjectId string from the
@@ -456,6 +457,10 @@ export default function WorkOrderApprovalWorkflow<T extends ApprovalWorkOrder>({
         Approval Workflow &amp; Signatures
       </div>
       <ApprovalCyclesTable history={wo.approvalHistory || []} actorLabel={actorLabel} />
+
+      <div className="mt-3.5">
+        <SlaTimeline entityType="WorkOrder" entityId={wo._id} />
+      </div>
 
       {!readOnly && renderWorkflowAction()}
     </div>
