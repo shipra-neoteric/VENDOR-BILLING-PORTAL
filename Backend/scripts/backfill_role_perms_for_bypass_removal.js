@@ -19,6 +19,9 @@ const GRANTS = {
     'bill-review': ['view', 'approve'],
     'work-progress': ['create', 'edit', 'delete'],
     'daily-progress-report': ['create'],
+    // Old bypass on /sla-dashboard/instances, /instances/:id and
+    // /mis-report (routes/workflows.js) included 'agm'.
+    'sla-dashboard': ['view'],
   },
   accounts: {
     // Mirrors the authorizeAnyOr(...'agm-approve','gm-approve','l3-approve','l4-approve'...)
@@ -40,6 +43,10 @@ const GRANTS = {
   'site-dri': {
     'work-progress': ['create', 'edit', 'delete'],
     'sla-dashboard': ['view'],
+    // Old bypass on drawing-requests create/edit/resubmit and
+    // daily-progress-report create included 'site-dri'.
+    'drawing-requests': ['create', 'edit'],
+    'daily-progress-report': ['create'],
   },
 };
 
