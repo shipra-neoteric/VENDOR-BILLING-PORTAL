@@ -191,7 +191,7 @@ export default function Header({ onToggleSidebar }: HeaderProps) {
                     <span>Switch Account</span>
                   </button>
                   <div className="my-1 border-t border-gray-200 dark:border-gray-700/40" />
-                  <div className="user-menu-scroll max-h-[280px] overflow-y-auto pr-0.5">
+                  <div className="max-h-[280px] overflow-y-auto py-1">
                     {otherUsers.map(u => (
                       <button key={u._id} type="button" className={rowClass} onClick={() => handleSwitch(u._id)}>
                         <span className="truncate">
@@ -202,13 +202,6 @@ export default function Header({ onToggleSidebar }: HeaderProps) {
                   </div>
                 </>
               )}
-              <style>{`
-                .user-menu-scroll { scrollbar-width: thin; scrollbar-color: var(--nx-border, #d1d5db) transparent; }
-                .user-menu-scroll::-webkit-scrollbar { width: 5px; }
-                .user-menu-scroll::-webkit-scrollbar-track { background: transparent; }
-                .user-menu-scroll::-webkit-scrollbar-thumb { background: var(--nx-border, #d1d5db); border-radius: 999px; }
-                .user-menu-scroll::-webkit-scrollbar-thumb:hover { background: var(--nx-text-2, #9ca3af); }
-              `}</style>
             </div>
           )}
         >
