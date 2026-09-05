@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Dropdown, message } from "antd";
-import { LogOut, ArrowLeftRight, Undo2, Menu, ChevronRight, ChevronLeft } from "lucide-react";
+import { LogOut, ArrowLeftRight, Undo2, Menu, ChevronLeft, Check, Search } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import type { AuthUser } from "../../context/AuthContext";
 import apiClient from "../../services/apiClient";
@@ -85,6 +85,11 @@ export default function Header({ onToggleSidebar }: HeaderProps) {
     .filter(u => u.isActive && u._id !== user?.id)
     .sort((a, b) => a.role.localeCompare(b.role) || a.name.localeCompare(b.name));
 
+  const [switchSearch, setSwitchSearch] = useState("");
+  const filteredOtherUsers = switchSearch.trim()
+    ? otherUsers.filter(u => `${u.name} ${u.role}`.toLowerCase().includes(switchSearch.trim().toLowerCase()))
+    : otherUsers;
+
   // Two-step like the menu it replaces: the main panel just has a "Switch
   // Account" row, which drills into the actual (scrollable) user list —
   // rather than dumping every user into the first screen you see.
@@ -154,54 +159,100 @@ export default function Header({ onToggleSidebar }: HeaderProps) {
         <Dropdown
           trigger={["click"]}
           placement="bottomRight"
-          onOpenChange={(open) => { if (open) loadSwitchable(); else setSwitchListOpen(false); }}
+          onOpenChange={(open) => { if (open) loadSwitchable(); else { setSwitchListOpen(false); setSwitchSearch(""); } }}
           popupRender={() => (
-            <div className="user-menu-panel min-w-[250px] bg-white dark:bg-[#1E293B] rounded-lg shadow-lg border border-gray-200 dark:border-gray-700/40 p-1.5">
-              {!switchListOpen ? (
-                <>
-                  {isImpersonating && (
-                    <>
-                      <button type="button" className={rowClass} onClick={handleBackToAdmin}>
-                        <Undo2 className="w-4 h-4 shrink-0" />
-                        <span className="truncate">Back to Admin ({stashedAdmin!.user.name})</span>
-                      </button>
-                      <div className="my-1 border-t border-gray-200 dark:border-gray-700/40" />
-                    </>
-                  )}
-                  {canSwitch && otherUsers.length > 0 && (
-                    <>
-                      <button type="button" className={`${rowClass} justify-between`} onClick={() => setSwitchListOpen(true)}>
-                        <span className="flex items-center gap-2.5">
-                          <ArrowLeftRight className="w-4 h-4 shrink-0" /> Switch Account
+            <div style={{ position: "relative" }}>
+              {/* Main menu — always the same box, in the same place; never
+                  replaced in-place by the switch-account list (that grew/
+                  shrank the popup's own height, which made antd re-measure
+                  and jump the whole thing to a different spot). */}
+              <div className="user-menu-panel min-w-[250px] bg-white dark:bg-[#1E293B] rounded-lg shadow-lg border border-gray-200 dark:border-gray-700/40 p-1.5">
+                {isImpersonating && (
+                  <>
+                    <button type="button" className={rowClass} onClick={handleBackToAdmin}>
+                      <Undo2 className="w-4 h-4 shrink-0" />
+                      <span className="truncate">Back to Admin ({stashedAdmin!.user.name})</span>
+                    </button>
+                    <div className="my-1 border-t border-gray-200 dark:border-gray-700/40" />
+                  </>
+                )}
+                {canSwitch && otherUsers.length > 0 && (
+                  <>
+                    <button type="button" className={`${rowClass} justify-between`} onClick={() => setSwitchListOpen((o) => !o)}>
+                      <span className="flex items-center gap-2.5">
+                        <ArrowLeftRight className="w-4 h-4 shrink-0" /> Switch Account
+                      </span>
+                      <ChevronLeft className={`w-3.5 h-3.5 shrink-0 transition-colors ${switchListOpen ? "text-primary" : "text-gray-400"}`} />
+                    </button>
+                    <div className="my-1 border-t border-gray-200 dark:border-gray-700/40" />
+                  </>
+                )}
+                <button type="button" className={`${rowClass} text-red-600! dark:text-red-400!`} onClick={handleLogout}>
+                  <LogOut className="w-4 h-4 shrink-0" />
+                  <span>Sign out</span>
+                </button>
+              </div>
+
+              {/* Switch-account list — a separate flyout panel touching the
+                  main menu's LEFT edge (like a submenu), not swapped into
+                  the same box, so opening/closing it never moves or resizes
+                  the main menu itself. */}
+              {switchListOpen && canSwitch && otherUsers.length > 0 && (
+                <div
+                  className="user-menu-panel min-w-[220px] bg-white dark:bg-[#1E293B] rounded-lg shadow-lg border border-gray-200 dark:border-gray-700/40 p-1.5"
+                  style={{ position: "absolute", top: 0, right: "100%", marginRight: 6 }}
+                >
+                  <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-100 dark:border-gray-700/40">
+                    <Search className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                    <input
+                      autoFocus
+                      type="text"
+                      placeholder="Search…"
+                      value={switchSearch}
+                      onChange={(e) => setSwitchSearch(e.target.value)}
+                      className="w-full text-[13px] bg-transparent outline-none text-[#1A1A2E] dark:text-[#F1F5F9] placeholder:text-gray-400"
+                    />
+                  </div>
+                  <div className="user-menu-scroll py-1" style={{ maxHeight: 280, overflowY: "scroll" }}>
+                    {/* The current account, shown first with an orange
+                        checkmark — not clickable (you can't "switch" into
+                        the session you're already in), just orients this
+                        list the same way the "current selection" pattern
+                        reads elsewhere in the app (e.g. the project filter).
+                        Hidden while searching, same as any other filtered list. */}
+                    {user && !switchSearch.trim() && (
+                      <div className={`${rowClass} justify-between cursor-default`}>
+                        <span className="truncate">
+                          {user.name} <span className="capitalize" style={{ color: "var(--nx-text-2)" }}>— {user.role}</span>
                         </span>
-                        <ChevronRight className="w-3.5 h-3.5 text-gray-400 shrink-0" />
-                      </button>
-                      <div className="my-1 border-t border-gray-200 dark:border-gray-700/40" />
-                    </>
-                  )}
-                  <button type="button" className={`${rowClass} text-red-600! dark:text-red-400!`} onClick={handleLogout}>
-                    <LogOut className="w-4 h-4 shrink-0" />
-                    <span>Sign out</span>
-                  </button>
-                </>
-              ) : (
-                <>
-                  <button type="button" className={`${rowClass} font-semibold`} onClick={() => setSwitchListOpen(false)}>
-                    <ChevronLeft className="w-4 h-4 shrink-0" />
-                    <span>Switch Account</span>
-                  </button>
-                  <div className="my-1 border-t border-gray-200 dark:border-gray-700/40" />
-                  <div className="max-h-[280px] overflow-y-auto py-1">
-                    {otherUsers.map(u => (
+                        <Check className="w-4 h-4 shrink-0 text-primary" />
+                      </div>
+                    )}
+                    {filteredOtherUsers.map(u => (
                       <button key={u._id} type="button" className={rowClass} onClick={() => handleSwitch(u._id)}>
                         <span className="truncate">
                           {u.name} <span className="capitalize" style={{ color: "var(--nx-text-2)" }}>— {u.role}</span>
                         </span>
                       </button>
                     ))}
+                    {filteredOtherUsers.length === 0 && switchSearch.trim() && (
+                      <div className="px-3 py-2 text-[12px] text-gray-400">No matches</div>
+                    )}
                   </div>
-                </>
+                </div>
               )}
+
+              {/* A classic always-visible scrollbar (not the OS's auto-hide
+                  overlay one) — matches how this looked before, since a
+                  hover-only overlay scrollbar reads as "no scrollbar at all"
+                  in a short-lived dropdown like this. */}
+              <style>{`
+                .user-menu-scroll { scrollbar-width: auto; scrollbar-color: #b0b0b0 #f1f1f1; }
+                .user-menu-scroll::-webkit-scrollbar { width: 12px; }
+                .user-menu-scroll::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 8px; }
+                .user-menu-scroll::-webkit-scrollbar-thumb { background: #b0b0b0; border-radius: 8px; border: 2px solid #f1f1f1; }
+                .user-menu-scroll::-webkit-scrollbar-thumb:hover { background: #8a8a8a; }
+              `}</style>
             </div>
           )}
         >
