@@ -2544,10 +2544,10 @@ export default function WorkItems() {
             <div className="flex justify-end mb-3">
               <Btn small outline icon={Download} label="Download CSV" onClick={downloadMonthlyReportCSV} />
             </div>
-            <Table className="min-w-[1100px]" containerClassName="max-h-[65vh] overflow-y-auto">
-              <Thead className="sticky top-0 z-20">
+            <Table className="min-w-[1100px]" containerClassName="max-h-[65vh] overflow-y-scroll pr-3">
+              <Thead className="sticky top-0 z-20 !bg-gray-100 dark:!bg-[#243247]">
                 <Tr>
-                  <Th stickyLeft className="w-[12%]">Month</Th>
+                  <Th stickyLeft className="w-[12%] !bg-gray-100 dark:!bg-[#243247]">Month</Th>
                   <Th className="text-right w-[8%]">WOs</Th>
                   <Th className="text-right w-[16%]">Contract Value</Th>
                   <Th className="text-right w-[13%]">Billed</Th>
@@ -2575,7 +2575,12 @@ export default function WorkItems() {
               </Tbody>
               <Tfoot>
                 <Tr className="!bg-primary/5 font-bold">
-                  <Td stickyLeft className="!bg-primary/5 whitespace-nowrap">Total</Td>
+                  {/* Opaque background, not the row's translucent !bg-primary/5 —
+                      this cell is sticky and must fully hide whatever column
+                      scrolls underneath it, which a 5%-alpha tint can't do
+                      (the scrolled-under text bled through, e.g. Contract
+                      Value overlapping "Total"). */}
+                  <Td stickyLeft className="whitespace-nowrap" style={{ backgroundColor: "var(--theme-primary-tint)" }}>Total</Td>
                   <Td className="text-right whitespace-nowrap">{monthlyReportTotals.count}</Td>
                   <Td className="text-right font-mono whitespace-nowrap">{fmt(monthlyReportTotals.contractValue)}</Td>
                   <Td className="text-right font-mono whitespace-nowrap">{fmt(monthlyReportTotals.billed)}</Td>
