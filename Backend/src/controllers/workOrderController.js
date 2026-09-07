@@ -11,6 +11,18 @@ const asyncHandler = require('../utils/asyncHandler');
 const { success, created, notFound, badRequest, conflict, forbidden } = require('../utils/responseFormatter');
 const { canActOnDepartment } = require('../utils/departmentAccess');
 const { getWoApprovalConfig, woApproverAllowed } = require('../utils/woApprovalRules');
+
+// The segregation-of-duty checks below (maker≠checker, checker≠approver,
+// approver≠final) exist so one person can't rubber-stamp their own prior
+// stage BY DEFAULT — but an admin who's deliberately granted someone BOTH
+// of a pair of stages via the permission matrix (User Management) has
+// already made the call that this person is allowed to carry a work order
+// through both; that explicit grant must win over the default restriction,
+// not get silently blocked by it.
+function hasBothWOPermissions(user, action1, action2) {
+  const actions = (user.permissions || []).find((p) => p.module === 'work-orders')?.actions || [];
+  return actions.includes(action1) && actions.includes(action2);
+}
 const { nextWorkOrderNo, nextConsultancyOrderNo } = require('../utils/codeGen');
 const emitEvent    = require('../utils/emitEvent');
 const { startInstance, advanceInstance, cancelInstance } = require('../utils/slaEngine');
@@ -493,7 +505,7 @@ exports.checkerApprove = asyncHandler(async (req, res) => {
   if (workOrder.approvalStatus !== 'pending-checker') {
     return badRequest(res, `Cannot check a work order with approval status '${workOrder.approvalStatus}'`);
   }
-  if (workOrder.makerBy && workOrder.makerBy.toString() === req.user._id.toString()) {
+  if (workOrder.makerBy && workOrder.makerBy.toString() === req.user._id.toString() && !hasBothWOPermissions(req.user, 'maker', 'checker')) {
     return badRequest(res, 'The maker who submitted this cannot also give checker sign-off — segregation of duties requires a different approver.');
   }
   if (!canActOnDepartment(req.user, workOrder)) return forbidden(res, 'This work order belongs to a different department.');
@@ -546,7 +558,7 @@ exports.approverApprove = asyncHandler(async (req, res) => {
   if (workOrder.approvalStatus !== 'pending-approver') {
     return badRequest(res, `Cannot approve a work order with approval status '${workOrder.approvalStatus}'`);
   }
-  if (workOrder.checkerBy && workOrder.checkerBy.toString() === req.user._id.toString()) {
+  if (workOrder.checkerBy && workOrder.checkerBy.toString() === req.user._id.toString() && !hasBothWOPermissions(req.user, 'checker', 'approver')) {
     return badRequest(res, 'The checker who verified this cannot also give approver sign-off — segregation of duties requires a different approver.');
   }
   if (!canActOnDepartment(req.user, workOrder)) return forbidden(res, 'This work order belongs to a different department.');
@@ -592,7 +604,8 @@ exports.finalApprove = asyncHandler(async (req, res) => {
   // checkerApprove) — `approverBy` stays null, so segregation-of-duty falls
   // back to whoever checked it instead.
   const lastApproverBy = workOrder.approverBy || workOrder.checkerBy;
-  if (lastApproverBy && lastApproverBy.toString() === req.user._id.toString()) {
+  const lastStageAction = workOrder.approverBy ? 'approver' : 'checker';
+  if (lastApproverBy && lastApproverBy.toString() === req.user._id.toString() && !hasBothWOPermissions(req.user, lastStageAction, 'ceo-approve')) {
     return badRequest(res, 'The previous approver cannot also give final approval — segregation of duties requires a different approver.');
   }
   if (!canActOnDepartment(req.user, workOrder)) return forbidden(res, 'This work order belongs to a different department.');

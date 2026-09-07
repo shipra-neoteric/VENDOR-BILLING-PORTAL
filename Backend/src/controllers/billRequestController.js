@@ -17,6 +17,17 @@ const { notifyStagePending, settleAllPendingForEntity } = require('../utils/slac
 const { canActOnDepartment } = require('../utils/departmentAccess');
 const { getApprovalConfig, approverAllowed } = require('../utils/approvalRules');
 
+// The segregation-of-duty checks below (agm≠gm, gm≠l3, l3≠l4) exist so one
+// person can't rubber-stamp their own prior stage BY DEFAULT — but an admin
+// who's deliberately granted someone BOTH of a pair of stages via the
+// permission matrix (User Management) has already made the call that this
+// person is allowed to carry a bill request through both; that explicit
+// grant must win over the default restriction, not get silently blocked by it.
+function hasBothBRPermissions(user, action1, action2) {
+  const actions = (user.permissions || []).find((p) => p.module === 'bill-requests')?.actions || [];
+  return actions.includes(action1) && actions.includes(action2);
+}
+
 // Fire-and-forget (matches emitEvent's un-awaited call sites below) — a failed
 // or unconfigured Slack push must never block the real approval-chain write
 // that already happened.
@@ -574,7 +585,7 @@ async function gmApproveHandler(req, res) {
   if (!br) return notFound(res, 'Bill request not found');
   if (!canActOnDepartment(req.user, br)) return forbidden(res, 'This bill request belongs to a different department.');
   if (br.status !== 'pending-gm') return badRequest(res, `Request is already ${br.status}`);
-  if (br.agmApprovedBy && br.agmApprovedBy.toString() === req.user._id.toString()) {
+  if (br.agmApprovedBy && br.agmApprovedBy.toString() === req.user._id.toString() && !hasBothBRPermissions(req.user, 'agm-approve', 'gm-approve')) {
     return badRequest(res, 'The AGM who approved this cannot also give GM sign-off — segregation of duties requires a different approver.');
   }
 
@@ -631,7 +642,7 @@ async function l3ApproveHandler(req, res) {
   // Same segregation-of-duty rule agmApprove/gmApprove already enforce
   // between L1 and L2 — the person who just signed off at L2 can't also be
   // the one signing off at L3.
-  if (br.gmApprovedBy && br.gmApprovedBy.toString() === req.user._id.toString()) {
+  if (br.gmApprovedBy && br.gmApprovedBy.toString() === req.user._id.toString() && !hasBothBRPermissions(req.user, 'gm-approve', 'l3-approve')) {
     return badRequest(res, 'The GM who approved this cannot also give L3 sign-off — segregation of duties requires a different approver.');
   }
 
@@ -681,7 +692,7 @@ async function l4ApproveHandler(req, res) {
   if (!br) return notFound(res, 'Bill request not found');
   if (!canActOnDepartment(req.user, br)) return forbidden(res, 'This bill request belongs to a different department.');
   if (br.status !== 'pending-l4') return badRequest(res, `Request is already ${br.status}`);
-  if (br.l3ApprovedBy && br.l3ApprovedBy.toString() === req.user._id.toString()) {
+  if (br.l3ApprovedBy && br.l3ApprovedBy.toString() === req.user._id.toString() && !hasBothBRPermissions(req.user, 'l3-approve', 'l4-approve')) {
     return badRequest(res, 'The L3 approver cannot also give L4 sign-off — segregation of duties requires a different approver.');
   }
 
