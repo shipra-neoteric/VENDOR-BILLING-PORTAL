@@ -66,6 +66,10 @@ interface Bill {
   manualApprovalStatus?: "pending" | "pending-gm" | "approved" | "rejected";
   billType?: string;
   createdAt?: string;
+  // Denormalized from the linked Work Order at bill-creation time (see
+  // RunningBill.department) — which internal team this bill belongs to.
+  department?: string;
+  customDepartment?: string;
 
   // ── Accounts Payment's own Verification → L1 AGM → L2 Director → TMS
   // chain — always present on the bill itself (regardless of how it was
@@ -145,6 +149,7 @@ export default function Billing() {
   const [search, setSearch] = useState("");
   const [projectFilter, setProjectFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [deptFilter, setDeptFilter] = useState("");
   const [dateFrom, setDateFrom] = useState<Dayjs | null>(null);
   const [dateTo, setDateTo] = useState<Dayjs | null>(null);
 
@@ -202,10 +207,11 @@ export default function Billing() {
         (b.generatedBy || "").toLowerCase().includes(q);
       const matchProject = !projectFilter || b.projectId === projectFilter;
       const matchStatus = !statusFilter || b.status === statusFilter;
+      const matchDept = !deptFilter || (b.department || "") === deptFilter;
       const matchDate = inDateRange(b.billDate, dateFrom, dateTo);
-      return matchSearch && matchProject && matchStatus && matchDate;
+      return matchSearch && matchProject && matchStatus && matchDept && matchDate;
     }).sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
-  }, [bills, search, projectFilter, statusFilter, dateFrom, dateTo]);
+  }, [bills, search, projectFilter, statusFilter, deptFilter, dateFrom, dateTo]);
 
   const { page, totalPages, setPage, pageItems: pagedBills } = usePagination(filteredBills, 20);
 
@@ -291,6 +297,19 @@ export default function Billing() {
               placeholder="All Statuses"
               resetValue=""
               options={Object.values(BILL_STATUS).map((s) => ({ value: s, label: BILL_STATUS_LABEL[s] || s }))}
+            />
+            <DropdownSelectFilter
+              value={deptFilter}
+              onChange={setDeptFilter}
+              placeholder="All Departments"
+              resetValue=""
+              options={[
+                { label: "Civil Team", value: "civil" },
+                { label: "Marketing Team", value: "marketing" },
+                { label: "Planning Team", value: "planning" },
+                { label: "Maintenance Team", value: "maintenance" },
+                { label: "Custom Team", value: "custom" },
+              ]}
             />
             <DateRangeFilter onChange={(from, to) => { setDateFrom(from); setDateTo(to); }} />
             <span className="ml-auto text-gray-400 text-xs whitespace-nowrap">

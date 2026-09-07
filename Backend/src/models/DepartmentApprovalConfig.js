@@ -40,6 +40,23 @@ const departmentApprovalConfigSchema = new mongoose.Schema(
     gmUserIds:  [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
     l3UserIds:  [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
     l4UserIds:  [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+
+    // ── Work Order approval chain (separate from the bill fields above) ──
+    // How many of the 3 real approval stages (checker/approver/final) this
+    // department's work orders need — 3 = today's unchanged chain
+    // (checker→approver→final); 2 = the approver stage is skipped entirely,
+    // checker-approve goes straight to pending-final. Unlike the bill
+    // stages, there's no hardcoded role list to narrow from here — Work
+    // Order access today is purely the 'work-orders' module's
+    // checker/approver/ceo-approve permission grants, not literal role
+    // names — so an empty *UserIds list for a stage below just means
+    // "no override, whatever the route's own permission check already
+    // allowed stays allowed" (see woApprovalRules.js).
+    woRequiredApprovals: { type: Number, enum: [2, 3], default: 3 },
+    checkerUserIds:  [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+    approverUserIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+    finalUserIds:    [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+
     updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },
   { timestamps: true }

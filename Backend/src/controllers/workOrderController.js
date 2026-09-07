@@ -8,7 +8,9 @@ const Company      = require('../models/Company');
 const BillRequest  = require('../models/BillRequest');
 const RunningBill  = require('../models/RunningBill');
 const asyncHandler = require('../utils/asyncHandler');
-const { success, created, notFound, badRequest, conflict } = require('../utils/responseFormatter');
+const { success, created, notFound, badRequest, conflict, forbidden } = require('../utils/responseFormatter');
+const { canActOnDepartment } = require('../utils/departmentAccess');
+const { getWoApprovalConfig, woApproverAllowed } = require('../utils/woApprovalRules');
 const { nextWorkOrderNo, nextConsultancyOrderNo } = require('../utils/codeGen');
 const emitEvent    = require('../utils/emitEvent');
 const { startInstance, advanceInstance, cancelInstance } = require('../utils/slaEngine');
@@ -494,7 +496,16 @@ exports.checkerApprove = asyncHandler(async (req, res) => {
   if (workOrder.makerBy && workOrder.makerBy.toString() === req.user._id.toString()) {
     return badRequest(res, 'The maker who submitted this cannot also give checker sign-off — segregation of duties requires a different approver.');
   }
-  workOrder.approvalStatus = 'pending-approver';
+  if (!canActOnDepartment(req.user, workOrder)) return forbidden(res, 'This work order belongs to a different department.');
+  const woApprovalConfig = await getWoApprovalConfig(workOrder);
+  if (!woApproverAllowed(req.user, woApprovalConfig, 'checker')) {
+    return forbidden(res, "You're not configured as the checker for this department's work orders.");
+  }
+  // A 2-level department (Users → Departments) skips the approver stage
+  // entirely — checker-approve goes straight to final, matching how a
+  // 1-level Bill Request department skips straight to finalizeBillRequest.
+  const woLevels = woApprovalConfig?.woRequiredApprovals ?? 3;
+  workOrder.approvalStatus = woLevels <= 2 ? 'pending-final' : 'pending-approver';
   workOrder.checkerBy = req.user._id;
   workOrder.checkerAt = new Date();
   workOrder.checkerRemarks = req.body.remarks || '';
@@ -502,6 +513,14 @@ exports.checkerApprove = asyncHandler(async (req, res) => {
   await workOrder.save();
 
   await advanceInstance('WorkOrder', workOrder._id, req.user._id, 'Checker approved — forwarded to approver');
+  // NOTE: for a 2-level department, the real approval chain skips the
+  // approver stage (see woLevels above), but the SLA WorkflowInstance's own
+  // stage list (from whichever WorkflowTemplate snapshot this instance
+  // started from — not always the same stage count) is untouched here.
+  // Its "approver"-equivalent stage will sit in-progress until finalApprove
+  // reconciles it — same class of stuck-instance case already handled by
+  // Backend/scripts/backfill_reconcile_stale_sla_instances.js, not a data
+  // problem, just an SLA-reporting quirk for these departments.
 
   await logAudit({
     action: 'APPROVE', module: 'work-orders', user: req.user,
@@ -529,6 +548,11 @@ exports.approverApprove = asyncHandler(async (req, res) => {
   }
   if (workOrder.checkerBy && workOrder.checkerBy.toString() === req.user._id.toString()) {
     return badRequest(res, 'The checker who verified this cannot also give approver sign-off — segregation of duties requires a different approver.');
+  }
+  if (!canActOnDepartment(req.user, workOrder)) return forbidden(res, 'This work order belongs to a different department.');
+  const woApprovalConfig = await getWoApprovalConfig(workOrder);
+  if (!woApproverAllowed(req.user, woApprovalConfig, 'approver')) {
+    return forbidden(res, "You're not configured as the approver for this department's work orders.");
   }
   workOrder.approvalStatus = 'pending-final';
   workOrder.approverBy = req.user._id;
@@ -564,8 +588,17 @@ exports.finalApprove = asyncHandler(async (req, res) => {
   if (workOrder.approvalStatus !== 'pending-final') {
     return badRequest(res, `Cannot give final approval to a work order with approval status '${workOrder.approvalStatus}'`);
   }
-  if (workOrder.approverBy && workOrder.approverBy.toString() === req.user._id.toString()) {
-    return badRequest(res, 'The approver who signed off on this cannot also give final approval — segregation of duties requires a different approver.');
+  // For a 2-level department the approver stage was skipped entirely (see
+  // checkerApprove) — `approverBy` stays null, so segregation-of-duty falls
+  // back to whoever checked it instead.
+  const lastApproverBy = workOrder.approverBy || workOrder.checkerBy;
+  if (lastApproverBy && lastApproverBy.toString() === req.user._id.toString()) {
+    return badRequest(res, 'The previous approver cannot also give final approval — segregation of duties requires a different approver.');
+  }
+  if (!canActOnDepartment(req.user, workOrder)) return forbidden(res, 'This work order belongs to a different department.');
+  const woApprovalConfig = await getWoApprovalConfig(workOrder);
+  if (!woApproverAllowed(req.user, woApprovalConfig, 'final')) {
+    return forbidden(res, "You're not configured as the final approver for this department's work orders.");
   }
   workOrder.approvalStatus = 'approved';
   workOrder.finalApprovedBy = req.user._id;
