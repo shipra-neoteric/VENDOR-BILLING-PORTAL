@@ -204,7 +204,8 @@ export default function Billing() {
         (b.vendorName || "").toLowerCase().includes(q) ||
         (b.workOrderNo || "").toLowerCase().includes(q) ||
         (b.projectName || "").toLowerCase().includes(q) ||
-        (b.generatedBy || "").toLowerCase().includes(q);
+        (b.generatedBy || "").toLowerCase().includes(q) ||
+        String(b.amount ?? "").includes(q);
       const matchProject = !projectFilter || b.projectId === projectFilter;
       const matchStatus = !statusFilter || b.status === statusFilter;
       const matchDept = !deptFilter || (b.department || "") === deptFilter;

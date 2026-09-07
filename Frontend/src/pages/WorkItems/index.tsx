@@ -1629,7 +1629,8 @@ export default function WorkItems() {
         wo.workOrderNo.toLowerCase().includes(q) ||
         wo.projectName.toLowerCase().includes(q) ||
         wo.vendorCode.toLowerCase().includes(q) ||
-        wo.vendorName.toLowerCase().includes(q);
+        wo.vendorName.toLowerCase().includes(q) ||
+        String(wo.contractValue ?? "").includes(q);
 
       // Status (stat-card shortcut) — "in-progress" also covers "issued".
       // Draft/In Progress are specifically the "no bill generated yet"
@@ -1706,7 +1707,8 @@ export default function WorkItems() {
         wo.workOrderNo.toLowerCase().includes(q) ||
         wo.projectName.toLowerCase().includes(q) ||
         wo.vendorCode.toLowerCase().includes(q) ||
-        wo.vendorName.toLowerCase().includes(q);
+        wo.vendorName.toLowerCase().includes(q) ||
+        String(wo.contractValue ?? "").includes(q);
       const matchStatus =
         statusFilter === "all" ||
         (statusFilter === "in-progress"
