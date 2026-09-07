@@ -62,14 +62,14 @@ interface ProjectOpt { id: string; name: string; code: string; parentId?: string
 interface CompanyOpt { id: string; name: string; shortCode: string; isActive?: boolean; }
 interface SubItemOpt { id: string; description: string; unit: string; plannedQty: number; lastBilledQty: number; rate?: number; }
 interface ScopeItemOpt { id: string; description: string; unit: string; plannedQty: number; lastBilledQty: number; rate?: number; subItems?: SubItemOpt[]; }
-// `amount` is the milestone's pre-GST base figure — for a percent-mode
-// milestone (e.g. a single 100% milestone on the whole contract) that can
-// legitimately equal the entire contract value, and it never includes GST.
-// `payable` is the actual amount owed for this milestone (GST-inclusive,
-// already resolved out of percent-mode against the contract value at save
-// time — see WorkItems' milestoneDraftToPayload/calcPayable) and is what a
-// bill line for this milestone must be built from, not `amount`.
-interface PaymentMilestoneOpt { _id: string; stage: string; type?: string; amount: number; payable?: number; date?: string; scopeItemIds?: string[]; }
+// `amount` is the milestone's pre-GST base figure (for a percent-mode
+// milestone, already resolved against the contract value — see WorkItems'
+// milestoneDraftToPayload/calcPayable). This bill's own GST Slab
+// (`gstPercent` state below) adds GST once on top of the sum of all line
+// items, so milestone rows must be built from this pre-GST `amount`, never
+// from the milestone's own (GST-inclusive) `payable` — that would double
+// the GST.
+interface PaymentMilestoneOpt { _id: string; stage: string; type?: string; amount: number; date?: string; scopeItemIds?: string[]; }
 interface WorkOrderOpt { id: string; workOrderNo: string; projectId: string; projectName: string; vendorCode: string; vendorName: string; contractType?: string; department?: string; customDepartment?: string; scopeItems: ScopeItemOpt[]; paymentMilestones?: PaymentMilestoneOpt[]; }
 interface AdvanceSlipOpt { _id: string; slipNo: string; amount: number; amountRecovered: number; balance: number; date?: string; reference?: string; }
 
@@ -496,7 +496,12 @@ export default function NewBillDrawer({
     const pct = Math.max(0, Math.min(100, percent)) / 100;
     const coveredIds = milestone.scopeItemIds ?? [];
     const coveredItems = wo.scopeItems.filter((si) => coveredIds.includes(si.id));
-    const milestoneTotal = milestone.payable ?? milestone.amount ?? 0;
+    // Pre-GST base, NOT `payable` — this bill applies its own GST Slab
+    // (`gstPercent` state, see `billFinancials` below) once, on top of the
+    // sum of every line item's amount. Sourcing this from the GST-inclusive
+    // `payable` instead would double the GST: once already baked into
+    // `payable`, and again from the bill's own GST Slab on top of that.
+    const milestoneTotal = milestone.amount ?? 0;
 
     if (coveredItems.length > 0) {
       // Covered scope items are purely a REFERENCE of what this milestone's
@@ -507,8 +512,8 @@ export default function NewBillDrawer({
       // milestone covering only part of an item, or a Professional Services
       // WO's single lumpsum item, can be wildly larger than what this
       // milestone is actually worth). So every covered item/sub-item's rate
-      // here is rescaled so the rows sum to exactly this milestone's payable
-      // at the chosen % — real plannedQty/rate are only used as relative
+      // here is rescaled so the rows sum to exactly this milestone's (pre-
+      // GST) amount at the chosen % — real plannedQty/rate are only used as relative
       // WEIGHTS between items, not as the amount source itself.
       const leaves = coveredItems.flatMap((si) =>
         si.subItems && si.subItems.length > 0
@@ -572,7 +577,16 @@ export default function NewBillDrawer({
   }
 
   function toggleMilestone(id: string, checked: boolean) {
-    if (!clearMilestoneRows()) return;
+    // No confirm-to-discard here — `recomputeMilestoneRows` below already
+    // fully replaces every milestone's rows from `nextIds`/`nextPercents`
+    // (every OTHER already-selected milestone gets rebuilt fresh from its own
+    // %, not discarded), so nothing is actually lost by adding/removing one
+    // milestone from the selection. `clearMilestoneRows`'s confirm dialog is
+    // reserved for `handleWOSelectForLinking`, where switching the linked WO
+    // genuinely invalidates the whole selection — using it here as well used
+    // to fire almost every time (billedQty/percentComplete are auto-filled
+    // by design the moment any milestone is checked, so `hasEnteredData`
+    // read that as "you've entered data" even with zero manual edits).
     const nextIds = checked ? [...selectedMilestoneIds, id] : selectedMilestoneIds.filter((mid) => mid !== id);
     const nextPercents = checked ? { ...milestonePercents, [id]: milestonePercents[id] ?? 100 } : milestonePercents;
     setSelectedMilestoneIds(nextIds);
@@ -1006,6 +1020,9 @@ export default function NewBillDrawer({
                               onChange={(e) => toggleMilestone(m._id, e.target.checked)}
                               className="w-4 h-4 shrink-0 accent-purple-600"
                             />
+                            {/* Pre-GST base — matches what this milestone actually
+                                contributes to the bill's line items; the bill's own
+                                GST Slab (below) adds GST once, on top of the total. */}
                             <span className="truncate">{m.stage || m.type || "Milestone"} — {fmt(m.amount)}</span>
                           </label>
                           {checked && (
