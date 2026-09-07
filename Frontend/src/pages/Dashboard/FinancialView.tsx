@@ -68,16 +68,24 @@ function PaymentHealthPanel({ breakdown, healthScore }: { breakdown: DPRFinancia
 
 function TopContractorsTable({ contractors, onOpenContractor }: { contractors: DPRFinancial["topDelayedContractors"]; onOpenContractor: (vendorName: string) => void }) {
   return (
-    <Table>
+    <Table className="min-w-[720px]">
       <Thead>
-        <Tr><Th>Contractor</Th><Th>Paid</Th><Th>Pending</Th><Th>Overdue</Th><Th>Days Waiting</Th><Th>Bills</Th><Th>Status</Th></Tr>
+        <Tr>
+          <Th className="w-[22%]">Contractor</Th>
+          <Th className="w-[13%]">Paid</Th>
+          <Th className="w-[13%]">Pending</Th>
+          <Th className="w-[13%]">Overdue</Th>
+          <Th className="w-[13%]">Days Waiting</Th>
+          <Th className="w-[10%]">Bills</Th>
+          <Th className="w-[16%]">Status</Th>
+        </Tr>
       </Thead>
       <Tbody>
         {contractors.map(c => {
           const status = contractorStatus(c.daysWaiting);
           return (
             <Tr key={c.vendorName} className="cursor-pointer" onClick={() => onOpenContractor(c.vendorName)}>
-              <Td className="font-semibold text-[#1A1A2E] dark:text-[#F1F5F9] whitespace-nowrap">{c.vendorName}</Td>
+              <Td className="font-semibold text-[#1A1A2E] dark:text-[#F1F5F9] whitespace-nowrap truncate" title={c.vendorName}>{c.vendorName}</Td>
               <Td className="font-mono text-emerald-600 dark:text-emerald-400">{fmtCr(c.paidAmount)}</Td>
               <Td className="font-mono">{fmtCr(c.pendingAmount)}</Td>
               <Td className="font-mono text-red-500">{c.overdueAmount > 0 ? fmtCr(c.overdueAmount) : "—"}</Td>
