@@ -543,6 +543,7 @@ export default function UserManagement() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch]   = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
+  const [deptFilter, setDeptFilter] = useState("all");
   const [activeFilter, setActiveFilter] = useState<"all" | "active" | "inactive">("all");
 
   // Password modal
@@ -585,10 +586,11 @@ export default function UserManagement() {
         u._id.toLowerCase().includes(q) ||
         ROLE_CFG[u.role]?.label.toLowerCase().includes(q);
       const matchRole = roleFilter === "all" || u.role === roleFilter;
+      const matchDept = deptFilter === "all" || (u.department || "") === deptFilter;
       const matchActive = activeFilter === "all" || (activeFilter === "active" ? u.isActive : !u.isActive);
-      return matchSearch && matchRole && matchActive;
+      return matchSearch && matchRole && matchDept && matchActive;
     });
-  }, [users, search, roleFilter, activeFilter]);
+  }, [users, search, roleFilter, deptFilter, activeFilter]);
 
   const { page, totalPages, setPage, pageItems: pagedUsers } = usePagination(filtered, 15);
 
@@ -842,6 +844,18 @@ export default function UserManagement() {
           onChange={setRoleFilter}
           placeholder="All Roles"
           options={ROLE_OPTIONS.map((r) => ({ label: r.label, value: r.value }))}
+        />
+        <DropdownSelectFilter
+          value={deptFilter}
+          onChange={setDeptFilter}
+          placeholder="All Departments"
+          options={[
+            { label: "Civil Team", value: "civil" },
+            { label: "Marketing Team", value: "marketing" },
+            { label: "Planning Team", value: "planning" },
+            { label: "Maintenance Team", value: "maintenance" },
+            { label: "Custom Team", value: "custom" },
+          ]}
         />
         <span className="ml-auto text-[13px] text-gray-400">
           {filtered.length} user{filtered.length !== 1 ? "s" : ""}
