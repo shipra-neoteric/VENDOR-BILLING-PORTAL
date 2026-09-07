@@ -26,8 +26,8 @@ import { BILL_TYPE_CFG } from "../../shared/constants/billOptions";
 import { BILL_STATUS, BILL_STATUS_LABEL } from "../../shared/constants/billStatus";
 import { billFinancials } from "../../shared/utils/billMath";
 import NewBillDrawer from "./NewBillDrawer";
-import { BillStageCell, BillApprovalHistoryList, deriveBillApprovalHistory } from "../../components/BillDetailModal";
-import type { BillApprovalHistoryEntry } from "../../components/BillDetailModal";
+import { BillStageCell } from "../../components/BillDetailModal";
+import SlaTimeline from "../../components/SlaTimeline";
 
 // ── Types — a read-only slice of what AccountsPayment's own Bill looks
 // like; this page never edits a bill, only lists/views + creates new ones ──
@@ -150,12 +150,11 @@ export default function Billing() {
 
   const [viewBillId, setViewBillId] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
-  // The pre-Accounts AGM/GM sign-off happened on this bill's originating
-  // BillRequest, not on the RunningBill itself — a progress-driven bill only,
-  // fetched on demand (never present on /bills' own response) once a bill is
-  // opened for viewing. Stays null for a manually created bill (no
-  // BillRequest exists) or once loading finishes with no match found.
-  const [viewApprovalHistory, setViewApprovalHistory] = useState<BillApprovalHistoryEntry[] | null>(null);
+  // The originating BillRequest's own _id — only resolvable when this bill
+  // came from the normal request flow (matched below) — used to look up its
+  // SLA timeline, since a manually created bill has no BillRequest and thus
+  // no SLA instance to show.
+  const [viewApprovalBillRequestId, setViewApprovalBillRequestId] = useState<string | null>(null);
 
   // Same print-ready template Accounts Payment/Site Progress already use for
   // a bill — opens a new window and triggers window.print(), where "Save as
@@ -229,7 +228,7 @@ export default function Billing() {
   );
 
   useEffect(() => {
-    setViewApprovalHistory(null);
+    setViewApprovalBillRequestId(null);
     if (!viewBill?.workOrderId) return;
     apiClient.get<{ billRequests: Record<string, unknown>[] }>(`/bill-requests?workOrderId=${viewBill.workOrderId}`)
       .then((r) => {
@@ -238,7 +237,7 @@ export default function Billing() {
           const id = typeof billId === "string" ? billId : billId?._id;
           return id === viewBill.id;
         });
-        if (match) setViewApprovalHistory(deriveBillApprovalHistory(match as Parameters<typeof deriveBillApprovalHistory>[0]));
+        if (match) setViewApprovalBillRequestId((match as { _id?: string })._id ?? null);
       })
       .catch(() => { });
   }, [viewBill?.workOrderId, viewBill?.id]);
@@ -517,32 +516,7 @@ export default function Billing() {
             <div className="mb-4 text-gray-500 dark:text-gray-400 text-[13px]"><strong>Remarks:</strong> {viewBill.remarks}</div>
           )}
 
-          {/* AGM → GM sign-off — happens in Site Progress (or, for a manual
-              bill with no BillRequest, Billing's own pre-Accounts step),
-              before this ever reaches Accounts as a RunningBill. */}
-          {(() => {
-            const history = viewApprovalHistory ?? (
-              !viewBill.workOrderId
-                ? deriveBillApprovalHistory({
-                  agmApprovedBy: viewBill.manualAgmApprovedBy, agmApprovedAt: viewBill.manualAgmApprovedAt,
-                  status: viewBill.manualApprovalStatus === "rejected" ? "rejected" : viewBill.manualApprovalStatus === "approved" ? "approved" : "pending",
-                  processedBy: viewBill.manualGmApprovedBy ?? viewBill.manualRejectedBy, processedAt: viewBill.manualGmApprovedAt,
-                  rejectReason: viewBill.manualRejectReason,
-                })
-                : []
-            );
-            if (history.length === 0) return null;
-            return (
-              <div className="mb-4">
-                <div className="font-bold text-xs text-gray-600 dark:text-gray-300 mb-1.5 uppercase tracking-wide">
-                  Approval Chain — Before Accounts
-                </div>
-                <div className="bg-gray-50 dark:bg-gray-800/40 rounded-lg p-3.5">
-                  <BillApprovalHistoryList history={history} />
-                </div>
-              </div>
-            );
-          })()}
+          {viewApprovalBillRequestId && <SlaTimeline entityType="BillRequest" entityId={viewApprovalBillRequestId} />}
         </Modal>
       )}
 

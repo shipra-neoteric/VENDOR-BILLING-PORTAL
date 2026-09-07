@@ -6,6 +6,7 @@ import Modal from "../ui/Modal";
 import Btn from "../ui/Btn";
 import Badge from "../ui/Badge";
 import { Table, Thead, Tbody, Tfoot, Tr, Th, Td } from "../ui/Table";
+import SlaTimeline from "./SlaTimeline";
 
 const fmt = (n: number) => "₹" + (n).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 // Per-unit rates are fractional far more often than totals are — rounding
@@ -496,6 +497,8 @@ export default function BillDetailModal({
             </div>
           </div>
         )}
+
+        <SlaTimeline entityType="BillRequest" entityId={billRequest._id} />
 
         {billRequest.status === "rejected" && billRequest.rejectReason && (
           <div className="bg-red-50 dark:bg-red-500/10 border border-red-300 dark:border-red-500/30 rounded-md px-2.5 py-2 text-sm text-red-700 dark:text-red-300">

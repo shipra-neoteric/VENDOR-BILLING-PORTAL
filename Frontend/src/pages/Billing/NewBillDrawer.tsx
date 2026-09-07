@@ -62,7 +62,14 @@ interface ProjectOpt { id: string; name: string; code: string; parentId?: string
 interface CompanyOpt { id: string; name: string; shortCode: string; isActive?: boolean; }
 interface SubItemOpt { id: string; description: string; unit: string; plannedQty: number; lastBilledQty: number; rate?: number; }
 interface ScopeItemOpt { id: string; description: string; unit: string; plannedQty: number; lastBilledQty: number; rate?: number; subItems?: SubItemOpt[]; }
-interface PaymentMilestoneOpt { _id: string; stage: string; type?: string; amount: number; date?: string; scopeItemIds?: string[]; }
+// `amount` is the milestone's pre-GST base figure — for a percent-mode
+// milestone (e.g. a single 100% milestone on the whole contract) that can
+// legitimately equal the entire contract value, and it never includes GST.
+// `payable` is the actual amount owed for this milestone (GST-inclusive,
+// already resolved out of percent-mode against the contract value at save
+// time — see WorkItems' milestoneDraftToPayload/calcPayable) and is what a
+// bill line for this milestone must be built from, not `amount`.
+interface PaymentMilestoneOpt { _id: string; stage: string; type?: string; amount: number; payable?: number; date?: string; scopeItemIds?: string[]; }
 interface WorkOrderOpt { id: string; workOrderNo: string; projectId: string; projectName: string; vendorCode: string; vendorName: string; contractType?: string; department?: string; customDepartment?: string; scopeItems: ScopeItemOpt[]; paymentMilestones?: PaymentMilestoneOpt[]; }
 interface AdvanceSlipOpt { _id: string; slipNo: string; amount: number; amountRecovered: number; balance: number; date?: string; reference?: string; }
 
@@ -489,48 +496,57 @@ export default function NewBillDrawer({
     const pct = Math.max(0, Math.min(100, percent)) / 100;
     const coveredIds = milestone.scopeItemIds ?? [];
     const coveredItems = wo.scopeItems.filter((si) => coveredIds.includes(si.id));
+    const milestoneTotal = milestone.payable ?? milestone.amount ?? 0;
 
     if (coveredItems.length > 0) {
-      return coveredItems.flatMap((si) => {
-        if (si.subItems && si.subItems.length > 0) {
-          return si.subItems.map((sub) => {
-            const billedQty = Math.round((sub.plannedQty || 0) * pct * 100) / 100;
-            return {
-              key: nextKey(),
-              scopeItemId: si.id,
-              subItemId: sub.id,
-              groupLabel: si.description,
-              description: sub.description,
-              unit: sub.unit || "",
-              plannedQty: sub.plannedQty || 0,
-              lastBilledQty: sub.lastBilledQty || 0,
-              percentComplete: Math.round(pct * 10000) / 100,
-              billedQty,
-              rate: sub.rate || 0,
-              amount: Math.round(billedQty * (sub.rate || 0) * 100) / 100,
-            };
-          });
-        }
-        const billedQty = Math.round((si.plannedQty || 0) * pct * 100) / 100;
-        return [{
+      // Covered scope items are purely a REFERENCE of what this milestone's
+      // payment relates to (see PaymentMilestonesBuilder's own note: linking
+      // items "doesn't affect this builder's own amount/GST math") — the
+      // milestone's own configured amount is always the authoritative money
+      // figure, never each item's own full contractual rate (which for a
+      // milestone covering only part of an item, or a Professional Services
+      // WO's single lumpsum item, can be wildly larger than what this
+      // milestone is actually worth). So every covered item/sub-item's rate
+      // here is rescaled so the rows sum to exactly this milestone's payable
+      // at the chosen % — real plannedQty/rate are only used as relative
+      // WEIGHTS between items, not as the amount source itself.
+      const leaves = coveredItems.flatMap((si) =>
+        si.subItems && si.subItems.length > 0
+          ? si.subItems.map((sub) => ({ si, sub, weight: (sub.rate || 0) * (sub.plannedQty || 0) }))
+          : [{ si, sub: null as SubItemOpt | null, weight: (si.rate || 0) * (si.plannedQty || 0) }]
+      );
+      const totalWeight = leaves.reduce((s, l) => s + l.weight, 0);
+
+      return leaves.map(({ si, sub, weight }) => {
+        const share = totalWeight > 0 ? weight / totalWeight : 1 / leaves.length;
+        const item = sub ?? si;
+        const billedQty = Math.round((item.plannedQty || 0) * pct * 100) / 100;
+        const amount = Math.round(milestoneTotal * share * pct * 100) / 100;
+        // Back-derive a display rate consistent with amount = billedQty × rate
+        // (falls back to the item's own rate if this milestone is billed at
+        // 0% right now, so the row still shows something sensible).
+        const rate = billedQty > 0 ? Math.round((amount / billedQty) * 100) / 100 : (item.rate || 0);
+        return {
           key: nextKey(),
           scopeItemId: si.id,
-          description: si.description,
-          unit: si.unit || "",
-          plannedQty: si.plannedQty || 0,
-          lastBilledQty: si.lastBilledQty || 0,
+          subItemId: sub?.id,
+          groupLabel: sub ? si.description : undefined,
+          description: item.description,
+          unit: item.unit || "",
+          plannedQty: item.plannedQty || 0,
+          lastBilledQty: item.lastBilledQty || 0,
           percentComplete: Math.round(pct * 10000) / 100,
           billedQty,
-          rate: si.rate || 0,
-          amount: Math.round(billedQty * (si.rate || 0) * 100) / 100,
-        }];
+          rate,
+          amount,
+        };
       });
     }
 
     // No items assigned to this milestone — a plain lump-sum row, its
     // amount scaled to the chosen %.
     const label = milestone.stage || milestone.type || "Milestone Payment";
-    const amount = Math.round((milestone.amount || 0) * pct * 100) / 100;
+    const amount = Math.round(milestoneTotal * pct * 100) / 100;
     return [{ ...blankRow(), description: label, billedQty: 1, rate: amount, amount }];
   }
 

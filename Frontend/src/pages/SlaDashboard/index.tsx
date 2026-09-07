@@ -366,45 +366,47 @@ export default function SlaDashboard() {
         {filteredDrilldown.length === 0 ? (
           <div className="text-gray-400 dark:text-gray-500 text-[13px] text-center py-5">No ongoing workflows match this filter.</div>
         ) : (
-          <Table className="min-w-[900px]">
-            <Thead>
-              <Tr>
-                <Th className="w-[13%]">Entity</Th>
-                <Th className="w-[13%]">Type</Th>
-                <Th className="w-[17%]">Current Stage</Th>
-                <Th className="w-[17%]">Assigned To</Th>
-                <Th className="w-[20%]">SLA</Th>
-                <Th className="text-right w-[20%]">Status</Th>
-              </Tr>
-            </Thead>
-            <Tbody>
-              {filteredDrilldown.map(d => {
-                const remainingMs = d.dueAt ? new Date(d.dueAt).getTime() - Date.now() : null;
-                return (
-                  <Tr key={d.instanceId}>
-                    <Td className="whitespace-nowrap truncate">
-                      {d.entityType === "WorkOrder" ? (
-                        <span className="text-primary font-semibold cursor-pointer hover:underline" onClick={() => setViewWorkOrderId(d.entityId)}>{d.entityLabel}</span>
-                      ) : d.entityType === "BillRequest" ? (
-                        <span className="text-primary font-semibold cursor-pointer hover:underline" onClick={() => setViewBillRequestId(d.entityId)}>{d.entityLabel}</span>
-                      ) : d.entityLabel}
-                    </Td>
-                    <Td className="whitespace-nowrap"><NxBadge color={d.entityType === "WorkOrder" ? "blue" : "indigo"}>{d.entityType}</NxBadge></Td>
-                    <Td className="whitespace-nowrap truncate">{d.currentStage}</Td>
-                    <Td className="whitespace-nowrap truncate">{d.assignedTo}</Td>
-                    <Td className="whitespace-nowrap">
-                      {d.breached ? <span className="text-red-500 dark:text-red-400">Overdue {fmtMinutes(d.overdueMinutes)}</span>
-                        : remainingMs !== null ? <span className="text-emerald-600 dark:text-emerald-400">{fmtMinutes(Math.round(remainingMs / 60000))} left</span>
-                        : "—"}
-                    </Td>
-                    <Td className="text-right">
-                      {d.breached ? <NxBadge color="red">🔴 Overdue</NxBadge> : <NxBadge color="green">🟢 On Track</NxBadge>}
-                    </Td>
-                  </Tr>
-                );
-              })}
-            </Tbody>
-          </Table>
+          <div style={{ maxHeight: 520, overflowY: "scroll" }}>
+            <Table className="min-w-[900px]">
+              <Thead>
+                <Tr>
+                  <Th className="w-[13%]">Entity</Th>
+                  <Th className="w-[13%]">Type</Th>
+                  <Th className="w-[17%]">Current Stage</Th>
+                  <Th className="w-[17%]">Assigned To</Th>
+                  <Th className="w-[20%]">SLA</Th>
+                  <Th className="text-right w-[20%]">Status</Th>
+                </Tr>
+              </Thead>
+              <Tbody>
+                {filteredDrilldown.map(d => {
+                  const remainingMs = d.dueAt ? new Date(d.dueAt).getTime() - Date.now() : null;
+                  return (
+                    <Tr key={d.instanceId}>
+                      <Td className="whitespace-nowrap truncate">
+                        {d.entityType === "WorkOrder" ? (
+                          <span className="text-primary font-semibold cursor-pointer hover:underline" onClick={() => setViewWorkOrderId(d.entityId)}>{d.entityLabel}</span>
+                        ) : d.entityType === "BillRequest" ? (
+                          <span className="text-primary font-semibold cursor-pointer hover:underline" onClick={() => setViewBillRequestId(d.entityId)}>{d.entityLabel}</span>
+                        ) : d.entityLabel}
+                      </Td>
+                      <Td className="whitespace-nowrap"><NxBadge color={d.entityType === "WorkOrder" ? "blue" : "indigo"}>{d.entityType}</NxBadge></Td>
+                      <Td className="whitespace-nowrap truncate">{d.currentStage}</Td>
+                      <Td className="whitespace-nowrap truncate">{d.assignedTo}</Td>
+                      <Td className="whitespace-nowrap">
+                        {d.breached ? <span className="text-red-500 dark:text-red-400">Overdue {fmtMinutes(d.overdueMinutes)}</span>
+                          : remainingMs !== null ? <span className="text-emerald-600 dark:text-emerald-400">{fmtMinutes(Math.round(remainingMs / 60000))} left</span>
+                          : "—"}
+                      </Td>
+                      <Td className="text-right">
+                        {d.breached ? <NxBadge color="red">🔴 Overdue</NxBadge> : <NxBadge color="green">🟢 On Track</NxBadge>}
+                      </Td>
+                    </Tr>
+                  );
+                })}
+              </Tbody>
+            </Table>
+          </div>
         )}
       </NxCard>
 

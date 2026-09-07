@@ -5,7 +5,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   Plus, Pencil, Eye, Paperclip, Trash2, Ban, Lock, Unlock, AlertTriangle,
   FileText, ClipboardList, BarChart3, Link2, Zap, Briefcase, Search, Check, Loader2,
-  CalendarRange, PlayCircle, CheckCircle2, Download,
+  CalendarRange, PlayCircle, CheckCircle2, Download, Archive,
 } from "lucide-react";
 import dayjs from "dayjs";
 import type { Dayjs } from "dayjs";
@@ -1470,6 +1470,9 @@ export default function WorkItems() {
   const [categoryFilter,      setCategoryFilter]      = useState<string>("all");
   const [deptFilter,          setDeptFilter]          = useState<string>("all");
   const [progressFilter,      setProgressFilter]      = useState<string>("all");
+  // Cancelled work orders are archived — hidden from the normal list unless
+  // this is on, in which case the list flips to showing ONLY cancelled ones.
+  const [showArchived,        setShowArchived]        = useState(false);
   const [projectFilter,       setProjectFilter]       = useState<string[]>([]);
   const [dateFrom,            setDateFrom]            = useState<Dayjs | null>(null);
   const [dateTo,              setDateTo]              = useState<Dayjs | null>(null);
@@ -1669,17 +1672,24 @@ export default function WorkItems() {
         }
       }
 
+      // Cancelled work orders are archived — hidden by default (both from the
+      // main list and from "All Progress") unless the Archive toggle is on
+      // (shows only cancelled) or Progress is explicitly set to "Cancelled"
+      // (matchProgress above already narrows to cancelled-only in that case).
+      const matchArchive = showArchived
+        ? wo.status === "cancelled"
+        : (progressFilter === "cancelled" || wo.status !== "cancelled");
       const matchDate    = inDateRange(wo.issueDate, dateFrom, dateTo);
       const matchProject = projectFilter.length === 0 || projectFilter.includes(getWorkOrderProjectId(wo.projectId) ?? "");
       const matchContractType = contractTypeFilter === "all" || (wo.contractType || "execution") === contractTypeFilter;
       const matchDept = deptFilter === "all" || (wo.department || "") === deptFilter;
-      return matchSearch && matchStatus && matchStep && matchCategory && matchProgress && matchDate && matchProject && matchContractType && matchDept;
+      return matchSearch && matchStatus && matchStep && matchCategory && matchProgress && matchArchive && matchDate && matchProject && matchContractType && matchDept;
     }).sort((a, b) => {
       const numA = parseInt(a.workOrderNo.replace(/\D/g, ""), 10) || 0;
       const numB = parseInt(b.workOrderNo.replace(/\D/g, ""), 10) || 0;
       return numB - numA;
     });
-  }, [workOrders, search, statusFilter, stepFilter, categoryFilter, deptFilter, progressFilter, projectFilter, subCatsOfSelected, dateFrom, dateTo, contractTypeFilter, woBillsMap]);
+  }, [workOrders, search, statusFilter, stepFilter, categoryFilter, deptFilter, progressFilter, showArchived, projectFilter, subCatsOfSelected, dateFrom, dateTo, contractTypeFilter, woBillsMap]);
 
   // Same as `filtered` above but ignoring the step-pill's own selection —
   // the step pills (All Steps/L1-L4 Pending/Approved) need to show what
@@ -1725,26 +1735,37 @@ export default function WorkItems() {
           matchProgress = wo.status === "cancelled";
         }
       }
+      // Cancelled work orders are archived — hidden by default (both from the
+      // main list and from "All Progress") unless the Archive toggle is on
+      // (shows only cancelled) or Progress is explicitly set to "Cancelled"
+      // (matchProgress above already narrows to cancelled-only in that case).
+      const matchArchive = showArchived
+        ? wo.status === "cancelled"
+        : (progressFilter === "cancelled" || wo.status !== "cancelled");
       const matchDate    = inDateRange(wo.issueDate, dateFrom, dateTo);
       const matchProject = projectFilter.length === 0 || projectFilter.includes(getWorkOrderProjectId(wo.projectId) ?? "");
       const matchContractType = contractTypeFilter === "all" || (wo.contractType || "execution") === contractTypeFilter;
       const matchDept = deptFilter === "all" || (wo.department || "") === deptFilter;
-      return matchSearch && matchStatus && matchCategory && matchProgress && matchDate && matchProject && matchContractType && matchDept;
+      return matchSearch && matchStatus && matchCategory && matchProgress && matchArchive && matchDate && matchProject && matchContractType && matchDept;
     });
-  }, [workOrders, search, statusFilter, categoryFilter, deptFilter, progressFilter, projectFilter, subCatsOfSelected, dateFrom, dateTo, contractTypeFilter, woBillsMap]);
+  }, [workOrders, search, statusFilter, categoryFilter, deptFilter, progressFilter, showArchived, projectFilter, subCatsOfSelected, dateFrom, dateTo, contractTypeFilter, woBillsMap]);
 
   // Stat-card counts — computed off the full unfiltered list (matching the
   // "shortcut filter" convention used elsewhere, e.g. Projects' StatCard
   // row), not the already-filtered list, so clicking one always shows the
   // true total for that bucket.
   const statusCounts = useMemo(() => {
-    const c = { total: workOrders.length, draft: 0, inProgress: 0, completed: 0 };
+    const c = { total: 0, draft: 0, inProgress: 0, completed: 0, cancelled: 0 };
     for (const wo of workOrders) {
+      // Cancelled work orders are archived — excluded from the Total and
+      // every other stat-card bucket, matching them being hidden from the
+      // main list by default (see `showArchived`/matchArchive below).
+      if (wo.status === "cancelled") { c.cancelled++; continue; }
+      c.total++;
       // A Work Order that already has a generated bill (any status — this
       // isn't limited to "paid") is no longer unbilled work, so it drops out
       // of Draft/In Progress entirely rather than counting toward either.
       if (wo.status === "completed") c.completed++;
-      else if (wo.status === "cancelled") continue;
       else if (hasBill(wo.id)) continue;
       else if (wo.status === "draft") c.draft++;
       else c.inProgress++;
@@ -2193,12 +2214,13 @@ export default function WorkItems() {
 
   const hasActiveFilters =
     statusFilter !== "all" || stepFilter !== "all" || categoryFilter !== "all" || deptFilter !== "all" || progressFilter !== "all" ||
-    projectFilter.length > 0 || search !== "";
+    showArchived || projectFilter.length > 0 || search !== "";
 
   const clearAllFilters = () => {
     setSearch("");
     setStatusFilter("all"); setStepFilter("all");
     setCategoryFilter("all"); setDeptFilter("all"); setProgressFilter("all"); setProjectFilter([]);
+    setShowArchived(false);
   };
 
   const listPager = usePagination(filtered, 10);
@@ -2260,6 +2282,12 @@ export default function WorkItems() {
       <div className="bg-white/90 dark:bg-gray-800/95 backdrop-blur-xl border border-gray-100 dark:border-gray-700/50 rounded-xl shadow-sm p-5">
         {/* ── Tabs ────────────────────────────────────────────── */}
         <div className="flex items-center justify-end flex-wrap gap-2.5 mb-3">
+          <Btn
+            small outline={!showArchived} color="primary"
+            icon={Archive}
+            label={`Archive${statusCounts.cancelled ? ` (${statusCounts.cancelled})` : ""}`}
+            onClick={() => setShowArchived(v => !v)}
+          />
           <Segmented
             value={contractTypeFilter}
             onChange={(v) => setContractTypeFilter(v)}
