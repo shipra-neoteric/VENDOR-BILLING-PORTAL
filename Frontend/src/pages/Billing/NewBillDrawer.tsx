@@ -502,6 +502,7 @@ export default function NewBillDrawer({
     // `payable` instead would double the GST: once already baked into
     // `payable`, and again from the bill's own GST Slab on top of that.
     const milestoneTotal = milestone.amount ?? 0;
+    const milestoneLabel = milestone.stage || milestone.type || "Milestone Payment";
 
     if (coveredItems.length > 0) {
       // Covered scope items are purely a REFERENCE of what this milestone's
@@ -535,8 +536,12 @@ export default function NewBillDrawer({
           key: nextKey(),
           scopeItemId: si.id,
           subItemId: sub?.id,
+          // The milestone's own name, not the covered item's own description
+          // (which is just a reference — see the note above) — so this row
+          // reads the same as the milestone's own label everywhere else in
+          // the app (e.g. the Work Order PDF's Payment Milestones table).
           groupLabel: sub ? si.description : undefined,
-          description: item.description,
+          description: milestoneLabel,
           unit: item.unit || "",
           plannedQty: item.plannedQty || 0,
           lastBilledQty: item.lastBilledQty || 0,
@@ -550,9 +555,8 @@ export default function NewBillDrawer({
 
     // No items assigned to this milestone — a plain lump-sum row, its
     // amount scaled to the chosen %.
-    const label = milestone.stage || milestone.type || "Milestone Payment";
     const amount = Math.round(milestoneTotal * pct * 100) / 100;
-    return [{ ...blankRow(), description: label, billedQty: 1, rate: amount, amount }];
+    return [{ ...blankRow(), description: milestoneLabel, billedQty: 1, rate: amount, amount }];
   }
 
   // Rebuilds every currently-checked milestone's rows from scratch, keyed
