@@ -502,7 +502,12 @@ export default function NewBillDrawer({
     // `payable` instead would double the GST: once already baked into
     // `payable`, and again from the bill's own GST Slab on top of that.
     const milestoneTotal = milestone.amount ?? 0;
-    const milestoneLabel = milestone.stage || milestone.type || "Milestone Payment";
+    // `type` is the milestone's real descriptive name (e.g. "Advance with
+    // Work Order") — same field WorkOrderDetailView's own Payment
+    // Milestones table and the Work Order PDF (`m.type || m.stage`) already
+    // show as this milestone's label. `stage` is just a positional
+    // fallback (e.g. "Milestone 3"), so it must lose to `type`, not win.
+    const milestoneLabel = milestone.type || milestone.stage || "Milestone Payment";
 
     if (coveredItems.length > 0) {
       // Covered scope items are purely a REFERENCE of what this milestone's
@@ -1027,7 +1032,7 @@ export default function NewBillDrawer({
                             {/* Pre-GST base — matches what this milestone actually
                                 contributes to the bill's line items; the bill's own
                                 GST Slab (below) adds GST once, on top of the total. */}
-                            <span className="truncate">{m.stage || m.type || "Milestone"} — {fmt(m.amount)}</span>
+                            <span className="truncate">{m.type || m.stage || "Milestone"} — {fmt(m.amount)}</span>
                           </label>
                           {checked && (
                             <div className="flex items-center gap-1 shrink-0">
