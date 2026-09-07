@@ -5,10 +5,10 @@ const { effectiveDepartment } = require('./approvalRules');
 // — same DepartmentApprovalConfig doc, just the WO-specific fields
 // (woRequiredApprovals/checkerUserIds/approverUserIds/finalUserIds) added
 // there for exactly this purpose.
-const STAGE_USER_FIELD = {
-  checker:  'checkerUserIds',
-  approver: 'approverUserIds',
-  final:    'finalUserIds',
+const STAGE_FIELDS = {
+  checker:  { userIds: 'checkerUserIds',  action: 'checker' },
+  approver: { userIds: 'approverUserIds', action: 'approver' },
+  final:    { userIds: 'finalUserIds',    action: 'ceo-approve' },
 };
 
 async function getWoApprovalConfig(workOrder) {
@@ -17,20 +17,23 @@ async function getWoApprovalConfig(workOrder) {
   return DepartmentApprovalConfig.findOne({ department: dept }).lean();
 }
 
-// Unlike bills' approverAllowed, there's no hardcoded role list to fall back
-// to here — Work Order access today is purely the 'work-orders' module's
-// checker/approver/ceo-approve permission grants (already enforced by the
-// route's own authorizeOr before this ever runs), not literal role names.
-// So an unconfigured stage (no config doc, or an empty *UserIds list for
-// this stage) must stay `true` — this function only ever NARROWS access
-// once a department has actually named specific people for a stage, never
-// widens or re-blocks what the route already allowed.
+// Same rule as bills' approverAllowed/hasExplicitPermission: a department
+// naming specific people for a stage narrows who's EXPECTED to act there,
+// but must never lock out someone who's been separately, explicitly granted
+// that stage's permission via User Management (module 'work-orders') — a
+// named list adds to who can act, it doesn't take away from an existing
+// permission grant. Unlike bills there's no hardcoded role list to fall back
+// to here — Work Order access today is purely this permission-matrix
+// (already enforced once by the route's own authorizeOr before this ever
+// runs), not literal role names — so an unconfigured stage (no config doc,
+// or an empty *UserIds list for this stage) stays `true` unconditionally.
 function woApproverAllowed(user, config, stage) {
-  const userIds = config?.[STAGE_USER_FIELD[stage]];
-  if (userIds && userIds.length) {
-    return userIds.some((id) => String(id) === String(user._id));
-  }
-  return true;
+  const fields = STAGE_FIELDS[stage];
+  const userIds = config?.[fields.userIds];
+  if (!userIds || !userIds.length) return true;
+  if (userIds.some((id) => String(id) === String(user._id))) return true;
+  const perm = (user.permissions || []).find((p) => p.module === 'work-orders');
+  return !!(perm && perm.actions.includes(fields.action));
 }
 
 module.exports = { getWoApprovalConfig, woApproverAllowed };
