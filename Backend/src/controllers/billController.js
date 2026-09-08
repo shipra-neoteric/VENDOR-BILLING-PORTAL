@@ -46,7 +46,7 @@ function pushHistory(bill, stage, action, by, remarks) {
   bill.approvalHistory.push({ stage, action, by, remarks: remarks || '' });
 }
 
-const POPULATE_FIELDS = ['agmApprovedBy', 'makerBy', 'verifiedBy', 'checkerBy', 'approvedBy', 'paymentInitiatedBy', 'rejectedBy', 'verificationBy', 'l1ApprovedBy', 'l2ApprovedBy', 'holdBy', 'holdReleasedBy', 'lineItems.varianceApprovedBy', 'manualAgmApprovedBy', 'manualGmApprovedBy', 'manualRejectedBy', 'sentForApprovalTo', 'sentForL2ApprovalTo'];
+const POPULATE_FIELDS = ['agmApprovedBy', 'gmApprovedBy', 'makerBy', 'verifiedBy', 'checkerBy', 'approvedBy', 'paymentInitiatedBy', 'rejectedBy', 'verificationBy', 'l1ApprovedBy', 'l2ApprovedBy', 'holdBy', 'holdReleasedBy', 'lineItems.varianceApprovedBy', 'manualAgmApprovedBy', 'manualGmApprovedBy', 'manualRejectedBy', 'sentForApprovalTo', 'sentForL2ApprovalTo'];
 
 exports.listBills = asyncHandler(async (req, res) => {
   const { workOrderId, vendorCode, projectId, status, manualApprovalStatus, search, archived } = req.query;

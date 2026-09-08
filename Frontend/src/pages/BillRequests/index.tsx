@@ -298,7 +298,13 @@ async function printBillRequest(br: BillRequestRow) {
       status: br.status,
       agmApprovedBy: agmDone ? { name: actorName(br.agmApprovedBy) || "—", role: actorRole(br.agmApprovedBy) } : null,
       agmApprovedAt: br.agmApprovedAt,
-      verifiedBy: null,
+      // Real for any department whose chain reaches L2 before this print —
+      // this pseudoBill path is hit whenever no RunningBill exists yet
+      // (a 3+/4-level department's request, still mid-chain past L2, has no
+      // bill until its own final stage), so L2's own sign-off must come
+      // straight off the BillRequest, same as agmApprovedBy above.
+      verifiedBy: br.gmApprovedBy ? { name: actorName(br.gmApprovedBy) || "—", role: actorRole(br.gmApprovedBy) } : null,
+      verifiedAt: br.gmApprovedAt,
       approvedBy: null,
       paymentInitiatedBy: null,
     };
@@ -897,10 +903,11 @@ export default function BillApproval() {
           options={[
             { value: "pending", label: <span className="inline-flex items-center gap-1.5">Pending L1 {pendingAgmReqs.length + pendingManualAgm.length > 0 && <NxBadge color="amber">{pendingAgmReqs.length + pendingManualAgm.length}</NxBadge>}</span> },
             { value: "pending-gm", label: <span className="inline-flex items-center gap-1.5">Pending L2 {pendingGmReqs.length + pendingManualGm.length > 0 && <NxBadge color="blue">{pendingGmReqs.length + pendingManualGm.length}</NxBadge>}</span> },
-            // Only shown when there's actually a request sitting at that
-            // stage — most departments never reach L3/L4 (2 is the
-            // default), so these tabs would otherwise just be dead weight.
-            ...(pendingL3Reqs.length + pendingManualL3.length > 0 ? [{ value: "pending-l3", label: <span className="inline-flex items-center gap-1.5">Pending L3 <NxBadge color="amber">{pendingL3Reqs.length + pendingManualL3.length}</NxBadge></span> }] : []),
+            // L3 is now a real, regularly-reached stage (a 3-level
+            // department's chain stops there) — always shown, same as L1/L2.
+            // L4 stays conditional since no department currently configures
+            // 4 levels — that tab would otherwise just be permanent dead weight.
+            { value: "pending-l3", label: <span className="inline-flex items-center gap-1.5">Pending L3 {pendingL3Reqs.length + pendingManualL3.length > 0 && <NxBadge color="amber">{pendingL3Reqs.length + pendingManualL3.length}</NxBadge>}</span> },
             ...(pendingL4Reqs.length + pendingManualL4.length > 0 ? [{ value: "pending-l4", label: <span className="inline-flex items-center gap-1.5">Pending L4 <NxBadge color="teal">{pendingL4Reqs.length + pendingManualL4.length}</NxBadge></span> }] : []),
             { value: "approved", label: "Approved" },
             { value: "rejected", label: "Rejected" },

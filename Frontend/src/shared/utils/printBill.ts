@@ -106,6 +106,12 @@ export interface PrintableBill {
   agmApprovedAt?: string;
   verifiedBy?: PrintableBillUser | null;
   verifiedAt?: string;
+  // L2 (GM) sign-off, denormalized onto the RunningBill at creation time —
+  // read as a fallback below whenever verifiedBy/verifiedAt (a legacy field
+  // no current action writes) is absent, so the printout's "L2 Approval"
+  // block isn't blank for a bill whose GM sign-off never touched verifiedBy.
+  gmApprovedBy?: PrintableBillUser | null;
+  gmApprovedAt?: string;
   approvedBy?: PrintableBillUser | null;
   paymentInitiatedBy?: PrintableBillUser | null;
   paymentDate?: string;
@@ -343,8 +349,8 @@ ${mode === 'pre' ? `<div style="display:flex;justify-content:space-around;margin
   <div style="text-align:center">
     <div style="border-top:1px solid #333;width:180px;margin:0 auto 6px"></div>
     <p style="font-size:12px;color:#333;font-weight:700">L2 Approval</p>
-    <p style="font-size:11px;color:#666">${bill.verifiedBy ? `${bill.verifiedBy.name}${bill.verifiedBy.role ? ` (${bill.verifiedBy.role})` : ""}` : "—"}</p>
-    <p style="font-size:11px;color:${bill.verifiedAt ? "#16a34a" : "#999"}">${bill.verifiedAt ? `Approved ${dayjs(bill.verifiedAt).format("DD/MM/YYYY, hh:mm A")}` : "&nbsp;"}</p>
+    <p style="font-size:11px;color:#666">${(bill.verifiedBy || bill.gmApprovedBy) ? `${(bill.verifiedBy || bill.gmApprovedBy)!.name}${(bill.verifiedBy || bill.gmApprovedBy)!.role ? ` (${(bill.verifiedBy || bill.gmApprovedBy)!.role})` : ""}` : "—"}</p>
+    <p style="font-size:11px;color:${(bill.verifiedAt || bill.gmApprovedAt) ? "#16a34a" : "#999"}">${(bill.verifiedAt || bill.gmApprovedAt) ? `Approved ${dayjs(bill.verifiedAt || bill.gmApprovedAt).format("DD/MM/YYYY, hh:mm A")}` : "&nbsp;"}</p>
   </div>
 </div>` : ""}
 
