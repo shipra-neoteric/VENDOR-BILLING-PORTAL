@@ -97,7 +97,11 @@ export default function SlaTimeline({ entityType, entityId }: { entityType: "Wor
           const isLast = i === instance.stages.length - 1;
           const isCurrent = i === currentIndex || (currentIndex === -1 && isLast);
           const { color, title } = stageVisual(stage, isLast, instance.status === "completed");
-          const who = actorName(stage.completedBy) || actorName(stage.assignedUserId);
+          // A stage that hasn't started yet has no one who's "initiated"
+          // anything — assignedUserId is just who WILL act once it's their
+          // turn, not a name to show yet (showing it here read as if that
+          // person had already done something).
+          const who = stage.status === "pending" ? undefined : (actorName(stage.completedBy) || actorName(stage.assignedUserId));
           return (
             <div key={stage._id} className="flex gap-3">
               <div className="flex flex-col items-center w-16 shrink-0">

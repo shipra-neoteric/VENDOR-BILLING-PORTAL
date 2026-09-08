@@ -60,6 +60,7 @@ interface BillRequestRow {
   requestedBy?: { name: string; email: string };
   agmApprovedBy?: { name: string; role?: string } | string | null;
   agmApprovedAt?: string;
+  gmApprovedBy?: { name: string; role?: string } | string | null;
   gmApprovedAt?: string;
   l3ApprovedAt?: string;
   processedBy?: { name: string; role?: string } | string | null;
@@ -263,12 +264,15 @@ async function printBillRequest(br: BillRequestRow) {
       const bill = bRes.data.bill;
       // The RunningBill's own verifiedBy/verifiedAt are legacy fields no
       // current action writes — a progress-driven bill's real L2 (GM)
-      // sign-off lives on the BillRequest itself (processedBy/processedAt,
-      // set by gmApprove), so that's what the signature block needs here.
+      // sign-off lives on the BillRequest itself, in gmApprovedBy/
+      // gmApprovedAt (set by gmApprove) — NOT processedBy/processedAt,
+      // which only gets set once the whole chain finalizes (L2 for a
+      // 2-level department, but L3/L4 for a longer one), so it stayed blank
+      // on the printout for any bill still mid-chain past L2.
       const printableBill: PrintableBill = {
         ...bill,
-        verifiedBy: bill.verifiedBy ?? (actorName(br.processedBy) ? { name: actorName(br.processedBy), role: actorRole(br.processedBy) } : null),
-        verifiedAt: bill.verifiedAt ?? br.processedAt,
+        verifiedBy: bill.verifiedBy ?? (actorName(br.gmApprovedBy) ? { name: actorName(br.gmApprovedBy), role: actorRole(br.gmApprovedBy) } : null),
+        verifiedAt: bill.verifiedAt ?? br.gmApprovedAt,
       };
       printBill(printableBill, contractor, bill.status === "paid" ? "post" : "pre");
       return;
