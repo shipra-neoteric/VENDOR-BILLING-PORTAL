@@ -266,10 +266,14 @@ export function buildDailyProgressReportSummary(args: {
     (!filterProjectId || d.projectId === filterProjectId) &&
     (!filterDriName || d.driName === filterDriName)
   );
-  const drawingRequestsOut = filteredDR
+  // The PDF's own Drawing Requests table always lists every drawing
+  // request, regardless of this report's date/project/DRI filters (those
+  // still apply to `filteredDR` above, used for the KPI count and delayed-
+  // drawings action item) — the downloaded report is meant to be a complete
+  // reference of all drawing requests, not just the ones in this period.
+  const drawingRequestsOut = drawingReqs
     .slice()
     .sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""))
-    .slice(0, 25)
     .map(d => ({
       ticketNo: d.ticketNo, description: d.description, projectName: d.projectName, driName: d.driName,
       stageLabel: REVIEW_STATUS_LABEL[d.reviewStatus], requestedOn: dayjs(d.createdAt).format("DD MMM YYYY"),
