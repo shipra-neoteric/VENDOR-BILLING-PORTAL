@@ -71,6 +71,12 @@ function roleAllowed(role, configuredRoles, fallbackRoles) {
 // role list alone silently ignored that grant.
 function approverAllowed(user, config, stage) {
   if (!DEPARTMENT_APPROVER_RESTRICTIONS_ENABLED) return true;
+  // Owner bypasses every department-specific approver restriction, same as
+  // every other department-scoped gate in this app (canActOnDepartment, the
+  // BillRequest/RunningBill list filters) — a department naming specific L1
+  // /L2/L3/L4 approvers must narrow everyone else down to exactly them, but
+  // must never lock Owner out of a bill Owner can otherwise see and act on.
+  if (user.role === 'owner') return true;
   const fields = STAGE_FIELDS[stage];
   const userIds = config?.[fields.userIds];
   if (userIds && userIds.length) {
