@@ -21,6 +21,14 @@ const { getApprovalConfig, approverAllowed } = require('../utils/approvalRules')
 
 const MODULE = 'accounts-payment';
 
+// Kill switch — TMS's payment-confirmed webhook isn't firing reliably, so
+// every bill sent there gets stuck at 'sent-to-tms' awaiting a callback that
+// never comes. While this stays false, "Send to TMS" skips the real TMS
+// call/wait entirely and marks the bill 'paid' immediately instead — the
+// real integration code below is untouched and starts being used again the
+// moment this flips back to true (nothing else needs to change).
+const TMS_INTEGRATION_ENABLED = false;
+
 // Fire-and-forget (mirrors emitEvent's un-awaited call sites) — a failed or
 // unconfigured Slack push must never block the real approval-chain write that
 // already happened.
@@ -919,6 +927,40 @@ exports.sendToTms = asyncHandler(async (req, res) => {
     return badRequest(res, `Cannot send a bill with status '${bill.status}' to TMS — it must be fully approved (L2 Director) first.`);
   }
 
+  if (!TMS_INTEGRATION_ENABLED) {
+    bill.status = 'paid';
+    bill.tmsSentAt = new Date();
+    bill.tmsCallbackReceivedAt = new Date();
+    bill.paymentDate = bill.paymentDate || new Date();
+    if (bill.paidAmount == null) bill.paidAmount = bill.amount;
+    bill.tmsLastError = '';
+    pushHistory(bill, 'tms-handoff', 'sent', req.user._id, req.body.remarks);
+    pushHistory(bill, 'tms-callback', 'paid', req.user._id, 'TMS integration on hold — marked paid immediately');
+    await bill.save();
+    await advanceBillRequestInstance(bill, req.user._id, 'TMS integration on hold — marked paid immediately');
+
+    const br = await BillRequest.findOne({ billId: bill._id });
+    if (br && !br.milestoneAchieved) {
+      br.milestoneAchieved = true;
+      br.milestoneDate = bill.paymentDate;
+      await br.save();
+    }
+
+    await logAudit({
+      action: 'UPDATE', module: MODULE, user: req.user,
+      description: `Bill ${bill.billNo} marked paid directly (TMS integration on hold)`,
+      entityType: 'RunningBill', entityId: bill._id, entityLabel: bill.billNo,
+    });
+
+    emitEvent('PAYMENT_RELEASED', {
+      projectId: bill.projectId, workOrderId: bill.workOrderId, workOrderNo: bill.workOrderNo,
+      runningBillId: bill._id, vendorCode: bill.vendorCode, vendorName: bill.vendorName,
+      metadata: { billNo: bill.billNo, amount: bill.amount },
+    });
+
+    return success(res, { bill }, 'TMS integration is on hold — bill marked as paid directly');
+  }
+
   const { sendBill } = require('../utils/tmsClient');
   bill.tmsSendAttempts = (bill.tmsSendAttempts || 0) + 1;
   bill.tmsLastAttemptAt = new Date();
@@ -991,6 +1033,15 @@ exports.tmsCallback = asyncHandler(async (req, res) => {
   bill.tmsCallbackReceivedAt = new Date();
   pushHistory(bill, 'tms-callback', 'paid', null, 'Confirmed paid by TMS');
   await bill.save();
+
+  // Completes the final "Payment Released" stage on the linked BillRequest's
+  // SLA instance — every OTHER stage transition above (verify/L1/L2/
+  // sendToTms) already calls this; missing it here left every fully-paid
+  // bill's instance stuck "in-progress" on this last stage forever, with its
+  // overdue time growing indefinitely even though the bill was actually paid
+  // (this is a webhook callback, not an authenticated user action, so there's
+  // no req.user — completedBy is recorded as null, same as pushHistory above).
+  await advanceBillRequestInstance(bill, null, 'TMS confirmed payment');
 
   const br = await BillRequest.findOne({ billId: bill._id });
   if (br && !br.milestoneAchieved) {

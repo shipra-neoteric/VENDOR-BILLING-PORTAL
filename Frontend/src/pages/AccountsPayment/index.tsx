@@ -1267,11 +1267,15 @@ export default function AccountsPayment() {
 
   return (
     <div>
+      {/* Procurement Tracker was removed from the main sidebar — this button
+          is now the only way in, opened as a genuinely separate browser tab
+          (not an in-app SPA navigation) since it's no longer a page this
+          app's own nav treats as a primary destination. */}
       <PageHeader
         icon={Wallet}
         title="Accounts Payment"
         subtitle="Verification → L1 AGM → L2 Director — then handed off to TMS for payment"
-        actions={<NxBtn color="secondary" label="Procurement Tracker" onClick={() => navigate("/procurement-tracker")} />}
+        actions={<NxBtn color="secondary" label="Procurement Tracker" onClick={() => window.open("/procurement-tracker", "_blank", "noopener,noreferrer")} />}
       />
 
       {/* Stat cards — each doubles as a shortcut into the matching tab filter below */}

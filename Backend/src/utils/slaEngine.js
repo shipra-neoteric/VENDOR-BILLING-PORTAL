@@ -79,11 +79,23 @@ function businessMinutesBetween(from, to, workingDays) {
   return total;
 }
 
+// Stages temporarily excluded from every breach/overdue calculation below —
+// NOT removed from the workflow itself (the stage still exists, still runs,
+// still shows in the timeline) — just silenced everywhere SLA breach/overdue
+// numbers are computed, since "Payment Released" only completes once TMS
+// sends its payment-confirmed callback, and that integration isn't reliably
+// firing yet — until it is, every bill sent to TMS piles up huge, real but
+// misleading overdue numbers against whoever's assigned that stage. Remove
+// an entry here (not the stage/template) once TMS callbacks are trustworthy.
+const SLA_EXCLUDED_STAGES = new Set(['Payment Released']);
+
 // How overdue a stage actually is, in minutes — business-hours-aware when
 // the stage itself is (matching the clock its own dueAt was computed with),
-// plain calendar-time otherwise. Returns 0 if not overdue.
+// plain calendar-time otherwise. Returns 0 if not overdue, or if this stage
+// is temporarily excluded from SLA counting (see SLA_EXCLUDED_STAGES).
 function overdueMinutesFor(stage, now) {
   if (!stage || !stage.dueAt) return 0;
+  if (SLA_EXCLUDED_STAGES.has(stage.name)) return 0;
   const due = new Date(stage.dueAt);
   const at = now || new Date();
   if (at <= due) return 0;
@@ -206,6 +218,7 @@ async function completeStageById(instanceId, stageId, completedByUserId, remarks
 
 // Computed, read-time breach check — never persisted while a stage is open.
 function isStageBreached(stage) {
+  if (SLA_EXCLUDED_STAGES.has(stage.name)) return false;
   return stage.status === 'in-progress' && stage.dueAt && new Date(stage.dueAt) < new Date();
 }
 

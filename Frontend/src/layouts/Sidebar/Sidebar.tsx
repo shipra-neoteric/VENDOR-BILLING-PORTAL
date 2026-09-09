@@ -7,7 +7,7 @@ import {
   BookOpen, UserPlus, Monitor,
   Share2, Settings, Clock, History,
   FileSearch, CalendarClock, CreditCard, CheckSquare,
-  Workflow, GitCompare, Ruler, Network, PenLine, Database,
+  GitCompare, Ruler, Network, PenLine, Database,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import type { PermEntry } from "../../context/AuthContext";
@@ -17,6 +17,10 @@ interface NavItem {
   path: string;
   icon: ReactNode;
   moduleId: string;
+  // Renders a small sub-heading directly above this item — for grouping a
+  // few related items together inside one group without needing a whole
+  // separate top-level NavGroup for just two entries.
+  subHeader?: string;
 }
 
 interface NavGroup {
@@ -40,13 +44,13 @@ const ADMIN_GROUPS: NavGroup[] = [
     // ?type=, same shared list page "Consultancy Orders" below also lands on.
     label: "Execution",
     items: [
-      { name: "Contractors",   path: "/contractors",   icon: <Users className="w-4 h-4" />,         moduleId: "contractors" },
-      { name: "Vendor Groups", path: "/vendor-groups", icon: <Network className="w-4 h-4" />,      moduleId: "vendor-groups" },
-      { name: "Work Orders",   path: "/work-items?type=execution", icon: <FileText className="w-4 h-4" />, moduleId: "work-orders" },
+      { name: "Work Orders",   path: "/work-items", icon: <FileText className="w-4 h-4" />, moduleId: "work-orders" },
       { name: "Quotation Comparison", path: "/quotation-comparison", icon: <GitCompare className="w-4 h-4" />, moduleId: "quotation-comparison" },
       { name: "Work Progress", path: "/work-progress", icon: <LineChart className="w-4 h-4" />, moduleId: "work-progress" },
       { name: "Daily Progress Report", path: "/daily-progress-report", icon: <CalendarClock className="w-4 h-4" />, moduleId: "daily-progress-report" },
       { name: "Drawing Requests", path: "/drawing-requests", icon: <PenLine className="w-4 h-4" />, moduleId: "drawing-requests" },
+      { name: "Contractors",   path: "/contractors",   icon: <Users className="w-4 h-4" />,         moduleId: "contractors", subHeader: "Contractors" },
+      { name: "Vendor Groups", path: "/vendor-groups", icon: <Network className="w-4 h-4" />,      moduleId: "vendor-groups" },
     ],
   },
   {
@@ -66,7 +70,6 @@ const ADMIN_GROUPS: NavGroup[] = [
       { name: "Bill Approval",      path: "/bill-requests",    icon: <CheckSquare className="w-4 h-4" />,  moduleId: "bill-requests" },
       { name: "Billing",            path: "/billing",          icon: <CreditCard className="w-4 h-4" />,   moduleId: "billing" },
       { name: "Accounts Payment",   path: "/accounts-payment", icon: <Wallet className="w-4 h-4" />,       moduleId: "accounts-payment" },
-      { name: "Procurement Tracker", path: "/procurement-tracker", icon: <Workflow className="w-4 h-4" />, moduleId: "procurement-tracker" },
       { name: "Ledger",             path: "/ledger",           icon: <BookOpen className="w-4 h-4" />,  moduleId: "ledger" },
       { name: "Advance Payments",   path: "/advance-payments", icon: <Landmark className="w-4 h-4" />,         moduleId: "advance-payments" },
     ],
@@ -175,7 +178,12 @@ export default function Sidebar({ open = false, onClose }: SidebarProps) {
   const currentPath = location.pathname + location.search;
   function isItemActive(itemPath: string): boolean {
     const [path, query] = itemPath.split("?");
-    if (!query) return location.pathname === path;
+    // A bare (no-query) item must not light up while on the SAME pathname
+    // but a DIFFERENT query string — "Work Orders" (/work-items) and
+    // "Consultancy Orders" (/work-items?type=professional-services) share a
+    // pathname, so without the `!location.search` check here, Work Orders
+    // would incorrectly show active while actually viewing Consultancy Orders.
+    if (!query) return location.pathname === path && !location.search;
     return currentPath === `${path}?${query}`;
   }
 
@@ -291,8 +299,25 @@ export default function Sidebar({ open = false, onClose }: SidebarProps) {
             {group.items.map((item) => {
               const isActive = isItemActive(item.path);
               return (
+              <div key={item.path}>
+                {item.subHeader && !collapsed && (
+                  <div
+                    style={{
+                      fontSize: 10.5,
+                      fontWeight: 700,
+                      color: "var(--nx-sidebar-group-color)",
+                      textTransform: "uppercase",
+                      letterSpacing: "0.08em",
+                      padding: "10px 20px 3px",
+                    }}
+                  >
+                    {item.subHeader}
+                  </div>
+                )}
+                {item.subHeader && collapsed && (
+                  <div style={{ height: 1, background: "var(--nx-sidebar-group-line)", margin: "10px 16px 6px" }} />
+                )}
               <NavLink
-                key={item.path}
                 to={item.path}
                 onClick={isMobile ? onClose : undefined}
                 title={collapsed ? item.name : undefined}
@@ -319,6 +344,7 @@ export default function Sidebar({ open = false, onClose }: SidebarProps) {
                   </div>
                 )}
               </NavLink>
+              </div>
               );
             })}
           </div>

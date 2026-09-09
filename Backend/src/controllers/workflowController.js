@@ -278,7 +278,7 @@ exports.getMISReport = asyncHandler(async (req, res) => {
     } else if (inst.status === 'in-progress') {
       ongoing++;
       const stage = inst.stages[inst.currentStageIndex];
-      const stageBreached = stage && stage.dueAt && new Date(stage.dueAt) < now;
+      const stageBreached = stage ? isStageBreached(stage) : false;
       pendingAmount += inst.amount || 0;
 
       if (stageBreached) {
@@ -344,7 +344,7 @@ exports.getMISReport = asyncHandler(async (req, res) => {
       if (stage.status === 'pending') continue; // not started yet
       if (since && stage.startedAt && new Date(stage.startedAt) < since) continue;
 
-      const stageBreachedNow = stage.status === 'in-progress' && stage.dueAt && new Date(stage.dueAt) < now;
+      const stageBreachedNow = isStageBreached(stage);
 
       // Pipeline funnel
       if (pg.perStage[i]) {

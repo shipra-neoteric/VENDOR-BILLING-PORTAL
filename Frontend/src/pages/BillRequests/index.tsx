@@ -901,14 +901,21 @@ export default function BillApproval() {
           value={reqTab}
           onChange={setReqTab}
           options={[
-            { value: "pending", label: <span className="inline-flex items-center gap-1.5">Pending L1 {pendingAgmReqs.length + pendingManualAgm.length > 0 && <NxBadge color="amber">{pendingAgmReqs.length + pendingManualAgm.length}</NxBadge>}</span> },
-            { value: "pending-gm", label: <span className="inline-flex items-center gap-1.5">Pending L2 {pendingGmReqs.length + pendingManualGm.length > 0 && <NxBadge color="blue">{pendingGmReqs.length + pendingManualGm.length}</NxBadge>}</span> },
+            // Each stage's tab only shows to someone who actually holds that
+            // stage's own permission grant — consistent with this app's
+            // permission-matrix-only authorization (no role-based bypass,
+            // Owner included): a user granted only e.g. gm-approve has no
+            // business browsing an L1/L3/L4 queue they can't act on.
+            ...(canAgmApprove ? [{ value: "pending", label: <span className="inline-flex items-center gap-1.5">Pending L1 {pendingAgmReqs.length + pendingManualAgm.length > 0 && <NxBadge color="amber">{pendingAgmReqs.length + pendingManualAgm.length}</NxBadge>}</span> }] : []),
+            ...(canGmApprove ? [{ value: "pending-gm", label: <span className="inline-flex items-center gap-1.5">Pending L2 {pendingGmReqs.length + pendingManualGm.length > 0 && <NxBadge color="blue">{pendingGmReqs.length + pendingManualGm.length}</NxBadge>}</span> }] : []),
             // L3 is now a real, regularly-reached stage (a 3-level
-            // department's chain stops there) — always shown, same as L1/L2.
-            // L4 stays conditional since no department currently configures
-            // 4 levels — that tab would otherwise just be permanent dead weight.
-            { value: "pending-l3", label: <span className="inline-flex items-center gap-1.5">Pending L3 {pendingL3Reqs.length + pendingManualL3.length > 0 && <NxBadge color="amber">{pendingL3Reqs.length + pendingManualL3.length}</NxBadge>}</span> },
-            ...(pendingL4Reqs.length + pendingManualL4.length > 0 ? [{ value: "pending-l4", label: <span className="inline-flex items-center gap-1.5">Pending L4 <NxBadge color="teal">{pendingL4Reqs.length + pendingManualL4.length}</NxBadge></span> }] : []),
+            // department's chain stops there) — always shown to whoever can
+            // act on it, same as L1/L2. L4 additionally stays conditional on
+            // there currently being something pending there since no
+            // department yet configures 4 levels — that tab would otherwise
+            // just be permanent dead weight even for someone who holds l4-approve.
+            ...(canL3Approve ? [{ value: "pending-l3", label: <span className="inline-flex items-center gap-1.5">Pending L3 {pendingL3Reqs.length + pendingManualL3.length > 0 && <NxBadge color="amber">{pendingL3Reqs.length + pendingManualL3.length}</NxBadge>}</span> }] : []),
+            ...(canL4Approve && pendingL4Reqs.length + pendingManualL4.length > 0 ? [{ value: "pending-l4", label: <span className="inline-flex items-center gap-1.5">Pending L4 <NxBadge color="teal">{pendingL4Reqs.length + pendingManualL4.length}</NxBadge></span> }] : []),
             { value: "approved", label: "Approved" },
             { value: "rejected", label: "Rejected" },
             { value: "all", label: "All" },
