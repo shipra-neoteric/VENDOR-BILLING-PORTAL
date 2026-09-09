@@ -584,7 +584,7 @@ async function manualGmApproveHandler(req, res) {
   if (bill.manualApprovalStatus !== 'pending-gm') {
     return badRequest(res, `This bill's AGM/GM sign-off is already ${bill.manualApprovalStatus}`);
   }
-  if (bill.manualAgmApprovedBy && bill.manualAgmApprovedBy.toString() === req.user._id.toString()) {
+  if (bill.manualAgmApprovedBy && bill.manualAgmApprovedBy.toString() === req.user._id.toString() && req.user.role !== 'owner') {
     return badRequest(res, 'The L1 approver cannot also give L2 sign-off — segregation of duties requires a different approver.');
   }
 
@@ -641,7 +641,7 @@ async function manualL3ApproveHandler(req, res) {
   if (bill.manualApprovalStatus !== 'pending-l3') {
     return badRequest(res, `This bill's AGM/GM sign-off is already ${bill.manualApprovalStatus}`);
   }
-  if (bill.manualGmApprovedBy && bill.manualGmApprovedBy.toString() === req.user._id.toString()) {
+  if (bill.manualGmApprovedBy && bill.manualGmApprovedBy.toString() === req.user._id.toString() && req.user.role !== 'owner') {
     return badRequest(res, 'The L2 approver cannot also give L3 sign-off — segregation of duties requires a different approver.');
   }
 
@@ -696,7 +696,7 @@ exports.manualL4Approve = asyncHandler(async (req, res) => {
   if (bill.manualApprovalStatus !== 'pending-l4') {
     return badRequest(res, `This bill's AGM/GM sign-off is already ${bill.manualApprovalStatus}`);
   }
-  if (bill.manualL3ApprovedBy && bill.manualL3ApprovedBy.toString() === req.user._id.toString()) {
+  if (bill.manualL3ApprovedBy && bill.manualL3ApprovedBy.toString() === req.user._id.toString() && req.user.role !== 'owner') {
     return badRequest(res, 'The L3 approver cannot also give L4 sign-off — segregation of duties requires a different approver.');
   }
 
@@ -805,7 +805,7 @@ exports.l1AgmApprove = asyncHandler(async (req, res) => {
   if (bill.status !== 'verify-done') {
     return badRequest(res, `Cannot give L1 AGM approval for a bill with status '${bill.status}'`);
   }
-  if (bill.verificationBy && bill.verificationBy.toString() === req.user._id.toString()) {
+  if (bill.verificationBy && bill.verificationBy.toString() === req.user._id.toString() && req.user.role !== 'owner') {
     return badRequest(res, 'Whoever verified this bill cannot also give L1 AGM approval — segregation of duties requires a different approver.');
   }
   bill.status       = 'l1-approved';
@@ -839,7 +839,7 @@ exports.l2DirectorApprove = asyncHandler(async (req, res) => {
   if (bill.status !== 'l1-approved') {
     return badRequest(res, `Cannot give L2 Director approval for a bill with status '${bill.status}'`);
   }
-  if (bill.l1ApprovedBy && bill.l1ApprovedBy.toString() === req.user._id.toString()) {
+  if (bill.l1ApprovedBy && bill.l1ApprovedBy.toString() === req.user._id.toString() && req.user.role !== 'owner') {
     return badRequest(res, 'The L1 AGM approver cannot also give L2 Director approval — segregation of duties requires a different approver.');
   }
   bill.status       = 'approved';

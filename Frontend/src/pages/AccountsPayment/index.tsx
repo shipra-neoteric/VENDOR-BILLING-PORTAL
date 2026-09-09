@@ -203,9 +203,11 @@ function hasPerm(user: AuthUser | null, action: string): boolean {
 }
 
 // Segregation-of-duties guard: is `user` the same person who acted as `actor` at the
-// previous stage?
+// previous stage? Owner is exempt — matches the backend's own owner bypass on
+// these same checks (billController.js's l1AgmApprove/l2DirectorApprove).
 function sameActor(user: AuthUser | null, actor?: BillUser | null): boolean {
   if (!user || !actor?._id) return false;
+  if (user.role === "owner") return false;
   return actor._id === user.id;
 }
 

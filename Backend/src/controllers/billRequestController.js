@@ -24,6 +24,10 @@ const { getApprovalConfig, approverAllowed } = require('../utils/approvalRules')
 // person is allowed to carry a bill request through both; that explicit
 // grant must win over the default restriction, not get silently blocked by it.
 function hasBothBRPermissions(user, action1, action2) {
+  // Owner is exempt from every segregation-of-duty self-check that calls
+  // this — same as the department-approver-config bypass in approverAllowed
+  // (approvalRules.js) — Owner routinely does every stage alone.
+  if (user.role === 'owner') return true;
   const actions = (user.permissions || []).find((p) => p.module === 'bill-requests')?.actions || [];
   return actions.includes(action1) && actions.includes(action2);
 }
@@ -108,6 +112,9 @@ exports.listBillRequests = asyncHandler(async (req, res) => {
         ? { department: 'custom', customDepartment: req.user.customDepartment || '' }
         : { department: req.user.department },
     ];
+    if (req.user.additionalDepartments?.length) {
+      filter.$or.push({ department: { $in: req.user.additionalDepartments } });
+    }
   }
 
   const requests = await BillRequest.find(filter)
