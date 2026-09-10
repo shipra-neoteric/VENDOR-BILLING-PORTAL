@@ -141,6 +141,13 @@ const runningBillSchema = new mongoose.Schema(
       billId:           { type: mongoose.Schema.Types.ObjectId, ref: 'RunningBill' },
       billNo:           { type: String },
       relationshipType: { type: String },
+      // That linked bill's own amount AT THE TIME this bill was created —
+      // only ever populated for SUPERSEDES (the frontend sends it so each
+      // superseded bill's own deduction can be shown on its own line,
+      // instead of only the combined supersedeDeduction total). Snapshotted
+      // rather than looked up live, so a print/view stays accurate even if
+      // the linked bill's own amount is later corrected.
+      amount:           { type: Number },
       _id: false,
     }],
     billingCycle:  { type: Number, default: 1 },

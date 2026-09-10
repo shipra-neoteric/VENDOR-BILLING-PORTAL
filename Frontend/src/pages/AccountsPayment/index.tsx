@@ -139,7 +139,7 @@ interface Bill {
   // Bill Relationship Engine
   billType?: string;
   relationshipType?: string;
-  linkedBills?: { billId: string; billNo: string; relationshipType: string }[];
+  linkedBills?: { billId: string; billNo: string; relationshipType: string; amount?: number }[];
   billingCycle?: number;
   isActive?: boolean;
   supersededBy?: { _id: string; billNo: string; billType?: string } | null;
@@ -1822,6 +1822,13 @@ export default function AccountsPayment() {
               if (retAmt > 0) rows.push({ label: `Hold / Retention${retPct > 0 ? ` @ ${retPct}%` : ""}`, value: `− ${fmt(retAmt)}`, colorClass: "text-red-600" });
               if (advRec > 0) rows.push({ label: "Less: Advance Recovery", value: `− ${fmt(advRec)}`, colorClass: "text-amber-600" });
               if (gstAmt > 0) rows.push({ label: `GST @ ${gstPct}%`, value: `+ ${fmt(gstAmt)}`, colorClass: "text-emerald-600" });
+              if ((bill.supersedeDeduction ?? 0) > 0) {
+                rows.push({ label: "Less: Superseded Bills", value: "", colorClass: "text-red-600 font-semibold" });
+                for (const l of bill.linkedBills ?? []) {
+                  if (l.relationshipType !== "SUPERSEDES") continue;
+                  rows.push({ label: `  ${l.billNo}`, value: `− ${fmt(l.amount ?? 0)}`, colorClass: "text-red-600" });
+                }
+              }
               if (tdsAmt > 0) rows.push({ label: `Less: TDS Deducted${tdsPctDisplay ? ` (${tdsPctDisplay}%)` : ""}`, value: `− ${fmt(tdsAmt)}`, colorClass: "text-red-600" });
               if (adjAmt !== 0) rows.push({ label: `Adjustment${adjRemark ? ` (${adjRemark})` : ""}`, value: `${adjAmt > 0 ? "+" : "−"} ${fmt(Math.abs(adjAmt))}`, colorClass: adjAmt > 0 ? "text-emerald-600" : "text-red-600" });
               rows.push({ label: "NET PAYABLE", value: fmt(finalNetPayable), colorClass: "text-purple-600", bold: true, borderTop: true });

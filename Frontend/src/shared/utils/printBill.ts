@@ -101,6 +101,9 @@ export interface PrintableBill {
   retentionAmount?: number;
   advanceRecovery?: number;
   supersedeDeduction?: number;
+  // Which bills this one supersedes (relationshipType 'SUPERSEDES') — used
+  // only to list their billNos next to the deduction row below.
+  linkedBills?: { billNo: string; relationshipType?: string; amount?: number }[];
   tdsPercent?: number;
   tdsAmount?: number;
   adjustmentAmount?: number;
@@ -286,6 +289,22 @@ body{font-family:Arial,sans-serif;padding:30px;color:#333;font-size:13px;-webkit
     <div style="display:flex;justify-content:space-between;padding:9px 14px;border-bottom:1px solid #eee;color:#16a34a">
       <span>GST @ ${bill.gstPercent}%</span><span>+ ₹${gstAmount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
     </div>` : "";
+    })()}
+    ${(() => {
+      if ((bill.supersedeDeduction ?? 0) <= 0) return "";
+      const superseded = (bill.linkedBills ?? []).filter(l => l.relationshipType === 'SUPERSEDES');
+      const money = (n: number) => `₹${n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      return `
+    <div style="padding:9px 14px 4px;border-bottom:1px solid #eee">
+      <div style="color:#dc2626;font-weight:bold;font-size:12px;margin-bottom:4px">Less: Superseded Bills</div>
+      ${superseded.map(l => `
+      <div style="display:flex;justify-content:space-between;padding:2px 0;color:#dc2626">
+        <span>${l.billNo}</span><span>− ${money(l.amount ?? 0)}</span>
+      </div>`).join("")}
+      <div style="display:flex;justify-content:space-between;padding:4px 0 2px;border-top:1px solid #fecaca;margin-top:2px;color:#991b1b;font-weight:bold">
+        <span>Total</span><span>− ${money(bill.supersedeDeduction ?? 0)}</span>
+      </div>
+    </div>`;
     })()}
     ${(() => {
       const netPay = billFinancials({ gross: bill.amount || 0, gstPercent: bill.gstPercent ?? 0, retentionAmount: bill.retentionAmount ?? 0, advanceRecovery: bill.advanceRecovery ?? 0, supersedeDeduction: bill.supersedeDeduction ?? 0 }).netAfterHold;

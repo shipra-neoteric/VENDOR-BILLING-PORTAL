@@ -216,28 +216,6 @@ export default function NewBillDrawer({
   const [generatedBy, setGeneratedBy] = useState("");
   const [contractorRefNo, setContractorRefNo] = useState("");
   const [remarksInput, setRemarksInput] = useState("");
-  // Auto-generated supersede line always starts with this exact prefix, so
-  // re-selecting bills can reliably strip out just that one (stale) line —
-  // by prefix, not by exact-string match — instead of stacking duplicates,
-  // regardless of how the rest of remarksInput has changed since. Any other
-  // free text the user typed is left untouched.
-  const SUPERSEDE_REMARKS_PREFIX = "This bill supersedes ";
-  useEffect(() => {
-    if (relType !== "SUPERSEDES" || linkedBillIds.length === 0) return;
-    const names = linkedBillIds
-      .map(id => woExistingBills.find(b => b.id === id))
-      .filter((b): b is ExistingBill => !!b)
-      .map(b => `${b.billNo} (${fmt(b.amount)})`);
-    if (names.length === 0) return;
-    const joined = names.length > 1
-      ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`
-      : names[0];
-    const autoLine = `${SUPERSEDE_REMARKS_PREFIX}${joined} — their amount has been deducted from this bill's payable.`;
-    setRemarksInput(prev => {
-      const rest = prev.split("\n").filter(line => !line.startsWith(SUPERSEDE_REMARKS_PREFIX)).join("\n").trim();
-      return rest ? `${autoLine}\n${rest}` : autoLine;
-    });
-  }, [relType, linkedBillIds, woExistingBills]);
 
   // Hold (retention) decided at creation time — either a % or a flat amount.
   const [holdMode, setHoldMode] = useState<"percent" | "amount">("percent");
@@ -761,7 +739,7 @@ export default function NewBillDrawer({
 
     const linkedBills = linkedBillIds.map(id => {
       const found = woExistingBills.find(b => b.id === id);
-      return { billId: id, billNo: found?.billNo ?? id, relationshipType: relType };
+      return { billId: id, billNo: found?.billNo ?? id, relationshipType: relType, amount: found?.amount };
     });
 
     // Distribute the entered recovery amount across outstanding slips
@@ -1462,6 +1440,25 @@ export default function NewBillDrawer({
               <div className="flex justify-between px-3.5 py-1.5 border-b border-gray-100 dark:border-gray-700/40 text-emerald-600">
                 <span>+ GST @ {gstPercent}%</span><span>{fmt(gstAmt)}</span>
               </div>
+              {supersedeDeductionAmount > 0 && (
+                <div className="border-b border-gray-100 dark:border-gray-700/40">
+                  <div className="px-3.5 pt-1.5 text-[11px] font-semibold text-red-600 dark:text-red-400">Less: Superseded Bills</div>
+                  {linkedBillIds.map(id => {
+                    const b = woExistingBills.find(x => x.id === id);
+                    if (!b) return null;
+                    return (
+                      <div key={id} className="flex justify-between px-3.5 py-1 text-red-600 dark:text-red-400">
+                        <span>{b.billNo}</span>
+                        <span>− {fmt(b.amount)}</span>
+                      </div>
+                    );
+                  })}
+                  <div className="flex justify-between px-3.5 pb-1.5 pt-0.5 text-red-700 dark:text-red-300 font-semibold border-t border-red-100 dark:border-red-500/20 mt-0.5">
+                    <span>Total</span>
+                    <span>− {fmt(supersedeDeductionAmount)}</span>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="flex justify-between px-3.5 py-2.5 bg-primary/5 font-extrabold text-[15px] text-primary">

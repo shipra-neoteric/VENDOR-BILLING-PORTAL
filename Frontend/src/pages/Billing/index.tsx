@@ -60,6 +60,7 @@ interface Bill {
   retentionAmount?: number;
   advanceRecovery?: number;
   supersedeDeduction?: number;
+  linkedBills?: { billNo: string; relationshipType?: string; amount?: number }[];
   tdsPercent?: number;
   tdsAmount?: number;
   remarks?: string;
@@ -508,6 +509,16 @@ export default function Billing() {
                     <div className="flex justify-between text-emerald-600 dark:text-emerald-400">
                       <span>GST @ {viewBill.gstPercent}%</span>
                       <span>+ {fmt(gstAmt)}</span>
+                    </div>
+                  )}
+                  {(viewBill.supersedeDeduction ?? 0) > 0 && (
+                    <div className="text-red-600 dark:text-red-400">
+                      <div className="font-semibold">Less: Superseded Bills</div>
+                      {(viewBill.linkedBills ?? []).filter(l => l.relationshipType === "SUPERSEDES").map(l => (
+                        <div key={l.billNo} className="flex justify-between pl-2">
+                          <span>{l.billNo}</span><span>− {fmt(l.amount ?? 0)}</span>
+                        </div>
+                      ))}
                     </div>
                   )}
                   <div className="flex justify-between border-t border-emerald-300 dark:border-emerald-500/30 pt-1 mt-0.5 font-bold">
