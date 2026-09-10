@@ -925,18 +925,18 @@ export default function DRIDashboard() {
                     ) : detail.scopeItems.length === 0 ? (
                       <div className="py-5 text-center text-gray-400 text-sm">No scope items defined.</div>
                     ) : (
-                      <Table className="min-w-[900px]">
+                      <Table className="min-w-[980px]">
                         <Thead>
                           <Tr>
                             <Th className="w-[4%]">#</Th>
-                            <Th className="w-[26%]">Description</Th>
-                            <Th className="w-[8%]">Unit</Th>
-                            <Th className="w-[9%]">Planned</Th>
-                            <Th className="w-[9%]">Done</Th>
-                            <Th className="w-[9%]">Billed</Th>
-                            <Th className="w-[9%]">Unbilled</Th>
-                            <Th className="w-[16%]">Measurement</Th>
-                            {canEdit && <Th className="w-[10%]">Action</Th>}
+                            <Th className="w-[24%]">Description</Th>
+                            <Th className="w-[7%]">Unit</Th>
+                            <Th className="w-[8%]">Planned</Th>
+                            <Th className="w-[8%]">Done</Th>
+                            <Th className="w-[8%]">Billed</Th>
+                            <Th className="w-[8%]">Unbilled</Th>
+                            <Th className="w-[15%]">Measurement</Th>
+                            {canEdit && <Th className="w-[130px]">Action</Th>}
                           </Tr>
                         </Thead>
                         <Tbody>
