@@ -196,6 +196,11 @@ export default function NewBillDrawer({
   // to their group header reveals the particulars to bill against.
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [importWOPick, setImportWOPick] = useState("");
+  // Which of the picked WO's scope items are checked for import — null means
+  // no checklist is showing (no WO picked yet). Defaults to every item
+  // checked when a WO is first picked, so "Import Selected" with nothing
+  // unchecked behaves exactly like the old import-everything flow did.
+  const [checkedScopeItemIds, setCheckedScopeItemIds] = useState<Set<string> | null>(null);
   const [confirmRemoveKey, setConfirmRemoveKey] = useState<number | null>(null);
 
   // Bill Information fields (previously an antd Form)
@@ -412,14 +417,33 @@ export default function NewBillDrawer({
     setLineItems((prev) => prev.filter((li) => li.key !== key));
   }
 
-  function importFromWO(woId: string) {
+  // Shows the checklist for the picked WO's scope items instead of importing
+  // immediately — every item starts checked, matching the old "import
+  // everything" behavior when nothing is unchecked.
+  function pickWOToImport(woId: string) {
     const wo = woList.find((w) => w.id === woId);
     if (!wo) return;
+    setImportWOPick(woId);
+    setCheckedScopeItemIds(new Set(wo.scopeItems.map((si) => si.id)));
+  }
+
+  function toggleScopeItemChecked(id: string) {
+    setCheckedScopeItemIds((prev) => {
+      const next = new Set(prev ?? []);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  function importFromWO(woId: string, onlyIds?: Set<string>) {
+    const wo = woList.find((w) => w.id === woId);
+    if (!wo) return;
+    const scopeItems = onlyIds ? wo.scopeItems.filter((si) => onlyIds.has(si.id)) : wo.scopeItems;
     // A scope item with particulars is never billed as a whole — only its
     // particulars carry a real plannedQty/rate — so import ITS particulars
     // as individual rows, grouped under a collapsible header, instead of one
     // row for the parent.
-    const imported: LineItem[] = wo.scopeItems.flatMap((si) => {
+    const imported: LineItem[] = scopeItems.flatMap((si) => {
       if (si.subItems && si.subItems.length > 0) {
         return si.subItems.map((sub) => ({
           key: nextKey(),
@@ -451,6 +475,8 @@ export default function NewBillDrawer({
     });
     setLineItems((prev) => [...prev.filter((li) => li.description.trim()), ...imported]);
     setImportedFromWOId(woId);
+    setImportWOPick("");
+    setCheckedScopeItemIds(null);
     toast.success(`${imported.length} item${imported.length === 1 ? "" : "s"} imported — enter % complete or quantity`);
   }
 
@@ -1088,9 +1114,56 @@ export default function NewBillDrawer({
               <SField
                 placeholder="Select a work order to import its scope items…"
                 value={importWOPick}
-                onChange={(v) => { if (v) { importFromWO(v); setImportWOPick(""); } }}
+                onChange={(v) => { if (v) pickWOToImport(v); }}
                 options={woList.map((wo) => ({ value: wo.id, label: wo.workOrderNo + (wo.projectName ? " — " + wo.projectName : "") }))}
               />
+
+              {/* Checklist — pick which of this WO's scope items to actually
+                  import; every item starts checked so leaving them all as-is
+                  still imports everything, same as before this checklist existed. */}
+              {importWOPick && checkedScopeItemIds && (() => {
+                const wo = woList.find((w) => w.id === importWOPick);
+                if (!wo) return null;
+                const allChecked = wo.scopeItems.every((si) => checkedScopeItemIds.has(si.id));
+                return (
+                  <div className="mt-2.5 rounded-md border border-amber-200 dark:border-amber-500/30 bg-white dark:bg-gray-800 p-2.5">
+                    <div className="flex items-center justify-between mb-1.5 pb-1.5 border-b border-gray-100 dark:border-gray-700/40">
+                      <label className="flex items-center gap-1.5 text-xs font-semibold text-gray-600 dark:text-gray-300 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={allChecked}
+                          onChange={() => setCheckedScopeItemIds(allChecked ? new Set() : new Set(wo.scopeItems.map((si) => si.id)))}
+                        />
+                        Select all ({checkedScopeItemIds.size}/{wo.scopeItems.length})
+                      </label>
+                      <button type="button" onClick={() => { setImportWOPick(""); setCheckedScopeItemIds(null); }} className="text-xs text-gray-400 hover:text-gray-600">
+                        Cancel
+                      </button>
+                    </div>
+                    <div className="max-h-48 overflow-y-auto flex flex-col gap-1">
+                      {wo.scopeItems.map((si) => (
+                        <label key={si.id} className="flex items-center gap-1.5 text-[13px] text-[#1A1A2E] dark:text-[#F1F5F9] cursor-pointer py-0.5">
+                          <input
+                            type="checkbox"
+                            checked={checkedScopeItemIds.has(si.id)}
+                            onChange={() => toggleScopeItemChecked(si.id)}
+                          />
+                          {si.description}
+                          {si.subItems && si.subItems.length > 0 && (
+                            <span className="text-[11px] text-gray-400">({si.subItems.length} particulars)</span>
+                          )}
+                        </label>
+                      ))}
+                    </div>
+                    <Btn
+                      small color="primary" className="w-full mt-2"
+                      label={`Import Selected (${checkedScopeItemIds.size})`}
+                      disabled={checkedScopeItemIds.size === 0}
+                      onClick={() => importFromWO(importWOPick, checkedScopeItemIds)}
+                    />
+                  </div>
+                );
+              })()}
             </div>
           )}
         </div>
