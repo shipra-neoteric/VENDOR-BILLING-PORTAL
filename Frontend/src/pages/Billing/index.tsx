@@ -365,12 +365,12 @@ export default function Billing() {
                     <Td className="font-bold text-primary whitespace-nowrap truncate" title={r.billNo}>
                       {r.billNo}
                       {supersededByMap[r.billNo]?.length ? (
-                        <span
-                          className="ml-1.5 align-middle inline-block text-[10px] font-semibold text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-500/20 px-1.5 py-0.5 rounded-full whitespace-nowrap"
+                        <div
+                          className="mt-0.5 inline-block text-[10px] font-semibold text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-500/20 px-1.5 py-0.5 rounded-full whitespace-nowrap"
                           title={`Superseded by ${supersededByMap[r.billNo].join(", ")}`}
                         >
                           Superseded
-                        </span>
+                        </div>
                       ) : null}
                     </Td>
                     <Td className="whitespace-nowrap">
