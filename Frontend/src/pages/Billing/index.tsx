@@ -198,6 +198,22 @@ export default function Billing() {
       .catch(() => { });
   }, []);
 
+  // A SUPERSEDES bill's linked bills stay active forever (only their amount
+  // is deducted — see billMath.ts) so there's nothing on the old bill itself
+  // marking it "used up". Build the reverse lookup here instead: for every
+  // bill, which OTHER bill(s) list it in their own linkedBills as SUPERSEDES —
+  // keyed by billNo since that's all linkedBills carries (no billId on it).
+  const supersededByMap = useMemo(() => {
+    const map: Record<string, string[]> = {};
+    for (const b of bills) {
+      for (const l of b.linkedBills ?? []) {
+        if (l.relationshipType !== "SUPERSEDES") continue;
+        (map[l.billNo] ??= []).push(b.billNo);
+      }
+    }
+    return map;
+  }, [bills]);
+
   const filteredBills = useMemo(() => {
     return bills.filter((b) => {
       const q = search.toLowerCase();
@@ -346,7 +362,17 @@ export default function Billing() {
               <Tbody>
                 {pagedBills.map((r) => (
                   <Tr key={r.id} className="cursor-pointer" onClick={() => setViewBillId(r.id)}>
-                    <Td className="font-bold text-primary whitespace-nowrap truncate" title={r.billNo}>{r.billNo}</Td>
+                    <Td className="font-bold text-primary whitespace-nowrap truncate" title={r.billNo}>
+                      {r.billNo}
+                      {supersededByMap[r.billNo]?.length ? (
+                        <span
+                          className="ml-1.5 align-middle inline-block text-[10px] font-semibold text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-500/20 px-1.5 py-0.5 rounded-full whitespace-nowrap"
+                          title={`Superseded by ${supersededByMap[r.billNo].join(", ")}`}
+                        >
+                          Superseded
+                        </span>
+                      ) : null}
+                    </Td>
                     <Td className="whitespace-nowrap">
                       {r.billType ? (
                         <NxBadge color="blue">{BILL_TYPE_CFG[r.billType]?.label || r.billType}</NxBadge>
@@ -487,6 +513,14 @@ export default function Billing() {
               <div className="bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-300 dark:border-emerald-500/30 rounded-lg p-3 text-sm mb-4">
                 <div className="font-bold mb-2 text-emerald-800 dark:text-emerald-300">
                   Running Bill: {viewBill.billNo}
+                  {supersededByMap[viewBill.billNo]?.length ? (
+                    <span
+                      className="ml-2 align-middle inline-block text-[10px] font-semibold text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-500/20 px-1.5 py-0.5 rounded-full whitespace-nowrap"
+                      title={`Superseded by ${supersededByMap[viewBill.billNo].join(", ")}`}
+                    >
+                      Superseded by {supersededByMap[viewBill.billNo].join(", ")}
+                    </span>
+                  ) : null}
                 </div>
                 <div className="font-mono text-xs flex flex-col gap-0.5">
                   <div className="flex justify-between">

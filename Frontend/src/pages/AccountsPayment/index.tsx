@@ -680,6 +680,21 @@ export default function AccountsPayment() {
 
   // ── Derived ──────────────────────────────────────────────────
 
+  // A SUPERSEDES bill's linked bills stay active forever (only their amount
+  // is deducted — see billMath.ts) so there's nothing on the old bill itself
+  // marking it "used up". Build the reverse lookup here instead: for every
+  // bill, which OTHER bill(s) list it in their own linkedBills as SUPERSEDES.
+  const supersededByMap = useMemo(() => {
+    const map: Record<string, string[]> = {};
+    for (const b of bills) {
+      for (const l of b.linkedBills ?? []) {
+        if (l.relationshipType !== "SUPERSEDES") continue;
+        (map[l.billId] ??= []).push(b.billNo);
+      }
+    }
+    return map;
+  }, [bills]);
+
   const draftBills = useMemo(() => bills.filter((b) => b.status === "draft"), [bills]);
   const verifyDoneBills = useMemo(() => bills.filter((b) => b.status === "verify-done"), [bills]);
   const l1ApprovedBills = useMemo(() => bills.filter((b) => b.status === "l1-approved"), [bills]);
@@ -1410,7 +1425,17 @@ export default function AccountsPayment() {
               <Tbody>
                 {pagedBills.map((r) => (
                   <Tr key={r.id} className="cursor-pointer" onClick={() => openDrawer(r)}>
-                    <Td className="font-bold text-blue-600 whitespace-nowrap truncate">{r.billNo}</Td>
+                    <Td className="font-bold text-blue-600 whitespace-nowrap truncate">
+                      {r.billNo}
+                      {supersededByMap[r.id]?.length ? (
+                        <span
+                          className="ml-1.5 align-middle inline-block text-[10px] font-semibold text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-500/20 px-1.5 py-0.5 rounded-full whitespace-nowrap"
+                          title={`Superseded by ${supersededByMap[r.id].join(", ")}`}
+                        >
+                          Superseded
+                        </span>
+                      ) : null}
+                    </Td>
                     <Td className="whitespace-nowrap truncate">
                       {r.workOrderNo && r.workOrderId ? (
                         // Opens the same full bill drawer as clicking anywhere
@@ -1661,7 +1686,7 @@ export default function AccountsPayment() {
             </div>
 
             {/* ── 4. Billing Chain ── */}
-            {(drawerBill.billType || drawerBill.billingCycle || drawerBill.linkedBills?.length || drawerBill.supersededBy) && (
+            {(drawerBill.billType || drawerBill.billingCycle || drawerBill.linkedBills?.length || drawerBill.supersededBy || supersededByMap[drawerBill.id]?.length) && (
               <div className="rounded-xl border border-gray-200 dark:border-gray-700/40 p-3.5 mt-4 bg-gray-50/60 dark:bg-gray-800/20">
                 <div className="text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2.5">Billing Chain</div>
                 <div className="flex flex-col gap-2">
@@ -1686,6 +1711,11 @@ export default function AccountsPayment() {
                       ↩ Superseded By <span>{drawerBill.supersededBy.billNo}</span>
                     </div>
                   )}
+                  {supersededByMap[drawerBill.id]?.length ? (
+                    <div className="text-purple-600 text-[12.5px] font-semibold">
+                      ↩ Superseded by <span>{supersededByMap[drawerBill.id].join(", ")}</span> — this bill stays active/unchanged, only its amount was deducted there
+                    </div>
+                  ) : null}
                   {drawerBill.linkedBills && drawerBill.linkedBills.length > 0 && (
                     <div className="flex items-start gap-1.5 text-[12.5px]">
                       <span className="text-gray-400 shrink-0">Linked Bills:</span>
