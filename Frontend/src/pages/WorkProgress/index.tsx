@@ -82,6 +82,51 @@ const fmtN  = (n: number) => (n ?? 0).toLocaleString("en-IN");
 const fmt   = (n: number) => "₹" + (n ?? 0).toLocaleString("en-IN", { maximumFractionDigits: 0 });
 const pctOf = (c: number, p: number) => p > 0 ? Math.min(100, Math.round(((c ?? 0) / p) * 100)) : 0;
 
+// EntryRow.scopeId packs "<scopeItemId>|<subItemId-or-empty>||<workOrderId>" —
+// a particular's (subItem's) progress entries live under a DIFFERENT REST
+// path than the parent scope item's own (see Backend/src/routes/workOrders.js:
+// .../scope-items/:itemId/progress/:id vs .../scope-items/:itemId/sub-items/
+// :subItemId/progress/:id), so edit/delete/invalidate need to know which one
+// to hit — this parses that back apart and gives the right URL prefix.
+function parseEntryScopeId(scopeId: string): { scopeItemId: string; subItemId?: string; workOrderId: string } {
+  const [itemPart, workOrderId] = scopeId.split("||");
+  const [scopeItemId, subItemId] = itemPart.split("|");
+  return { scopeItemId, subItemId: subItemId || undefined, workOrderId };
+}
+function entryProgressUrlBase(scopeId: string, fallbackWOId?: string): string {
+  const { scopeItemId, subItemId, workOrderId } = parseEntryScopeId(scopeId);
+  const woId = workOrderId || fallbackWOId || "";
+  return subItemId
+    ? `/work-orders/${woId}/scope-items/${scopeItemId}/sub-items/${subItemId}/progress`
+    : `/work-orders/${woId}/scope-items/${scopeItemId}/progress`;
+}
+
+// Flattens a WO's scope items into individual progress-entry rows for the
+// "Recent Entries" list/modal. A scope item with particulars never logs
+// progress on itself directly (its own completedQty is only ever a rollup —
+// see Backend/src/utils/progressHelpers.js's recomputeParentFromSubItems) —
+// its particulars' progressEntries are the real entries to show, so this
+// descends into si.subItems when present instead of falling back to si's own
+// (always-empty, for such items) progressEntries.
+function buildEntryRows(detail: WODetail): EntryRow[] {
+  return detail.scopeItems.flatMap((si) => {
+    if (si.subItems && si.subItems.length > 0) {
+      return si.subItems.flatMap((sub) =>
+        (sub.progressEntries ?? []).map((pe) => ({
+          ...pe, unit: sub.unit, description: `${si.description} — ${sub.description}`,
+          scopeId: `${si._id}|${sub._id}||${detail._id}`,
+          scopePlanned: sub.plannedQty, scopeCompleted: sub.completedQty, scopeLastBilled: sub.lastBilledQty || 0,
+        }))
+      );
+    }
+    return (si.progressEntries ?? []).map((pe) => ({
+      ...pe, unit: si.unit, description: si.description,
+      scopeId: `${si._id}||${detail._id}`,
+      scopePlanned: si.plannedQty, scopeCompleted: si.completedQty, scopeLastBilled: si.lastBilledQty || 0,
+    }));
+  }).sort((a, b) => dayjs(b.date).valueOf() - dayjs(a.date).valueOf());
+}
+
 const BR_STATUS_COLOR: Record<string, string> = { pending: "#f59e0b", approved: "#16a34a", rejected: "#ef4444" };
 const BR_STATUS_LABEL: Record<string, string> = { pending: "Pending Review", approved: "Approved", rejected: "Rejected" };
 // NxBadge color + light/dark-aware "Stage N" box classes for the same three
@@ -249,10 +294,17 @@ function WorkProgressAdmin() {
 
   const todayStr   = dayjs().format("YYYY-MM-DD");
   const allEntries = (woDetail?.scopeItems ?? [])
-    .flatMap(si => (si.progressEntries ?? []).map(pe => ({
-      ...pe, unit: si.unit, description: si.description,
-      projectType: (woDetail as any)?.projectId?.projectType || "apartment",
-    })))
+    .flatMap(si => {
+      const projectType = (woDetail as any)?.projectId?.projectType || "apartment";
+      if (si.subItems && si.subItems.length > 0) {
+        return si.subItems.flatMap(sub => (sub.progressEntries ?? []).map(pe => ({
+          ...pe, unit: sub.unit, description: `${si.description} — ${sub.description}`, projectType,
+        })));
+      }
+      return (si.progressEntries ?? []).map(pe => ({
+        ...pe, unit: si.unit, description: si.description, projectType,
+      }));
+    })
     .sort((a, b) => dayjs(b.date).valueOf() - dayjs(a.date).valueOf());
 
   const workOrderOptions = [
@@ -714,11 +766,11 @@ function DRIDashboard() {
     editErrors.clearAll();
     const qty = Number(editFormValues.qtyAdded);
     if (!editFormValues.qtyAdded || !(qty >= 0.01)) { editErrors.setError("qtyAdded", "Required"); return; }
-    const woId = editEntry.scopeId.split("||")[1] || progWOId;
+    const woId = parseEntryScopeId(editEntry.scopeId).workOrderId || progWOId;
     setSaving(true);
     try {
       await apiClient.patch(
-        `/work-orders/${woId}/scope-items/${editEntry.scopeId.split("||")[0]}/progress/${editEntry._id}`,
+        `${entryProgressUrlBase(editEntry.scopeId, progWOId)}/${editEntry._id}`,
         {
           qtyAdded: qty,
           date: editFormValues.date || undefined,
@@ -739,7 +791,7 @@ function DRIDashboard() {
   const handleDeleteEntry = async (entry: EntryRow, woId: string) => {
     setDeleting(entry._id);
     try {
-      await apiClient.delete(`/work-orders/${woId}/scope-items/${entry.scopeId.split("||")[0]}/progress/${entry._id}`);
+      await apiClient.delete(`${entryProgressUrlBase(entry.scopeId, woId)}/${entry._id}`);
       toast.success("Entry deleted");
       await reloadWODetail(woId);
     } catch (e: any) {
@@ -755,7 +807,7 @@ function DRIDashboard() {
     setInvalidating(true);
     try {
       await apiClient.patch(
-        `/work-orders/${invalidateWOId}/scope-items/${invalidateEntry.scopeId.split("||")[0]}/progress/${invalidateEntry._id}/invalidate`,
+        `${entryProgressUrlBase(invalidateEntry.scopeId, invalidateWOId)}/${invalidateEntry._id}/invalidate`,
         { reason: invalidateReason }
       );
       toast.success("Entry invalidated — log correct progress separately");
@@ -1034,13 +1086,7 @@ function DRIDashboard() {
 
                     {/* Recent entries for this WO */}
                     {detail && (() => {
-                      const allEntriesWO: EntryRow[] = detail.scopeItems.flatMap(si =>
-                        (si.progressEntries ?? []).map(pe => ({
-                          ...pe, unit: si.unit, description: si.description,
-                          scopeId: `${si._id}||${detail._id}`,
-                          scopePlanned: si.plannedQty, scopeCompleted: si.completedQty, scopeLastBilled: si.lastBilledQty || 0,
-                        }))
-                      ).sort((a, b) => dayjs(b.date).valueOf() - dayjs(a.date).valueOf());
+                      const allEntriesWO: EntryRow[] = buildEntryRows(detail);
                       const entries = allEntriesWO.slice(0, 5);
 
                       if (!entries.length) return null;
@@ -1314,15 +1360,7 @@ function DRIDashboard() {
       {/* ── View All Entries Modal ───────────────────────────────────────────── */}
       {allEntriesWOId && (() => {
         const detail = woDetails.get(allEntriesWOId);
-        const allEntriesWO: EntryRow[] = detail
-          ? detail.scopeItems.flatMap(si =>
-              (si.progressEntries ?? []).map(pe => ({
-                ...pe, unit: si.unit, description: si.description,
-                scopeId: `${si._id}||${detail._id}`,
-                scopePlanned: si.plannedQty, scopeCompleted: si.completedQty, scopeLastBilled: si.lastBilledQty || 0,
-              }))
-            ).sort((a, b) => dayjs(b.date).valueOf() - dayjs(a.date).valueOf())
-          : [];
+        const allEntriesWO: EntryRow[] = detail ? buildEntryRows(detail) : [];
 
         return (
           <Modal title="All Progress Entries" extraWide onClose={() => setAllEntriesWOId(null)}>

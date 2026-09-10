@@ -78,12 +78,54 @@ interface ScopeItemDetail {
 
 // Entries flattened across an item's (or its particulars') progressEntries,
 // enriched with just enough context to render/edit/invalidate/delete them —
-// scopeId packs both the scope item id and its parent WO id (needed since
-// the edit/delete/invalidate endpoints are nested under both).
+// scopeId packs "<scopeItemId>|<subItemId-or-empty>||<workOrderId>", since a
+// particular's (subItem's) progress entries live under a DIFFERENT REST path
+// than the parent scope item's own (see Backend/src/routes/workOrders.js:
+// .../scope-items/:itemId/progress/:id vs .../scope-items/:itemId/sub-items/
+// :subItemId/progress/:id).
 type EntryRow = ProgressEntry & {
   unit: string; description: string; scopeId: string;
   scopePlanned: number; scopeCompleted: number; scopeLastBilled: number;
 };
+
+function parseEntryScopeId(scopeId: string): { scopeItemId: string; subItemId?: string; workOrderId: string } {
+  const [itemPart, workOrderId] = scopeId.split("||");
+  const [scopeItemId, subItemId] = itemPart.split("|");
+  return { scopeItemId, subItemId: subItemId || undefined, workOrderId };
+}
+function entryProgressUrlBase(scopeId: string, fallbackWOId?: string): string {
+  const { scopeItemId, subItemId, workOrderId } = parseEntryScopeId(scopeId);
+  const woId = workOrderId || fallbackWOId || "";
+  return subItemId
+    ? `/work-orders/${woId}/scope-items/${scopeItemId}/sub-items/${subItemId}/progress`
+    : `/work-orders/${woId}/scope-items/${scopeItemId}/progress`;
+}
+
+// Flattens a WO's scope items into individual progress-entry rows for the
+// "Recent Entries" list/modal. A scope item with particulars never logs
+// progress on itself directly (its own completedQty is only ever a rollup —
+// see Backend/src/utils/progressHelpers.js's recomputeParentFromSubItems) —
+// its particulars' progressEntries are the real entries to show, so this
+// descends into si.subItems when present instead of falling back to si's own
+// (always-empty, for such items) progressEntries.
+function buildEntryRows(detail: { _id: string; scopeItems: ScopeItemDetail[] }): EntryRow[] {
+  return detail.scopeItems.flatMap((si) => {
+    if (si.subItems && si.subItems.length > 0) {
+      return si.subItems.flatMap((sub) =>
+        (sub.progressEntries ?? []).map((pe) => ({
+          ...pe, unit: sub.unit, description: `${si.description} — ${sub.description}`,
+          scopeId: `${si._id}|${sub._id}||${detail._id}`,
+          scopePlanned: sub.plannedQty, scopeCompleted: sub.completedQty, scopeLastBilled: sub.lastBilledQty || 0,
+        }))
+      );
+    }
+    return (si.progressEntries ?? []).map((pe) => ({
+      ...pe, unit: si.unit, description: si.description,
+      scopeId: `${si._id}||${detail._id}`,
+      scopePlanned: si.plannedQty, scopeCompleted: si.completedQty, scopeLastBilled: si.lastBilledQty || 0,
+    }));
+  }).sort((a, b) => dayjs(b.date).valueOf() - dayjs(a.date).valueOf());
+}
 
 interface WODetail {
   _id: string;
@@ -499,11 +541,11 @@ export default function DRIDashboard() {
     editErrors.clearAll();
     const qty = Number(editFormValues.qtyAdded);
     if (!editFormValues.qtyAdded || !(qty >= 0.01)) { editErrors.setError("qtyAdded", "Required"); return; }
-    const [scopeItemId, woId] = editEntry.scopeId.split("||");
+    const woId = parseEntryScopeId(editEntry.scopeId).workOrderId;
     setProgSaving(true);
     try {
       await apiClient.patch(
-        `/work-orders/${woId}/scope-items/${scopeItemId}/progress/${editEntry._id}`,
+        `${entryProgressUrlBase(editEntry.scopeId)}/${editEntry._id}`,
         {
           qtyAdded: qty,
           date: editFormValues.date || undefined,
@@ -528,7 +570,7 @@ export default function DRIDashboard() {
   const handleDeleteEntry = async (entry: EntryRow, woId: string) => {
     setDeleting(entry._id);
     try {
-      await apiClient.delete(`/work-orders/${woId}/scope-items/${entry.scopeId.split("||")[0]}/progress/${entry._id}`);
+      await apiClient.delete(`${entryProgressUrlBase(entry.scopeId, woId)}/${entry._id}`);
       toast.success("Entry deleted");
       await reloadWODetail(woId);
     } catch (e: any) {
@@ -545,7 +587,7 @@ export default function DRIDashboard() {
     setInvalidating(true);
     try {
       await apiClient.patch(
-        `/work-orders/${invalidateWOId}/scope-items/${invalidateEntry.scopeId.split("||")[0]}/progress/${invalidateEntry._id}/invalidate`,
+        `${entryProgressUrlBase(invalidateEntry.scopeId, invalidateWOId)}/${invalidateEntry._id}/invalidate`,
         { reason: invalidateReason }
       );
       toast.success("Entry invalidated — log correct measurement separately");
@@ -984,13 +1026,7 @@ export default function DRIDashboard() {
                     {/* Recent entries for this WO — same parity as Work Progress */}
                     {detail && (() => {
                       const wpt = detail.projectId?.projectType === "plot" ? "plot" : "apartment";
-                      const allEntriesWO: EntryRow[] = detail.scopeItems.flatMap(si =>
-                        (si.progressEntries ?? []).map(pe => ({
-                          ...pe, unit: si.unit, description: si.description,
-                          scopeId: `${si._id}||${detail._id}`,
-                          scopePlanned: si.plannedQty, scopeCompleted: si.completedQty, scopeLastBilled: si.lastBilledQty || 0,
-                        }))
-                      ).sort((a, b) => dayjs(b.date).valueOf() - dayjs(a.date).valueOf());
+                      const allEntriesWO: EntryRow[] = buildEntryRows(detail);
                       const recentEntries = allEntriesWO.slice(0, 5);
                       const todayStr = dayjs().format("YYYY-MM-DD");
 
@@ -1261,15 +1297,7 @@ export default function DRIDashboard() {
         const detail = woDetails.get(allEntriesWOId);
         const wpt = detail?.projectId?.projectType === "plot" ? "plot" : "apartment";
         const todayStr = dayjs().format("YYYY-MM-DD");
-        const allEntriesWO: EntryRow[] = detail
-          ? detail.scopeItems.flatMap(si =>
-              (si.progressEntries ?? []).map(pe => ({
-                ...pe, unit: si.unit, description: si.description,
-                scopeId: `${si._id}||${detail._id}`,
-                scopePlanned: si.plannedQty, scopeCompleted: si.completedQty, scopeLastBilled: si.lastBilledQty || 0,
-              }))
-            ).sort((a, b) => dayjs(b.date).valueOf() - dayjs(a.date).valueOf())
-          : [];
+        const allEntriesWO: EntryRow[] = detail ? buildEntryRows(detail) : [];
 
         return (
           <Modal icon={History} title="All Measurement Entries" extraWide onClose={() => setAllEntriesWOId(null)}>
