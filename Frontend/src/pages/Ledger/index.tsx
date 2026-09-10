@@ -503,20 +503,20 @@ export default function Ledger() {
         <EmptyState icon={BookOpen} title="No work orders match the selected filters" />
       ) : (
         <>
-          <Table className="min-w-[1400px]">
+          <Table className="min-w-[1460px]">
             <Thead>
               <Tr>
                 <Th className="w-[9%]">Work Order</Th>
-                <Th className="w-[11%]">Project</Th>
-                <Th className="w-[12%]">Vendor</Th>
-                <Th className="w-[9%]">Category</Th>
+                <Th className="w-[9%]">Project</Th>
+                <Th className="w-[10%]">Vendor</Th>
+                <Th className="w-[8%]">Category</Th>
                 <Th className="text-right w-[10%]">Contract Value</Th>
                 <Th className="text-right w-[9%]">Total Billed</Th>
                 <Th className="text-right w-[10%]">Certified (Net)</Th>
                 <Th className="text-right w-[9%]">Balance</Th>
                 <Th className="w-[9%]">Progress</Th>
                 <Th className="text-center w-[6%]">Bills</Th>
-                <Th className="w-[6%]"></Th>
+                <Th className="w-[150px]"></Th>
               </Tr>
             </Thead>
             <Tbody>
