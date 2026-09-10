@@ -744,17 +744,17 @@ export default function DRIDashboard() {
           {allDRIs.length === 0 ? (
             <EmptyState icon={Users} title="No DRI users found." />
           ) : (
-            <Table className="min-w-[1000px]">
+            <Table className="min-w-[1080px]">
               <Thead>
                 <Tr>
-                  <Th className="w-[20%]">DRI Name</Th>
-                  <Th className="w-[22%]">Email</Th>
-                  <Th className="w-[10%]">Total WOs</Th>
-                  <Th className="w-[10%]">Active</Th>
-                  <Th className="w-[10%]">Completed</Th>
-                  <Th className="w-[12%]">Pending Bills</Th>
-                  <Th className="w-[12%]">Approved Bills</Th>
-                  <Th className="w-[4%]"></Th>
+                  <Th className="w-[18%]">DRI Name</Th>
+                  <Th className="w-[20%]">Email</Th>
+                  <Th className="w-[9%]">Total WOs</Th>
+                  <Th className="w-[9%]">Active</Th>
+                  <Th className="w-[9%]">Completed</Th>
+                  <Th className="w-[11%]">Pending Bills</Th>
+                  <Th className="w-[11%]">Approved Bills</Th>
+                  <Th className="w-[130px]"></Th>
                 </Tr>
               </Thead>
               <Tbody>
