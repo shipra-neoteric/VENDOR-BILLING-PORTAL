@@ -39,7 +39,7 @@ interface Bill {
   projectName?: string; vendorCode?: string; vendorName?: string;
   billDate: string; billRefNo?: string; amount: number;
   gstPercent: number; tdsPercent: number; tdsAmount?: number; paidAmount?: number;
-  retentionAmount?: number; advanceRecovery?: number;
+  retentionAmount?: number; advanceRecovery?: number; supersedeDeduction?: number;
   remarks?: string; status: BillStatus;
   billType?: string; relationshipType?: string; isActive?: boolean;
   supersededBy?: { _id: string; billNo: string; billType?: string } | null;
@@ -63,11 +63,16 @@ const pctStr = (n: number, d: number) => d ? ((n / d) * 100).toFixed(1) + "%" : 
 function calcBill(b: Bill) {
   const retention = b.retentionAmount ?? 0;
   const advance   = b.advanceRecovery ?? 0;
+  const supersede = b.supersedeDeduction ?? 0;
   const netBeforeGst = b.amount - retention - advance;
-  const gst   = (netBeforeGst * (b.gstPercent ?? 18)) / 100;
+  // SUPERSEDES bills: GST is charged on the full amount (not amount-minus-
+  // hold-minus-advance), matching billFinancials' own supersede branch
+  // (Frontend/src/shared/utils/billMath.ts) — every other bill (supersede=0)
+  // keeps today's exact formula.
+  const gst   = supersede > 0 ? (b.amount * (b.gstPercent ?? 18)) / 100 : (netBeforeGst * (b.gstPercent ?? 18)) / 100;
   const gross = b.amount + gst;
   const tds   = b.tdsAmount ?? 0;
-  const net   = gross - tds - retention - advance;
+  const net   = gross - tds - retention - advance - supersede;
   return { gst, gross, tds, retention, advance, net };
 }
 

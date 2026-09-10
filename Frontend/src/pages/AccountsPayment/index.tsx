@@ -93,6 +93,7 @@ interface Bill {
   retentionPercent?: number;
   retentionAmount?: number;
   advanceRecovery?: number;
+  supersedeDeduction?: number;
   tdsPercent: number;
   remarks?: string;
   status: BillStatus;
@@ -161,6 +162,7 @@ const netAfterAdvance = (b: Bill) =>
   billFinancials({
     gross: b.amount || 0, gstPercent: b.gstPercent ?? 0,
     retentionAmount: b.retentionAmount ?? 0, advanceRecovery: b.advanceRecovery ?? 0,
+    supersedeDeduction: b.supersedeDeduction ?? 0,
   }).netPayable;
 // The true bottom line — same Gross → Hold/Advance → GST → TDS → Adjustment
 // chain as the drawer's own Payment Summary, so a Paid bill's displayed
@@ -171,6 +173,7 @@ const netPayableFinal = (b: Bill) =>
     gross: b.amount || 0, gstPercent: b.gstPercent ?? 0,
     retentionAmount: b.retentionAmount ?? 0, advanceRecovery: b.advanceRecovery ?? 0,
     tdsAmount: b.tdsAmount ?? 0, adjustmentAmount: b.adjustmentAmount ?? 0,
+    supersedeDeduction: b.supersedeDeduction ?? 0,
   }).netPayable;
 // What the list/search should treat as "the amount" for a bill — once a bill
 // is Paid, that's its actual paidAmount (post-TDS/adjustment, from TMS), not
@@ -1050,6 +1053,7 @@ export default function AccountsPayment() {
         if (!canVerify) return <MutedNote text="Awaiting Verification against its work order and vendor details." />;
         const tdsBase = () => billFinancials({
           gross: getLineItemsGross(bill), retentionAmount: bill.retentionAmount ?? 0, advanceRecovery: bill.advanceRecovery ?? 0,
+          supersedeDeduction: bill.supersedeDeduction ?? 0,
         }).netBeforeGst;
         return (
           <>
@@ -1807,6 +1811,7 @@ export default function AccountsPayment() {
               // Adjustment (a manual Verify-time correction) lands last, after TDS.
               const { gstAmount: gstAmt, netPayable: finalNetPayable } = billFinancials({
                 gross, gstPercent: gstPct, retentionAmount: retAmt, advanceRecovery: advRec, tdsAmount: tdsAmt, adjustmentAmount: adjAmt,
+                supersedeDeduction: bill.supersedeDeduction ?? 0,
               });
               const retReleaseRemark = bill.retentionReleaseRemark;
 

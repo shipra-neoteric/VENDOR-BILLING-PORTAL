@@ -80,6 +80,12 @@ const runningBillSchema = new mongoose.Schema(
     retentionPercent:  { type: Number, default: 0 },
     retentionAmount:   { type: Number, default: 0 },
     advanceRecovery:   { type: Number, default: 0 },
+    // Sum of the SUPERSEDES-linked bills' own amount, deducted from THIS
+    // bill's payable (after GST) instead of deactivating those bills — see
+    // billFinancials (Frontend/src/shared/utils/billMath.ts) for the actual
+    // calculation this feeds. Zero/absent for every non-SUPERSEDES bill,
+    // which keeps their math provably unchanged.
+    supersedeDeduction: { type: Number, default: 0 },
     paidAmount:        { type: Number },
     gstPercent:  { type: Number, default: 18 },
     tdsPercent:  { type: Number, default: 1 },

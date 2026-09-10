@@ -89,7 +89,7 @@ interface ManualBillRow {
   projectId?: string; projectName?: string; vendorCode?: string; vendorName?: string; billDate: string; createdAt: string;
   manualApprovalStatus: "pending" | "pending-gm" | "pending-l3" | "pending-l4" | "approved" | "rejected";
   department?: string; customDepartment?: string;
-  retentionAmount?: number; advanceRecovery?: number; gstPercent?: number;
+  retentionAmount?: number; advanceRecovery?: number; supersedeDeduction?: number; gstPercent?: number;
   updatedAt?: string;
   manualAgmApprovedAt?: string;
   manualGmApprovedAt?: string;
@@ -1735,7 +1735,7 @@ export default function BillApproval() {
             const gross = viewManualBill.amount || 0;
             const retAmt = viewManualBill.retentionAmount ?? 0;
             const advRec = viewManualBill.advanceRecovery ?? 0;
-            const { gstAmount, netAfterHold } = billFinancials({ gross, gstPercent: viewManualBill.gstPercent ?? 0, retentionAmount: retAmt, advanceRecovery: advRec });
+            const { gstAmount, netAfterHold } = billFinancials({ gross, gstPercent: viewManualBill.gstPercent ?? 0, retentionAmount: retAmt, advanceRecovery: advRec, supersedeDeduction: viewManualBill.supersedeDeduction ?? 0 });
             return (
               <div className="rounded-lg border border-emerald-300 dark:border-emerald-500/30 bg-emerald-50 dark:bg-emerald-500/10 p-3 font-mono text-[13px]">
                 <div className="font-bold mb-2 text-emerald-800 dark:text-emerald-300">

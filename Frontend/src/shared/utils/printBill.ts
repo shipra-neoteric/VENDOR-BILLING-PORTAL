@@ -96,6 +96,7 @@ export interface PrintableBill {
   retentionPercent?: number;
   retentionAmount?: number;
   advanceRecovery?: number;
+  supersedeDeduction?: number;
   tdsPercent?: number;
   tdsAmount?: number;
   adjustmentAmount?: number;
@@ -275,14 +276,14 @@ body{font-family:Arial,sans-serif;padding:30px;color:#333;font-size:13px;-webkit
       <span>Less: Advance Recovery</span><span>− ₹${(bill.advanceRecovery ?? 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
     </div>` : ""}
     ${(() => {
-      const { gstAmount } = billFinancials({ gross: bill.amount || 0, gstPercent: bill.gstPercent ?? 0, retentionAmount: bill.retentionAmount ?? 0, advanceRecovery: bill.advanceRecovery ?? 0 });
+      const { gstAmount } = billFinancials({ gross: bill.amount || 0, gstPercent: bill.gstPercent ?? 0, retentionAmount: bill.retentionAmount ?? 0, advanceRecovery: bill.advanceRecovery ?? 0, supersedeDeduction: bill.supersedeDeduction ?? 0 });
       return gstAmount > 0 ? `
     <div style="display:flex;justify-content:space-between;padding:9px 14px;border-bottom:1px solid #eee;color:#16a34a">
       <span>GST @ ${bill.gstPercent}%</span><span>+ ₹${gstAmount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
     </div>` : "";
     })()}
     ${(() => {
-      const netPay = billFinancials({ gross: bill.amount || 0, gstPercent: bill.gstPercent ?? 0, retentionAmount: bill.retentionAmount ?? 0, advanceRecovery: bill.advanceRecovery ?? 0 }).netAfterHold;
+      const netPay = billFinancials({ gross: bill.amount || 0, gstPercent: bill.gstPercent ?? 0, retentionAmount: bill.retentionAmount ?? 0, advanceRecovery: bill.advanceRecovery ?? 0, supersedeDeduction: bill.supersedeDeduction ?? 0 }).netAfterHold;
       if (mode === 'pre') {
         // PRE-PAYMENT: end at net payable (Hold/Advance already deducted above)
         return `

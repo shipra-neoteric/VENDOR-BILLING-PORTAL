@@ -59,6 +59,7 @@ interface Bill {
   retentionPercent?: number;
   retentionAmount?: number;
   advanceRecovery?: number;
+  supersedeDeduction?: number;
   tdsPercent?: number;
   tdsAmount?: number;
   remarks?: string;
@@ -113,6 +114,7 @@ const netAfterAdvance = (b: Bill) =>
   billFinancials({
     gross: b.amount || 0, gstPercent: b.gstPercent ?? 0,
     retentionAmount: b.retentionAmount ?? 0, advanceRecovery: b.advanceRecovery ?? 0,
+    supersedeDeduction: b.supersedeDeduction ?? 0,
   }).netPayable;
 const normalizeId = (obj: Record<string, unknown>) => ({ ...obj, id: (obj._id || obj.id)?.toString() || "" });
 
@@ -478,7 +480,7 @@ export default function Billing() {
             const gross = viewBill.amount || 0;
             const retAmt = viewBill.retentionAmount ?? 0;
             const advRec = viewBill.advanceRecovery ?? 0;
-            const { gstAmount: gstAmt, netAfterHold: netPay } = billFinancials({ gross, gstPercent: viewBill.gstPercent ?? 0, retentionAmount: retAmt, advanceRecovery: advRec });
+            const { gstAmount: gstAmt, netAfterHold: netPay } = billFinancials({ gross, gstPercent: viewBill.gstPercent ?? 0, retentionAmount: retAmt, advanceRecovery: advRec, supersedeDeduction: viewBill.supersedeDeduction ?? 0 });
             const paid = viewBill.paidAmount;
             return (
               <div className="bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-300 dark:border-emerald-500/30 rounded-lg p-3 text-sm mb-4">

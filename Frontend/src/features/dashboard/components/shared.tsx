@@ -115,7 +115,7 @@ interface QuickViewBillLineItem { description: string; unit: string; billedQty: 
 interface QuickViewBill {
   billNo: string; status: string; billDate?: string; projectName?: string; workOrderNo?: string;
   vendorName?: string; generatedBy?: string; lineItems: QuickViewBillLineItem[]; amount: number;
-  gstPercent: number; retentionPercent?: number; retentionAmount?: number; advanceRecovery?: number; remarks?: string;
+  gstPercent: number; retentionPercent?: number; retentionAmount?: number; advanceRecovery?: number; supersedeDeduction?: number; remarks?: string;
 }
 const BILL_STATUS_BADGE_COLOR: Record<string, "gray" | "amber" | "blue" | "indigo" | "cyan" | "orange" | "green" | "red"> = {
   draft: "gray", "verify-done": "amber", "l1-approved": "blue", approved: "indigo",
@@ -194,11 +194,11 @@ function RunningBillQuickView({ id, onClose }: { id: string; onClose: () => void
             )}
             <div className="flex justify-between px-3.5 py-1.5 border-b border-gray-100 dark:border-gray-700/40">
               <span>+ GST @ {bill.gstPercent}%</span>
-              <span>{fmtMoney(billFinancials({ gross: bill.amount, gstPercent: bill.gstPercent, retentionAmount: bill.retentionAmount ?? 0, advanceRecovery: bill.advanceRecovery ?? 0 }).gstAmount)}</span>
+              <span>{fmtMoney(billFinancials({ gross: bill.amount, gstPercent: bill.gstPercent, retentionAmount: bill.retentionAmount ?? 0, advanceRecovery: bill.advanceRecovery ?? 0, supersedeDeduction: bill.supersedeDeduction ?? 0 }).gstAmount)}</span>
             </div>
             <div className="flex justify-between px-3.5 py-2.5 bg-primary/5 font-extrabold text-[15px] text-primary">
               <span>Net Payable</span>
-              <span>{fmtMoney(billFinancials({ gross: bill.amount, gstPercent: bill.gstPercent, retentionAmount: bill.retentionAmount ?? 0, advanceRecovery: bill.advanceRecovery ?? 0 }).netPayable)}</span>
+              <span>{fmtMoney(billFinancials({ gross: bill.amount, gstPercent: bill.gstPercent, retentionAmount: bill.retentionAmount ?? 0, advanceRecovery: bill.advanceRecovery ?? 0, supersedeDeduction: bill.supersedeDeduction ?? 0 }).netPayable)}</span>
             </div>
           </div>
 

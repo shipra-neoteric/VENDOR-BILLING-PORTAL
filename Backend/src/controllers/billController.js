@@ -289,8 +289,12 @@ exports.createBill = asyncHandler(async (req, res) => {
     createdBy:   req.user._id,
   });
 
-  // Auto-link: mark superseded/revised/corrected bills as inactive
-  const deactivatingRelationships = ['SUPERSEDES', 'REVISION_OF', 'CORRECTION_OF'];
+  // Auto-link: mark revised/corrected bills as inactive. SUPERSEDES
+  // deliberately does NOT deactivate its linked bills anymore — those bills
+  // stay fully active/untouched, and their amount is instead deducted from
+  // THIS bill's own payable (see supersedeDeduction, computed by the
+  // frontend and trusted from req.body same as retentionAmount/advanceRecovery).
+  const deactivatingRelationships = ['REVISION_OF', 'CORRECTION_OF'];
   for (const link of linkedBills) {
     if (deactivatingRelationships.includes(link.relationshipType) && link.billId) {
       await RunningBill.findByIdAndUpdate(link.billId, {

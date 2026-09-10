@@ -105,10 +105,11 @@ const fmtRate  = (n: number) => "₹" + (n || 0).toLocaleString("en-IN", { minim
 
 // Net of GST, hold/retention and advance recovery — the amount actually due to the
 // contractor before TDS, not the raw gross bill figure. Matches Bills/Ledger/Approvals.
-const netPayable = (b: { amount: number; gstPercent?: number; retentionAmount?: number; advanceRecovery?: number }) =>
+const netPayable = (b: { amount: number; gstPercent?: number; retentionAmount?: number; advanceRecovery?: number; supersedeDeduction?: number }) =>
   billFinancials({
     gross: b.amount, gstPercent: b.gstPercent ?? 0,
     retentionAmount: b.retentionAmount ?? 0, advanceRecovery: b.advanceRecovery ?? 0,
+    supersedeDeduction: b.supersedeDeduction ?? 0,
   }).netPayable;
 
 // Same "Hold — <stage>" convention used across Bills/Approvals/Ledger so a bill's

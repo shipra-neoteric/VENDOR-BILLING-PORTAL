@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import toast from "react-hot-toast";
 import { FileText, Plus, Trash2 } from "lucide-react";
@@ -208,6 +208,27 @@ export default function NewBillDrawer({
   const [generatedBy, setGeneratedBy] = useState("");
   const [contractorRefNo, setContractorRefNo] = useState("");
   const [remarksInput, setRemarksInput] = useState("");
+  // Tracks the last auto-generated "Supersedes: ..." line so re-selecting
+  // bills replaces just that line instead of stacking duplicates, and so it
+  // never clobbers any free text the user typed themselves before/after it.
+  const lastAutoRemarksLineRef = useRef<string>("");
+  useEffect(() => {
+    if (relType !== "SUPERSEDES" || linkedBillIds.length === 0) return;
+    const details = linkedBillIds
+      .map(id => woExistingBills.find(b => b.id === id))
+      .filter((b): b is ExistingBill => !!b)
+      .map(b => `${b.billNo} (${fmt(b.amount)})`)
+      .join(", ");
+    if (!details) return;
+    const autoLine = `Supersedes: ${details}`;
+    setRemarksInput(prev => {
+      const withoutOldAuto = lastAutoRemarksLineRef.current
+        ? prev.replace(lastAutoRemarksLineRef.current, "").trim()
+        : prev.trim();
+      return withoutOldAuto ? `${autoLine}\n${withoutOldAuto}` : autoLine;
+    });
+    lastAutoRemarksLineRef.current = autoLine;
+  }, [relType, linkedBillIds, woExistingBills]);
 
   // Hold (retention) decided at creation time — either a % or a flat amount.
   const [holdMode, setHoldMode] = useState<"percent" | "amount">("percent");
@@ -661,7 +682,17 @@ export default function NewBillDrawer({
   const holdAmount = holdMode === "percent"
     ? holdAmountFromPercent(gross, holdPercent || 0)
     : Math.round(holdAmountInput || 0);
-  const { gstAmount: gstAmt, netAfterHold } = billFinancials({ gross, gstPercent, retentionAmount: holdAmount, advanceRecovery: recoveryAmount || 0 });
+  // Only set for a SUPERSEDES bill with bills actually picked — switches
+  // billFinancials to the after-GST deduction order; every other relationship
+  // type (including no relationship at all) passes 0, leaving the original
+  // formula completely unchanged.
+  const supersedeDeductionAmount = relType === "SUPERSEDES"
+    ? linkedBillIds.reduce((s, id) => s + (woExistingBills.find(b => b.id === id)?.amount || 0), 0)
+    : 0;
+  const { gstAmount: gstAmt, netAfterHold } = billFinancials({
+    gross, gstPercent, retentionAmount: holdAmount, advanceRecovery: recoveryAmount || 0,
+    supersedeDeduction: supersedeDeductionAmount,
+  });
   const maxRecovery = pendingAdvances.reduce((s, sl) => s + sl.balance, 0);
   const payableNow = netAfterHold;
 
@@ -745,6 +776,7 @@ export default function NewBillDrawer({
       ...(isStandalone ? { companyId } : {}),
       retentionPercent: holdMode === "percent" ? (holdPercent || 0) : (gross > 0 ? Math.round((holdAmount / gross) * 10000) / 100 : 0),
       retentionAmount: holdAmount,
+      supersedeDeduction: supersedeDeductionAmount,
       ...(recoveries.length ? { advanceRecoveries: recoveries } : {}),
       lineItems: validItems.map(({ key: _k, lastBilledQty: _l, percentComplete: _p, groupLabel: _g, ...rest }) => ({
         ...rest,
@@ -988,7 +1020,12 @@ export default function NewBillDrawer({
               <div className="mt-2.5">
                 <div className="text-xs text-gray-500 dark:text-gray-400 mb-1.5">
                   Select bills this new bill relates to:
-                  {["SUPERSEDES", "REVISION_OF", "CORRECTION_OF"].includes(relType) && (
+                  {relType === "SUPERSEDES" && (
+                    <span className="text-amber-600 ml-1.5 font-semibold">
+                      ⚠ Selected bills' amount will be deducted from this bill's payable — they stay active and unchanged
+                    </span>
+                  )}
+                  {["REVISION_OF", "CORRECTION_OF"].includes(relType) && (
                     <span className="text-red-600 ml-1.5 font-semibold">
                       ⚠ Selected bills will be marked inactive (superseded)
                     </span>

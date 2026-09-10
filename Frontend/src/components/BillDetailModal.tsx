@@ -186,6 +186,7 @@ export interface BillDetailRequest {
     retentionPercent?: number;
     retentionAmount?: number;
     advanceRecovery?: number;
+    supersedeDeduction?: number;
     gstPercent?: number;
     adjustmentAmount?: number;
     adjustmentRemark?: string;
@@ -421,7 +422,7 @@ export default function BillDetailModal({
           const gross   = b.amount || 0;
           const retAmt  = b.retentionAmount ?? 0;
           const advRec  = b.advanceRecovery ?? 0;
-          const { gstAmount: gstAmt, netAfterHold: netPay } = billFinancials({ gross, gstPercent: b.gstPercent ?? 0, retentionAmount: retAmt, advanceRecovery: advRec });
+          const { gstAmount: gstAmt, netAfterHold: netPay } = billFinancials({ gross, gstPercent: b.gstPercent ?? 0, retentionAmount: retAmt, advanceRecovery: advRec, supersedeDeduction: b.supersedeDeduction ?? 0 });
           const paid    = b.paidAmount;
           const tdsAmt  = paid != null ? Math.max(0, Math.round(netPay - paid)) : 0;
           return (
