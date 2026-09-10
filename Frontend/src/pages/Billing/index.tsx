@@ -60,7 +60,7 @@ interface Bill {
   retentionAmount?: number;
   advanceRecovery?: number;
   supersedeDeduction?: number;
-  linkedBills?: { billNo: string; relationshipType?: string; amount?: number }[];
+  linkedBills?: { billNo: string; relationshipType?: string; amount?: number; description?: string }[];
   tdsPercent?: number;
   tdsAmount?: number;
   remarks?: string;
@@ -550,7 +550,11 @@ export default function Billing() {
                       <div className="font-semibold">Less: Superseded Bills</div>
                       {(viewBill.linkedBills ?? []).filter(l => l.relationshipType === "SUPERSEDES").map(l => (
                         <div key={l.billNo} className="flex justify-between pl-2">
-                          <span>{l.billNo}</span><span>− {fmt(l.amount ?? 0)}</span>
+                          <span>
+                            {l.billNo}
+                            {l.description ? <span className="block text-[10px] font-sans opacity-75">{l.description}</span> : null}
+                          </span>
+                          <span>− {fmt(l.amount ?? 0)}</span>
                         </div>
                       ))}
                     </div>

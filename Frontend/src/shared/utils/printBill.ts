@@ -103,7 +103,7 @@ export interface PrintableBill {
   supersedeDeduction?: number;
   // Which bills this one supersedes (relationshipType 'SUPERSEDES') — used
   // only to list their billNos next to the deduction row below.
-  linkedBills?: { billNo: string; relationshipType?: string; amount?: number }[];
+  linkedBills?: { billNo: string; relationshipType?: string; amount?: number; description?: string }[];
   tdsPercent?: number;
   tdsAmount?: number;
   adjustmentAmount?: number;
@@ -270,7 +270,7 @@ body{font-family:Arial,sans-serif;padding:30px;color:#333;font-size:13px;-webkit
 </table>
 
 <div style="display:flex;justify-content:flex-end;margin-bottom:24px">
-  <div style="min-width:320px;border:1px solid #e8e8e8;border-radius:6px;overflow:hidden;font-family:monospace">
+  <div style="min-width:${(bill.linkedBills ?? []).some(l => l.relationshipType === 'SUPERSEDES' && l.description) ? 480 : 320}px;border:1px solid #e8e8e8;border-radius:6px;overflow:hidden;font-family:monospace">
     <div style="display:flex;justify-content:space-between;padding:9px 14px;border-bottom:1px solid #eee">
       <span>Gross Amount</span><span>₹${(bill.amount || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
     </div>
@@ -298,8 +298,9 @@ body{font-family:Arial,sans-serif;padding:30px;color:#333;font-size:13px;-webkit
     <div style="padding:9px 14px 4px;border-bottom:1px solid #eee">
       <div style="color:#dc2626;font-weight:bold;font-size:12px;margin-bottom:4px">Less: Superseded Bills</div>
       ${superseded.map(l => `
-      <div style="display:flex;justify-content:space-between;padding:2px 0;color:#dc2626">
-        <span>${l.billNo}</span><span>− ${money(l.amount ?? 0)}</span>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:2px 0;color:#dc2626">
+        <span style="white-space:nowrap">${l.billNo}${l.description ? ` <span style="font-weight:normal;color:#b91c1c;opacity:.75">— ${l.description}</span>` : ""}</span>
+        <span style="white-space:nowrap">− ${money(l.amount ?? 0)}</span>
       </div>`).join("")}
       <div style="display:flex;justify-content:space-between;padding:4px 0 2px;border-top:1px solid #fecaca;margin-top:2px;color:#991b1b;font-weight:bold">
         <span>Total</span><span>− ${money(bill.supersedeDeduction ?? 0)}</span>

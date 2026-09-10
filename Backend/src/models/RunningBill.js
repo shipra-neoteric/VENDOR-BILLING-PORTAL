@@ -148,6 +148,11 @@ const runningBillSchema = new mongoose.Schema(
       // rather than looked up live, so a print/view stays accurate even if
       // the linked bill's own amount is later corrected.
       amount:           { type: Number },
+      // Same idea as amount above — a snapshot of what that linked bill's
+      // line item(s) actually described (e.g. "Column+ shuttering work"),
+      // only ever populated for SUPERSEDES, so the print/view breakdown can
+      // show what each superseded bill was actually for, not just its number.
+      description:      { type: String },
       _id: false,
     }],
     billingCycle:  { type: Number, default: 1 },

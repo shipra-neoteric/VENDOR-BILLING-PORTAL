@@ -139,7 +139,7 @@ interface Bill {
   // Bill Relationship Engine
   billType?: string;
   relationshipType?: string;
-  linkedBills?: { billId: string; billNo: string; relationshipType: string; amount?: number }[];
+  linkedBills?: { billId: string; billNo: string; relationshipType: string; amount?: number; description?: string }[];
   billingCycle?: number;
   isActive?: boolean;
   supersededBy?: { _id: string; billNo: string; billType?: string } | null;
@@ -1721,7 +1721,7 @@ export default function AccountsPayment() {
                       <span className="text-gray-400 shrink-0">Linked Bills:</span>
                       <div className="flex flex-wrap gap-1.5">
                         {drawerBill.linkedBills.map((l, i) => (
-                          <span key={i} className="inline-flex items-center gap-1">
+                          <span key={i} className="inline-flex items-center gap-1" title={l.description || undefined}>
                             <Badge color="blue" small>{l.billNo}</Badge>
                             <span className="text-[10px] text-purple-600">{l.relationshipType}</span>
                           </span>
@@ -1856,7 +1856,7 @@ export default function AccountsPayment() {
                 rows.push({ label: "Less: Superseded Bills", value: "", colorClass: "text-red-600 font-semibold" });
                 for (const l of bill.linkedBills ?? []) {
                   if (l.relationshipType !== "SUPERSEDES") continue;
-                  rows.push({ label: `  ${l.billNo}`, value: `− ${fmt(l.amount ?? 0)}`, colorClass: "text-red-600" });
+                  rows.push({ label: `  ${l.billNo}${l.description ? ` — ${l.description}` : ""}`, value: `− ${fmt(l.amount ?? 0)}`, colorClass: "text-red-600" });
                 }
               }
               if (tdsAmt > 0) rows.push({ label: `Less: TDS Deducted${tdsPctDisplay ? ` (${tdsPctDisplay}%)` : ""}`, value: `− ${fmt(tdsAmt)}`, colorClass: "text-red-600" });

@@ -58,7 +58,7 @@ interface LineItem {
 
 interface ExistingBill {
   id: string; billNo: string; amount: number; status: string; isActive?: boolean;
-  lineItems?: { scopeItemId?: string; subItemId?: string; billedQty: number }[];
+  lineItems?: { scopeItemId?: string; subItemId?: string; billedQty: number; description?: string }[];
 }
 
 interface ProjectOpt { id: string; name: string; code: string; parentId?: string | null; }
@@ -739,7 +739,8 @@ export default function NewBillDrawer({
 
     const linkedBills = linkedBillIds.map(id => {
       const found = woExistingBills.find(b => b.id === id);
-      return { billId: id, billNo: found?.billNo ?? id, relationshipType: relType, amount: found?.amount };
+      const description = (found?.lineItems ?? []).map(li => li.description).filter(Boolean).join(", ") || undefined;
+      return { billId: id, billNo: found?.billNo ?? id, relationshipType: relType, amount: found?.amount, description };
     });
 
     // Distribute the entered recovery amount across outstanding slips
@@ -1446,9 +1447,10 @@ export default function NewBillDrawer({
                   {linkedBillIds.map(id => {
                     const b = woExistingBills.find(x => x.id === id);
                     if (!b) return null;
+                    const description = (b.lineItems ?? []).map(li => li.description).filter(Boolean).join(", ");
                     return (
                       <div key={id} className="flex justify-between px-3.5 py-1 text-red-600 dark:text-red-400">
-                        <span>{b.billNo}</span>
+                        <span>{b.billNo}{description ? <span className="block text-[10px] font-sans opacity-75">{description}</span> : null}</span>
                         <span>− {fmt(b.amount)}</span>
                       </div>
                     );
