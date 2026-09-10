@@ -13,7 +13,13 @@ function canActOnDepartment(user, doc) {
   if (!user || ['owner', 'accounts'].includes(user.role)) return true;
   if (!user.department) return true;
   if (!doc || !doc.department) return true;
-  if (doc.department !== user.department) return false;
+  if (doc.department !== user.department) {
+    // Not their primary department — but they may still be explicitly
+    // granted this one as an ADDITIONAL department (e.g. a GM who approves
+    // both Marketing and Civil). Only the 4 fixed departments can appear
+    // here (see User.js) — 'custom' bills are never matched this way.
+    return (user.additionalDepartments || []).includes(doc.department);
+  }
   // "Custom" isn't one team — it's an escape hatch for whatever team name
   // was typed in, so two different custom departments must not be treated
   // as the same one just because both picked "custom" (see the same check

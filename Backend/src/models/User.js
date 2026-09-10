@@ -35,6 +35,17 @@ const userSchema = new mongoose.Schema(
       default: '',
     },
     customDepartment: { type: String, default: '' },
+    // Extra departments this person can ALSO see/approve, beyond their
+    // primary `department` above — e.g. a GM who approves both Marketing
+    // and Civil. Deliberately excludes 'custom' (a free-text team name
+    // doesn't fit a fixed multi-select) and never duplicates the primary
+    // department; see canActOnDepartment (departmentAccess.js) for how this
+    // combines with `department` when deciding what a user can act on.
+    additionalDepartments: {
+      type: [String],
+      enum: ['civil', 'marketing', 'planning', 'maintenance'],
+      default: [],
+    },
     permissions: [{
       module:  { type: String, required: true },
       actions: [{ type: String }],

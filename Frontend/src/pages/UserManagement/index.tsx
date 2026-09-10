@@ -39,6 +39,7 @@ export interface AppUser {
   slackUserId?: string;
   department?: string;
   customDepartment?: string;
+  additionalDepartments?: string[];
   role: UserRole;
   isActive: boolean;
   createdAt: string;
@@ -586,7 +587,7 @@ export default function UserManagement() {
         u._id.toLowerCase().includes(q) ||
         ROLE_CFG[u.role]?.label.toLowerCase().includes(q);
       const matchRole = roleFilter === "all" || u.role === roleFilter;
-      const matchDept = deptFilter === "all" || (u.department || "") === deptFilter;
+      const matchDept = deptFilter === "all" || (u.department || "") === deptFilter || (u.additionalDepartments || []).includes(deptFilter);
       const matchActive = activeFilter === "all" || (activeFilter === "active" ? u.isActive : !u.isActive);
       return matchSearch && matchRole && matchDept && matchActive;
     });
@@ -913,6 +914,11 @@ export default function UserManagement() {
                       <div className="flex flex-col gap-1 items-start">
                         {u.department && (
                           <NxBadge color="slate">{u.department === "custom" ? (u.customDepartment || "Custom") : departmentLabelForUser(u.department)}</NxBadge>
+                        )}
+                        {!!u.additionalDepartments?.length && (
+                          <span title={u.additionalDepartments.map(departmentLabelForUser).join(", ")}>
+                            <NxBadge color="slate">+{u.additionalDepartments.length} more</NxBadge>
+                          </span>
                         )}
                         <NxBadge color={NX_ROLE_COLOR[u.role] || "gray"}>{ROLE_CFG[u.role]?.label || u.role}</NxBadge>
                       </div>

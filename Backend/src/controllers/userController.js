@@ -28,6 +28,17 @@ function isValidRole(role) {
 // asked to keep exactly as-is.
 const TRUSTED_USER_MANAGER_ROLES = ['owner', 'gm'];
 
+const FIXED_DEPARTMENTS = ['civil', 'marketing', 'planning', 'maintenance'];
+
+// Keeps only valid, deduped fixed departments, and drops whichever one is
+// already the primary `department` — a team can't be both "home" and
+// "additional" for the same person at once.
+function sanitizeAdditionalDepartments(list, primaryDepartment) {
+  if (!Array.isArray(list)) return [];
+  const unique = [...new Set(list)];
+  return unique.filter((d) => FIXED_DEPARTMENTS.includes(d) && d !== primaryDepartment);
+}
+
 // A limited-permission caller must never be able to hand out the Owner role
 // itself — that would be a full privilege escalation via a narrow grant.
 function canAssignRole(caller, role) {
@@ -61,7 +72,7 @@ exports.getUser = asyncHandler(async (req, res) => {
 
 // POST /api/users
 exports.createUser = asyncHandler(async (req, res) => {
-  const { name, email, password, role, permissions, mobile, department, customDepartment } = req.body;
+  const { name, email, password, role, permissions, mobile, department, customDepartment, additionalDepartments } = req.body;
 
   if (!name || !email || !password || !role) {
     return badRequest(res, 'Name, email, password, and role are required');
@@ -82,6 +93,7 @@ exports.createUser = asyncHandler(async (req, res) => {
   const user = await User.create({
     name, email, password, role, permissions: permissions || [], mobile: mobile || '',
     department: department || '', customDepartment: department === 'custom' ? (customDepartment || '') : '',
+    additionalDepartments: sanitizeAdditionalDepartments(additionalDepartments, department || ''),
   });
   const safe = user.toObject();
   delete safe.password;
@@ -97,7 +109,7 @@ exports.createUser = asyncHandler(async (req, res) => {
 
 // PUT /api/users/:id
 exports.updateUser = asyncHandler(async (req, res) => {
-  const { name, email, role, isActive, permissions, mobile, slackUserId, department, customDepartment } = req.body;
+  const { name, email, role, isActive, permissions, mobile, slackUserId, department, customDepartment, additionalDepartments } = req.body;
   const user = await User.findById(req.params.id);
   if (!user) return notFound(res, 'User not found');
   const before = user.toObject();
@@ -132,12 +144,15 @@ exports.updateUser = asyncHandler(async (req, res) => {
     user.department = department || '';
     user.customDepartment = department === 'custom' ? (customDepartment || '') : '';
   }
+  if (additionalDepartments !== undefined) {
+    user.additionalDepartments = sanitizeAdditionalDepartments(additionalDepartments, user.department);
+  }
 
   await user.save();
   const safe = user.toObject();
   delete safe.password;
 
-  const changes = diffFields(before, safe, ['name', 'email', 'role', 'isActive', 'permissions', 'mobile', 'slackUserId', 'department', 'customDepartment']);
+  const changes = diffFields(before, safe, ['name', 'email', 'role', 'isActive', 'permissions', 'mobile', 'slackUserId', 'department', 'customDepartment', 'additionalDepartments']);
   if (changes) {
     await logAudit({
       action: 'UPDATE', module: 'user-management', user: req.user,

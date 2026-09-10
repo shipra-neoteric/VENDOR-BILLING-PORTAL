@@ -95,12 +95,16 @@ exports.listBills = asyncHandler(async (req, res) => {
     // belongs to no one yet), and "custom" only matches the same custom
     // team name, not every custom department.
     if (!['owner', 'accounts'].includes(req.user.role) && req.user.department) {
-      filter.$and.push({ $or: [
+      const deptOr = [
         { department: { $in: ['', null] } },
         req.user.department === 'custom'
           ? { department: 'custom', customDepartment: req.user.customDepartment || '' }
           : { department: req.user.department },
-      ] });
+      ];
+      if (req.user.additionalDepartments?.length) {
+        deptOr.push({ department: { $in: req.user.additionalDepartments } });
+      }
+      filter.$and.push({ $or: deptOr });
     }
     if (filter.$and.length === 0) delete filter.$and;
   }

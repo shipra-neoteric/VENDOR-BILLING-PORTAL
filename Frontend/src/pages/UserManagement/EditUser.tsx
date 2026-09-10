@@ -7,6 +7,7 @@ import { useFormErrors } from "../../hooks/useFormErrors";
 import Btn from "../../ui/Btn";
 import Field from "../../ui/Field";
 import SField from "../../ui/SField";
+import MultiSelect from "../../ui/MultiSelect";
 import UISwitch from "../../ui/Switch";
 import Badge from "../../ui/Badge";
 import Spinner from "../../ui/Spinner";
@@ -34,6 +35,7 @@ export default function EditUser() {
   const [slackUserIdField, setSlackUserIdField] = useState("");
   const [departmentField, setDepartmentField] = useState("");
   const [customDepartmentField, setCustomDepartmentField] = useState("");
+  const [additionalDepartmentsField, setAdditionalDepartmentsField] = useState<string[]>([]);
   const [passwordField, setPasswordField] = useState("");
   const [roleField, setRoleField] = useState<UserRole>("site-dri");
   const [isCustomRole, setIsCustomRole] = useState(false);
@@ -92,6 +94,7 @@ export default function EditUser() {
         setNameField(u.name); setEmailField(u.email); setMobileField(u.mobile || "");
         setSlackUserIdField(u.slackUserId || "");
         setDepartmentField(u.department || ""); setCustomDepartmentField(u.customDepartment || "");
+        setAdditionalDepartmentsField(u.additionalDepartments || []);
         setRoleField(u.role); setIsActiveField(u.isActive);
         const existingIsCustom = !isKnownRole(u.role);
         setIsCustomRole(existingIsCustom);
@@ -158,6 +161,7 @@ export default function EditUser() {
         permissions: permsToArray(ownPerms),
         department: departmentField,
         customDepartment: departmentField === "custom" ? customDepartmentField : "",
+        additionalDepartments: additionalDepartmentsField,
       };
       if (!isEdit) payload.password = passwordField;
 
@@ -224,7 +228,11 @@ export default function EditUser() {
           label="Department"
           placeholder="Select department (optional)"
           value={departmentField}
-          onChange={(v) => { setDepartmentField(v); if (v !== "custom") setCustomDepartmentField(""); }}
+          onChange={(v) => {
+            setDepartmentField(v);
+            if (v !== "custom") setCustomDepartmentField("");
+            setAdditionalDepartmentsField((prev) => prev.filter((d) => d !== v));
+          }}
           options={[
             { value: "", label: "— None —" },
             { value: "civil", label: "Civil Team" },
@@ -243,6 +251,23 @@ export default function EditUser() {
             onChange={(e) => setCustomDepartmentField(e.target.value)}
           />
         )}
+        <div>
+          <MultiSelect
+            label="Additional Departments"
+            placeholder="None"
+            values={additionalDepartmentsField}
+            onChange={setAdditionalDepartmentsField}
+            options={[
+              { value: "civil", label: "Civil Team" },
+              { value: "marketing", label: "Marketing Team" },
+              { value: "planning", label: "Planning Team" },
+              { value: "maintenance", label: "Maintenance Team" },
+            ].filter((o) => o.value !== departmentField)}
+          />
+          <div className="text-xs text-gray-400 mt-1">
+            Also let this person see &amp; approve these teams' bills, in addition to their primary department above.
+          </div>
+        </div>
         {!isEdit && (
           <Field
             label="Password" required type="password" placeholder="Set initial password"
