@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import toast from "react-hot-toast";
 import { FileText, Plus, Trash2 } from "lucide-react";
@@ -56,7 +56,10 @@ interface LineItem {
   amount: number;
 }
 
-interface ExistingBill { id: string; billNo: string; amount: number; status: string; isActive?: boolean; }
+interface ExistingBill {
+  id: string; billNo: string; amount: number; status: string; isActive?: boolean;
+  lineItems?: { scopeItemId?: string; subItemId?: string; billedQty: number }[];
+}
 
 interface ProjectOpt { id: string; name: string; code: string; parentId?: string | null; }
 interface CompanyOpt { id: string; name: string; shortCode: string; isActive?: boolean; }
@@ -99,16 +102,21 @@ function remainingPercent(li: LineItem): number | null {
 // (e.g. "1 sq.ft remaining") for the Quantity column, which — unlike "% of
 // Work" — has no cap on direct entry, so this is shown as a warning instead
 // of silently clamping what the user types.
-function remainingQty(li: LineItem): number | null {
+// `supersededQty` (optional) — for a SUPERSEDES bill, the quantity already
+// consumed by the specific bills THIS bill is replacing (those bills stay
+// active, so their qty is still sitting in li.lastBilledQty) — added back so
+// a "final" bill can re-claim the full planned quantity. 0 for every other
+// bill, which keeps this exactly as it was.
+function remainingQty(li: LineItem, supersededQty = 0): number | null {
   if (!li.scopeItemId || !(li.plannedQty > 0)) return null;
-  return Math.round((li.plannedQty - (li.lastBilledQty || 0)) * 100) / 100;
+  return Math.round((li.plannedQty - (li.lastBilledQty || 0) + supersededQty) * 100) / 100;
 }
 
 // Mirrors the backend's own hard-reject (findOverbilledLineItem) — flags a
 // row here too so the drawer can warn/block *before* hitting Save instead of
 // only finding out from the server's rejection after the fact.
-function isOverbilled(li: LineItem): boolean {
-  const remaining = remainingQty(li);
+function isOverbilled(li: LineItem, supersededQty = 0): boolean {
+  const remaining = remainingQty(li, supersededQty);
   return remaining != null && Number(li.billedQty) > remaining + 0.001;
 }
 
@@ -208,26 +216,27 @@ export default function NewBillDrawer({
   const [generatedBy, setGeneratedBy] = useState("");
   const [contractorRefNo, setContractorRefNo] = useState("");
   const [remarksInput, setRemarksInput] = useState("");
-  // Tracks the last auto-generated "Supersedes: ..." line so re-selecting
-  // bills replaces just that line instead of stacking duplicates, and so it
-  // never clobbers any free text the user typed themselves before/after it.
-  const lastAutoRemarksLineRef = useRef<string>("");
+  // Auto-generated supersede line always starts with this exact prefix, so
+  // re-selecting bills can reliably strip out just that one (stale) line —
+  // by prefix, not by exact-string match — instead of stacking duplicates,
+  // regardless of how the rest of remarksInput has changed since. Any other
+  // free text the user typed is left untouched.
+  const SUPERSEDE_REMARKS_PREFIX = "This bill supersedes ";
   useEffect(() => {
     if (relType !== "SUPERSEDES" || linkedBillIds.length === 0) return;
-    const details = linkedBillIds
+    const names = linkedBillIds
       .map(id => woExistingBills.find(b => b.id === id))
       .filter((b): b is ExistingBill => !!b)
-      .map(b => `${b.billNo} (${fmt(b.amount)})`)
-      .join(", ");
-    if (!details) return;
-    const autoLine = `Supersedes: ${details}`;
+      .map(b => `${b.billNo} (${fmt(b.amount)})`);
+    if (names.length === 0) return;
+    const joined = names.length > 1
+      ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`
+      : names[0];
+    const autoLine = `${SUPERSEDE_REMARKS_PREFIX}${joined} — their amount has been deducted from this bill's payable.`;
     setRemarksInput(prev => {
-      const withoutOldAuto = lastAutoRemarksLineRef.current
-        ? prev.replace(lastAutoRemarksLineRef.current, "").trim()
-        : prev.trim();
-      return withoutOldAuto ? `${autoLine}\n${withoutOldAuto}` : autoLine;
+      const rest = prev.split("\n").filter(line => !line.startsWith(SUPERSEDE_REMARKS_PREFIX)).join("\n").trim();
+      return rest ? `${autoLine}\n${rest}` : autoLine;
     });
-    lastAutoRemarksLineRef.current = autoLine;
   }, [relType, linkedBillIds, woExistingBills]);
 
   // Hold (retention) decided at creation time — either a % or a flat amount.
@@ -689,6 +698,26 @@ export default function NewBillDrawer({
   const supersedeDeductionAmount = relType === "SUPERSEDES"
     ? linkedBillIds.reduce((s, id) => s + (woExistingBills.find(b => b.id === id)?.amount || 0), 0)
     : 0;
+  // Same idea, per scope item/particular — how much quantity the bills
+  // being superseded already consumed, so the overbill guard below lets this
+  // "final" bill re-claim the full planned quantity instead of only what was
+  // left after them. Key mirrors the backend's own (scopeItemId, or
+  // "scopeItemId|subItemId" for a particular).
+  const supersedeQtyMap = useMemo(() => {
+    if (relType !== "SUPERSEDES" || linkedBillIds.length === 0) return {} as Record<string, number>;
+    const map: Record<string, number> = {};
+    for (const id of linkedBillIds) {
+      const b = woExistingBills.find(x => x.id === id);
+      for (const li of b?.lineItems ?? []) {
+        if (!li.scopeItemId) continue;
+        const key = li.scopeItemId + (li.subItemId ? `|${li.subItemId}` : "");
+        map[key] = (map[key] || 0) + (Number(li.billedQty) || 0);
+      }
+    }
+    return map;
+  }, [relType, linkedBillIds, woExistingBills]);
+  const supersedeQtyFor = (li: LineItem) =>
+    li.scopeItemId ? (supersedeQtyMap[li.scopeItemId + (li.subItemId ? `|${li.subItemId}` : "")] || 0) : 0;
   const { gstAmount: gstAmt, netAfterHold } = billFinancials({
     gross, gstPercent, retentionAmount: holdAmount, advanceRecovery: recoveryAmount || 0,
     supersedeDeduction: supersedeDeductionAmount,
@@ -705,9 +734,9 @@ export default function NewBillDrawer({
     // Same check the backend would hard-reject with (findOverbilledLineItem)
     // — caught here first so the user sees exactly which item and why,
     // instead of submitting and finding out from a server error afterward.
-    const overbilledItem = validItems.find(isOverbilled);
+    const overbilledItem = validItems.find((li) => isOverbilled(li, supersedeQtyFor(li)));
     if (overbilledItem) {
-      toast.error(`"${overbilledItem.description}" — only ${remainingQty(overbilledItem)} ${overbilledItem.unit || ""} remaining to bill. Fix the highlighted quantity before saving.`, { duration: 6000 });
+      toast.error(`"${overbilledItem.description}" — only ${remainingQty(overbilledItem, supersedeQtyFor(overbilledItem))} ${overbilledItem.unit || ""} remaining to bill. Fix the highlighted quantity before saving.`, { duration: 6000 });
       return;
     }
     formErrors.clearAll();
@@ -1313,11 +1342,11 @@ export default function NewBillDrawer({
                             value={item.billedQty || ""}
                             placeholder="0"
                             onChange={(e) => updateLineItem(item.key, "billedQty", Number(e.target.value) || 0)}
-                            className={`${cellInputClass} text-right ${isOverbilled(item) ? "ring-1 ring-red-500 rounded bg-red-50 dark:bg-red-500/10" : ""}`}
+                            className={`${cellInputClass} text-right ${isOverbilled(item, supersedeQtyFor(item)) ? "ring-1 ring-red-500 rounded bg-red-50 dark:bg-red-500/10" : ""}`}
                           />
-                          {isOverbilled(item) && (
+                          {isOverbilled(item, supersedeQtyFor(item)) && (
                             <div className="text-[10px] text-red-600 dark:text-red-400 text-right font-semibold">
-                              only {remainingQty(item)} {item.unit || ""} remaining — will be rejected
+                              only {remainingQty(item, supersedeQtyFor(item))} {item.unit || ""} remaining — will be rejected
                             </div>
                           )}
                         </Td>

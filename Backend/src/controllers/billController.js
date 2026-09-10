@@ -183,10 +183,30 @@ exports.createBill = asyncHandler(async (req, res) => {
       }
     }
 
+    // SUPERSEDES: exclude the superseded bills' own billedQty from the
+    // overbill check below for whichever scope items/particulars they
+    // touched — those bills stay active (unlike REVISION_OF/CORRECTION_OF,
+    // they're never marked isActive:false anymore) so without this a "final"
+    // bill could never re-claim the full planned quantity, only whatever was
+    // left after the bills it's meant to replace.
+    let supersedeQtyMap = null;
+    if (req.body.relationshipType === 'SUPERSEDES' && Array.isArray(req.body.linkedBills) && req.body.linkedBills.length) {
+      const supersededIds = req.body.linkedBills.map((l) => l.billId).filter(Boolean);
+      const supersededBills = await RunningBill.find({ _id: { $in: supersededIds } }).select('lineItems').lean();
+      supersedeQtyMap = {};
+      for (const sb of supersededBills) {
+        for (const sli of sb.lineItems || []) {
+          if (!sli.scopeItemId) continue;
+          const key = sli.scopeItemId.toString() + (sli.subItemId ? '|' + sli.subItemId.toString() : '');
+          supersedeQtyMap[key] = (supersedeQtyMap[key] || 0) + (Number(sli.billedQty) || 0);
+        }
+      }
+    }
+
     // Hard-reject overbilling past a scope item's remaining unbilled qty —
     // cumulative across every bill ever raised against it, from either
     // billing path — instead of the old silent Math.min clamp further below.
-    const overbilled = findOverbilledLineItem(workOrder, lineItems);
+    const overbilled = findOverbilledLineItem(workOrder, lineItems, supersedeQtyMap);
     if (overbilled) {
       const { si, remaining } = overbilled;
       return badRequest(res, `"${si.description}" — only ${remaining} ${si.unit || ''} remaining to bill (already billed ${si.lastBilledQty || 0} of ${si.plannedQty}).`);
