@@ -362,8 +362,8 @@ export default function Billing() {
               <Tbody>
                 {pagedBills.map((r) => (
                   <Tr key={r.id} className="cursor-pointer" onClick={() => setViewBillId(r.id)}>
-                    <Td className="font-bold text-primary whitespace-nowrap truncate" title={r.billNo}>
-                      {r.billNo}
+                    <Td className="font-bold text-primary">
+                      <div className="whitespace-nowrap truncate max-w-[90px]" title={r.billNo}>{r.billNo}</div>
                       {supersededByMap[r.billNo]?.length ? (
                         <div
                           className="mt-0.5 inline-block text-[10px] font-semibold text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-500/20 px-1.5 py-0.5 rounded-full whitespace-nowrap"

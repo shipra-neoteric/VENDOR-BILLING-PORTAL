@@ -1425,8 +1425,8 @@ export default function AccountsPayment() {
               <Tbody>
                 {pagedBills.map((r) => (
                   <Tr key={r.id} className="cursor-pointer" onClick={() => openDrawer(r)}>
-                    <Td className="font-bold text-blue-600 whitespace-nowrap truncate">
-                      {r.billNo}
+                    <Td className="font-bold text-blue-600">
+                      <div className="whitespace-nowrap truncate max-w-[90px]">{r.billNo}</div>
                       {supersededByMap[r.id]?.length ? (
                         <div
                           className="mt-0.5 inline-block text-[10px] font-semibold text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-500/20 px-1.5 py-0.5 rounded-full whitespace-nowrap"
