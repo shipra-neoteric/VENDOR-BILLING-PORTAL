@@ -104,17 +104,10 @@ function remainingQty(li: LineItem): number | null {
   return Math.round((li.plannedQty - (li.lastBilledQty || 0)) * 100) / 100;
 }
 
-// Kill switch — temporarily off per request (the frontend pre-check was
-// flagging/blocking rows that should be billable). The backend's own
-// equivalent hard-reject (findOverbilledLineItem) still applies regardless
-// of this flag; flip back to true to restore the early warning/block here.
-const OVERBILL_WARNING_ENABLED = false;
-
 // Mirrors the backend's own hard-reject (findOverbilledLineItem) — flags a
 // row here too so the drawer can warn/block *before* hitting Save instead of
 // only finding out from the server's rejection after the fact.
 function isOverbilled(li: LineItem): boolean {
-  if (!OVERBILL_WARNING_ENABLED) return false;
   const remaining = remainingQty(li);
   return remaining != null && Number(li.billedQty) > remaining + 0.001;
 }
