@@ -93,6 +93,18 @@ const APPROVAL_STATUS_CFG: Record<WorkOrderApprovalStatus, { label: string; colo
 // used to build the Step filter's pill row and its per-stage counts.
 const STEP_KEYS: WorkOrderApprovalStatus[] = ["draft", "pending-checker", "pending-approver", "pending-final"];
 
+// Which module 'work-orders' permission actually acts at each of the 4
+// stages above — a pill is only shown to someone who could act on it, purely
+// off the permission matrix (no owner/role hardcode), same philosophy as
+// Bill Requests' Pending L1-L4 tabs.
+const STEP_PERM: Record<string, string> = {
+  draft: "maker", "pending-checker": "checker", "pending-approver": "approver", "pending-final": "ceo-approve",
+};
+
+function hasWOPerm(user: { permissions?: { module: string; actions: string[] }[] } | null | undefined, action: string): boolean {
+  return !!user?.permissions?.find((p) => p.module === "work-orders")?.actions.includes(action);
+}
+
 const approvalStatusOf = (wo: WorkOrder): WorkOrderApprovalStatus => wo.approvalStatus || "approved";
 
 // Step badge — a plain filled pill (orange while pending, green once
@@ -2390,7 +2402,7 @@ export default function WorkItems() {
           >
             All Steps <span className="ml-1 opacity-75">{filteredIgnoringStep.length}</span>
           </button>
-          {STEP_KEYS.map((key) => {
+          {STEP_KEYS.filter((key) => hasWOPerm(user, STEP_PERM[key])).map((key) => {
             const cfg = APPROVAL_STATUS_CFG[key];
             const active = stepFilter === key;
             return (

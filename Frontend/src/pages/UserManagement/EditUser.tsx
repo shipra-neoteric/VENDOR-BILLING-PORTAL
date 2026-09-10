@@ -33,9 +33,15 @@ export default function EditUser() {
   const [emailField, setEmailField] = useState("");
   const [mobileField, setMobileField] = useState("");
   const [slackUserIdField, setSlackUserIdField] = useState("");
-  const [departmentField, setDepartmentField] = useState("");
+  // One unified checklist for every department this person belongs to — no
+  // separate "primary vs additional" controls shown to the user. On save,
+  // whichever one ends up as the backend's single `department` (vs the rest
+  // going into `additionalDepartments`) is an implementation detail; the
+  // person editing this just picks every team that applies. "custom" is
+  // always treated as the primary when selected, since customDepartmentField
+  // only ever attaches to the primary department in the data model.
+  const [departmentsField, setDepartmentsField] = useState<string[]>([]);
   const [customDepartmentField, setCustomDepartmentField] = useState("");
-  const [additionalDepartmentsField, setAdditionalDepartmentsField] = useState<string[]>([]);
   const [passwordField, setPasswordField] = useState("");
   const [roleField, setRoleField] = useState<UserRole>("site-dri");
   const [isCustomRole, setIsCustomRole] = useState(false);
@@ -93,8 +99,8 @@ export default function EditUser() {
         setEditUser(u);
         setNameField(u.name); setEmailField(u.email); setMobileField(u.mobile || "");
         setSlackUserIdField(u.slackUserId || "");
-        setDepartmentField(u.department || ""); setCustomDepartmentField(u.customDepartment || "");
-        setAdditionalDepartmentsField(u.additionalDepartments || []);
+        setDepartmentsField([...(u.department ? [u.department] : []), ...(u.additionalDepartments || [])]);
+        setCustomDepartmentField(u.customDepartment || "");
         setRoleField(u.role); setIsActiveField(u.isActive);
         const existingIsCustom = !isKnownRole(u.role);
         setIsCustomRole(existingIsCustom);
@@ -155,13 +161,21 @@ export default function EditUser() {
         if (extra.length) ownPerms[module] = extra;
       }
 
+      // "custom" is always treated as the primary department when checked
+      // (customDepartmentField only ever attaches to the primary in the data
+      // model) — otherwise the primary is just whichever fixed department
+      // was picked first, with the rest going into additionalDepartments.
+      // This split is invisible in the UI, which shows one plain checklist.
+      const primaryDepartment = departmentsField.includes("custom") ? "custom" : (departmentsField[0] ?? "");
+      const additionalDepartments = departmentsField.filter(d => d !== primaryDepartment && d !== "custom");
+
       const payload: Record<string, unknown> = {
         name: nameField, email: emailField, mobile: mobileField, slackUserId: slackUserIdField,
         role: roleField, isActive: isActiveField,
         permissions: permsToArray(ownPerms),
-        department: departmentField,
-        customDepartment: departmentField === "custom" ? customDepartmentField : "",
-        additionalDepartments: additionalDepartmentsField,
+        department: primaryDepartment,
+        customDepartment: primaryDepartment === "custom" ? customDepartmentField : "",
+        additionalDepartments,
       };
       if (!isEdit) payload.password = passwordField;
 
@@ -224,26 +238,28 @@ export default function EditUser() {
           label="Slack Member ID" placeholder="e.g. U0123ABCDE"
           value={slackUserIdField} onChange={(e) => setSlackUserIdField(e.target.value)}
         />
-        <SField
-          label="Department"
-          placeholder="Select department (optional)"
-          value={departmentField}
-          onChange={(v) => {
-            setDepartmentField(v);
-            if (v !== "custom") setCustomDepartmentField("");
-            setAdditionalDepartmentsField((prev) => prev.filter((d) => d !== v));
-          }}
-          options={[
-            { value: "", label: "— None —" },
-            { value: "civil", label: "Civil Team" },
-            { value: "marketing", label: "Marketing Team" },
-            { value: "planning", label: "Planning Team" },
-            { value: "maintenance", label: "Maintenance Team" },
-            { value: "custom", label: "Custom Team" },
-          ]}
-          hint="Which team's bills this person should see and be able to approve in Bill Approval."
-        />
-        {departmentField === "custom" && (
+        <div>
+          <MultiSelect
+            label="Department"
+            placeholder="Select department(s)"
+            values={departmentsField}
+            onChange={(v) => {
+              setDepartmentsField(v);
+              if (!v.includes("custom")) setCustomDepartmentField("");
+            }}
+            options={[
+              { value: "civil", label: "Civil Team" },
+              { value: "marketing", label: "Marketing Team" },
+              { value: "planning", label: "Planning Team" },
+              { value: "maintenance", label: "Maintenance Team" },
+              { value: "custom", label: "Custom Team" },
+            ]}
+          />
+          <div className="text-xs text-gray-400 mt-1">
+            Every team whose bills this person should see and be able to approve in Bill Approval — check all that apply.
+          </div>
+        </div>
+        {departmentsField.includes("custom") && (
           <Field
             label="Custom Team Name"
             placeholder="e.g. Legal, IT, Procurement"
@@ -251,23 +267,6 @@ export default function EditUser() {
             onChange={(e) => setCustomDepartmentField(e.target.value)}
           />
         )}
-        <div>
-          <MultiSelect
-            label="Additional Departments"
-            placeholder="None"
-            values={additionalDepartmentsField}
-            onChange={setAdditionalDepartmentsField}
-            options={[
-              { value: "civil", label: "Civil Team" },
-              { value: "marketing", label: "Marketing Team" },
-              { value: "planning", label: "Planning Team" },
-              { value: "maintenance", label: "Maintenance Team" },
-            ].filter((o) => o.value !== departmentField)}
-          />
-          <div className="text-xs text-gray-400 mt-1">
-            Also let this person see &amp; approve these teams' bills, in addition to their primary department above.
-          </div>
-        </div>
         {!isEdit && (
           <Field
             label="Password" required type="password" placeholder="Set initial password"
@@ -357,9 +356,13 @@ export default function EditUser() {
         perms={perms}
         onToggle={togglePerm}
         hiddenActionsByModule={(() => {
-          const effectiveDept = departmentField === "custom" ? customDepartmentField : departmentField;
-          if (!effectiveDept) return undefined; // no department picked yet — nothing to hide against
-          const cap = approvalLevelsByDept[effectiveDept] ?? 2;
+          // With multiple departments possible now, cap against whichever of
+          // them allows the MOST levels — a checkbox valid for any one of
+          // this person's departments should never be hidden just because a
+          // different one of their departments has fewer configured levels.
+          const effectiveDepts = departmentsField.map((d) => (d === "custom" ? customDepartmentField : d)).filter(Boolean);
+          if (effectiveDepts.length === 0) return undefined; // no department picked yet — nothing to hide against
+          const cap = Math.max(...effectiveDepts.map((d) => approvalLevelsByDept[d] ?? 2));
           // Each module's own ordered L1→L4 sign-off chain. Note: only Bill
           // Approval's chain actually reads this department config on the
           // backend (Backend/src/utils/approvalRules.js) — Work Orders,

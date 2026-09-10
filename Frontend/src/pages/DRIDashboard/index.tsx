@@ -151,18 +151,21 @@ function EntryActions({
   const [confirming, setConfirming] = useState(false);
   const linkCls = "text-[11px] font-semibold hover:underline disabled:opacity-50 disabled:no-underline shrink-0";
 
+  // Row itself is clickable (opens Edit) where the container below renders
+  // it that way — this stopPropagation keeps a click on any of these
+  // specific buttons from also re-triggering that row click.
   if (e.invalidated?.done) {
     const who = personName(e.invalidated.by);
     const title = `Invalidated${who ? ` by ${who}` : ""}${e.invalidated.at ? ` on ${dayjs(e.invalidated.at).format("DD MMM YYYY")}` : ""}${e.invalidated.reason ? ` — ${e.invalidated.reason}` : ""}`;
     return (
-      <span title={title}>
+      <span title={title} onClick={(ev) => ev.stopPropagation()}>
         <NxBadge color="red">Invalidated</NxBadge>
       </span>
     );
   }
   if (e.billedInRequestId) {
     return (
-      <button type="button" className={`${linkCls} text-purple-600 dark:text-purple-400`} onClick={onInvalidate}>
+      <button type="button" className={`${linkCls} text-purple-600 dark:text-purple-400`} onClick={(ev) => { ev.stopPropagation(); onInvalidate(); }}>
         Invalidate
       </button>
     );
@@ -170,7 +173,7 @@ function EntryActions({
 
   const deletable = e.scopeCompleted - e.qtyAdded >= e.scopeLastBilled;
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-2" onClick={(ev) => ev.stopPropagation()}>
       <button type="button" className={`${linkCls} text-blue-600 dark:text-blue-400`} onClick={onEdit}>Edit</button>
       {deletable ? (
         <button
@@ -1004,49 +1007,58 @@ export default function DRIDashboard() {
                               </button>
                             )}
                           </div>
-                          <div className="flex flex-col gap-1.5">
-                            {recentEntries.map((e, i) => (
-                              <div key={e._id + i} className="flex gap-3 items-center text-xs" style={{ opacity: e.invalidated?.done ? 0.55 : 1 }}>
-                                <span className="text-gray-400 min-w-[90px] whitespace-nowrap flex items-center gap-1">
-                                  {dayjs(e.date).format("DD MMM")}
-                                  {dayjs(e.date).format("YYYY-MM-DD") === todayStr && <NxBadge color="blue">Today</NxBadge>}
-                                </span>
-                                <span className={`font-semibold text-[#1A1A2E] dark:text-[#F1F5F9] flex-1 ${e.invalidated?.done ? "line-through" : ""}`}>
-                                  {e.description}
-                                  {personName(e.enteredBy) && (
-                                    <span className="font-normal text-gray-400 text-[11px]"> · {personName(e.enteredBy)}</span>
+                          <div className="flex flex-col gap-1.5 max-h-56 overflow-y-auto pr-1">
+                            {recentEntries.map((e, i) => {
+                              const openEdit = () => {
+                                setEditEntry(e);
+                                setEditProjectType(wpt);
+                                editErrors.clearAll();
+                                setEditFormValues({
+                                  date: e.date ? dayjs(e.date).format("YYYY-MM-DD") : "",
+                                  qtyAdded: String(e.qtyAdded ?? ""),
+                                  remarks: e.remarks || "",
+                                  tower: e.tower || "", floor: e.floor || "", flatNo: e.flatNo || "",
+                                  plotNo: e.plotNo || "", locationNote: e.locationNote || "", plannedQty: "",
+                                });
+                                setEditModal(true);
+                              };
+                              const canEditRow = canEdit && !e.invalidated?.done && !e.billedInRequestId;
+                              return (
+                                <div
+                                  key={e._id + i}
+                                  onClick={canEditRow ? openEdit : undefined}
+                                  className={`flex gap-3 items-center text-xs rounded-md px-1.5 py-1 -mx-1.5 ${canEditRow ? "cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/40" : ""}`}
+                                  style={{ opacity: e.invalidated?.done ? 0.55 : 1 }}
+                                >
+                                  <span className="text-gray-400 min-w-[90px] whitespace-nowrap flex items-center gap-1">
+                                    {dayjs(e.date).format("DD MMM")}
+                                    {dayjs(e.date).format("YYYY-MM-DD") === todayStr && <NxBadge color="blue">Today</NxBadge>}
+                                  </span>
+                                  <span className={`font-semibold text-[#1A1A2E] dark:text-[#F1F5F9] flex-1 ${e.invalidated?.done ? "line-through" : ""}`}>
+                                    {e.description}
+                                    {personName(e.enteredBy) && (
+                                      <span className="font-normal text-gray-400 text-[11px]"> · {personName(e.enteredBy)}</span>
+                                    )}
+                                  </span>
+                                  <span className="text-gray-500 dark:text-gray-400 min-w-[80px]">{formatLocation(e, wpt)}</span>
+                                  <span className="text-emerald-600 font-bold font-mono min-w-[60px]">+{fmtN(e.qtyAdded)} {e.unit}</span>
+                                  {canEdit && (
+                                    <EntryActions
+                                      e={e} deleting={deleting === e._id}
+                                      onEdit={openEdit}
+                                      onDelete={() => handleDeleteEntry(e, detail._id)}
+                                      onInvalidate={() => {
+                                        setInvalidateEntry(e);
+                                        setInvalidateWOId(detail._id);
+                                        invalidateErrors.clearAll();
+                                        setInvalidateReason("");
+                                        setInvalidateModal(true);
+                                      }}
+                                    />
                                   )}
-                                </span>
-                                <span className="text-gray-500 dark:text-gray-400 min-w-[80px]">{formatLocation(e, wpt)}</span>
-                                <span className="text-emerald-600 font-bold font-mono min-w-[60px]">+{fmtN(e.qtyAdded)} {e.unit}</span>
-                                {canEdit && (
-                                  <EntryActions
-                                    e={e} deleting={deleting === e._id}
-                                    onEdit={() => {
-                                      setEditEntry(e);
-                                      setEditProjectType(wpt);
-                                      editErrors.clearAll();
-                                      setEditFormValues({
-                                        date: e.date ? dayjs(e.date).format("YYYY-MM-DD") : "",
-                                        qtyAdded: String(e.qtyAdded ?? ""),
-                                        remarks: e.remarks || "",
-                                        tower: e.tower || "", floor: e.floor || "", flatNo: e.flatNo || "",
-                                        plotNo: e.plotNo || "", locationNote: e.locationNote || "", plannedQty: "",
-                                      });
-                                      setEditModal(true);
-                                    }}
-                                    onDelete={() => handleDeleteEntry(e, detail._id)}
-                                    onInvalidate={() => {
-                                      setInvalidateEntry(e);
-                                      setInvalidateWOId(detail._id);
-                                      invalidateErrors.clearAll();
-                                      setInvalidateReason("");
-                                      setInvalidateModal(true);
-                                    }}
-                                  />
-                                )}
-                              </div>
-                            ))}
+                                </div>
+                              );
+                            })}
                           </div>
                         </div>
                       );
@@ -1266,8 +1278,28 @@ export default function DRIDashboard() {
                 <div className="text-center text-gray-400 py-10 text-sm">No data available.</div>
               ) : (
                 <div className="flex flex-col gap-1.5">
-                  {allEntriesWO.map((e, i) => (
-                    <div key={e._id + i} className="flex gap-3 items-center text-xs py-2 border-b border-gray-100 dark:border-gray-700/40" style={{ opacity: e.invalidated?.done ? 0.55 : 1 }}>
+                  {allEntriesWO.map((e, i) => {
+                    const openEdit = () => {
+                      setEditEntry(e);
+                      setEditProjectType(wpt);
+                      editErrors.clearAll();
+                      setEditFormValues({
+                        date: e.date ? dayjs(e.date).format("YYYY-MM-DD") : "",
+                        qtyAdded: String(e.qtyAdded ?? ""),
+                        remarks: e.remarks || "",
+                        tower: e.tower || "", floor: e.floor || "", flatNo: e.flatNo || "",
+                        plotNo: e.plotNo || "", locationNote: e.locationNote || "", plannedQty: "",
+                      });
+                      setEditModal(true);
+                    };
+                    const canEditRow = canEdit && !e.invalidated?.done && !e.billedInRequestId;
+                    return (
+                    <div
+                      key={e._id + i}
+                      onClick={canEditRow ? openEdit : undefined}
+                      className={`flex gap-3 items-center text-xs py-2 border-b border-gray-100 dark:border-gray-700/40 ${canEditRow ? "cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/40" : ""}`}
+                      style={{ opacity: e.invalidated?.done ? 0.55 : 1 }}
+                    >
                       <span className="text-gray-400 min-w-[90px] whitespace-nowrap flex items-center gap-1">
                         {dayjs(e.date).format("DD MMM")}
                         {dayjs(e.date).format("YYYY-MM-DD") === todayStr && <NxBadge color="blue">Today</NxBadge>}
@@ -1283,19 +1315,7 @@ export default function DRIDashboard() {
                       {canEdit && (
                         <EntryActions
                           e={e} deleting={deleting === e._id}
-                          onEdit={() => {
-                            setEditEntry(e);
-                            setEditProjectType(wpt);
-                            editErrors.clearAll();
-                            setEditFormValues({
-                              date: e.date ? dayjs(e.date).format("YYYY-MM-DD") : "",
-                              qtyAdded: String(e.qtyAdded ?? ""),
-                              remarks: e.remarks || "",
-                              tower: e.tower || "", floor: e.floor || "", flatNo: e.flatNo || "",
-                              plotNo: e.plotNo || "", locationNote: e.locationNote || "", plannedQty: "",
-                            });
-                            setEditModal(true);
-                          }}
+                          onEdit={openEdit}
                           onDelete={() => handleDeleteEntry(e, detail._id)}
                           onInvalidate={() => {
                             setInvalidateEntry(e);
@@ -1307,7 +1327,8 @@ export default function DRIDashboard() {
                         />
                       )}
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
