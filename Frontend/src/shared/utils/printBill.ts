@@ -79,6 +79,10 @@ export interface PrintableLineItem {
 // (Site Progress prints both through this same function/template).
 export interface PrintableBill {
   billNo: string;
+  // Set only for a bill that originated from a Bill Request approval chain
+  // — its own reqNo (e.g. "BR-1234"), printed above billNo so both numbers
+  // are traceable on the same printout. Unset for a manually-created bill.
+  billRequestNo?: string;
   workOrderNo?: string;
   projectName?: string;
   projectLocation?: string;
@@ -200,7 +204,8 @@ body{font-family:Arial,sans-serif;padding:30px;color:#333;font-size:13px;-webkit
   </div>
   <div style="text-align:right">
     <div style="font-size:22px;font-weight:bold;letter-spacing:2px;color:#333">${mode === 'pre' ? 'RUNNING BILL' : 'PAYMENT RECEIPT'}</div>
-    <div style="margin-top:6px;font-size:13px"><strong>Bill No:</strong> ${bill.billNo}</div>
+    ${bill.billRequestNo ? `<div style="margin-top:6px;font-size:13px"><strong>Bill Request No:</strong> ${bill.billRequestNo}</div>` : ""}
+    <div style="${bill.billRequestNo ? "" : "margin-top:6px;"}font-size:13px"><strong>Bill No:</strong> ${bill.billNo}</div>
     <div style="font-size:13px"><strong>Date:</strong> ${bill.billDate ? dayjs(bill.billDate).format("DD/MM/YYYY") : "-"}</div>
     <div style="font-size:13px"><strong>Status:</strong> <span style="background:${mode === 'pre' ? '#f47b20' : '#16a34a'};color:#fff;padding:2px 8px;border-radius:10px;font-size:11px">${mode === 'pre' ? (statusLabel ? statusLabel.toUpperCase() : (BILL_STATUS_LABEL[bill.status] || 'ON HOLD').toUpperCase()) : 'PAID'}</span></div>
   </div>

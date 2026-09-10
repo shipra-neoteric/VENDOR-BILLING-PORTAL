@@ -495,6 +495,7 @@ async function finalizeBillRequest(br, wo, req, res, finalStage) {
 
   const runningBill = await RunningBill.create({
     billNo,
+    billRequestNo: br.reqNo,
     workOrderId: wo._id,
     workOrderNo: wo.workOrderNo,
     projectId:   wo.projectId,

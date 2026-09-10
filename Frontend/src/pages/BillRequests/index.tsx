@@ -271,6 +271,9 @@ async function printBillRequest(br: BillRequestRow) {
       // on the printout for any bill still mid-chain past L2.
       const printableBill: PrintableBill = {
         ...bill,
+        // Fallback for a bill created before billRequestNo existed on
+        // RunningBill — this page always has the originating br.reqNo handy.
+        billRequestNo: bill.billRequestNo || br.reqNo,
         verifiedBy: bill.verifiedBy ?? (actorName(br.gmApprovedBy) ? { name: actorName(br.gmApprovedBy), role: actorRole(br.gmApprovedBy) } : null),
         verifiedAt: bill.verifiedAt ?? br.gmApprovedAt,
       };

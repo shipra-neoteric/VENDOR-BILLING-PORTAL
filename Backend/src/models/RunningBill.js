@@ -44,6 +44,11 @@ const lineItemSchema = new mongoose.Schema({
 const runningBillSchema = new mongoose.Schema(
   {
     billNo:      { type: String, required: true, unique: true },
+    // Set only for a bill created via finalizeBillRequest (the Bill Request
+    // approval chain) — the originating BillRequest's own reqNo (e.g.
+    // "BR-1234"), so a print can show both numbers. Empty for a manually-
+    // created bill (Billing -> New Bill), which never had a BillRequest.
+    billRequestNo: { type: String, default: '' },
     workOrderId: { type: mongoose.Schema.Types.ObjectId, ref: 'WorkOrder' },
     workOrderNo: { type: String },
     // Which of the Work Order's own paymentMilestones (an embedded subdoc,
