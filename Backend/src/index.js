@@ -86,6 +86,7 @@ app.use('/api/drawing-requests', require('./routes/drawingRequests'));
 app.use('/api/dri-home',      require('./routes/driHome'));
 app.use('/api/uploads',       require('./routes/uploads'));
 app.use('/api/backup',        require('./routes/backup'));
+app.use('/api/notifications', require('./routes/notifications'));
 
 app.get('/api/health', (_req, res) =>
   res.json({ success: true, status: 'ok', timestamp: new Date().toISOString() })

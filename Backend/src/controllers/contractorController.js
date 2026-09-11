@@ -4,6 +4,7 @@ const asyncHandler = require('../utils/asyncHandler');
 const { success, created, notFound, badRequest } = require('../utils/responseFormatter');
 const { nextVendorCode } = require('../utils/codeGen');
 const { logAudit, diffFields } = require('../utils/auditLog');
+const { notifyByPermission } = require('../utils/notificationService');
 
 // Business fields only — `documents` holds KYC data URIs and must never be
 // diffed/logged.
@@ -130,6 +131,20 @@ exports.updateContractor = asyncHandler(async (req, res) => {
       entityType: 'Contractor', entityId: contractor._id, entityLabel: contractor.companyName,
       changes,
     });
+  }
+
+  // Vendor Compliance — fires only on the existing status transition to
+  // 'inactive' (already a real, pre-existing field/value on Contractor), not
+  // a new business rule — the people who'd otherwise raise a fresh Work Order
+  // against this vendor need to know before they do.
+  if (before.status !== 'inactive' && contractor.status === 'inactive') {
+    notifyByPermission({
+      module: 'work-orders', action: 'edit', roles: ['owner', 'gm'], entityDoc: contractor,
+      type: 'VENDOR_COMPLIANCE_INACTIVE', category: 'vendor-compliance',
+      title: `${contractor.companyName} marked inactive`,
+      message: `${contractor.companyName} (${contractor.vendorCode}) was marked inactive — do not raise new Work Orders against this vendor.`,
+      entityType: 'Contractor', entityId: contractor._id, link: `/contractors?open=${contractor._id}`,
+    }).catch((err) => console.error('[notifications] VENDOR_COMPLIANCE_INACTIVE notify failed', err.message));
   }
 
   success(res, { contractor }, 'Contractor updated successfully');

@@ -7,6 +7,7 @@ import type { AuthUser } from "../../context/AuthContext";
 import apiClient from "../../services/apiClient";
 import { useIsMobile } from "../../hooks/useIsMobile";
 import ThemeToggle from "../../ui/ThemeToggle";
+import NotificationBell from "../../components/NotificationBell";
 
 // Stashes the Owner's own session while they're impersonating someone else,
 // so "Back to Admin" is instant and doesn't need another login.
@@ -151,6 +152,8 @@ export default function Header({ onToggleSidebar }: HeaderProps) {
             Viewing as {user?.name}
           </span>
         )}
+
+        <NotificationBell />
 
         {/* Dark / light toggle */}
         <ThemeToggle />

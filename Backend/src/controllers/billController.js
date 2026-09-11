@@ -18,6 +18,7 @@ const AdvanceSlip  = require('../models/AdvanceSlip');
 const { nextCode } = require('../utils/sequence');
 const { notifyStagePending, settleAllPendingForEntity } = require('../utils/slackApprovals');
 const { getApprovalConfig, approverAllowed } = require('../utils/approvalRules');
+const { notifyStageInApp, notifyByPermission } = require('../utils/notificationService');
 
 const MODULE = 'accounts-payment';
 
@@ -35,6 +36,28 @@ const TMS_INTEGRATION_ENABLED = false;
 function notifySlack(approvalType, bill) {
   notifyStagePending(approvalType, bill)
     .catch((err) => console.error(`[slack] ${approvalType} notify failed`, err.message));
+  notifyStageInApp(approvalType, bill)
+    .catch((err) => console.error(`[notifications] ${approvalType} notify failed`, err.message));
+}
+
+// Contract Limits — informational only, fires no validation and blocks
+// nothing (createBill/isWorkOrderApproved already gate what's allowed). Once
+// a WO's total active-bill amount reaches 90% of its own contractValue, the
+// people who can actually act on that work order (work-orders:edit, or
+// owner/gm) get a heads-up before it's fully exhausted.
+async function notifyContractLimitIfNear(workOrder) {
+  if (!workOrder || !workOrder.contractValue) return;
+  const bills = await RunningBill.find({ workOrderId: workOrder._id, isActive: { $ne: false } }).select('amount').lean();
+  const totalBilled = bills.reduce((s, b) => s + (b.amount || 0), 0);
+  const pct = totalBilled / workOrder.contractValue;
+  if (pct < 0.9) return;
+  await notifyByPermission({
+    module: 'work-orders', action: 'edit', roles: ['owner', 'gm'], entityDoc: workOrder, departmentScoped: true,
+    type: 'WORK_ORDER_CONTRACT_LIMIT_NEAR', category: 'contract-limits',
+    title: `${workOrder.workOrderNo} nearing its contract value`,
+    message: `${workOrder.workOrderNo} (${workOrder.vendorName || ''}) has been billed ₹${Math.round(totalBilled).toLocaleString('en-IN')} of its ₹${Math.round(workOrder.contractValue).toLocaleString('en-IN')} contract value (${Math.round(pct * 100)}%).`,
+    entityType: 'WorkOrder', entityId: workOrder._id, link: `/work-items/${workOrder._id}`,
+  }).catch((err) => console.error('[notifications] WORK_ORDER_CONTRACT_LIMIT_NEAR notify failed', err.message));
 }
 
 // Advances the SLA tracker for whichever BillRequest generated this RunningBill —
@@ -413,6 +436,7 @@ exports.createBill = asyncHandler(async (req, res) => {
   // (line 223 above) — a progress-driven bill (see billRequestController's
   // gmApprove) is born already past this and never reaches createBill at all.
   notifySlack('PAYMENT_MANUAL_AGM_APPROVAL', bill);
+  if (workOrder) notifyContractLimitIfNear(workOrder);
 
   created(res, { bill }, 'Bill created — awaiting maker confirmation');
 });

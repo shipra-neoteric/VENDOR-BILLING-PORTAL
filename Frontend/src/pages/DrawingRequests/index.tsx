@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import { Eye, Pencil, Trash2, PenTool } from "lucide-react";
 import dayjs from "dayjs";
@@ -38,6 +39,23 @@ export default function DrawingRequests() {
   const [editTarget, setEditTarget]     = useState<DrawingRequest | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DrawingRequest | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  // Deep link from the Notification Center ("Bill Requests"-style ?open=<id>) —
+  // fetches that one request directly (independent of whatever filters/page
+  // the list is currently on) and opens its existing view modal.
+  const [searchParams, setSearchParams] = useSearchParams();
+  useEffect(() => {
+    const openId = searchParams.get("open");
+    if (!openId) return;
+    apiClient.get(`/drawing-requests/${openId}`)
+      .then(res => setViewTarget(res.data.request))
+      .catch(() => {})
+      .finally(() => {
+        searchParams.delete("open");
+        setSearchParams(searchParams, { replace: true });
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const load = () => {
     setLoading(true);

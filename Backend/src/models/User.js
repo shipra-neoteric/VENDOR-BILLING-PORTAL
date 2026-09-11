@@ -24,6 +24,14 @@ const userSchema = new mongoose.Schema(
     // the real person, not a generic bot identity. Found on Slack via the
     // person's profile → "More" → "Copy member ID".
     slackUserId: { type: String, default: null },
+    // Central Notification Center preference — in-app is always on (a user
+    // can't opt out of seeing their own notification bell); email is opt-in
+    // and only ever actually sent if RESEND_API_KEY is configured (see
+    // notificationService.js's maybeEmail — no email service, no email,
+    // regardless of this flag).
+    notificationPreferences: {
+      email: { type: Boolean, default: false },
+    },
     // Which internal team this user belongs to — same fixed list as
     // WorkOrder/RunningBill's own Department field. Drives which bills a
     // user can see/approve in the Bill Approval flow (only their own

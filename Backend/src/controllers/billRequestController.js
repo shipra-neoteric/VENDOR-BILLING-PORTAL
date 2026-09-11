@@ -16,6 +16,7 @@ const { applyAdvanceRecoveries } = require('../utils/advanceRecovery');
 const { notifyStagePending, settleAllPendingForEntity } = require('../utils/slackApprovals');
 const { canActOnDepartment } = require('../utils/departmentAccess');
 const { getApprovalConfig, approverAllowed } = require('../utils/approvalRules');
+const { notifyStageInApp, notifyUser } = require('../utils/notificationService');
 
 // The segregation-of-duty checks below (agm≠gm, gm≠l3, l3≠l4) exist so one
 // person can't rubber-stamp their own prior stage BY DEFAULT — but an admin
@@ -38,6 +39,8 @@ function hasBothBRPermissions(user, action1, action2) {
 function notifySlack(approvalType, entityDoc) {
   notifyStagePending(approvalType, entityDoc)
     .catch((err) => console.error(`[slack] ${approvalType} notify failed`, err.message));
+  notifyStageInApp(approvalType, entityDoc)
+    .catch((err) => console.error(`[notifications] ${approvalType} notify failed`, err.message));
 }
 
 // Gathers the DRI's day-to-day notes for whichever progress entries on this
@@ -809,6 +812,13 @@ exports.rejectBillRequest = asyncHandler(async (req, res) => {
 
   settleAllPendingForEntity(br._id, { verb: 'Rejected', decidedByName: req.user.name })
     .catch((err) => console.error('[slack] settle on reject failed', err.message));
+
+  notifyUser(br.requestedBy, {
+    type: 'BILL_REQUEST_REJECTED', category: 'bill-requests',
+    title: `Bill Request ${br.reqNo} rejected`,
+    message: `${br.reqNo}${br.rejectReason ? ` — ${br.rejectReason}` : ''}`,
+    entityType: 'BillRequest', entityId: br._id, link: `/bill-requests?open=${br._id}`,
+  }).catch((err) => console.error('[notifications] BILL_REQUEST_REJECTED notify failed', err.message));
 
   success(res, { billRequest: br }, `Stage ${br.stageNo} rejected — DRI can re-submit after corrections`);
 });

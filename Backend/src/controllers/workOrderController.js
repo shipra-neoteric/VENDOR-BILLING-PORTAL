@@ -35,13 +35,35 @@ const { documentsExceedLimit } = require('../utils/validateDocuments');
 const { logAudit, diffFields } = require('../utils/auditLog');
 const { sumActiveQty, applyVarianceGate, recomputeParentFromSubItems } = require('../utils/progressHelpers');
 const { notifyStagePending, settleAllPendingForEntity } = require('../utils/slackApprovals');
+const { notifyStageInApp, notifyUser, notifyByPermission } = require('../utils/notificationService');
+
+// Site Progress — fires only the moment a scope item/particular's logged
+// progress newly exceeds its plannedQty and hasn't been sign-off'd yet (same
+// condition applyVarianceGate itself already gates on) — informational, adds
+// no new business rule, blocks nothing (the existing variance sign-off gate
+// at Bill Review time is what actually enforces anything).
+function notifySiteProgressVarianceIfNeeded(workOrder, target) {
+  if (!(target.plannedQty > 0 && target.completedQty > target.plannedQty && !target.varianceApproved)) return;
+  notifyByPermission({
+    module: 'bill-review', action: 'approve', roles: ['owner'], entityDoc: workOrder,
+    type: `SITE_PROGRESS_VARIANCE_${target._id}`, category: 'site-progress',
+    title: `${workOrder.workOrderNo} — progress variance needs sign-off`,
+    message: `"${target.description}" logged ${target.completedQty} ${target.unit} against a planned ${target.plannedQty} ${target.unit} — sign-off required before it can be billed.`,
+    entityType: 'WorkOrder', entityId: workOrder._id, link: `/work-items/${workOrder._id}`,
+  }).catch((err) => console.error('[notifications] SITE_PROGRESS_VARIANCE notify failed', err.message));
+}
 
 // Fire-and-forget (matches emitEvent's un-awaited call sites above) — a failed
 // or unconfigured Slack push must never block the real approval-chain write
-// that already happened.
+// that already happened. Also fans out the same stage to the in-app
+// Notification Center (same STAGES config, same recipient resolution) —
+// independent failure paths, so a Slack outage never blocks in-app
+// notifications or vice versa.
 function notifySlack(approvalType, workOrder) {
   notifyStagePending(approvalType, workOrder)
     .catch((err) => console.error(`[slack] ${approvalType} notify failed`, err.message));
+  notifyStageInApp(approvalType, workOrder)
+    .catch((err) => console.error(`[notifications] ${approvalType} notify failed`, err.message));
 }
 
 // vendorName/ownerName/mobile are snapshotted onto a WO at creation time, but
@@ -647,6 +669,13 @@ exports.finalApprove = asyncHandler(async (req, res) => {
     vendorCode: workOrder.vendorCode, vendorName: workOrder.vendorName, user: req.user,
   });
 
+  notifyUser(workOrder.createdBy, {
+    type: 'WORK_ORDER_FULLY_APPROVED', category: 'work-orders',
+    title: `Work Order ${workOrder.workOrderNo} fully approved`,
+    message: `${workOrder.workOrderNo} (${workOrder.vendorName || ''}) cleared final approval and is now locked for Work Progress.`,
+    entityType: 'WorkOrder', entityId: workOrder._id, link: `/work-items/${workOrder._id}`,
+  }).catch((err) => console.error('[notifications] WORK_ORDER_FULLY_APPROVED notify failed', err.message));
+
   success(res, { workOrder }, 'Final approval granted — work order locked and ready for Work Progress');
 });
 
@@ -818,6 +847,8 @@ exports.addScopeProgress = asyncHandler(async (req, res) => {
     description: `Progress entry added for scope item "${item.description}" (${workOrder.workOrderNo}) — ${qtyAdded} ${item.unit}`,
     entityType: 'WorkOrder', entityId: workOrder._id, entityLabel: workOrder.workOrderNo,
   });
+
+  notifySiteProgressVarianceIfNeeded(workOrder, item);
 
   success(res, { workOrder });
 });
@@ -1003,6 +1034,8 @@ exports.addSubItemProgress = asyncHandler(async (req, res) => {
     description: `Progress entry added for particular "${item.description} — ${subItem.description}" (${workOrder.workOrderNo}) — ${qtyAdded} ${subItem.unit}`,
     entityType: 'WorkOrder', entityId: workOrder._id, entityLabel: workOrder.workOrderNo,
   });
+
+  notifySiteProgressVarianceIfNeeded(workOrder, subItem);
 
   success(res, { workOrder });
 });

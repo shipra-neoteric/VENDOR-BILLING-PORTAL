@@ -3,6 +3,7 @@ const asyncHandler  = require('../utils/asyncHandler');
 const { success, notFound, badRequest } = require('../utils/responseFormatter');
 const { nextCode } = require('../utils/sequence');
 const { logAudit } = require('../utils/auditLog');
+const { notifyByPermission } = require('../utils/notificationService');
 
 const nextSlipNo = () => nextCode('advanceSlipNo', 'ADV-', 4);
 
@@ -58,6 +59,15 @@ exports.createAdvanceSlip = asyncHandler(async (req, res) => {
     description: `Advance slip ${slipNo} created for ${contractorName || contractorCode} (₹${numAmount.toLocaleString('en-IN')})`,
     entityType: 'AdvanceSlip', entityId: slip._id, entityLabel: slip.slipNo,
   });
+
+  notifyByPermission({
+    module: 'advance-payments', action: 'view', roles: ['owner'], entityDoc: slip,
+    type: 'ADVANCE_SLIP_CREATED', category: 'advance-recovery',
+    title: `Advance Slip ${slipNo} created`,
+    message: `₹${numAmount.toLocaleString('en-IN')} advance recorded for ${contractorName || contractorCode} on ${projectName || projectId}.`,
+    entityType: 'AdvanceSlip', entityId: slip._id, link: `/advance-payments?open=${slip._id}`,
+    excludeUserId: req.user._id,
+  }).catch((err) => console.error('[notifications] ADVANCE_SLIP_CREATED notify failed', err.message));
 
   success(res, { advanceSlip: slip }, `Advance slip ${slipNo} created`);
 });

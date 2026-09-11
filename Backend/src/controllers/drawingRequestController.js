@@ -4,6 +4,20 @@ const DrawingRequest = require('../models/DrawingRequest');
 const Project = require('../models/Project');
 const { nextDrawingRequestTicketNo } = require('../utils/codeGen');
 const { logAudit } = require('../utils/auditLog');
+const { notifyByPermission, notifyUser } = require('../utils/notificationService');
+
+// No pre-existing Slack STAGES entry for this chain (see approvalStages.js's
+// own comment — it's Slack-notified separately/not at all today), so this
+// resolves recipients directly by permission the same way notifyStageInApp
+// does for the other modules — same authority (`can()`/role), no department
+// scoping (DrawingRequest carries no department field).
+function notifyDrawingStage({ module = 'drawing-requests', action, roles = [], request, type, category = 'drawing-requests', title, message }) {
+  notifyByPermission({
+    module, action, roles, entityDoc: request,
+    type, category, title, message,
+    entityType: 'DrawingRequest', entityId: request._id, link: `/drawing-requests?open=${request._id}`,
+  }).catch((err) => console.error(`[notifications] ${type} notify failed`, err.message));
+}
 
 async function populatedRequest(id) {
   return DrawingRequest.findById(id)
@@ -51,6 +65,12 @@ exports.createRequest = asyncHandler(async (req, res) => {
     ticketNo: await nextDrawingRequestTicketNo(),
     submittedBy: req.user._id,
     isPublicSubmission: false,
+  });
+
+  notifyDrawingStage({
+    action: 'l1-review', roles: ['owner'], request,
+    type: 'DRAWING_REQUEST_L1_REVIEW', title: `Drawing Request ${request.ticketNo} — L1 review required`,
+    message: `${request.ticketNo} (${request.projectName}) needs L1 review — ${request.description.slice(0, 120)}`,
   });
 
   created(res, { request }, 'Drawing request submitted');
@@ -190,6 +210,21 @@ exports.l1Review = asyncHandler(async (req, res) => {
     entityType: 'DrawingRequest', entityId: request._id, entityLabel: request.ticketNo,
   });
 
+  if (action === 'approve') {
+    notifyDrawingStage({
+      action: 'l2-draw', roles: ['owner'], request,
+      type: 'DRAWING_REQUEST_L2_DRAW', title: `Drawing Request ${request.ticketNo} — ready to draw`,
+      message: `${request.ticketNo} (${request.projectName}) cleared L1 and needs the drawing produced.`,
+    });
+  } else if (request.submittedBy) {
+    notifyUser(request.submittedBy, {
+      type: 'DRAWING_REQUEST_RETURNED', category: 'drawing-requests',
+      title: `Drawing Request ${request.ticketNo} returned`,
+      message: `${request.ticketNo} was returned — ${remarks.trim()}`,
+      entityType: 'DrawingRequest', entityId: request._id, link: `/drawing-requests?open=${request._id}`,
+    }).catch((err) => console.error('[notifications] DRAWING_REQUEST_RETURNED notify failed', err.message));
+  }
+
   success(res, { request: await populatedRequest(request._id) }, action === 'approve' ? 'Forwarded to Architect' : 'Returned to DRI');
 });
 
@@ -219,6 +254,12 @@ exports.l2Drawing = asyncHandler(async (req, res) => {
     action: 'UPDATE', module: 'drawing-requests', user: req.user,
     description: `Drawing submitted for drawing request ${request.ticketNo}`,
     entityType: 'DrawingRequest', entityId: request._id, entityLabel: request.ticketNo,
+  });
+
+  notifyDrawingStage({
+    action: 'l3-review', roles: ['owner'], request,
+    type: 'DRAWING_REQUEST_L3_REVIEW', title: `Drawing Request ${request.ticketNo} — L3 review required`,
+    message: `${request.ticketNo} (${request.projectName}) has a drawing submitted, awaiting GM cross-check.`,
   });
 
   success(res, { request: await populatedRequest(request._id) }, 'Drawing submitted for GM cross-check');
@@ -251,6 +292,14 @@ exports.l3Review = asyncHandler(async (req, res) => {
     description: `L3 ${action === 'approve' ? 'approved' : 'sent back for rework'} drawing request ${request.ticketNo}`,
     entityType: 'DrawingRequest', entityId: request._id, entityLabel: request.ticketNo,
   });
+
+  if (action === 'approve') {
+    notifyDrawingStage({
+      action: 'l4-approve', roles: ['owner'], request,
+      type: 'DRAWING_REQUEST_L4_APPROVAL', title: `Drawing Request ${request.ticketNo} — L4 final approval required`,
+      message: `${request.ticketNo} (${request.projectName}) cleared L3, awaiting final approval.`,
+    });
+  }
 
   success(res, { request: await populatedRequest(request._id) }, action === 'approve' ? 'Forwarded to final approval' : 'Sent back to Architect for rework');
 });
@@ -285,6 +334,18 @@ exports.l4Review = asyncHandler(async (req, res) => {
     description: `L4 ${action === 'approve' ? 'approved' : 'sent back for rework'} drawing request ${request.ticketNo}`,
     entityType: 'DrawingRequest', entityId: request._id, entityLabel: request.ticketNo,
   });
+
+  if (request.submittedBy) {
+    notifyUser(request.submittedBy, {
+      type: action === 'approve' ? 'DRAWING_REQUEST_APPROVED' : 'DRAWING_REQUEST_RETURNED_L4',
+      category: 'drawing-requests',
+      title: `Drawing Request ${request.ticketNo} ${action === 'approve' ? 'approved' : 'returned'}`,
+      message: action === 'approve'
+        ? `${request.ticketNo} (${request.projectName}) is fully approved and ready for dispatch.`
+        : `${request.ticketNo} was returned — ${remarks.trim()}`,
+      entityType: 'DrawingRequest', entityId: request._id, link: `/drawing-requests?open=${request._id}`,
+    }).catch((err) => console.error('[notifications] drawing L4 notify failed', err.message));
+  }
 
   success(res, { request: await populatedRequest(request._id) }, action === 'approve' ? 'Approved' : 'Sent back to Architect for rework');
 });
