@@ -39,16 +39,22 @@ const CONTROLLER_FNS = {
 // ahead of the global express.json() parser). Rejects anything older than 5
 // minutes to block replay of a captured request.
 function verifySlackSignature(req) {
-  const signature = req.headers['x-slack-signature'];
-  const timestamp = req.headers['x-slack-request-timestamp'];
+  if (!process.env.SLACK_SIGNING_SECRET || !req || !req.rawBody) return false;
+  const signature = req.headers?.['x-slack-signature'];
+  const timestamp = req.headers?.['x-slack-request-timestamp'];
   if (!signature || !timestamp) return false;
   if (Math.abs(Date.now() / 1000 - Number(timestamp)) > 60 * 5) return false;
 
-  const base = `v0:${timestamp}:${req.rawBody.toString('utf8')}`;
-  const hmac = 'v0=' + crypto.createHmac('sha256', process.env.SLACK_SIGNING_SECRET).update(base).digest('hex');
-  const a = Buffer.from(hmac);
-  const b = Buffer.from(signature);
-  return a.length === b.length && crypto.timingSafeEqual(a, b);
+  try {
+    const rawBodyStr = Buffer.isBuffer(req.rawBody) ? req.rawBody.toString('utf8') : String(req.rawBody);
+    const base = `v0:${timestamp}:${rawBodyStr}`;
+    const hmac = 'v0=' + crypto.createHmac('sha256', process.env.SLACK_SIGNING_SECRET).update(base).digest('hex');
+    const a = Buffer.from(hmac);
+    const b = Buffer.from(signature);
+    return a.length === b.length && crypto.timingSafeEqual(a, b);
+  } catch {
+    return false;
+  }
 }
 
 // Calls an existing, already-fully-validated controller function (finalApprove,

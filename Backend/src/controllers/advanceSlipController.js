@@ -38,18 +38,24 @@ exports.getPendingAdvances = asyncHandler(async (req, res) => {
 // POST /api/advance-slips
 exports.createAdvanceSlip = asyncHandler(async (req, res) => {
   const { contractorCode, contractorName, projectId, projectName, amount, date, reference, notes } = req.body;
-  if (!contractorCode || !projectId || !amount || !date) {
+  if (!contractorCode || !projectId || amount === undefined || amount === null || !date) {
     return badRequest(res, 'contractorCode, projectId, amount and date are required');
   }
+
+  const numAmount = Number(amount);
+  if (typeof amount === 'boolean' || isNaN(numAmount) || !isFinite(numAmount) || numAmount <= 0) {
+    return badRequest(res, 'Advance amount must be a valid number greater than 0');
+  }
+
   const slipNo = await nextSlipNo();
   const slip = await AdvanceSlip.create({
     slipNo, contractorCode, contractorName, projectId, projectName,
-    amount, date, reference, notes, createdBy: req.user._id,
+    amount: numAmount, date, reference, notes, createdBy: req.user._id,
   });
 
   await logAudit({
     action: 'CREATE', module: 'advance-slips', user: req.user,
-    description: `Advance slip ${slipNo} created for ${contractorName || contractorCode} (₹${Number(amount).toLocaleString('en-IN')})`,
+    description: `Advance slip ${slipNo} created for ${contractorName || contractorCode} (₹${numAmount.toLocaleString('en-IN')})`,
     entityType: 'AdvanceSlip', entityId: slip._id, entityLabel: slip.slipNo,
   });
 

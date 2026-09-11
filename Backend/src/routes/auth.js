@@ -1,10 +1,22 @@
 const router = require('express').Router();
+const rateLimit = require('express-rate-limit');
 const { authenticate, authorize } = require('../middleware/auth');
 const { registerRules, loginRules } = require('../validators/auth.validator');
 const { register, login, getMe, changePassword, listUsers, switchUser } = require('../controllers/authController');
 
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 20, // limit each IP to 20 login attempts per 15 min window
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: 'Too many login attempts from this IP, please try again after 15 minutes.',
+  },
+});
+
 router.post('/register', registerRules, register);
-router.post('/login',    loginRules,    login);
+router.post('/login',    loginLimiter, loginRules, login);
 router.get('/me',        authenticate,  getMe);
 router.patch('/change-password', authenticate, changePassword);
 // Read-only staff directory (name/email/role/isActive — no passwords) used

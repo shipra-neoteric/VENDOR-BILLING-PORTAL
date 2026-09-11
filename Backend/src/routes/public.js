@@ -21,20 +21,20 @@ const { signUpload } = require('../utils/cloudinary');
 
 // ── Lookup lists (read-only, no auth) ──────────────────────────
 router.get('/projects', asyncHandler(async (_req, res) => {
-  const projects = await Project.find().select('_id name code projectType location').sort({ name: 1 }).lean();
+  const projects = await Project.find({ status: { $ne: 'completed' } }).select('_id name code projectType location').sort({ name: 1 }).lean();
   success(res, { projects });
 }));
 
 router.get('/contractors', asyncHandler(async (_req, res) => {
-  const contractors = await Contractor.find()
-    .select('vendorCode companyName ownerName mobile')
+  const contractors = await Contractor.find({ status: { $ne: 'inactive' } })
+    .select('_id vendorCode companyName')
     .sort({ vendorCode: 1 }).lean();
   success(res, { contractors });
 }));
 
 router.get('/consultants', asyncHandler(async (_req, res) => {
-  const consultants = await Consultant.find()
-    .select('consultantCode firmName principalName mobile consultancyType')
+  const consultants = await Consultant.find({ status: { $ne: 'inactive' } })
+    .select('_id consultantCode firmName consultancyType')
     .sort({ consultantCode: 1 }).lean();
   success(res, { consultants });
 }));
@@ -47,12 +47,12 @@ router.get('/categories', asyncHandler(async (_req, res) => {
 }));
 
 router.get('/companies', asyncHandler(async (_req, res) => {
-  const companies = await Company.find().select('_id name').sort({ name: 1 }).lean();
+  const companies = await Company.find({ isActive: { $ne: false } }).select('_id name').sort({ name: 1 }).lean();
   success(res, { companies });
 }));
 
 router.get('/dri-users', asyncHandler(async (_req, res) => {
-  const users = await User.find({ role: 'site-dri' }).select('_id name email').sort({ name: 1 }).lean();
+  const users = await User.find({ role: 'site-dri', isActive: true }).select('_id name').sort({ name: 1 }).lean();
   success(res, { users });
 }));
 

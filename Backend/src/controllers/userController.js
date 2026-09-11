@@ -39,11 +39,12 @@ function sanitizeAdditionalDepartments(list, primaryDepartment) {
   return unique.filter((d) => FIXED_DEPARTMENTS.includes(d) && d !== primaryDepartment);
 }
 
-// A limited-permission caller must never be able to hand out the Owner role
-// itself — that would be a full privilege escalation via a narrow grant.
+// A limited-permission caller (or GM) must never be able to hand out the Owner role
+// itself — only an actual Owner can assign or create the Owner role.
 function canAssignRole(caller, role) {
+  if (role === 'owner') return caller.role === 'owner';
   if (TRUSTED_USER_MANAGER_ROLES.includes(caller.role)) return true;
-  return role !== 'owner';
+  return true;
 }
 
 // Previously restricted a limited-permission caller (anyone reaching this
@@ -80,6 +81,9 @@ exports.createUser = asyncHandler(async (req, res) => {
   if (!isValidRole(role)) {
     return badRequest(res, 'Invalid role name');
   }
+  if (role === 'owner' && req.user.role !== 'owner') {
+    return forbidden(res, 'Only Owner can assign the Owner role');
+  }
   if (!canAssignRole(req.user, role)) {
     return forbidden(res, 'Only Owner can assign the Owner role');
   }
@@ -114,6 +118,11 @@ exports.updateUser = asyncHandler(async (req, res) => {
   if (!user) return notFound(res, 'User not found');
   const before = user.toObject();
 
+  // Target is an Owner account: only an Owner is allowed to modify an Owner's account details/role/permissions
+  if (user.role === 'owner' && req.user.role !== 'owner') {
+    return forbidden(res, 'Only Owner can modify an Owner account');
+  }
+
   // Prevent demoting/deactivating self
   if (req.user._id.toString() === user._id.toString()) {
     if (isActive === false) return badRequest(res, 'You cannot deactivate your own account');
@@ -128,6 +137,9 @@ exports.updateUser = asyncHandler(async (req, res) => {
     user.email = email.toLowerCase().trim();
   }
   if (role && !isValidRole(role)) return badRequest(res, 'Invalid role name');
+  if (role && role === 'owner' && req.user.role !== 'owner') {
+    return forbidden(res, 'Only Owner can assign the Owner role');
+  }
   if (role && !canAssignRole(req.user, role)) {
     return forbidden(res, 'Only Owner can assign the Owner role');
   }
@@ -167,19 +179,38 @@ exports.updateUser = asyncHandler(async (req, res) => {
 
 // PATCH /api/users/:id/password
 exports.changePassword = asyncHandler(async (req, res) => {
-  const { password } = req.body;
+  const { currentPassword, password } = req.body;
   if (!password || password.length < 6) {
     return badRequest(res, 'Password must be at least 6 characters');
   }
   const user = await User.findById(req.params.id).select('+password');
   if (!user) return notFound(res, 'User not found');
 
+  // Security Rule 1: Non-owner must NOT reset an Owner's password
+  if (user.role === 'owner' && req.user.role !== 'owner') {
+    return forbidden(res, 'Only Owner can reset an Owner account password');
+  }
+
+  // Security Rule 2: If a user is changing their own password, verify currentPassword
+  const isSelf = req.user._id.toString() === user._id.toString();
+  if (isSelf) {
+    if (!currentPassword) {
+      return badRequest(res, 'Current password is required to change your own password');
+    }
+    const matches = await user.matchPassword(currentPassword);
+    if (!matches) {
+      return unauthorized(res, 'Current password is incorrect');
+    }
+  }
+
   user.password = password;
   await user.save();
 
   await logAudit({
     action: 'UPDATE', module: 'user-management', user: req.user,
-    description: `Reset password for ${user.name} (${user.email})`,
+    description: isSelf
+      ? 'User changed their own password'
+      : `Admin reset password for ${user.name} (${user.email})`,
     entityType: 'User', entityId: user._id, entityLabel: user.email,
   });
 
@@ -190,6 +221,12 @@ exports.changePassword = asyncHandler(async (req, res) => {
 exports.deleteUser = asyncHandler(async (req, res) => {
   const user = await User.findById(req.params.id);
   if (!user) return notFound(res, 'User not found');
+
+  // Security Rule: Only Owner can deactivate an Owner account
+  if (user.role === 'owner' && req.user.role !== 'owner') {
+    return forbidden(res, 'Only Owner can deactivate an Owner account');
+  }
+
   if (req.user._id.toString() === user._id.toString()) {
     return badRequest(res, 'You cannot delete your own account');
   }

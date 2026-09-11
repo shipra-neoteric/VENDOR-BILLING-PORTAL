@@ -21,10 +21,21 @@ const userPayload = (user) => ({
 });
 
 exports.register = asyncHandler(async (req, res) => {
+  // Public self-registration is disabled by default to prevent unauthenticated access.
+  // All legitimate user creation happens via the authenticated /api/users endpoint.
+  if (process.env.ALLOW_PUBLIC_REGISTRATION !== 'true') {
+    return forbidden(res, 'Public self-registration is disabled. Please contact an administrator to create an account.');
+  }
+
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
-  const { name, role, vendorCode } = req.body;
+  const requestedRole = (req.body.role || '').trim().toLowerCase();
+  if (['owner', 'gm', 'agm', 'accounts', 'process-coordinator'].includes(requestedRole)) {
+    return forbidden(res, 'Cannot self-register for administrative or privileged roles.');
+  }
+
+  const { name, vendorCode } = req.body;
   const email    = req.body.email?.trim().toLowerCase();
   const password = req.body.password;
 
@@ -32,6 +43,7 @@ exports.register = asyncHandler(async (req, res) => {
     return badRequest(res, 'Email already registered');
   }
 
+  const role = 'site-dri';
   const user  = await User.create({ name, email, password, role, vendorCode });
   const token = signToken(user._id);
 

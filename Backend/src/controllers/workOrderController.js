@@ -308,12 +308,23 @@ exports.createWorkOrder = asyncHandler(async (req, res) => {
 
 exports.updateWorkOrder = asyncHandler(async (req, res) => {
   const { workOrderNo: _wo, ...updateData } = req.body;
+  const before = await WorkOrder.findById(req.params.id).lean();
+  if (!before) return notFound(res, 'Work order not found');
+  if (before.isLocked) return badRequest(res, 'This work order is locked and cannot be edited. Unlock it first.');
 
   if (updateData.scopeItems) {
-    resolveScopeItemIdsForMilestones(updateData.scopeItems, updateData.paymentMilestones);
+    resolveScopeItemIdsForMilestones(updateData.scopeItems, updateData.paymentMilestones || before.paymentMilestones);
   }
 
-  if (updateData.paymentMilestones && milestonesExceedContract(updateData)) {
+  // Validate milestones against merged final state so updating contractValue or paymentMilestones
+  // independently never bypasses the contractValue + GST ceiling check.
+  const mergedForValidation = {
+    contractValue: updateData.contractValue !== undefined ? updateData.contractValue : before.contractValue,
+    gstPercent: updateData.gstPercent !== undefined ? updateData.gstPercent : before.gstPercent,
+    paymentMilestones: updateData.paymentMilestones !== undefined ? updateData.paymentMilestones : before.paymentMilestones,
+  };
+
+  if (milestonesExceedContract(mergedForValidation)) {
     return badRequest(res, "Payment milestones total exceeds the work order's contract value (incl. GST)");
   }
 
@@ -332,10 +343,6 @@ exports.updateWorkOrder = asyncHandler(async (req, res) => {
       updateData.companyName = '';
     }
   }
-
-  const before = await WorkOrder.findById(req.params.id).lean();
-  if (!before) return notFound(res, 'Work order not found');
-  if (before.isLocked) return badRequest(res, 'This work order is locked and cannot be edited. Unlock it first.');
 
   // Editing a work order mid-chain (pending-checker/approver/final) or after
   // it already cleared the full chain (only possible once Owner has unlocked
