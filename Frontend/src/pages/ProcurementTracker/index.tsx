@@ -138,7 +138,8 @@ export default function ProcurementTracker() {
         (b.billNo || "").toLowerCase().includes(q) ||
         (b.workOrderNo || "").toLowerCase().includes(q) ||
         (b.vendorName || "").toLowerCase().includes(q) ||
-        (b.projectName || "").toLowerCase().includes(q);
+        (b.projectName || "").toLowerCase().includes(q) ||
+        (b.amount ?? 0).toFixed(2).includes(q);
       const matchProject = !projectFilter || projects.find((p) => p.id === projectFilter)?.name === b.projectName;
       const matchVendor  = !vendorFilter || b.vendorCode === vendorFilter;
       const matchStatus  = !statusFilter || b.status === statusFilter;
@@ -181,7 +182,7 @@ export default function ProcurementTracker() {
       <div className="bg-white/90 dark:bg-gray-800/95 backdrop-blur-xl border border-gray-100 dark:border-gray-700/50 rounded-xl shadow-sm p-5">
         <div className="bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700/40 rounded-lg p-3.5 mb-4">
           <div className="flex gap-2.5 items-center flex-wrap">
-            <SearchFilter value={search} onChange={setSearch} placeholder="Search bill no., PO, vendor, project…" />
+            <SearchFilter value={search} onChange={setSearch} placeholder="Search bill no., PO, vendor, project, amount…" />
             <DropdownSelectFilter
               value={projectFilter} onChange={setProjectFilter} placeholder="All Projects" resetValue=""
               options={selectableProjects(projects).map(p => ({ label: p.name, value: p.id }))}
