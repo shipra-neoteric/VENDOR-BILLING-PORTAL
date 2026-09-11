@@ -90,7 +90,7 @@ exports.listQuotationsForWorkOrder = asyncHandler(async (req, res) => {
 
 exports.listDraftWorkOrders = asyncHandler(async (req, res) => {
   const workOrders = await WorkOrder.find({ isLocked: false })
-    .select('workOrderNo projectName vendorName contractValue createdAt')
+    .select('workOrderNo projectName vendorName contractValue createdAt category subCategory')
     .sort({ createdAt: -1 }).lean();
 
   const counts = await ContractorQuotation.aggregate([

@@ -8,7 +8,7 @@ import Btn from "../../ui/Btn";
 import NxBtn from "../../ui/nexora/Btn";
 import NxBadge from "../../ui/nexora/Badge";
 import Field from "../../ui/Field";
-import { FilterRow, SearchFilter } from "../../ui/Filters";
+import { FilterRow, SearchFilter, SelectFilter } from "../../ui/Filters";
 import { Table, Thead, Tbody, Tr, Th, Td, TdText } from "../../ui/Table";
 import { SkeletonTable } from "../../ui/Skeleton";
 import EmptyState from "../../ui/EmptyState";
@@ -22,6 +22,8 @@ interface DraftWorkOrder {
   vendorName?: string;
   contractValue: number;
   pendingQuotationCount: number;
+  category?: string;
+  subCategory?: string;
 }
 
 interface QuotedItem {
@@ -346,6 +348,7 @@ export default function QuotationComparison() {
   const [workOrders, setWorkOrders] = useState<DraftWorkOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [category, setCategory] = useState("");
   const [newQuoteFor, setNewQuoteFor] = useState<DraftWorkOrder | null>(null);
   const [compareFor, setCompareFor] = useState<DraftWorkOrder | null>(null);
 
@@ -359,15 +362,27 @@ export default function QuotationComparison() {
 
   useEffect(load, []);
 
+  // Populated straight from whatever categories these draft WOs actually
+  // carry — narrower than the full /categories list, but every option here
+  // is guaranteed to actually match something (no "Furniture" option sitting
+  // there with zero results if no draft WO happens to be in it right now).
+  const categoryOptions = useMemo(() => {
+    const names = [...new Set(workOrders.map(w => w.category).filter(Boolean))] as string[];
+    return names.sort((a, b) => a.localeCompare(b));
+  }, [workOrders]);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return workOrders;
-    return workOrders.filter(w =>
-      w.workOrderNo.toLowerCase().includes(q) ||
-      w.projectName?.toLowerCase().includes(q) ||
-      w.vendorName?.toLowerCase().includes(q)
-    );
-  }, [workOrders, search]);
+    return workOrders.filter(w => {
+      if (category && w.category !== category) return false;
+      if (!q) return true;
+      return (
+        w.workOrderNo.toLowerCase().includes(q) ||
+        w.projectName?.toLowerCase().includes(q) ||
+        w.vendorName?.toLowerCase().includes(q)
+      );
+    });
+  }, [workOrders, search, category]);
 
   function copyPublicLink(workOrderId: string) {
     const url = `${window.location.origin}/public/quotation/${workOrderId}`;
@@ -386,6 +401,10 @@ export default function QuotationComparison() {
 
       <FilterRow>
         <SearchFilter value={search} onChange={setSearch} placeholder="Search work order, project, or contractor…" />
+        <SelectFilter
+          value={category} onChange={setCategory} placeholder="All Categories"
+          options={categoryOptions.map(c => ({ value: c, label: c }))}
+        />
       </FilterRow>
 
       {loading ? (
