@@ -1466,7 +1466,9 @@ export default function AccountsPayment() {
                     </Td>
                     <Td className="whitespace-nowrap truncate">{r.projectName || <span className="text-gray-300">—</span>}</Td>
                     <Td className="text-right font-mono font-bold whitespace-nowrap">{fmt(displayAmount(r))}</Td>
-                    <Td className="whitespace-nowrap truncate"><NxBadge color={BILL_LIST_STATUS_CFG[r.status].color}>{BILL_LIST_STATUS_CFG[r.status].label}</NxBadge></Td>
+                    <Td className="whitespace-nowrap truncate">
+                      <NxBadge color={BILL_LIST_STATUS_CFG[r.status]?.color ?? "gray"}>{BILL_LIST_STATUS_CFG[r.status]?.label ?? r.status}</NxBadge>
+                    </Td>
                     <Td className="whitespace-nowrap">{r.billDate ? dayjs(r.billDate).format("DD MMM YYYY") : "—"}</Td>
                     <Td onClick={(e) => e.stopPropagation()}>
                       <NxBtn
