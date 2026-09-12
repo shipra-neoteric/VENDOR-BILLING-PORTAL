@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
 import toast, { Toaster } from "react-hot-toast";
-import { FileCheck2, Send } from "lucide-react";
+import { FileCheck2, Send, Plus, Trash2 } from "lucide-react";
 import Field from "../../ui/Field";
 import Btn from "../../ui/Btn";
+import SField from "../../ui/SField";
 import { Table, Thead, Tbody, Tr, Th, Td, TdText } from "../../ui/Table";
 import { Skeleton } from "../../ui/Skeleton";
 
@@ -31,6 +32,42 @@ interface WorkOrderContext {
 
 const fmt = (n: number) => "₹" + (n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+// A contractor's own extra line item, not tied to any of the work order's
+// pre-listed scope items — has no scopeItemId, so it flows through
+// approveQuotation's existing "append as a new scope item" branch instead of
+// being matched onto one (see Backend/src/controllers/contractorQuotationController.js).
+interface CustomItem {
+  key: string;
+  description: string;
+  unit: string;
+  plannedQty: string;
+  rate: string;
+}
+let _customItemKey = 0;
+const newCustomItem = (): CustomItem => ({ key: String(++_customItemKey), description: "", unit: "", plannedQty: "", rate: "" });
+
+// Same list Work Orders' own scope-item unit picker uses (WorkItems/index.tsx,
+// PublicWorkOrderForm/index.tsx) — kept consistent rather than free-text so a
+// contractor's extra item's unit always matches something the rest of the app
+// already recognizes.
+const UNIT_OPTIONS = [
+  { label: "Sq.Ft (Square Feet)", value: "sq.ft"      },
+  { label: "Sq.M (Square Meter)", value: "sq.m"       },
+  { label: "Cu.M (Cubic Meter)",  value: "cu.m"       },
+  { label: "Cu.Ft (Cubic Feet)",  value: "cu.ft"      },
+  { label: "RMT (Running Meter)", value: "rmt"        },
+  { label: "Kg (Kilogram)",       value: "kg"         },
+  { label: "MT (Metric Ton)",     value: "mt"         },
+  { label: "Nos (Numbers)",       value: "nos"        },
+  { label: "Daily Wage",          value: "daily-wage" },
+  { label: "Per Day",             value: "per-day"    },
+  { label: "Per Person",          value: "per-person" },
+  { label: "Per Hour",            value: "per-hr"     },
+  { label: "Per Trip",            value: "per-trip"   },
+  { label: "RFT (Running Foot)",  value: "rft"        },
+  { label: "Lump Sum",            value: "lump-sum"   },
+];
+
 function workOrderIdFromPath(): string {
   // /public/quotation/:workOrderId — the first per-record-scoped public link
   // in this app; every other public form is a generic unscoped endpoint.
@@ -45,6 +82,12 @@ export default function PublicQuotationForm() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [rates, setRates] = useState<Record<string, string>>({});
+  // Removing one of the work order's own items here only excludes it from
+  // THIS quotation (never touches the real scope item on the work order
+  // itself) — same end result as leaving its rate blank, just an explicit
+  // action instead of an implicit one.
+  const [excludedIds, setExcludedIds] = useState<Set<string>>(new Set());
+  const [customItems, setCustomItems] = useState<CustomItem[]>([]);
   const [contractorName, setContractorName] = useState("");
   const [contractorMobile, setContractorMobile] = useState("");
   const [contractorEmail, setContractorEmail] = useState("");
@@ -61,16 +104,28 @@ export default function PublicQuotationForm() {
       .finally(() => setLoading(false));
   }, [workOrderId]);
 
-  const total = context
-    ? context.scopeItems.reduce((s, i) => s + (i.plannedQty || 0) * (Number(rates[i._id]) || 0), 0)
-    : 0;
+  function updateCustomItem(key: string, patch: Partial<CustomItem>) {
+    setCustomItems(items => items.map(i => (i.key === key ? { ...i, ...patch } : i)));
+  }
+
+  const visibleScopeItems = (context?.scopeItems || []).filter(i => !excludedIds.has(i._id));
+  const customTotal = customItems.reduce((s, i) => s + (Number(i.plannedQty) || 0) * (Number(i.rate) || 0), 0);
+  const total = visibleScopeItems.reduce((s, i) => s + (i.plannedQty || 0) * (Number(rates[i._id]) || 0), 0) + customTotal;
 
   async function submit() {
     if (!contractorName.trim()) return toast.error("Your name is required");
     if (!contractorMobile.trim()) return toast.error("Your contact number is required");
-    const quotedItems = (context?.scopeItems || [])
+    const scopeQuotedItems = visibleScopeItems
       .filter(i => Number(rates[i._id]) > 0)
       .map(i => ({ scopeItemId: i._id, description: i.description, unit: i.unit, plannedQty: i.plannedQty, rate: Number(rates[i._id]) }));
+    const filledCustomItems = customItems.filter(i => i.description.trim() && Number(i.rate) > 0);
+    if (filledCustomItems.some(i => !i.unit.trim() || !(Number(i.plannedQty) > 0))) {
+      return toast.error("Every extra item needs a unit and a quantity greater than 0");
+    }
+    const customQuotedItems = filledCustomItems.map(i => ({
+      scopeItemId: null, description: i.description.trim(), unit: i.unit.trim(), plannedQty: Number(i.plannedQty), rate: Number(i.rate),
+    }));
+    const quotedItems = [...scopeQuotedItems, ...customQuotedItems];
     if (quotedItems.length === 0) return toast.error("Enter a rate for at least one item");
 
     setSubmitting(true);
@@ -149,10 +204,10 @@ export default function PublicQuotationForm() {
               <div className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Quote a Rate Per Item</div>
               <Table>
                 <Thead>
-                  <Tr><Th>Item</Th><Th>Unit</Th><Th>Qty</Th><Th>Your Rate (₹)</Th><Th>Amount</Th></Tr>
+                  <Tr><Th>Item</Th><Th>Unit</Th><Th>Qty</Th><Th>Your Rate (₹)</Th><Th>Amount</Th><Th></Th></Tr>
                 </Thead>
                 <Tbody>
-                  {context.scopeItems.map(item => (
+                  {visibleScopeItems.map(item => (
                     <Tr key={item._id}>
                       <Td><TdText>{item.description}</TdText></Td>
                       <Td><TdText>{item.unit}</TdText></Td>
@@ -167,10 +222,47 @@ export default function PublicQuotationForm() {
                         />
                       </Td>
                       <Td><TdText>{fmt((item.plannedQty || 0) * (Number(rates[item._id]) || 0))}</TdText></Td>
+                      <Td>
+                        <Btn small outline icon={Trash2} onClick={() => setExcludedIds(s => new Set(s).add(item._id))} />
+                      </Td>
                     </Tr>
                   ))}
                 </Tbody>
               </Table>
+
+              <div className="flex items-center justify-between mt-5 mb-3">
+                <div className="text-xs font-bold text-gray-500 uppercase tracking-wide">Have an extra item not listed above?</div>
+                <Btn small outline icon={Plus} label="Add Item" onClick={() => setCustomItems(items => [...items, newCustomItem()])} />
+              </div>
+              {customItems.length > 0 && (
+                <div className="flex flex-col gap-2">
+                  <div className="grid grid-cols-[2fr_1fr_0.8fr_0.9fr_0.9fr_32px] gap-2 px-0.5 text-[11px] font-bold text-gray-500 uppercase tracking-wide">
+                    <span>Description</span><span>Unit</span><span>Qty</span><span>Rate (₹)</span><span>Amount</span><span />
+                  </div>
+                  {customItems.map(item => (
+                    <div key={item.key} className="grid grid-cols-[2fr_1fr_0.8fr_0.9fr_0.9fr_32px] gap-2 items-center">
+                      <input
+                        type="text" value={item.description} placeholder="e.g. Extra waterproofing"
+                        onChange={e => updateCustomItem(item.key, { description: e.target.value })}
+                        className="w-full h-8 px-2 rounded-md border border-gray-200 text-[13px] text-[#1A1A2E] focus:outline-none focus:ring-2 focus:ring-primary/30"
+                      />
+                      <SField value={item.unit} onChange={v => updateCustomItem(item.key, { unit: v })} options={UNIT_OPTIONS} placeholder="Unit" />
+                      <input
+                        type="number" min={0} value={item.plannedQty} placeholder="Qty"
+                        onChange={e => updateCustomItem(item.key, { plannedQty: e.target.value })}
+                        className="w-full h-8 px-2 rounded-md border border-gray-200 text-[13px] text-[#1A1A2E] focus:outline-none focus:ring-2 focus:ring-primary/30"
+                      />
+                      <input
+                        type="number" min={0} value={item.rate} placeholder="Rate"
+                        onChange={e => updateCustomItem(item.key, { rate: e.target.value })}
+                        className="w-full h-8 px-2 rounded-md border border-gray-200 text-[13px] text-[#1A1A2E] focus:outline-none focus:ring-2 focus:ring-primary/30"
+                      />
+                      <span className="text-[13px] text-[#1A1A2E] font-mono">{fmt((Number(item.plannedQty) || 0) * (Number(item.rate) || 0))}</span>
+                      <Btn small outline icon={Trash2} onClick={() => setCustomItems(items => items.filter(i => i.key !== item.key))} />
+                    </div>
+                  ))}
+                </div>
+              )}
 
               <div className="flex justify-end text-sm mt-4">
                 <span className="text-gray-500 mr-2">Total Quoted:</span>
