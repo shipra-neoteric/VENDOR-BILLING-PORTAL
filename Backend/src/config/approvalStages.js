@@ -134,14 +134,23 @@ const STAGES = {
     buildLines: (bill) => runningBillLines(bill, 'Verify'),
     deepLinkPath: runningBillDeepLink,
   },
+  // No blanket 'owner' role bypass here (unlike the stages above) — an
+  // 'owner' account only gets this notification when it holds the matching
+  // explicit permission grant (module 'accounts-payment', action
+  // 'l1-agm-approve'/'l2-director-approve'), same as any other role. Some
+  // owner accounts (e.g. Admin/Master Admin) are genuinely configured with
+  // that permission and keep getting notified via the permission match in
+  // resolveEligibleUsers below; an owner who ISN'T (e.g. a Director who
+  // only does Maker/Checker/Approver/Release) no longer gets pinged for a
+  // sign-off they can't even click through to.
   PAYMENT_L1_AGM_APPROVAL: {
-    entityType: 'RunningBill', module: 'accounts-payment', action: 'l1-agm-approve', roles: ['owner'],
+    entityType: 'RunningBill', module: 'accounts-payment', action: 'l1-agm-approve', roles: [],
     title: 'Accounts Payment — L1 AGM Approval Required',
     buildLines: (bill) => runningBillLines(bill, 'L1 AGM', 'Verified'),
     deepLinkPath: runningBillDeepLink,
   },
   PAYMENT_L2_GM_APPROVAL: {
-    entityType: 'RunningBill', module: 'accounts-payment', action: 'l2-director-approve', roles: ['owner'],
+    entityType: 'RunningBill', module: 'accounts-payment', action: 'l2-director-approve', roles: [],
     title: 'Accounts Payment — L2 GM Approval Required',
     buildLines: (bill) => runningBillLines(bill, 'L2 GM', bill.l1ApprovedBy?.name ? `L1 AGM — ${bill.l1ApprovedBy.name}` : 'L1 AGM'),
     deepLinkPath: runningBillDeepLink,

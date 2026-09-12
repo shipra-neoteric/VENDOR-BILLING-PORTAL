@@ -47,15 +47,19 @@ function durationLabel(stage: InstanceStage): string {
   return `${stage.slaHours}h SLA`;
 }
 
+// The stage's own name (e.g. "L1 AGM Approval") is the actual identifier —
+// status used to be shown INSTEAD of it ("Pending"/"Completed" for every
+// stage, indistinguishable from one another except by the tiny SLA-hours
+// label on the left rail). Now it's a small suffix next to the real name.
 function stageVisual(stage: InstanceStage, isLast: boolean, instanceCompleted: boolean) {
   if (stage.status === "completed") {
-    if (stage.breached) return { color: "#DC2626", title: "Completed · Breached" };
-    return { color: "#16A34A", title: isLast && instanceCompleted ? "Approved" : "Completed" };
+    if (stage.breached) return { color: "#DC2626", status: "Breached" };
+    return { color: "#16A34A", status: isLast && instanceCompleted ? "Approved" : "Completed" };
   }
   if (stage.status === "in-progress") {
-    return stage.breached ? { color: "#DC2626", title: "Breached" } : { color: "#7C3AED", title: "Awaiting Approval" };
+    return stage.breached ? { color: "#DC2626", status: "Breached" } : { color: "#7C3AED", status: "Awaiting Approval" };
   }
-  return { color: "#9CA3AF", title: "Pending" };
+  return { color: "#9CA3AF", status: "Pending" };
 }
 
 // Vertical dotted-timeline SLA view for whichever WorkflowTemplate-driven
@@ -96,7 +100,7 @@ export default function SlaTimeline({ entityType, entityId }: { entityType: "Wor
         {instance.stages.map((stage, i) => {
           const isLast = i === instance.stages.length - 1;
           const isCurrent = i === currentIndex || (currentIndex === -1 && isLast);
-          const { color, title } = stageVisual(stage, isLast, instance.status === "completed");
+          const { color, status } = stageVisual(stage, isLast, instance.status === "completed");
           // A stage that hasn't started yet has no one who's "initiated"
           // anything — assignedUserId is just who WILL act once it's their
           // turn, not a name to show yet (showing it here read as if that
@@ -110,8 +114,9 @@ export default function SlaTimeline({ entityType, entityId }: { entityType: "Wor
                 {!isLast && <span className="flex-1 border-l border-dashed" style={{ borderColor: color }} />}
               </div>
               <div className="pb-4">
-                <div className="text-[13px] font-bold" style={{ color }}>
-                  {title}
+                <div className="text-[13px] font-bold text-[#1A1A2E] dark:text-[#F1F5F9]">
+                  {stage.name}
+                  <span className="ml-1.5 font-semibold" style={{ color }}>· {status}</span>
                   {isCurrent && <span className="ml-1.5 text-[10px] font-bold text-gray-400 uppercase">(Current State)</span>}
                 </div>
                 {who && (
