@@ -145,6 +145,11 @@ exports.listBills = asyncHandler(async (req, res) => {
 
   let query = RunningBill.find(filter);
   for (const f of POPULATE_FIELDS) query = query.populate(f, 'name role');
+  // getBill below already populates this — listBills never did, so the
+  // History timeline (built straight off whatever bill object the frontend
+  // already has from this list, not a fresh getBill call) always showed
+  // "—" for every "Verified by"/"Approved by" row instead of a real name.
+  query = query.populate('approvalHistory.by', 'name role');
   const bills = await query.sort({ createdAt: -1 }).lean();
 
   success(res, { bills });

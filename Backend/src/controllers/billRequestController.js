@@ -288,8 +288,10 @@ exports.createBillRequest = asyncHandler(async (req, res) => {
   });
 
   const estimatedAmount = pendingItems.reduce((s, it) => s + it.billedQty * (it.rate || 0), 0);
+  const creationApprovalConfig = await getApprovalConfig(billRequest);
   await startInstance('BillRequest', billRequest._id, billRequest.reqNo, req.user._id, {
     projectId: wo.projectId, projectName: wo.projectName, vendorName: wo.vendorName, amount: estimatedAmount,
+    requiredApprovals: creationApprovalConfig?.requiredApprovals,
   });
 
   await logAudit({
@@ -631,6 +633,7 @@ async function gmApproveHandler(req, res) {
   if (totalLevels >= 3) {
     br.status = 'pending-l3';
     await br.save();
+    await advanceInstance('BillRequest', br._id, req.user._id, 'L2 approved');
     notifySlack('BILL_REQUEST_L3_APPROVAL', br);
     return success(res, { billRequest: br }, `L2 approved — Stage ${br.stageNo} moved to L3 approval`);
   }
@@ -686,6 +689,7 @@ async function l3ApproveHandler(req, res) {
   if (totalLevels >= 4) {
     br.status = 'pending-l4';
     await br.save();
+    await advanceInstance('BillRequest', br._id, req.user._id, 'L3 approved');
     notifySlack('BILL_REQUEST_L4_APPROVAL', br);
     return success(res, { billRequest: br }, `L3 approved — Stage ${br.stageNo} moved to L4 approval`);
   }
@@ -943,8 +947,10 @@ exports.createBatchBillRequest = asyncHandler(async (req, res) => {
     });
 
     const batchEstimatedAmount = pendingItems.reduce((s, it) => s + it.billedQty * (it.rate || 0), 0);
+    const batchApprovalConfig = await getApprovalConfig(br);
     await startInstance('BillRequest', br._id, br.reqNo, req.user._id, {
       projectId: wo.projectId, projectName: wo.projectName, vendorName: wo.vendorName, amount: batchEstimatedAmount,
+      requiredApprovals: batchApprovalConfig?.requiredApprovals,
     });
 
     await logAudit({

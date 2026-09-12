@@ -121,19 +121,61 @@ function buildInstanceStage(templateStage, startedAt) {
   };
 }
 
+// A BillRequest's own approval chain isn't fixed at 2 levels (AGM+GM) — a
+// department's Approval Rule (Users -> Departments) can require 3 or 4. The
+// shared WorkflowTemplate only ever has one generic "GM Approval" stage, so
+// when a department needs more, extra "L3 Approval"/"L4 Approval" stages are
+// inserted right after it (before Accounts Verification) — cloning GM
+// Approval's own SLA/business-hours settings, since there's no dedicated
+// template stage to source those from otherwise. Without this, a bill
+// request's SLA timeline would get stuck showing "GM Approval" as the
+// current stage forever once it actually moved on to L3/L4.
+function expandBillRequestStages(templateStages, requiredApprovals) {
+  if (!requiredApprovals || requiredApprovals <= 2) return templateStages;
+  const gmIndex = templateStages.findIndex(s => s.name === 'GM Approval');
+  if (gmIndex === -1) return templateStages;
+  const gmStage = templateStages[gmIndex];
+  const clone = (name) => ({
+    name,
+    order: gmStage.order,
+    assignedRole: gmStage.assignedRole,
+    assignedUserId: gmStage.assignedUserId,
+    slaHours: gmStage.slaHours,
+    businessHoursOnly: gmStage.businessHoursOnly,
+    workingDays: gmStage.workingDays,
+    escalateAfterMinutes: gmStage.escalateAfterMinutes,
+    escalateToUserId: gmStage.escalateToUserId,
+  });
+  const extra = [];
+  if (requiredApprovals >= 3) extra.push(clone('L3 Approval'));
+  if (requiredApprovals >= 4) extra.push(clone('L4 Approval'));
+  return [
+    ...templateStages.slice(0, gmIndex + 1),
+    ...extra,
+    ...templateStages.slice(gmIndex + 1),
+  ].map((s, i) => ({ ...s, order: i }));
+}
+
 // Starts a new WorkflowInstance for an entity if an active template exists for its type.
 // No-ops (returns null) if no active template is configured — templates are opt-in.
 // `meta` (all optional) carries reporting context so the MIS report can group/sum by
 // project, contractor, and value without re-joining WorkOrder/BillRequest documents.
+// `meta.requiredApprovals` (BillRequest only) drives expandBillRequestStages above.
 async function startInstance(entityType, entityId, entityLabel, actorUserId, meta = {}) {
-  const template = await WorkflowTemplate.findOne({ entityType, isActive: true }).sort({ createdAt: 1 });
+  // .lean() — template.stages just needs to be plain objects to safely
+  // clone/reorder below (expandBillRequestStages), nothing here calls a
+  // mongoose document method on it.
+  const template = await WorkflowTemplate.findOne({ entityType, isActive: true }).sort({ createdAt: 1 }).lean();
   if (!template || !template.stages.length) return null;
 
   const existing = await WorkflowInstance.findOne({ entityType, entityId, status: 'in-progress' });
   if (existing) return existing;
 
   const now = new Date();
-  const orderedStages = [...template.stages].sort((a, b) => a.order - b.order);
+  let orderedStages = [...template.stages].sort((a, b) => a.order - b.order);
+  if (entityType === 'BillRequest') {
+    orderedStages = expandBillRequestStages(orderedStages, meta.requiredApprovals);
+  }
   const stages = orderedStages.map((s, i) => i === 0
     ? buildInstanceStage(s, now)
     : { ...buildInstanceStage(s, now), status: 'pending', startedAt: null, dueAt: null });

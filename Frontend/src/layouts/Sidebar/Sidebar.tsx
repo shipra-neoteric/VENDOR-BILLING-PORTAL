@@ -210,7 +210,7 @@ export default function Sidebar({ open = false, onClose }: SidebarProps) {
       )}
       <div
         data-testid="app-sidebar"
-        className="flex flex-col overflow-y-auto overflow-x-hidden flex-shrink-0 bg-white/90 dark:bg-gray-800/95 backdrop-blur-xl border border-gray-100 dark:border-gray-700/50 rounded-xl shadow-sm"
+        className="flex flex-col overflow-hidden flex-shrink-0 bg-white/90 dark:bg-gray-800/95 backdrop-blur-xl border border-gray-100 dark:border-gray-700/50 rounded-xl shadow-sm"
         style={{
           width: isMobile ? 320 : collapsed ? 80 : 256,
           maxWidth: isMobile ? "85vw" : undefined,
@@ -231,8 +231,10 @@ export default function Sidebar({ open = false, onClose }: SidebarProps) {
               }),
         }}
       >
-      {/* ── Logo / Brand ── */}
-      <div style={{ padding: collapsed ? "20px 0 16px" : "20px 18px 16px", borderBottom: "1px solid var(--nx-sidebar-logo-border)" }}>
+      {/* ── Logo / Brand — outside the scrolling nav area below, so it stays
+          fixed at the top of the sidebar instead of scrolling away with the
+          nav items. ── */}
+      <div style={{ flexShrink: 0, padding: collapsed ? "20px 0 16px" : "20px 18px 16px", borderBottom: "1px solid var(--nx-sidebar-logo-border)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12, justifyContent: collapsed ? "center" : "flex-start" }}>
           <div
             style={{
@@ -261,8 +263,8 @@ export default function Sidebar({ open = false, onClose }: SidebarProps) {
         </div>
       </div>
 
-      {/* ── Nav Groups ── */}
-      <div style={{ flex: 1, padding: "6px 0 10px" }}>
+      {/* ── Nav Groups — the only part that scrolls ── */}
+      <div className="overflow-y-auto overflow-x-hidden" style={{ flex: 1, padding: "6px 0 10px" }}>
         {rawGroups.map((group, gi) => (
           <div key={group.label} style={{ marginTop: gi === 0 ? 4 : 0 }}>
             {/* Group label — a plain divider line once collapsed, no text (no room for it) */}

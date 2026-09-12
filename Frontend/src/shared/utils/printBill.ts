@@ -120,6 +120,17 @@ export interface PrintableBill {
   // block isn't blank for a bill whose GM sign-off never touched verifiedBy.
   gmApprovedBy?: PrintableBillUser | null;
   gmApprovedAt?: string;
+  // The REAL Accounts Payment chain's own L1 AGM / L2 Director sign-off —
+  // set by the verify -> l1-agm-approve -> l2-director-approve actions
+  // themselves (billController.js), independent of agmApprovedBy/gmApprovedBy/
+  // verifiedBy above (which only ever get set for a bill that came out of a
+  // BillRequest's own AGM/GM pre-chain, at bill-creation time). Every bill
+  // that actually goes through Accounts Payment sets these two — they're the
+  // authoritative source for the signature block below, not the legacy ones.
+  l1ApprovedBy?: PrintableBillUser | null;
+  l1ApprovedAt?: string;
+  l2ApprovedBy?: PrintableBillUser | null;
+  l2ApprovedAt?: string;
   approvedBy?: PrintableBillUser | null;
   paymentInitiatedBy?: PrintableBillUser | null;
   paymentDate?: string;
@@ -369,14 +380,14 @@ ${mode === 'pre' ? `<div style="display:flex;justify-content:space-around;margin
   <div style="text-align:center">
     <div style="border-top:1px solid #333;width:180px;margin:0 auto 6px"></div>
     <p style="font-size:12px;color:#333;font-weight:700">L1 Approval</p>
-    <p style="font-size:11px;color:#666">${bill.agmApprovedBy ? `${bill.agmApprovedBy.name}${bill.agmApprovedBy.role ? ` (${bill.agmApprovedBy.role})` : ""}` : "—"}</p>
-    <p style="font-size:11px;color:${bill.agmApprovedAt ? "#16a34a" : "#999"}">${bill.agmApprovedAt ? `Approved ${dayjs(bill.agmApprovedAt).format("DD/MM/YYYY, hh:mm A")}` : "&nbsp;"}</p>
+    <p style="font-size:11px;color:#666">${(bill.l1ApprovedBy || bill.agmApprovedBy) ? `${(bill.l1ApprovedBy || bill.agmApprovedBy)!.name}${(bill.l1ApprovedBy || bill.agmApprovedBy)!.role ? ` (${(bill.l1ApprovedBy || bill.agmApprovedBy)!.role})` : ""}` : "—"}</p>
+    <p style="font-size:11px;color:${(bill.l1ApprovedAt || bill.agmApprovedAt) ? "#16a34a" : "#999"}">${(bill.l1ApprovedAt || bill.agmApprovedAt) ? `Approved ${dayjs(bill.l1ApprovedAt || bill.agmApprovedAt).format("DD/MM/YYYY, hh:mm A")}` : "&nbsp;"}</p>
   </div>
   <div style="text-align:center">
     <div style="border-top:1px solid #333;width:180px;margin:0 auto 6px"></div>
     <p style="font-size:12px;color:#333;font-weight:700">L2 Approval</p>
-    <p style="font-size:11px;color:#666">${(bill.verifiedBy || bill.gmApprovedBy) ? `${(bill.verifiedBy || bill.gmApprovedBy)!.name}${(bill.verifiedBy || bill.gmApprovedBy)!.role ? ` (${(bill.verifiedBy || bill.gmApprovedBy)!.role})` : ""}` : "—"}</p>
-    <p style="font-size:11px;color:${(bill.verifiedAt || bill.gmApprovedAt) ? "#16a34a" : "#999"}">${(bill.verifiedAt || bill.gmApprovedAt) ? `Approved ${dayjs(bill.verifiedAt || bill.gmApprovedAt).format("DD/MM/YYYY, hh:mm A")}` : "&nbsp;"}</p>
+    <p style="font-size:11px;color:#666">${(bill.l2ApprovedBy || bill.verifiedBy || bill.gmApprovedBy) ? `${(bill.l2ApprovedBy || bill.verifiedBy || bill.gmApprovedBy)!.name}${(bill.l2ApprovedBy || bill.verifiedBy || bill.gmApprovedBy)!.role ? ` (${(bill.l2ApprovedBy || bill.verifiedBy || bill.gmApprovedBy)!.role})` : ""}` : "—"}</p>
+    <p style="font-size:11px;color:${(bill.l2ApprovedAt || bill.verifiedAt || bill.gmApprovedAt) ? "#16a34a" : "#999"}">${(bill.l2ApprovedAt || bill.verifiedAt || bill.gmApprovedAt) ? `Approved ${dayjs(bill.l2ApprovedAt || bill.verifiedAt || bill.gmApprovedAt).format("DD/MM/YYYY, hh:mm A")}` : "&nbsp;"}</p>
   </div>
 </div>` : ""}
 
