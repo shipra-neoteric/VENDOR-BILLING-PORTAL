@@ -142,8 +142,13 @@ export interface PrintableBill {
   l4ApprovedAt?: string;
   // Same idea, but for a manually-created bill's OWN pre-chain
   // (billController.js's manualAgmApprove/manualGmApprove/manualL3Approve/
-  // manualL4Approve) — a completely separate field set from l3ApprovedBy/
-  // l4ApprovedBy above, which only ever get set via a BillRequest.
+  // manualL4Approve) — a completely separate field set from
+  // agmApprovedBy/gmApprovedBy/l3ApprovedBy/l4ApprovedBy above, which only
+  // ever get set via a BillRequest.
+  manualAgmApprovedBy?: PrintableBillUser | null;
+  manualAgmApprovedAt?: string;
+  manualGmApprovedBy?: PrintableBillUser | null;
+  manualGmApprovedAt?: string;
   manualL3ApprovedBy?: PrintableBillUser | null;
   manualL3ApprovedAt?: string;
   manualL4ApprovedBy?: PrintableBillUser | null;
@@ -400,10 +405,15 @@ ${mode === 'pre' ? (() => {
     <p style="font-size:11px;color:${at ? "#16a34a" : "#999"}">${at ? `Approved ${dayjs(at).format("DD/MM/YYYY, hh:mm A")}` : "&nbsp;"}</p>
   </div>`;
 
-  const l1 = bill.l1ApprovedBy || bill.agmApprovedBy;
-  const l1At = bill.l1ApprovedAt || bill.agmApprovedAt;
-  const l2 = bill.l2ApprovedBy || bill.verifiedBy || bill.gmApprovedBy;
-  const l2At = bill.l2ApprovedAt || bill.verifiedAt || bill.gmApprovedAt;
+  // Same three-way fallback the L3/L4 columns already use below — a
+  // manually-created bill's own AGM/GM pre-chain lives in
+  // manualAgmApprovedBy/manualGmApprovedBy (a third, separate field set
+  // from both the real Accounts Payment chain and the BillRequest one),
+  // and was missing here even though manualL3ApprovedBy already had it.
+  const l1 = bill.l1ApprovedBy || bill.agmApprovedBy || bill.manualAgmApprovedBy;
+  const l1At = bill.l1ApprovedAt || bill.agmApprovedAt || bill.manualAgmApprovedAt;
+  const l2 = bill.l2ApprovedBy || bill.verifiedBy || bill.gmApprovedBy || bill.manualGmApprovedBy;
+  const l2At = bill.l2ApprovedAt || bill.verifiedAt || bill.gmApprovedAt || bill.manualGmApprovedAt;
 
   const cols = [
     signatureCol("Contractor", { name: bill.vendorName || "—" }, undefined),
