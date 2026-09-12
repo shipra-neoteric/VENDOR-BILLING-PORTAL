@@ -110,6 +110,10 @@ interface Bill {
   l3ApprovedAt?: string;
   l4ApprovedBy?: BillUser | null;
   l4ApprovedAt?: string;
+  manualL3ApprovedBy?: BillUser | null;
+  manualL3ApprovedAt?: string;
+  manualL4ApprovedBy?: BillUser | null;
+  manualL4ApprovedAt?: string;
   verificationBy?: BillUser | null;
   verificationAt?: string;
   l1ApprovedBy?: BillUser | null;

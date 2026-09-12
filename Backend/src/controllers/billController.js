@@ -82,7 +82,7 @@ function pushHistory(bill, stage, action, by, remarks) {
 // billRequestController.finalizeBillRequest), but without populating them
 // they stay raw ObjectIds, so the print signature block (which now renders
 // an L3/L4 column when present) would show a bare id instead of a name.
-const POPULATE_FIELDS = ['agmApprovedBy', 'gmApprovedBy', 'l3ApprovedBy', 'l4ApprovedBy', 'makerBy', 'verifiedBy', 'checkerBy', 'approvedBy', 'paymentInitiatedBy', 'rejectedBy', 'verificationBy', 'l1ApprovedBy', 'l2ApprovedBy', 'holdBy', 'holdReleasedBy', 'lineItems.varianceApprovedBy', 'manualAgmApprovedBy', 'manualGmApprovedBy', 'manualRejectedBy', 'sentForApprovalTo', 'sentForL2ApprovalTo'];
+const POPULATE_FIELDS = ['agmApprovedBy', 'gmApprovedBy', 'l3ApprovedBy', 'l4ApprovedBy', 'makerBy', 'verifiedBy', 'checkerBy', 'approvedBy', 'paymentInitiatedBy', 'rejectedBy', 'verificationBy', 'l1ApprovedBy', 'l2ApprovedBy', 'holdBy', 'holdReleasedBy', 'lineItems.varianceApprovedBy', 'manualAgmApprovedBy', 'manualGmApprovedBy', 'manualL3ApprovedBy', 'manualL4ApprovedBy', 'manualRejectedBy', 'sentForApprovalTo', 'sentForL2ApprovalTo'];
 
 exports.listBills = asyncHandler(async (req, res) => {
   const { workOrderId, vendorCode, projectId, status, manualApprovalStatus, search, archived } = req.query;

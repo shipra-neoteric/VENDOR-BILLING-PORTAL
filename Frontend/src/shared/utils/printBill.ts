@@ -140,6 +140,14 @@ export interface PrintableBill {
   l3ApprovedAt?: string;
   l4ApprovedBy?: PrintableBillUser | null;
   l4ApprovedAt?: string;
+  // Same idea, but for a manually-created bill's OWN pre-chain
+  // (billController.js's manualAgmApprove/manualGmApprove/manualL3Approve/
+  // manualL4Approve) — a completely separate field set from l3ApprovedBy/
+  // l4ApprovedBy above, which only ever get set via a BillRequest.
+  manualL3ApprovedBy?: PrintableBillUser | null;
+  manualL3ApprovedAt?: string;
+  manualL4ApprovedBy?: PrintableBillUser | null;
+  manualL4ApprovedAt?: string;
   approvedBy?: PrintableBillUser | null;
   paymentInitiatedBy?: PrintableBillUser | null;
   paymentDate?: string;
@@ -386,7 +394,7 @@ ${mode === 'pre' ? (() => {
   // silently dropped by what used to be a fixed 2-column (L1/L2) layout.
   const signatureCol = (title: string, person: PrintableBillUser | null | undefined, at: string | undefined) => `
   <div style="text-align:center">
-    <div style="border-top:1px solid #333;width:180px;margin:0 auto 6px"></div>
+    <div style="border-top:1px solid #333;width:85%;margin:0 auto 6px"></div>
     <p style="font-size:12px;color:#333;font-weight:700">${title}</p>
     <p style="font-size:11px;color:#666">${person ? `${person.name}${person.role ? ` (${person.role})` : ""}` : "—"}</p>
     <p style="font-size:11px;color:${at ? "#16a34a" : "#999"}">${at ? `Approved ${dayjs(at).format("DD/MM/YYYY, hh:mm A")}` : "&nbsp;"}</p>
@@ -402,10 +410,19 @@ ${mode === 'pre' ? (() => {
     signatureCol("L1 Approval", l1, l1At),
     signatureCol("L2 Approval", l2, l2At),
   ];
-  if (bill.l3ApprovedBy) cols.push(signatureCol("L3 Approval", bill.l3ApprovedBy, bill.l3ApprovedAt));
-  if (bill.l4ApprovedBy) cols.push(signatureCol("L4 Approval", bill.l4ApprovedBy, bill.l4ApprovedAt));
+  const l3 = bill.l3ApprovedBy || bill.manualL3ApprovedBy;
+  const l3At = bill.l3ApprovedAt || bill.manualL3ApprovedAt;
+  const l4 = bill.l4ApprovedBy || bill.manualL4ApprovedBy;
+  const l4At = bill.l4ApprovedAt || bill.manualL4ApprovedAt;
+  if (l3) cols.push(signatureCol("L3 Approval", l3, l3At));
+  if (l4) cols.push(signatureCol("L4 Approval", l4, l4At));
 
-  return `<div style="display:flex;flex-wrap:wrap;justify-content:space-around;gap:16px;margin-top:40px;padding-top:48px;border-top:1px solid #eee">${cols.join("")}</div>`;
+  // A grid with exactly cols.length equal-width tracks keeps every signature
+  // in one single row regardless of count (2 through 5) — flex-wrap here
+  // would wrap the LAST column(s) onto a second line instead of shrinking
+  // all of them evenly, misaligning "L3" under "Contractor" and "L4" under
+  // "L1" once a 3rd/4th approval level pushed the row past its width.
+  return `<div style="display:grid;grid-template-columns:repeat(${cols.length},1fr);gap:12px;margin-top:40px;padding-top:48px;border-top:1px solid #eee">${cols.join("")}</div>`;
 })() : ""}
 
 <div style="text-align:center;margin-top:14px">
