@@ -248,32 +248,40 @@ function NewQuotationModal({
             <Btn small outline icon={Plus} label="Add Item" onClick={() => setCustomItems(items => [...items, newCustomItem()])} />
           </div>
           {customItems.length > 0 && (
-            <div className="flex flex-col gap-2">
-              <div className="grid grid-cols-[2fr_1fr_0.8fr_0.9fr_0.9fr_32px] gap-2 px-0.5 text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+            // Styled to match the "Quote a rate per item" Table above (same
+            // border/rounded wrapper, gray header band, row dividers) — but
+            // NOT the actual <Table> component, since its wrapper div is
+            // overflow-x-auto, which clips the Unit dropdown's popup menu
+            // (overflow-x non-visible implicitly computes overflow-y: auto
+            // too, per the CSS Overflow spec).
+            <div className="rounded-lg border border-gray-200 dark:border-gray-700/40 overflow-visible">
+              <div className="grid grid-cols-[2fr_1fr_0.8fr_0.9fr_0.9fr_44px] gap-2 px-4 py-3 bg-gray-50 dark:bg-[#1E293B] text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider rounded-t-lg">
                 <span>Description</span><span>Unit</span><span>Qty</span><span>Rate (₹)</span><span>Amount</span><span />
               </div>
-              {customItems.map(item => (
-                <div key={item.key} className="grid grid-cols-[2fr_1fr_0.8fr_0.9fr_0.9fr_32px] gap-2 items-center">
-                  <input
-                    type="text" value={item.description} placeholder="e.g. Extra waterproofing"
-                    onChange={e => updateCustomItem(item.key, { description: e.target.value })}
-                    className="w-full h-8 px-2 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0F172A] text-[13px] text-[#1A1A2E] dark:text-[#F1F5F9] focus:outline-none focus:ring-2 focus:ring-primary/30"
-                  />
-                  <SField value={item.unit} onChange={v => updateCustomItem(item.key, { unit: v })} options={UNIT_OPTIONS} placeholder="Unit" />
-                  <input
-                    type="number" min={0} value={item.plannedQty} placeholder="Qty"
-                    onChange={e => updateCustomItem(item.key, { plannedQty: e.target.value })}
-                    className="w-full h-8 px-2 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0F172A] text-[13px] text-[#1A1A2E] dark:text-[#F1F5F9] focus:outline-none focus:ring-2 focus:ring-primary/30"
-                  />
-                  <input
-                    type="number" min={0} value={item.rate} placeholder="Rate"
-                    onChange={e => updateCustomItem(item.key, { rate: e.target.value })}
-                    className="w-full h-8 px-2 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0F172A] text-[13px] text-[#1A1A2E] dark:text-[#F1F5F9] focus:outline-none focus:ring-2 focus:ring-primary/30"
-                  />
-                  <span className="text-[13px] text-[#1A1A2E] dark:text-[#F1F5F9] font-mono">{fmt((Number(item.plannedQty) || 0) * (Number(item.rate) || 0))}</span>
-                  <Btn small outline icon={Trash2} onClick={() => setCustomItems(items => items.filter(i => i.key !== item.key))} />
-                </div>
-              ))}
+              <div className="divide-y divide-gray-100 dark:divide-gray-700/40">
+                {customItems.map(item => (
+                  <div key={item.key} className="grid grid-cols-[2fr_1fr_0.8fr_0.9fr_0.9fr_44px] gap-2 items-center px-4 py-2.5">
+                    <input
+                      type="text" value={item.description} placeholder="e.g. Extra waterproofing"
+                      onChange={e => updateCustomItem(item.key, { description: e.target.value })}
+                      className="w-full h-8 px-2 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0F172A] text-[13px] text-[#1A1A2E] dark:text-[#F1F5F9] focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    />
+                    <SField value={item.unit} onChange={v => updateCustomItem(item.key, { unit: v })} options={UNIT_OPTIONS} placeholder="Unit" />
+                    <input
+                      type="number" min={0} value={item.plannedQty} placeholder="Qty"
+                      onChange={e => updateCustomItem(item.key, { plannedQty: e.target.value })}
+                      className="w-full h-8 px-2 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0F172A] text-[13px] text-[#1A1A2E] dark:text-[#F1F5F9] focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    />
+                    <input
+                      type="number" min={0} value={item.rate} placeholder="Rate"
+                      onChange={e => updateCustomItem(item.key, { rate: e.target.value })}
+                      className="w-full h-8 px-2 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0F172A] text-[13px] text-[#1A1A2E] dark:text-[#F1F5F9] focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    />
+                    <span className="text-[13px] text-[#1A1A2E] dark:text-[#F1F5F9] font-mono">{fmt((Number(item.plannedQty) || 0) * (Number(item.rate) || 0))}</span>
+                    <Btn small outline icon={Trash2} onClick={() => setCustomItems(items => items.filter(i => i.key !== item.key))} />
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>
