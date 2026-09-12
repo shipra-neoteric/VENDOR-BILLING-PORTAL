@@ -1,6 +1,6 @@
 const User = require('../models/User');
 const asyncHandler = require('../utils/asyncHandler');
-const { success, created, notFound, badRequest, forbidden } = require('../utils/responseFormatter');
+const { success, created, notFound, badRequest, forbidden, unauthorized } = require('../utils/responseFormatter');
 const { logAudit, diffFields } = require('../utils/auditLog');
 
 const ROLE_HIERARCHY = ['owner', 'gm', 'agm', 'accounts', 'process-coordinator', 'site-dri'];
