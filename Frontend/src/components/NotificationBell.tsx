@@ -78,11 +78,11 @@ export default function NotificationBell() {
     setUnreadCount(0);
   }
 
-  // The bell's own dropdown (not "View All") only ever shows what's still
+  // Both the bell's own dropdown and "View All" only ever show what's still
   // unread — once a notification is opened (or "Mark all as read" is used)
-  // it drops out of THIS view immediately, even though the underlying row
-  // stays around (read) for "View All"'s full history.
-  const visibleNotifications = showAll ? notifications : notifications.filter(n => !n.read);
+  // it drops out of view everywhere immediately. "View All" just widens the
+  // fetch limit (8 -> 50), it doesn't bring back anything already read.
+  const visibleNotifications = notifications.filter(n => !n.read);
 
   return (
     <Dropdown
@@ -104,9 +104,7 @@ export default function NotificationBell() {
             {loading ? (
               <div className="px-4 py-6 text-center text-xs text-gray-400">Loading…</div>
             ) : visibleNotifications.length === 0 ? (
-              <div className="px-4 py-6 text-center text-xs text-gray-400">
-                {showAll ? "No notifications yet." : "You're all caught up."}
-              </div>
+              <div className="px-4 py-6 text-center text-xs text-gray-400">You're all caught up.</div>
             ) : (
               visibleNotifications.map(n => (
                 <button
