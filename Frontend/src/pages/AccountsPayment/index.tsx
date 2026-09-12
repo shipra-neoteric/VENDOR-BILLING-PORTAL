@@ -104,6 +104,12 @@ interface Bill {
   manualApprovalStatus?: "pending" | "pending-gm" | "pending-l3" | "pending-l4" | "approved" | "rejected";
   agmApprovedBy?: BillUser | null;
   agmApprovedAt?: string;
+  gmApprovedBy?: BillUser | null;
+  gmApprovedAt?: string;
+  l3ApprovedBy?: BillUser | null;
+  l3ApprovedAt?: string;
+  l4ApprovedBy?: BillUser | null;
+  l4ApprovedAt?: string;
   verificationBy?: BillUser | null;
   verificationAt?: string;
   l1ApprovedBy?: BillUser | null;

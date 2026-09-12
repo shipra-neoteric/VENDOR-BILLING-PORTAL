@@ -131,6 +131,15 @@ export interface PrintableBill {
   l1ApprovedAt?: string;
   l2ApprovedBy?: PrintableBillUser | null;
   l2ApprovedAt?: string;
+  // A department configured for 3/4 approval levels (Users -> Departments'
+  // Approval Rule) carries its BillRequest pre-chain's L3/L4 sign-off onto
+  // the bill too (see gmApprovedBy's own comment above) — the signature
+  // block below adds an extra column for each of these only when present,
+  // instead of a fixed 2-column L1/L2 layout that silently dropped them.
+  l3ApprovedBy?: PrintableBillUser | null;
+  l3ApprovedAt?: string;
+  l4ApprovedBy?: PrintableBillUser | null;
+  l4ApprovedAt?: string;
   approvedBy?: PrintableBillUser | null;
   paymentInitiatedBy?: PrintableBillUser | null;
   paymentDate?: string;
@@ -370,26 +379,34 @@ ${mode === 'post' && bill.paymentDate ? `
 
 ${bill.remarks ? `<div style="border:1px solid #e8e8e8;border-radius:6px;padding:12px;margin-bottom:24px"><strong>Remarks:</strong> ${bill.remarks}</div>` : ""}
 
-${mode === 'pre' ? `<div style="display:flex;justify-content:space-around;margin-top:40px;padding-top:48px;border-top:1px solid #eee">
+${mode === 'pre' ? (() => {
+  // Renders one signature column — used for the fixed "Contractor" slot and
+  // for every approval level actually present on this bill, so a 3/4-level
+  // department's L3/L4 sign-off gets its own column instead of being
+  // silently dropped by what used to be a fixed 2-column (L1/L2) layout.
+  const signatureCol = (title: string, person: PrintableBillUser | null | undefined, at: string | undefined) => `
   <div style="text-align:center">
     <div style="border-top:1px solid #333;width:180px;margin:0 auto 6px"></div>
-    <p style="font-size:12px;color:#333;font-weight:700">Contractor</p>
-    <p style="font-size:11px;color:#666">${bill.vendorName || "—"}</p>
-    <p style="font-size:11px;color:#999">&nbsp;</p>
-  </div>
-  <div style="text-align:center">
-    <div style="border-top:1px solid #333;width:180px;margin:0 auto 6px"></div>
-    <p style="font-size:12px;color:#333;font-weight:700">L1 Approval</p>
-    <p style="font-size:11px;color:#666">${(bill.l1ApprovedBy || bill.agmApprovedBy) ? `${(bill.l1ApprovedBy || bill.agmApprovedBy)!.name}${(bill.l1ApprovedBy || bill.agmApprovedBy)!.role ? ` (${(bill.l1ApprovedBy || bill.agmApprovedBy)!.role})` : ""}` : "—"}</p>
-    <p style="font-size:11px;color:${(bill.l1ApprovedAt || bill.agmApprovedAt) ? "#16a34a" : "#999"}">${(bill.l1ApprovedAt || bill.agmApprovedAt) ? `Approved ${dayjs(bill.l1ApprovedAt || bill.agmApprovedAt).format("DD/MM/YYYY, hh:mm A")}` : "&nbsp;"}</p>
-  </div>
-  <div style="text-align:center">
-    <div style="border-top:1px solid #333;width:180px;margin:0 auto 6px"></div>
-    <p style="font-size:12px;color:#333;font-weight:700">L2 Approval</p>
-    <p style="font-size:11px;color:#666">${(bill.l2ApprovedBy || bill.verifiedBy || bill.gmApprovedBy) ? `${(bill.l2ApprovedBy || bill.verifiedBy || bill.gmApprovedBy)!.name}${(bill.l2ApprovedBy || bill.verifiedBy || bill.gmApprovedBy)!.role ? ` (${(bill.l2ApprovedBy || bill.verifiedBy || bill.gmApprovedBy)!.role})` : ""}` : "—"}</p>
-    <p style="font-size:11px;color:${(bill.l2ApprovedAt || bill.verifiedAt || bill.gmApprovedAt) ? "#16a34a" : "#999"}">${(bill.l2ApprovedAt || bill.verifiedAt || bill.gmApprovedAt) ? `Approved ${dayjs(bill.l2ApprovedAt || bill.verifiedAt || bill.gmApprovedAt).format("DD/MM/YYYY, hh:mm A")}` : "&nbsp;"}</p>
-  </div>
-</div>` : ""}
+    <p style="font-size:12px;color:#333;font-weight:700">${title}</p>
+    <p style="font-size:11px;color:#666">${person ? `${person.name}${person.role ? ` (${person.role})` : ""}` : "—"}</p>
+    <p style="font-size:11px;color:${at ? "#16a34a" : "#999"}">${at ? `Approved ${dayjs(at).format("DD/MM/YYYY, hh:mm A")}` : "&nbsp;"}</p>
+  </div>`;
+
+  const l1 = bill.l1ApprovedBy || bill.agmApprovedBy;
+  const l1At = bill.l1ApprovedAt || bill.agmApprovedAt;
+  const l2 = bill.l2ApprovedBy || bill.verifiedBy || bill.gmApprovedBy;
+  const l2At = bill.l2ApprovedAt || bill.verifiedAt || bill.gmApprovedAt;
+
+  const cols = [
+    signatureCol("Contractor", { name: bill.vendorName || "—" }, undefined),
+    signatureCol("L1 Approval", l1, l1At),
+    signatureCol("L2 Approval", l2, l2At),
+  ];
+  if (bill.l3ApprovedBy) cols.push(signatureCol("L3 Approval", bill.l3ApprovedBy, bill.l3ApprovedAt));
+  if (bill.l4ApprovedBy) cols.push(signatureCol("L4 Approval", bill.l4ApprovedBy, bill.l4ApprovedAt));
+
+  return `<div style="display:flex;flex-wrap:wrap;justify-content:space-around;gap:16px;margin-top:40px;padding-top:48px;border-top:1px solid #eee">${cols.join("")}</div>`;
+})() : ""}
 
 <div style="text-align:center;margin-top:14px">
   <button onclick="window.print()" style="background:#f47b20;color:#fff;border:none;padding:8px 24px;border-radius:4px;cursor:pointer;font-size:13px">
