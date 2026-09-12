@@ -263,25 +263,31 @@ const normalizeWO = (wo: any): WorkOrder => ({
 // `xBy` fields only ever come back as a raw ObjectId string from the workflow
 // endpoints (matches WorkOrderApprovalWorkflow's own note on this) — resolves
 // against a fresh id->name map so the PDF can print the real approver's name.
-function actorName(by: WorkOrder["makerBy"], userMap: Record<string, string>, at?: string | Date | null, roleKey?: "checker" | "approver" | "final"): string | undefined {
+//
+// Used to override the resolved name with two specific people's names
+// whenever the stage hadn't been acted on yet (`!at`) — that hardcoding
+// silently went stale the moment staff actually assigned to these stages
+// changed, since nothing here ever re-derives who's *currently* configured.
+// Now it just returns whoever userMap actually resolves to (the real,
+// currently-assigned person), falling back to a generic role label — never
+// a specific name — only if that lookup comes up empty.
+const ROLE_FALLBACK_LABEL: Record<"checker" | "approver" | "final", string> = {
+  checker: "Checker",
+  approver: "Approver",
+  final: "Final Approver",
+};
+function actorName(by: WorkOrder["makerBy"], userMap: Record<string, string>, roleKey?: "checker" | "approver" | "final"): string | undefined {
   if (!by) return undefined;
   const resolved = typeof by === "string" ? userMap[by] : (by as any)?.name;
-  if (!at) {
-    if (roleKey === "checker" || resolved === "Sagar Gupta" || resolved === "Akhilesh Bhadoriya") {
-      return "Sagar Gupta / Akhilesh Bhadoriya";
-    }
-    if (roleKey === "approver" || resolved === "Rakesh Bhargava" || resolved === "Jalaj Gupta") {
-      return "Rakesh Bhargava / Jalaj Gupta";
-    }
-  }
-  return resolved;
+  if (resolved) return resolved;
+  return roleKey ? ROLE_FALLBACK_LABEL[roleKey] : undefined;
 }
 
 function buildApprovals(wo: WorkOrder, userMap: Record<string, string>) {
   return {
-    checker:  wo.checkerBy       ? { name: actorName(wo.checkerBy, userMap, wo.checkerAt, "checker"),       at: wo.checkerAt }       : null,
-    approver: wo.approverBy      ? { name: actorName(wo.approverBy, userMap, wo.approverAt, "approver"),      at: wo.approverAt }      : null,
-    final:    wo.finalApprovedBy ? { name: actorName(wo.finalApprovedBy, userMap, wo.finalApprovedAt, "final"), at: wo.finalApprovedAt } : null,
+    checker:  wo.checkerBy       ? { name: actorName(wo.checkerBy, userMap, "checker"),       at: wo.checkerAt }       : null,
+    approver: wo.approverBy      ? { name: actorName(wo.approverBy, userMap, "approver"),      at: wo.approverAt }      : null,
+    final:    wo.finalApprovedBy ? { name: actorName(wo.finalApprovedBy, userMap, "final"), at: wo.finalApprovedAt } : null,
   };
 }
 
