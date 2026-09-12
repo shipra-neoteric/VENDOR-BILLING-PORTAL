@@ -101,7 +101,7 @@ interface Bill {
   // its own pre-Accounts AGM/GM sign-off (see billController's
   // manualAgmApprove/manualGmApprove), reviewed on Site Progress's Bill
   // Requests tab, not here. A progress-driven bill is born 'approved'.
-  manualApprovalStatus?: "pending" | "pending-gm" | "approved" | "rejected";
+  manualApprovalStatus?: "pending" | "pending-gm" | "pending-l3" | "pending-l4" | "approved" | "rejected";
   agmApprovedBy?: BillUser | null;
   agmApprovedAt?: string;
   verificationBy?: BillUser | null;
@@ -695,7 +695,14 @@ export default function AccountsPayment() {
     return map;
   }, [bills]);
 
-  const draftBills = useMemo(() => bills.filter((b) => b.status === "draft"), [bills]);
+  // A manually-created bill (status 'draft') isn't actually ready for
+  // Verification until its own AGM/GM(/L3/L4) sign-off chain is done — a
+  // progress-driven bill never sets manualApprovalStatus at all, so it
+  // defaults to 'approved' on the schema and is always ready. Bills still
+  // mid-chain shouldn't clutter the "Awaiting Verification" list/count at
+  // all — they aren't actually awaiting Accounts' action yet.
+  const isVerifiable = (b: Bill) => !b.manualApprovalStatus || b.manualApprovalStatus === "approved";
+  const draftBills = useMemo(() => bills.filter((b) => b.status === "draft" && isVerifiable(b)), [bills]);
   const verifyDoneBills = useMemo(() => bills.filter((b) => b.status === "verify-done"), [bills]);
   const l1ApprovedBills = useMemo(() => bills.filter((b) => b.status === "l1-approved"), [bills]);
   const approvedBills = useMemo(() => bills.filter((b) => b.status === "approved"), [bills]);
@@ -722,7 +729,7 @@ export default function AccountsPayment() {
 
   function matchesTab(b: Bill, tab: string): boolean {
     switch (tab) {
-      case "draft": return b.status === "draft";
+      case "draft": return b.status === "draft" && isVerifiable(b);
       case "verifyDone": return b.status === "verify-done";
       case "l1Approved": return b.status === "l1-approved";
       case "verified": return b.status === "verify-done" || b.status === "l1-approved";
