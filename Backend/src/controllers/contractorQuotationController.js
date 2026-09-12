@@ -19,7 +19,11 @@ exports.submitQuotation = asyncHandler(async (req, res) => {
   const { vendorCode, contractorName, contractorMobile, contractorEmail, quotedItems, remarks } = req.body;
 
   if (!contractorName)   return badRequest(res, "Contractor's name is required");
-  if (!contractorMobile) return badRequest(res, "Contractor's contact is required");
+  // The public route has no auth at all, so this can't rely on the
+  // frontend's own 10-digit check — enforce it here too.
+  if (!/^[6-9]\d{9}$/.test(String(contractorMobile || '').trim())) {
+    return badRequest(res, 'Enter a valid 10-digit mobile number');
+  }
   if (!Array.isArray(quotedItems) || quotedItems.length === 0) {
     return badRequest(res, 'At least one quoted item is required');
   }

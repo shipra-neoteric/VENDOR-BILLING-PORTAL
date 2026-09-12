@@ -95,6 +95,11 @@ const UNIT_OPTIONS = [
   { label: "Lump Sum",            value: "lump-sum"   },
 ];
 
+// Standard Indian mobile: exactly 10 digits, first digit 6-9 — same shape
+// every other form's "10-digit mobile" placeholder already implies, just
+// never actually enforced here before (any text was accepted).
+const MOBILE_REGEX = /^[6-9]\d{9}$/;
+
 const fmt = (n: number) => "₹" + (n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 // Per-unit rates are fractional far more often than totals are — rounding
 // them for display (as fmt() does) silently turns 130.5 into 131.
@@ -150,7 +155,7 @@ function NewQuotationModal({
 
   async function submit() {
     if (!contractorName.trim()) return toast.error("Contractor's name is required");
-    if (!contractorMobile.trim()) return toast.error("Contractor's contact is required");
+    if (!MOBILE_REGEX.test(contractorMobile.trim())) return toast.error("Enter a valid 10-digit mobile number");
     const scopeQuotedItems = visibleScopeItems
       .filter(i => Number(rates[i._id]) > 0)
       .map(i => ({ scopeItemId: i._id, description: i.description, unit: i.unit, plannedQty: i.plannedQty, rate: Number(rates[i._id]) }));
@@ -195,7 +200,11 @@ function NewQuotationModal({
       <div className="space-y-4">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Field label="Contractor Name" required value={contractorName} onChange={e => setContractorName(e.target.value)} placeholder="e.g. Shree Constructions" />
-          <Field label="Contact Number" required value={contractorMobile} onChange={e => setContractorMobile(e.target.value)} placeholder="10-digit mobile" />
+          <Field
+            label="Contact Number" required maxLength={10} value={contractorMobile}
+            onChange={e => setContractorMobile(e.target.value.replace(/\D/g, "").slice(0, 10))}
+            placeholder="10-digit mobile"
+          />
           <Field label="Email" value={contractorEmail} onChange={e => setContractorEmail(e.target.value)} placeholder="optional" />
           <Field label="Existing Vendor Code" value={vendorCode} onChange={e => setVendorCode(e.target.value)} placeholder="optional, if already registered" />
         </div>

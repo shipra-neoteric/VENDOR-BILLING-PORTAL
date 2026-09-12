@@ -30,6 +30,9 @@ interface WorkOrderContext {
   scopeItems: ScopeItemContext[];
 }
 
+// Standard Indian mobile: exactly 10 digits, first digit 6-9.
+const MOBILE_REGEX = /^[6-9]\d{9}$/;
+
 const fmt = (n: number) => "₹" + (n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 // A contractor's own extra line item, not tied to any of the work order's
@@ -114,7 +117,7 @@ export default function PublicQuotationForm() {
 
   async function submit() {
     if (!contractorName.trim()) return toast.error("Your name is required");
-    if (!contractorMobile.trim()) return toast.error("Your contact number is required");
+    if (!MOBILE_REGEX.test(contractorMobile.trim())) return toast.error("Enter a valid 10-digit mobile number");
     const scopeQuotedItems = visibleScopeItems
       .filter(i => Number(rates[i._id]) > 0)
       .map(i => ({ scopeItemId: i._id, description: i.description, unit: i.unit, plannedQty: i.plannedQty, rate: Number(rates[i._id]) }));
@@ -194,7 +197,11 @@ export default function PublicQuotationForm() {
               <div className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Your Details</div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <Field label="Your Name" required value={contractorName} onChange={e => setContractorName(e.target.value)} placeholder="e.g. Shree Constructions" />
-                <Field label="Contact Number" required value={contractorMobile} onChange={e => setContractorMobile(e.target.value)} placeholder="10-digit mobile" />
+                <Field
+                  label="Contact Number" required maxLength={10} value={contractorMobile}
+                  onChange={e => setContractorMobile(e.target.value.replace(/\D/g, "").slice(0, 10))}
+                  placeholder="10-digit mobile"
+                />
                 <Field label="Email" value={contractorEmail} onChange={e => setContractorEmail(e.target.value)} placeholder="optional" />
                 <Field label="Existing Vendor Code" value={vendorCode} onChange={e => setVendorCode(e.target.value)} placeholder="optional, if already registered" />
               </div>
