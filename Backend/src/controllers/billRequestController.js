@@ -8,8 +8,7 @@ const emitEvent   = require('../utils/emitEvent');
 const { startInstance, advanceInstance, cancelInstance } = require('../utils/slaEngine');
 const { logAudit } = require('../utils/auditLog');
 const { hasUnapprovedVarianceForLineItem, resolveBillableItem, isWorkOrderApproved } = require('../utils/varianceCheck');
-const { nextCode } = require('../utils/sequence');
-const { nextBillNo } = require('../utils/codeGen');
+const { nextBillNo, nextBillRequestReqNo } = require('../utils/codeGen');
 const { recomputeAfterInvalidate, expandBillableCandidates, recomputeParentFromSubItems } = require('../utils/progressHelpers');
 const { resolvePayee } = require('../utils/vendorGroupHelpers');
 const { applyAdvanceRecoveries } = require('../utils/advanceRecovery');
@@ -73,7 +72,11 @@ function collectAndMarkProgressRemarks(target, billRequestId) {
   return { remarks: notes.join('\n'), location: locations.join(' · ') };
 }
 
-const nextReqNo = () => nextCode('billRequestReqNo', 'BR-', 4);
+// Moved to Backend/src/utils/codeGen.js as nextBillRequestReqNo — shared
+// with billController.js's manual-bill pending-approval placeholder number
+// (see that file's own comment). Kept as a local alias so every existing
+// call site below reads unchanged.
+const nextReqNo = nextBillRequestReqNo;
 
 // GET /api/bill-requests
 exports.listBillRequests = asyncHandler(async (req, res) => {
