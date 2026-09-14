@@ -37,9 +37,12 @@ async function resolveEligibleUsers(module, action, roles = []) {
 // silently ignored (E11000) — see Notification.js's unique index — so a
 // retried request or a re-notify on a stale stale-approval settle never
 // double-notifies anyone.
+// `title` may be a plain string (same for every recipient, the common case)
+// or a `(user) => string` function when the title needs to vary per
+// recipient — see notifyStageInApp's admin-only exception below.
 async function insertForUsers(users, { type, category, title, message, entityType, entityId, link }) {
   const docs = users.map((u) => ({
-    userId: u._id, type, category, title, message, entityType, entityId, link,
+    userId: u._id, type, category, title: typeof title === 'function' ? title(u) : title, message, entityType, entityId, link,
   }));
   if (!docs.length) return [];
   try {
@@ -84,16 +87,33 @@ async function notifyStageInApp(approvalType, entityDoc) {
 
   const lines = stage.buildLines(entityDoc);
   const message = lines.map((l) => `${l.label}: ${l.value}`).join(' · ');
+  // stage.title (e.g. "Bill Request — GM Approval Required") names the
+  // PIPELINE STAGE, not the recipient — a department can grant that stage's
+  // action to anyone (a CEO holding an explicit gm-approve permission, say),
+  // so showing the stage's role name in the notification read as if it
+  // were describing the recipient's own title. The in-app title is
+  // deliberately generic for everyone EXCEPT the one system Admin account
+  // (admin@neotericgrp.in), which keeps the specific stage name since that
+  // account is the actual administrator/catch-all and benefits from seeing
+  // exactly which level each notification is at. The actual stage/level is
+  // still visible to everyone else right below the title, in `message`
+  // (via buildLines' "Current Approval" line). Slack DMs (slackApprovals.js)
+  // keep using stage.title as-is for everyone — unaffected.
+  const titleFor = (u) => (u.email === 'admin@neotericgrp.in' ? stage.title : 'Waiting for your approval');
   const created = await insertForUsers(recipients, {
     type: approvalType,
     category: categoryForEntityType(stage.entityType),
-    title: stage.title,
+    title: titleFor,
     message,
     entityType: stage.entityType,
     entityId: entityDoc._id,
     link: stage.deepLinkPath(entityDoc),
   });
-  await maybeEmail(recipients, { title: stage.title, message, link: stage.deepLinkPath(entityDoc) });
+  // Email has no per-recipient split today (maybeEmail sends the same
+  // subject to everyone in `recipients`) — the admin account has no
+  // notificationPreferences.email set on it in practice, so this is
+  // effectively moot, but default to the generic subject for safety.
+  await maybeEmail(recipients, { title: 'Waiting for your approval', message, link: stage.deepLinkPath(entityDoc) });
   return created;
 }
 
