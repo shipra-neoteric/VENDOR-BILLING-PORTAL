@@ -447,8 +447,14 @@ export function WorkOrderDocumentHindi({ wo, company, contractor }: Props) {
             Neoteric staff acting for the contractor, not the contractor
             themselves — stays a blank line for their own physical signature. ── */}
         <View style={S.sigBlock} wrap={false}>
+          <View style={S.sigCell}>
+            <Text style={S.sigRole}>ठेकेदार</Text>
+            <View style={S.sigSlot} />
+            <View style={S.sigLine} />
+            <Text style={S.sigName}>नाम: {primaryContractorName || contractor?.companyName || ""}</Text>
+            <Text style={S.sigDate}>दिनांक: </Text>
+          </View>
           {([
-            ["ठेकेदार", null, "स्वीकृत"],
             ["L1 (निर्माता)", wo.approvals?.maker, "पूर्ण"],
             ["L2 (जांचकर्ता)", wo.approvals?.checker, "स्वीकृत"],
             ["L3 (अनुमोदक)", wo.approvals?.approver, "स्वीकृत"],

@@ -544,8 +544,14 @@ export function WorkOrderDocument({ wo, company, contractor }: Props) {
             the contractor's behalf, not the contractor themselves, so this
             stays a blank line for their own physical signature. ── */}
         <View style={S.sigBlock} wrap={false}>
+          <View style={S.sigCell}>
+            <Text style={S.sigRole}>Contractor</Text>
+            <View style={S.sigSlot} />
+            <View style={S.sigLine} />
+            <Text style={S.sigName}>Name: {primaryContractorName || contractor?.companyName || ""}</Text>
+            <Text style={S.sigDate}>Date: </Text>
+          </View>
           {([
-            ["Contractor", null, "Approved"],
             ["L1 (Maker)", wo.approvals?.maker, "Completed"],
             ["L2 (Checker)", wo.approvals?.checker, "Approved"],
             ["L3 (Approver)", wo.approvals?.approver, "Approved"],
