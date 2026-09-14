@@ -74,16 +74,19 @@ const STAGES = {
   // permission holder in the wrong department gets rejected. Recipient
   // resolution filters by the same check (see slackApprovals.js) so nobody
   // gets DMed an approval they'd immediately be blocked from acting on.
+  // Titled "L1"/"L2" (not "AGM"/"GM") to match L3/L4 below — same numbered
+  // convention throughout the whole BillRequest chain, not role names for
+  // the first two levels and numbers for the rest.
   BILL_REQUEST_AGM_APPROVAL: {
     entityType: 'BillRequest', module: 'bill-requests', action: 'agm-approve', roles: ['owner', 'agm'], departmentScoped: true,
-    title: 'Bill Request — AGM Approval Required',
-    buildLines: (br) => billRequestLines(br, 'AGM'),
+    title: 'Bill Request — L1 Approval Required',
+    buildLines: (br) => billRequestLines(br, 'L1'),
     deepLinkPath: billRequestDeepLink,
   },
   BILL_REQUEST_GM_APPROVAL: {
     entityType: 'BillRequest', module: 'bill-requests', action: 'gm-approve', roles: ['owner', 'gm'], departmentScoped: true,
-    title: 'Bill Request — GM Approval Required',
-    buildLines: (br) => billRequestLines(br, 'GM'),
+    title: 'Bill Request — L2 Approval Required',
+    buildLines: (br) => billRequestLines(br, 'L2'),
     deepLinkPath: billRequestDeepLink,
   },
   // Only ever reached when a department's Approval Rule (Users →
