@@ -271,12 +271,13 @@ const normalizeWO = (wo: any): WorkOrder => ({
 // Now it just returns whoever userMap actually resolves to (the real,
 // currently-assigned person), falling back to a generic role label — never
 // a specific name — only if that lookup comes up empty.
-const ROLE_FALLBACK_LABEL: Record<"checker" | "approver" | "final", string> = {
+const ROLE_FALLBACK_LABEL: Record<"maker" | "checker" | "approver" | "final", string> = {
+  maker: "Maker",
   checker: "Checker",
   approver: "Approver",
   final: "Final Approver",
 };
-function actorName(by: WorkOrder["makerBy"], userMap: Record<string, string>, roleKey?: "checker" | "approver" | "final"): string | undefined {
+function actorName(by: WorkOrder["makerBy"], userMap: Record<string, string>, roleKey?: "maker" | "checker" | "approver" | "final"): string | undefined {
   if (!by) return undefined;
   const resolved = typeof by === "string" ? userMap[by] : (by as any)?.name;
   if (resolved) return resolved;
@@ -297,10 +298,14 @@ function stagePassed(status: string | undefined, mustBeAtLeast: string): boolean
 }
 
 function buildApprovals(wo: WorkOrder, userMap: Record<string, string>) {
+  // Maker (L1) is done the moment it's been submitted at all — it's not
+  // gated by a later stage the way checker/approver/final are.
+  const makerDone     = wo.makerBy        && stagePassed(wo.approvalStatus, "pending-checker");
   const checkerDone  = wo.checkerBy       && stagePassed(wo.approvalStatus, "pending-approver");
   const approverDone = wo.approverBy      && stagePassed(wo.approvalStatus, "pending-final");
   const finalDone     = wo.finalApprovedBy && stagePassed(wo.approvalStatus, "approved");
   return {
+    maker:    makerDone     ? { name: actorName(wo.makerBy, userMap, "maker"),           at: wo.makerAt }         : null,
     checker:  checkerDone  ? { name: actorName(wo.checkerBy, userMap, "checker"),       at: wo.checkerAt }       : null,
     approver: approverDone ? { name: actorName(wo.approverBy, userMap, "approver"),      at: wo.approverAt }      : null,
     final:    finalDone     ? { name: actorName(wo.finalApprovedBy, userMap, "final"), at: wo.finalApprovedAt } : null,
