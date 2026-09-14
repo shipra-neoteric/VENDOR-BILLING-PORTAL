@@ -71,8 +71,8 @@ const STATUS_NX_COLOR: Record<string, NxBadgeColor> = {
 
 const STATUS_LABEL: Record<string, string> = {
   draft: "Awaiting Verification",
-  "verify-done": "Pending L1 (AGM)",
-  "l1-approved": "Pending L2 (GM)",
+  "verify-done": "Pending L1",
+  "l1-approved": "Pending L2",
   approved: "Ready for TMS",
   "sent-to-tms": "Sent to TMS",
   hold: "Hold",
@@ -173,8 +173,8 @@ export default function ProcurementTracker() {
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 sm:gap-4 mb-5">
         <NxStatCard label="Total Bills" value={stats.total} icon={ClipboardList} />
         <NxStatCard label="Awaiting Verification" value={stats.verifying} icon={Search} active={statusFilter === "draft"} onClick={() => toggleStatus("draft")} />
-        <NxStatCard label="Pending L1 (AGM)" value={stats.l1} icon={UserCheck} active={statusFilter === "verify-done"} onClick={() => toggleStatus("verify-done")} />
-        <NxStatCard label="Pending L2 (GM)" value={stats.l2} icon={ShieldCheck} active={statusFilter === "l1-approved"} onClick={() => toggleStatus("l1-approved")} />
+        <NxStatCard label="Pending L1" value={stats.l1} icon={UserCheck} active={statusFilter === "verify-done"} onClick={() => toggleStatus("verify-done")} />
+        <NxStatCard label="Pending L2" value={stats.l2} icon={ShieldCheck} active={statusFilter === "l1-approved"} onClick={() => toggleStatus("l1-approved")} />
         <NxStatCard label="Sent to TMS" value={stats.sentToTms} icon={Send} active={statusFilter === "sent-to-tms"} onClick={() => toggleStatus("sent-to-tms")} />
         <NxStatCard label="Outstanding" value={fmt(stats.outstanding)} icon={Wallet} />
       </div>

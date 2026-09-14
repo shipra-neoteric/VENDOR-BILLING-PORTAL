@@ -123,16 +123,26 @@ function buildInstanceStage(templateStage, startedAt) {
 
 // A BillRequest's own approval chain isn't fixed at 2 levels (AGM+GM) — a
 // department's Approval Rule (Users -> Departments) can require 3 or 4. The
-// shared WorkflowTemplate only ever has one generic "GM Approval" stage, so
+// shared WorkflowTemplate only ever has one generic second-level stage
+// (named "GM Approval" or "L2 Approval" depending on how it's been renamed
+// in SLA Settings — see approvalStages.js's own AGM/GM -> L1/L2 rename), so
 // when a department needs more, extra "L3 Approval"/"L4 Approval" stages are
-// inserted right after it (before Accounts Verification) — cloning GM
-// Approval's own SLA/business-hours settings, since there's no dedicated
+// inserted right after it (before Accounts Verification) — cloning that
+// stage's own SLA/business-hours settings, since there's no dedicated
 // template stage to source those from otherwise. Without this, a bill
-// request's SLA timeline would get stuck showing "GM Approval" as the
-// current stage forever once it actually moved on to L3/L4.
+// request's SLA timeline would get stuck showing that stage as the current
+// one forever once it actually moved on to L3/L4.
+//
+// Matches by /\bgm\b|\bl2\b/ (word-boundaried) rather than one exact string
+// — this deliberately matches EITHER "GM Approval" or "L2 Approval" (or
+// just "GM"/"L2"), so renaming the template's stage name in SLA Settings
+// (a normal admin action, not a code change) can't silently break this
+// insertion point the way a single hardcoded string comparison would.
+// \bgm\b does NOT match "AGM Approval" (no word boundary before the "gm" in
+// "AGM") — only a genuine standalone "GM"/"L2" token.
 function expandBillRequestStages(templateStages, requiredApprovals) {
   if (!requiredApprovals || requiredApprovals <= 2) return templateStages;
-  const gmIndex = templateStages.findIndex(s => s.name === 'GM Approval');
+  const gmIndex = templateStages.findIndex(s => /\bgm\b|\bl2\b/i.test(s.name));
   if (gmIndex === -1) return templateStages;
   const gmStage = templateStages[gmIndex];
   const clone = (name) => ({

@@ -24,8 +24,8 @@ export const BILL_STATUS_COLOR: Record<string, string> = {
 
 export const BILL_STATUS_LABEL: Record<string, string> = {
   draft:         'Awaiting Verification',
-  'verify-done': 'Pending L1 (AGM)',
-  'l1-approved': 'Pending L2 (GM)',
+  'verify-done': 'Pending L1',
+  'l1-approved': 'Pending L2',
   approved:      'Ready for TMS',
   'sent-to-tms': 'Sent to TMS',
   hold:          'Hold',

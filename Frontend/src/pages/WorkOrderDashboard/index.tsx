@@ -118,8 +118,8 @@ const netPayable = (b: { amount: number; gstPercent?: number; retentionAmount?: 
 // slate=paused, red=rejected, green=success).
 const RB_STATUS_CFG: Record<string, { label: string; color: NxBadgeColor }> = {
   draft:         { label: "Awaiting Verification",  color: "gray" },
-  "verify-done": { label: "Pending L1 (AGM)",        color: "blue" },
-  "l1-approved": { label: "Pending L2 (GM)",         color: "amber" },
+  "verify-done": { label: "Pending L1",        color: "blue" },
+  "l1-approved": { label: "Pending L2",         color: "amber" },
   approved:      { label: "Ready for TMS",           color: "amber" },
   "sent-to-tms": { label: "Sent to TMS",             color: "indigo" },
   hold:          { label: "Hold",                    color: "slate" },

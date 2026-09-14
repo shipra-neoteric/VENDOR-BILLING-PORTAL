@@ -81,8 +81,8 @@ function calcBill(b: Bill) {
 // (a warning/paused state), green=paid, red=rejected.
 const STATUS_CFG: Record<BillStatus, { color: NxBadgeColor; label: string }> = {
   draft:         { color: "gray",   label: "Draft" },
-  "verify-done": { color: "amber",  label: "Pending L1 (AGM)" },
-  "l1-approved": { color: "cyan",   label: "Pending L2 (GM)" },
+  "verify-done": { color: "amber",  label: "Pending L1" },
+  "l1-approved": { color: "cyan",   label: "Pending L2" },
   approved:      { color: "blue",   label: "Ready for TMS" },
   "sent-to-tms": { color: "indigo", label: "Sent to TMS" },
   hold:          { color: "orange", label: "Hold" },

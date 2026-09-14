@@ -88,8 +88,8 @@ const APPROVAL_LEVEL_STAGES: {
   rolesKey: "agmRoles" | "gmRoles" | "l3Roles" | "l4Roles";
   usersKey: "agmUsers" | "gmUsers" | "l3Users" | "l4Users";
 }[] = [
-  { stage: "agm", short: "L1 (AGM)", rolesKey: "agmRoles", usersKey: "agmUsers" },
-  { stage: "gm",  short: "L2 (GM)",  rolesKey: "gmRoles",  usersKey: "gmUsers" },
+  { stage: "agm", short: "L1", rolesKey: "agmRoles", usersKey: "agmUsers" },
+  { stage: "gm",  short: "L2",  rolesKey: "gmRoles",  usersKey: "gmUsers" },
   { stage: "l3",  short: "L3",       rolesKey: "l3Roles",  usersKey: "l3Users" },
   { stage: "l4",  short: "L4",       rolesKey: "l4Roles",  usersKey: "l4Users" },
 ];
@@ -1039,7 +1039,7 @@ export default function UserManagement() {
                 }}
                 options={APPROVAL_LEVEL_STAGES.map((s, i) => ({ value: String(i + 1), label: s.short }))}
                 disabledValues={["1"]}
-                onDisabledOptionClick={() => toast("L1 (AGM) is always required — a bill needs at least one sign-off.")}
+                onDisabledOptionClick={() => toast("L1 is always required — a bill needs at least one sign-off.")}
               />
               <div className="text-[11px] text-gray-400 mt-1.5">
                 Bill requests and manually-created bills in this department stop at whichever level is checked highest — the RunningBill is created right after that level's sign-off, with no further stage.

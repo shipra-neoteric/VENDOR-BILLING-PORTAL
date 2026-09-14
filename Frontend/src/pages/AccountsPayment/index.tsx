@@ -234,8 +234,8 @@ function sameActor(user: AuthUser | null, actor?: BillUser | null): boolean {
 // instead of a bespoke hex color, matching WorkItems' displayStatus() precedent.
 const BILL_LIST_STATUS_CFG: Record<BillStatus, { label: string; color: NxBadgeColor }> = {
   draft: { label: "Awaiting Verification", color: "gray" },
-  "verify-done": { label: "Pending L1 (AGM)", color: "amber" },
-  "l1-approved": { label: "Pending L2 (GM)", color: "cyan" },
+  "verify-done": { label: "Pending L1", color: "amber" },
+  "l1-approved": { label: "Pending L2", color: "cyan" },
   approved: { label: "Ready for TMS", color: "blue" },
   "sent-to-tms": { label: "Sent to TMS", color: "indigo" },
   hold: { label: "Hold", color: "orange" },
@@ -283,7 +283,7 @@ function buildSteps(bill: Bill): StepItem[] {
 
   const meta = [
     { title: "Verification", by: bill.verificationBy?.name, at: bill.verificationAt },
-    { title: "L1 AGM", by: bill.l1ApprovedBy?.name, at: bill.l1ApprovedAt },
+    { title: "L1", by: bill.l1ApprovedBy?.name, at: bill.l1ApprovedAt },
     { title: "L2 Director", by: bill.l2ApprovedBy?.name, at: bill.l2ApprovedAt },
     { title: "Sent to TMS", by: undefined, at: bill.tmsSentAt },
     { title: "Paid", by: undefined, at: bill.tmsCallbackReceivedAt },
@@ -314,7 +314,7 @@ function buildSteps(bill: Bill): StepItem[] {
 }
 
 const HISTORY_STAGE_LABEL: Record<string, string> = {
-  verify: "Verification", "l1-agm": "L1 AGM", "l2-director": "L2 Director", hold: "Hold",
+  verify: "Verification", "l1-agm": "L1", "l2-director": "L2 Director", hold: "Hold",
   "tms-handoff": "Send to TMS", "tms-callback": "TMS Callback",
 };
 
@@ -331,7 +331,7 @@ function historyEventTitle(h: ApprovalHistoryEntry): string {
   if (h.action === "rejected") return "REJECTED";
   switch (h.stage) {
     case "verify": return "BILL VERIFIED";
-    case "l1-agm": return "L1 AGM APPROVED";
+    case "l1-agm": return "L1 APPROVED";
     case "l2-director": return "APPROVED FOR PAYMENT";
     case "hold": return h.action === "released-hold" ? "HOLD RELEASED" : "PAYMENT HELD";
     case "tms-handoff": return "SENT TO TMS";
@@ -786,8 +786,8 @@ export default function AccountsPayment() {
   const tabs: TabDef[] = [
     { key: "all", label: "All", count: 0 },
     { key: "draft", label: "Awaiting Verification", count: draftBills.length },
-    { key: "verifyDone", label: "Pending L1 (AGM)", count: verifyDoneBills.length },
-    { key: "l1Approved", label: "Pending L2 (GM)", count: l1ApprovedBills.length },
+    { key: "verifyDone", label: "Pending L1", count: verifyDoneBills.length },
+    { key: "l1Approved", label: "Pending L2", count: l1ApprovedBills.length },
     { key: "approved", label: "Ready for TMS", count: approvedBills.length },
     { key: "sentToTms", label: "Sent to TMS", count: sentToTmsBills.length },
     { key: "hold", label: "Hold", count: holdBills.length },
@@ -903,7 +903,7 @@ export default function AccountsPayment() {
         remarks: verifyRemarks || undefined,
       });
       updateBillInList(normalizeId(res.data.bill) as unknown as Bill);
-      toast.success("Verified — ready for L1 AGM approval");
+      toast.success("Verified — ready for L1 approval");
     } catch (err: unknown) {
       const e = err as { response?: { data?: { message?: string } } };
       toast.error(e?.response?.data?.message || "Verification failed");
@@ -920,10 +920,10 @@ export default function AccountsPayment() {
         remarks: l1Remarks || undefined,
       });
       updateBillInList(normalizeId(res.data.bill) as unknown as Bill);
-      toast.success("L1 AGM approved — ready for L2 Director approval");
+      toast.success("L1 approved — ready for L2 Director approval");
     } catch (err: unknown) {
       const e = err as { response?: { data?: { message?: string } } };
-      toast.error(e?.response?.data?.message || "L1 AGM approval failed");
+      toast.error(e?.response?.data?.message || "L1 approval failed");
     } finally {
       setL1Saving(false);
     }
@@ -1040,7 +1040,7 @@ export default function AccountsPayment() {
 
   function renderActionSection(bill: Bill): ReactNode {
     if (rejecting) {
-      const sendBackTo = bill.status === "approved" ? "L1 AGM" : bill.status === "l1-approved" ? "Verification" : bill.status === "verify-done" ? "Verification" : null;
+      const sendBackTo = bill.status === "approved" ? "L1" : bill.status === "l1-approved" ? "Verification" : bill.status === "verify-done" ? "Verification" : null;
       return (
         <div className={`${sectionPanelClass} !bg-red-50 dark:!bg-red-500/10 !border-red-200 dark:!border-red-500/30`}>
           <div className="font-bold text-[13px] text-red-600 mb-2">
@@ -1187,11 +1187,11 @@ export default function AccountsPayment() {
       }
 
       case "verify-done": {
-        if (!canL1Agm) return <MutedNote text="Pending L1 (AGM) approval." />;
-        const guard = sameActor(user, bill.verificationBy) ? "You verified this bill — a different user must give L1 AGM approval." : undefined;
+        if (!canL1Agm) return <MutedNote text="Pending L1 approval." />;
+        const guard = sameActor(user, bill.verificationBy) ? "You verified this bill — a different user must give L1 approval." : undefined;
         return (
           <div className={sectionPanelClass}>
-            <div className="font-bold text-[13px] text-cyan-700 mb-2">L1 AGM Approval</div>
+            <div className="font-bold text-[13px] text-cyan-700 mb-2">L1 Approval</div>
             {guard && <div className="text-xs text-amber-600 mb-2">⚠ {guard}</div>}
             <Descriptions columns={2}>
               <DescItem label="Hold / Retention">{fmt(bill.retentionAmount ?? 0)}</DescItem>
@@ -1218,8 +1218,8 @@ export default function AccountsPayment() {
         );
 
       case "l1-approved": {
-        if (!canL2Director) return <MutedNote text="Pending L2 (GM) approval." />;
-        const guard = sameActor(user, bill.l1ApprovedBy) ? "You gave L1 AGM approval — a different user must give L2 Director approval." : undefined;
+        if (!canL2Director) return <MutedNote text="Pending L2 approval." />;
+        const guard = sameActor(user, bill.l1ApprovedBy) ? "You gave L1 approval — a different user must give L2 approval." : undefined;
         return (
           <div className={sectionPanelClass}>
             <div className="font-bold text-[13px] text-indigo-700 mb-2">L2 Director Approval</div>
@@ -1286,14 +1286,14 @@ export default function AccountsPayment() {
         return canVerify ? { label: "Verify", color: "primary", onClick: handleVerify, loading: verifySaving } : null;
       case "verify-done": {
         if (!canL1Agm) return null;
-        const guard = sameActor(user, bill.verificationBy) ? "You verified this bill — a different user must give L1 AGM approval." : undefined;
-        return { label: "L1 AGM Approve", color: "blue", onClick: handleL1AgmApprove, loading: l1Saving, disabled: !!guard, tooltip: guard };
+        const guard = sameActor(user, bill.verificationBy) ? "You verified this bill — a different user must give L1 approval." : undefined;
+        return { label: "L1 Approve", color: "blue", onClick: handleL1AgmApprove, loading: l1Saving, disabled: !!guard, tooltip: guard };
       }
       case "hold":
         return canReleaseHold ? { label: "Release Hold", color: "purple", onClick: handleReleaseHold, loading: releaseHoldSaving } : null;
       case "l1-approved": {
         if (!canL2Director) return null;
-        const guard = sameActor(user, bill.l1ApprovedBy) ? "You gave L1 AGM approval — a different user must give L2 Director approval." : undefined;
+        const guard = sameActor(user, bill.l1ApprovedBy) ? "You gave L1 approval — a different user must give L2 approval." : undefined;
         return { label: "L2 Director Approve & Send to TMS", color: "blue", onClick: handleL2DirectorApprove, loading: l2Saving, disabled: !!guard, tooltip: guard };
       }
       case "approved":
@@ -1316,7 +1316,7 @@ export default function AccountsPayment() {
       <PageHeader
         icon={Wallet}
         title="Accounts Payment"
-        subtitle="Verification → L1 AGM → L2 Director — then handed off to TMS for payment"
+        subtitle="Verification → L1 → L2 Director — then handed off to TMS for payment"
         actions={<NxBtn color="secondary" label="Procurement Tracker" onClick={() => window.open("/procurement-tracker", "_blank", "noopener,noreferrer")} />}
       />
 
