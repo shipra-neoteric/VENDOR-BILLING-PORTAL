@@ -601,9 +601,17 @@ export default function QuotationComparison() {
   // carry — narrower than the full /categories list, but every option here
   // is guaranteed to actually match something (no "Furniture" option sitting
   // there with zero results if no draft WO happens to be in it right now).
+  // Each option's label also carries a count — how many of these still-open
+  // (no bill raised yet) work orders fall in that category.
   const categoryOptions = useMemo(() => {
-    const names = [...new Set(workOrders.map(w => w.category).filter(Boolean))] as string[];
-    return names.sort((a, b) => a.localeCompare(b));
+    const counts = new Map<string, number>();
+    for (const w of workOrders) {
+      if (!w.category) continue;
+      counts.set(w.category, (counts.get(w.category) || 0) + 1);
+    }
+    return [...counts.keys()]
+      .sort((a, b) => a.localeCompare(b))
+      .map(name => ({ name, count: counts.get(name)! }));
   }, [workOrders]);
 
   const filtered = useMemo(() => {
@@ -638,7 +646,7 @@ export default function QuotationComparison() {
         <SearchFilter value={search} onChange={setSearch} placeholder="Search work order, project, or contractor…" />
         <SelectFilter
           value={category} onChange={setCategory} placeholder="All Categories"
-          options={categoryOptions.map(c => ({ value: c, label: c }))}
+          options={categoryOptions.map(c => ({ value: c.name, label: `${c.name} (${c.count})` }))}
         />
       </FilterRow>
 
