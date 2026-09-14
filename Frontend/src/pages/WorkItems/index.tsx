@@ -283,11 +283,27 @@ function actorName(by: WorkOrder["makerBy"], userMap: Record<string, string>, ro
   return roleKey ? ROLE_FALLBACK_LABEL[roleKey] : undefined;
 }
 
+// A work order reopened for editing after (or during) approval resets
+// approvalStatus back to draft/pending-checker, but checkerBy/approverBy/
+// finalApprovedBy from the PRIOR cycle can still be sitting on the document
+// (e.g. one reopened before this stale-clearing fix existed) — so the print
+// must gate each stage's "Approved" on the CURRENT approvalStatus actually
+// having passed that stage, not merely on whether the by-field is set.
+const STATUS_ORDER = ["draft", "sent-back", "pending-checker", "pending-approver", "pending-final", "approved"];
+function stagePassed(status: string | undefined, mustBeAtLeast: string): boolean {
+  const cur = STATUS_ORDER.indexOf(status || "draft");
+  const min = STATUS_ORDER.indexOf(mustBeAtLeast);
+  return cur >= 0 && min >= 0 && cur >= min;
+}
+
 function buildApprovals(wo: WorkOrder, userMap: Record<string, string>) {
+  const checkerDone  = wo.checkerBy       && stagePassed(wo.approvalStatus, "pending-approver");
+  const approverDone = wo.approverBy      && stagePassed(wo.approvalStatus, "pending-final");
+  const finalDone     = wo.finalApprovedBy && stagePassed(wo.approvalStatus, "approved");
   return {
-    checker:  wo.checkerBy       ? { name: actorName(wo.checkerBy, userMap, "checker"),       at: wo.checkerAt }       : null,
-    approver: wo.approverBy      ? { name: actorName(wo.approverBy, userMap, "approver"),      at: wo.approverAt }      : null,
-    final:    wo.finalApprovedBy ? { name: actorName(wo.finalApprovedBy, userMap, "final"), at: wo.finalApprovedAt } : null,
+    checker:  checkerDone  ? { name: actorName(wo.checkerBy, userMap, "checker"),       at: wo.checkerAt }       : null,
+    approver: approverDone ? { name: actorName(wo.approverBy, userMap, "approver"),      at: wo.approverAt }      : null,
+    final:    finalDone     ? { name: actorName(wo.finalApprovedBy, userMap, "final"), at: wo.finalApprovedAt } : null,
   };
 }
 
