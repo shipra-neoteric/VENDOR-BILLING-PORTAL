@@ -7,7 +7,7 @@ const { resolvePayee } = require('../utils/vendorGroupHelpers');
 const asyncHandler = require('../utils/asyncHandler');
 const { success, created, notFound, badRequest, conflict, forbidden } = require('../utils/responseFormatter');
 const { canActOnDepartment } = require('../utils/departmentAccess');
-const { nextBillNo } = require('../utils/codeGen');
+const { nextBillNo, nextBillRequestReqNo } = require('../utils/codeGen');
 const emitEvent    = require('../utils/emitEvent');
 const { advanceInstance, cancelInstance } = require('../utils/slaEngine');
 const { logAudit, diffFields } = require('../utils/auditLog');
@@ -260,7 +260,16 @@ exports.createBill = asyncHandler(async (req, res) => {
   }
 
   const amount = lineItems.reduce((sum, li) => sum + (Number(li.amount) || 0), 0);
-  const billNo = await nextBillNo();
+  // A manually-created bill doesn't earn its real "RA-####" bill number until
+  // its own AGM/GM(/L3/L4) sign-off chain fully clears (manualApprovalStatus
+  // reaches 'approved') — same principle as a BillRequest-originated bill,
+  // which has no RunningBill/billNo at all until finalizeBillRequest. Until
+  // then this field holds a "BR-####" placeholder from the SAME counter
+  // BillRequest.reqNo uses (see codeGen.js's nextBillRequestReqNo), so that
+  // number is never ambiguous with an unrelated real BillRequest. Each
+  // manual*Approve handler below overwrites this with a real nextBillNo()
+  // once its sign-off is the department's last required level.
+  const billNo = await nextBillRequestReqNo();
 
   // Compute billingCycle for this WO
   const cycleCount = req.body.workOrderId
@@ -619,6 +628,10 @@ exports.manualAgmApprove = asyncHandler(async (req, res) => {
   // action, which is wrong for a department with no real L2 stage at all.
   const isFinal = approvalConfig?.requiredApprovals === 1;
   bill.manualApprovalStatus = isFinal ? 'approved' : 'pending-gm';
+  // This department's chain ends here — swap the "BR-####" placeholder
+  // (see createBill's own comment) for a real "RA-####" number now that the
+  // sign-off chain is genuinely complete.
+  if (isFinal) bill.billNo = await nextBillNo();
   await bill.save();
   await bill.populate('manualAgmApprovedBy', 'name role');
 
@@ -679,6 +692,9 @@ async function manualGmApproveHandler(req, res) {
   }
 
   bill.manualApprovalStatus = 'approved';
+  // Swap the "BR-####" placeholder for a real "RA-####" number now that this
+  // department's (2-level) chain is genuinely complete.
+  bill.billNo = await nextBillNo();
   await bill.save();
   await bill.populate('manualGmApprovedBy', 'name role');
 
@@ -736,6 +752,9 @@ async function manualL3ApproveHandler(req, res) {
   }
 
   bill.manualApprovalStatus = 'approved';
+  // Swap the "BR-####" placeholder for a real "RA-####" number now that this
+  // department's (3-level) chain is genuinely complete.
+  bill.billNo = await nextBillNo();
   await bill.save();
   await bill.populate('manualL3ApprovedBy', 'name role');
 
@@ -778,6 +797,9 @@ exports.manualL4Approve = asyncHandler(async (req, res) => {
   bill.manualL4ApprovedBy = req.user._id;
   bill.manualL4ApprovedAt = new Date();
   bill.manualApprovalStatus = 'approved';
+  // Always the department's last configurable level — swap the "BR-####"
+  // placeholder for a real "RA-####" number now that the chain is complete.
+  bill.billNo = await nextBillNo();
   pushHistory(bill, 'manual-l4', 'approved', req.user._id, req.body.remarks || '');
   await bill.save();
   await bill.populate('manualL4ApprovedBy', 'name role');
