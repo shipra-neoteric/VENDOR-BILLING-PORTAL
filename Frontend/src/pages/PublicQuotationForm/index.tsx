@@ -26,7 +26,10 @@ interface WorkOrderContext {
   _id: string;
   workOrderNo: string;
   projectName: string;
-  isLocked: boolean;
+  // Whether a bill already exists for this WO — the real cutoff for
+  // quotations now (a WO's own approval-lock happens independently, often
+  // long before any billing starts, so it's no longer what closes this).
+  quotationsClosed: boolean;
   scopeItems: ScopeItemContext[];
 }
 
@@ -175,16 +178,16 @@ export default function PublicQuotationForm() {
           </div>
         )}
 
-        {!loading && context && context.isLocked && !submitted && (
+        {!loading && context && context.quotationsClosed && !submitted && (
           <div className="bg-white border border-amber-100 rounded-xl p-8 text-center">
             <div className="text-amber-600 font-bold mb-1">Quotations are closed</div>
             <div className="text-sm text-gray-500">
-              {context.workOrderNo} has already had its contractor and rates locked in.
+              A bill has already been raised against {context.workOrderNo}.
             </div>
           </div>
         )}
 
-        {!loading && context && !context.isLocked && !submitted && (
+        {!loading && context && !context.quotationsClosed && !submitted && (
           <div className="space-y-5">
             <div>
               <h1 className="text-xl font-bold text-[#1A1A2E]">Submit a Quotation</h1>

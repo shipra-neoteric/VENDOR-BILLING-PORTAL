@@ -3,11 +3,21 @@ const { success, created, notFound, badRequest } = require('../utils/responseFor
 const ContractorQuotation = require('../models/ContractorQuotation');
 const WorkOrder  = require('../models/WorkOrder');
 const Contractor = require('../models/Contractor');
+const RunningBill = require('../models/RunningBill');
 const { nextQuotationNo } = require('../utils/codeGen');
 const { logAudit } = require('../utils/auditLog');
 
 function computeTotal(items) {
   return items.reduce((sum, i) => sum + (Number(i.plannedQty) || 0) * (Number(i.rate) || 0), 0);
+}
+
+// Quotation Comparison's real cutoff — a WO's rate can still be discovered/
+// changed via a quotation for as long as no bill has actually been raised
+// against it yet, regardless of isLocked (isLocked flips the moment the WO's
+// OWN approval chain finishes, which routinely happens well before any
+// billing starts — that used to close the quotation window far too early).
+async function hasExistingBill(workOrderId) {
+  return RunningBill.exists({ workOrderId });
 }
 
 // Shared by the authenticated (/api/quotations) and public
@@ -30,7 +40,9 @@ exports.submitQuotation = asyncHandler(async (req, res) => {
 
   const workOrder = await WorkOrder.findById(workOrderId);
   if (!workOrder) return notFound(res, 'Work order not found');
-  if (workOrder.isLocked) return badRequest(res, 'This work order is already locked — quotations are closed');
+  if (await hasExistingBill(workOrderId)) {
+    return badRequest(res, 'A bill has already been raised against this work order — quotations are closed');
+  }
 
   const items = quotedItems.map(i => ({
     scopeItemId: i.scopeItemId || null,
@@ -78,7 +90,12 @@ exports.getWorkOrderQuotationContext = asyncHandler(async (req, res) => {
       _id: workOrder._id,
       workOrderNo: workOrder.workOrderNo,
       projectName: workOrder.projectName,
+      // isLocked kept for reference, but it's no longer what actually gates
+      // whether quotations are accepted (see submitQuotation/approveQuotation
+      // above) — quotationsClosed reflects the real cutoff (a bill already
+      // exists), so the public form's "closed" banner matches reality.
       isLocked: workOrder.isLocked,
+      quotationsClosed: !!(await hasExistingBill(workOrder._id)),
       scopeItems: (workOrder.scopeItems || []).map(i => ({
         _id: i._id, description: i.description, unit: i.unit, plannedQty: i.plannedQty,
       })),
@@ -93,7 +110,13 @@ exports.listQuotationsForWorkOrder = asyncHandler(async (req, res) => {
 });
 
 exports.listDraftWorkOrders = asyncHandler(async (req, res) => {
-  const workOrders = await WorkOrder.find({ isLocked: false })
+  // Was `{ isLocked: false }` — a WO's own approval chain locks it (final
+  // approve) independently of, and usually well before, any bill actually
+  // getting raised against it, which closed this list far too early. Now
+  // shows every WO with no bill raised yet, locked or not — cancelled WOs
+  // stay excluded either way (a cancelled WO has no business here).
+  const billedWorkOrderIds = await RunningBill.distinct('workOrderId');
+  const workOrders = await WorkOrder.find({ _id: { $nin: billedWorkOrderIds }, status: { $ne: 'cancelled' } })
     .select('workOrderNo projectName vendorName contractValue createdAt category subCategory')
     .sort({ createdAt: -1 }).lean();
 
@@ -108,10 +131,13 @@ exports.listDraftWorkOrders = asyncHandler(async (req, res) => {
   });
 });
 
-// Locks the winning contractor's rates onto the still-draft WorkOrder.
-// Deliberately leaves status/approvalStatus/isLocked untouched — the existing
-// maker -> checker -> approver -> final chain (which already auto-locks at
-// finalApprove) takes over from here exactly as it does for any other WO.
+// Locks the winning contractor's rates onto the WorkOrder — deliberately
+// leaves status/approvalStatus/isLocked untouched. A WO's OWN approval
+// chain (maker -> checker -> approver -> final, which sets isLocked) is
+// independent of this; a quotation can still be approved on an
+// already-approved/locked WO as long as no bill has been raised against it
+// yet — only bill-creation, not the WO's approval-lock, actually finalizes
+// its rate for billing purposes.
 exports.approveQuotation = asyncHandler(async (req, res) => {
   const quotation = await ContractorQuotation.findById(req.params.id);
   if (!quotation) return notFound(res, 'Quotation not found');
@@ -119,7 +145,9 @@ exports.approveQuotation = asyncHandler(async (req, res) => {
 
   const workOrder = await WorkOrder.findById(quotation.workOrderId);
   if (!workOrder) return notFound(res, 'Work order not found');
-  if (workOrder.isLocked) return badRequest(res, 'This work order is already locked');
+  if (await hasExistingBill(workOrder._id)) {
+    return badRequest(res, 'A bill has already been raised against this work order — its rates can no longer be changed via quotation');
+  }
 
   let vendorName = quotation.contractorName;
   let ownerName  = quotation.contractorName;
