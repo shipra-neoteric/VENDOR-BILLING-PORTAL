@@ -6,6 +6,7 @@ const Project      = require('../models/Project');
 const Category     = require('../models/Category');
 const asyncHandler = require('../utils/asyncHandler');
 const { success }  = require('../utils/responseFormatter');
+const { billFinancialsForBill } = require('../utils/billFinancials');
 
 // ── Date helpers (no dayjs in this backend — plain Date arithmetic) ──
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -44,10 +45,13 @@ const avg = arr => arr.length ? Math.round((arr.reduce((s, v) => s + v, 0) / arr
 // it down, so bills with retention held often end up with `paidAmount`
 // silently equal to the gross figure. Compute the real net release
 // deterministically from the bill's own fields instead of trusting it.
-const netReleased = b => {
-  const gross = (b.amount || 0) * (1 + (b.gstPercent || 0) / 100);
-  return Math.max(0, gross - (b.retentionAmount || 0) - (b.advanceRecovery || 0));
-};
+//
+// Delegates to the shared billFinancials formula (Backend/src/utils/
+// billFinancials.js — the Node port of Frontend's billMath.ts) instead of a
+// hand-rolled variant. This used to compute GST on the full gross and skip
+// TDS entirely, disagreeing with what Ledger's UI (and now every other
+// backend rollup) actually shows as "net payable" for the same bill.
+const netReleased = b => Math.max(0, billFinancialsForBill(b).netPayable);
 
 const AGING_BUCKETS = [
   { label: '0-3 Days',  max: 3 },
