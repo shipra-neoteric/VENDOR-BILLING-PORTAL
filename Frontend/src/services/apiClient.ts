@@ -27,7 +27,25 @@ apiClient.interceptors.request.use((config) => {
 // Prevents duplicate "session expired" toasts + redirects when multiple requests fail simultaneously
 let sessionExpiredPending = false;
 
-function forceReLogin(msg: string) {
+// The 401 that triggers this is usually one of several parallel bootstrap
+// requests firing on page load with a stale token already sitting in
+// localStorage. Two separate race windows had to be closed here, not one:
+//
+// 1. By the time THIS 401 is actually processed, a fresh login elsewhere
+//    (another in-flight request, or the user re-logging in) may have
+//    already replaced the stale token — offendingToken lets us tell "am I
+//    even still describing the CURRENT session" before doing anything
+//    destructive, instead of unconditionally wiping localStorage the
+//    instant any 401 arrives.
+// 2. Even after deciding this token really is (still) the active one, the
+//    brief toast-display delay before the actual redirect is its own
+//    window — re-checking once more right before navigating catches a
+//    fresh login that completes during that last stretch.
+function forceReLogin(msg: string, offendingToken: string | null) {
+  // Someone already logged back in since this particular request was sent
+  // with the now-invalid token — this failure describes a session that no
+  // longer exists, so it has nothing to say about the current one.
+  if (localStorage.getItem("token") !== offendingToken) return;
   if (sessionExpiredPending) return;
   sessionExpiredPending = true;
   localStorage.removeItem("token");
@@ -35,6 +53,7 @@ function forceReLogin(msg: string) {
   toast.error(msg);
   setTimeout(() => {
     sessionExpiredPending = false;
+    if (localStorage.getItem("token")) return; // a new session started during the toast delay
     window.location.replace("/login");
   }, 1200);
 }
@@ -82,9 +101,13 @@ apiClient.interceptors.response.use(
       const status = error.response.status;
       const msg = error.response.data?.message || error.message || "Request failed";
 
-      // Token expired or invalid — force re-login (deduplicated)
+      // Token expired or invalid — force re-login (deduplicated). Read the
+      // token actually attached to THIS failing request (not "whatever's in
+      // localStorage right now") so forceReLogin can tell whether it's
+      // still describing the active session.
       if (status === 401) {
-        forceReLogin("Session expired. Please sign in again.");
+        const offendingToken = (config.headers?.Authorization || "").replace(/^Bearer /, "") || null;
+        forceReLogin("Session expired. Please sign in again.", offendingToken);
         return Promise.reject(error);
       }
 
