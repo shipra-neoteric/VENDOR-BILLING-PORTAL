@@ -73,6 +73,7 @@ app.use('/api/roles',        require('./routes/roles'));
 app.use('/api/approval-rules', require('./routes/approvalRules'));
 app.use('/api/workflows',    require('./routes/workflows'));
 app.use('/api/dpr',          require('./routes/dpr'));
+app.use('/api/dashboard',    require('./routes/executiveDashboard'));
 app.use('/api/report-schedules', require('./routes/reportSchedules'));
 app.use('/api/audit-logs',   require('./routes/auditLogs'));
 app.use('/api/ai',           require('./routes/ai'));

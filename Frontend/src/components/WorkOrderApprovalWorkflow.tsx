@@ -109,9 +109,16 @@ function ActionPanel({ children, danger = false }: { children: ReactNode; danger
 // submit-to-resolution pass) so the table below reads as "cycle 1's approvals,
 // then cycle 2's approvals" instead of one blurred-together list.
 // `reopened` events (only possible via a post-unlock edit, not a send-back)
-// are a rare edge case — they aren't given their own cycle boundary here; that
-// cycle's next 'maker'+'submitted' entry (from resubmitting) still opens the
-// next row normally.
+// DO start their own cycle boundary, same as `submitted` — the controller
+// (Backend/src/controllers/workOrderController.js's reopen branch) clears
+// checkerBy/approverBy/finalApprovedBy on the work order itself the moment
+// it's reopened, so the prior cycle's checker/approver/final approvals are
+// no longer valid for the (edited) content. Folding a `reopened` entry into
+// the previous, already-fully-approved cycle instead of starting a new one
+// used to leave that old cycle's L2-L4 cells showing stale "Approved"
+// badges even though the work order itself had reset to awaiting checker
+// review again — visually implying it was still mostly approved when it
+// wasn't.
 interface ApprovalCycle {
   maker?: ApprovalHistoryEntry;
   checker?: ApprovalHistoryEntry;
@@ -124,7 +131,7 @@ function groupIntoCycles(history: ApprovalHistoryEntry[]): ApprovalCycle[] {
   const cycles: ApprovalCycle[] = [];
   let current: ApprovalCycle | null = null;
   for (const entry of history) {
-    if (entry.stage === "maker" && entry.action === "submitted") {
+    if (entry.stage === "maker" && (entry.action === "submitted" || entry.action === "reopened")) {
       current = { maker: entry };
       cycles.push(current);
     } else if (current) {

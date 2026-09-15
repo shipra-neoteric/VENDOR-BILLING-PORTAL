@@ -8,6 +8,7 @@ const asyncHandler = require('../utils/asyncHandler');
 const { success, created, notFound, badRequest, conflict } = require('../utils/responseFormatter');
 const { nextProjectCode } = require('../utils/codeGen');
 const { logAudit, diffFields } = require('../utils/auditLog');
+const { billFinancialsForBill } = require('../utils/billFinancials');
 
 // Every GET below strips the real slackWebhookUrl before it ever leaves the
 // server — GET /projects and GET /projects/:id have no role restriction (any
@@ -170,19 +171,21 @@ exports.getProjectStats = asyncHandler(async (req, res) => {
     });
   });
 
-  // Certified value = what's been billed and approved, incl. any retention
-  // held — retention is still owed, just released later. Paid value must
-  // exclude it (and any advance being recovered), since that money hasn't
-  // actually left the building yet — otherwise remaining contract value looks
-  // smaller than what's genuinely still owed/available.
-  const netCertified = b => {
-    const base = b.amount || 0;
-    // TDS is the bill's own already-decided tdsAmount (set at Verification),
-    // not a recompute against a default percent that ignores what Hold/
-    // Advance/GST it was actually netted against.
-    return base + base * ((b.gstPercent || 18) / 100) - (b.tdsAmount || 0);
-  };
-  const netPaidOut = b => netCertified(b) - (b.retentionAmount || 0) - (b.advanceRecovery || 0);
+  // Both figures now delegate to the shared billFinancials formula (Backend/
+  // src/utils/billFinancials.js — the Node port of Frontend's billMath.ts)
+  // instead of two hand-rolled variants that computed GST on the full base
+  // and disagreed with each other on whether retention/TDS came off first.
+  //
+  // Certified value = what's been billed and approved, net of Hold/Retention
+  // and Advance Recovery (those reduce the GST-able base itself, same as
+  // everywhere else in the app) but BEFORE TDS — TDS is a withholding
+  // deducted at actual disbursal, not something that reduces what was
+  // certified as owed. This is billFinancials' `netAfterHold`.
+  const netCertified = b => billFinancialsForBill(b).netAfterHold;
+  // Paid value is the true final net payable — after TDS and any manual
+  // adjustment too — since this money genuinely has left the building.
+  // This is billFinancials' `netPayable`.
+  const netPaidOut = b => billFinancialsForBill(b).netPayable;
 
   const billedGross    = runningBills.reduce((s, b) => s + (b.amount || 0), 0);
   const certifiedBills = runningBills.filter(b => ['approved', 'paid'].includes(b.status));
