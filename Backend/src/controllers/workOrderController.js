@@ -382,7 +382,23 @@ exports.updateWorkOrder = asyncHandler(async (req, res) => {
 
   const wasMidCycle = MID_CYCLE_STATUSES.includes(before.approvalStatus);
   const reopening = (before.approvalStatus === 'approved' || wasMidCycle) && approvalCriticalChanged;
-  if (reopening) updateData.approvalStatus = 'draft';
+  if (reopening) {
+    updateData.approvalStatus = 'draft';
+    // Clear the PRIOR cycle's sign-offs — otherwise a stale checkerBy/
+    // approverBy/finalApprovedBy from before this reopen keeps making the
+    // print/PDF (WorkOrderPDF.tsx, which just checks `wo.approvals?.X?.name`)
+    // show an already-passed stage as "Approved" even though the fresh cycle
+    // hasn't reached it yet (it only relies on approvalStatus, not these).
+    updateData.checkerBy = null;
+    updateData.checkerAt = null;
+    updateData.checkerRemarks = '';
+    updateData.approverBy = null;
+    updateData.approverAt = null;
+    updateData.approverRemarks = '';
+    updateData.finalApprovedBy = null;
+    updateData.finalApprovedAt = null;
+    updateData.finalRemarks = '';
+  }
 
   const mongoUpdate = reopening
     ? { $set: updateData, $push: { approvalHistory: {

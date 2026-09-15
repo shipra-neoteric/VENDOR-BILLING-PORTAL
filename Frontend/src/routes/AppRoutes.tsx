@@ -44,6 +44,8 @@ const DrawingRequests    = lazy(() => import("../pages/DrawingRequests"));
 const DriHome            = lazy(() => import("../pages/DriHome"));
 const Backup              = lazy(() => import("../pages/Backup"));
 const NexoraPreview        = lazy(() => import("../pages/NexoraPreview"));
+const ContractorMatrix     = lazy(() => import("../pages/ContractorMatrix"));
+const ProjectsList         = lazy(() => import("../pages/ProjectsList"));
 
 import MainLayout     from "../layouts/MainLayout/MainLayout";
 import ProtectedRoute from "../components/ProtectedRoute";
@@ -110,6 +112,8 @@ function AdminRoutes() {
           <Route element={<MainLayout />}>
             <Route index                    element={<Navigate to={defaultPath} replace />} />
             <Route path="/dashboard"        element={isAccounts ? <AccountsPayment /> : showTaskQueue ? <MyTasksDashboard /> : <Dashboard />} />
+            <Route path="/contractor-matrix" element={<ContractorMatrix />} />
+            <Route path="/projects-overview" element={<ProjectsList />} />
             <Route path="/projects"         element={<Projects />} />
             <Route path="/contractors"      element={<Contractors />} />
             <Route path="/consultants"      element={<Consultants />} />

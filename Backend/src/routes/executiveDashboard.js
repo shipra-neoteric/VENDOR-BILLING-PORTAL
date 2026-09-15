@@ -1,6 +1,6 @@
 const router = require('express').Router();
 const { authenticate, authorizeOr } = require('../middleware/auth');
-const { getExecutiveDashboard } = require('../controllers/executiveDashboardController');
+const { getExecutiveDashboard, exportExecutiveDashboardCsv, getContractorMatrix } = require('../controllers/executiveDashboardController');
 
 router.use(authenticate);
 
@@ -14,5 +14,12 @@ router.use(authenticate);
 // stage-summary or alerts read, can be added alongside it under the same
 // prefix without remounting).
 router.get('/executive', authorizeOr('dashboard', 'view'), getExecutiveDashboard);
+// Phase 3 — same auth gate and filter params as GET /executive, just CSV
+// output for the "Export CSV" button on the Projects Overview page.
+router.get('/executive/export.csv', authorizeOr('dashboard', 'view'), exportExecutiveDashboardCsv);
+// Full (uncapped) contractor x category cross-tab, for the "Contractor
+// Matrix" page linked off the "Contractors by Category" card above — same
+// filters/gate as GET /executive.
+router.get('/executive/contractor-matrix', authorizeOr('dashboard', 'view'), getContractorMatrix);
 
 module.exports = router;

@@ -73,26 +73,28 @@ export function SelectFilter({ value, onChange, options, placeholder = "All", di
       </button>
 
       {open && (
-        <div className="absolute z-20 mt-1 min-w-[160px] bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700/40 rounded-lg shadow-lg overflow-hidden py-1">
-          <button
-            type="button"
-            onClick={() => select("")}
-            className="w-full flex items-center justify-between gap-2 px-3 py-2 text-[13px] text-left text-[#1A1A2E]! dark:text-[#F1F5F9]! hover:bg-gray-50 dark:hover:bg-gray-700/40"
-          >
-            {placeholder}
-            {isReset && <Check className="w-3.5 h-3.5 shrink-0 text-primary" />}
-          </button>
-          {options.map((o) => (
+        <div className="absolute z-20 mt-1 min-w-[160px] max-w-[260px] bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700/40 rounded-lg shadow-lg overflow-hidden">
+          <div className="max-h-64 overflow-y-auto py-1">
             <button
-              key={o.value}
               type="button"
-              onClick={() => select(o.value)}
-              className="w-full flex items-center justify-between gap-2 px-3 py-2 text-[13px] text-left text-[#1A1A2E]! dark:text-[#F1F5F9]! hover:bg-gray-50 dark:hover:bg-gray-700/40"
+              onClick={() => select("")}
+              className="w-full flex items-center justify-between gap-2 px-3 py-1.5 text-[13px] text-left text-[#1A1A2E]! dark:text-[#F1F5F9]! hover:bg-gray-50 dark:hover:bg-gray-700/40"
             >
-              {o.label}
-              {value === o.value && <Check className="w-3.5 h-3.5 shrink-0 text-primary" />}
+              <span className="truncate">{placeholder}</span>
+              {isReset && <Check className="w-3.5 h-3.5 shrink-0 text-primary" />}
             </button>
-          ))}
+            {options.map((o) => (
+              <button
+                key={o.value}
+                type="button"
+                onClick={() => select(o.value)}
+                className="w-full flex items-center justify-between gap-2 px-3 py-1.5 text-[13px] text-left text-[#1A1A2E]! dark:text-[#F1F5F9]! hover:bg-gray-50 dark:hover:bg-gray-700/40"
+              >
+                <span className="truncate">{o.label}</span>
+                {value === o.value && <Check className="w-3.5 h-3.5 shrink-0 text-primary" />}
+              </button>
+            ))}
+          </div>
         </div>
       )}
     </div>

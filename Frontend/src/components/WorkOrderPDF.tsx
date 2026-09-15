@@ -179,9 +179,10 @@ interface WOData {
   // it. No "maker" here — that's Neoteric staff acting for the contractor,
   // never bound to the Contractor signature slot (see the signature block).
   approvals?: {
-    checker?: { name?: string; at?: string } | null;
-    approver?: { name?: string; at?: string } | null;
-    final?: { name?: string; at?: string } | null;
+    maker?: { name?: string; at?: string; position?: string } | null;
+    checker?: { name?: string; at?: string; position?: string } | null;
+    approver?: { name?: string; at?: string; position?: string } | null;
+    final?: { name?: string; at?: string; position?: string } | null;
   };
 }
 
@@ -543,32 +544,38 @@ export function WorkOrderDocument({ wo, company, contractor }: Props) {
             the contractor's behalf, not the contractor themselves, so this
             stays a blank line for their own physical signature. ── */}
         <View style={S.sigBlock} wrap={false}>
+          <View style={S.sigCell}>
+            <Text style={S.sigRole}>Contractor</Text>
+            <View style={S.sigSlot} />
+            <View style={S.sigLine} />
+            <Text style={S.sigName}>Name: {primaryContractorName || contractor?.companyName || ""}</Text>
+          </View>
           {([
-            ["Contractor", null],
-            ["L1 Approval", wo.approvals?.checker],
-            ["L2 Approval", wo.approvals?.approver],
-          ] as const).map(([role, approval], i, arr) => (
+            ["L1 Approval", wo.approvals?.maker, "Approved"],
+            ["L2 Approval", wo.approvals?.checker, "Approved"],
+            ["L3 Approval", wo.approvals?.approver, "Approved"],
+          ] as const).map(([role, approval, doneLabel], i, arr) => (
             <View key={role} style={i === arr.length - 1 ? S.sigCellL : S.sigCell}>
               <Text style={S.sigRole}>{role}</Text>
               <View style={S.sigSlot}>
-                {approval?.name ? <Text style={S.sigApprovedText}>Approved</Text> : null}
+                {approval?.name ? <Text style={S.sigApprovedText}>{doneLabel}</Text> : null}
               </View>
               <View style={S.sigLine} />
-              <Text style={S.sigName}>Name: {approval?.name || ""}</Text>
+              <Text style={S.sigName}>Name: {approval?.name || ""}{approval?.position ? ` (${approval.position})` : ""}</Text>
               <Text style={S.sigDate}>Date: {approval?.at ? fmtDateTime(approval.at) : ""}</Text>
             </View>
           ))}
         </View>
 
-        {/* ── Final Approval — last signature, on its own line below, same width as one column ── */}
+        {/* ── Final Approval (L4) — last signature, on its own line below, same width as one column ── */}
         <View style={[S.sigBlock, { marginTop: 8, width: "33%" }]} wrap={false}>
           <View style={S.sigCellL}>
-            <Text style={S.sigRole}>Final Approval</Text>
+            <Text style={S.sigRole}>L4 Approval</Text>
             <View style={S.sigSlot}>
               {wo.approvals?.final?.name ? <Text style={S.sigApprovedText}>Approved</Text> : null}
             </View>
             <View style={S.sigLine} />
-            <Text style={S.sigName}>Name: {wo.approvals?.final?.name || ""}</Text>
+            <Text style={S.sigName}>Name: {wo.approvals?.final?.name || ""}{wo.approvals?.final?.position ? ` (${wo.approvals.final.position})` : ""}</Text>
             <Text style={S.sigDate}>Date: {wo.approvals?.final?.at ? fmtDateTime(wo.approvals.final.at) : ""}</Text>
           </View>
         </View>

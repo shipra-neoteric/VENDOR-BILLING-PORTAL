@@ -154,9 +154,10 @@ interface WOData {
   documentName?: string;
   documentUrl?: string;
   approvals?: {
-    checker?: { name?: string; at?: string } | null;
-    approver?: { name?: string; at?: string } | null;
-    final?: { name?: string; at?: string } | null;
+    maker?: { name?: string; at?: string; position?: string } | null;
+    checker?: { name?: string; at?: string; position?: string } | null;
+    approver?: { name?: string; at?: string; position?: string } | null;
+    final?: { name?: string; at?: string; position?: string } | null;
   };
 }
 
@@ -446,32 +447,38 @@ export function WorkOrderDocumentHindi({ wo, company, contractor }: Props) {
             Neoteric staff acting for the contractor, not the contractor
             themselves — stays a blank line for their own physical signature. ── */}
         <View style={S.sigBlock} wrap={false}>
+          <View style={S.sigCell}>
+            <Text style={S.sigRole}>ठेकेदार</Text>
+            <View style={S.sigSlot} />
+            <View style={S.sigLine} />
+            <Text style={S.sigName}>नाम: {primaryContractorName || contractor?.companyName || ""}</Text>
+          </View>
           {([
-            ["ठेकेदार", null],
-            ["L1 स्वीकृति", wo.approvals?.checker],
-            ["L2 स्वीकृति", wo.approvals?.approver],
-          ] as const).map(([role, approval], i, arr) => (
+            ["L1 स्वीकृति", wo.approvals?.maker, "स्वीकृत"],
+            ["L2 स्वीकृति", wo.approvals?.checker, "स्वीकृत"],
+            ["L3 स्वीकृति", wo.approvals?.approver, "स्वीकृत"],
+          ] as const).map(([role, approval, doneLabel], i, arr) => (
             <View key={role} style={i === arr.length - 1 ? S.sigCellL : S.sigCell}>
               <Text style={S.sigRole}>{role}</Text>
               <View style={S.sigSlot}>
-                {approval?.name ? <Text style={S.sigApprovedText}>स्वीकृत</Text> : null}
+                {approval?.name ? <Text style={S.sigApprovedText}>{doneLabel}</Text> : null}
               </View>
               <View style={S.sigLine} />
-              <Text style={S.sigName}>नाम: {approval?.name || ""}</Text>
+              <Text style={S.sigName}>नाम: {approval?.name || ""}{approval?.position ? ` (${approval.position})` : ""}</Text>
               <Text style={S.sigDate}>दिनांक: {approval?.at ? fmtDateTime(approval.at) : ""}</Text>
             </View>
           ))}
         </View>
 
-        {/* ── Final Approval — last signature, on its own line below ── */}
+        {/* ── Final Approval (L4) — last signature, on its own line below ── */}
         <View style={[S.sigBlock, { marginTop: 8, width: "33%" }]} wrap={false}>
           <View style={S.sigCellL}>
-            <Text style={S.sigRole}>अंतिम स्वीकृति</Text>
+            <Text style={S.sigRole}>L4 स्वीकृति</Text>
             <View style={S.sigSlot}>
               {wo.approvals?.final?.name ? <Text style={S.sigApprovedText}>स्वीकृत</Text> : null}
             </View>
             <View style={S.sigLine} />
-            <Text style={S.sigName}>नाम: {wo.approvals?.final?.name || ""}</Text>
+            <Text style={S.sigName}>नाम: {wo.approvals?.final?.name || ""}{wo.approvals?.final?.position ? ` (${wo.approvals.final.position})` : ""}</Text>
             <Text style={S.sigDate}>दिनांक: {wo.approvals?.final?.at ? fmtDateTime(wo.approvals.final.at) : ""}</Text>
           </View>
         </View>
