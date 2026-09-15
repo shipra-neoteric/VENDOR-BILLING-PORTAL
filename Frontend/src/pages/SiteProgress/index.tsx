@@ -161,7 +161,11 @@ function ProgressEntryLog({ entries }: { entries?: ProgressEntryDetail[] }) {
       </thead>
       <tbody>
         {sorted.map(e => {
-          const loc = [e.tower && `Tower ${e.tower}`, e.floor && `Floor ${e.floor}`, e.flatNo && `Flat ${e.flatNo}`, e.plotNo && `Plot ${e.plotNo}`, e.locationNote].filter(Boolean).join(" · ");
+          // Floor already reads naturally on its own (whether someone typed a
+          // bare code like "1"/"G" or a full phrase like "First Floor") — no
+          // "Floor " prefix, unlike Tower/Flat/Plot which need their label to
+          // stay unambiguous next to a bare number/code.
+          const loc = [e.tower && `Tower ${e.tower}`, e.floor, e.flatNo && `Flat ${e.flatNo}`, e.plotNo && `Plot ${e.plotNo}`, e.locationNote].filter(Boolean).join(" · ");
           return (
             <tr
               key={e._id}
