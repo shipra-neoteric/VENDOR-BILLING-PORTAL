@@ -52,12 +52,16 @@ function collectAndMarkProgressRemarks(target, billRequestId) {
   const locations = [];
   for (const entry of target.progressEntries) {
     if (entry.billedInRequestId || entry.invalidated?.done) continue;
-    // Same "Tower X · Floor Y · ..." format Site Progress's own entry log
+    // Same "Tower X · Floor · ..." format Site Progress's own entry log
     // already shows — kept as its own field (not embedded in the remark
     // text), separate from the work order's own overall projectLocation.
+    // Floor isn't prefixed with "Floor " — unlike Tower/Flat/Plot it already
+    // reads naturally on its own, whether someone typed a bare code ("1",
+    // "G") or a full phrase ("First Floor"); prefixing it again produced
+    // "Floor First Floor".
     const location = [
       entry.tower && `Tower ${entry.tower}`,
-      entry.floor && `Floor ${entry.floor}`,
+      entry.floor,
       entry.flatNo && `Flat ${entry.flatNo}`,
       entry.plotNo && `Plot ${entry.plotNo}`,
       entry.locationNote,
