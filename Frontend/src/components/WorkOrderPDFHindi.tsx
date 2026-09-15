@@ -454,7 +454,7 @@ export function WorkOrderDocumentHindi({ wo, company, contractor }: Props) {
             <Text style={S.sigName}>नाम: {primaryContractorName || contractor?.companyName || ""}</Text>
           </View>
           {([
-            ["L1 स्वीकृति", wo.approvals?.maker, "पूर्ण"],
+            ["L1 स्वीकृति", wo.approvals?.maker, "स्वीकृत"],
             ["L2 स्वीकृति", wo.approvals?.checker, "स्वीकृत"],
             ["L3 स्वीकृति", wo.approvals?.approver, "स्वीकृत"],
           ] as const).map(([role, approval, doneLabel], i, arr) => (

@@ -551,7 +551,7 @@ export function WorkOrderDocument({ wo, company, contractor }: Props) {
             <Text style={S.sigName}>Name: {primaryContractorName || contractor?.companyName || ""}</Text>
           </View>
           {([
-            ["L1 Approval", wo.approvals?.maker, "Completed"],
+            ["L1 Approval", wo.approvals?.maker, "Approved"],
             ["L2 Approval", wo.approvals?.checker, "Approved"],
             ["L3 Approval", wo.approvals?.approver, "Approved"],
           ] as const).map(([role, approval, doneLabel], i, arr) => (
