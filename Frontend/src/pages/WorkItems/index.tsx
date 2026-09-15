@@ -38,6 +38,8 @@ import { useFormErrors } from "../../hooks/useFormErrors";
 import { useAuth } from "../../context/AuthContext";
 import { useCategories } from "../../hooks/useCategories";
 import { createCategory } from "../../features/categories/api";
+import { ROLE_CFG } from "../UserManagement";
+import type { UserRole } from "../UserManagement";
 import DateRangeFilter, { inDateRange } from "../../components/DateRangeFilter";
 import { selectableProjects, getWorkOrderProjectId } from "../../utils/projectOptions";
 import { vendorLabel } from "../../utils/vendorLabel";
@@ -283,6 +285,15 @@ function actorName(by: WorkOrder["makerBy"], userMap: Record<string, string>, ro
   if (resolved) return resolved;
   return roleKey ? ROLE_FALLBACK_LABEL[roleKey] : undefined;
 }
+// The signer's actual position (their User.role label, e.g. "General
+// Manager") — printed alongside their name so the signature reads like
+// "Name: Sagar Gupta (General Manager)", distinct from the column header
+// which already names the workflow STAGE (L2 Approval), not the person's job.
+function actorPosition(by: WorkOrder["makerBy"], positionMap: Record<string, string>): string | undefined {
+  if (!by) return undefined;
+  const uid = typeof by === "string" ? by : (by as any)?._id || (by as any)?.id;
+  return uid ? positionMap[uid] : undefined;
+}
 
 // A work order reopened for editing after (or during) approval resets
 // approvalStatus back to draft/pending-checker, but checkerBy/approverBy/
@@ -297,7 +308,7 @@ function stagePassed(status: string | undefined, mustBeAtLeast: string): boolean
   return cur >= 0 && min >= 0 && cur >= min;
 }
 
-function buildApprovals(wo: WorkOrder, userMap: Record<string, string>) {
+function buildApprovals(wo: WorkOrder, userMap: Record<string, string>, positionMap: Record<string, string> = {}) {
   // Maker (L1) is done the moment it's been submitted at all — it's not
   // gated by a later stage the way checker/approver/final are.
   const makerDone     = wo.makerBy        && stagePassed(wo.approvalStatus, "pending-checker");
@@ -305,10 +316,10 @@ function buildApprovals(wo: WorkOrder, userMap: Record<string, string>) {
   const approverDone = wo.approverBy      && stagePassed(wo.approvalStatus, "pending-final");
   const finalDone     = wo.finalApprovedBy && stagePassed(wo.approvalStatus, "approved");
   return {
-    maker:    makerDone     ? { name: actorName(wo.makerBy, userMap, "maker"),           at: wo.makerAt }         : null,
-    checker:  checkerDone  ? { name: actorName(wo.checkerBy, userMap, "checker"),       at: wo.checkerAt }       : null,
-    approver: approverDone ? { name: actorName(wo.approverBy, userMap, "approver"),      at: wo.approverAt }      : null,
-    final:    finalDone     ? { name: actorName(wo.finalApprovedBy, userMap, "final"), at: wo.finalApprovedAt } : null,
+    maker:    makerDone     ? { name: actorName(wo.makerBy, userMap, "maker"),           at: wo.makerAt,         position: actorPosition(wo.makerBy, positionMap) }         : null,
+    checker:  checkerDone  ? { name: actorName(wo.checkerBy, userMap, "checker"),       at: wo.checkerAt,       position: actorPosition(wo.checkerBy, positionMap) }       : null,
+    approver: approverDone ? { name: actorName(wo.approverBy, userMap, "approver"),      at: wo.approverAt,      position: actorPosition(wo.approverBy, positionMap) }      : null,
+    final:    finalDone     ? { name: actorName(wo.finalApprovedBy, userMap, "final"), at: wo.finalApprovedAt, position: actorPosition(wo.finalApprovedBy, positionMap) } : null,
   };
 }
 
@@ -2156,14 +2167,24 @@ export default function WorkItems() {
 
   // Fetched fresh per download rather than kept in page-level state — the PDF
   // is an occasional action, and this keeps the approver name always current.
-  async function fetchUserMap(): Promise<Record<string, string>> {
+  // Also returns each user's role label (e.g. "General Manager", "Process
+  // Coordinator") so the print can show a signer's actual position alongside
+  // their name — not the generic workflow stage label, which is already the
+  // column header.
+  async function fetchUserMap(): Promise<{ names: Record<string, string>; positions: Record<string, string> }> {
     try {
-      const r = await apiClient.get<{ users: { _id?: string; id?: string; name?: string }[] }>("/auth/users");
-      const map: Record<string, string> = {};
-      (r.data.users || []).forEach(u => { const uid = u._id || u.id; if (uid && u.name) map[uid] = u.name; });
-      return map;
+      const r = await apiClient.get<{ users: { _id?: string; id?: string; name?: string; role?: string }[] }>("/auth/users");
+      const names: Record<string, string> = {};
+      const positions: Record<string, string> = {};
+      (r.data.users || []).forEach(u => {
+        const uid = u._id || u.id;
+        if (!uid) return;
+        if (u.name) names[uid] = u.name;
+        if (u.role) positions[uid] = ROLE_CFG[u.role as UserRole]?.label || u.role;
+      });
+      return { names, positions };
     } catch {
-      return {};
+      return { names: {}, positions: {} };
     }
   }
 
@@ -2172,9 +2193,9 @@ export default function WorkItems() {
     try {
       const company    = companies.find((c: any) => c._id === (wo as any).companyId) ?? null;
       const contractor = contractors.find(c => c.vendorCode === wo.vendorCode) ?? null;
-      const userMap    = await fetchUserMap();
+      const { names, positions } = await fetchUserMap();
       const { downloadWorkOrderPDF } = await import("../../components/WorkOrderPDF");
-      await downloadWorkOrderPDF({ ...wo, approvals: buildApprovals(wo, userMap) } as any, company, contractor as any);
+      await downloadWorkOrderPDF({ ...wo, approvals: buildApprovals(wo, names, positions) } as any, company, contractor as any);
     } catch {
       toast.error("Failed to generate PDF");
     } finally {
@@ -2188,9 +2209,9 @@ export default function WorkItems() {
     try {
       const company    = companies.find((c: any) => c._id === (wo as any).companyId) ?? null;
       const contractor = contractors.find(c => c.vendorCode === wo.vendorCode) ?? null;
-      const userMap    = await fetchUserMap();
+      const { names, positions } = await fetchUserMap();
       const { downloadWorkOrderPDFHindi } = await import("../../components/WorkOrderPDFHindi");
-      await downloadWorkOrderPDFHindi({ ...wo, approvals: buildApprovals(wo, userMap) } as any, company, contractor as any);
+      await downloadWorkOrderPDFHindi({ ...wo, approvals: buildApprovals(wo, names, positions) } as any, company, contractor as any);
     } catch {
       toast.error("Failed to generate Hindi PDF");
     } finally {
