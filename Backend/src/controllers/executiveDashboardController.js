@@ -6,7 +6,6 @@ const RunningBill   = require('../models/RunningBill');
 const Contractor    = require('../models/Contractor');
 const Consultant    = require('../models/Consultant');
 const DrawingRequest = require('../models/DrawingRequest');
-const Activity       = require('../models/Activity');
 const asyncHandler  = require('../utils/asyncHandler');
 const { success, badRequest } = require('../utils/responseFormatter');
 const { billFinancialsForBill } = require('../utils/billFinancials');
@@ -800,11 +799,14 @@ async function buildExecutiveDashboardData(query) {
   //    the two statuses that mean "real, ongoing execution work" (draft
   //    hasn't started, completed/cancelled are done), from the already-
   //    fetched `workOrders` array — no extra query.
-  // 2. Site Progress / DPR — Pending: Activity docs (the record backing the
-  //    Site Progress / Daily Progress Report pages) not yet 'completed'
-  //    (i.e. 'not-started' | 'in-progress' | 'blocked' | 'on-hold') — scoped
-  //    to this filtered work-order set via workOrderId, which already
-  //    encodes the projectId/categoryId/contractorId filters above.
+  // 2. Site Progress / DPR — Pending: approved WorkOrders in this filtered
+  //    set that still have unexecuted scope (some item's completedQty <
+  //    plannedQty) — real site work still waiting to be logged/finished.
+  //    NOT the `Activity` model: that collection only backs the separate
+  //    Payment Milestone feature (activityController.js/milestoneController.js)
+  //    and was empty in this app's own dev data — Site Progress/DPR's real
+  //    data lives on WorkOrder.scopeItems[].progressEntries, already fetched
+  //    below, so this needs no extra query.
   // 3. Bills — Awaiting Verification: RunningBill.status === 'draft', the
   //    exact same status this app's own Accounts Payment aging table already
   //    labels "Awaiting Verification" (see dprController.js's agingTable
@@ -818,12 +820,11 @@ async function buildExecutiveDashboardData(query) {
   //    scoped to the same filtered projectIds.
   const workOrdersActive = workOrders.filter(w => ['issued', 'in-progress'].includes(w.status)).length;
   const billsAwaitingVerification = runningBills.filter(b => b.status === 'draft').length;
-  const [siteProgressPending, drawingRequestsOpen] = await Promise.all([
-    woIds.length
-      ? Activity.countDocuments({ workOrderId: { $in: woIds }, status: { $ne: 'completed' } })
-      : Promise.resolve(0),
-    DrawingRequest.countDocuments({ projectId: { $in: projectIds }, status: { $ne: 'completed' } }),
-  ]);
+  const siteProgressPending = workOrders.filter(w =>
+    w.approvalStatus === 'approved' &&
+    (w.scopeItems || []).some(si => (si.plannedQty || 0) > 0 && (si.completedQty || 0) < (si.plannedQty || 0))
+  ).length;
+  const drawingRequestsOpen = await DrawingRequest.countDocuments({ projectId: { $in: projectIds }, status: { $ne: 'completed' } });
 
   // Bottom stats strip's last 3 items — all reuse fields already computed
   // per project above, not new health/risk concepts:
