@@ -851,6 +851,11 @@ export default function BillApproval() {
     if (q) {
       list = list.filter(r =>
         r.reqNo.toLowerCase().includes(q) ||
+        // Once finalized, this request's real, permanent identity is its
+        // linked RunningBill's billNo (e.g. "RA-0343") — searching only
+        // reqNo ("BR-0353") meant a fully-approved request became
+        // unfindable by the number everyone actually recognizes it by.
+        (r.billId?.billNo || "").toLowerCase().includes(q) ||
         r.workOrderNo.toLowerCase().includes(q) ||
         r.vendorName.toLowerCase().includes(q) ||
         (r.vendorCode || "").toLowerCase().includes(q) ||
