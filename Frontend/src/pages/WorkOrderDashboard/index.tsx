@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import { ArrowLeft, Trophy, Check, X, ClipboardList, TrendingUp, CheckCircle2, Clock } from "lucide-react";
 import dayjs from "dayjs";
@@ -241,6 +241,12 @@ type TabKey = "items" | "milestones" | "bills" | "progress";
 export default function WorkOrderDashboard() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  // Deep-linked from the "Pending Work Orders" page (?from=pending-work-orders)
+  // — the Back button should return there instead of the default Work Orders
+  // list, same as how it got here. Absent for every other entry point, which
+  // keeps the existing "/work-items" behavior unchanged.
+  const cameFromPendingWorkOrders = searchParams.get("from") === "pending-work-orders";
   const { user } = useAuth();
   const canManage = user?.role === "owner" || user?.role === "gm" || user?.role === "accounts";
 
@@ -321,10 +327,10 @@ export default function WorkOrderDashboard() {
         <div className="p-6 pb-0">
           <button
             type="button"
-            onClick={() => navigate("/work-items")}
+            onClick={() => navigate(cameFromPendingWorkOrders ? "/pending-work-orders" : "/work-items")}
             className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 mb-2.5"
           >
-            <ArrowLeft className="w-4 h-4" /> Work Orders
+            <ArrowLeft className="w-4 h-4" /> {cameFromPendingWorkOrders ? "Pending Work Orders" : "Work Orders"}
           </button>
           <div className="flex items-start justify-between flex-wrap gap-2">
             <div>

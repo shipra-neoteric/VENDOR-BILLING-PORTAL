@@ -582,12 +582,29 @@ async function buildExecutiveDashboardData(query) {
     { key: '90+',   label: '90+ Days',   min: 91, max: Infinity },
   ];
   const agingAmounts = new Map(AGING_BUCKETS.map(b => [b.key, 0]));
+  // Same loop also builds the uncapped per-bill list behind the "Pending
+  // Payments" page (pages/PendingWorkOrders's sibling) — one certified-but-
+  // unpaid bill per row, each deep-linking straight to it in Accounts
+  // Payment (?bill=<id>, the same param AccountsPayment/index.tsx already
+  // reads to auto-open a bill's drawer — see its Slack deep-link comment).
+  const pendingPaymentBills = [];
   for (const b of runningBills.filter(x => x.status === 'approved')) {
     const days = daysSince(lastStatusChangeAt(b));
     if (days === null) continue;
     const bucket = AGING_BUCKETS.find(x => days >= x.min && days <= x.max) || AGING_BUCKETS[AGING_BUCKETS.length - 1];
-    agingAmounts.set(bucket.key, agingAmounts.get(bucket.key) + billFinancialsForBill(b).netAfterHold);
+    const netAfterHold = billFinancialsForBill(b).netAfterHold;
+    agingAmounts.set(bucket.key, agingAmounts.get(bucket.key) + netAfterHold);
+    pendingPaymentBills.push({
+      billId: String(b._id),
+      billNo: b.billNo,
+      projectName: b.projectName || '',
+      vendorName: b.vendorName || '',
+      workOrderNo: b.workOrderNo || '',
+      amount: Math.round(netAfterHold),
+      daysPending: days,
+    });
   }
+  pendingPaymentBills.sort((a, b) => b.daysPending - a.daysPending);
   const paymentAgingTotal = [...agingAmounts.values()].reduce((s, v) => s + v, 0);
   const paymentAging = {
     total: Math.round(paymentAgingTotal),
@@ -886,6 +903,7 @@ async function buildExecutiveDashboardData(query) {
     contractorsByCategory,
     categoryExecution,
     paymentAging,
+    pendingPaymentBills,
     approvalsByLevel,
     billingVsPaymentTrend,
     noApprovalWorkOrders,

@@ -192,6 +192,16 @@ export interface ExecutiveDashboardNoApprovalWorkOrder {
   daysPending: number;
 }
 
+export interface ExecutiveDashboardPendingPaymentBill {
+  billId: string;
+  billNo: string;
+  projectName: string;
+  vendorName: string;
+  workOrderNo: string;
+  amount: number;
+  daysPending: number;
+}
+
 export interface ExecutiveDashboardVendorScorecardRow {
   code: string;
   name: string;
@@ -226,6 +236,7 @@ export interface ExecutiveDashboardReport {
   contractorsByCategory: ExecutiveDashboardContractorCategoryRow[];
   categoryExecution: ExecutiveDashboardCategoryExecution[];
   paymentAging: ExecutiveDashboardPaymentAging;
+  pendingPaymentBills: ExecutiveDashboardPendingPaymentBill[];
   approvalsByLevel: ExecutiveDashboardApprovalLevel[];
   billingVsPaymentTrend: ExecutiveDashboardTrendPoint[];
   noApprovalWorkOrders: ExecutiveDashboardNoApprovalWorkOrder[];

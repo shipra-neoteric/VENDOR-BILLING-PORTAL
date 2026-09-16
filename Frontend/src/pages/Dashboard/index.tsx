@@ -12,6 +12,7 @@ import { selectableProjects } from "../../utils/projectOptions";
 import { fmtCr } from "../../features/dashboard/utils";
 import PageHeader from "../../ui/PageHeader";
 import Btn from "../../ui/Btn";
+import NxBtn from "../../ui/nexora/Btn";
 import Card from "../../ui/Card";
 import { FilterRow, SelectFilter } from "../../ui/Filters";
 import { DateRangePicker } from "../../ui/DatePicker";
@@ -130,6 +131,12 @@ export default function Dashboard() {
         title="Projects Overview"
         subtitle="Complete view of project progress, cost and attention areas."
         icon={LayoutDashboard}
+        actions={
+          <>
+            <NxBtn color="secondary" label="Pending Bill" onClick={() => navigate("/pending-payments")} />
+            <NxBtn color="secondary" label="Pending Work Order" onClick={() => navigate("/pending-work-orders")} />
+          </>
+        }
       />
 
       <FilterRow>

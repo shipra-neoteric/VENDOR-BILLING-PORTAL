@@ -46,6 +46,8 @@ const Backup              = lazy(() => import("../pages/Backup"));
 const NexoraPreview        = lazy(() => import("../pages/NexoraPreview"));
 const ContractorMatrix     = lazy(() => import("../pages/ContractorMatrix"));
 const ProjectsList         = lazy(() => import("../pages/ProjectsList"));
+const PendingWorkOrders    = lazy(() => import("../pages/PendingWorkOrders"));
+const PendingPayments      = lazy(() => import("../pages/PendingPayments"));
 
 import MainLayout     from "../layouts/MainLayout/MainLayout";
 import ProtectedRoute from "../components/ProtectedRoute";
@@ -113,6 +115,8 @@ function AdminRoutes() {
             <Route index                    element={<Navigate to={defaultPath} replace />} />
             <Route path="/dashboard"        element={isAccounts ? <AccountsPayment /> : showTaskQueue ? <MyTasksDashboard /> : <Dashboard />} />
             <Route path="/contractor-matrix" element={<ContractorMatrix />} />
+            <Route path="/pending-work-orders" element={<PendingWorkOrders />} />
+            <Route path="/pending-payments" element={<PendingPayments />} />
             <Route path="/projects-overview" element={<ProjectsList />} />
             <Route path="/projects"         element={<Projects />} />
             <Route path="/contractors"      element={<Contractors />} />
