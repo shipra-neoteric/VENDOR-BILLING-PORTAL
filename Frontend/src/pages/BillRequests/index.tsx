@@ -1056,8 +1056,11 @@ export default function BillApproval() {
                     <Td>
                       <div className="flex gap-1.5 items-center">
                         {r.stageNo && <NxBadge color="orange">S{r.stageNo}</NxBadge>}
-                        <span className="text-primary font-bold text-[13px]">{r.reqNo}</span>
+                        <span className="text-primary font-bold text-[13px]">{r.billId?.billNo || r.reqNo}</span>
                       </div>
+                      {r.billId?.billNo && (
+                        <div className="text-[10px] text-gray-400">was {r.reqNo}</div>
+                      )}
                       {r.milestoneAchieved && (
                         <span className="text-[10px] text-primary inline-flex items-center gap-0.5"><Trophy className="w-2.5 h-2.5" /> Milestone</span>
                       )}
