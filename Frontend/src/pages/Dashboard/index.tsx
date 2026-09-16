@@ -22,10 +22,8 @@ import ProjectLifecycle from "../../features/dashboard/components/ProjectLifecyc
 import ProjectHealth from "../../features/dashboard/components/ProjectHealth";
 import SpendByCategory from "../../features/dashboard/components/SpendByCategory";
 import ContractorsByCategory from "../../features/dashboard/components/ContractorsByCategory";
-import CategoryExecution from "../../features/dashboard/components/CategoryExecution";
+import ApprovalBottleneckByLevel from "../../features/dashboard/components/ApprovalBottleneckByLevel";
 import BillingVsPaymentTrend from "../../features/dashboard/components/BillingVsPaymentTrend";
-import NoApprovalWorkOrders from "../../features/dashboard/components/NoApprovalWorkOrders";
-import TopVendorsScorecard from "../../features/dashboard/components/TopVendorsScorecard";
 
 interface ProjectOption { _id: string; name: string; parentId?: string | null; }
 interface ContractorOption { vendorCode: string; companyName: string; }
@@ -128,29 +126,46 @@ export default function Dashboard() {
   return (
     <div className="pb-6">
       <PageHeader
-        title="Projects Overview"
+        title="Dashboard"
         subtitle="Complete view of project progress, cost and attention areas."
         icon={LayoutDashboard}
         actions={
-          <>
-            <NxBtn color="secondary" label="Pending Bill" onClick={() => navigate("/pending-payments")} />
-            <NxBtn color="secondary" label="Pending Work Order" onClick={() => navigate("/pending-work-orders")} />
-          </>
+          <NxBtn
+            color="secondary"
+            label="View All Projects"
+            icon={ArrowUpRight}
+            onClick={() => navigate({ pathname: "/projects-overview", search: searchParams.toString() })}
+          />
         }
       />
 
-      <FilterRow>
-        <SelectFilter value={projectId} onChange={v => setFilter("projectId", v)} placeholder="All Projects" options={projectOptions.map(p => ({ label: p.name, value: p._id }))} />
-        <SelectFilter value={categoryId} onChange={v => setFilter("categoryId", v)} placeholder="All Categories" options={categoryOptions} />
-        <SelectFilter value={contractorId} onChange={v => setFilter("contractorId", v)} placeholder="All Contractors" options={contractorOptions} />
-        <DateRangePicker from={from} to={to} onChange={(f, t) => setSearchParams(prev => {
-          const next = new URLSearchParams(prev);
-          if (f) next.set("from", f); else next.delete("from");
-          if (t) next.set("to", t); else next.delete("to");
-          return next;
-        }, { replace: true })} />
-        {hasFilters && <Btn label="Reset Filters" icon={RotateCcw} outline small onClick={resetFilters} />}
-      </FilterRow>
+      <div className="flex flex-wrap items-end justify-between gap-3 mb-4">
+        <FilterRow className="!mb-0">
+          <SelectFilter value={projectId} onChange={v => setFilter("projectId", v)} placeholder="All Projects" options={projectOptions.map(p => ({ label: p.name, value: p._id }))} />
+          <SelectFilter value={categoryId} onChange={v => setFilter("categoryId", v)} placeholder="All Categories" options={categoryOptions} />
+          <SelectFilter value={contractorId} onChange={v => setFilter("contractorId", v)} placeholder="All Contractors" options={contractorOptions} />
+          <DateRangePicker from={from} to={to} onChange={(f, t) => setSearchParams(prev => {
+            const next = new URLSearchParams(prev);
+            if (f) next.set("from", f); else next.delete("from");
+            if (t) next.set("to", t); else next.delete("to");
+            return next;
+          }, { replace: true })} />
+          {hasFilters && <Btn label="Reset Filters" icon={RotateCcw} outline small onClick={resetFilters} />}
+        </FilterRow>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <NxBtn
+            color="secondary"
+            label="Pending Bill"
+            onClick={() => navigate("/pending-payments")}
+          />
+          <NxBtn
+            color="secondary"
+            label="Pending Work Order"
+            onClick={() => navigate("/pending-work-orders")}
+          />
+        </div>
+      </div>
 
       {filterChips.length > 0 && (
         <div className="flex flex-wrap gap-2 mb-3 -mt-1">
@@ -308,30 +323,11 @@ export default function Dashboard() {
           {data && (
             <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
               <SpendByCategory categorySpend={data.categorySpend} />
-              <CategoryExecution categoryExecution={data.categoryExecution} />
+              <ApprovalBottleneckByLevel approvalsByLevel={data.approvalsByLevel} />
             </div>
           )}
 
           {data && <div className="mt-4"><ContractorsByCategory contractorsByCategory={data.contractorsByCategory} /></div>}
-
-          {data && (
-            <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <NoApprovalWorkOrders workOrders={data.noApprovalWorkOrders} />
-              <TopVendorsScorecard vendors={data.topVendorsScorecard} />
-            </div>
-          )}
-
-          {data && (
-            <div className="mt-4 flex items-center justify-between rounded-lg border border-gray-200 dark:border-gray-700/40 bg-white dark:bg-[#1E293B] px-4 py-3">
-              <div>
-                <div className="text-sm font-bold text-[#172033] dark:text-[#F1F5F9]">Full Projects List</div>
-                <div className="text-xs text-gray-400">{data.projects.length} project{data.projects.length !== 1 ? "s" : ""} — search, sort, filter and export as CSV</div>
-              </div>
-              <Link to={{ pathname: "/projects-overview", search: searchParams.toString() }}>
-                <Btn label="View All Projects" icon={ArrowUpRight} small />
-              </Link>
-            </div>
-          )}
         </>
       )}
     </div>

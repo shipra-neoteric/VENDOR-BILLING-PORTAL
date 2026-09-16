@@ -3,8 +3,8 @@ import type { ReactNode } from "react";
 import { ChevronDown, Search, Check } from "lucide-react";
 import type { SFieldOption } from "./SField";
 
-export function FilterRow({ children }: { children: ReactNode }) {
-  return <div className="flex flex-wrap items-end gap-3 mb-4">{children}</div>;
+export function FilterRow({ children, className = "" }: { children: ReactNode; className?: string }) {
+  return <div className={`flex flex-wrap items-end gap-3 mb-4 ${className}`}>{children}</div>;
 }
 
 interface SearchFilterProps {
