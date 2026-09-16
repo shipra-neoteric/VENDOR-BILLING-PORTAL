@@ -419,10 +419,23 @@ export default function BillApproval() {
   const pendingManualL3 = useMemo(() => manualBills.filter(b => b.manualApprovalStatus === "pending-l3"), [manualBills]);
   const pendingManualL4 = useMemo(() => manualBills.filter(b => b.manualApprovalStatus === "pending-l4"), [manualBills]);
   // Which manual bills belong under a given reqTab — mirrors the BillRequest
-  // status tabs above (pending/pending-gm/approved/rejected/all).
+  // status tabs above (pending/pending-gm/approved/rejected/all). Also
+  // applies the same search box the BillRequest list above honors — this
+  // table used to ignore it entirely, always showing every manual bill for
+  // the tab regardless of what was typed.
   function manualBillsForTab(tab: string): ManualBillRow[] {
-    if (tab === "all") return manualBills;
-    return manualBills.filter(b => b.manualApprovalStatus === tab);
+    let list = tab === "all" ? manualBills : manualBills.filter(b => b.manualApprovalStatus === tab);
+    const q = reqSearch.trim().toLowerCase();
+    if (q) {
+      list = list.filter(b =>
+        b.billNo.toLowerCase().includes(q) ||
+        (b.workOrderNo || "").toLowerCase().includes(q) ||
+        (b.vendorName || "").toLowerCase().includes(q) ||
+        (b.vendorCode || "").toLowerCase().includes(q) ||
+        (b.projectName || "").toLowerCase().includes(q)
+      );
+    }
+    return list;
   }
 
   // ── Dashboard flashcards (Pending / Approved / Rejected) — counts across
