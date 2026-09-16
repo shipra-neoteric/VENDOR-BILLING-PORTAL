@@ -1,13 +1,11 @@
 import {
   Activity, ChevronRight, ClipboardList, FileSignature, HardHat, Receipt, Hourglass,
-  FileText, FileCheck2, Stamp, Banknote, TrendingUp, PieChart, CircleDot, AlertCircle,
+  TrendingUp, Briefcase, BarChart3, ReceiptText, UserCheck, PenTool, Clock, ShieldAlert, ShieldX,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { Link } from "react-router-dom";
 import Card from "../../../ui/Card";
 import Btn from "../../../ui/Btn";
-import { fmtCr } from "../utils";
-import type { ExecutiveDashboardKPIs, ExecutiveDashboardStageSummaryEntry } from "../../../types/ExecutiveDashboard";
+import type { ExecutiveDashboardActivity, ExecutiveDashboardKPIs, ExecutiveDashboardStageSummaryEntry } from "../../../types/ExecutiveDashboard";
 
 type Tone = "blue" | "green" | "purple" | "amber" | "red" | "gray";
 
@@ -28,25 +26,31 @@ const STAGE_TILES: { stage: ExecutiveDashboardStageSummaryEntry["stage"]; label:
   { stage: "Payment Pending", label: "Payment Pending", icon: Hourglass, tone: "amber" },
 ];
 
-const FLOW_TILES: { key: keyof ExecutiveDashboardKPIs; label: string; icon: LucideIcon; tone: Tone; to: string }[] = [
-  { key: "totalContractValue", label: "Contract", icon: FileText, tone: "blue", to: "/work-items" },
-  { key: "workExecuted", label: "Executed", icon: FileCheck2, tone: "blue", to: "/work-progress" },
-  { key: "totalBilled", label: "Billed", icon: Receipt, tone: "purple", to: "/billing" },
-  { key: "totalCertified", label: "Certified", icon: Stamp, tone: "amber", to: "/accounts-payment" },
-  { key: "totalPaid", label: "Paid", icon: Banknote, tone: "green", to: "/ledger" },
+// "Project Activity" panel — current operational workload, one compact stat
+// card per data.activity field (see ExecutiveDashboardActivity's own comment
+// in Frontend/src/types/ExecutiveDashboard.ts, and executiveDashboardController.js's
+// `activity` block, for exactly what each count means).
+const ACTIVITY_TILES: { key: keyof ExecutiveDashboardActivity; label: string; status: string; icon: LucideIcon; tone: Tone }[] = [
+  { key: "workOrdersActive", label: "Work Orders", status: "Active", icon: Briefcase, tone: "blue" },
+  { key: "siteProgressPending", label: "Site Progress / DPR", status: "Pending", icon: BarChart3, tone: "purple" },
+  { key: "billsAwaitingVerification", label: "Bills", status: "Awaiting Verification", icon: ReceiptText, tone: "amber" },
+  { key: "approvalsPending", label: "Approvals", status: "Pending", icon: UserCheck, tone: "red" },
+  { key: "drawingRequestsOpen", label: "Drawing Requests", status: "Open", icon: PenTool, tone: "green" },
 ];
 
 // One unified "Project Lifecycle" card combining the stage funnel and the
-// contract-to-payment flow (previously two separate cards) plus a bottom
-// stats strip — built entirely from numbers already on data.kpis/
-// data.stageSummary, no new backend fields. Overall Progress and Paid vs
-// Billed are simple ratios of existing totals (workExecuted/contractValue,
-// totalPaid/totalBilled), not new metrics.
+// "Project Activity" operational-workload panel plus a bottom stats strip.
+// Overall Progress is a simple ratio of existing totals
+// (workExecuted/contractValue); the Project Activity tiles and the bottom
+// strip's Delayed/At Risk/Critical counts come from data.activity (see
+// Backend/src/controllers/executiveDashboardController.js's `activity`
+// block for exactly how each count is derived).
 export default function ProjectLifecycle({
-  stageSummary, kpis, activeStage, onSelectStage, onViewDetails, className = "",
+  stageSummary, kpis, activity, activeStage, onSelectStage, onViewDetails, className = "",
 }: {
   stageSummary: ExecutiveDashboardStageSummaryEntry[];
   kpis: ExecutiveDashboardKPIs;
+  activity: ExecutiveDashboardActivity;
   activeStage?: string | null;
   onSelectStage?: (stage: ExecutiveDashboardStageSummaryEntry["stage"]) => void;
   onViewDetails?: () => void;
@@ -56,9 +60,6 @@ export default function ProjectLifecycle({
 
   const overallProgress = kpis.totalContractValue > 0
     ? Math.round((kpis.workExecuted / kpis.totalContractValue) * 100)
-    : 0;
-  const paidVsBilled = kpis.totalBilled > 0
-    ? Math.round((kpis.totalPaid / kpis.totalBilled) * 100)
     : 0;
 
   return (
@@ -118,32 +119,23 @@ export default function ProjectLifecycle({
         <div className="border-t border-dashed border-gray-200 dark:border-gray-700/40" />
 
         <div>
-          <h3 className="text-[11px] font-bold uppercase tracking-wide text-[#172033] dark:text-gray-300 mb-2">Financial Progress</h3>
-          <div className="flex items-stretch gap-0 overflow-x-auto">
-            {FLOW_TILES.map((n, i) => {
+          <h3 className="text-[11px] font-bold uppercase tracking-wide text-[#172033] dark:text-gray-300">Project Activity</h3>
+          <p className="text-[10px] text-gray-400 mb-2">Current operational workload and pending actions</p>
+          <div className="flex items-stretch gap-1.5 overflow-x-auto">
+            {ACTIVITY_TILES.map((n) => {
               const Icon = n.icon;
               const t = TONE[n.tone];
               return (
-                <div key={n.key} className="flex items-center flex-1 min-w-[92px]">
-                  <Link
-                    to={n.to}
-                    className={`flex-1 flex flex-col items-center gap-1 rounded-lg border-t-2 border-x border-b border-gray-200 dark:border-gray-700/40 px-1.5 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-700/20 transition-colors ${t.text}`}
-                    style={{ borderTopColor: "currentColor" }}
-                  >
-                    <span className={`w-8 h-8 rounded-full flex items-center justify-center ${t.ring} ${t.text}`}>
-                      <Icon className={`w-4 h-4 ${t.icon}`} strokeWidth={2.25} />
-                    </span>
-                    <span className="text-[10px] text-gray-500 dark:text-gray-400">{n.label}</span>
-                    <span className="w-full border-t border-dashed border-gray-200 dark:border-gray-700/40" />
-                    <span className="text-sm font-extrabold text-[#172033] dark:text-white tabular-nums">{fmtCr(kpis[n.key] as number)}</span>
-                  </Link>
-                  {i < FLOW_TILES.length - 1 && (
-                    <div className="flex items-center w-3 sm:w-4 shrink-0">
-                      <span className="flex-1 h-px bg-gray-200 dark:bg-gray-700/40" />
-                      <span className={`w-1.5 h-1.5 rounded-full border-2 shrink-0 ${TONE[n.tone].text}`} style={{ borderColor: "currentColor" }} />
-                      <span className="flex-1 h-px bg-gray-200 dark:bg-gray-700/40" />
-                    </div>
-                  )}
+                <div
+                  key={n.key}
+                  className="flex-1 min-w-[92px] flex flex-col items-center gap-1 rounded-lg border border-gray-200 dark:border-gray-700/40 px-1.5 py-2.5"
+                >
+                  <span className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${t.ring}`}>
+                    <Icon className={`w-4 h-4 ${t.icon}`} strokeWidth={2.25} />
+                  </span>
+                  <span className={`text-base font-extrabold tabular-nums leading-none ${t.text}`}>{activity[n.key]}</span>
+                  <span className="text-[10px] text-gray-500 dark:text-gray-400 text-center leading-snug whitespace-normal">{n.label}</span>
+                  <span className="text-[9px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 text-center">{n.status}</span>
                 </div>
               );
             })}
@@ -153,11 +145,11 @@ export default function ProjectLifecycle({
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-gray-100 dark:border-gray-700/40 px-3 py-2">
           <StatChip icon={TrendingUp} tone="blue" label="Overall Progress" value={`${overallProgress}%`} />
           <Divider />
-          <StatChip icon={PieChart} tone="green" label="Paid vs Billed" value={`${paidVsBilled}%`} />
+          <StatChip icon={Clock} tone="amber" label="Delayed Projects" value={`${activity.delayedProjects}`} />
           <Divider />
-          <StatChip icon={CircleDot} tone="amber" label="Outstanding Amount" value={fmtCr(kpis.outstandingAmount)} />
+          <StatChip icon={ShieldAlert} tone="amber" label="At Risk Projects" value={`${activity.atRiskProjects}`} />
           <Divider />
-          <StatChip icon={AlertCircle} tone="red" label="Overdue Amount" value={fmtCr(kpis.overdueAmount)} />
+          <StatChip icon={ShieldX} tone="red" label="Critical Projects" value={`${activity.criticalProjects}`} />
         </div>
       </div>
     </Card>

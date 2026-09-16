@@ -213,6 +213,7 @@ export default function Dashboard() {
                   className="flex-1"
                   stageSummary={data.stageSummary}
                   kpis={data.kpis}
+                  activity={data.activity}
                   activeStage={stage || null}
                   onSelectStage={toggleStageFilter}
                   onViewDetails={goToProjectsList}

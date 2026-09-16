@@ -23,6 +23,21 @@ export interface ExecutiveDashboardKPIs {
   overdueAmount: number;
 }
 
+// "Project Activity" panel (ProjectLifecycle.tsx) — current operational
+// workload snapshot, scoped to the same filtered project/work-order set as
+// the rest of this response. See executiveDashboardController.js's own
+// `activity` block comment for the exact definition behind each field.
+export interface ExecutiveDashboardActivity {
+  workOrdersActive: number;
+  siteProgressPending: number;
+  billsAwaitingVerification: number;
+  approvalsPending: number;
+  drawingRequestsOpen: number;
+  delayedProjects: number;
+  atRiskProjects: number;
+  criticalProjects: number;
+}
+
 export interface ExecutiveDashboardStageSummaryEntry {
   stage: "Planning" | "Work Orders Issued" | "Work in Progress" | "Billing" | "Payment Pending" | "Completed";
   count: number;
@@ -201,6 +216,7 @@ export interface ExecutiveDashboardReport {
     dataWarnings: string[];
   };
   kpis: ExecutiveDashboardKPIs;
+  activity: ExecutiveDashboardActivity;
   projects: ExecutiveDashboardProjectRow[];
   alerts: ExecutiveDashboardAlert[];
   alertsTotalCount: number;

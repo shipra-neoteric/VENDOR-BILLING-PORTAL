@@ -5,6 +5,8 @@ const BillRequest   = require('../models/BillRequest');
 const RunningBill   = require('../models/RunningBill');
 const Contractor    = require('../models/Contractor');
 const Consultant    = require('../models/Consultant');
+const DrawingRequest = require('../models/DrawingRequest');
+const Activity       = require('../models/Activity');
 const asyncHandler  = require('../utils/asyncHandler');
 const { success, badRequest } = require('../utils/responseFormatter');
 const { billFinancialsForBill } = require('../utils/billFinancials');
@@ -264,7 +266,7 @@ async function buildExecutiveDashboardData(query) {
   // `documents`. Excluding it (and every other field this file never
   // touches) keeps the query to just what's actually used below.
   const workOrders = await WorkOrder.find(woFilter)
-    .select('projectId contractValue scopeItems vendorCode vendorName contractType category approvalStatus workOrderNo issueDate approvalHistory createdAt updatedAt')
+    .select('projectId contractValue scopeItems vendorCode vendorName contractType category approvalStatus workOrderNo issueDate approvalHistory createdAt updatedAt status')
     .lean();
   const woIds = workOrders.map(w => w._id);
 
@@ -785,6 +787,75 @@ async function buildExecutiveDashboardData(query) {
   };
   const forecasts = { budgetRisk: budgetForecasts, cashRequirement };
 
+  // ── Project Activity widget ("Project Activity" panel on ProjectLifecycle)
+  // — a compact "current operational workload" snapshot. Scoped to the SAME
+  // filtered project/work-order set as the rest of this response (projectIds/
+  // woIds, already narrowed by projectId/categoryId/contractorId/from/to
+  // above) rather than being a global, unfiltered count — the rest of this
+  // endpoint's payload is entirely filter-scoped, and a panel that ignored
+  // the active filters while sitting right next to KPI cards that obey them
+  // would read as a bug, not a feature, on this dashboard.
+  //
+  // 1. Work Orders — Active: WorkOrder.status in ('issued','in-progress') —
+  //    the two statuses that mean "real, ongoing execution work" (draft
+  //    hasn't started, completed/cancelled are done), from the already-
+  //    fetched `workOrders` array — no extra query.
+  // 2. Site Progress / DPR — Pending: Activity docs (the record backing the
+  //    Site Progress / Daily Progress Report pages) not yet 'completed'
+  //    (i.e. 'not-started' | 'in-progress' | 'blocked' | 'on-hold') — scoped
+  //    to this filtered work-order set via workOrderId, which already
+  //    encodes the projectId/categoryId/contractorId filters above.
+  // 3. Bills — Awaiting Verification: RunningBill.status === 'draft', the
+  //    exact same status this app's own Accounts Payment aging table already
+  //    labels "Awaiting Verification" (see dprController.js's agingTable
+  //    status mapping) — reused here verbatim, not a new definition. Counted
+  //    from the already-fetched `runningBills` array — no extra query.
+  // 4. Approvals — Pending: same concept as kpis.pendingApprovals
+  //    (BillRequest.status in PENDING_BILL_REQ_STATUSES, summed per project
+  //    above) — reused as-is rather than duplicated.
+  // 5. Drawing Requests — Open: DrawingRequest.status !== 'completed' (i.e.
+  //    'pending' | 'committed' | 'delayed' — anything still needing action),
+  //    scoped to the same filtered projectIds.
+  const workOrdersActive = workOrders.filter(w => ['issued', 'in-progress'].includes(w.status)).length;
+  const billsAwaitingVerification = runningBills.filter(b => b.status === 'draft').length;
+  const [siteProgressPending, drawingRequestsOpen] = await Promise.all([
+    woIds.length
+      ? Activity.countDocuments({ workOrderId: { $in: woIds }, status: { $ne: 'completed' } })
+      : Promise.resolve(0),
+    DrawingRequest.countDocuments({ projectId: { $in: projectIds }, status: { $ne: 'completed' } }),
+  ]);
+
+  // Bottom stats strip's last 3 items — all reuse fields already computed
+  // per project above, not new health/risk concepts:
+  //   - At Risk / Critical are a straight group-count of the EXISTING
+  //     row.health field (Backend/src/utils/projectStageRules.js's
+  //     computeHealth) — "Attention" reads as "At Risk" here, "Critical"
+  //     stays "Critical". No new thresholds.
+  //   - Delayed reuses the EXISTING row.bottleneck string, which
+  //     computeBottleneck already only populates with a "...no progress
+  //     logged"/"...no new progress logged..." message (using the same
+  //     HEALTH_THRESHOLDS.zeroProgressAlertDays/noProgressAttentionDays
+  //     already applied there) once a project's own execution has stalled —
+  //     as opposed to bottleneck being set for a billing/approval holdup,
+  //     which reads "awaiting approval" or "certified but unpaid" instead.
+  //     Matching on "progress" against that already-computed string, rather
+  //     than re-deriving a parallel signal, keeps this in lockstep with
+  //     whatever computeBottleneck's own progress-stall wording says.
+  const delayedProjects = projectRows.filter(p => p.bottleneck && p.bottleneck.includes('progress')).length;
+  const atRiskProjects = projectRows.filter(p => p.health === 'Attention').length;
+  const criticalProjects = projectRows.filter(p => p.health === 'Critical').length;
+
+  const activity = {
+    workOrdersActive,
+    siteProgressPending,
+    billsAwaitingVerification,
+    approvalsPending: kpis.pendingApprovals,
+    drawingRequestsOpen,
+    delayedProjects,
+    atRiskProjects,
+    criticalProjects,
+  };
+
   // Strip the internal-only fields carried on each row purely to build
   // alerts/forecasts above — never part of the documented response shape.
   const cleanProjects = projectRows.map(({ __wos, __bills, __billReqs, __project, __financials, ...rest }) => rest);
@@ -804,6 +875,7 @@ async function buildExecutiveDashboardData(query) {
       dataWarnings,
     },
     kpis,
+    activity,
     projects: cleanProjects,
     alerts,
     alertsTotalCount,
