@@ -541,8 +541,13 @@ async function finalizeBillRequest(br, wo, req, res, finalStage) {
     l3ApprovedAt: br.l3ApprovedAt,
     l4ApprovedBy: br.l4ApprovedBy,
     l4ApprovedAt: br.l4ApprovedAt,
-    verifiedBy:  req.user._id,
-    verifiedAt:  new Date(),
+    // verifiedBy/verifiedAt deliberately NOT set here — that pair belongs to
+    // the real Accounts Payment "Verify" step (billController.verifyBill,
+    // which stamps the separate `verificationBy` field), not to whoever
+    // happened to trigger finalizeBillRequest (the BillRequest's own last
+    // approver). Stamping it here previously made the print's L2/GM
+    // signature block show that approver's name instead of the real GM —
+    // see printBill.ts's l2 fallback chain.
     createdBy:   req.user._id,
   });
 

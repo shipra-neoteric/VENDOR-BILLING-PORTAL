@@ -410,10 +410,16 @@ ${mode === 'pre' ? (() => {
   // manualAgmApprovedBy/manualGmApprovedBy (a third, separate field set
   // from both the real Accounts Payment chain and the BillRequest one),
   // and was missing here even though manualL3ApprovedBy already had it.
+  // verifiedBy/verifiedAt deliberately excluded from this fallback — that
+  // pair belongs to the real Accounts Payment "Verify" step (a different
+  // person than the GM/L2 approver), and some older bills still carry a
+  // stale verifiedBy that finalizeBillRequest used to (wrongly) stamp with
+  // whoever triggered it, which would otherwise outrank the real gmApprovedBy
+  // here and show the wrong name.
   const l1 = bill.l1ApprovedBy || bill.agmApprovedBy || bill.manualAgmApprovedBy;
   const l1At = bill.l1ApprovedAt || bill.agmApprovedAt || bill.manualAgmApprovedAt;
-  const l2 = bill.l2ApprovedBy || bill.verifiedBy || bill.gmApprovedBy || bill.manualGmApprovedBy;
-  const l2At = bill.l2ApprovedAt || bill.verifiedAt || bill.gmApprovedAt || bill.manualGmApprovedAt;
+  const l2 = bill.l2ApprovedBy || bill.gmApprovedBy || bill.manualGmApprovedBy;
+  const l2At = bill.l2ApprovedAt || bill.gmApprovedAt || bill.manualGmApprovedAt;
 
   const cols = [
     signatureCol("Contractor", { name: bill.vendorName || "—" }, undefined),
