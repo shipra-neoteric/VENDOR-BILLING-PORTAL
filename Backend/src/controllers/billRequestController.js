@@ -560,7 +560,12 @@ async function finalizeBillRequest(br, wo, req, res, finalStage) {
   br.billId      = runningBill._id;
   br.processedBy = req.user._id;
   br.processedAt = new Date();
-  br.approvalHistory.push({ stage: finalStage, action: 'approved', by: req.user._id, byName: req.user.name, byRole: req.user.role, remarks: req.body.remarks || '' });
+  // Not pushed here — the caller (agmApprove's single-level branch,
+  // gmApprove/l3Approve/l4Approve) already pushed this exact
+  // { stage: finalStage, action: 'approved' } entry onto br.approvalHistory
+  // immediately before invoking finalizeBillRequest. Pushing it again here
+  // produced a visible duplicate row in Approval History for every
+  // department's final stage (agm/gm/l3/l4).
   await br.save();
 
   // Apply AGM's advance-slip recoveries now that the bill actually exists —

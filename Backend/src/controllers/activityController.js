@@ -142,6 +142,12 @@ exports.updateProgress = asyncHandler(async (req, res) => {
             amount:      milestone.paymentAmount,
           }],
           status:      'draft',
+          // Previously left unset, so it defaulted to the schema's
+          // 'approved' — letting a milestone-triggered bill skip the
+          // AGM/GM/L3/L4 sign-off chain entirely and reach Accounts'
+          // verifyBill gate with zero human review. Route it through the
+          // same chain a manually-created bill goes through instead.
+          manualApprovalStatus: 'pending',
           remarks:     `Auto-generated — milestone achieved: ${milestone.name}`,
           createdBy:   req.user._id,
         });
