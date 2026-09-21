@@ -322,6 +322,20 @@ export function WorkOrderDocument({ wo, company, contractor }: Props) {
   const grandPayable = milestones.reduce((s, m) => s + (m.payable ?? 0), 0);
   const warrantyTerms = (wo.warrantyTerms ?? []).filter(Boolean);
 
+  // Contract Period — derived (not a stored field) as the earliest plannedStart
+  // and latest plannedEnd across all scope items. Only meaningful for execution
+  // WOs; professional-services scope items don't reliably carry these fields.
+  const contractPeriod = (() => {
+    if (isProfessionalServices) return undefined;
+    const starts = (wo.scopeItems || []).map(si => si.plannedStart).filter((d): d is string => !!d);
+    const ends = (wo.scopeItems || []).map(si => si.plannedEnd).filter((d): d is string => !!d);
+    if (starts.length === 0 || ends.length === 0) return undefined;
+    const earliestStart = starts.reduce((a, b) => (new Date(b) < new Date(a) ? b : a));
+    const latestEnd = ends.reduce((a, b) => (new Date(b) > new Date(a) ? b : a));
+    const fmt = (d: string) => new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+    return `${fmt(earliestStart)} → ${fmt(latestEnd)}`;
+  })();
+
   return (
     <Document title={`Work Order ${wo.workOrderNo}`} author="Neoteric Group">
       <Page size="A4" style={S.page}>
@@ -340,6 +354,9 @@ export function WorkOrderDocument({ wo, company, contractor }: Props) {
             <Text style={S.docBadge}>Created: {(wo.createdAt ? new Date(wo.createdAt) : new Date(wo.issueDate)).toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</Text>
             {wo.updatedAt && wo.createdAt && new Date(wo.updatedAt).getTime() - new Date(wo.createdAt).getTime() > 60000 && (
               <Text style={S.docBadge}>Last Edited: {new Date(wo.updatedAt).toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</Text>
+            )}
+            {contractPeriod && (
+              <Text style={S.docBadge}>Contract Period: {contractPeriod}</Text>
             )}
           </View>
         </View>
@@ -376,6 +393,7 @@ export function WorkOrderDocument({ wo, company, contractor }: Props) {
           {wo.subCategory ? <InfoRow label="Sub-category" value={wo.subCategory} /> : null}
           {departmentLabel(wo.department, wo.customDepartment) ? <InfoRow label="Department" value={departmentLabel(wo.department, wo.customDepartment)} /> : null}
           <InfoRow label="Work Title / Scope" value={wo.description || wo.scopeOfWork} />
+          <InfoRow label="Contract Period" value={contractPeriod} />
           <InfoRow label="Total Tenure of Entire Work" value={wo.totalTenure} />
           <InfoRow label="Remarks" value={wo.internalRemark} last />
         </SectionBox>
