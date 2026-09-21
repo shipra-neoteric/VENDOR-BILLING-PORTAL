@@ -142,6 +142,28 @@ export default function WorkOrderDetailView({
   const wo = workOrder;
   const isProfessionalServices = wo.contractType === "professional-services";
   const contractVal = wo.contractValue ?? 0;
+
+  // Derived, display-only — no stored contract-period field exists on
+  // WorkOrder, so this is the earliest/latest planned date across scope
+  // items (execution WOs only; professional-services items use `stage`
+  // instead of planned dates, so this is always "—" for those).
+  const contractPeriod = (() => {
+    if (isProfessionalServices) return undefined;
+    let earliest: dayjs.Dayjs | null = null;
+    let latest: dayjs.Dayjs | null = null;
+    for (const si of wo.scopeItems ?? []) {
+      if (si.plannedStart) {
+        const d = dayjs(si.plannedStart);
+        if (d.isValid() && (!earliest || d.isBefore(earliest))) earliest = d;
+      }
+      if (si.plannedEnd) {
+        const d = dayjs(si.plannedEnd);
+        if (d.isValid() && (!latest || d.isAfter(latest))) latest = d;
+      }
+    }
+    if (!earliest || !latest) return undefined;
+    return `${earliest.format("DD MMM YYYY")} → ${latest.format("DD MMM YYYY")}`;
+  })();
   const certifiedAmt = bills.filter(b => b.status === "approved" || b.status === "sent-to-tms" || b.status === "paid").reduce((s, b) => s + b.amount, 0);
   const pendingAmt   = bills.filter(b => b.status === "draft" || b.status === "verify-done" || b.status === "l1-approved").reduce((s, b) => s + b.amount, 0);
   const remaining    = Math.max(0, contractVal - certifiedAmt - pendingAmt);
@@ -271,13 +293,15 @@ export default function WorkOrderDetailView({
             { label: "Contractor Email", value: bank?.email },
             { label: "Date of Issue", value: dayjs(wo.issueDate).format("DD MMM YYYY") },
             { label: "GST No. (Contractor)", value: bank?.gstNumber },
+            { label: "Contract Period", value: contractPeriod },
+            { label: "PAN No.", value: bank?.panNumber },
             {
               label: "Assigned DRI",
               value: (wo.assignedDRI ?? []).length > 0
                 ? (wo.assignedDRI ?? []).map(d => (typeof d === "string" ? d : d.name)).join(", ")
                 : undefined,
             },
-            { label: "PAN No.", value: bank?.panNumber },
+            { label: isProfessionalServices ? "Principal" : "Owner", value: wo.ownerName },
             {
               label: isProfessionalServices ? "Consultant Code" : "Vendor Code",
               value: (
@@ -286,7 +310,6 @@ export default function WorkOrderDetailView({
                 </span>
               ),
             },
-            { label: isProfessionalServices ? "Principal" : "Owner", value: wo.ownerName },
           ]}
         />
       </Card>
