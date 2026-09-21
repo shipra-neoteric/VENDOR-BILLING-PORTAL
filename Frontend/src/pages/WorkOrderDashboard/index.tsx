@@ -2,7 +2,7 @@ import { useState, useEffect, Fragment } from "react";
 import type { MouseEvent } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
-import { ArrowLeft, Trophy, Check, X, ClipboardList, TrendingUp, CheckCircle2, Clock } from "lucide-react";
+import { ArrowLeft, Trophy, Check, X, ClipboardList, TrendingUp, CheckCircle2, Clock, ChevronsDown, ChevronsUp } from "lucide-react";
 import dayjs from "dayjs";
 import apiClient from "../../services/apiClient";
 import { useAuth } from "../../context/AuthContext";
@@ -160,7 +160,7 @@ function MassExpandButton({ mode, title, onClick }: { mode: "expand" | "collapse
       onClick={onClick}
       className="inline-flex items-center justify-center w-4 h-4 shrink-0 rounded-[3px] border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-[10px] font-bold leading-none text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
     >
-      {mode === "expand" ? "+" : "−"}
+      {mode === "expand" ? <ChevronsDown className="w-3 h-3" /> : <ChevronsUp className="w-3 h-3" />}
     </button>
   );
 }
