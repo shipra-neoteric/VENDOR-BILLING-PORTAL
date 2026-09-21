@@ -1,5 +1,5 @@
 import { Fragment, useState } from "react";
-import type { ReactNode } from "react";
+import type { ReactNode, MouseEvent } from "react";
 import { Link2, Lock, Pencil } from "lucide-react";
 import toast from "react-hot-toast";
 import dayjs from "dayjs";
@@ -8,6 +8,7 @@ import WorkOrderApprovalWorkflow from "./WorkOrderApprovalWorkflow";
 import { getWorkOrderDocuments } from "./DocumentsUpload";
 import PaymentMilestonesBuilder, { calcPayable } from "./PaymentMilestonesBuilder";
 import type { MilestoneDraft } from "./PaymentMilestonesBuilder";
+import { buildScopeHierarchy, type ScopeItemLike } from "../pages/WorkOrderDashboard/scopeHierarchy";
 import type { WorkOrder, WorkOrderStatus } from "../types/VendorBilling";
 import Badge from "../ui/Badge";
 import Card from "../ui/Card";
@@ -36,6 +37,36 @@ function departmentLabel(department?: string, customDepartment?: string): string
   if (!department) return undefined;
   if (department === "custom") return customDepartment || "Custom Team";
   return DEPARTMENT_LABEL[department];
+}
+
+// Small "+"/"−" square used in place of chevron icons for the Floor/Flat/Room
+// expand-collapse toggles (Work Items are leaves and never get one).
+function ExpandToggle({ expanded }: { expanded: boolean }) {
+  return (
+    <span
+      aria-hidden="true"
+      className="inline-flex items-center justify-center w-4 h-4 shrink-0 rounded-[3px] border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-[10px] font-bold leading-none text-gray-600 dark:text-gray-300"
+    >
+      {expanded ? "−" : "+"}
+    </span>
+  );
+}
+
+// Small clickable "+"/"−" square, visually matching ExpandToggle, used for a
+// row's mass-expand-all / collapse-all-descendants action (as opposed to
+// ExpandToggle's own single-node toggle).
+function MassExpandButton({ mode, title, onClick }: { mode: "expand" | "collapse"; title: string; onClick: (e: MouseEvent) => void }) {
+  return (
+    <button
+      type="button"
+      title={title}
+      aria-label={title}
+      onClick={onClick}
+      className="inline-flex items-center justify-center w-4 h-4 shrink-0 rounded-[3px] border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-[10px] font-bold leading-none text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+    >
+      {mode === "expand" ? "+" : "−"}
+    </button>
+  );
 }
 
 // ── Tabular info blocks — label and value sit side by side in the SAME row
@@ -131,6 +162,16 @@ export default function WorkOrderDetailView({
   const certPct = contractVal > 0 ? (certifiedAmt / contractVal) * 100 : 0;
   const pendPct = contractVal > 0 ? (pendingAmt / contractVal) * 100 : 0;
 
+  // Floor/Flat/Room hierarchy — client-side expand/collapse only, all
+  // collapsed by default. Purely a display reorganization of wo.scopeItems,
+  // mirroring WorkOrderDashboard's Items tab exactly.
+  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
+  const toggleNode = (key: string) => setExpandedNodes(prev => {
+    const next = new Set(prev);
+    if (next.has(key)) next.delete(key); else next.add(key);
+    return next;
+  });
+
   const itemsSubtotal = wo.scopeItems.reduce((s, si) => s + (si.amount || 0), 0);
   // Each work item carries its own gstPercent (some are 0%/exempt) — sum GST
   // per item rather than applying one flat rate to the whole subtotal, so
@@ -142,6 +183,53 @@ export default function WorkOrderDetailView({
   const advanceMilestone = (wo.paymentMilestones ?? []).find(m => (m.type || "").toLowerCase().includes("advance"));
   const bank = wo.contractorDetails;
   const documents = getWorkOrderDocuments(wo);
+
+  const scopeHierarchy = !isProfessionalServices
+    ? buildScopeHierarchy(wo.scopeItems as unknown as ScopeItemLike[])
+    : null;
+
+  // Work Item (subItems) rows — the existing Item/Unit/Qty/Rate/Amount table,
+  // rendered exactly as before, just nested deeper under Floor/Flat/Room.
+  const renderWorkItemRows = (si: ScopeItemLike, indent: number) => {
+    const items = si.subItems && si.subItems.length > 0 ? si.subItems : null;
+    if (!items) {
+      const siExtra = si as unknown as { remarks?: string };
+      return (
+        <Tr key={si._id}>
+          <Td />
+          <Td style={{ paddingLeft: `${indent * 16}px` }}>
+            <span className="text-[#1A1A2E] dark:text-[#F1F5F9]">{si.description}</span>
+            {siExtra.remarks && <div className="text-xs text-amber-600 dark:text-amber-400 mt-0.5 whitespace-pre-line">📌 {siExtra.remarks}</div>}
+          </Td>
+          <Td><TdText>{si.unit}</TdText></Td>
+          <Td><span className="font-mono"><TdText>{si.plannedQty.toLocaleString("en-IN")}</TdText></span></Td>
+          <Td><span className="font-mono"><TdText>{fmtRate(si.rate || 0)}</TdText></span></Td>
+          <Td><span className="font-mono font-bold text-primary">{fmt(si.amount || 0)}</span></Td>
+        </Tr>
+      );
+    }
+    return items.map((sub, i) => {
+      const subExtra = sub as unknown as { plannedStart?: string; plannedEnd?: string; remarks?: string };
+      return (
+        <Tr key={sub._id || sub.id || `${si._id}-sub-${i}`} className="bg-gray-50 dark:bg-gray-800/30">
+          <Td />
+          <Td style={{ paddingLeft: `${indent * 16}px` }}>
+            <span className="text-[13px] text-gray-600 dark:text-gray-400">↳ {sub.description}</span>
+            {(subExtra.plannedStart || subExtra.plannedEnd) && (
+              <div className="text-xs text-gray-400 mt-0.5">
+                {subExtra.plannedStart ? dayjs(subExtra.plannedStart).format("DD MMM YYYY") : "—"} → {subExtra.plannedEnd ? dayjs(subExtra.plannedEnd).format("DD MMM YYYY") : "—"}
+              </div>
+            )}
+            {subExtra.remarks && <div className="text-xs text-amber-600 dark:text-amber-400 mt-0.5 whitespace-pre-line">📌 {subExtra.remarks}</div>}
+          </Td>
+          <Td><TdText>{sub.unit}</TdText></Td>
+          <Td><span className="font-mono"><TdText>{sub.plannedQty.toLocaleString("en-IN")}</TdText></span></Td>
+          <Td><span className="font-mono"><TdText>{fmtRate(sub.rate || 0)}</TdText></span></Td>
+          <Td><span className="font-mono font-semibold text-gray-600 dark:text-gray-400">{fmt(sub.amount || 0)}</span></Td>
+        </Tr>
+      );
+    });
+  };
 
   // ── Inline Payment Milestones editing — no need to leave this view or
   // open the full Edit Work Order drawer just to correct a milestone.
@@ -269,8 +357,10 @@ export default function WorkOrderDetailView({
 
       {/* ── Work Items ──────────────────────────────── */}
       <Card padded={false} className="overflow-hidden mb-5">
-        <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700/40 font-semibold text-[13px] text-gray-700 dark:text-gray-300">
-          {isProfessionalServices ? "Deliverables" : "Work Items"}
+        <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700/40 flex items-center justify-between gap-3">
+          <span className="font-semibold text-[13px] text-gray-700 dark:text-gray-300">
+            {isProfessionalServices ? "Deliverables" : "Work Items"}
+          </span>
         </div>
         {wo.scopeItems.length === 0 ? (
           <div className="py-6 text-center text-gray-400 text-sm">
@@ -288,56 +378,206 @@ export default function WorkOrderDetailView({
               </Tr>
             </Thead>
             <Tbody>
-              {wo.scopeItems.map((si, idx) => {
-                const hasSubItems = (si.subItems?.length ?? 0) > 0;
-                return (
-                <Fragment key={si.id}>
-                  <Tr>
-                    <Td><TdText>{idx + 1}</TdText></Td>
-                    <Td>
-                      <span className="font-semibold text-[#1A1A2E] dark:text-[#F1F5F9]">{si.description}</span>
-                      {hasSubItems && <span className="ml-1.5 text-[11px] text-gray-400">({si.subItems.length} particulars)</span>}
-                      {si.remarks && <div className="text-xs text-amber-600 dark:text-amber-400 mt-0.5 whitespace-pre-line">📌 {si.remarks}</div>}
-                    </Td>
-                    {isProfessionalServices ? (
-                      <>
-                        <Td><TdText>{si.stage || "—"}</TdText></Td>
-                        <Td><TdText>{si.plannedEnd ? dayjs(si.plannedEnd).format("DD MMM YYYY") : "—"}</TdText></Td>
+              {isProfessionalServices || !scopeHierarchy ? (
+                wo.scopeItems.map((si, idx) => {
+                  const hasSubItems = (si.subItems?.length ?? 0) > 0;
+                  return (
+                  <Fragment key={si.id}>
+                    <Tr>
+                      <Td><TdText>{idx + 1}</TdText></Td>
+                      <Td>
+                        <span className="font-semibold text-[#1A1A2E] dark:text-[#F1F5F9]">{si.description}</span>
+                        {hasSubItems && <span className="ml-1.5 text-[11px] text-gray-400">({si.subItems.length} particulars)</span>}
+                        {si.remarks && <div className="text-xs text-amber-600 dark:text-amber-400 mt-0.5 whitespace-pre-line">📌 {si.remarks}</div>}
+                      </Td>
+                      {isProfessionalServices ? (
+                        <>
+                          <Td><TdText>{si.stage || "—"}</TdText></Td>
+                          <Td><TdText>{si.plannedEnd ? dayjs(si.plannedEnd).format("DD MMM YYYY") : "—"}</TdText></Td>
+                          <Td>
+                            <Badge color={si.status === "completed" ? "green" : si.status === "running" ? "orange" : "gray"} small>
+                              {si.status === "completed" ? "Completed" : si.status === "running" ? "In Progress" : "Pending"}
+                            </Badge>
+                          </Td>
+                        </>
+                      ) : (
+                        <>
+                          <Td><TdText>{si.unit}</TdText></Td>
+                          <Td><span className="font-mono"><TdText>{si.plannedQty.toLocaleString("en-IN")}</TdText></span></Td>
+                          <Td><span className="font-mono"><TdText>{fmtRate(si.rate || 0)}</TdText></span></Td>
+                        </>
+                      )}
+                      <Td><span className="font-mono font-bold text-primary">{fmt(si.amount || 0)}</span></Td>
+                    </Tr>
+                    {hasSubItems && si.subItems.map(sub => (
+                      <Tr key={sub.id} className="bg-gray-50 dark:bg-gray-800/30">
+                        <Td />
                         <Td>
-                          <Badge color={si.status === "completed" ? "green" : si.status === "running" ? "orange" : "gray"} small>
-                            {si.status === "completed" ? "Completed" : si.status === "running" ? "In Progress" : "Pending"}
-                          </Badge>
+                          <span className="pl-4 text-[13px] text-gray-600 dark:text-gray-400">↳ {sub.description}</span>
+                          {(sub.plannedStart || sub.plannedEnd) && (
+                            <div className="pl-4 text-xs text-gray-400 mt-0.5">
+                              {sub.plannedStart ? dayjs(sub.plannedStart).format("DD MMM YYYY") : "—"} → {sub.plannedEnd ? dayjs(sub.plannedEnd).format("DD MMM YYYY") : "—"}
+                            </div>
+                          )}
+                          {sub.remarks && <div className="pl-4 text-xs text-amber-600 dark:text-amber-400 mt-0.5 whitespace-pre-line">📌 {sub.remarks}</div>}
                         </Td>
-                      </>
-                    ) : (
-                      <>
+                        <Td><TdText>{sub.unit}</TdText></Td>
+                        <Td><span className="font-mono"><TdText>{sub.plannedQty.toLocaleString("en-IN")}</TdText></span></Td>
+                        <Td><span className="font-mono"><TdText>{fmtRate(sub.rate || 0)}</TdText></span></Td>
+                        <Td><span className="font-mono font-semibold text-gray-600 dark:text-gray-400">{fmt(sub.amount || 0)}</span></Td>
+                      </Tr>
+                    ))}
+                  </Fragment>
+                );})
+              ) : (
+                <>
+                  {scopeHierarchy.floors.map(floor => {
+                    const floorExpanded = expandedNodes.has(floor.key);
+                    return (
+                      <Fragment key={floor.key}>
+                        <Tr className="bg-gray-100/70 dark:bg-gray-800/40">
+                          <Td colSpan={5}>
+                            <div className="flex items-center justify-between gap-2.5">
+                              <button
+                                type="button"
+                                onClick={() => toggleNode(floor.key)}
+                                className="flex items-center gap-1.5 font-extrabold text-[#1A1A2E] dark:text-[#F1F5F9]"
+                              >
+                                <ExpandToggle expanded={floorExpanded} />
+                                {floor.label}
+                              </button>
+                              <div className="flex items-center gap-1.5">
+                                <MassExpandButton
+                                  mode="expand"
+                                  title="Expand All"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setExpandedNodes(prev => {
+                                      const next = new Set(prev);
+                                      next.add(floor.key);
+                                      for (const flat of floor.flats) {
+                                        next.add(flat.key);
+                                        if (flat.rooms) for (const room of flat.rooms) next.add(room.key);
+                                      }
+                                      return next;
+                                    });
+                                  }}
+                                />
+                                <MassExpandButton
+                                  mode="collapse"
+                                  title="Collapse All"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setExpandedNodes(prev => {
+                                      const next = new Set(prev);
+                                      for (const flat of floor.flats) {
+                                        next.delete(flat.key);
+                                        if (flat.rooms) for (const room of flat.rooms) next.delete(room.key);
+                                      }
+                                      return next;
+                                    });
+                                  }}
+                                />
+                              </div>
+                            </div>
+                          </Td>
+                          <Td><span className="font-mono font-extrabold text-primary">{fmt(floor.amount)}</span></Td>
+                        </Tr>
+                        {floorExpanded && floor.flats.map(flat => {
+                          const flatExpanded = expandedNodes.has(flat.key);
+                          // Old-combined format: no Room level, degrades to Floor → item → subItems.
+                          if (!flat.rooms) {
+                            const si = flat.scopeItem!;
+                            return (
+                              <Fragment key={flat.key}>
+                                <Tr className="bg-gray-50/70 dark:bg-gray-800/25">
+                                  <Td colSpan={5} style={{ paddingLeft: "24px" }}>
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleNode(flat.key)}
+                                      className="flex items-center gap-1.5 font-bold text-[#1A1A2E] dark:text-[#F1F5F9] text-left"
+                                    >
+                                      <ExpandToggle expanded={flatExpanded} />
+                                      <span>{flat.label}</span>
+                                    </button>
+                                  </Td>
+                                  <Td><span className="font-mono font-bold text-primary">{fmt(flat.amount)}</span></Td>
+                                </Tr>
+                                {flatExpanded && renderWorkItemRows(si, 2)}
+                              </Fragment>
+                            );
+                          }
+                          return (
+                            <Fragment key={flat.key}>
+                              <Tr className="bg-gray-50/70 dark:bg-gray-800/25">
+                                <Td colSpan={5} style={{ paddingLeft: "24px" }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleNode(flat.key)}
+                                    className="flex items-center gap-1.5 font-bold text-[#1A1A2E] dark:text-[#F1F5F9]"
+                                  >
+                                    <ExpandToggle expanded={flatExpanded} />
+                                    {flat.label}
+                                  </button>
+                                </Td>
+                                <Td><span className="font-mono font-bold text-primary">{fmt(flat.amount)}</span></Td>
+                              </Tr>
+                              {flatExpanded && flat.rooms.map(room => {
+                                const roomExpanded = expandedNodes.has(room.key);
+                                return (
+                                  <Fragment key={room.key}>
+                                    <Tr>
+                                      <Td colSpan={5} style={{ paddingLeft: "40px" }}>
+                                        <button
+                                          type="button"
+                                          onClick={() => toggleNode(room.key)}
+                                          className="flex items-center gap-1.5 text-[#1A1A2E] dark:text-[#F1F5F9] text-left"
+                                        >
+                                          <ExpandToggle expanded={roomExpanded} />
+                                          <span>{room.label}</span>
+                                        </button>
+                                      </Td>
+                                      <Td><span className="font-mono font-semibold text-primary">{fmt(room.amount)}</span></Td>
+                                    </Tr>
+                                    {roomExpanded && renderWorkItemRows(room.scopeItem, 3)}
+                                  </Fragment>
+                                );
+                              })}
+                            </Fragment>
+                          );
+                        })}
+                      </Fragment>
+                    );
+                  })}
+                  {scopeHierarchy.ungrouped.map((si, idx) => {
+                    const hasSubItems = (si.subItems?.length ?? 0) > 0;
+                    return (
+                    <Fragment key={si._id}>
+                      <Tr>
+                        <Td><TdText>{idx + 1}</TdText></Td>
+                        <Td>
+                          <span className="font-semibold text-[#1A1A2E] dark:text-[#F1F5F9]">{si.description}</span>
+                          {hasSubItems && <span className="ml-1.5 text-[11px] text-gray-400">({si.subItems!.length} particulars)</span>}
+                        </Td>
                         <Td><TdText>{si.unit}</TdText></Td>
                         <Td><span className="font-mono"><TdText>{si.plannedQty.toLocaleString("en-IN")}</TdText></span></Td>
                         <Td><span className="font-mono"><TdText>{fmtRate(si.rate || 0)}</TdText></span></Td>
-                      </>
-                    )}
-                    <Td><span className="font-mono font-bold text-primary">{fmt(si.amount || 0)}</span></Td>
-                  </Tr>
-                  {hasSubItems && si.subItems.map(sub => (
-                    <Tr key={sub.id} className="bg-gray-50 dark:bg-gray-800/30">
-                      <Td />
-                      <Td>
-                        <span className="pl-4 text-[13px] text-gray-600 dark:text-gray-400">↳ {sub.description}</span>
-                        {(sub.plannedStart || sub.plannedEnd) && (
-                          <div className="pl-4 text-xs text-gray-400 mt-0.5">
-                            {sub.plannedStart ? dayjs(sub.plannedStart).format("DD MMM YYYY") : "—"} → {sub.plannedEnd ? dayjs(sub.plannedEnd).format("DD MMM YYYY") : "—"}
-                          </div>
-                        )}
-                        {sub.remarks && <div className="pl-4 text-xs text-amber-600 dark:text-amber-400 mt-0.5 whitespace-pre-line">📌 {sub.remarks}</div>}
-                      </Td>
-                      <Td><TdText>{sub.unit}</TdText></Td>
-                      <Td><span className="font-mono"><TdText>{sub.plannedQty.toLocaleString("en-IN")}</TdText></span></Td>
-                      <Td><span className="font-mono"><TdText>{fmtRate(sub.rate || 0)}</TdText></span></Td>
-                      <Td><span className="font-mono font-semibold text-gray-600 dark:text-gray-400">{fmt(sub.amount || 0)}</span></Td>
-                    </Tr>
-                  ))}
-                </Fragment>
-              );})}
+                        <Td><span className="font-mono font-bold text-primary">{fmt(si.amount || 0)}</span></Td>
+                      </Tr>
+                      {hasSubItems && si.subItems!.map(sub => (
+                        <Tr key={sub.id} className="bg-gray-50 dark:bg-gray-800/30">
+                          <Td />
+                          <Td><span className="pl-4 text-[13px] text-gray-600 dark:text-gray-400">↳ {sub.description}</span></Td>
+                          <Td><TdText>{sub.unit}</TdText></Td>
+                          <Td><span className="font-mono"><TdText>{sub.plannedQty.toLocaleString("en-IN")}</TdText></span></Td>
+                          <Td><span className="font-mono"><TdText>{fmtRate(sub.rate || 0)}</TdText></span></Td>
+                          <Td><span className="font-mono font-semibold text-gray-600 dark:text-gray-400">{fmt(sub.amount || 0)}</span></Td>
+                        </Tr>
+                      ))}
+                    </Fragment>
+                  );})}
+                </>
+              )}
             </Tbody>
             <Tfoot>
               <Tr className="hover:bg-transparent dark:hover:bg-transparent">

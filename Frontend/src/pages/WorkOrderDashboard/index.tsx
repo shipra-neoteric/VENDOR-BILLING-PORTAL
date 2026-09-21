@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, Fragment } from "react";
+import type { MouseEvent } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import { ArrowLeft, Trophy, Check, X, ClipboardList, TrendingUp, CheckCircle2, Clock } from "lucide-react";
@@ -19,9 +20,16 @@ import Btn from "../../ui/Btn";
 import NxBadge from "../../ui/nexora/Badge";
 import type { NxBadgeColor } from "../../ui/nexora/Badge";
 import { Table, Thead, Tbody, Tr, Th, Td, TdText } from "../../ui/Table";
+import { buildScopeHierarchy, type ScopeItemLike } from "./scopeHierarchy";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface ProgressEntry { _id: string; date: string; qtyAdded: number; remarks?: string; }
+
+interface ScopeSubItem {
+  _id?: string; id?: string; description: string; unit: string;
+  plannedQty: number; rate: number; amount: number;
+  completedQty?: number; lastBilledQty?: number; status?: string;
+}
 
 interface ScopeItem {
   _id: string; description: string; unit: string;
@@ -30,6 +38,8 @@ interface ScopeItem {
   status: string; progressEntries: ProgressEntry[];
   // Only meaningful for a professional-services deliverable.
   stage?: string; plannedEnd?: string;
+  // The real work-item particulars underneath a Floor/Flat/Room grouping.
+  subItems?: ScopeSubItem[];
 }
 
 interface WODetail {
@@ -138,6 +148,36 @@ const STEP_COLORS: Record<StepStatus, { ring: string; bg: string; text: string }
   rejected:  { ring: "#ef4444", bg: "#fef2f2",  text: "#ef4444" },
   pending:   { ring: "#D1D5DB", bg: "#F9FAFB",  text: "#9CA3AF" },
 };
+
+// Small "+"/"−" square used in place of chevron icons for the Floor/Flat/Room
+// expand-collapse toggles (Work Items are leaves and never get one).
+function ExpandToggle({ expanded }: { expanded: boolean }) {
+  return (
+    <span
+      aria-hidden="true"
+      className="inline-flex items-center justify-center w-4 h-4 shrink-0 rounded-[3px] border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-[10px] font-bold leading-none text-gray-600 dark:text-gray-300"
+    >
+      {expanded ? "−" : "+"}
+    </span>
+  );
+}
+
+// Small clickable "+"/"−" square, visually matching ExpandToggle, used for a
+// row's mass-expand-all / collapse-all-descendants action (as opposed to
+// ExpandToggle's own single-node toggle).
+function MassExpandButton({ mode, title, onClick }: { mode: "expand" | "collapse"; title: string; onClick: (e: MouseEvent) => void }) {
+  return (
+    <button
+      type="button"
+      title={title}
+      aria-label={title}
+      onClick={onClick}
+      className="inline-flex items-center justify-center w-4 h-4 shrink-0 rounded-[3px] border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-[10px] font-bold leading-none text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+    >
+      {mode === "expand" ? "+" : "−"}
+    </button>
+  );
+}
 
 function StageStepper({ stage }: { stage: BillRequestStage }) {
   const billStatus = stage.billId?.status ?? "";
@@ -257,6 +297,14 @@ export default function WorkOrderDashboard() {
 
   const [activeTab,       setActiveTab]       = useState<TabKey>("items");
   const [viewBill,        setViewBill]        = useState<BillDetailRequest | null>(null);
+  // Floor/Flat/Room hierarchy — client-side expand/collapse only, all
+  // collapsed by default (nothing beyond Floor rows shows initially).
+  const [expandedNodes,   setExpandedNodes]   = useState<Set<string>>(new Set());
+  const toggleNode = (key: string) => setExpandedNodes(prev => {
+    const next = new Set(prev);
+    if (next.has(key)) next.delete(key); else next.add(key);
+    return next;
+  });
 
   const load = async () => {
     if (!id) return;
@@ -319,6 +367,43 @@ export default function WorkOrderDashboard() {
   const woStatus = wo.status === "cancelled" ? "Cancelled" : wo.status === "in-progress" ? "In Progress" : wo.status === "completed" ? "Completed" : wo.status === "issued" ? "Issued" : "Draft";
   const woStatusColor: "red" | "amber" | "green" | "gray" = wo.status === "cancelled" ? "red" : wo.status === "in-progress" ? "amber" : wo.status === "completed" ? "green" : "gray";
   const progressTint: "green" | "amber" | "blue" = avgPct >= 100 ? "green" : avgPct > 50 ? "amber" : "blue";
+
+  // Floor → Flat → Room → Work Item grouping for the Items tab — purely a
+  // display reorganization of wo.scopeItems, computed client-side. Not used
+  // for professional-services (deliverables have no floor/flat structure).
+  const scopeHierarchy = !isProfessionalServices
+    ? buildScopeHierarchy(wo.scopeItems as unknown as ScopeItemLike[])
+    : null;
+
+  // Work Item (subItems) rows — the existing Item/Unit/Qty/Rate/Amount table,
+  // rendered exactly as before, just nested deeper under Floor/Flat/Room.
+  const renderWorkItemRows = (si: ScopeItemLike, indent: number) => {
+    const items = si.subItems && si.subItems.length > 0 ? si.subItems : null;
+    if (!items) {
+      // No sub-items on this scope item — the scope item's own row IS the
+      // work item row.
+      return (
+        <Tr key={si._id}>
+          <Td style={{ paddingLeft: `${indent * 16 + 12}px` }}><span className="text-[#1A1A2E] dark:text-[#F1F5F9]">{si.description}</span></Td>
+          <Td><TdText>{si.unit}</TdText></Td>
+          <Td><span className="font-mono"><TdText>{fmtQty(si.plannedQty)}</TdText></span></Td>
+          <Td><span className="font-mono"><TdText>{fmtMoney(si.rate || 0)}</TdText></span></Td>
+          <Td><span className="font-mono font-bold text-primary">{fmtMoney(si.amount || 0)}</span></Td>
+          <Td><span className="capitalize"><TdText>{si.status}</TdText></span></Td>
+        </Tr>
+      );
+    }
+    return items.map((sub, i) => (
+      <Tr key={sub._id || sub.id || `${si._id}-sub-${i}`} className="bg-gray-50/60 dark:bg-gray-800/20">
+        <Td style={{ paddingLeft: `${indent * 16 + 12}px` }}><span className="text-gray-600 dark:text-gray-300">{sub.description}</span></Td>
+        <Td><TdText>{sub.unit}</TdText></Td>
+        <Td><span className="font-mono"><TdText>{fmtQty(sub.plannedQty)}</TdText></span></Td>
+        <Td><span className="font-mono"><TdText>{fmtMoney(sub.rate || 0)}</TdText></span></Td>
+        <Td><span className="font-mono font-bold text-primary">{fmtMoney(sub.amount || 0)}</span></Td>
+        <Td><span className="capitalize"><TdText>{sub.status || si.status}</TdText></span></Td>
+      </Tr>
+    ));
+  };
 
   return (
     <div className="max-w-[1100px] mx-auto p-6">
@@ -406,12 +491,14 @@ export default function WorkOrderDashboard() {
           {/* Items tab — scope of work definition */}
           {activeTab === "items" && (
             <>
-              <div className="px-6 py-4 font-bold text-[15px] text-[#1A1A2E] dark:text-[#F1F5F9]">
-                {isProfessionalServices ? "Deliverables" : "Scope of Work"}
+              <div className="px-6 py-4 flex items-center justify-between gap-3">
+                <span className="font-bold text-[15px] text-[#1A1A2E] dark:text-[#F1F5F9]">
+                  {isProfessionalServices ? "Deliverables" : "Scope of Work"}
+                </span>
               </div>
               {wo.scopeItems.length === 0 ? (
                 <EmptyState title={isProfessionalServices ? "No deliverables defined" : "No scope items defined"} />
-              ) : (
+              ) : isProfessionalServices || !scopeHierarchy ? (
                 <div className="px-6 pb-5">
                   <Table>
                     <Thead>
@@ -442,6 +529,141 @@ export default function WorkOrderDashboard() {
                           <Td><span className="capitalize"><TdText>{si.status}</TdText></span></Td>
                         </Tr>
                       ))}
+                    </Tbody>
+                  </Table>
+                </div>
+              ) : (
+                <div className="px-6 pb-5">
+                  <Table>
+                    <Thead>
+                      <Tr>
+                        {["Item", "Unit", "Qty", "Rate", "Amount", "Status"].map(h => <Th key={h}>{h}</Th>)}
+                      </Tr>
+                    </Thead>
+                    <Tbody>
+                      {scopeHierarchy.floors.map(floor => {
+                        const floorExpanded = expandedNodes.has(floor.key);
+                        return (
+                          <Fragment key={floor.key}>
+                            <Tr className="bg-gray-100/70 dark:bg-gray-800/40">
+                              <Td colSpan={4}>
+                                <div className="flex items-center justify-between gap-2.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleNode(floor.key)}
+                                    className="flex items-center gap-1.5 font-extrabold text-[#1A1A2E] dark:text-[#F1F5F9]"
+                                  >
+                                    <ExpandToggle expanded={floorExpanded} />
+                                    {floor.label}
+                                  </button>
+                                  <div className="flex items-center gap-1.5">
+                                    <MassExpandButton
+                                      mode="expand"
+                                      title="Expand All"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setExpandedNodes(prev => {
+                                          const next = new Set(prev);
+                                          next.add(floor.key);
+                                          for (const flat of floor.flats) {
+                                            next.add(flat.key);
+                                            if (flat.rooms) for (const room of flat.rooms) next.add(room.key);
+                                          }
+                                          return next;
+                                        });
+                                      }}
+                                    />
+                                    <MassExpandButton
+                                      mode="collapse"
+                                      title="Collapse All"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setExpandedNodes(prev => {
+                                          const next = new Set(prev);
+                                          for (const flat of floor.flats) {
+                                            next.delete(flat.key);
+                                            if (flat.rooms) for (const room of flat.rooms) next.delete(room.key);
+                                          }
+                                          return next;
+                                        });
+                                      }}
+                                    />
+                                  </div>
+                                </div>
+                              </Td>
+                              <Td><span className="font-mono font-extrabold text-primary">{fmtMoney(floor.amount)}</span></Td>
+                              <Td></Td>
+                            </Tr>
+                            {floorExpanded && floor.flats.map(flat => {
+                              const flatExpanded = expandedNodes.has(flat.key);
+                              // Old-combined format: no Room level, degrades to Floor → item → subItems.
+                              if (!flat.rooms) {
+                                const si = flat.scopeItem!;
+                                return (
+                                  <Fragment key={flat.key}>
+                                    <Tr className="bg-gray-50/70 dark:bg-gray-800/25">
+                                      <Td colSpan={4} style={{ paddingLeft: "24px" }}>
+                                        <button
+                                          type="button"
+                                          onClick={() => toggleNode(flat.key)}
+                                          className="flex items-center gap-1.5 font-bold text-[#1A1A2E] dark:text-[#F1F5F9] text-left"
+                                        >
+                                          <ExpandToggle expanded={flatExpanded} />
+                                          <span>{flat.label}</span>
+                                        </button>
+                                      </Td>
+                                      <Td><span className="font-mono font-bold text-primary">{fmtMoney(flat.amount)}</span></Td>
+                                      <Td><span className="capitalize"><TdText>{si.status}</TdText></span></Td>
+                                    </Tr>
+                                    {flatExpanded && renderWorkItemRows(si, 2)}
+                                  </Fragment>
+                                );
+                              }
+                              return (
+                                <Fragment key={flat.key}>
+                                  <Tr className="bg-gray-50/70 dark:bg-gray-800/25">
+                                    <Td colSpan={4} style={{ paddingLeft: "24px" }}>
+                                      <button
+                                        type="button"
+                                        onClick={() => toggleNode(flat.key)}
+                                        className="flex items-center gap-1.5 font-bold text-[#1A1A2E] dark:text-[#F1F5F9]"
+                                      >
+                                        <ExpandToggle expanded={flatExpanded} />
+                                        {flat.label}
+                                      </button>
+                                    </Td>
+                                    <Td><span className="font-mono font-bold text-primary">{fmtMoney(flat.amount)}</span></Td>
+                                    <Td></Td>
+                                  </Tr>
+                                  {flatExpanded && flat.rooms.map(room => {
+                                    const roomExpanded = expandedNodes.has(room.key);
+                                    return (
+                                      <Fragment key={room.key}>
+                                        <Tr>
+                                          <Td colSpan={4} style={{ paddingLeft: "40px" }}>
+                                            <button
+                                              type="button"
+                                              onClick={() => toggleNode(room.key)}
+                                              className="flex items-center gap-1.5 text-[#1A1A2E] dark:text-[#F1F5F9] text-left"
+                                            >
+                                              <ExpandToggle expanded={roomExpanded} />
+                                              <span>{room.label}</span>
+                                            </button>
+                                          </Td>
+                                          <Td><span className="font-mono font-semibold text-primary">{fmtMoney(room.amount)}</span></Td>
+                                          <Td><span className="capitalize"><TdText>{room.scopeItem.status}</TdText></span></Td>
+                                        </Tr>
+                                        {roomExpanded && renderWorkItemRows(room.scopeItem, 3)}
+                                      </Fragment>
+                                    );
+                                  })}
+                                </Fragment>
+                              );
+                            })}
+                          </Fragment>
+                        );
+                      })}
+                      {scopeHierarchy.ungrouped.map(si => renderWorkItemRows(si, 0))}
                     </Tbody>
                   </Table>
                 </div>
