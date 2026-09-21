@@ -149,22 +149,8 @@ const STEP_COLORS: Record<StepStatus, { ring: string; bg: string; text: string }
   pending:   { ring: "#D1D5DB", bg: "#F9FAFB",  text: "#9CA3AF" },
 };
 
-// Small "+"/"−" square used in place of chevron icons for the Floor/Flat/Room
-// expand-collapse toggles (Work Items are leaves and never get one).
-function ExpandToggle({ expanded }: { expanded: boolean }) {
-  return (
-    <span
-      aria-hidden="true"
-      className="inline-flex items-center justify-center w-4 h-4 shrink-0 rounded-[3px] border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-[10px] font-bold leading-none text-gray-600 dark:text-gray-300"
-    >
-      {expanded ? "−" : "+"}
-    </span>
-  );
-}
-
-// Small clickable "+"/"−" square, visually matching ExpandToggle, used for a
-// row's mass-expand-all / collapse-all-descendants action (as opposed to
-// ExpandToggle's own single-node toggle).
+// Small clickable "+"/"−" square used for a row's mass-expand-all /
+// collapse-all-descendants action.
 function MassExpandButton({ mode, title, onClick }: { mode: "expand" | "collapse"; title: string; onClick: (e: MouseEvent) => void }) {
   return (
     <button
@@ -553,7 +539,6 @@ export default function WorkOrderDashboard() {
                                     onClick={() => toggleNode(floor.key)}
                                     className="flex items-center gap-1.5 font-extrabold text-[#1A1A2E] dark:text-[#F1F5F9]"
                                   >
-                                    <ExpandToggle expanded={floorExpanded} />
                                     {floor.label}
                                   </button>
                                   <div className="flex items-center gap-1.5">
@@ -608,7 +593,6 @@ export default function WorkOrderDashboard() {
                                           onClick={() => toggleNode(flat.key)}
                                           className="flex items-center gap-1.5 font-bold text-[#1A1A2E] dark:text-[#F1F5F9] text-left"
                                         >
-                                          <ExpandToggle expanded={flatExpanded} />
                                           <span>{flat.label}</span>
                                         </button>
                                       </Td>
@@ -628,7 +612,6 @@ export default function WorkOrderDashboard() {
                                         onClick={() => toggleNode(flat.key)}
                                         className="flex items-center gap-1.5 font-bold text-[#1A1A2E] dark:text-[#F1F5F9]"
                                       >
-                                        <ExpandToggle expanded={flatExpanded} />
                                         {flat.label}
                                       </button>
                                     </Td>
@@ -646,7 +629,6 @@ export default function WorkOrderDashboard() {
                                               onClick={() => toggleNode(room.key)}
                                               className="flex items-center gap-1.5 text-[#1A1A2E] dark:text-[#F1F5F9] text-left"
                                             >
-                                              <ExpandToggle expanded={roomExpanded} />
                                               <span>{room.label}</span>
                                             </button>
                                           </Td>

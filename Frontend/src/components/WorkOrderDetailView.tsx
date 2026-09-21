@@ -39,22 +39,8 @@ function departmentLabel(department?: string, customDepartment?: string): string
   return DEPARTMENT_LABEL[department];
 }
 
-// Small "+"/"−" square used in place of chevron icons for the Floor/Flat/Room
-// expand-collapse toggles (Work Items are leaves and never get one).
-function ExpandToggle({ expanded }: { expanded: boolean }) {
-  return (
-    <span
-      aria-hidden="true"
-      className="inline-flex items-center justify-center w-4 h-4 shrink-0 rounded-[3px] border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-[10px] font-bold leading-none text-gray-600 dark:text-gray-300"
-    >
-      {expanded ? "−" : "+"}
-    </span>
-  );
-}
-
-// Small clickable "+"/"−" square, visually matching ExpandToggle, used for a
-// row's mass-expand-all / collapse-all-descendants action (as opposed to
-// ExpandToggle's own single-node toggle).
+// Small clickable "+"/"−" square used for a row's mass-expand-all /
+// collapse-all-descendants action.
 function MassExpandButton({ mode, title, onClick }: { mode: "expand" | "collapse"; title: string; onClick: (e: MouseEvent) => void }) {
   return (
     <button
@@ -431,7 +417,7 @@ export default function WorkOrderDetailView({
                 );})
               ) : (
                 <>
-                  {scopeHierarchy.floors.map(floor => {
+                  {scopeHierarchy.floors.map((floor, floorIdx) => {
                     const floorExpanded = expandedNodes.has(floor.key);
                     return (
                       <Fragment key={floor.key}>
@@ -443,7 +429,7 @@ export default function WorkOrderDetailView({
                                 onClick={() => toggleNode(floor.key)}
                                 className="flex items-center gap-1.5 font-extrabold text-[#1A1A2E] dark:text-[#F1F5F9]"
                               >
-                                <ExpandToggle expanded={floorExpanded} />
+                                <span className="inline-block w-6 text-gray-500 dark:text-gray-400 font-normal">{floorIdx + 1}</span>
                                 {floor.label}
                               </button>
                               <div className="flex items-center gap-1.5">
@@ -483,7 +469,7 @@ export default function WorkOrderDetailView({
                           </Td>
                           <Td><span className="font-mono font-extrabold text-primary">{fmt(floor.amount)}</span></Td>
                         </Tr>
-                        {floorExpanded && floor.flats.map(flat => {
+                        {floorExpanded && floor.flats.map((flat) => {
                           const flatExpanded = expandedNodes.has(flat.key);
                           // Old-combined format: no Room level, degrades to Floor → item → subItems.
                           if (!flat.rooms) {
@@ -497,7 +483,7 @@ export default function WorkOrderDetailView({
                                       onClick={() => toggleNode(flat.key)}
                                       className="flex items-center gap-1.5 font-bold text-[#1A1A2E] dark:text-[#F1F5F9] text-left"
                                     >
-                                      <ExpandToggle expanded={flatExpanded} />
+                                      <span className="text-gray-400 text-xs">•</span>
                                       <span>{flat.label}</span>
                                     </button>
                                   </Td>
@@ -516,13 +502,13 @@ export default function WorkOrderDetailView({
                                     onClick={() => toggleNode(flat.key)}
                                     className="flex items-center gap-1.5 font-bold text-[#1A1A2E] dark:text-[#F1F5F9]"
                                   >
-                                    <ExpandToggle expanded={flatExpanded} />
+                                    <span className="text-gray-400 text-xs">•</span>
                                     {flat.label}
                                   </button>
                                 </Td>
                                 <Td><span className="font-mono font-bold text-primary">{fmt(flat.amount)}</span></Td>
                               </Tr>
-                              {flatExpanded && flat.rooms.map(room => {
+                              {flatExpanded && flat.rooms.map((room) => {
                                 const roomExpanded = expandedNodes.has(room.key);
                                 return (
                                   <Fragment key={room.key}>
@@ -533,7 +519,7 @@ export default function WorkOrderDetailView({
                                           onClick={() => toggleNode(room.key)}
                                           className="flex items-center gap-1.5 text-[#1A1A2E] dark:text-[#F1F5F9] text-left"
                                         >
-                                          <ExpandToggle expanded={roomExpanded} />
+                                          <span className="text-gray-400 text-xs">•</span>
                                           <span>{room.label}</span>
                                         </button>
                                       </Td>
