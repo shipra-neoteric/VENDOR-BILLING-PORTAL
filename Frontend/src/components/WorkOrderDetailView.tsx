@@ -456,6 +456,7 @@ export default function WorkOrderDetailView({
                                     e.stopPropagation();
                                     setExpandedNodes(prev => {
                                       const next = new Set(prev);
+                                      next.delete(floor.key);
                                       for (const flat of floor.flats) {
                                         next.delete(flat.key);
                                         if (flat.rooms) for (const room of flat.rooms) next.delete(room.key);
