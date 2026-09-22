@@ -257,11 +257,7 @@ function ApprovalHistoryTimeline({ history }: { history?: ApprovalHistoryEntry[]
 // br.agmApprovedBy already, correctly, reflects.
 async function printBillRequest(br: BillRequestRow) {
   try {
-    // A GM/L3/L4 approver can override who actually gets paid via
-    // payeeVendorCode — the printed FROM (CONTRACTOR) party must follow
-    // that override, same as finalizeBillRequest's own vendorCode fallback
-    // (billRequestController.js), not always the request's base vendor.
-    const contractor = await resolvePrintParty(br.payeeVendorCode || br.vendorCode);
+    const contractor = await resolvePrintParty(br.vendorCode);
 
     if (br.billId?._id) {
       const bRes = await apiClient.get<{ bill: PrintableBill }>(`/bills/${br.billId._id}`);
@@ -291,8 +287,8 @@ async function printBillRequest(br: BillRequestRow) {
       workOrderNo: br.workOrderNo,
       projectName: br.projectName,
       projectLocation: br.projectLocation,
-      vendorCode: br.payeeVendorCode || br.vendorCode,
-      vendorName: br.payeeVendorName || br.vendorName,
+      vendorCode: br.vendorCode,
+      vendorName: br.vendorName,
       companyName: br.companyName,
       generatedBy: br.requestedBy?.name,
       billDate: br.createdAt,
