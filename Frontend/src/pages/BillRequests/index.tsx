@@ -258,6 +258,14 @@ function ApprovalHistoryTimeline({ history }: { history?: ApprovalHistoryEntry[]
 async function printBillRequest(br: BillRequestRow) {
   try {
     const contractor = await resolvePrintParty(br.vendorCode);
+    // Bank Details must reflect who actually gets paid — a GM/L3/L4
+    // approver's payeeVendorCode override (a different VendorGroup member)
+    // if one was set, while the From/To box above keeps showing the
+    // request's own base vendor. Only resolve a second contractor when the
+    // override actually differs, to avoid a redundant lookup.
+    const payeeContractor = br.payeeVendorCode && br.payeeVendorCode !== br.vendorCode
+      ? await resolvePrintParty(br.payeeVendorCode)
+      : null;
 
     if (br.billId?._id) {
       const bRes = await apiClient.get<{ bill: PrintableBill }>(`/bills/${br.billId._id}`);
@@ -277,7 +285,7 @@ async function printBillRequest(br: BillRequestRow) {
         verifiedBy: bill.verifiedBy ?? (actorName(br.gmApprovedBy) ? { name: actorName(br.gmApprovedBy), role: actorRole(br.gmApprovedBy) } : null),
         verifiedAt: bill.verifiedAt ?? br.gmApprovedAt,
       };
-      printBill(printableBill, contractor, bill.status === "paid" ? "post" : "pre");
+      printBill(printableBill, contractor, bill.status === "paid" ? "post" : "pre", undefined, payeeContractor);
       return;
     }
 
@@ -316,7 +324,7 @@ async function printBillRequest(br: BillRequestRow) {
       paymentInitiatedBy: null,
     };
     const statusLabel = br.status === "rejected" ? "Rejected" : `Awaiting ${STATUS_CFG[br.status]?.label ?? "L1 Approval"}`;
-    printBill(pseudoBill, contractor, "pre", statusLabel);
+    printBill(pseudoBill, contractor, "pre", statusLabel, payeeContractor);
   } catch {
     toast.error("Failed to prepare print view");
   }

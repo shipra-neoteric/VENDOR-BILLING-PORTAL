@@ -174,7 +174,14 @@ export function printBill(
   bill: PrintableBill,
   contractor: Contractor | null,
   mode: "pre" | "post" = "pre",
-  statusLabel?: string
+  statusLabel?: string,
+  // Bank Details must reflect who actually GETS PAID — normally the same
+  // as `contractor` (the From/To box's vendor), but when a GM/L3/L4
+  // approver has overridden payment to a different VendorGroup member
+  // (payeeVendorCode), this lets the bank section resolve that payee's
+  // account independently, while the From/To box still shows the
+  // request's own base vendor.
+  payeeContractor?: Contractor | null
 ) {
   const companyName = bill.companyName || "Neoteric Properties";
   const contractorName = bill.vendorName || contractor?.companyName || "—";
@@ -202,18 +209,19 @@ export function printBill(
   const itemLocations = [...new Set((bill.lineItems || []).map(li => li.location).filter(Boolean))];
   const headerLocation = itemLocations.length > 0 ? itemLocations.join(" · ") : bill.projectLocation;
 
+  const bankContractor = payeeContractor ?? contractor;
   const bankSection =
-    contractor?.bankName
+    bankContractor?.bankName
       ? `<div style="border:1px solid #e8e8e8;border-radius:6px;padding:14px;margin-bottom:24px">
           <h4 style="font-size:10px;text-transform:uppercase;color:#f47b20;letter-spacing:1px;margin:0 0 10px">Bank Details</h4>
           <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
-            <div><span style="font-size:10px;color:#999;display:block">Account Holder Name</span><strong>${contractor.accountHolderName || "-"}</strong></div>
-            <div><span style="font-size:10px;color:#999;display:block">Bank Name</span><strong>${contractor.bankName}</strong></div>
-            <div><span style="font-size:10px;color:#999;display:block">Account No.</span><strong>${contractor.accountNumber || "-"}</strong></div>
-            <div><span style="font-size:10px;color:#999;display:block">IFSC Code</span><strong>${contractor.ifscCode || "-"}</strong></div>
-            <div><span style="font-size:10px;color:#999;display:block">Branch</span><strong>${contractor.branchName || "-"}</strong></div>
-            <div><span style="font-size:10px;color:#999;display:block">PAN No.</span><strong>${contractor.panNumber || "-"}</strong></div>
-            <div><span style="font-size:10px;color:#999;display:block">Aadhaar No.</span><strong>${contractor.aadhaarNumber || "-"}</strong></div>
+            <div><span style="font-size:10px;color:#999;display:block">Account Holder Name</span><strong>${bankContractor.accountHolderName || "-"}</strong></div>
+            <div><span style="font-size:10px;color:#999;display:block">Bank Name</span><strong>${bankContractor.bankName}</strong></div>
+            <div><span style="font-size:10px;color:#999;display:block">Account No.</span><strong>${bankContractor.accountNumber || "-"}</strong></div>
+            <div><span style="font-size:10px;color:#999;display:block">IFSC Code</span><strong>${bankContractor.ifscCode || "-"}</strong></div>
+            <div><span style="font-size:10px;color:#999;display:block">Branch</span><strong>${bankContractor.branchName || "-"}</strong></div>
+            <div><span style="font-size:10px;color:#999;display:block">PAN No.</span><strong>${bankContractor.panNumber || "-"}</strong></div>
+            <div><span style="font-size:10px;color:#999;display:block">Aadhaar No.</span><strong>${bankContractor.aadhaarNumber || "-"}</strong></div>
           </div>
         </div>`
       : "";
