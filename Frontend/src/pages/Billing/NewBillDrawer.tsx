@@ -794,10 +794,19 @@ export default function NewBillDrawer({
 
     setSaving(true);
     try {
-      const res = await apiClient.post<{ bill: Record<string, unknown> }>("/bills", payload);
-      toast.success(`Bill ${res.data.bill.billNo} created — awaiting maker confirmation`);
-      onCreated(res.data.bill);
-      onClose();
+      const res = await apiClient.post<{ bill?: Record<string, unknown>; advanceSlip?: Record<string, unknown> }>("/bills", payload);
+      // Mob. Advance + ADVANCE_FOR never creates a RunningBill at all anymore
+      // — the backend creates an AdvanceSlip directly and returns it instead
+      // of `bill` (see billController.createBill). Handle that shape here
+      // rather than assuming res.data.bill always exists.
+      if (res.data.advanceSlip) {
+        toast.success(`Advance slip ${res.data.advanceSlip.slipNo} created — visible in Advance Payments`);
+        onClose();
+      } else if (res.data.bill) {
+        toast.success(`Bill ${res.data.bill.billNo} created — awaiting maker confirmation`);
+        onCreated(res.data.bill);
+        onClose();
+      }
     } catch (err: unknown) {
       const e = err as { response?: { data?: { message?: string } } };
       toast.error(e?.response?.data?.message || "Failed to create bill");

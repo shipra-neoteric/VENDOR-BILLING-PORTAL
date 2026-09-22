@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Plus, Receipt, FileText, Ban, CheckCircle2, Eye, Download, Printer } from "lucide-react";
 import toast from "react-hot-toast";
 import dayjs from "dayjs";
 import type { Dayjs } from "dayjs";
 import apiClient from "../../services/apiClient";
 import { printBill, resolvePrintParty } from "../../shared/utils/printBill";
+import { printAdvanceSlip } from "../../shared/utils/printAdvanceSlip";
 import PageHeader from "../../ui/PageHeader";
 import NxBtn from "../../ui/nexora/Btn";
 import NxBadge from "../../ui/nexora/Badge";
@@ -103,6 +105,21 @@ interface Bill {
   manualGmApprovedAt?: string;
   manualRejectedBy?: { name: string } | null;
   manualRejectReason?: string;
+
+  // Only set on a merged-in AdvanceSlip row (billType === 'advance_slip') —
+  // see billController.js::listBills.
+  amountRecovered?: number;
+  reference?: string;
+  notes?: string;
+}
+
+// billType === "advance_slip" is the discriminator the backend sets only on
+// a merged-in AdvanceSlip row (see billController.js::listBills) — every
+// other field on that row stays undefined except the ones mapped there
+// (billNo/vendorName/projectName/amount/billDate/status). A real RunningBill
+// row's billType is always one of BILL_TYPE_CFG's own keys, never this.
+function isAdvanceSlipRow(b: Bill): boolean {
+  return b.billType === "advance_slip";
 }
 
 interface ProjectOpt { id: string; name: string; code: string; parentId?: string | null; }
@@ -140,8 +157,20 @@ function hasPerm(user: AuthUser | null, action: string): boolean {
   return !!user.permissions?.find((p) => p.module === "billing")?.actions.includes(action);
 }
 
+const ADVANCE_SLIP_STATUS_BADGE_COLOR: Record<string, NxBadgeColor> = {
+  outstanding: "amber",
+  partial: "blue",
+  recovered: "green",
+};
+const ADVANCE_SLIP_STATUS_LABEL: Record<string, string> = {
+  outstanding: "Outstanding",
+  partial: "Partially Recovered",
+  recovered: "Recovered",
+};
+
 export default function Billing() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const canCreate = hasPerm(user, "create");
 
   const [bills, setBills] = useState<Bill[]>([]);
@@ -171,6 +200,37 @@ export default function Billing() {
   // above), so only the vendor's (Contractor or Consultant) bank details need
   // a fresh lookup.
   async function handleDownload(bill: Bill) {
+    // An AdvanceSlip row has no line items/GST/approval chain — the full
+    // RunningBill print template doesn't apply, so it gets its own minimal
+    // template (see printAdvanceSlip.ts) instead of being forced through
+    // printBill's pre/post-payment layout.
+    if (isAdvanceSlipRow(bill)) {
+      setDownloadingId(bill.id);
+      try {
+        // Same contractor lookup a real bill's print already does (bank/GST/
+        // PAN details) — see resolvePrintParty in printBill.ts.
+        const contractor = await resolvePrintParty(bill.vendorCode);
+        printAdvanceSlip({
+          slipNo: bill.billNo,
+          contractorName: bill.vendorName,
+          contractorCode: bill.vendorCode,
+          projectName: bill.projectName,
+          companyName: bill.companyName,
+          generatedBy: bill.generatedBy,
+          amount: bill.amount,
+          amountRecovered: bill.amountRecovered,
+          reference: bill.reference,
+          notes: bill.notes,
+          date: bill.billDate,
+          status: bill.status,
+        }, contractor);
+      } catch {
+        toast.error("Failed to prepare the advance slip for download");
+      } finally {
+        setDownloadingId(null);
+      }
+      return;
+    }
     setDownloadingId(bill.id);
     try {
       const contractor = await resolvePrintParty(bill.vendorCode);
@@ -180,6 +240,19 @@ export default function Billing() {
     } finally {
       setDownloadingId(null);
     }
+  }
+
+  // A slip row has no bill-detail drawer to open (no lineItems/approval
+  // chain/etc. worth showing there) — clicking it instead goes to the
+  // Advance Payments page, where its full outstanding/partial/recovered
+  // lifecycle actually lives, rather than opening the RunningBill-shaped
+  // view modal below on a row it wasn't built for.
+  function handleRowClick(bill: Bill) {
+    if (isAdvanceSlipRow(bill)) {
+      navigate("/advance-payments");
+      return;
+    }
+    setViewBillId(bill.id);
   }
 
   const loadBills = useCallback(() => {
@@ -361,7 +434,7 @@ export default function Billing() {
               </Thead>
               <Tbody>
                 {pagedBills.map((r) => (
-                  <Tr key={r.id} className="cursor-pointer" onClick={() => setViewBillId(r.id)}>
+                  <Tr key={r.id} className="cursor-pointer" onClick={() => handleRowClick(r)}>
                     <Td className="font-bold text-primary">
                       <div className="whitespace-nowrap truncate max-w-[90px]" title={r.billNo}>{r.billNo}</div>
                       {supersededByMap[r.billNo]?.length ? (
@@ -374,7 +447,9 @@ export default function Billing() {
                       ) : null}
                     </Td>
                     <Td className="whitespace-nowrap">
-                      {r.billType ? (
+                      {isAdvanceSlipRow(r) ? (
+                        <NxBadge color="indigo">Advance Slip</NxBadge>
+                      ) : r.billType ? (
                         <NxBadge color="blue">{BILL_TYPE_CFG[r.billType]?.label || r.billType}</NxBadge>
                       ) : (
                         <span className="text-gray-300 dark:text-gray-600">—</span>
@@ -396,13 +471,17 @@ export default function Billing() {
                       )}
                     </Td>
                     <Td>
-                      <NxBadge color={BILL_STATUS_BADGE_COLOR[r.status] ?? "gray"}>{BILL_STATUS_LABEL[r.status] || r.status}</NxBadge>
+                      {isAdvanceSlipRow(r) ? (
+                        <NxBadge color={ADVANCE_SLIP_STATUS_BADGE_COLOR[r.status] ?? "gray"}>{ADVANCE_SLIP_STATUS_LABEL[r.status] || r.status}</NxBadge>
+                      ) : (
+                        <NxBadge color={BILL_STATUS_BADGE_COLOR[r.status] ?? "gray"}>{BILL_STATUS_LABEL[r.status] || r.status}</NxBadge>
+                      )}
                     </Td>
                     <Td>{r.billDate ? dayjs(r.billDate).format("DD MMM YYYY") : "—"}</Td>
                     <Td onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center gap-1">
-                        <NxBtn color="icon-blue" title="View" icon={Eye} onClick={() => setViewBillId(r.id)} />
-                        <NxBtn color="icon-pink" title="Download" icon={Download} loading={downloadingId === r.id} onClick={() => handleDownload(r)} />
+                        <NxBtn color="icon-blue" title="View" icon={Eye} onClick={() => handleRowClick(r)} />
+                        <NxBtn color="icon-pink" title="Print / Download" icon={Download} loading={downloadingId === r.id} onClick={() => handleDownload(r)} />
                       </div>
                     </Td>
                   </Tr>
