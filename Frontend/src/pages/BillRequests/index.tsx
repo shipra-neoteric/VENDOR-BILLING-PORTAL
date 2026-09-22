@@ -207,9 +207,15 @@ function actorRole(by?: { name: string; role?: string } | string | null): string
   return by.role;
 }
 
-// A grant for module 'bill-requests' with the given action.
+// A grant for module 'bill-requests' with the given action. Owner bypasses
+// every module/action check here, same as every other department-scoped or
+// stage-scoped gate in this app (approverAllowed, canActOnDepartment) — this
+// function was the one place that check was missing, requiring Owner to
+// hold an explicit permission grant like any other user just to see the
+// L3/L4 approve/reject buttons on their own account.
 function hasPerm(user: AuthUser | null, action: string): boolean {
   if (!user) return false;
+  if (user.role === "owner") return true;
   return !!user.permissions?.find(p => p.module === "bill-requests")?.actions.includes(action);
 }
 
