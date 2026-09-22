@@ -305,9 +305,13 @@ async function printBillRequest(br: BillRequestRow) {
       // this pseudoBill path is hit whenever no RunningBill exists yet
       // (a 3+/4-level department's request, still mid-chain past L2, has no
       // bill until its own final stage), so L2's own sign-off must come
-      // straight off the BillRequest, same as agmApprovedBy above.
-      verifiedBy: br.gmApprovedBy ? { name: actorName(br.gmApprovedBy) || "—", role: actorRole(br.gmApprovedBy) } : null,
-      verifiedAt: br.gmApprovedAt,
+      // straight off the BillRequest, same as agmApprovedBy above. Set on
+      // gmApprovedBy (not verifiedBy) — printBill.ts's L2 fallback chain
+      // (`l2 = l2ApprovedBy || gmApprovedBy || manualGmApprovedBy`)
+      // deliberately never reads verifiedBy, which is reserved for the
+      // separate Accounts Payment "Verify" step.
+      gmApprovedBy: br.gmApprovedBy ? { name: actorName(br.gmApprovedBy) || "—", role: actorRole(br.gmApprovedBy) } : null,
+      gmApprovedAt: br.gmApprovedAt,
       approvedBy: null,
       paymentInitiatedBy: null,
     };
