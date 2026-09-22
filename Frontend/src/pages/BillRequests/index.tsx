@@ -372,6 +372,21 @@ export default function BillApproval() {
   const canL3Approve = hasPerm(user, "l3-approve");
   const canL4Approve = hasPerm(user, "l4-approve");
   const canRejectAny = canAgmApprove || canGmApprove || canL3Approve || canL4Approve || user?.role === "accounts" || hasPerm(user, "reject");
+  // Reject must be scoped to the SPECIFIC stage a row is actually pending
+  // at — holding gm-approve must not let someone reject a row that's
+  // pending-l3. Mirrors the backend's REJECT_PERMISSION mapping in
+  // rejectBillRequest. accounts / explicit 'reject' grant remain an escape
+  // hatch that can reject any stage, same as canRejectAny above.
+  const canRejectThisStage = (status?: string): boolean => {
+    if (user?.role === "accounts" || hasPerm(user, "reject")) return true;
+    switch (status) {
+      case "pending": return canAgmApprove;
+      case "pending-gm": return canGmApprove;
+      case "pending-l3": return canL3Approve;
+      case "pending-l4": return canL4Approve;
+      default: return false;
+    }
+  };
 
   const [loading, setLoading] = useState(true);
   const [projects, setProjects] = useState<ProjectOption[]>([]);
@@ -934,21 +949,22 @@ export default function BillApproval() {
           value={reqTab}
           onChange={setReqTab}
           options={[
-            // Each stage's tab only shows to someone who actually holds that
-            // stage's own permission grant — consistent with this app's
-            // permission-matrix-only authorization (no role-based bypass,
-            // Owner included): a user granted only e.g. gm-approve has no
-            // business browsing an L1/L3/L4 queue they can't act on.
-            ...(canAgmApprove ? [{ value: "pending", label: <span className="inline-flex items-center gap-1.5">Pending L1 {pendingAgmReqs.length + pendingManualAgm.length > 0 && <NxBadge color="amber">{pendingAgmReqs.length + pendingManualAgm.length}</NxBadge>}</span> }] : []),
-            ...(canGmApprove ? [{ value: "pending-gm", label: <span className="inline-flex items-center gap-1.5">Pending L2 {pendingGmReqs.length + pendingManualGm.length > 0 && <NxBadge color="blue">{pendingGmReqs.length + pendingManualGm.length}</NxBadge>}</span> }] : []),
-            // L3 is now a real, regularly-reached stage (a 3-level
-            // department's chain stops there) — always shown to whoever can
-            // act on it, same as L1/L2. L4 additionally stays conditional on
-            // there currently being something pending there since no
-            // department yet configures 4 levels — that tab would otherwise
-            // just be permanent dead weight even for someone who holds l4-approve.
-            ...(canL3Approve ? [{ value: "pending-l3", label: <span className="inline-flex items-center gap-1.5">Pending L3 {pendingL3Reqs.length + pendingManualL3.length > 0 && <NxBadge color="amber">{pendingL3Reqs.length + pendingManualL3.length}</NxBadge>}</span> }] : []),
-            ...(canL4Approve && pendingL4Reqs.length + pendingManualL4.length > 0 ? [{ value: "pending-l4", label: <span className="inline-flex items-center gap-1.5">Pending L4 <NxBadge color="teal">{pendingL4Reqs.length + pendingManualL4.length}</NxBadge></span> }] : []),
+            // Tab VISIBILITY is intentionally decoupled from the stage's
+            // approve permission: anyone who can load this page (i.e. see
+            // BillRequests at all) can browse every stage's queue read-only,
+            // even a stage they hold no approve grant for (e.g. a GM with
+            // only agm-approve/gm-approve can still open Pending L3 to look).
+            // The Approve/Reject controls on each row stay gated on the
+            // row's own stage permission (canAgmApprove/canGmApprove/
+            // canL3Approve/canL4Approve, canRejectThisStage) — see below,
+            // unchanged by this.
+            { value: "pending", label: <span className="inline-flex items-center gap-1.5">Pending L1 {pendingAgmReqs.length + pendingManualAgm.length > 0 && <NxBadge color="amber">{pendingAgmReqs.length + pendingManualAgm.length}</NxBadge>}</span> },
+            { value: "pending-gm", label: <span className="inline-flex items-center gap-1.5">Pending L2 {pendingGmReqs.length + pendingManualGm.length > 0 && <NxBadge color="blue">{pendingGmReqs.length + pendingManualGm.length}</NxBadge>}</span> },
+            { value: "pending-l3", label: <span className="inline-flex items-center gap-1.5">Pending L3 {pendingL3Reqs.length + pendingManualL3.length > 0 && <NxBadge color="amber">{pendingL3Reqs.length + pendingManualL3.length}</NxBadge>}</span> },
+            // L4 stays conditional on there currently being something
+            // pending there since no department yet configures 4 levels —
+            // that tab would otherwise just be permanent dead weight.
+            ...(pendingL4Reqs.length + pendingManualL4.length > 0 ? [{ value: "pending-l4", label: <span className="inline-flex items-center gap-1.5">Pending L4 <NxBadge color="teal">{pendingL4Reqs.length + pendingManualL4.length}</NxBadge></span> }] : []),
             { value: "approved", label: "Approved" },
             { value: "rejected", label: "Rejected" },
             { value: "all", label: "All" },
@@ -1112,7 +1128,7 @@ export default function BillApproval() {
                         {r.status === "pending-l4" && canL4Approve && (
                           <NxBtn color="icon-green" title="L4 Approve" icon={Check} onClick={() => { setL4Target(r._id); setL4Remarks(""); setL4Modal(true); }} />
                         )}
-                        {["pending", "pending-gm", "pending-l3", "pending-l4"].includes(r.status) && canRejectAny && (
+                        {["pending", "pending-gm", "pending-l3", "pending-l4"].includes(r.status) && canRejectThisStage(r.status) && (
                           <NxBtn color="icon-red" title="Reject" icon={X} onClick={() => { setRejectTarget(r._id); setRejectModal(true); }} />
                         )}
                       </div>
@@ -1159,25 +1175,25 @@ export default function BillApproval() {
               <Btn outline icon={Printer} label="Print" loading={printingReqId === viewReq._id} onClick={() => handlePrintReq(viewReq)} />
               {viewReq.status === "pending" && (
                 <>
-                  {canRejectAny && <Btn color="red" label="Reject" onClick={() => { setRejectTarget(viewReq._id); setRejectModal(true); setViewReq(null); }} />}
+                  {canRejectThisStage(viewReq.status) && <Btn color="red" label="Reject" onClick={() => { setRejectTarget(viewReq._id); setRejectModal(true); setViewReq(null); }} />}
                   {canAgmApprove && <Btn color="primary" label="L1 Approve →" onClick={() => { openApprove(viewReq._id); setViewReq(null); }} />}
                 </>
               )}
               {viewReq.status === "pending-gm" && (
                 <>
-                  {canRejectAny && <Btn color="red" label="Reject" onClick={() => { setRejectTarget(viewReq._id); setRejectModal(true); setViewReq(null); }} />}
+                  {canRejectThisStage(viewReq.status) && <Btn color="red" label="Reject" onClick={() => { setRejectTarget(viewReq._id); setRejectModal(true); setViewReq(null); }} />}
                   {canGmApprove && <Btn color="blue" label="L2 Approve →" onClick={() => { openGmApprove(viewReq._id); setViewReq(null); }} />}
                 </>
               )}
               {viewReq.status === "pending-l3" && (
                 <>
-                  {canRejectAny && <Btn color="red" label="Reject" onClick={() => { setRejectTarget(viewReq._id); setRejectModal(true); setViewReq(null); }} />}
+                  {canRejectThisStage(viewReq.status) && <Btn color="red" label="Reject" onClick={() => { setRejectTarget(viewReq._id); setRejectModal(true); setViewReq(null); }} />}
                   {canL3Approve && <Btn color="blue" label="L3 Approve →" onClick={() => { setL3Target(viewReq._id); setL3Remarks(""); setL3Modal(true); setViewReq(null); }} />}
                 </>
               )}
               {viewReq.status === "pending-l4" && (
                 <>
-                  {canRejectAny && <Btn color="red" label="Reject" onClick={() => { setRejectTarget(viewReq._id); setRejectModal(true); setViewReq(null); }} />}
+                  {canRejectThisStage(viewReq.status) && <Btn color="red" label="Reject" onClick={() => { setRejectTarget(viewReq._id); setRejectModal(true); setViewReq(null); }} />}
                   {canL4Approve && <Btn color="blue" label="L4 Approve →" onClick={() => { setL4Target(viewReq._id); setL4Remarks(""); setL4Modal(true); setViewReq(null); }} />}
                 </>
               )}

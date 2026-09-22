@@ -14,6 +14,7 @@ const { resolvePayee } = require('../utils/vendorGroupHelpers');
 const { applyAdvanceRecoveries } = require('../utils/advanceRecovery');
 const { notifyStagePending, settleAllPendingForEntity } = require('../utils/slackApprovals');
 const { canActOnDepartment } = require('../utils/departmentAccess');
+const { can } = require('../middleware/auth');
 const { getApprovalConfig, approverAllowed } = require('../utils/approvalRules');
 const { notifyStageInApp, notifyUser } = require('../utils/notificationService');
 
@@ -766,6 +767,19 @@ exports.rejectBillRequest = asyncHandler(async (req, res) => {
   const REJECTABLE_STAGES = { pending: 'agm', 'pending-gm': 'gm', 'pending-l3': 'l3', 'pending-l4': 'l4' };
   const rejectedStage = REJECTABLE_STAGES[br.status];
   if (!rejectedStage) return badRequest(res, `Request is already ${br.status}`);
+
+  // Reject must be scoped to the SPECIFIC stage this request is actually
+  // sitting at — holding, say, gm-approve must not let someone reject a
+  // request that's pending at l3. Mirrors the same stage→action mapping the
+  // approve handlers use. Owner/accounts bypass everything (same convention
+  // as hasBothBRPermissions above); an explicit generic 'reject' grant is
+  // kept as an escape hatch for whoever's turn it currently is.
+  const REJECT_PERMISSION = { agm: 'agm-approve', gm: 'gm-approve', l3: 'l3-approve', l4: 'l4-approve' };
+  const requiredAction = REJECT_PERMISSION[rejectedStage];
+  if (!can(req.user, 'bill-requests', requiredAction, 'owner', 'accounts') &&
+      !can(req.user, 'bill-requests', 'reject', 'owner', 'accounts')) {
+    return forbidden(res, `You do not have permission to reject a request at its current stage (${br.status}).`);
+  }
 
   const rejectReason = req.body.rejectReason || 'No reason provided';
 
