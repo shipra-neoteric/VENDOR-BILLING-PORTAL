@@ -232,7 +232,9 @@ export default function Contractors() {
     (c) =>
       (c.vendorCode.toLowerCase().includes(search.toLowerCase()) ||
         c.companyName.toLowerCase().includes(search.toLowerCase()) ||
-        c.mobile.includes(search)) &&
+        (c.ownerName || "").toLowerCase().includes(search.toLowerCase()) ||
+        c.mobile.includes(search) ||
+        (groupById(c.groupId)?.name || "").toLowerCase().includes(search.toLowerCase())) &&
       (statusFilter === "all" || (c.status || "active") === statusFilter)
   );
   const { page, totalPages, setPage, pageItems: pagedContractors } = usePagination(filtered, 10);
@@ -370,7 +372,7 @@ export default function Contractors() {
       {/* Filters */}
       <div className="bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700/40 rounded-lg p-3.5 mb-4">
         <div className="flex gap-2.5 items-center flex-wrap">
-          <SearchFilter placeholder="Search by vendor code, company name, or mobile…" value={search} onChange={setSearch} />
+          <SearchFilter placeholder="Search by vendor code, company, owner, mobile, or vendor group…" value={search} onChange={setSearch} />
           {hasActiveFilters && <Btn small outline label="Clear all" onClick={clearAllFilters} />}
           <span className="ml-auto text-gray-400 text-xs whitespace-nowrap">
             {filtered.length} contractor{filtered.length !== 1 ? "s" : ""}

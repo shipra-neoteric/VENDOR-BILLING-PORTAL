@@ -216,6 +216,7 @@ export function printBill(
           <h4 style="font-size:10px;text-transform:uppercase;color:#f47b20;letter-spacing:1px;margin:0 0 10px">Bank Details</h4>
           <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
             <div><span style="font-size:10px;color:#999;display:block">Account Holder Name</span><strong>${bankContractor.accountHolderName || "-"}</strong></div>
+            <div><span style="font-size:10px;color:#999;display:block">Vendor Code</span><strong>${bankContractor.vendorCode || "-"}</strong></div>
             <div><span style="font-size:10px;color:#999;display:block">Bank Name</span><strong>${bankContractor.bankName}</strong></div>
             <div><span style="font-size:10px;color:#999;display:block">Account No.</span><strong>${bankContractor.accountNumber || "-"}</strong></div>
             <div><span style="font-size:10px;color:#999;display:block">IFSC Code</span><strong>${bankContractor.ifscCode || "-"}</strong></div>
