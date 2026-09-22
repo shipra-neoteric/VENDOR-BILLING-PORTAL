@@ -918,6 +918,23 @@ export default function BillApproval() {
     return <div className="flex justify-center py-20"><Spinner size="large" /></div>;
   }
 
+  // The Pending L1-L4 tabs are intentionally readable by anyone with SOME
+  // bill-requests access (e.g. a GM who only holds gm-approve should still
+  // see what's stuck at L3, per this session's own request) — but that's
+  // not the same as opening this whole page to literally any authenticated
+  // user regardless of module permission. A user with zero bill-requests
+  // grants (no entry in their permissions array at all) has no legitimate
+  // reason to be here — the sidebar already hides the nav item for them,
+  // but the route itself has no guard, so a direct/typed URL still reached
+  // this component. Owner/accounts keep their existing app-wide bypass.
+  const hasAnyBillRequestsAccess =
+    user?.role === "owner" ||
+    user?.role === "accounts" ||
+    (user?.permissions ?? []).some((p) => p.module === "bill-requests");
+  if (!hasAnyBillRequestsAccess) {
+    return null;
+  }
+
   return (
     <div>
       <PageHeader
