@@ -59,7 +59,7 @@ function KpiTable({ title, rows }: { title: string; rows: { label: string; value
 function DataTable({ title, columns, widths, rows, emptyLabel }: { title: string; columns: string[]; widths?: number[]; rows: string[][]; emptyLabel?: string }) {
   return (
     <View style={S.table}>
-      <View style={S.secHeader} wrap={false}><Text style={S.secTitle}>{title}</Text></View>
+      <View style={S.secHeader} wrap={false} minPresenceAhead={90}><Text style={S.secTitle}>{title}</Text></View>
       <View style={S.hdr} wrap={false}>
         {columns.map((c, i) => <Text key={c} style={[S.col, S.hdrText, widths ? { flex: widths[i] } : {}]}>{c}</Text>)}
       </View>
