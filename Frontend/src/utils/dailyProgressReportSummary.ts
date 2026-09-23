@@ -85,6 +85,7 @@ export interface DailyProgressReportSummary {
   workTypeSummary: { workType: string; entries: number; pct: number }[];
   workProgress: { description: string; projectName: string; workOrderNo: string; unit: string; planned: number; completed: number; pct: number }[];
   drawingRequests: { ticketNo: string; description: string; projectName: string; driName: string; stageLabel: string; requestedOn: string; daysSince: number }[];
+  pendingBills: { billNo: string; description: string; project: string; createdAt: string; daysPending: number; stage: string }[];
   actionItems: { level: "critical" | "warning" | "good"; text: string }[];
 }
 
@@ -97,8 +98,9 @@ export function buildDailyProgressReportSummary(args: {
   filterProjectId: string;
   filterDriName: string;
   preparedBy: string;
+  pendingBills?: { billNo: string; description: string; project: string; createdAt: string; daysPending: number; stage: string }[];
 }): DailyProgressReportSummary {
-  const { reports, workOrders, drawingReqs, projects, period, filterProjectId, filterDriName, preparedBy } = args;
+  const { reports, workOrders, drawingReqs, projects, period, filterProjectId, filterDriName, preparedBy, pendingBills } = args;
 
   const inRange = reports.filter(r =>
     inDateRange(r.date, period.from, period.to) &&
@@ -308,6 +310,8 @@ export function buildDailyProgressReportSummary(args: {
       reportsSubmitted: inRange.length,
       drawingRequests: filteredDR.length,
     },
-    projectSummary, workTypeSummary, workProgress, drawingRequests: drawingRequestsOut, actionItems,
+    projectSummary, workTypeSummary, workProgress, drawingRequests: drawingRequestsOut,
+    pendingBills: pendingBills || [],
+    actionItems,
   };
 }

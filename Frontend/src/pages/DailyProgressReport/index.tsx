@@ -129,6 +129,17 @@ interface ProgressReportRow extends DailyProgressReportFormValues {
   createdAt: string;
 }
 
+interface PendingBillRow {
+  id: string;
+  billNo: string;
+  source: "bill_request" | "manual_bill";
+  description: string;
+  project: string;
+  createdAt: string;
+  daysPending: number;
+  stage: string;
+}
+
 const emptyForm: DailyProgressReportFormValues = {
   projectId: "", driName: "", date: dayjs().format("YYYY-MM-DD"), vendorCode: "",
   shiftType: "", labourCount: "", workEntries: [],
@@ -165,6 +176,20 @@ export default function DailyProgressReport() {
   const [filterDriName, setFilterDriName] = useState("");
   const [activeTab, setActiveTab] = useState<"progress" | "drawings" | "summary">("progress");
   const [generating, setGenerating] = useState(false);
+
+  // Pending Bills — a different data domain from the rest of this page
+  // (billing approvals, not site progress/labour), fetched independently so
+  // it doesn't disturb fetchAll's existing Promise.all shape (also used by
+  // PDF generation).
+  const [pendingBills, setPendingBills] = useState<PendingBillRow[]>([]);
+  const [pendingBillsLoading, setPendingBillsLoading] = useState(true);
+
+  useEffect(() => {
+    apiClient.get("/bill-requests/pending-summary")
+      .then(res => setPendingBills((res.data.bills || []) as PendingBillRow[]))
+      .catch(() => { })
+      .finally(() => setPendingBillsLoading(false));
+  }, []);
 
   // Returns the freshly-fetched data directly (in addition to updating
   // state) so callers that need it immediately — like PDF generation —
@@ -215,6 +240,10 @@ export default function DailyProgressReport() {
         filterProjectId,
         filterDriName,
         preparedBy: user?.name || "—",
+        pendingBills: pendingBills.map(b => ({
+          billNo: b.billNo, description: b.description, project: b.project,
+          createdAt: b.createdAt, daysPending: b.daysPending, stage: b.stage,
+        })),
       });
       const { downloadDailyProgressReportPDF } = await import("../../components/DailyProgressReportPDF");
       await downloadDailyProgressReportPDF(summary);
@@ -630,6 +659,37 @@ export default function DailyProgressReport() {
           )}
         </Card>
       )}
+
+      {/* ── Pending Bills — additive section, unrelated to the tabs above ── */}
+      <NxCard padded={false} className="mb-5 overflow-hidden">
+        <div className="px-5 py-3.5 border-b border-gray-100 dark:border-gray-700/40 flex justify-between items-center">
+          <div className="font-bold text-[15px] text-[#1A1A2E] dark:text-[#F1F5F9]">Pending Bills</div>
+          <NxBadge color="amber">{pendingBills.length} pending</NxBadge>
+        </div>
+        {pendingBillsLoading ? (
+          <div className="p-4"><SkeletonTable rows={4} cols={4} /></div>
+        ) : pendingBills.length === 0 ? (
+          <div className="py-12"><EmptyState title="No bills currently pending approval" /></div>
+        ) : (
+          <Table>
+            <Thead>
+              <Tr><Th>Bill No.</Th><Th>Description</Th><Th>Project</Th><Th>Stage</Th><Th>Requested On</Th><Th className="text-right">Days</Th></Tr>
+            </Thead>
+            <Tbody>
+              {pendingBills.slice(0, 15).map(b => (
+                <Tr key={b.id}>
+                  <Td><span className="font-mono font-bold text-primary">{b.billNo}</span></Td>
+                  <Td><TdText>{b.description}</TdText></Td>
+                  <Td><TdText>{b.project}</TdText></Td>
+                  <Td><TdText>{b.stage}</TdText></Td>
+                  <Td><TdText>{dayjs(b.createdAt).format("DD MMM YYYY")}</TdText></Td>
+                  <Td className="text-right font-mono">{b.daysPending}</Td>
+                </Tr>
+              ))}
+            </Tbody>
+          </Table>
+        )}
+      </NxCard>
 
       {showForm && (
         <Modal

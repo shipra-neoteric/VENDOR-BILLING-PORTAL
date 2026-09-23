@@ -7,6 +7,7 @@ const { resolvePayee } = require('../utils/vendorGroupHelpers');
 const asyncHandler = require('../utils/asyncHandler');
 const { success, created, notFound, badRequest, conflict, forbidden } = require('../utils/responseFormatter');
 const { canActOnDepartment } = require('../utils/departmentAccess');
+const { can } = require('../middleware/auth');
 const { nextBillNo, nextBillRequestReqNo } = require('../utils/codeGen');
 const emitEvent    = require('../utils/emitEvent');
 const { advanceInstance, cancelInstance } = require('../utils/slaEngine');
@@ -17,8 +18,9 @@ const { applyAdvanceRecoveries, reverseAdvanceRecoveries } = require('../utils/a
 const AdvanceSlip  = require('../models/AdvanceSlip');
 const { nextCode } = require('../utils/sequence');
 const { notifyStagePending, settleAllPendingForEntity } = require('../utils/slackApprovals');
-const { getApprovalConfig, approverAllowed } = require('../utils/approvalRules');
+const { getApprovalConfig, approverAllowed, DEFAULT_AGM_ROLES, DEFAULT_GM_ROLES, DEFAULT_L3_ROLES, DEFAULT_L4_ROLES } = require('../utils/approvalRules');
 const { notifyStageInApp, notifyByPermission } = require('../utils/notificationService');
+const User = require('../models/User');
 
 const MODULE = 'accounts-payment';
 
@@ -995,6 +997,20 @@ exports.manualReject = asyncHandler(async (req, res) => {
   if (!rejectingStage) {
     return badRequest(res, `This bill's AGM/GM sign-off is already ${bill.manualApprovalStatus}`);
   }
+
+  // Reject must be scoped to the SPECIFIC stage this manual bill is actually
+  // sitting at — holding, say, gm-approve must not let someone reject a bill
+  // that's pending-l3. Mirrors rejectBillRequest's REJECT_PERMISSION mapping;
+  // the route-level authorizeAnyOr above is only a coarse first-pass gate.
+  // Owner/accounts bypass everything; an explicit generic 'reject' grant is
+  // kept as an escape hatch for whoever's turn it currently is.
+  const REJECT_PERMISSION = { pending: 'agm-approve', 'pending-gm': 'gm-approve', 'pending-l3': 'l3-approve', 'pending-l4': 'l4-approve' };
+  const requiredAction = REJECT_PERMISSION[bill.manualApprovalStatus];
+  if (!can(req.user, 'bill-requests', requiredAction, 'owner', 'accounts') &&
+      !can(req.user, 'bill-requests', 'reject', 'owner', 'accounts')) {
+    return forbidden(res, `You do not have permission to reject a bill at its current stage (${bill.manualApprovalStatus}).`);
+  }
+
   const reason = req.body.reason || 'No reason provided';
 
   // Roll back lastBilledQty for scope-linked line items — createBill already
@@ -1558,4 +1574,69 @@ exports.unarchiveBillsBulk = asyncHandler(async (req, res) => {
   await RunningBill.updateMany({ _id: { $in: ids } }, { isArchived: false, archivedAt: null });
   await BillRequest.updateMany({ billId: { $in: ids } }, { isArchived: false, archivedAt: null });
   success(res, {}, `${ids.length} bill(s) unarchived`);
+});
+
+// GET /api/bill-requests/pending-summary
+//
+// Read-only rollup for the Daily Progress Report page's "Pending Bills"
+// section — everything currently sitting in an approval queue, whether it's
+// a BillRequest that never finalized (status pending/pending-gm/pending-l3/
+// pending-l4) or a manually-entered bill still working through the same
+// chain (RunningBill.manualApprovalStatus in that same set).
+//
+// Stage labels styled to match Drawing Request Status's "<Approver Action>
+// (L<n>)" convention (see shared/constants/drawingRequestOptions.ts
+// REVIEW_STATUS_LABEL) instead of the previous bare "L1"/"L2"/... — per
+// BillRequest's own status comments: pending = awaiting L1 (AGM), pending-gm
+// = awaiting L2 (GM), pending-l3/pending-l4 only apply to departments
+// configured for 3/4 approval levels.
+const PENDING_STAGE_LABEL = {
+  pending: 'AGM Approval (L1)', 'pending-gm': 'GM Approval (L2)',
+  'pending-l3': 'L3 Approval', 'pending-l4': 'L4 Approval',
+};
+function resolvePendingWith(status) {
+  return PENDING_STAGE_LABEL[status] || 'Approved';
+}
+
+exports.getPendingBillsSummary = asyncHandler(async (req, res) => {
+  const PENDING_STATUSES = ['pending', 'pending-gm', 'pending-l3', 'pending-l4'];
+
+  const [pendingRequests, pendingManualBills] = await Promise.all([
+    BillRequest.find({ status: { $in: PENDING_STATUSES }, isArchived: { $ne: true } })
+      .select('reqNo projectName items status createdAt')
+      .sort({ createdAt: -1 })
+      .lean(),
+    RunningBill.find({ manualApprovalStatus: { $in: PENDING_STATUSES }, isArchived: { $ne: true } })
+      .select('billNo projectName lineItems manualApprovalStatus createdAt')
+      .sort({ createdAt: -1 })
+      .lean(),
+  ]);
+
+  const now = Date.now();
+
+  const requestRows = pendingRequests.map((r) => ({
+    id: r._id,
+    billNo: r.reqNo,
+    source: 'bill_request',
+    description: r.items?.[0]?.description || '',
+    project: r.projectName || '',
+    createdAt: r.createdAt,
+    daysPending: Math.max(0, Math.floor((now - new Date(r.createdAt).getTime()) / 86400000)),
+    stage: resolvePendingWith(r.status),
+  }));
+
+  const manualBillRows = pendingManualBills.map((b) => ({
+    id: b._id,
+    billNo: b.billNo,
+    source: 'manual_bill',
+    description: b.lineItems?.[0]?.description || '',
+    project: b.projectName || '',
+    createdAt: b.createdAt,
+    daysPending: Math.max(0, Math.floor((now - new Date(b.createdAt).getTime()) / 86400000)),
+    stage: resolvePendingWith(b.manualApprovalStatus),
+  }));
+
+  const rows = [...requestRows, ...manualBillRows].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+  success(res, { bills: rows });
 });

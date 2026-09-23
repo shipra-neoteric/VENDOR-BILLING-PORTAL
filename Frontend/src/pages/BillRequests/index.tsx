@@ -383,6 +383,11 @@ export default function BillApproval() {
   // pending-l3. Mirrors the backend's REJECT_PERMISSION mapping in
   // rejectBillRequest. accounts / explicit 'reject' grant remain an escape
   // hatch that can reject any stage, same as canRejectAny above.
+  // Manual bills reuse this same helper for their Reject button — their
+  // manualApprovalStatus stage names (pending/pending-gm/pending-l3/
+  // pending-l4) are identical to BillRequest's status names, and the
+  // required permission per stage is the same, so a separate
+  // canRejectThisManualStage would just be a duplicate switch.
   const canRejectThisStage = (status?: string): boolean => {
     if (user?.role === "accounts" || hasPerm(user, "reject")) return true;
     switch (status) {
@@ -1068,7 +1073,7 @@ export default function BillApproval() {
                       {b.manualApprovalStatus === "pending-l4" && canL4Approve && (
                         <NxBtn color="icon-green" title="L4 Approve" icon={Check} onClick={() => setManualApproveTarget(b)} />
                       )}
-                      {["pending", "pending-gm", "pending-l3", "pending-l4"].includes(b.manualApprovalStatus) && canRejectAny && (
+                      {["pending", "pending-gm", "pending-l3", "pending-l4"].includes(b.manualApprovalStatus) && canRejectThisStage(b.manualApprovalStatus) && (
                         <NxBtn color="icon-red" title="Reject" icon={X} onClick={() => setManualRejectTarget(b)} />
                       )}
                     </div>
@@ -1702,7 +1707,7 @@ export default function BillApproval() {
           footer={
             <div className="flex justify-end gap-2">
               <Btn outline label="Close" onClick={() => setViewManualBill(null)} />
-              {["pending", "pending-gm", "pending-l3", "pending-l4"].includes(viewManualBill.manualApprovalStatus) && canRejectAny && (
+              {["pending", "pending-gm", "pending-l3", "pending-l4"].includes(viewManualBill.manualApprovalStatus) && canRejectThisStage(viewManualBill.manualApprovalStatus) && (
                 <Btn color="red" label="Reject" onClick={() => {
                   setManualRejectTarget({ _id: viewManualBill._id, billNo: viewManualBill.billNo, amount: viewManualBill.amount, billDate: viewManualBill.billDate || "", createdAt: viewManualBill.billDate || "", manualApprovalStatus: viewManualBill.manualApprovalStatus });
                   setViewManualBill(null);
