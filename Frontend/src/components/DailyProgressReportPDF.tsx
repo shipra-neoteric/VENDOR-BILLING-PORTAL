@@ -160,14 +160,6 @@ export function DailyProgressReportDocument({ summary }: { summary: DailyProgres
         />
 
         <DataTable
-          title="Pending Bills"
-          columns={["Bill No.", "Description", "Project", "Stage", "Requested On", "Days"]}
-          widths={[0.8, 1.9, 1.2, 1.2, 1, 0.5]}
-          rows={s.pendingBills.map(b => [b.billNo, b.description, b.project, b.stage, dayjs(b.createdAt).format("DD MMM YYYY"), String(b.daysPending)])}
-          emptyLabel="No bills currently pending approval."
-        />
-
-        <DataTable
           title="Work Progress — Planned vs Completed"
           columns={["Work Item", "Project", "Work Order", "Unit", "Planned", "Completed", "Progress"]}
           widths={[1.5, 1.1, 0.9, 0.5, 0.7, 0.7, 0.7]}
@@ -181,6 +173,14 @@ export function DailyProgressReportDocument({ summary }: { summary: DailyProgres
           widths={[0.7, 1.6, 1, 0.9, 1.1, 0.9, 0.5]}
           rows={s.drawingRequests.map(d => [d.ticketNo, d.description, d.projectName, d.driName, d.stageLabel, d.requestedOn, String(d.daysSince)])}
           emptyLabel="No drawing requests in scope."
+        />
+
+        <DataTable
+          title="Pending Bills"
+          columns={["Bill No.", "Description", "Project", "Stage", "Requested On", "Days"]}
+          widths={[0.8, 1.9, 1.2, 1.2, 1, 0.5]}
+          rows={s.pendingBills.map(b => [b.billNo, b.description, b.project, b.stage, dayjs(b.createdAt).format("DD MMM YYYY"), String(b.daysPending)])}
+          emptyLabel="No bills currently pending approval."
         />
 
         <View style={S.table} wrap={false}>
