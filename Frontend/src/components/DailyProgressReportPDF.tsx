@@ -56,9 +56,9 @@ function KpiTable({ title, rows }: { title: string; rows: { label: string; value
   );
 }
 
-function DataTable({ title, columns, widths, rows, emptyLabel }: { title: string; columns: string[]; widths?: number[]; rows: string[][]; emptyLabel?: string }) {
+function DataTable({ title, columns, widths, rows, emptyLabel, breakBefore }: { title: string; columns: string[]; widths?: number[]; rows: string[][]; emptyLabel?: string; breakBefore?: boolean }) {
   return (
-    <View style={S.table}>
+    <View style={S.table} break={breakBefore}>
       <View style={S.secHeader} wrap={false} minPresenceAhead={90}><Text style={S.secTitle}>{title}</Text></View>
       <View style={S.hdr} wrap={false}>
         {columns.map((c, i) => <Text key={c} style={[S.col, S.hdrText, widths ? { flex: widths[i] } : {}]}>{c}</Text>)}
@@ -165,6 +165,7 @@ export function DailyProgressReportDocument({ summary }: { summary: DailyProgres
           widths={[1.5, 1.1, 0.9, 0.5, 0.7, 0.7, 0.7]}
           rows={s.workProgress.map(w => [w.description, w.projectName, w.workOrderNo, w.unit || "—", w.planned.toLocaleString("en-IN"), w.completed.toLocaleString("en-IN"), `${w.pct}%`])}
           emptyLabel="No scope items recorded."
+          breakBefore={s.workProgress.length > 6}
         />
 
         <DataTable
