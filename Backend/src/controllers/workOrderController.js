@@ -72,6 +72,11 @@ function notifySlack(approvalType, workOrder) {
 // professional-services WOs) so every screen that shows this work order can
 // display current contact + bank info without a second round-trip.
 const BANK_DETAIL_FIELDS = 'address email gstNumber panNumber accountHolderName bankName accountNumber ifscCode branchName';
+// vendorName/ownerName/mobile also need to be selected here (in addition to
+// BANK_DETAIL_FIELDS) so getWorkOrder/listWorkOrders can overlay live values
+// over the stale creation-time snapshot stored on the WO — see
+// overlayLiveContractorFields below.
+const LIVE_NAME_FIELDS = 'companyName ownerName firmName principalName mobile';
 function toContractorDetails(party) {
   if (!party) return undefined;
   return {
@@ -80,6 +85,21 @@ function toContractorDetails(party) {
     accountHolderName: party.accountHolderName || '', bankName: party.bankName || '',
     accountNumber: party.accountNumber || '', ifscCode: party.ifscCode || '', branchName: party.branchName || '',
   };
+}
+
+// vendorName/ownerName/mobile are snapshotted onto the WO at creation time
+// and never re-synced if the Contractor/Consultant master record is later
+// corrected. This overlays the CURRENT live values from the party record
+// onto the (lean, in-memory only) response object, so display screens always
+// show up-to-date contact info while what's actually stored on the WO (used
+// for point-in-time snapshots like an issued PDF) is left untouched. Falls
+// back to the stored snapshot when no live party record is found (e.g. it
+// was deleted).
+function overlayLiveContractorFields(workOrder, party, isProfessionalServices) {
+  if (!party) return;
+  workOrder.vendorName = (isProfessionalServices ? party.firmName : party.companyName) || workOrder.vendorName;
+  workOrder.ownerName  = (isProfessionalServices ? party.principalName : party.ownerName) || workOrder.ownerName;
+  workOrder.mobile     = party.mobile || workOrder.mobile;
 }
 
 // Per-scope-item rate/plannedQty diff, keyed by scope item _id — this is what actually
@@ -194,15 +214,17 @@ exports.listWorkOrders = asyncHandler(async (req, res) => {
   const contractorCodes = [...new Set(workOrders.filter(w => w.contractType !== 'professional-services' && w.vendorCode).map(w => w.vendorCode))];
   const consultantCodes = [...new Set(workOrders.filter(w => w.contractType === 'professional-services' && w.vendorCode).map(w => w.vendorCode))];
   const [contractors, consultants] = await Promise.all([
-    contractorCodes.length ? Contractor.find({ vendorCode: { $in: contractorCodes } }).select(`vendorCode ${BANK_DETAIL_FIELDS}`).lean() : [],
-    consultantCodes.length ? Consultant.find({ consultantCode: { $in: consultantCodes } }).select(`consultantCode ${BANK_DETAIL_FIELDS}`).lean() : [],
+    contractorCodes.length ? Contractor.find({ vendorCode: { $in: contractorCodes } }).select(`vendorCode ${BANK_DETAIL_FIELDS} ${LIVE_NAME_FIELDS}`).lean() : [],
+    consultantCodes.length ? Consultant.find({ consultantCode: { $in: consultantCodes } }).select(`consultantCode ${BANK_DETAIL_FIELDS} ${LIVE_NAME_FIELDS}`).lean() : [],
   ]);
   const contractorMap = new Map(contractors.map(c => [c.vendorCode, c]));
   const consultantMap = new Map(consultants.map(c => [c.consultantCode, c]));
   workOrders.forEach(w => {
-    const party = w.contractType === 'professional-services' ? consultantMap.get(w.vendorCode) : contractorMap.get(w.vendorCode);
+    const isProfessionalServices = w.contractType === 'professional-services';
+    const party = isProfessionalServices ? consultantMap.get(w.vendorCode) : contractorMap.get(w.vendorCode);
     const details = toContractorDetails(party);
     if (details) w.contractorDetails = details;
+    overlayLiveContractorFields(w, party, isProfessionalServices);
   });
 
   success(res, { workOrders });
@@ -226,11 +248,13 @@ exports.getWorkOrder = asyncHandler(async (req, res) => {
   // so the detail view can show current contact + bank info without a second
   // round-trip from the frontend.
   if (workOrder.vendorCode) {
-    const Party = workOrder.contractType === 'professional-services' ? Consultant : Contractor;
-    const codeField = workOrder.contractType === 'professional-services' ? 'consultantCode' : 'vendorCode';
-    const party = await Party.findOne({ [codeField]: workOrder.vendorCode }).select(BANK_DETAIL_FIELDS).lean();
+    const isProfessionalServices = workOrder.contractType === 'professional-services';
+    const Party = isProfessionalServices ? Consultant : Contractor;
+    const codeField = isProfessionalServices ? 'consultantCode' : 'vendorCode';
+    const party = await Party.findOne({ [codeField]: workOrder.vendorCode }).select(`${BANK_DETAIL_FIELDS} ${LIVE_NAME_FIELDS}`).lean();
     const details = toContractorDetails(party);
     if (details) workOrder.contractorDetails = details;
+    overlayLiveContractorFields(workOrder, party, isProfessionalServices);
   }
 
   success(res, { workOrder });
@@ -329,7 +353,17 @@ exports.createWorkOrder = asyncHandler(async (req, res) => {
 });
 
 exports.updateWorkOrder = asyncHandler(async (req, res) => {
-  const { workOrderNo: _wo, ...updateData } = req.body;
+  // vendorName/ownerName/mobile are snapshotted onto the WO ONLY at creation
+  // time (createWorkOrder) and must never be re-written by a general edit —
+  // getWorkOrder/listWorkOrders overlay the CURRENT live Contractor/Consultant
+  // values onto their response purely for display (see
+  // overlayLiveContractorFields above), and the frontend's edit form seeds
+  // itself from that same overlaid response. Without stripping these here,
+  // opening Edit and saving without touching vendor fields would silently
+  // overwrite the WO's historical point-in-time snapshot with today's live
+  // data — defeating the whole purpose of a snapshot (e.g. for a
+  // previously-issued PDF).
+  const { workOrderNo: _wo, vendorName: _vn, ownerName: _on, mobile: _mb, ...updateData } = req.body;
   const before = await WorkOrder.findById(req.params.id).lean();
   if (!before) return notFound(res, 'Work order not found');
   if (before.isLocked) return badRequest(res, 'This work order is locked and cannot be edited. Unlock it first.');

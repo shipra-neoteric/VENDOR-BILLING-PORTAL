@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import {
   FileText, Eye, Printer, CheckCircle2, XCircle, Check, X, Clock,
-  Trophy,
+  Trophy, Download,
 } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import dayjs from "dayjs";
@@ -11,11 +11,15 @@ import { SearchFilter, DropdownSelectFilter } from "../../ui/Filters";
 import { useAuth } from "../../context/AuthContext";
 import type { AuthUser } from "../../context/AuthContext";
 import { selectableProjects } from "../../utils/projectOptions";
+import DateRangeFilter, { inDateRange } from "../../components/DateRangeFilter";
+import type { Dayjs } from "dayjs";
 import { printBill, resolvePrintParty } from "../../shared/utils/printBill";
 import type { PrintableBill } from "../../shared/utils/printBill";
 import type { Contractor } from "../../types/VendorBilling";
 import { billFinancials } from "../../shared/utils/billMath";
 import { BillStageCell } from "../../components/BillDetailModal";
+import { downloadBillApprovalPDF } from "../../components/BillApprovalExportPDF";
+import type { BillApprovalExportRow } from "../../components/BillApprovalExportPDF";
 import SlaTimeline from "../../components/SlaTimeline";
 import { BILL_STATUS_LABEL } from "../../shared/constants/billStatus";
 import { Descriptions, DescItem } from "../../ui/Descriptions";
@@ -462,6 +466,7 @@ export default function BillApproval() {
   // the tab regardless of what was typed.
   function manualBillsForTab(tab: string): ManualBillRow[] {
     let list = tab === "all" ? manualBills : manualBills.filter(b => b.manualApprovalStatus === tab);
+    if (exportScope !== "all") list = list.filter(b => scopeMatches(b.manualApprovalStatus, stageEnteredAt(b)));
     const q = reqSearch.trim().toLowerCase();
     if (q) {
       list = list.filter(b =>
@@ -472,6 +477,7 @@ export default function BillApproval() {
         (b.projectName || "").toLowerCase().includes(q)
       );
     }
+    list = list.filter(b => inDateRange(b.billDate || b.createdAt, reqDateFrom, reqDateTo));
     return list;
   }
 
@@ -867,6 +873,53 @@ export default function BillApproval() {
   const [reqProjectFilter, setReqProjectFilter] = useState<string | undefined>(undefined);
   const [reqDeptFilter, setReqDeptFilter] = useState<string | undefined>(undefined);
   const [showArchived, setShowArchived] = useState(false);
+  // Scopes the PDF export — same 6-bucket Progress-filter convention the
+  // Work Orders page uses (All Progress/Not Started/In Progress/Completed/
+  // Overdue/Cancelled), remapped onto bill/manual-bill status. Ignores the
+  // active reqTab entirely once a non-"all" bucket is picked. See
+  // scopeMatches() below for the status mapping.
+  const [exportScope, setExportScope] = useState<"all" | "pending" | "in-progress" | "completed" | "overdue" | "cancelled">("all");
+  // Applies to both the on-screen tables AND the PDF export — whatever's
+  // filtered here is exactly what downloads. "Overdue" reuses the exact
+  // same isOverdue()/OVERDUE_MS (24h) the row-level Overdue badge already
+  // uses, so this bucket matches what's visibly badged red on screen.
+  //   All Progress → no restriction
+  //   Pending      → pending at any of L1-L4 (same set as In Progress —
+  //                  kept as a separate, more literal label since "pending
+  //                  approval" is how this app talks about these rows
+  //                  everywhere else, e.g. the Pending L1-L4 tabs above)
+  //   In Progress  → pending at any of L1-L4
+  //   Completed    → approved
+  //   Overdue      → pending AND isOverdue() per the existing badge logic
+  //   Cancelled    → rejected
+  // No "Not Started" bucket: a BillRequest/manual bill has no draft/
+  // not-yet-submitted state distinct from "pending" — confirmed against the
+  // status enums in Backend/src/models/BillRequest.js and RunningBill.js
+  // (manualApprovalStatus), both of which start life already at "pending".
+  // An option that always yields zero rows is worse UX than not offering it,
+  // so it's omitted from the dropdown entirely rather than kept as dead
+  // weight.
+  const scopeMatches = (status: string, since?: string): boolean => {
+    switch (exportScope) {
+      case "pending":
+      case "in-progress": return PENDING_STATUSES.includes(status);
+      case "completed":   return status === "approved";
+      case "overdue":     return isOverdue(status, since);
+      case "cancelled":   return status === "rejected";
+      case "all":
+      default:            return true;
+    }
+  };
+  const EXPORT_SCOPE_LABEL: Record<string, string> = {
+    all: "All Progress", pending: "Pending", "in-progress": "In Progress",
+    completed: "Completed", overdue: "Overdue", cancelled: "Cancelled",
+  };
+  // Date-range filter — same DateRangeFilter/inDateRange convention as
+  // DailyProgressReport/WorkItems. Applies to BOTH tables below (the
+  // BillRequest list and the Manual Bills list) since they already share the
+  // same tab/search/project/department filters and are shown together.
+  const [reqDateFrom, setReqDateFrom] = useState<Dayjs | null>(null);
+  const [reqDateTo, setReqDateTo] = useState<Dayjs | null>(null);
   const projectOptions = useMemo(
     () => selectableProjects(projects).map(p => ({ label: `${p.name} (${p.code ?? ""})`, value: p._id })),
     [projects]
@@ -891,10 +944,20 @@ export default function BillApproval() {
     if (!reqDeptFilter) return true;
     return resolveDeptRow(row)?.department === reqDeptFilter;
   };
+  // Manual bills (ManualBillRow) carry their own projectId — filteredReqs
+  // (BillRequestRow) already applies reqProjectFilter inline, but every
+  // manualBillsForTab() call site (on-screen table + PDF export) was missing
+  // this same filter, so bills from other projects leaked through whenever a
+  // project filter was active.
+  const matchesProject = (row: { projectId?: string }) => {
+    if (!reqProjectFilter) return true;
+    return row.projectId === reqProjectFilter;
+  };
 
   const filteredReqs = useMemo(() => {
     let list = billReqs.filter(r => showArchived ? r.isArchived : !r.isArchived);
     list = reqTab === "all" ? list : list.filter(r => r.status === reqTab);
+    if (exportScope !== "all") list = list.filter(r => scopeMatches(r.status, stageEnteredAt(r)));
     if (reqProjectFilter) list = list.filter(r => r.projectId === reqProjectFilter);
     if (reqDeptFilter) list = list.filter(r => matchesDept(r));
     const q = reqSearch.trim().toLowerCase();
@@ -912,11 +975,68 @@ export default function BillApproval() {
         r.projectName.toLowerCase().includes(q)
       );
     }
+    list = list.filter(r => inDateRange(r.createdAt, reqDateFrom, reqDateTo));
     return [...list].sort((a, b) => parseInt(b.reqNo.replace(/\D/g, ""), 10) - parseInt(a.reqNo.replace(/\D/g, ""), 10));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [billReqs, reqTab, reqProjectFilter, reqDeptFilter, reqSearch, showArchived, woDeptMap]);
+  }, [billReqs, reqTab, exportScope, reqProjectFilter, reqDeptFilter, reqSearch, showArchived, woDeptMap, reqDateFrom, reqDateTo]);
 
   const reqPager = usePagination(filteredReqs, 20);
+
+  // Stage labels matching the Daily Progress Report's own Pending Bills
+  // section convention (see billController.js PENDING_STAGE_LABEL) — kept
+  // identical here so both exports read consistently.
+  const PENDING_STAGE_LABEL: Record<string, string> = {
+    pending: "AGM Approval (L1)", "pending-gm": "GM Approval (L2)",
+    "pending-l3": "L3 Approval", "pending-l4": "L4 Approval",
+  };
+  function pendingStageLabel(status: string): string {
+    return PENDING_STAGE_LABEL[status] || (STATUS_CFG[status]?.label ?? status);
+  }
+
+  // PDF export — same DailyProgressReportPDF visual style, same DataTable
+  // column set as that report's own Pending Bills section (Bill No./
+  // Description/Project/Stage/Requested On/Days). Scope: exports BOTH tables
+  // currently visible under the active tab/search/project/department/
+  // date-range filters — the BillRequest queue AND the Manual Bills list —
+  // since both are shown together on screen and already share the same
+  // filter bar, so a single export matching what's literally on the page is
+  // the least surprising behavior.
+  function downloadBillApprovalPDFExport() {
+    const daysPending = (status: string, since?: string): string => {
+      if (!PENDING_STATUSES.includes(status) || !since) return "";
+      return String(Math.floor((Date.now() - new Date(since).getTime()) / (24 * 60 * 60 * 1000)));
+    };
+    // filteredReqs/manualBillsForTab already apply the exportScope bucket
+    // (see scopeMatches above) on top of the tab/search/project/dept/
+    // archived/date-range filters — export is just whatever's on screen.
+    const reqRows: BillApprovalExportRow[] = filteredReqs.map(r => ({
+      billNo: r.billId?.billNo || r.reqNo,
+      description: r.items?.[0]?.description || r.vendorName || "",
+      project: r.projectName,
+      stage: pendingStageLabel(r.status),
+      requestedOn: dayjs(r.createdAt).format("DD MMM YYYY"),
+      days: daysPending(r.status, stageEnteredAt(r)),
+    }));
+    const manualRows: BillApprovalExportRow[] = manualBillsForTab(reqTab).filter(b => matchesDept(b) && matchesProject(b)).map(b => ({
+      billNo: b.billNo,
+      description: b.vendorName || "",
+      project: b.projectName || "",
+      stage: pendingStageLabel(b.manualApprovalStatus),
+      requestedOn: dayjs(b.billDate || b.createdAt).format("DD MMM YYYY"),
+      days: daysPending(b.manualApprovalStatus, stageEnteredAt(b)),
+    }));
+    const rows = [...reqRows, ...manualRows];
+    const rangePart = reqDateFrom && reqDateTo
+      ? `${reqDateFrom.format("DD MMM YYYY")} - ${reqDateTo.format("DD MMM YYYY")}`
+      : reqDateFrom
+      ? `From ${reqDateFrom.format("DD MMM YYYY")}`
+      : reqDateTo
+      ? `Until ${reqDateTo.format("DD MMM YYYY")}`
+      : "All Time";
+    const scopeLabel = EXPORT_SCOPE_LABEL[exportScope];
+    const dateRangeLabel = exportScope === "all" ? rangePart : `${rangePart} — ${scopeLabel}`;
+    downloadBillApprovalPDF(rows, dateRangeLabel);
+  }
 
   if (loading) {
     return <div className="flex justify-center py-20"><Spinner size="large" /></div>;
@@ -1014,14 +1134,27 @@ export default function BillApproval() {
             placeholder="All departments" resetValue=""
             options={departmentOptions}
           />
+          <DateRangeFilter onChange={(from, to) => { setReqDateFrom(from); setReqDateTo(to); }} />
           <UISwitch checked={showArchived} onChange={setShowArchived} onLabel="Archived" offLabel="Show Archived" />
+          <DropdownSelectFilter
+            value={exportScope} onChange={v => setExportScope((v || "all") as typeof exportScope)}
+            placeholder="All Progress"
+            options={[
+              { value: "pending", label: "Pending" },
+              { value: "in-progress", label: "In Progress" },
+              { value: "completed", label: "Completed" },
+              { value: "overdue", label: "⚠ Overdue" },
+              { value: "cancelled", label: "Cancelled" },
+            ]}
+          />
+          <Btn small outline icon={Download} label="Download PDF" onClick={downloadBillApprovalPDFExport} />
         </div>
       </div>
 
       {/* Manual bills (Billing -> New Bill) — no BillRequest of their own, so
           they're never in billReqs above; this is their own AGM/GM sign-off,
           tracked directly on the bill. */}
-      {manualBillsForTab(reqTab).filter(b => matchesDept(b)).length > 0 && (
+      {manualBillsForTab(reqTab).filter(b => matchesDept(b) && matchesProject(b)).length > 0 && (
         <div className="mb-5">
           <div className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">
             Manual Bills — Billing → New Bill
@@ -1041,7 +1174,7 @@ export default function BillApproval() {
               </Tr>
             </Thead>
             <Tbody>
-              {manualBillsForTab(reqTab).filter(b => matchesDept(b)).map(b => (
+              {manualBillsForTab(reqTab).filter(b => matchesDept(b) && matchesProject(b)).map(b => (
                 <Tr key={b._id} className="cursor-pointer" onClick={() => openManualBillView(b)}>
                   <Td><span className="text-primary font-bold text-[13px]">{b.billNo}</span></Td>
                   <Td>{b.workOrderNo || <span className="text-gray-300 dark:text-gray-600">—</span>}</Td>

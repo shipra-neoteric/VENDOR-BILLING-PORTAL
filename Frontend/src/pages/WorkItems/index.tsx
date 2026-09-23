@@ -52,6 +52,8 @@ import DocumentsUpload, { getWorkOrderDocuments } from "../../components/Documen
 import type { WODocument } from "../../components/DocumentsUpload";
 import WarrantyTermsBuilder from "../../components/WarrantyTermsBuilder";
 import WorkOrderDetailView from "../../components/WorkOrderDetailView";
+import { downloadWorkOrdersPDF } from "../../components/WorkOrdersExportPDF";
+import type { WorkOrderExportRow } from "../../components/WorkOrdersExportPDF";
 import type {
   Contractor,
   Consultant,
@@ -1695,8 +1697,11 @@ export default function WorkItems() {
             ? wo.status === "draft" && !hasBill(wo.id)
             : wo.status === statusFilter);
 
-      // Step (approval-chain pill toggle)
-      const matchStep = stepFilter === "all" || approvalStatusOf(wo) === stepFilter;
+      // Step (approval-chain pill toggle) — "pending-any" is the combined
+      // "show me every stage still awaiting someone" bucket (L1-L4 at once),
+      // for whoever doesn't care which specific level it's stuck at.
+      const matchStep = stepFilter === "all"
+        || (stepFilter === "pending-any" ? (STEP_KEYS as string[]).includes(approvalStatusOf(wo)) : approvalStatusOf(wo) === stepFilter);
 
       // Category (matches the parent category or any of its sub-categories)
       let matchCategory = true;
@@ -1711,6 +1716,11 @@ export default function WorkItems() {
         const items = wo.scopeItems || [];
         if (progressFilter === "not-started") {
           matchProgress = items.length === 0 || items.every(i => i.status === "pending");
+        } else if (progressFilter === "pending-approval") {
+          // Approval-chain stage (Maker/Checker/Approver/Final), not scope-
+          // item completion — a WO awaiting anyone's sign-off at ANY of
+          // L1-L4, regardless of how much scope-item progress is logged.
+          matchProgress = (STEP_KEYS as string[]).includes(approvalStatusOf(wo));
         } else if (progressFilter === "running") {
           matchProgress = items.some(i => i.status === "running");
         } else if (progressFilter === "completed") {
@@ -1776,6 +1786,11 @@ export default function WorkItems() {
         const items = wo.scopeItems || [];
         if (progressFilter === "not-started") {
           matchProgress = items.length === 0 || items.every(i => i.status === "pending");
+        } else if (progressFilter === "pending-approval") {
+          // Approval-chain stage (Maker/Checker/Approver/Final), not scope-
+          // item completion — a WO awaiting anyone's sign-off at ANY of
+          // L1-L4, regardless of how much scope-item progress is logged.
+          matchProgress = (STEP_KEYS as string[]).includes(approvalStatusOf(wo));
         } else if (progressFilter === "running") {
           matchProgress = items.some(i => i.status === "running");
         } else if (progressFilter === "completed") {
@@ -1891,6 +1906,37 @@ export default function WorkItems() {
     a.download = `work-orders-monthly-report-${dayjs().format("YYYY-MM-DD")}.csv`;
     a.click();
     URL.revokeObjectURL(url);
+  }
+
+  // PDF export of the currently filtered work-order list (respects
+  // search/status/category/dept/project/date-range — whatever's applied),
+  // same visual style as the Daily Progress Report PDF.
+  function downloadWorkOrdersPDFExport() {
+    const rows: WorkOrderExportRow[] = filtered.map(wo => ({
+      woNo: wo.workOrderNo,
+      date: wo.issueDate ? dayjs(wo.issueDate).format("DD MMM YYYY") : "",
+      project: wo.projectName,
+      category: wo.category || "",
+      vendorCode: wo.vendorCode || "",
+      companyName: wo.vendorName || "",
+      contractValue: fmt(wo.contractValue || 0),
+      status: displayStatus(wo.status).label,
+      step: (() => {
+        const st = approvalStatusOf(wo);
+        if ((STEP_KEYS as string[]).includes(st)) return `${APPROVAL_STATUS_CFG[st].level} Pending`;
+        if (st === "sent-back") return "Sent Back";
+        return "Approved";
+      })(),
+      created: wo.createdAt ? dayjs(wo.createdAt).format("DD MMM YYYY") : "",
+    }));
+    const dateRangeLabel = dateFrom && dateTo
+      ? `${dateFrom.format("DD MMM YYYY")} - ${dateTo.format("DD MMM YYYY")}`
+      : dateFrom
+      ? `From ${dateFrom.format("DD MMM YYYY")}`
+      : dateTo
+      ? `Until ${dateTo.format("DD MMM YYYY")}`
+      : "All Time";
+    downloadWorkOrdersPDF(rows, dateRangeLabel);
   }
 
   const nextWONo = useMemo(() => {
@@ -2383,7 +2429,9 @@ export default function WorkItems() {
             <DropdownSelectFilter
               value={progressFilter} onChange={setProgressFilter} placeholder="All Progress"
               options={[
-                { label: "Not Started", value: "not-started" }, { label: "In Progress", value: "running" },
+                { label: "Not Started", value: "not-started" },
+                { label: "Pending Approval", value: "pending-approval" },
+                { label: "In Progress", value: "running" },
                 { label: "Completed", value: "completed" }, { label: "⚠ Overdue", value: "overdue" },
                 { label: "Cancelled", value: "cancelled" },
               ]}
@@ -2396,6 +2444,8 @@ export default function WorkItems() {
             </div>
 
             <DateRangeFilter onChange={(from, to) => { setDateFrom(from); setDateTo(to); }} />
+
+            <Btn small outline icon={Download} label="Download PDF" onClick={downloadWorkOrdersPDFExport} />
 
             {hasActiveFilters && <Btn small outline label="Clear all" onClick={clearAllFilters} />}
 
@@ -2421,7 +2471,7 @@ export default function WorkItems() {
               )}
               {progressFilter !== "all" && (
                 <span className="bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-600 text-emerald-600 text-[11px] px-2 py-0.5 rounded flex items-center gap-1">
-                  Progress: {progressFilter === "not-started" ? "Not Started" : progressFilter === "running" ? "In Progress" : progressFilter === "completed" ? "Completed" : progressFilter === "cancelled" ? "Cancelled" : "Overdue"}
+                  Progress: {progressFilter === "not-started" ? "Not Started" : progressFilter === "pending-approval" ? "Pending Approval" : progressFilter === "running" ? "In Progress" : progressFilter === "completed" ? "Completed" : progressFilter === "cancelled" ? "Cancelled" : "Overdue"}
                   <button type="button" onClick={() => setProgressFilter("all")} className="text-emerald-600">×</button>
                 </span>
               )}
@@ -2449,6 +2499,19 @@ export default function WorkItems() {
             style={stepFilter === "all" ? { backgroundColor: "var(--theme-primary-tint)" } : undefined}
           >
             All Steps <span className="ml-1 opacity-75">{filteredIgnoringStep.length}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setStepFilter(stepFilter === "pending-any" ? "all" : "pending-any")}
+            className={
+              stepFilter === "pending-any"
+                ? "shrink-0 px-3.5 py-1.5 rounded-full text-sm font-semibold theme-text"
+                : "shrink-0 px-3.5 py-1.5 rounded-full text-sm font-medium bg-gray-100 dark:bg-gray-700 text-gray-500! dark:text-gray-400!"
+            }
+            style={stepFilter === "pending-any" ? { backgroundColor: "var(--theme-primary-tint)" } : undefined}
+            title="Every Work Order still awaiting approval at any level (L1-L4)"
+          >
+            Pending <span className="ml-1 opacity-75">{STEP_KEYS.reduce((s, key) => s + (stepCounts[key] || 0), 0)}</span>
           </button>
           {STEP_KEYS.filter((key) => hasWOPerm(user, STEP_PERM[key])).map((key) => {
             const cfg = APPROVAL_STATUS_CFG[key];
