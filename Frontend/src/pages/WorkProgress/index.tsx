@@ -248,11 +248,12 @@ function WorkProgressAdmin() {
     apiClient.get("/categories").then(r => setCategories(r.data.categories ?? []));
   }, []);
 
-  // Project/Category both default to "All" now (not "nothing picked yet"),
-  // so the overview can just load immediately on open instead of making
-  // the user press "Load Progress" on a filter set that's already valid.
+  // Project/Category/Work Order all auto-load progress on change now —
+  // previously only the initial mount auto-loaded, so picking a different
+  // filter required an extra manual "Load Progress" click before its
+  // results actually appeared.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { loadProgress(); }, []);
+  useEffect(() => { loadProgress(); }, [selProject, selCategory, selWorkOrder]);
 
   useEffect(() => {
     // Empty selProject means "All Projects" now, not "nothing chosen yet" —
