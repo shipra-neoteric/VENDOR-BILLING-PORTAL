@@ -1,5 +1,4 @@
 import { Document, Page, View, Text, StyleSheet, pdf } from "@react-pdf/renderer";
-import dayjs from "dayjs";
 import type { DailyProgressReportSummary } from "../utils/dailyProgressReportSummary";
 
 const ORANGE = "#FF7A00";
