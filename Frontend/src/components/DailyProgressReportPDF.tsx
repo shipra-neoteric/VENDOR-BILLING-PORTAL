@@ -25,19 +25,19 @@ const S = StyleSheet.create({
   docTitle: { textAlign: "right" },
   docMain: { fontSize: 14, fontFamily: "Helvetica-Bold", color: ORANGE },
   docSub: { fontSize: 9, color: MID, marginTop: 3 },
-  table: { borderWidth: 1, borderColor: BORDER, borderRadius: 3, marginBottom: 12, overflow: "hidden" },
-  secHeader: { backgroundColor: ORANGE, paddingVertical: 5, paddingHorizontal: 10 },
+  table: { borderWidth: 1, borderColor: BORDER, borderRadius: 3, marginBottom: 9, overflow: "hidden" },
+  secHeader: { backgroundColor: ORANGE, paddingVertical: 4, paddingHorizontal: 10 },
   secTitle: { fontFamily: "Helvetica-Bold", color: "#fff", fontSize: 9, textTransform: "uppercase" },
   row: { flexDirection: "row", borderTopWidth: 1, borderTopColor: BORDER },
   rowAlt: { flexDirection: "row", borderTopWidth: 1, borderTopColor: BORDER, backgroundColor: LIGHT },
-  cellLabel: { flex: 1.4, padding: "5px 10px", fontSize: 8.5, color: MID },
-  cellVal: { flex: 1, padding: "5px 10px", fontSize: 8.5, color: DARK, textAlign: "right", fontFamily: "Helvetica-Bold" },
-  hdr: { flexDirection: "row", backgroundColor: HDR_BG, padding: "5px 8px" },
+  cellLabel: { flex: 1.4, padding: "4px 10px", fontSize: 8.5, color: MID },
+  cellVal: { flex: 1, padding: "4px 10px", fontSize: 8.5, color: DARK, textAlign: "right", fontFamily: "Helvetica-Bold" },
+  hdr: { flexDirection: "row", backgroundColor: HDR_BG, padding: "4px 8px" },
   hdrText: { color: "#fff", fontFamily: "Helvetica-Bold", fontSize: 8 },
   col: { flex: 1, fontSize: 8, padding: "2px 4px" },
-  bullet: { flexDirection: "row", borderTopWidth: 1, borderTopColor: BORDER, padding: "5px 10px", gap: 6 },
-  subWrap: { marginHorizontal: 10, marginBottom: 8, marginTop: 2, borderWidth: 1, borderColor: BORDER, borderRadius: 3, overflow: "hidden" },
-  subHeader: { backgroundColor: TINT, paddingVertical: 4, paddingHorizontal: 8, flexDirection: "row", justifyContent: "space-between" },
+  bullet: { flexDirection: "row", borderTopWidth: 1, borderTopColor: BORDER, padding: "4px 10px", gap: 6 },
+  subWrap: { marginHorizontal: 10, marginBottom: 6, marginTop: 2, borderWidth: 1, borderColor: BORDER, borderRadius: 3, overflow: "hidden" },
+  subHeader: { backgroundColor: TINT, paddingVertical: 3, paddingHorizontal: 8, flexDirection: "row", justifyContent: "space-between" },
   subTitle: { fontFamily: "Helvetica-Bold", color: DARK, fontSize: 8 },
   subMeta: { fontFamily: "Helvetica-Bold", color: ORANGE, fontSize: 8 },
 });
@@ -56,9 +56,9 @@ function KpiTable({ title, rows }: { title: string; rows: { label: string; value
   );
 }
 
-function DataTable({ title, columns, widths, rows, emptyLabel, breakBefore }: { title: string; columns: string[]; widths?: number[]; rows: string[][]; emptyLabel?: string; breakBefore?: boolean }) {
+function DataTable({ title, columns, widths, rows, emptyLabel }: { title: string; columns: string[]; widths?: number[]; rows: string[][]; emptyLabel?: string }) {
   return (
-    <View style={S.table} break={breakBefore}>
+    <View style={S.table}>
       <View style={S.secHeader} wrap={false}><Text style={S.secTitle}>{title}</Text></View>
       <View style={S.hdr} wrap={false}>
         {columns.map((c, i) => <Text key={c} style={[S.col, S.hdrText, widths ? { flex: widths[i] } : {}]}>{c}</Text>)}
@@ -160,12 +160,19 @@ export function DailyProgressReportDocument({ summary }: { summary: DailyProgres
         />
 
         <DataTable
+          title="Pending Bills"
+          columns={["Bill No.", "Description", "Project", "Stage", "Requested On", "Days"]}
+          widths={[0.8, 1.9, 1.2, 1.2, 1, 0.5]}
+          rows={s.pendingBills.map(b => [b.billNo, b.description, b.project, b.stage, dayjs(b.createdAt).format("DD MMM YYYY"), String(b.daysPending)])}
+          emptyLabel="No bills currently pending approval."
+        />
+
+        <DataTable
           title="Work Progress — Planned vs Completed"
           columns={["Work Item", "Project", "Work Order", "Unit", "Planned", "Completed", "Progress"]}
           widths={[1.5, 1.1, 0.9, 0.5, 0.7, 0.7, 0.7]}
           rows={s.workProgress.map(w => [w.description, w.projectName, w.workOrderNo, w.unit || "—", w.planned.toLocaleString("en-IN"), w.completed.toLocaleString("en-IN"), `${w.pct}%`])}
           emptyLabel="No scope items recorded."
-          breakBefore={s.workProgress.length > 6}
         />
 
         <DataTable
@@ -174,14 +181,6 @@ export function DailyProgressReportDocument({ summary }: { summary: DailyProgres
           widths={[0.7, 1.6, 1, 0.9, 1.1, 0.9, 0.5]}
           rows={s.drawingRequests.map(d => [d.ticketNo, d.description, d.projectName, d.driName, d.stageLabel, d.requestedOn, String(d.daysSince)])}
           emptyLabel="No drawing requests in scope."
-        />
-
-        <DataTable
-          title="Pending Bills"
-          columns={["Bill No.", "Description", "Project", "Stage", "Requested On", "Days"]}
-          widths={[0.8, 1.9, 1.2, 1.2, 1, 0.5]}
-          rows={s.pendingBills.map(b => [b.billNo, b.description, b.project, b.stage, dayjs(b.createdAt).format("DD MMM YYYY"), String(b.daysPending)])}
-          emptyLabel="No bills currently pending approval."
         />
 
         <View style={S.table} wrap={false}>
