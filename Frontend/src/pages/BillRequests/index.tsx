@@ -377,12 +377,11 @@ export default function BillApproval() {
   // no-hardcoded-default on the backend.
   const canL3Approve = hasPerm(user, "l3-approve");
   const canL4Approve = hasPerm(user, "l4-approve");
-  const canRejectAny = canAgmApprove || canGmApprove || canL3Approve || canL4Approve || user?.role === "accounts" || hasPerm(user, "reject");
   // Reject must be scoped to the SPECIFIC stage a row is actually pending
   // at — holding gm-approve must not let someone reject a row that's
   // pending-l3. Mirrors the backend's REJECT_PERMISSION mapping in
   // rejectBillRequest. accounts / explicit 'reject' grant remain an escape
-  // hatch that can reject any stage, same as canRejectAny above.
+  // hatch that can reject any stage.
   // Manual bills reuse this same helper for their Reject button — their
   // manualApprovalStatus stage names (pending/pending-gm/pending-l3/
   // pending-l4) are identical to BillRequest's status names, and the
