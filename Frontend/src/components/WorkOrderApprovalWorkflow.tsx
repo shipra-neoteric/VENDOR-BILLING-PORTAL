@@ -166,11 +166,15 @@ function CycleCell({
 // but organized as one row per submit→resolution cycle instead of one flat
 // event list, so a sent-back-and-resubmitted work order shows its prior
 // cycle's approvals and its new cycle's approvals as clearly separate rows.
-function ApprovalCyclesTable({ history, actorLabel }: { history: ApprovalHistoryEntry[]; actorLabel: (by: ActorRef | undefined, roleFallback: string, at?: string | null, byName?: string, byRole?: string) => string }) {
-  const cycles = groupIntoCycles(history);
-  if (cycles.length === 0) {
+function ApprovalCyclesTable({ history, actorLabel, showAllCycles }: { history: ApprovalHistoryEntry[]; actorLabel: (by: ActorRef | undefined, roleFallback: string, at?: string | null, byName?: string, byRole?: string) => string; showAllCycles: boolean }) {
+  const allCycles = groupIntoCycles(history);
+  if (allCycles.length === 0) {
     return <div className="text-[12.5px] text-gray-400">No workflow activity yet.</div>;
   }
+  // Only Owner/Admin sees prior (reopened/superseded) cycles — everyone else
+  // only needs to see where the work order actually stands right now.
+  const cycles = showAllCycles ? allCycles : allCycles.slice(-1);
+  const startIndex = showAllCycles ? 0 : allCycles.length - 1;
   return (
     <Table>
       <Thead>
@@ -183,7 +187,7 @@ function ApprovalCyclesTable({ history, actorLabel }: { history: ApprovalHistory
         {cycles.map((cycle, i) => (
           <Tr key={i}>
             <Td className="align-top text-[12.5px] font-semibold text-gray-500 dark:text-gray-400 whitespace-nowrap">
-              #{i + 1}{i === cycles.length - 1 && <div className="text-[10px] font-bold text-primary uppercase mt-0.5">Current</div>}
+              #{startIndex + i + 1}{i === cycles.length - 1 && <div className="text-[10px] font-bold text-primary uppercase mt-0.5">Current</div>}
             </Td>
             {STAGE_ORDER.map(stage => {
               if (stage === "maker") {
@@ -463,7 +467,7 @@ export default function WorkOrderApprovalWorkflow<T extends ApprovalWorkOrder>({
       <div className="text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2.5">
         Approval Workflow &amp; Signatures
       </div>
-      <ApprovalCyclesTable history={wo.approvalHistory || []} actorLabel={actorLabel} />
+      <ApprovalCyclesTable history={wo.approvalHistory || []} actorLabel={actorLabel} showAllCycles={user?.role === "owner"} />
 
       <div className="mt-3.5">
         <SlaTimeline entityType="WorkOrder" entityId={wo._id} />
