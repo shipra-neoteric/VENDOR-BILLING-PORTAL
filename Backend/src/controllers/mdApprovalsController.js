@@ -74,7 +74,11 @@ function departmentOf(doc) {
 
 async function buildPendingItems(user) {
   const [workOrders, billRequests, manualBills, accountsBills] = await Promise.all([
-    WorkOrder.find({ approvalStatus: 'pending-final' }).populate('createdBy', 'name').lean(),
+    // status !== 'cancelled' — approvalStatus and status are independent
+    // fields; a WO can be cancelled (e.g. "Duplicate work order") without
+    // its approvalStatus ever being advanced past 'pending-final', which
+    // would otherwise leave it stuck showing as a live pending approval.
+    WorkOrder.find({ approvalStatus: 'pending-final', status: { $ne: 'cancelled' } }).populate('createdBy', 'name').lean(),
     BillRequest.find({ status: 'pending-l4' }).populate('requestedBy', 'name').lean(),
     RunningBill.find({ manualApprovalStatus: 'pending-l4' }).populate('createdBy', 'name').lean(),
     RunningBill.find({ status: 'l1-approved' }).populate('createdBy', 'name').lean(),
