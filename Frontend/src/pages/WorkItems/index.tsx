@@ -2748,6 +2748,7 @@ export default function WorkItems() {
             <WorkOrderDetailView
               workOrder={currentSelectedWO}
               bills={woBillsMap[currentSelectedWO.id] ?? []}
+              showCancelledWorkItems={showArchived}
               onUpdated={(updated) => {
                 const normalized = normalizeWO(updated as any);
                 setWorkOrders(prev => prev.map(w => w.id === currentSelectedWO.id ? normalized : w));

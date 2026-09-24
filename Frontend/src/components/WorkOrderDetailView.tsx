@@ -132,12 +132,17 @@ function toMilestoneDraft(m: NonNullable<WorkOrder["paymentMilestones"]>[number]
 // Payment's WO quick-view) that needs the exact same detail, not a
 // trimmed-down re-implementation that can drift out of sync with it.
 export default function WorkOrderDetailView({
-  workOrder, bills = [], onUpdated, readOnly = false,
+  workOrder, bills = [], onUpdated, readOnly = false, showCancelledWorkItems = false,
 }: {
   workOrder: WorkOrder;
   bills?: { status: string; amount: number }[];
   onUpdated?: (updated: WorkOrder) => void;
   readOnly?: boolean;
+  // A cancelled WO's Work Items are hidden on its normal detail view (the
+  // scope stays in the DB, just not shown), but should still be visible
+  // when someone is specifically looking at it via the Archive/Show
+  // Archived view — set true only from that context.
+  showCancelledWorkItems?: boolean;
 }) {
   const wo = workOrder;
   const isProfessionalServices = wo.contractType === "professional-services";
@@ -367,7 +372,7 @@ export default function WorkOrderDetailView({
       {/* ── Work Items — hidden once the WO is cancelled; the scope stays
           in the DB for audit purposes but isn't shown on the live detail
           view for a cancelled record. ──────────────────────────────── */}
-      {wo.status !== "cancelled" && (
+      {(wo.status !== "cancelled" || showCancelledWorkItems) && (
       <Card padded={false} className="overflow-hidden mb-5">
         <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700/40 flex items-center justify-between gap-3">
           <span className="font-semibold text-[13px] text-gray-700 dark:text-gray-300">
