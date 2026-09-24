@@ -364,7 +364,10 @@ export default function WorkOrderDetailView({
         )}
       </Card>
 
-      {/* ── Work Items ──────────────────────────────── */}
+      {/* ── Work Items — hidden once the WO is cancelled; the scope stays
+          in the DB for audit purposes but isn't shown on the live detail
+          view for a cancelled record. ──────────────────────────────── */}
+      {wo.status !== "cancelled" && (
       <Card padded={false} className="overflow-hidden mb-5">
         <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700/40 flex items-center justify-between gap-3">
           <span className="font-semibold text-[13px] text-gray-700 dark:text-gray-300">
@@ -612,6 +615,7 @@ export default function WorkOrderDetailView({
           </Table>
         )}
       </Card>
+      )}
 
       {/* ── Billing Summary ─────────────────────────────── */}
       <Card className="mb-5">
