@@ -319,6 +319,16 @@ const runningBillSchema = new mongoose.Schema(
     isArchived:  { type: Boolean, default: false },
     archivedAt:  { type: Date, default: null },
     createdBy:   { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    // Set only by a manual "Save as Draft" (Billing -> New Bill) — an
+    // unsubmitted working copy that hasn't entered the manual-approval chain
+    // at all (manualApprovalStatus stays unset, same "not in this chain"
+    // convention billController.js already uses for AdvanceSlip/BillRequest
+    // rows merged into listBills). Visible only to its own creator
+    // (createdBy) and the Owner role, until submitDraft flips this back to
+    // false and sets manualApprovalStatus: 'pending' for real. Unrelated to
+    // `status`'s own 'draft' value above (a different, Accounts-payment
+    // lifecycle) — do not conflate the two.
+    isUnsubmittedDraft: { type: Boolean, default: false },
   },
   { timestamps: true }
 );

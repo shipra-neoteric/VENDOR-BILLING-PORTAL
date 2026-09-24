@@ -94,6 +94,26 @@ exports.listBills = asyncHandler(async (req, res) => {
   if (vendorCode)  filter.vendorCode  = vendorCode;
   if (projectId)   filter.projectId   = projectId;
   if (status)      filter.status      = status;
+  // Unsubmitted drafts (Billing -> New Bill "Save as Draft") are invisible to
+  // everyone except their own creator and the Owner role (codebase convention
+  // — Owner sees everything). Applied here in the base filter, not inside the
+  // manualApprovalStatus block below, so it's active for every context this
+  // function serves: the plain Billing list AND all 6 manualApprovalStatus-
+  // filtered Bill-Approval-queue calls (a draft never has manualApprovalStatus
+  // set anyway, so those 6 calls would already exclude it via that filter —
+  // this is defense in depth, and is what makes the plain Billing list safe).
+  // Pushed onto filter.$and (created here if absent) rather than a top-level
+  // filter.$or, since `search` further below also needs a top-level $or of
+  // its own — two top-level $or keys would collide (object keys are unique),
+  // silently dropping one; $and has no such collision risk and every other
+  // OR-shaped condition in this function already follows that same pattern.
+  if (req.user.role !== 'owner') {
+    if (!filter.$and) filter.$and = [];
+    filter.$and.push({ $or: [
+      { isUnsubmittedDraft: { $ne: true } },
+      { createdBy: req.user._id },
+    ] });
+  }
   if (manualApprovalStatus) {
     filter.manualApprovalStatus = Array.isArray(manualApprovalStatus) ? { $in: manualApprovalStatus } : manualApprovalStatus;
     // 'approved'/'rejected' are also the schema's own default/end state for
@@ -108,8 +128,10 @@ exports.listBills = asyncHandler(async (req, res) => {
     // $and (not two separate top-level $or keys, which would collide —
     // object keys are unique, so a second filter.$or here would silently
     // overwrite the marker-guard one above) collects every OR-shaped
-    // condition below so both apply together.
-    filter.$and = [];
+    // condition below so both apply together. `|| []` (not a bare `= []`)
+    // since the draft-visibility check above may have already started this
+    // array — a bare reassignment here would silently drop that condition.
+    filter.$and = filter.$and || [];
     const statuses = Array.isArray(manualApprovalStatus) ? manualApprovalStatus : [manualApprovalStatus];
     if (statuses.every((s) => ['approved', 'rejected'].includes(s))) {
       filter.$and.push({ $or: [
@@ -561,7 +583,13 @@ exports.createBill = asyncHandler(async (req, res) => {
     // (born already 'approved' here, having gone through BillRequest's own
     // AGM/GM sign-off before this document existed), it needs that same
     // sign-off now, before Accounts can verify it.
-    manualApprovalStatus: 'pending',
+    // Unless the maker explicitly chose "Save as Draft" — then this bill
+    // hasn't been submitted into the approval chain at all yet, so
+    // manualApprovalStatus is left unset (same convention listBills already
+    // uses for AdvanceSlip/BillRequest rows that aren't in this chain
+    // either), and isUnsubmittedDraft marks it hidden from everyone but its
+    // creator/Owner until submitDraft later sets this exact same field.
+    ...(req.body.saveAsDraft === true ? { isUnsubmittedDraft: true } : { manualApprovalStatus: 'pending' }),
     createdBy:   req.user._id,
   });
 
@@ -668,10 +696,12 @@ exports.createBill = asyncHandler(async (req, res) => {
   // This manual-entry path always starts manualApprovalStatus at 'pending'
   // (line 223 above) — a progress-driven bill (see billRequestController's
   // gmApprove) is born already past this and never reaches createBill at all.
-  notifySlack('PAYMENT_MANUAL_AGM_APPROVAL', bill);
+  // Skipped for a saved-as-draft bill — it hasn't entered the approval chain
+  // yet, so no AGM has anything to act on until submitDraft actually submits it.
+  if (!bill.isUnsubmittedDraft) notifySlack('PAYMENT_MANUAL_AGM_APPROVAL', bill);
   if (workOrder) notifyContractLimitIfNear(workOrder);
 
-  created(res, { bill }, 'Bill created — awaiting maker confirmation');
+  created(res, { bill }, bill.isUnsubmittedDraft ? 'Bill saved as draft' : 'Bill created — awaiting maker confirmation');
 });
 
 exports.updateBill = asyncHandler(async (req, res) => {
@@ -1108,6 +1138,43 @@ exports.manualReject = asyncHandler(async (req, res) => {
     .catch((err) => console.error('[slack] settle on manual reject failed', err.message));
 
   success(res, { bill }, 'Bill rejected');
+});
+
+// Submits a manually-created "Save as Draft" bill (Billing -> New Bill) into
+// the exact same manual-approval chain createBill would have started it in
+// had saveAsDraft not been passed — single-purpose action endpoint, mirroring
+// manualAgmApprove/manualReject's own shape above. Permission-gated to only
+// the bill's own creator or the Owner role (not a department/approver check
+// like the manual-agm-approve family above — this isn't an approval action,
+// just the maker choosing to stop sitting on their own draft).
+exports.submitDraft = asyncHandler(async (req, res) => {
+  const bill = await RunningBill.findById(req.params.id);
+  if (!bill) return notFound(res, 'Bill not found');
+  if (!bill.isUnsubmittedDraft) {
+    return badRequest(res, 'This bill is not a draft');
+  }
+  const isOwner = req.user.role === 'owner';
+  const isCreator = bill.createdBy && bill.createdBy.toString() === req.user._id.toString();
+  if (!isOwner && !isCreator) {
+    return forbidden(res, 'Only this draft\'s creator can submit it.');
+  }
+
+  bill.isUnsubmittedDraft = false;
+  // Same starting point createBill would have used for this bill had it not
+  // been saved as a draft in the first place — see createBill's own comment.
+  bill.manualApprovalStatus = 'pending';
+  pushHistory(bill, 'draft', 'submitted', req.user._id, req.body.remarks || '');
+  await bill.save();
+
+  await logAudit({
+    action: 'UPDATE', module: MODULE, user: req.user,
+    description: `Draft bill ${bill.billNo} submitted — awaiting AGM/GM sign-off`,
+    entityType: 'RunningBill', entityId: bill._id, entityLabel: bill.billNo,
+  });
+
+  notifySlack('PAYMENT_MANUAL_AGM_APPROVAL', bill);
+
+  success(res, { bill }, 'Bill submitted — awaiting AGM/GM sign-off');
 });
 
 // L1 AGM approval — pure approve-and-forward.

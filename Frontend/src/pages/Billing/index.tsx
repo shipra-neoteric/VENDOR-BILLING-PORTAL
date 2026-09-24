@@ -70,6 +70,13 @@ interface Bill {
   manualApprovalStatus?: "pending" | "pending-gm" | "approved" | "rejected";
   billType?: string;
   createdAt?: string;
+  // Set only for a manually-created bill saved via "Save as Draft" — hasn't
+  // entered the AGM/GM approval chain yet (manualApprovalStatus stays
+  // unset/undefined for it). The backend already scopes listBills to only
+  // return these to their own creator or Owner, so a row with this true here
+  // is always one this user is allowed to see.
+  isUnsubmittedDraft?: boolean;
+  createdBy?: { _id?: string; name?: string } | string;
   // Denormalized from the linked Work Order at bill-creation time (see
   // RunningBill.department) — which internal team this bill belongs to.
   department?: string;
@@ -187,6 +194,7 @@ export default function Billing() {
 
   const [viewBillId, setViewBillId] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [submittingId, setSubmittingId] = useState<string | null>(null);
   // The originating BillRequest's own _id — only resolvable when this bill
   // came from the normal request flow (matched below) — used to look up its
   // SLA timeline, since a manually created bill has no BillRequest and thus
@@ -253,6 +261,22 @@ export default function Billing() {
       return;
     }
     setViewBillId(bill.id);
+  }
+
+  // Submits a "Save as Draft" bill into the AGM/GM approval chain — same
+  // pattern as handleDownload's own loading-flag-per-row above.
+  async function handleSubmitDraft(bill: Bill) {
+    setSubmittingId(bill.id);
+    try {
+      await apiClient.patch(`/bills/${bill.id}/submit-draft`);
+      toast.success(`Bill ${bill.billNo} submitted — awaiting AGM/GM sign-off`);
+      loadBills();
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { message?: string } } };
+      toast.error(e?.response?.data?.message || "Failed to submit draft");
+    } finally {
+      setSubmittingId(null);
+    }
   }
 
   const loadBills = useCallback(() => {
@@ -460,7 +484,9 @@ export default function Billing() {
                     <Td className="whitespace-nowrap truncate" title={r.projectName || ""}>{r.projectName || <span className="text-gray-300 dark:text-gray-600">—</span>}</Td>
                     <Td className="text-right font-bold whitespace-nowrap">{fmt(netAfterAdvance(r))}</Td>
                     <Td>
-                      {(r.manualApprovalStatus === "pending" || r.manualApprovalStatus === "pending-gm" || r.manualApprovalStatus === "rejected") ? (
+                      {r.isUnsubmittedDraft ? (
+                        <NxBadge color="gray">Draft</NxBadge>
+                      ) : (r.manualApprovalStatus === "pending" || r.manualApprovalStatus === "pending-gm" || r.manualApprovalStatus === "rejected") ? (
                         <>
                           {r.manualApprovalStatus === "pending" && <NxBadge color="orange">Pending L1</NxBadge>}
                           {r.manualApprovalStatus === "pending-gm" && <NxBadge color="orange">Pending L2</NxBadge>}
@@ -480,6 +506,15 @@ export default function Billing() {
                     <Td>{r.billDate ? dayjs(r.billDate).format("DD MMM YYYY") : "—"}</Td>
                     <Td onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center gap-1">
+                        {r.isUnsubmittedDraft && (
+                          <NxBtn
+                            color="primary"
+                            title="Submit for approval"
+                            label="Submit"
+                            loading={submittingId === r.id}
+                            onClick={() => handleSubmitDraft(r)}
+                          />
+                        )}
                         <NxBtn color="icon-blue" title="View" icon={Eye} onClick={() => handleRowClick(r)} />
                         <NxBtn color="icon-pink" title="Print / Download" icon={Download} loading={downloadingId === r.id} onClick={() => handleDownload(r)} />
                       </div>

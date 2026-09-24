@@ -68,6 +68,7 @@ app.use('/api/activities',    require('./routes/activities'));
 app.use('/api/milestones',    require('./routes/milestones'));
 app.use('/api/advance-slips',  require('./routes/advanceSlips'));
 app.use('/api/bill-requests', require('./routes/billRequests'));
+app.use('/api/md/approvals', require('./routes/mdApprovals'));
 app.use('/api/users',        require('./routes/users'));
 app.use('/api/roles',        require('./routes/roles'));
 app.use('/api/approval-rules', require('./routes/approvalRules'));

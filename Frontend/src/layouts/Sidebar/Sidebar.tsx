@@ -34,6 +34,7 @@ const ADMIN_GROUPS: NavGroup[] = [
     label: "Overview",
     items: [
       { name: "Dashboard",     path: "/dashboard",     icon: <LayoutDashboard className="w-4 h-4" />, moduleId: "dashboard" },
+      { name: "Final Approval", path: "/md-approvals",  icon: <CheckSquare className="w-4 h-4" />,  moduleId: "md-approvals" },
       { name: "SLA Report",    path: "/sla-dashboard",  icon: <Clock className="w-4 h-4" />,  moduleId: "sla-dashboard" },
       { name: "Projects",      path: "/projects",      icon: <Building2 className="w-4 h-4" />,    moduleId: "projects" },
     ],
@@ -101,6 +102,20 @@ function canView(moduleId: string, perms: PermEntry[] | undefined, role?: string
   // simply hasn't been assigned granular permissions yet (canView's own
   // fallback below treats an empty perms array as "can see everything").
   if (moduleId === "backup") return role === "owner";
+  // MD Approvals is a cross-cutting aggregator over 3 unrelated modules'
+  // final-approval stages (work-orders ceo-approve, bill-requests l4-approve,
+  // accounts-payment l2-director-approve) — no single module's own "view"
+  // permission fits it, so gate it on the same "holds ANY of those 3" check
+  // the backend's own base-access guard uses, instead of canView's generic
+  // module+view lookup below.
+  if (moduleId === "md-approvals") {
+    if (role === "owner") return true;
+    return !!perms?.some((p) =>
+      (p.module === "work-orders" && p.actions.includes("ceo-approve")) ||
+      (p.module === "bill-requests" && p.actions.includes("l4-approve")) ||
+      (p.module === "accounts-payment" && p.actions.includes("l2-director-approve"))
+    );
+  }
   if (!perms || perms.length === 0) return true;
   const entry = perms.find(p => p.module === moduleId);
   return entry ? entry.actions.includes("view") : false;

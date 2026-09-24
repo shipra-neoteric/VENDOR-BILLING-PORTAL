@@ -703,7 +703,12 @@ export default function NewBillDrawer({
   const maxRecovery = pendingAdvances.reduce((s, sl) => s + sl.balance, 0);
   const payableNow = netAfterHold;
 
-  async function handleSubmit() {
+  // saveAsDraft=true: saved as an unsubmitted working copy (isUnsubmittedDraft
+  // on the backend) — not pushed into the AGM/GM approval chain, visible only
+  // to its own creator (and Owner) until explicitly submitted later from the
+  // Billing list. saveAsDraft=false (the existing/default path, unchanged):
+  // submits straight into that chain, exactly as this form always has.
+  async function handleSubmit(saveAsDraft: boolean) {
     const validItems = lineItems.filter((li) => li.description.trim() && li.billedQty > 0);
     if (validItems.length === 0) {
       toast.error("Add at least one work item with a description and quantity > 0");
@@ -790,6 +795,7 @@ export default function NewBillDrawer({
         ...rest,
         amount: rest.billedQty * rest.rate,
       })),
+      ...(saveAsDraft ? { saveAsDraft: true } : {}),
     };
 
     setSaving(true);
@@ -798,12 +804,15 @@ export default function NewBillDrawer({
       // Mob. Advance + ADVANCE_FOR never creates a RunningBill at all anymore
       // — the backend creates an AdvanceSlip directly and returns it instead
       // of `bill` (see billController.createBill). Handle that shape here
-      // rather than assuming res.data.bill always exists.
+      // rather than assuming res.data.bill always exists. Save-as-draft never
+      // applies to this path (an advance slip has no approval chain to defer).
       if (res.data.advanceSlip) {
         toast.success(`Advance slip ${res.data.advanceSlip.slipNo} created — visible in Advance Payments`);
         onClose();
       } else if (res.data.bill) {
-        toast.success(`Bill ${res.data.bill.billNo} created — awaiting maker confirmation`);
+        toast.success(saveAsDraft
+          ? `Bill ${res.data.bill.billNo} saved as draft — visible only to you until you submit it`
+          : `Bill ${res.data.bill.billNo} created — awaiting maker confirmation`);
         onCreated(res.data.bill);
         onClose();
       }
@@ -833,7 +842,8 @@ export default function NewBillDrawer({
         footer={
           <div className="flex justify-end gap-2">
             <Btn outline label="Cancel" onClick={onClose} />
-            <Btn color="primary" label="Save as Draft" loading={saving} onClick={handleSubmit} />
+            <Btn outline label="Save as Draft" loading={saving} onClick={() => handleSubmit(true)} />
+            <Btn color="primary" label="Submit" loading={saving} onClick={() => handleSubmit(false)} />
           </div>
         }
       >

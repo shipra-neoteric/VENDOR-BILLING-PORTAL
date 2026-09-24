@@ -7,6 +7,7 @@ const {
   rejectBill, patchDeductions,
   manualAgmApprove, manualGmApprove, manualL3Approve, manualL4Approve, manualReject,
   getBillingChain, archiveBill, unarchiveBill, archiveBillsBulk, unarchiveBillsBulk,
+  submitDraft,
 } = require('../controllers/billController');
 
 router.use(authenticate);
@@ -15,6 +16,11 @@ router.get('/',                    listBills);
 router.get('/chain/:workOrderId',  getBillingChain);
 router.get('/:id',                 getBill);
 router.post('/',             authorizeOr('billing', 'create'), createBillRules, createBill);
+// Submits a "Save as Draft" bill into the manual-approval chain — gated only
+// to being authenticated here (same as GET /:id above); the controller
+// itself enforces "own creator or Owner", since that's a per-document check
+// (who actually created THIS bill), not a role/permission one.
+router.patch('/:id/submit-draft', submitDraft);
 router.put('/:id',           authorizeOr('accounts-payment', 'edit'), updateBill);
 // Verification (merged Maker+Checker) — checks the bill against its WO/
 // vendor details, sets TDS. Retention/advance are decided upstream now.

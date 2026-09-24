@@ -248,7 +248,7 @@ export function deriveBillApprovalHistory(billRequest: Pick<BillDetailRequest, "
 // Read-only view of a bill request — same layout as the BillRequests page's
 // view modal, minus approve/reject/milestone actions (not applicable outside that workflow).
 export default function BillDetailModal({
-  billRequest, open, onClose, zIndex,
+  billRequest, open, onClose, zIndex, footer,
 }: {
   billRequest: BillDetailRequest | null;
   open: boolean;
@@ -257,6 +257,11 @@ export default function BillDetailModal({
   // opened from a dashboard drill-down list) — see Modal.tsx's own note on
   // why this must be a sibling render, never nested.
   zIndex?: number;
+  // Optional override for the footer — every existing caller omits this and
+  // keeps the plain "Close" button below; MD/CEO Approvals' Review drawer is
+  // the one caller that needs its own Approve/Reject/Send Back buttons down
+  // here instead, since it reuses this component verbatim as the drawer body.
+  footer?: React.ReactNode;
 }) {
   if (!open || !billRequest) return null;
 
@@ -297,7 +302,7 @@ export default function BillDetailModal({
       extraWide
       onClose={onClose}
       zIndex={zIndex}
-      footer={<Btn label="Close" outline onClick={onClose} />}
+      footer={footer ?? <Btn label="Close" outline onClick={onClose} />}
     >
       <div className="flex flex-col gap-3.5">
         {/* Header info */}

@@ -25,6 +25,7 @@ const AccountsPayment   = lazy(() => import("../pages/AccountsPayment"));
 const Billing           = lazy(() => import("../pages/Billing"));
 const ProcurementTracker = lazy(() => import("../pages/ProcurementTracker"));
 const BillRequests      = lazy(() => import("../pages/BillRequests"));
+const MdApprovals       = lazy(() => import("../pages/MdApprovals"));
 const SiteProgress      = lazy(() => import("../pages/SiteProgress"));
 const AdvancePayments   = lazy(() => import("../pages/AdvancePayments"));
 const WorkOrderDashboard = lazy(() => import("../pages/WorkOrderDashboard"));
@@ -133,6 +134,7 @@ function AdminRoutes() {
             <Route path="/procurement-tracker" element={<ProcurementTracker />} />
             <Route path="/site-progress"    element={<SiteProgress />} />
             <Route path="/bill-requests"    element={<BillRequests />} />
+            <Route path="/md-approvals"     element={<MdApprovals />} />
             <Route path="/advance-payments" element={<AdvancePayments />} />
             <Route path="/ledger"           element={<Ledger />} />
             <Route path="/users"            element={<UserManagement />} />
