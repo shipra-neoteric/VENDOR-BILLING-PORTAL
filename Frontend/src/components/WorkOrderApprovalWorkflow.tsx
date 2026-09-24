@@ -148,7 +148,16 @@ function CycleCell({
   return (
     <div className="flex flex-col gap-1 min-w-[130px]">
       <div className="text-[12.5px] font-bold text-gray-900 dark:text-[#F1F5F9]">{actorLabel(entry.by, roleLabel, entry.at, entry.byName, entry.byRole)}</div>
-      {entry.byName && entry.byRole && <div className="text-[10.5px] text-gray-400 uppercase tracking-wide">{entry.byRole}</div>}
+      {/* The "Admin" login account holds role='owner' like any real business
+          owner would, but labeling it "OWNER" here reads as if the actual
+          business owner personally acted — show "Administrator" for that
+          specific account instead, leaving every other owner-role user's
+          label (a real owner) untouched. */}
+      {entry.byName && entry.byRole && (
+        <div className="text-[10.5px] text-gray-400 uppercase tracking-wide">
+          {entry.byName === "Admin" && entry.byRole === "owner" ? "Administrator" : entry.byRole}
+        </div>
+      )}
       {entry.at && <div className="text-[11px] text-gray-400">{dayjs(entry.at).format("DD MMM YYYY, hh:mm A")}</div>}
       <div>
         {action === "sent-back" ? <Badge color="red" small>Sent Back</Badge> : action === "submitted" ? <Badge color="blue" small>Initiated</Badge> : <Badge color="green" small>Approved</Badge>}
