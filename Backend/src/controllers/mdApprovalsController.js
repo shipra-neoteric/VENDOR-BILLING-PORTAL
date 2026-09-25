@@ -74,11 +74,7 @@ function departmentOf(doc) {
 
 async function buildPendingItems(user) {
   const [workOrders, billRequests, manualBills, accountsBills] = await Promise.all([
-    // status !== 'cancelled' — approvalStatus and status are independent
-    // fields; a WO can be cancelled (e.g. "Duplicate work order") without
-    // its approvalStatus ever being advanced past 'pending-final', which
-    // would otherwise leave it stuck showing as a live pending approval.
-    WorkOrder.find({ approvalStatus: 'pending-final', status: { $ne: 'cancelled' } }).populate('createdBy', 'name').lean(),
+    WorkOrder.find({ approvalStatus: 'pending-final' }).populate('createdBy', 'name').lean(),
     BillRequest.find({ status: 'pending-l4' }).populate('requestedBy', 'name').lean(),
     RunningBill.find({ manualApprovalStatus: 'pending-l4' }).populate('createdBy', 'name').lean(),
     RunningBill.find({ status: 'l1-approved' }).populate('createdBy', 'name').lean(),
@@ -97,14 +93,15 @@ async function buildPendingItems(user) {
       system: 'WorkOrder',
       approvalType: 'Work Order Final Approval',
       referenceNumber: wo.workOrderNo,
-
       workOrderNo: wo.workOrderNo,
-
-
-      isArchived: false,
-
+      // WorkOrder has no isArchived field of its own — a cancelled WO IS
+      // its "archived" state (same convention WorkItems/index.tsx already
+      // uses: cancelled WOs are hidden by default, shown only via Show
+      // Archived), so a pending-final WO that's also been cancelled (e.g.
+      // "Duplicate work order") surfaces only under Archived here too,
+      // rather than either always showing or being excluded outright.
+      isArchived: wo.status === 'cancelled',
       projectName: wo.projectName || null,
-
       vendorName: wo.vendorName || null,
       requester: wo.createdBy?.name || null,
       department: departmentOf(wo),
@@ -236,12 +233,8 @@ async function buildDecidedItems(user, decision) {
         system: 'WorkOrder',
         approvalType: 'Work Order Final Approval',
         referenceNumber: wo.workOrderNo,
-
         workOrderNo: wo.workOrderNo,
-
-
-        isArchived: false,
-
+        isArchived: wo.status === 'cancelled',
         projectName: wo.projectName || null,
 
         vendorName: wo.vendorName || null,
