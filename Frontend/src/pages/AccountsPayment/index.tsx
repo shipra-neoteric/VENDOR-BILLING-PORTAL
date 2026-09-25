@@ -1331,7 +1331,16 @@ export default function AccountsPayment() {
             }
           >
             <RunningBillDetailView
-              bill={drawerBill}
+              // While still at 'draft' (awaiting Verify), the TDS/Adjustment
+              // inputs above are live edits the user hasn't saved yet —
+              // RunningBillDetailView's own Financial Summary otherwise reads
+              // straight off drawerBill.tdsAmount/adjustmentAmount (the last
+              // SAVED values), so typing a new TDS % never moved Net Payable
+              // until after hitting Verify. Overlay the live draft values on
+              // top so the preview matches what Verify will actually save.
+              bill={drawerBill.status === "draft"
+                ? { ...drawerBill, tdsAmount: verifyTdsAmount, adjustmentAmount: verifyAdjustmentAmount }
+                : drawerBill}
               woCategory={drawerWOCategory}
               onViewWorkOrder={drawerBill.workOrderId ? () => openWODrawer(drawerBill.workOrderId!) : undefined}
               supersededByNumbers={supersededByMap[drawerBill.id]}
