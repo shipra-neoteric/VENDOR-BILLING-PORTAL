@@ -134,9 +134,13 @@ export default function MdApprovals() {
       apiClient.get<{ items: MdApprovalRow[] }>("/md/approvals", { params: { tab: "rejected" } }),
     ])
       .then(([p, a, r]) => {
-        const pendingItems = p.data.items ?? [];
-        const approvedItems = a.data.items ?? [];
-        const rejectedItems = r.data.items ?? [];
+        // Excludes archived (e.g. a cancelled-but-pending-final WorkOrder)
+        // the same way the table itself does by default — these tiles are
+        // the "what actually needs attention" summary, not a raw count of
+        // every row that could ever be surfaced via Show Archived.
+        const pendingItems = (p.data.items ?? []).filter((it) => !it.isArchived);
+        const approvedItems = (a.data.items ?? []).filter((it) => !it.isArchived);
+        const rejectedItems = (r.data.items ?? []).filter((it) => !it.isArchived);
         setTileStats({
           pendingCount: pendingItems.length,
           pendingAmount: pendingItems.reduce((s, r) => s + (r.amount || 0), 0),
@@ -174,13 +178,14 @@ export default function MdApprovals() {
   // narrow them further), same "count regardless of other filters" idea as
   // the Pending L1-L4 tab badges on BillRequests/index.tsx.
   const systemGroupCounts = useMemo(() => {
-    const base = tab === "aging" ? items.filter(isOverdue) : items;
+    let base = tab === "aging" ? items.filter(isOverdue) : items;
+    if (!showArchived) base = base.filter((r) => !r.isArchived);
     const counts: Record<string, number> = {};
     for (const g of SYSTEM_GROUPS) {
       counts[g.key] = g.key === "all" ? base.length : base.filter((r) => g.systems.includes(r.system)).length;
     }
     return counts;
-  }, [items, tab]);
+  }, [items, tab, showArchived]);
 
   const deptOptions = useMemo(
     () => Array.from(new Set(items.map((r) => r.department).filter((d): d is string => !!d))).map((d) => ({ value: d, label: d })),
