@@ -1160,7 +1160,7 @@ function WOFormFields({
 }: {
   values: WOFormValues;
   onChange: (patch: Partial<WOFormValues>) => void;
-  errors?: Partial<Record<"projectId" | "issueDate" | "vendorCode" | "description", string>>;
+  errors?: Partial<Record<"projectId" | "issueDate" | "vendorCode" | "description" | "companyId", string>>;
   isEdit?: boolean;
   nextWONo: string;
   nextCWONo: string;
@@ -1275,12 +1275,13 @@ function WOFormFields({
           hint={!isEdit ? `Leave blank to auto-assign (${isProfessionalServices ? nextCWONo : nextWONo})` : undefined}
         />
         <SField
-          label="Issuing Company"
-          placeholder="Select company (optional)"
+          label="Issuing Company" required
+          placeholder="Select company"
           value={values.companyId}
           onChange={v => onChange({ companyId: v })}
-          options={[{ value: "", label: "— None —" }, ...companiesList.filter((c: any) => c.isActive).map((c: any) => ({ label: `${c.shortCode} – ${c.name}`, value: c._id }))]}
+          options={companiesList.filter((c: any) => c.isActive).map((c: any) => ({ label: `${c.shortCode} – ${c.name}`, value: c._id }))}
           hint="Which Neoteric entity is issuing this work order? (printed on the WO PDF)"
+          error={errors?.companyId}
         />
       </div>
 
@@ -1579,8 +1580,8 @@ export default function WorkItems() {
 
   const [createValues, setCreateValues] = useState<WOFormValues>(blankWOForm());
   const [editValues,   setEditValues]   = useState<WOFormValues>(blankWOForm());
-  const createErrors = useFormErrors<"projectId" | "issueDate" | "vendorCode" | "description">();
-  const editErrors   = useFormErrors<"projectId" | "issueDate" | "vendorCode" | "description">();
+  const createErrors = useFormErrors<"projectId" | "issueDate" | "vendorCode" | "description" | "companyId">();
+  const editErrors   = useFormErrors<"projectId" | "issueDate" | "vendorCode" | "description" | "companyId">();
 
   const patchCreate = (patch: Partial<WOFormValues>) => setCreateValues(prev => ({ ...prev, ...patch }));
   const patchEdit    = (patch: Partial<WOFormValues>) => setEditValues(prev => ({ ...prev, ...patch }));
@@ -1963,13 +1964,14 @@ export default function WorkItems() {
 
   // ── Handlers ─────────────────────────────────────────────────
 
-  function validateWOForm(values: WOFormValues, errs: ReturnType<typeof useFormErrors<"projectId" | "issueDate" | "vendorCode" | "description">>): boolean {
+  function validateWOForm(values: WOFormValues, errs: ReturnType<typeof useFormErrors<"projectId" | "issueDate" | "vendorCode" | "description" | "companyId">>): boolean {
     errs.clearAll();
     let ok = true;
     if (!values.projectId) { errs.setError("projectId", "Select a project"); ok = false; }
     if (!values.issueDate) { errs.setError("issueDate", "Select issue date"); ok = false; }
     if (!values.vendorCode) { errs.setError("vendorCode", values.contractType === "professional-services" ? "Select a consultant" : "Select a vendor"); ok = false; }
     if (!values.description?.trim()) { errs.setError("description", "Required — this is printed as the Work Title / Scope on the WO PDF"); ok = false; }
+    if (!values.companyId) { errs.setError("companyId", "Select the issuing company"); ok = false; }
     return ok;
   }
 
