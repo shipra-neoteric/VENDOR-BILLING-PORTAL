@@ -9,17 +9,35 @@
 // functions each real handler already uses (woApproverAllowed/approverAllowed/
 // can/canActOnDepartment) — it never invents a new access rule, and every
 // action a user takes from this screen still goes through the real,
-// unmodified per-system routes (final-approve/l4-approve/manual-l4-approve/
+// unmodified per-system routes (final-approve/gm-approve/l3-approve/
+// l4-approve/manual-gm-approve/manual-l3-approve/manual-l4-approve/
 // l2-director-approve, and their reject/send-back counterparts).
+//
+// IMPORTANT: BillRequest/RunningBill-manual's "final" stage is NOT always
+// L4. Per billRequestController.js's gmApproveHandler (~line 650-652) and
+// l3ApproveHandler (~line 706-713), and billController.js's manual-chain
+// mirrors of the same logic: each department has its own
+// DepartmentApprovalConfig.requiredApprovals (2, 3, or 4), and whichever
+// stage equals that count is the one that actually finalizes the
+// request — gmApprove finalizes directly (skips l3/l4) when
+// requiredApprovals < 3, l3Approve finalizes directly (skips l4) when
+// requiredApprovals < 4. A department configured for 3 levels (seen in
+// production: "civil") never produces a single pending-l4 row — its real
+// final-approval-pending items sit at status/manualApprovalStatus ===
+// 'pending-l3' forever. Hardcoding a pending-l4-only query silently
+// dropped every such department's items from this page. finalStageFor()
+// below re-derives, per document, which stage is actually final for it.
 //
 // Exact history stage/action strings used below were read directly off the
 // real handlers, not guessed:
 //   WorkOrder.finalApprove       (workOrderController.js:703) → stage:'final',        action:'approved'
 //   WorkOrder.sendBack           (workOrderController.js:740-745) → from 'pending-final' → stage:'final', action:'sent-back'
-//   BillRequest.l4Approve        (billRequestController.js:753) → stage:'l4',          action:'approved'
-//   BillRequest.reject           (billRequestController.js:767-825) → from 'pending-l4' → stage:'l4', action:'rejected'
-//   RunningBill.manualL4Approve  (billController.js:1017) → stage:'manual-l4',         action:'approved'
-//   RunningBill.manualReject     (billController.js:1035-1098) → from 'pending-l4' → stage:'manual-l4', action:'rejected'
+//   BillRequest.gmApprove        (billRequestController.js:~652) → stage:'gm',  action:'approved' (finalizes when requiredApprovals<3)
+//   BillRequest.l3ApproveHandler (billRequestController.js:704)   → stage:'l3', action:'approved' (finalizes when requiredApprovals<4)
+//   BillRequest.l4Approve        (billRequestController.js:753)   → stage:'l4', action:'approved' (always final)
+//   BillRequest.rejectBillRequest                                  → stage:<current status's stage>, action:'rejected'
+//   RunningBill.manualGmApprove/manualL3Approve/manualL4Approve (billController.js) → stage:'manual-gm'/'manual-l3'/'manual-l4', action:'approved'
+//   RunningBill.manualReject                                       → stage:'manual-<current>', action:'rejected'
 //   RunningBill.l2DirectorApprove(billController.js:1161) → stage:'l2-director',        action:'approved'
 //   RunningBill.rejectBill       (billController.js:1403-1515) → REJECT_TARGET['l1-approved'].actions[0] = 'l1-agm-approve' → stage:'l1-agm-approve', action:'sent-back'
 const asyncHandler = require('../utils/asyncHandler');
@@ -36,26 +54,30 @@ const RunningBill = require('../models/RunningBill');
 const DAY_MS = 86400000;
 const dayFloor = (from, to) => Math.max(0, Math.floor((new Date(to).getTime() - new Date(from).getTime()) / DAY_MS));
 
-// Exact stage/action pair each source's decided-history entry carries, per
-// decision bucket — read off the real handlers (see header comment above).
-const DECIDED_MARKERS = {
-  WorkOrder: {
-    approved: { stage: 'final', action: 'approved' },
-    rejected: { stage: 'final', action: 'sent-back' },
-  },
-  BillRequest: {
-    approved: { stage: 'l4', action: 'approved' },
-    rejected: { stage: 'l4', action: 'rejected' },
-  },
-  'RunningBill-Manual': {
-    approved: { stage: 'manual-l4', action: 'approved' },
-    rejected: { stage: 'manual-l4', action: 'rejected' },
-  },
-  'RunningBill-Accounts': {
-    approved: { stage: 'l2-director', action: 'approved' },
-    rejected: { stage: 'l1-agm-approve', action: 'sent-back' },
-  },
-};
+function departmentOf(doc) {
+  return doc.department === 'custom' ? (doc.customDepartment || '') : (doc.department || '');
+}
+
+// Given a BillRequest/RunningBill(manual) currently sitting at
+// pending-gm/pending-l3/pending-l4, and its resolved approvalConfig,
+// determines whether THIS stage is the one that will actually finalize it
+// (matching gmApproveHandler/l3ApproveHandler's own totalLevels branching),
+// and if so returns the stage key ('gm'/'l3'/'l4') approverAllowed()/the
+// real per-system route expects. Returns null if this document is at a
+// genuinely non-final intermediate stage (e.g. pending-gm for a 4-level
+// department, which will advance to pending-l3 next, not finalize) — such
+// items are correctly NOT final-approval-pending yet and are left out.
+function finalStageFor(status, statusPrefix, config) {
+  const totalLevels = config?.requiredApprovals ?? 2;
+  const stage = status === `${statusPrefix}gm` ? 'gm' : status === `${statusPrefix}l3` ? 'l3' : status === `${statusPrefix}l4` ? 'l4' : null;
+  if (!stage) return null;
+  if (stage === 'gm' && totalLevels < 3) return 'gm';
+  if (stage === 'l3' && totalLevels < 4) return 'l3';
+  if (stage === 'l4') return 'l4';
+  return null;
+}
+
+const STAGE_LABEL = { gm: 'GM Approval', l3: 'L3 Approval', l4: 'L4 Approval' };
 
 // The history entries already snapshot byName/byRole at the moment the
 // decision was made (see each model's approvalHistory schema comment) — no
@@ -68,15 +90,26 @@ function lastMatchingHistoryEntry(history, stage, action) {
   return null;
 }
 
-function departmentOf(doc) {
-  return doc.department === 'custom' ? (doc.customDepartment || '') : (doc.department || '');
+// Scans gm/l3/l4 (in that order — l4 checked first since a 4-level
+// department's history ALSO carries an earlier l3:'approved' entry from
+// before it advanced, so checking l3 first would misidentify the real
+// final stage) for whichever one actually carries the terminal
+// approved/rejected entry — this is determined from the actual recorded
+// history, not from re-deriving requiredApprovals, so it stays correct
+// even if a department's config changes after the fact.
+function findFinalHistoryEntry(history, stagePrefix, action) {
+  for (const stage of ['l4', 'l3', 'gm']) {
+    const entry = lastMatchingHistoryEntry(history, `${stagePrefix}${stage}`, action);
+    if (entry) return { stage, entry };
+  }
+  return null;
 }
 
 async function buildPendingItems(user) {
   const [workOrders, billRequests, manualBills, accountsBills] = await Promise.all([
     WorkOrder.find({ approvalStatus: 'pending-final' }).populate('createdBy', 'name').lean(),
-    BillRequest.find({ status: 'pending-l4' }).populate('requestedBy', 'name').lean(),
-    RunningBill.find({ manualApprovalStatus: 'pending-l4' }).populate('createdBy', 'name').lean(),
+    BillRequest.find({ status: { $in: ['pending-gm', 'pending-l3', 'pending-l4'] } }).populate('requestedBy', 'name').lean(),
+    RunningBill.find({ manualApprovalStatus: { $in: ['pending-gm', 'pending-l3', 'pending-l4'] } }).populate('createdBy', 'name').lean(),
     RunningBill.find({ status: 'l1-approved' }).populate('createdBy', 'name').lean(),
   ]);
 
@@ -117,21 +150,20 @@ async function buildPendingItems(user) {
   for (const br of billRequests) {
     if (!canActOnDepartment(user, br)) continue;
     const config = await getApprovalConfig(br);
-    if (!approverAllowed(user, config, 'l4')) continue;
-    const pendingSince = br.l3ApprovedAt || br.createdAt;
+    const stage = finalStageFor(br.status, 'pending-', config);
+    if (!stage) continue; // genuinely mid-chain for this department, not final yet
+    if (!approverAllowed(user, config, stage)) continue;
+    const pendingSince = stage === 'l4' ? (br.l3ApprovedAt || br.createdAt)
+      : stage === 'l3' ? (br.gmApprovedAt || br.createdAt)
+      : (br.agmApprovedAt || br.createdAt);
     items.push({
       id: String(br._id),
       system: 'BillRequest',
-      approvalType: 'Bill Request L4 Approval',
+      approvalType: `Bill Request ${STAGE_LABEL[stage]}`,
       referenceNumber: br.reqNo,
-
       workOrderNo: br.workOrderNo || null,
-
-
       isArchived: !!br.isArchived,
-
       projectName: br.projectName || null,
-
       vendorName: br.vendorName || null,
       requester: br.requestedBy?.name || null,
       department: departmentOf(br),
@@ -140,7 +172,8 @@ async function buildPendingItems(user) {
       pendingSince,
       daysPending: dayFloor(pendingSince, now),
       status: br.status,
-      currentStage: 'L4 Approval',
+      currentStage: STAGE_LABEL[stage],
+      finalStage: stage,
     });
   }
 
@@ -148,22 +181,21 @@ async function buildPendingItems(user) {
   for (const bill of manualBills) {
     if (!canActOnDepartment(user, bill)) continue;
     const config = await getApprovalConfig(bill);
-    if (!approverAllowed(user, config, 'l4')) continue;
+    const stage = finalStageFor(bill.manualApprovalStatus, 'pending-', config);
+    if (!stage) continue;
+    if (!approverAllowed(user, config, stage)) continue;
     seenBillIds.add(String(bill._id));
-    const pendingSince = bill.manualL3ApprovedAt || bill.createdAt;
+    const pendingSince = stage === 'l4' ? (bill.manualL3ApprovedAt || bill.createdAt)
+      : stage === 'l3' ? (bill.manualGmApprovedAt || bill.createdAt)
+      : (bill.manualAgmApprovedAt || bill.createdAt);
     items.push({
       id: String(bill._id),
       system: 'RunningBill-Manual',
-      approvalType: 'Manual Bill L4 Approval',
+      approvalType: `Manual Bill ${STAGE_LABEL[stage]}`,
       referenceNumber: bill.billNo,
-
       workOrderNo: bill.workOrderNo || null,
-
-
       isArchived: !!bill.isArchived,
-
       projectName: bill.projectName || null,
-
       vendorName: bill.vendorName || null,
       requester: bill.createdBy?.name || bill.generatedBy || null,
       department: departmentOf(bill),
@@ -172,7 +204,8 @@ async function buildPendingItems(user) {
       pendingSince,
       daysPending: dayFloor(pendingSince, now),
       status: bill.manualApprovalStatus,
-      currentStage: 'L4 Approval (Manual Chain)',
+      currentStage: `${STAGE_LABEL[stage]} (Manual Chain)`,
+      finalStage: stage,
     });
   }
 
@@ -186,14 +219,9 @@ async function buildPendingItems(user) {
         system: 'RunningBill-Accounts',
         approvalType: 'Bill L2 Director Approval',
         referenceNumber: bill.billNo,
-
         workOrderNo: bill.workOrderNo || null,
-
-
         isArchived: !!bill.isArchived,
-
         projectName: bill.projectName || null,
-
         vendorName: bill.vendorName || null,
         requester: bill.createdBy?.name || bill.generatedBy || null,
         department: departmentOf(bill),
@@ -220,7 +248,7 @@ async function buildDecidedItems(user, decision) {
   const now = Date.now();
 
   if (can(user, 'work-orders', 'ceo-approve')) {
-    const marker = DECIDED_MARKERS.WorkOrder[decision];
+    const marker = decision === 'approved' ? { stage: 'final', action: 'approved' } : { stage: 'final', action: 'sent-back' };
     const rows = await WorkOrder.find({ approvalHistory: { $elemMatch: marker } })
       .populate('createdBy', 'name').lean();
     for (const wo of rows) {
@@ -236,7 +264,6 @@ async function buildDecidedItems(user, decision) {
         workOrderNo: wo.workOrderNo,
         isArchived: wo.status === 'cancelled',
         projectName: wo.projectName || null,
-
         vendorName: wo.vendorName || null,
         requester: wo.createdBy?.name || null,
         department: departmentOf(wo),
@@ -253,28 +280,27 @@ async function buildDecidedItems(user, decision) {
     }
   }
 
-  if (can(user, 'bill-requests', 'l4-approve')) {
-    const marker = DECIDED_MARKERS.BillRequest[decision];
-    const rows = await BillRequest.find({ approvalHistory: { $elemMatch: marker } })
-      .populate('requestedBy', 'name').lean();
+  if (can(user, 'bill-requests', 'l4-approve') || can(user, 'bill-requests', 'l3-approve') || can(user, 'bill-requests', 'gm-approve')) {
+    const action = decision === 'approved' ? 'approved' : 'rejected';
+    const rows = await BillRequest.find({
+      approvalHistory: { $elemMatch: { stage: { $in: ['gm', 'l3', 'l4'] }, action } },
+    }).populate('requestedBy', 'name').lean();
     for (const br of rows) {
       if (!canActOnDepartment(user, br)) continue;
-      const entry = lastMatchingHistoryEntry(br.approvalHistory, marker.stage, marker.action);
-      if (!entry) continue;
-      const pendingSince = br.l3ApprovedAt || br.createdAt;
+      const found = findFinalHistoryEntry(br.approvalHistory, '', action);
+      if (!found) continue;
+      const { stage, entry } = found;
+      const pendingSince = stage === 'l4' ? (br.l3ApprovedAt || br.createdAt)
+        : stage === 'l3' ? (br.gmApprovedAt || br.createdAt)
+        : (br.agmApprovedAt || br.createdAt);
       items.push({
         id: String(br._id),
         system: 'BillRequest',
-        approvalType: 'Bill Request L4 Approval',
+        approvalType: `Bill Request ${STAGE_LABEL[stage]}`,
         referenceNumber: br.reqNo,
-
         workOrderNo: br.workOrderNo || null,
-
-
         isArchived: !!br.isArchived,
-
         projectName: br.projectName || null,
-
         vendorName: br.vendorName || null,
         requester: br.requestedBy?.name || null,
         department: departmentOf(br),
@@ -282,7 +308,7 @@ async function buildDecidedItems(user, decision) {
         submittedAt: br.createdAt,
         pendingSince,
         status: br.status,
-        currentStage: 'L4 Approval',
+        currentStage: STAGE_LABEL[stage],
         decision: entry.action,
         decidedBy: entry.byName || null,
         decidedAt: entry.at,
@@ -291,40 +317,42 @@ async function buildDecidedItems(user, decision) {
     }
   }
 
-  const hasBillsAccess = can(user, 'bill-requests', 'l4-approve') || can(user, 'accounts-payment', 'l2-director-approve');
+  const hasBillsAccess = can(user, 'bill-requests', 'l4-approve') || can(user, 'bill-requests', 'l3-approve') || can(user, 'bill-requests', 'gm-approve')
+    || can(user, 'accounts-payment', 'l2-director-approve');
   if (hasBillsAccess) {
-    const manualMarker = DECIDED_MARKERS['RunningBill-Manual'][decision];
-    const accountsMarker = DECIDED_MARKERS['RunningBill-Accounts'][decision];
+    const action = decision === 'approved' ? 'approved' : 'rejected';
+    const accountsMarker = decision === 'approved' ? { stage: 'l2-director', action: 'approved' } : { stage: 'l1-agm-approve', action: 'sent-back' };
     const rows = await RunningBill.find({
-      $or: [{ approvalHistory: { $elemMatch: manualMarker } }, { approvalHistory: { $elemMatch: accountsMarker } }],
+      $or: [
+        { approvalHistory: { $elemMatch: { stage: { $in: ['manual-gm', 'manual-l3', 'manual-l4'] }, action } } },
+        { approvalHistory: { $elemMatch: accountsMarker } },
+      ],
     }).populate('createdBy', 'name').lean();
 
     const seen = new Set();
     for (const bill of rows) {
       if (!canActOnDepartment(user, bill)) continue;
-      const manualEntry = can(user, 'bill-requests', 'l4-approve')
-        ? lastMatchingHistoryEntry(bill.approvalHistory, manualMarker.stage, manualMarker.action) : null;
+      const manualFound = (can(user, 'bill-requests', 'l4-approve') || can(user, 'bill-requests', 'l3-approve') || can(user, 'bill-requests', 'gm-approve'))
+        ? findFinalHistoryEntry(bill.approvalHistory, 'manual-', action) : null;
       const accountsEntry = can(user, 'accounts-payment', 'l2-director-approve')
         ? lastMatchingHistoryEntry(bill.approvalHistory, accountsMarker.stage, accountsMarker.action) : null;
 
-      if (manualEntry) {
+      if (manualFound) {
         const key = `manual-${bill._id}`;
         if (!seen.has(key)) {
           seen.add(key);
-          const pendingSince = bill.manualL3ApprovedAt || bill.createdAt;
+          const { stage, entry } = manualFound;
+          const pendingSince = stage === 'l4' ? (bill.manualL3ApprovedAt || bill.createdAt)
+            : stage === 'l3' ? (bill.manualGmApprovedAt || bill.createdAt)
+            : (bill.manualAgmApprovedAt || bill.createdAt);
           items.push({
             id: String(bill._id),
             system: 'RunningBill-Manual',
-            approvalType: 'Manual Bill L4 Approval',
+            approvalType: `Manual Bill ${STAGE_LABEL[stage]}`,
             referenceNumber: bill.billNo,
-
             workOrderNo: bill.workOrderNo || null,
-
-
             isArchived: !!bill.isArchived,
-
             projectName: bill.projectName || null,
-
             vendorName: bill.vendorName || null,
             requester: bill.createdBy?.name || bill.generatedBy || null,
             department: departmentOf(bill),
@@ -332,11 +360,11 @@ async function buildDecidedItems(user, decision) {
             submittedAt: bill.createdAt,
             pendingSince,
             status: bill.manualApprovalStatus,
-            currentStage: 'L4 Approval (Manual Chain)',
-            decision: manualEntry.action,
-            decidedBy: manualEntry.byName || null,
-            decidedAt: manualEntry.at,
-            daysToDecide: dayFloor(pendingSince, manualEntry.at),
+            currentStage: `${STAGE_LABEL[stage]} (Manual Chain)`,
+            decision: entry.action,
+            decidedBy: entry.byName || null,
+            decidedAt: entry.at,
+            daysToDecide: dayFloor(pendingSince, entry.at),
           });
         }
       }
@@ -350,14 +378,9 @@ async function buildDecidedItems(user, decision) {
             system: 'RunningBill-Accounts',
             approvalType: 'Bill L2 Director Approval',
             referenceNumber: bill.billNo,
-
             workOrderNo: bill.workOrderNo || null,
-
-
             isArchived: !!bill.isArchived,
-
             projectName: bill.projectName || null,
-
             vendorName: bill.vendorName || null,
             requester: bill.createdBy?.name || bill.generatedBy || null,
             department: departmentOf(bill),
@@ -383,12 +406,16 @@ exports.listMdApprovals = asyncHandler(async (req, res) => {
   const user = req.user;
   const tab = ['pending', 'approved', 'rejected'].includes(req.query.tab) ? req.query.tab : 'pending';
 
-  // Base-access guard — a user holding NONE of the 3 final-stage permissions
+  // Base-access guard — a user holding NONE of the final-stage permissions
   // (including via role bypass, e.g. Owner) has no legitimate reason to even
   // probe this endpoint, so short-circuit before running any of the queries.
+  // gm-approve/l3-approve are included alongside l4-approve since either can
+  // be the REAL final stage for a given department (see finalStageFor above).
   const hasAnyBaseAccess =
     can(user, 'work-orders', 'ceo-approve') ||
     can(user, 'bill-requests', 'l4-approve') ||
+    can(user, 'bill-requests', 'l3-approve') ||
+    can(user, 'bill-requests', 'gm-approve') ||
     can(user, 'accounts-payment', 'l2-director-approve');
   if (!hasAnyBaseAccess) return forbidden(res, 'You are not configured as a final-stage approver anywhere in this system.');
 
@@ -432,9 +459,10 @@ exports.getMdApprovalDetail = asyncHandler(async (req, res) => {
 
   // Re-run the same authorization the list endpoint uses: for an item still
   // sitting at the relevant stage, the real "am I the configured approver"
-  // check; for an already-decided item, department scoping (above) is
-  // sufficient — re-checking the CURRENT stage state would be meaningless
-  // since the item has moved past it.
+  // check (now correctly resolved per-department, not hardcoded to l4); for
+  // an already-decided item, department scoping (above) is sufficient —
+  // re-checking the CURRENT stage state would be meaningless since the item
+  // has moved past it.
   let authorized = false;
   let isPending = false;
   if (system === 'WorkOrder') {
@@ -446,26 +474,26 @@ exports.getMdApprovalDetail = asyncHandler(async (req, res) => {
       authorized = can(user, 'work-orders', 'ceo-approve');
     }
   } else if (system === 'BillRequest') {
-    isPending = doc.status === 'pending-l4';
+    const config = await getApprovalConfig(doc);
+    const stage = finalStageFor(doc.status, 'pending-', config);
+    isPending = !!stage;
     if (isPending) {
-      const config = await getApprovalConfig(doc);
-      authorized = approverAllowed(user, config, 'l4');
+      authorized = approverAllowed(user, config, stage);
     } else {
-      authorized = can(user, 'bill-requests', 'l4-approve');
+      authorized = can(user, 'bill-requests', 'l4-approve') || can(user, 'bill-requests', 'l3-approve') || can(user, 'bill-requests', 'gm-approve');
     }
   } else if (system === 'RunningBill-Manual') {
-    isPending = doc.manualApprovalStatus === 'pending-l4';
+    const config = await getApprovalConfig(doc);
+    const stage = finalStageFor(doc.manualApprovalStatus, 'pending-', config);
+    isPending = !!stage;
     if (isPending) {
-      const config = await getApprovalConfig(doc);
-      authorized = approverAllowed(user, config, 'l4');
+      authorized = approverAllowed(user, config, stage);
     } else {
-      authorized = can(user, 'bill-requests', 'l4-approve');
+      authorized = can(user, 'bill-requests', 'l4-approve') || can(user, 'bill-requests', 'l3-approve') || can(user, 'bill-requests', 'gm-approve');
     }
   } else if (system === 'RunningBill-Accounts') {
     isPending = doc.status === 'l1-approved';
-    authorized = isPending
-      ? can(user, 'accounts-payment', 'l2-director-approve')
-      : can(user, 'accounts-payment', 'l2-director-approve');
+    authorized = can(user, 'accounts-payment', 'l2-director-approve');
   }
   if (!authorized) return forbidden(res, "You're not authorized to view this item.");
 

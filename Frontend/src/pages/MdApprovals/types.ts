@@ -18,6 +18,11 @@ export interface MdApprovalRow {
   daysPending?: number;
   status: string;
   currentStage: string;
+  // BillRequest/RunningBill-Manual only — which stage actually finalizes
+  // this document for its department (gm/l3/l4 all finalize directly
+  // depending on that department's configured approval-level count), so
+  // the Approve/Reject action calls the matching real endpoint.
+  finalStage?: "gm" | "l3" | "l4";
   // Only present on tab=approved/rejected rows.
   decision?: "approved" | "rejected" | "sent-back";
   decidedBy?: string | null;

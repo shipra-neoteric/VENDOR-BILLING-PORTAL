@@ -51,6 +51,12 @@ function hasAnyMdApprovalsAccess(user: ReturnType<typeof useAuth>["user"]): bool
 
 // Endpoint map per row.system — every action from this screen goes through
 // the real, unmodified per-system route, never a new aggregator-side one.
+// BillRequest/RunningBill-Manual resolve their approve path per-row (see
+// approveEndpointFor below) since which stage actually finalizes a given
+// document depends on its department's configured approval-level count
+// (gm/l3/l4 can each be "the final stage" — see mdApprovalsController.js's
+// finalStageFor) — the entries below are just the reject endpoint (same
+// regardless of stage) plus a placeholder approve path never used directly.
 const ACTION_ENDPOINTS: Record<MdSystem, { approve: { method: "put" | "patch"; path: (id: string) => string }; reject: { method: "put" | "patch"; path: (id: string) => string; bodyKey: "reason" | "rejectReason" }; sendBack?: { method: "put" | "patch"; path: (id: string) => string } }> = {
   WorkOrder: {
     approve: { method: "patch", path: (id) => `/work-orders/${id}/final-approve` },
@@ -70,6 +76,16 @@ const ACTION_ENDPOINTS: Record<MdSystem, { approve: { method: "put" | "patch"; p
     reject:  { method: "patch", path: (id) => `/bills/${id}/reject`, bodyKey: "reason" },
   },
 };
+
+// Resolves the real approve/reject endpoint for a BillRequest/RunningBill-
+// Manual row using its finalStage (gm/l3/l4) — falls back to l4 if
+// finalStage is somehow missing (shouldn't happen for a pending row, only
+// possible on already-decided rows where no action is offered anyway).
+function stageApproveEndpoint(row: MdApprovalRow): { method: "put" | "patch"; path: string } {
+  const stage = row.finalStage ?? "l4";
+  if (row.system === "BillRequest") return { method: "put", path: `/bill-requests/${row.id}/${stage}-approve` };
+  return { method: "patch", path: `/bills/${row.id}/manual-${stage}-approve` };
+}
 
 // The 3 explicit "quick filter" system buttons the user asked for, plus an
 // "All Systems" default. RunningBill-Manual (Manual Bills) has no button of
@@ -238,8 +254,10 @@ export default function MdApprovals() {
     if (!approveTarget) return;
     setSaving(true);
     try {
-      const { method, path } = ACTION_ENDPOINTS[approveTarget.system].approve;
-      const res = await apiClient[method](path(approveTarget.id), { remarks: "" });
+      const { method, path } = approveTarget.system === "BillRequest" || approveTarget.system === "RunningBill-Manual"
+        ? stageApproveEndpoint(approveTarget)
+        : { method: ACTION_ENDPOINTS[approveTarget.system].approve.method, path: ACTION_ENDPOINTS[approveTarget.system].approve.path(approveTarget.id) };
+      const res = await apiClient[method](path, { remarks: "" });
       toast.success(res.data?.message || "Approved");
       refetchAndClose();
     } catch (e: any) {
