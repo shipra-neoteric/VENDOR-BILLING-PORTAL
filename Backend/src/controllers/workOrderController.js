@@ -197,6 +197,20 @@ exports.listWorkOrders = asyncHandler(async (req, res) => {
       { projectName: { $regex: search, $options: 'i' } },
     ];
   }
+  // A work order still at approvalStatus 'draft' hasn't been submitted for
+  // review yet — it's the creator's own work-in-progress (per the "Save as
+  // Draft, stays with whoever made it until they submit" request), visible
+  // to no one else. Owner keeps its usual app-wide bypass. $and (not a
+  // second top-level $or, which would silently overwrite the search $or
+  // above) collects this alongside it so both conditions apply together.
+  if (req.user.role !== 'owner') {
+    filter.$and = (filter.$and || []).concat([{
+      $or: [
+        { approvalStatus: { $ne: 'draft' } },
+        { createdBy: req.user._id },
+      ],
+    }]);
+  }
   // Attached files are stored as base64 data URIs directly on the document, which can
   // run into MBs per work order — excluding the actual bytes here (keeping just the
   // file names, so document counts/badges still work) is what keeps this list fast.
@@ -241,6 +255,13 @@ exports.getWorkOrder = asyncHandler(async (req, res) => {
     .populate('scopeItems.subItems.progressEntries.invalidated.by', 'name')
     .lean();
   if (!workOrder) return notFound(res, 'Work order not found');
+  // Same draft-visibility rule as listWorkOrders — a still-draft WO is only
+  // visible to its own creator (or Owner) via direct link/id too, not just
+  // hidden from the list.
+  if (workOrder.approvalStatus === 'draft' && req.user.role !== 'owner'
+    && String(workOrder.createdBy?._id || workOrder.createdBy) !== String(req.user._id)) {
+    return notFound(res, 'Work order not found');
+  }
 
   // vendorName/ownerName/mobile are snapshotted onto the WO itself at creation
   // time, but address/GST/PAN/bank details never were — fetch them fresh from

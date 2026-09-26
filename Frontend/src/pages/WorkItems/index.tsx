@@ -130,6 +130,7 @@ const UNIT_OPTIONS = [
   { label: "Cu.Ft (Cubic Feet)",   value: "cu.ft" },
   { label: "RMT (Running Meter)",  value: "rmt" },
   { label: "Kg (Kilogram)",        value: "kg" },
+  { label: "Litre",                value: "litre" },
   { label: "MT (Metric Ton)",      value: "mt" },
   { label: "Nos (Numbers)",        value: "nos" },
   { label: "Daily Wage",           value: "daily-wage" },
