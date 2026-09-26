@@ -1976,7 +1976,14 @@ export default function WorkItems() {
     return ok;
   }
 
-  const handleCreate = async () => {
+  // submitAfter=true is "Save & Submit for Review" — creates the WO (always
+  // starts at approvalStatus 'draft' server-side) then immediately calls the
+  // real submit endpoint so it moves straight to pending-checker, same as if
+  // the creator had opened it afterward and clicked Submit themselves. Plain
+  // "Save as Draft" (submitAfter=false) just creates it — visible only to
+  // its creator (or Owner) until someone submits it, per the real
+  // approvalStatus-based visibility rule already enforced backend-side.
+  const handleCreate = async (submitAfter: boolean) => {
     if (!validateWOForm(createValues, createErrors)) return;
     if (createDocsUploading) {
       toast.error("A document is still uploading — wait for it to finish before saving");
@@ -2035,8 +2042,16 @@ export default function WorkItems() {
     setSaving(true);
     try {
       const res = await apiClient.post<{ workOrder: WorkOrder }>("/work-orders", body);
-      setWorkOrders(prev => [normalizeWO(res.data.workOrder), ...prev]);
-      toast.success(`Work order ${res.data.workOrder.workOrderNo} created`);
+      let workOrder = res.data.workOrder;
+      const rawId = (workOrder as unknown as { _id: string })._id;
+      if (submitAfter) {
+        const submitRes = await apiClient.patch<{ workOrder: WorkOrder }>(`/work-orders/${rawId}/submit`, {});
+        workOrder = submitRes.data.workOrder;
+      }
+      setWorkOrders(prev => [normalizeWO(workOrder), ...prev]);
+      toast.success(submitAfter
+        ? `Work order ${workOrder.workOrderNo} created and submitted for review`
+        : `Work order ${workOrder.workOrderNo} saved as draft — visible only to you until submitted`);
       setCreateValues(blankWOForm());
       setCreateScopeItems([]);
       setCreateMilestones([]);
@@ -2775,7 +2790,8 @@ export default function WorkItems() {
                 outline label="Cancel"
                 onClick={() => { setCreateValues(blankWOForm()); setCreateScopeItems([]); setCreateMilestones([]); setCreateSecurityDeposits([]); setCreateDiscount(null); setCreateWarranty([]); setCreateDrawerOpen(false); }}
               />
-              <Btn color="primary" loading={saving} disabled={createDocsUploading} label="Save Work Order" onClick={handleCreate} />
+              <Btn outline loading={saving} disabled={createDocsUploading} label="Save as Draft" onClick={() => handleCreate(false)} />
+              <Btn color="primary" loading={saving} disabled={createDocsUploading} label="Save & Submit for Review" onClick={() => handleCreate(true)} />
             </div>
           }
         >
