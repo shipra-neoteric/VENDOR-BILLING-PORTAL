@@ -16,6 +16,7 @@ import { SkeletonTable } from "../../ui/Skeleton";
 import EmptyState from "../../ui/EmptyState";
 import Modal from "../../ui/Modal";
 import ConfirmModal from "../../ui/ConfirmModal";
+import { UNIT_OPTIONS } from "../../shared/constants/unitOptions";
 
 interface DraftWorkOrder {
   _id: string;
@@ -72,28 +73,6 @@ interface CustomItem {
 }
 let _customItemKey = 0;
 const newCustomItem = (): CustomItem => ({ key: String(++_customItemKey), description: "", unit: "", plannedQty: "", rate: "" });
-
-// Same list Work Orders' own scope-item unit picker uses (WorkItems/index.tsx,
-// PublicWorkOrderForm/index.tsx) — kept consistent rather than free-text so a
-// contractor's extra item's unit always matches something the rest of the app
-// already recognizes.
-const UNIT_OPTIONS = [
-  { label: "Sq.Ft (Square Feet)", value: "sq.ft"      },
-  { label: "Sq.M (Square Meter)", value: "sq.m"       },
-  { label: "Cu.M (Cubic Meter)",  value: "cu.m"       },
-  { label: "Cu.Ft (Cubic Feet)",  value: "cu.ft"      },
-  { label: "RMT (Running Meter)", value: "rmt"        },
-  { label: "Kg (Kilogram)",       value: "kg"         },
-  { label: "MT (Metric Ton)",     value: "mt"         },
-  { label: "Nos (Numbers)",       value: "nos"        },
-  { label: "Daily Wage",          value: "daily-wage" },
-  { label: "Per Day",             value: "per-day"    },
-  { label: "Per Person",          value: "per-person" },
-  { label: "Per Hour",            value: "per-hr"     },
-  { label: "Per Trip",            value: "per-trip"   },
-  { label: "RFT (Running Foot)",  value: "rft"        },
-  { label: "Lump Sum",            value: "lump-sum"   },
-];
 
 // Standard Indian mobile: exactly 10 digits, first digit 6-9 — same shape
 // every other form's "10-digit mobile" placeholder already implies, just

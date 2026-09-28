@@ -15,7 +15,6 @@ import Btn from "../../ui/Btn";
 import NxBtn from "../../ui/nexora/Btn";
 import Card from "../../ui/Card";
 import { FilterRow, SelectFilter } from "../../ui/Filters";
-import { DateRangePicker } from "../../ui/DatePicker";
 import { Skeleton, SkeletonTable } from "../../ui/Skeleton";
 import KpiCard from "../../features/dashboard/components/KpiCard";
 import ProjectLifecycle from "../../features/dashboard/components/ProjectLifecycle";
@@ -144,27 +143,8 @@ export default function Dashboard() {
           <SelectFilter value={projectId} onChange={v => setFilter("projectId", v)} placeholder="All Projects" options={projectOptions.map(p => ({ label: p.name, value: p._id }))} />
           <SelectFilter value={categoryId} onChange={v => setFilter("categoryId", v)} placeholder="All Categories" options={categoryOptions} />
           <SelectFilter value={contractorId} onChange={v => setFilter("contractorId", v)} placeholder="All Contractors" options={contractorOptions} />
-          <DateRangePicker from={from} to={to} onChange={(f, t) => setSearchParams(prev => {
-            const next = new URLSearchParams(prev);
-            if (f) next.set("from", f); else next.delete("from");
-            if (t) next.set("to", t); else next.delete("to");
-            return next;
-          }, { replace: true })} />
           {hasFilters && <Btn label="Reset Filters" icon={RotateCcw} outline small onClick={resetFilters} />}
         </FilterRow>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <NxBtn
-            color="secondary"
-            label="Pending Bill"
-            onClick={() => navigate("/pending-payments")}
-          />
-          <NxBtn
-            color="secondary"
-            label="Pending Work Order"
-            onClick={() => navigate("/pending-work-orders")}
-          />
-        </div>
       </div>
 
       {filterChips.length > 0 && (

@@ -13,10 +13,6 @@
    variable here since @theme values must be static. */
 @theme {
   --color-primary: #FF7A00;
-  /* Same lighter/darker shades already used for the logo gradient and hover
-     states elsewhere in this file/Sidebar/Header — registered here too so
-     `bg-primary-light`/`text-primary-dark` etc. are real Tailwind utilities,
-     instead of every consumer inventing its own shade of the brand color. */
   --color-primary-light: #FF9A3C;
   --color-primary-dark: #E56E00;
 }
@@ -193,32 +189,40 @@ body {
   scrollbar-width: auto;
   scrollbar-color: #b0b0b0 #f1f1f1;
 }
+
 *::-webkit-scrollbar {
   width: 12px !important;
   height: 12px !important;
 }
+
 *::-webkit-scrollbar-track {
   background: #f1f1f1 !important;
   border-radius: 8px;
 }
+
 *::-webkit-scrollbar-thumb {
   background: #b0b0b0 !important;
   border-radius: 8px;
   border: 2px solid #f1f1f1;
 }
+
 *::-webkit-scrollbar-thumb:hover {
   background: #8a8a8a !important;
 }
+
 [data-theme="dark"] * {
   scrollbar-color: #475569 #1e293b;
 }
+
 [data-theme="dark"] *::-webkit-scrollbar-track {
   background: #1e293b;
 }
+
 [data-theme="dark"] *::-webkit-scrollbar-thumb {
   background: #475569;
   border-color: #1e293b;
 }
+
 [data-theme="dark"] *::-webkit-scrollbar-thumb:hover {
   background: #64748b;
 }
@@ -353,6 +357,14 @@ body {
 
 .nx-nav-item--active .nx-nav-icon {
   background: rgba(255, 122, 0, 0.14);
+}
+
+/* Masters secondary sidebar: plain icons, no background box behind them */
+.masters-nav-icon,
+.masters-nav-item:hover .masters-nav-icon,
+.masters-nav-item--active .masters-nav-icon,
+.nx-nav-item--active.masters-nav-item .masters-nav-icon {
+  background: transparent;
 }
 
 /* ── Direct Button Target ─────────────────────────────────────────

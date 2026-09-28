@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import {
   Plus, Pencil, Trash2, Building2, FolderOpen, CheckCircle2, Clock, ArrowLeft,
-  Landmark, HardHat, Receipt, Banknote, TrendingUp, Users, ClipboardList, LayoutGrid, FileText, Activity,
+  Landmark, HardHat, Receipt, Banknote, TrendingUp, Users, ClipboardList, LayoutGrid, FileText, Activity, ExternalLink
 } from "lucide-react";
 import { WorkflowTimeline, type TimelineStep } from "../../components/WorkflowTimeline";
 import dayjs from "dayjs";
@@ -102,22 +102,22 @@ interface ProjectEvent {
 }
 
 const EVENT_CONFIG: Record<string, { icon: string; color: string; label: string }> = {
-  WORK_ORDER_CREATED:      { icon: "📋", color: "#3b82f6", label: "Work Order Created" },
-  WORK_ORDER_ISSUED:       { icon: "📝", color: "#6366f1", label: "Work Order Issued" },
-  WORK_ORDER_COMPLETED:    { icon: "✅", color: "#16a34a", label: "Work Order Completed" },
-  PROGRESS_ADDED:          { icon: "📊", color: "#FF7A00", label: "Progress Recorded" },
-  BILL_REQUESTED:          { icon: "🧾", color: "#f59e0b", label: "Bill Request Submitted" },
+  WORK_ORDER_CREATED: { icon: "📋", color: "#3b82f6", label: "Work Order Created" },
+  WORK_ORDER_ISSUED: { icon: "📝", color: "#6366f1", label: "Work Order Issued" },
+  WORK_ORDER_COMPLETED: { icon: "✅", color: "#16a34a", label: "Work Order Completed" },
+  PROGRESS_ADDED: { icon: "📊", color: "#FF7A00", label: "Progress Recorded" },
+  BILL_REQUESTED: { icon: "🧾", color: "#f59e0b", label: "Bill Request Submitted" },
   BILL_REQUEST_AGM_APPROVED: { icon: "📝", color: "#0ea5e9", label: "L1 Approved" },
-  BILL_REQUEST_APPROVED:   { icon: "✅", color: "#16a34a", label: "L2 Approved — Bill Raised" },
-  BILL_REQUEST_REJECTED:   { icon: "❌", color: "#ef4444", label: "Bill Request Rejected" },
-  RUNNING_BILL_CREATED:    { icon: "📄", color: "#3b82f6", label: "Running Bill Created" },
-  RUNNING_BILL_SUBMITTED:  { icon: "📤", color: "#6366f1", label: "Running Bill Submitted" },
-  RUNNING_BILL_VERIFIED:   { icon: "🔍", color: "#FF7A00", label: "Running Bill Verified" },
-  RUNNING_BILL_APPROVED:   { icon: "✅", color: "#16a34a", label: "Running Bill Approved" },
-  RUNNING_BILL_REJECTED:   { icon: "❌", color: "#ef4444", label: "Running Bill Rejected" },
-  PAYMENT_INITIATED:       { icon: "💸", color: "#7c3aed", label: "Payment Initiated" },
-  PAYMENT_RELEASED:        { icon: "💰", color: "#16a34a", label: "Payment Released" },
-  MILESTONE_ACHIEVED:      { icon: "🏆", color: "#d97706", label: "Milestone Achieved" },
+  BILL_REQUEST_APPROVED: { icon: "✅", color: "#16a34a", label: "L2 Approved — Bill Raised" },
+  BILL_REQUEST_REJECTED: { icon: "❌", color: "#ef4444", label: "Bill Request Rejected" },
+  RUNNING_BILL_CREATED: { icon: "📄", color: "#3b82f6", label: "Running Bill Created" },
+  RUNNING_BILL_SUBMITTED: { icon: "📤", color: "#6366f1", label: "Running Bill Submitted" },
+  RUNNING_BILL_VERIFIED: { icon: "🔍", color: "#FF7A00", label: "Running Bill Verified" },
+  RUNNING_BILL_APPROVED: { icon: "✅", color: "#16a34a", label: "Running Bill Approved" },
+  RUNNING_BILL_REJECTED: { icon: "❌", color: "#ef4444", label: "Running Bill Rejected" },
+  PAYMENT_INITIATED: { icon: "💸", color: "#7c3aed", label: "Payment Initiated" },
+  PAYMENT_RELEASED: { icon: "💰", color: "#16a34a", label: "Payment Released" },
+  MILESTONE_ACHIEVED: { icon: "🏆", color: "#d97706", label: "Milestone Achieved" },
 };
 
 // ── Config ─────────────────────────────────────────────────────────────────────
@@ -147,23 +147,23 @@ const fmt = (n: number) => "₹" + (n ?? 0).toLocaleString("en-IN", { maximumFra
 
 // ── Workflow Timeline helpers ──────────────────────────────────────────────────
 const WF_STEPS: { key: string; name: string; icon: string; types: string[] }[] = [
-  { key: "wo_created",   name: "Work Order\nGenerated",   icon: "📋", types: ["WORK_ORDER_CREATED"] },
-  { key: "dri_viewed",   name: "Issued\nto DRI",          icon: "👷", types: ["WORK_ORDER_ISSUED"] },
-  { key: "bill_req",     name: "Stage 1\nBill Request",   icon: "🧾", types: ["BILL_REQUESTED"] },
-  { key: "agm_approved", name: "L1\nApproved",           icon: "📝", types: ["BILL_REQUEST_AGM_APPROVED"] },
+  { key: "wo_created", name: "Work Order\nGenerated", icon: "📋", types: ["WORK_ORDER_CREATED"] },
+  { key: "dri_viewed", name: "Issued\nto DRI", icon: "👷", types: ["WORK_ORDER_ISSUED"] },
+  { key: "bill_req", name: "Stage 1\nBill Request", icon: "🧾", types: ["BILL_REQUESTED"] },
+  { key: "agm_approved", name: "L1\nApproved", icon: "📝", types: ["BILL_REQUEST_AGM_APPROVED"] },
   { key: "gm_bill_approved", name: "L2 Approved &\nBill Raised", icon: "📄", types: ["BILL_REQUEST_APPROVED"] },
-  { key: "rb_approved",  name: "Running Bill\nApproved",  icon: "🔏", types: ["RUNNING_BILL_APPROVED", "RUNNING_BILL_VERIFIED"] },
-  { key: "pay_init",     name: "Payment\nInitiated",      icon: "💸", types: ["PAYMENT_INITIATED"] },
-  { key: "pay_out",      name: "Payment\nReleased",       icon: "💰", types: ["PAYMENT_RELEASED", "MILESTONE_ACHIEVED"] },
-  { key: "wo_done",      name: "Work Order\nCompleted",   icon: "🏆", types: ["WORK_ORDER_COMPLETED"] },
+  { key: "rb_approved", name: "Running Bill\nApproved", icon: "🔏", types: ["RUNNING_BILL_APPROVED", "RUNNING_BILL_VERIFIED"] },
+  { key: "pay_init", name: "Payment\nInitiated", icon: "💸", types: ["PAYMENT_INITIATED"] },
+  { key: "pay_out", name: "Payment\nReleased", icon: "💰", types: ["PAYMENT_RELEASED", "MILESTONE_ACHIEVED"] },
+  { key: "wo_done", name: "Work Order\nCompleted", icon: "🏆", types: ["WORK_ORDER_COMPLETED"] },
 ];
 
 function buildTimelineSteps(events: ProjectEvent[], woNo: string): TimelineStep[] {
-  const evs    = events.filter(e => e.workOrderNo === woNo);
+  const evs = events.filter(e => e.workOrderNo === woNo);
   const findEv = (types: string[]) => evs.find(e => types.includes(e.type));
   const billRejected = evs.some(e => e.type === "BILL_REQUEST_REJECTED");
 
-  const mapped  = WF_STEPS.map(s => ({ ...s, ev: findEv(s.types) }));
+  const mapped = WF_STEPS.map(s => ({ ...s, ev: findEv(s.types) }));
   const lastIdx = mapped.reduce((acc, s, i) => s.ev ? i : acc, -1);
   const currIdx = lastIdx + 1;
 
@@ -192,18 +192,18 @@ function ProjectDetail({
   const id = project._id || project.id;
   const parentProject = project.parentId ? allProjects.find(p => p.id === project.parentId) : null;
   const subProjects = project.parentId ? [] : allProjects.filter(p => p.parentId === project.id);
-  const [wos,           setWOs]          = useState<WORow[]>([]);
-  const [stats,         setStats]        = useState<ProjectStats | null>(null);
-  const [activity,      setActivity]     = useState<ProjectEvent[]>([]);
-  const [billRequests,  setBillRequests] = useState<BillDetailRequest[]>([]);
-  const [contractors,   setContractors]  = useState<ContractorRow[]>([]);
-  const [loading,       setLoading]      = useState(true);
-  const [selectedWONo,  setSelectedWONo] = useState<string>("");
-  const [activeTab,     setActiveTab]    = useState<"vendors" | "workorders" | "category" | "bills" | "activity">("workorders");
+  const [wos, setWOs] = useState<WORow[]>([]);
+  const [stats, setStats] = useState<ProjectStats | null>(null);
+  const [activity, setActivity] = useState<ProjectEvent[]>([]);
+  const [billRequests, setBillRequests] = useState<BillDetailRequest[]>([]);
+  const [contractors, setContractors] = useState<ContractorRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedWONo, setSelectedWONo] = useState<string>("");
+  const [activeTab, setActiveTab] = useState<"vendors" | "workorders" | "category" | "bills" | "activity">("workorders");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [viewBill,      setViewBill]     = useState<BillDetailRequest | null>(null);
-  const [deleteTarget,  setDeleteTarget] = useState<Project | null>(null);
-  const [deleting,      setDeleting]     = useState(false);
+  const [viewBill, setViewBill] = useState<BillDetailRequest | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Project | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   async function confirmDelete() {
     if (!deleteTarget) return;
@@ -238,7 +238,7 @@ function ProjectDetail({
           setSelectedWONo(active.workOrderNo);
         }
       })
-      .catch(() => {})
+      .catch(() => { })
       .finally(() => setLoading(false));
   }, [id]);
 
@@ -347,12 +347,12 @@ function ProjectDetail({
             <>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
                 <NxStatCard label="Total Contract Value" value={fmt(stats.awardedContractValue)} icon={Landmark} />
-                <NxStatCard label="Work Executed"    value={fmt(stats.workExecutedValue)}    icon={HardHat} />
-                <NxStatCard label="Total Billed"     value={fmt(stats.billedGross)}          icon={Receipt} />
-                <NxStatCard label="Total Certified (Net)" value={fmt(stats.certifiedNet)}    icon={CheckCircle2} />
-                <NxStatCard label="Paid"             value={fmt(stats.paidAmount)}           icon={Banknote} />
-                <NxStatCard label="Remaining"        value={fmt(stats.remainingContract)}    icon={Clock} />
-                <NxStatCard label="Overall Progress" value={`${stats.progress}%`}            icon={TrendingUp} />
+                <NxStatCard label="Work Executed" value={fmt(stats.workExecutedValue)} icon={HardHat} />
+                <NxStatCard label="Total Billed" value={fmt(stats.billedGross)} icon={Receipt} />
+                <NxStatCard label="Total Certified (Net)" value={fmt(stats.certifiedNet)} icon={CheckCircle2} />
+                <NxStatCard label="Paid" value={fmt(stats.paidAmount)} icon={Banknote} />
+                <NxStatCard label="Remaining" value={fmt(stats.remainingContract)} icon={Clock} />
+                <NxStatCard label="Overall Progress" value={`${stats.progress}%`} icon={TrendingUp} />
               </div>
 
               {/* Quick indicators */}
@@ -370,13 +370,14 @@ function ProjectDetail({
           <div className="mb-5">
             <Segmented
               value={activeTab}
-              onChange={setActiveTab}
+              // ✅ Correct (type-safe wrapper)
+              onChange={(val) => setActiveTab(val as any)}
               options={[
-                { value: "vendors",    label: <span className="flex items-center gap-1.5"><Users className="w-3.5 h-3.5" />Vendors</span> },
+                { value: "vendors", label: <span className="flex items-center gap-1.5"><Users className="w-3.5 h-3.5" />Vendors</span> },
                 { value: "workorders", label: <span className="flex items-center gap-1.5"><ClipboardList className="w-3.5 h-3.5" />Work Orders</span> },
-                { value: "category",   label: <span className="flex items-center gap-1.5"><LayoutGrid className="w-3.5 h-3.5" />Category</span> },
-                { value: "bills",      label: <span className="flex items-center gap-1.5"><FileText className="w-3.5 h-3.5" />Bills</span> },
-                { value: "activity",   label: <span className="flex items-center gap-1.5"><Activity className="w-3.5 h-3.5" />Live Activity</span> },
+                { value: "category", label: <span className="flex items-center gap-1.5"><LayoutGrid className="w-3.5 h-3.5" />Category</span> },
+                { value: "bills", label: <span className="flex items-center gap-1.5"><FileText className="w-3.5 h-3.5" />Bills</span> },
+                { value: "activity", label: <span className="flex items-center gap-1.5"><Activity className="w-3.5 h-3.5" />Live Activity</span> },
               ]}
             />
           </div>
@@ -651,18 +652,18 @@ const EMPTY_FORM = {
 };
 
 export default function Projects() {
-  const [projects, setProjects]           = useState<Project[]>([]);
-  const [loading, setLoading]             = useState(true);
-  const [saving, setSaving]               = useState(false);
-  const [search, setSearch]               = useState("");
-  const [statusFilter, setStatusFilter]   = useState<"all" | "active" | "completed" | "on-hold">("all");
-  const [drawerOpen, setDrawerOpen]       = useState(false);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "completed" | "on-hold">("all");
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [detailProject, setDetailProject] = useState<Project | null>(null);
   const [creatingUnderParent, setCreatingUnderParent] = useState<Project | null>(null);
-  const [deleteTarget, setDeleteTarget]   = useState<Project | null>(null);
-  const [deleting, setDeleting]           = useState(false);
-  const [formState, setFormState]         = useState(EMPTY_FORM);
+  const [deleteTarget, setDeleteTarget] = useState<Project | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [formState, setFormState] = useState(EMPTY_FORM);
   // Separate from formState.slackWebhookUrl (which is write-only and always
   // starts blank) — set only by the "Clear" action, so an explicit removal
   // is distinguishable from "left the field untouched."
@@ -672,7 +673,7 @@ export default function Projects() {
   useEffect(() => {
     apiClient.get<{ projects: Project[] }>("/projects")
       .then(r => setProjects(r.data.projects.map(normalizeId)))
-      .catch(() => {})
+      .catch(() => { })
       .finally(() => setLoading(false));
   }, []);
 
@@ -714,10 +715,10 @@ export default function Projects() {
   // narrows `filtered` to that status; clicking it again (or "Total Projects")
   // clears back to "all".
   const statCards: { label: string; value: number; icon: typeof Building2; filterValue: "all" | "active" | "completed" | "on-hold" }[] = [
-    { label: "Total Projects", value: projects.length,                                     icon: Building2,    filterValue: "all" },
-    { label: "Active",         value: projects.filter(p => p.status === "active").length,    icon: CheckCircle2, filterValue: "active" },
-    { label: "Completed",      value: projects.filter(p => p.status === "completed").length, icon: CheckCircle2, filterValue: "completed" },
-    { label: "On Hold",        value: projects.filter(p => p.status === "on-hold").length,   icon: Clock,        filterValue: "on-hold" },
+    { label: "Total Projects", value: projects.length, icon: Building2, filterValue: "all" },
+    { label: "Active", value: projects.filter(p => p.status === "active").length, icon: CheckCircle2, filterValue: "active" },
+    { label: "Completed", value: projects.filter(p => p.status === "completed").length, icon: CheckCircle2, filterValue: "completed" },
+    { label: "On Hold", value: projects.filter(p => p.status === "on-hold").length, icon: Clock, filterValue: "on-hold" },
   ];
 
   // ── Handlers ──────────────────────────────────────────────────────────────

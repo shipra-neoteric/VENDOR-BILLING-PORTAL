@@ -1,5 +1,4 @@
-import { Link } from "react-router-dom";
-import { PieChart, ChevronRight } from "lucide-react";
+import { PieChart } from "lucide-react";
 import Card from "../../../ui/Card";
 import EmptyState from "../../../ui/EmptyState";
 import { fmtCr } from "../utils";
@@ -15,7 +14,6 @@ const BAR_COLORS = [
 ];
 
 export default function SpendByCategory({ categorySpend }: { categorySpend: ExecutiveDashboardCategorySpend[] }) {
-  const top = categorySpend.slice(0, 8);
   return (
     <Card size="sm">
       <div className="flex items-center justify-between mb-2.5">
@@ -23,16 +21,13 @@ export default function SpendByCategory({ categorySpend }: { categorySpend: Exec
           <PieChart className="w-4 h-4 text-primary" />
           Spend by Category
         </h3>
-        <Link to="/categories" className="text-xs font-semibold text-primary hover:underline flex items-center gap-0.5 shrink-0">
-          View All <ChevronRight className="w-3.5 h-3.5" />
-        </Link>
       </div>
 
-      {top.length === 0 ? (
+      {categorySpend.length === 0 ? (
         <EmptyState title="No billed spend yet" message="Categories will appear here once bills are raised against work orders." />
       ) : (
-        <div className="space-y-2">
-          {top.map((c, i) => (
+        <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+          {categorySpend.map((c, i) => (
             <div key={c.category}>
               <div className="flex items-center justify-between text-xs mb-0.5">
                 <span className="font-semibold text-[#172033] dark:text-[#F1F5F9] truncate">{c.category}</span>

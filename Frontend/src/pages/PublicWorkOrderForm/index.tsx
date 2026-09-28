@@ -15,6 +15,7 @@ import WarrantyTermsBuilder from "../../components/WarrantyTermsBuilder";
 import GstSelect from "../../components/GstSelect";
 import DocumentsUpload from "../../components/DocumentsUpload";
 import type { WODocument } from "../../components/DocumentsUpload";
+import { UNIT_OPTIONS } from "../../shared/constants/unitOptions";
 
 const BASE = (import.meta.env.VITE_API_URL || "http://localhost:5000/api").replace(/^﻿/, "");
 const pub  = axios.create({ baseURL: BASE.replace(/\/api$/, "/api/public") });
@@ -28,24 +29,6 @@ const STATUS_OPTIONS = [
   { label: "Draft",       value: "draft"       },
   { label: "Issued",      value: "issued"      },
   { label: "In Progress", value: "in-progress" },
-];
-
-const UNIT_OPTIONS = [
-  { label: "Sq.Ft (Square Feet)", value: "sq.ft"      },
-  { label: "Sq.M (Square Meter)", value: "sq.m"       },
-  { label: "Cu.M (Cubic Meter)",  value: "cu.m"       },
-  { label: "Cu.Ft (Cubic Feet)",  value: "cu.ft"      },
-  { label: "RMT (Running Meter)", value: "rmt"        },
-  { label: "Kg (Kilogram)",       value: "kg"         },
-  { label: "MT (Metric Ton)",     value: "mt"         },
-  { label: "Nos (Numbers)",       value: "nos"        },
-  { label: "Daily Wage",          value: "daily-wage" },
-  { label: "Per Day",             value: "per-day"    },
-  { label: "Per Person",          value: "per-person" },
-  { label: "Per Hour",            value: "per-hr"     },
-  { label: "Per Trip",            value: "per-trip"   },
-  { label: "RFT (Running Foot)",  value: "rft"        },
-  { label: "Lump Sum",            value: "lump-sum"   },
 ];
 
 // ── Types ────────────────────────────────────────────────────────

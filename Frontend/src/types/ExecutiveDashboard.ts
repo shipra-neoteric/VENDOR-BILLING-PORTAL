@@ -169,11 +169,21 @@ export interface ExecutiveDashboardPaymentAging {
   buckets: ExecutiveDashboardAgingBucket[];
 }
 
+export interface ExecutiveDashboardApprovalLevelItem {
+  id: string;
+  primary: string;
+  secondary: string;
+  amount: number;
+  daysPending: number;
+}
+
 export interface ExecutiveDashboardApprovalLevel {
   level: string;
   label: string;
+  type: "work-order" | "bill-request" | "payment";
   count: number;
   avgDays: number;
+  items: ExecutiveDashboardApprovalLevelItem[];
 }
 
 export interface ExecutiveDashboardTrendPoint {

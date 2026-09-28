@@ -2,13 +2,15 @@ import type { ReactNode } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useIsMobile } from "../../hooks/useIsMobile";
 import {
-  LayoutDashboard, Landmark, Building2, Users, Tags,
+  LayoutDashboard,
   FileText, LineChart, Wallet,
-  BookOpen, UserPlus, Monitor,
-  Share2, Settings, Clock, History,
+  Monitor,
+  Clock, History,
   FileSearch, CalendarClock, CreditCard, CheckSquare,
-  GitCompare, Ruler, Network, PenLine, Database,
+  GitCompare, PenLine, ShieldCheck, Truck,
 } from "lucide-react";
+import { MASTERS_OVERVIEW_ITEM, isMastersPath } from "./mastersNav";
+import { VENDORS_ITEMS, isVendorsPath } from "./vendorsNav";
 import { useAuth } from "../../context/AuthContext";
 import type { PermEntry } from "../../context/AuthContext";
 
@@ -33,10 +35,9 @@ const ADMIN_GROUPS: NavGroup[] = [
   {
     label: "Overview",
     items: [
-      { name: "Dashboard",     path: "/dashboard",     icon: <LayoutDashboard className="w-4 h-4" />, moduleId: "dashboard" },
-      { name: "Final Approval", path: "/md-approvals",  icon: <CheckSquare className="w-4 h-4" />,  moduleId: "md-approvals" },
-      { name: "SLA Report",    path: "/sla-dashboard",  icon: <Clock className="w-4 h-4" />,  moduleId: "sla-dashboard" },
-      { name: "Projects",      path: "/projects",      icon: <Building2 className="w-4 h-4" />,    moduleId: "projects" },
+      { name: "Dashboard", path: "/dashboard", icon: <LayoutDashboard className="w-4 h-4" />, moduleId: "dashboard" },
+      { name: "Final Approval", path: "/md-approvals", icon: <CheckSquare className="w-4 h-4" />, moduleId: "md-approvals" },
+      { name: "SLA Report", path: "/sla-dashboard", icon: <Clock className="w-4 h-4" />, moduleId: "sla-dashboard" },
     ],
   },
   {
@@ -45,47 +46,49 @@ const ADMIN_GROUPS: NavGroup[] = [
     // ?type=, same shared list page "Consultancy Orders" below also lands on.
     label: "Execution",
     items: [
-      { name: "Work Orders",   path: "/work-items", icon: <FileText className="w-4 h-4" />, moduleId: "work-orders" },
+      { name: "Work Orders", path: "/work-items", icon: <FileText className="w-4 h-4" />, moduleId: "work-orders" },
       { name: "Quotation Comparison", path: "/quotation-comparison", icon: <GitCompare className="w-4 h-4" />, moduleId: "quotation-comparison" },
       { name: "Work Progress", path: "/work-progress", icon: <LineChart className="w-4 h-4" />, moduleId: "work-progress" },
       { name: "Daily Progress Report", path: "/daily-progress-report", icon: <CalendarClock className="w-4 h-4" />, moduleId: "daily-progress-report" },
       { name: "Drawing Requests", path: "/drawing-requests", icon: <PenLine className="w-4 h-4" />, moduleId: "drawing-requests" },
-      { name: "Contractors",   path: "/contractors",   icon: <Users className="w-4 h-4" />,         moduleId: "contractors", subHeader: "Contractors" },
-      { name: "Vendor Groups", path: "/vendor-groups", icon: <Network className="w-4 h-4" />,      moduleId: "vendor-groups" },
     ],
   },
   {
-    // Design/consultancy engagements — deliverables and milestone fees, no
-    // site measurement. "Consultancy Orders" lands on the same list page as
-    // "Work Orders" above, pre-filtered to professional-services via ?type=.
-    label: "Professional Services",
+    // Contractors, Consultants and Vendor Groups are no longer separate
+    // top-level entries — they're only reachable through this one "Vendors"
+    // section entry, which links into the first Vendors page and lights up
+    // for all three (see isItemActive's moduleId === "vendors" case). The
+    // secondary Vendors panel (VendorsSidebar.tsx, rendered by MainLayout
+    // whenever the URL is one of VENDORS_PATHS) is what actually exposes all
+    // three pages.
+    label: "Vendors",
     items: [
-      { name: "Consultants",        path: "/consultants",   icon: <Ruler className="w-4 h-4" />,     moduleId: "consultants" },
-      { name: "Consultancy Orders", path: "/work-items?type=professional-services", icon: <FileText className="w-4 h-4" />, moduleId: "consultancy-orders" },
+      { name: "Vendors", path: VENDORS_ITEMS[0].path, icon: <Truck className="w-4 h-4" />, moduleId: "vendors" },
     ],
   },
   {
-    label: "Billing",
+    label: "Finance",
     items: [
-      { name: "Site Progress",      path: "/site-progress",    icon: <FileSearch className="w-4 h-4" />,   moduleId: "bill-review" },
-      { name: "Bill Approval",      path: "/bill-requests",    icon: <CheckSquare className="w-4 h-4" />,  moduleId: "bill-requests" },
-      { name: "Billing",            path: "/billing",          icon: <CreditCard className="w-4 h-4" />,   moduleId: "billing" },
-      { name: "Accounts Payment",   path: "/accounts-payment", icon: <Wallet className="w-4 h-4" />,       moduleId: "accounts-payment" },
-      { name: "Ledger",             path: "/ledger",           icon: <BookOpen className="w-4 h-4" />,  moduleId: "ledger" },
-      { name: "Advance Payments",   path: "/advance-payments", icon: <Landmark className="w-4 h-4" />,         moduleId: "advance-payments" },
+      { name: "Site Progress", path: "/site-progress", icon: <FileSearch className="w-4 h-4" />, moduleId: "bill-review" },
+      { name: "Bill Approval", path: "/bill-requests", icon: <CheckSquare className="w-4 h-4" />, moduleId: "bill-requests" },
+      { name: "Billing", path: "/billing", icon: <CreditCard className="w-4 h-4" />, moduleId: "billing" },
+      { name: "Accounts Payment", path: "/accounts-payment", icon: <Wallet className="w-4 h-4" />, moduleId: "accounts-payment" },
     ],
   },
   {
     label: "Admin",
     items: [
-      { name: "Companies",          path: "/companies",     icon: <Landmark className="w-4 h-4" />,           moduleId: "companies" },
-      { name: "Categories",         path: "/categories",    icon: <Tags className="w-4 h-4" />,           moduleId: "categories" },
-      { name: "DRI Work Dashboard", path: "/dri-dashboard", icon: <Monitor className="w-4 h-4" />,        moduleId: "dri-dashboard" },
-      { name: "Public Forms",       path: "/public-forms",  icon: <Share2 className="w-4 h-4" />,        moduleId: "public-forms" },
-      { name: "Audit Logs",         path: "/audit-logs",    icon: <History className="w-4 h-4" />,         moduleId: "audit-logs" },
-      { name: "Users",              path: "/users",         icon: <UserPlus className="w-4 h-4" />,   moduleId: "user-management" },
-      { name: "SLA Settings",       path: "/sla-settings",  icon: <Settings className="w-4 h-4" />,         moduleId: "sla-settings" },
-      { name: "Backup",             path: "/backup",        icon: <Database className="w-4 h-4" />,         moduleId: "backup" },
+      // Links straight into the Masters section's first page — the
+      // secondary Masters panel (see MastersSidebar.tsx, rendered by
+      // MainLayout whenever the URL is one of MASTERS_PATHS) is what
+      // actually exposes Projects/Companies/Categories/Users/SLA/Backup;
+      // this single entry just gets an admin into that area. Kept as its
+      // own moduleId ("masters") so canView can gate it independently of
+      // the underlying pages' own per-module permissions below.
+      { name: "DRI Dashboard", path: "/dri-dashboard", icon: <Monitor className="w-4 h-4" />, moduleId: "dri-dashboard" },
+      { name: "Masters", path: MASTERS_OVERVIEW_ITEM.path, icon: <ShieldCheck className="w-4 h-4" />, moduleId: "masters" },
+
+      { name: "Audit Logs", path: "/audit-logs", icon: <History className="w-4 h-4" />, moduleId: "audit-logs" },
     ],
   },
 ];
@@ -97,11 +100,26 @@ const DRI_OWN_ITEMS: NavItem[] = [
 ];
 
 // ── Permission helpers ─────────────────────────────────────────────────────────
+const VENDORS_MODULE_IDS = ["contractors", "consultants", "vendor-groups"];
+
 function canView(moduleId: string, perms: PermEntry[] | undefined, role?: string): boolean {
   // Whole-database export/wipe-and-replace — never leak this to a role that
   // simply hasn't been assigned granular permissions yet (canView's own
   // fallback below treats an empty perms array as "can see everything").
   if (moduleId === "backup") return role === "owner";
+  // Masters groups together the master-data admin pages (Projects,
+  // Companies, Categories, Users, SLA, Backup) — same owner-only gate as
+  // Backup above, since there's no separate "admin" role in this app and
+  // "owner" is its highest-privilege role.
+  if (moduleId === "masters") return role === "owner";
+  // "Vendors" is one nav entry standing in for 3 underlying modules
+  // (Contractors, Consultants, Vendor Groups) — visible if the user can view
+  // ANY of them, same per-module permission checks those pages themselves
+  // already enforce; this entry is pure navigation, not a new permission.
+  if (moduleId === "vendors") {
+    if (!perms || perms.length === 0) return true;
+    return VENDORS_MODULE_IDS.some(m => perms.some(p => p.module === m && p.actions.includes("view")));
+  }
   // MD Approvals is a cross-cutting aggregator over 3 unrelated modules'
   // final-approval stages (work-orders ceo-approve, bill-requests l4-approve,
   // accounts-payment l2-director-approve) — no single module's own "view"
@@ -136,6 +154,9 @@ export function getDefaultPath(perms: PermEntry[] | undefined, role?: string): s
 
 // DRI-specific: only show admin modules where permission is explicitly granted
 function canViewExplicit(moduleId: string, perms: PermEntry[]): boolean {
+  if (moduleId === "vendors") {
+    return VENDORS_MODULE_IDS.some(m => perms.some(p => p.module === m && p.actions.includes("view")));
+  }
   const entry = perms.find(p => p.module === moduleId);
   return entry ? entry.actions.includes("view") : false;
 }
@@ -181,8 +202,8 @@ interface SidebarProps {
 // ── Sidebar component ──────────────────────────────────────────────────────────
 export default function Sidebar({ open = false, onClose }: SidebarProps) {
   const { user } = useAuth();
-  const isDRI  = user?.role === "site-dri";
-  const perms  = user?.permissions;
+  const isDRI = user?.role === "site-dri";
+  const perms = user?.permissions;
   const isMobile = useIsMobile();
   const location = useLocation();
 
@@ -191,7 +212,13 @@ export default function Sidebar({ open = false, onClose }: SidebarProps) {
   // different ?type=) would both light up together. Compare the full
   // path+search against each item's own instead.
   const currentPath = location.pathname + location.search;
-  function isItemActive(itemPath: string): boolean {
+  function isItemActive(itemPath: string, moduleId?: string): boolean {
+    // "Masters" is a single nav entry that links to the first Masters page
+    // (Projects) but represents the whole section — it should stay
+    // highlighted while browsing ANY Masters page (Companies, Users, SLA,
+    // Backup...), not just the exact link target.
+    if (moduleId === "masters") return isMastersPath(location.pathname);
+    if (moduleId === "vendors") return isVendorsPath(location.pathname);
     const [path, query] = itemPath.split("?");
     // A bare (no-query) item must not light up while on the SAME pathname
     // but a DIFFERENT query string — "Work Orders" (/work-items) and
@@ -205,8 +232,8 @@ export default function Sidebar({ open = false, onClose }: SidebarProps) {
   const rawGroups = isDRI
     ? buildDRIGroups(perms)
     : ADMIN_GROUPS
-        .map(g => ({ ...g, items: g.items.filter(item => canView(item.moduleId, perms, user?.role)) }))
-        .filter(g => g.items.length > 0);
+      .map(g => ({ ...g, items: g.items.filter(item => canView(item.moduleId, perms, user?.role)) }))
+      .filter(g => g.items.length > 0);
 
   // On desktop, "closed" shrinks to a narrow icon-only rail rather than
   // disappearing outright — same collapse treatment as the reference. Mobile
@@ -233,140 +260,140 @@ export default function Sidebar({ open = false, onClose }: SidebarProps) {
           transition: isMobile ? "transform 0.2s ease" : "width 0.18s ease",
           ...(isMobile
             ? {
-                position: "fixed",
-                top: 12,
-                left: 12,
-                zIndex: 50,
-                transform: open ? "translateX(0)" : "translateX(calc(-100% - 24px))",
-              }
+              position: "fixed",
+              top: 12,
+              left: 12,
+              zIndex: 50,
+              transform: open ? "translateX(0)" : "translateX(calc(-100% - 24px))",
+            }
             : {
-                position: "sticky",
-                top: 12,
-                marginLeft: 12,
-              }),
+              position: "sticky",
+              top: 12,
+              marginLeft: 12,
+            }),
         }}
       >
-      {/* ── Logo / Brand — outside the scrolling nav area below, so it stays
+        {/* ── Logo / Brand — outside the scrolling nav area below, so it stays
           fixed at the top of the sidebar instead of scrolling away with the
           nav items. ── */}
-      <div style={{ flexShrink: 0, padding: collapsed ? "20px 0 16px" : "20px 18px 16px", borderBottom: "1px solid var(--nx-sidebar-logo-border)" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, justifyContent: collapsed ? "center" : "flex-start" }}>
-          <div
-            style={{
-              width: 40, height: 40,
-              background: "#fff",
-              border: "1px solid var(--nx-sidebar-logo-border)",
-              borderRadius: 11,
-              display: "flex", alignItems: "center", justifyContent: "center",
-              boxShadow: "0 2px 8px rgba(255,122,0,0.2)",
-              flexShrink: 0,
-              padding: 6,
-            }}
-          >
-            <img src="/neoteric-logo.png" alt="Neoteric" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
-          </div>
-          {!collapsed && (
-            <div>
-              <div style={{ fontWeight: 800, fontSize: 16, color: "var(--nx-sidebar-brand-color)", lineHeight: 1.2, whiteSpace: "nowrap" }}>
-                Nexora ERP
-              </div>
-              <div style={{ fontSize: 12, color: "var(--nx-sidebar-sub-color)", marginTop: 2, lineHeight: 1.2, whiteSpace: "nowrap" }}>
-                {isDRI ? "Site Progress Portal" : "Vendor Management System"}
-              </div>
+        <div style={{ flexShrink: 0, padding: collapsed ? "20px 0 16px" : "20px 18px 16px", borderBottom: "1px solid var(--nx-sidebar-logo-border)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, justifyContent: collapsed ? "center" : "flex-start" }}>
+            <div
+              style={{
+                width: 40, height: 40,
+                background: "#fff",
+                border: "1px solid var(--nx-sidebar-logo-border)",
+                borderRadius: 11,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                boxShadow: "0 2px 8px rgba(255,122,0,0.2)",
+                flexShrink: 0,
+                padding: 6,
+              }}
+            >
+              <img src="/neoteric-logo.png" alt="Neoteric" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
             </div>
-          )}
-        </div>
-      </div>
-
-      {/* ── Nav Groups — the only part that scrolls ── */}
-      <div className="overflow-y-auto overflow-x-hidden" style={{ flex: 1, padding: "6px 0 10px" }}>
-        {rawGroups.map((group, gi) => (
-          <div key={group.label} style={{ marginTop: gi === 0 ? 4 : 0 }}>
-            {/* Group label — a plain divider line once collapsed, no text (no room for it) */}
-            {collapsed ? (
-              <div style={{ height: 1, background: "var(--nx-sidebar-group-line)", margin: gi === 0 ? "8px 16px 10px" : "16px 16px 10px" }} />
-            ) : (
-              <div
-                style={{
-                  fontSize: 11,
-                  fontWeight: 700,
-                  color: "var(--nx-sidebar-group-color)",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.09em",
-                  padding: gi === 0 ? "10px 20px 5px" : "18px 20px 5px",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                }}
-              >
-                <span
-                  style={{
-                    flex: 1,
-                    height: 1,
-                    background: "var(--nx-sidebar-group-line)",
-                    display: "block",
-                    maxWidth: 16,
-                  }}
-                />
-                {group.label}
+            {!collapsed && (
+              <div>
+                <div style={{ fontWeight: 800, fontSize: 16, color: "var(--nx-sidebar-brand-color)", lineHeight: 1.2, whiteSpace: "nowrap" }}>
+                  Nexora ERP
+                </div>
+                <div style={{ fontSize: 12, color: "var(--nx-sidebar-sub-color)", marginTop: 2, lineHeight: 1.2, whiteSpace: "nowrap" }}>
+                  {isDRI ? "Site Progress Portal" : "Vendor Management System"}
+                </div>
               </div>
             )}
-
-            {/* Nav items */}
-            {group.items.map((item) => {
-              const isActive = isItemActive(item.path);
-              return (
-              <div key={item.path}>
-                {item.subHeader && !collapsed && (
-                  <div
-                    style={{
-                      fontSize: 10.5,
-                      fontWeight: 700,
-                      color: "var(--nx-sidebar-group-color)",
-                      textTransform: "uppercase",
-                      letterSpacing: "0.08em",
-                      padding: "10px 20px 3px",
-                    }}
-                  >
-                    {item.subHeader}
-                  </div>
-                )}
-                {item.subHeader && collapsed && (
-                  <div style={{ height: 1, background: "var(--nx-sidebar-group-line)", margin: "10px 16px 6px" }} />
-                )}
-              <NavLink
-                to={item.path}
-                onClick={isMobile ? onClose : undefined}
-                title={collapsed ? item.name : undefined}
-                style={{ textDecoration: "none", display: "block" }}
-              >
-                {collapsed ? (
-                  <div style={{ display: "flex", justifyContent: "center", margin: "2px 0" }}>
-                    <span className={`nx-nav-icon${isActive ? " nx-nav-item--active" : ""}`}>{item.icon}</span>
-                  </div>
-                ) : (
-                  <div className={`nx-nav-item${isActive ? " nx-nav-item--active" : ""}`}>
-                    <span className="nx-nav-icon">{item.icon}</span>
-                    <span style={{ flex: 1 }}>{item.name}</span>
-                    {isActive && (
-                      <span
-                        style={{
-                          width: 6, height: 6,
-                          borderRadius: "50%",
-                          background: "var(--nx-orange)",
-                          flexShrink: 0,
-                        }}
-                      />
-                    )}
-                  </div>
-                )}
-              </NavLink>
-              </div>
-              );
-            })}
           </div>
-        ))}
-      </div>
+        </div>
+
+        {/* ── Nav Groups — the only part that scrolls ── */}
+        <div className="overflow-y-auto overflow-x-hidden" style={{ flex: 1, padding: "6px 0 10px" }}>
+          {rawGroups.map((group, gi) => (
+            <div key={group.label} style={{ marginTop: gi === 0 ? 4 : 0 }}>
+              {/* Group label — a plain divider line once collapsed, no text (no room for it) */}
+              {collapsed ? (
+                <div style={{ height: 1, background: "var(--nx-sidebar-group-line)", margin: gi === 0 ? "8px 16px 10px" : "16px 16px 10px" }} />
+              ) : (
+                <div
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 700,
+                    color: "var(--nx-sidebar-group-color)",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.09em",
+                    padding: gi === 0 ? "10px 20px 5px" : "18px 20px 5px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                  }}
+                >
+                  <span
+                    style={{
+                      flex: 1,
+                      height: 1,
+                      background: "var(--nx-sidebar-group-line)",
+                      display: "block",
+                      maxWidth: 16,
+                    }}
+                  />
+                  {group.label}
+                </div>
+              )}
+
+              {/* Nav items */}
+              {group.items.map((item) => {
+                const isActive = isItemActive(item.path, item.moduleId);
+                return (
+                  <div key={item.path}>
+                    {item.subHeader && !collapsed && (
+                      <div
+                        style={{
+                          fontSize: 10.5,
+                          fontWeight: 700,
+                          color: "var(--nx-sidebar-group-color)",
+                          textTransform: "uppercase",
+                          letterSpacing: "0.08em",
+                          padding: "10px 20px 3px",
+                        }}
+                      >
+                        {item.subHeader}
+                      </div>
+                    )}
+                    {item.subHeader && collapsed && (
+                      <div style={{ height: 1, background: "var(--nx-sidebar-group-line)", margin: "10px 16px 6px" }} />
+                    )}
+                    <NavLink
+                      to={item.path}
+                      onClick={isMobile ? onClose : undefined}
+                      title={collapsed ? item.name : undefined}
+                      style={{ textDecoration: "none", display: "block" }}
+                    >
+                      {collapsed ? (
+                        <div style={{ display: "flex", justifyContent: "center", margin: "2px 0" }}>
+                          <span className={`nx-nav-icon${isActive ? " nx-nav-item--active" : ""}`}>{item.icon}</span>
+                        </div>
+                      ) : (
+                        <div className={`nx-nav-item${isActive ? " nx-nav-item--active" : ""}`}>
+                          <span className="nx-nav-icon">{item.icon}</span>
+                          <span style={{ flex: 1 }}>{item.name}</span>
+                          {isActive && (
+                            <span
+                              style={{
+                                width: 6, height: 6,
+                                borderRadius: "50%",
+                                background: "var(--nx-orange)",
+                                flexShrink: 0,
+                              }}
+                            />
+                          )}
+                        </div>
+                      )}
+                    </NavLink>
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+        </div>
       </div>
     </>
   );

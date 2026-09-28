@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, useCallback } from "react";
 import toast from "react-hot-toast";
 import dayjs from "dayjs";
 import type { Dayjs } from "dayjs";
-import { ShieldCheck, Check, X, Undo2, Eye, Hourglass, CheckCircle2, AlertTriangle } from "lucide-react";
+import { ShieldCheck, Check, X, Undo2, Eye, Hourglass, CheckCircle2, AlertTriangle, Archive } from "lucide-react";
 import apiClient from "../../services/apiClient";
 import { useAuth } from "../../context/AuthContext";
 import PageHeader from "../../ui/PageHeader";
@@ -17,7 +17,6 @@ import Modal from "../../ui/Modal";
 import Field from "../../ui/Field";
 import { Table, Thead, Tbody, Tr, Th, Td } from "../../ui/Table";
 import { SearchFilter, DropdownSelectFilter } from "../../ui/Filters";
-import UISwitch from "../../ui/Switch";
 import DateRangeFilter, { inDateRange } from "../../components/DateRangeFilter";
 import ReviewDrawer from "./ReviewDrawer";
 import { SYSTEM_LABEL } from "./types";
@@ -367,44 +366,53 @@ export default function MdApprovals() {
         {/* 3 system quick-filter buttons (+ All Systems) — the main ask.
             Replaces the old module dropdown so there's a single control for
             "which system", not two doing the same job. */}
-        <div className="flex flex-wrap items-center gap-3 mb-4">
-          {SYSTEM_GROUPS.map((g) => (
-            <button
-              key={g.key}
-              type="button"
-              onClick={() => setSystemGroupKey(g.key)}
-              className={`px-5 py-3 rounded-xl text-base font-bold border-2 shadow-sm transition-colors ${
-                systemGroupKey === g.key
-                  ? "bg-primary text-white border-primary shadow-md"
-                  : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-700 hover:border-primary"
-              }`}
-            >
-              {g.label}
-              <span className={`ml-1.5 ${systemGroupKey === g.key ? "opacity-90" : "opacity-60"}`}>
-                {systemGroupCounts[g.key] ?? 0}
-              </span>
-            </button>
-          ))}
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <div className="flex flex-wrap items-center gap-2.5">
+            {/* Light-orange filled pill when active, plain gray outline
+                otherwise — same theme as the Archive button below. */}
+            {SYSTEM_GROUPS.map((g) => {
+              const active = systemGroupKey === g.key;
+              return (
+                <Btn
+                  key={g.key}
+                  outline={!active}
+                  style={active ? { color: "var(--theme-primary)" } : undefined}
+                  className={active ? "shadow-none! border-none! bg-primary/15! hover:bg-primary/20!" : ""}
+                  onClick={() => setSystemGroupKey(g.key)}
+                >
+                  {g.label}
+                  <span className={active ? "ml-1.5 opacity-90" : "ml-1.5 opacity-60"}>
+                    {systemGroupCounts[g.key] ?? 0}
+                  </span>
+                </Btn>
+              );
+            })}
+          </div>
+          {/* Same light-orange-filled-when-active, plain-gray-outline-when-not
+              Archive toggle as WorkItems/index.tsx's own Archive button. */}
+          <Btn
+            outline={!showArchived}
+            style={showArchived ? { color: "var(--theme-primary)" } : undefined}
+            className={showArchived ? "shadow-none! border-none! bg-primary/15! hover:bg-primary/20!" : ""}
+            icon={Archive}
+            label="Archive"
+            onClick={() => setShowArchived(v => !v)}
+          />
         </div>
 
-        {/* Filters — same bordered-card + single-row layout as
-            WorkItems/index.tsx's own filter box. */}
+        {/* Filters — own separate box with a gap before the table, same
+            plain layout as Billing/index.tsx's own filter box. */}
         <div className="bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700/40 rounded-lg p-3.5 mb-4">
-          <div className="flex gap-2.5 items-center flex-wrap">
+          {/* Scoped size-up (this row only) — search box/dropdown/date
+              triggers bumped a notch above their shared-component default,
+              same idea as WorkItems/index.tsx's own scoped resize of this
+              row, just the other direction. */}
+          <div className="flex gap-2.5 items-center flex-wrap [&_input]:h-11! [&_button]:h-11! [&_input]:text-[14px]! [&_button]:text-[14px]!">
             <SearchFilter value={search} onChange={setSearch} placeholder="Search by reference, requester, department…" />
             <DropdownSelectFilter value={projectFilter} onChange={setProjectFilter} options={projectOptions} placeholder="All projects" resetValue="all" />
             <DropdownSelectFilter value={deptFilter} onChange={setDeptFilter} options={deptOptions} placeholder="All departments" resetValue="all" />
             <DateRangeFilter onChange={(from, to) => { setDateFrom(from); setDateTo(to); }} />
-            {/* Fixed width wrapper — "Archived" and "Show Archived" are
-                different lengths, so without a fixed width toggling this
-                switch shrank/grew the row and reflowed every other field. */}
-            <div className="w-[124px] shrink-0">
-              <UISwitch checked={showArchived} onChange={setShowArchived} onLabel="Archived" offLabel="Show Archived" />
-            </div>
             {hasActiveFilters && <Btn small outline label="Clear all" onClick={clearAllFilters} />}
-            <span className="ml-auto text-gray-400 text-xs whitespace-nowrap">
-              {filtered.length} item{filtered.length !== 1 ? "s" : ""}
-            </span>
           </div>
         </div>
 
@@ -417,7 +425,7 @@ export default function MdApprovals() {
             message={tab === "pending" ? "You're all caught up — nothing across any approval chain needs you right now." : "Nothing matches this view right now."}
           />
         ) : (
-        <Table>
+        <Table containerClassName="h-[650px] overflow-y-auto">
           <Thead>
             <Tr>
               <Th>System</Th>

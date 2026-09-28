@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import dayjs from "dayjs";
 import { ClipboardList, CircleCheck, Search, UserCheck, ShieldCheck, Send, Wallet, ArrowRight } from "lucide-react";
 import apiClient from "../../services/apiClient";
@@ -106,6 +106,11 @@ const PAGE_SIZE = 10;
 
 export default function ProcurementTracker() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  // Only reached via a specific shortcut (Accounts Payment's "Procurement
+  // Tracker" button passes ?from=accounts-payment) does this page show a
+  // way back — it has no sidebar entry of its own to return to otherwise.
+  const cameFromAccountsPayment = searchParams.get("from") === "accounts-payment";
   const [bills, setBills] = useState<BillRow[]>([]);
   const [projects, setProjects] = useState<ProjectOpt[]>([]);
   const [contractors, setContractors] = useState<Contractor[]>([]);
@@ -167,6 +172,7 @@ export default function ProcurementTracker() {
         title="Procurement Tracker"
         subtitle="Track every bill's Verification → L1 AGM → L2 Director → TMS Payment lifecycle in one place"
         icon={ClipboardList}
+        onBack={cameFromAccountsPayment ? () => navigate("/accounts-payment") : undefined}
         actions={<NxBtn color="secondary" label="Accounts Payment" onClick={() => navigate("/accounts-payment")} />}
       />
 

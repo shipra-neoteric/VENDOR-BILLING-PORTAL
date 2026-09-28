@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo, useCallback } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import type { Dayjs } from "dayjs";
-import { ArrowLeft, BookOpen, RotateCw, Wallet, Receipt, CheckCircle2, FileText, Landmark, Scale } from "lucide-react";
+import { ArrowLeft, BookOpen, RotateCw, Wallet, Receipt, CheckCircle2, FileText, Landmark, Scale, Archive } from "lucide-react";
 import dayjs from "dayjs";
 import apiClient from "../../services/apiClient";
 import DateRangeFilter, { inDateRange } from "../../components/DateRangeFilter";
@@ -14,7 +15,7 @@ import NxStatCard from "../../ui/nexora/StatCard";
 import { DropdownSelectFilter } from "../../ui/Filters";
 import SField from "../../ui/SField";
 import { Descriptions, DescItem } from "../../ui/Descriptions";
-import Switch from "../../ui/Switch";
+import Btn from "../../ui/Btn";
 import Spinner from "../../ui/Spinner";
 import Alert from "../../ui/Alert";
 import EmptyState from "../../ui/EmptyState";
@@ -156,6 +157,11 @@ function ProgressCell({ certifiedPct, billedPct }: { certifiedPct: number; bille
 
 // ── Main component ────────────────────────────────────────────
 export default function Ledger() {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  // Only reached via a specific shortcut (Accounts Payment's "Ledger"
+  // button passes ?from=accounts-payment) does this page show a way back.
+  const cameFromAccountsPayment = searchParams.get("from") === "accounts-payment";
   const [workOrders, setWorkOrders]   = useState<WO[]>([]);
   const [bills, setBills]             = useState<Bill[]>([]);
   const [projects, setProjects]       = useState<Project[]>([]);
@@ -175,7 +181,7 @@ export default function Ledger() {
     try {
       const [woRes, billRes, projRes, ctrRes] = await Promise.all([
         apiClient.get("/work-orders"),
-        apiClient.get(`/bills${withArchived ? "?archived=all" : ""}`),
+        apiClient.get(`/bills${withArchived ? "?archived=true" : ""}`),
         apiClient.get("/projects"),
         apiClient.get("/contractors"),
       ]);
@@ -194,11 +200,20 @@ export default function Ledger() {
 
   // ── Summary data ──────────────────────────────────────────
   const filteredWOs = useMemo(() => workOrders.filter(wo => {
+    // Cancelled Work Orders are archived, same convention as
+    // WorkItems/index.tsx's own "Total Work Orders" stat — excluded here too
+    // so this page's own "N work orders" count matches that one instead of
+    // being inflated by cancelled WOs it doesn't count.
+    if (wo.status === "cancelled") return false;
     const matchProject = projectFilter === "all" || getWorkOrderProjectId(wo.projectId) === projectFilter;
     const matchVendor  = vendorFilter  === "all" || wo.vendorCode === vendorFilter;
     const matchDate    = inDateRange(wo.issueDate, dateFrom, dateTo);
-    return matchProject && matchVendor && matchDate;
-  }), [workOrders, projectFilter, vendorFilter, dateFrom, dateTo]);
+    // When Archive is on, `bills` itself was fetched as archived-only — only
+    // show Work Orders that actually have one of those archived bills,
+    // instead of every Work Order regardless of whether it has any.
+    const matchArchived = !includeArchived || bills.some(b => b.workOrderId?.toString() === wo._id?.toString());
+    return matchProject && matchVendor && matchDate && matchArchived;
+  }), [workOrders, bills, includeArchived, projectFilter, vendorFilter, dateFrom, dateTo]);
 
   const woSummaries = useMemo(() => filteredWOs.map(wo => {
     const woBills       = bills.filter(b => b.workOrderId?.toString() === wo._id?.toString());
@@ -437,9 +452,19 @@ export default function Ledger() {
         icon={BookOpen}
         title="Ledger"
         subtitle='Work Order billing summary — click "View Ledger" for a full statement.'
+        onBack={cameFromAccountsPayment ? () => navigate("/accounts-payment") : undefined}
         actions={
           <div className="flex items-center gap-3">
-            <Switch checked={includeArchived} onChange={setIncludeArchived} offLabel="Include archived bills" onLabel="Including archived bills" />
+            {/* Same gray-outline -> light-orange-filled-when-active Archive
+                toggle used everywhere else, instead of a plain switch. */}
+            <Btn
+              small outline={!includeArchived}
+              style={includeArchived ? { color: "var(--theme-primary)" } : undefined}
+              className={includeArchived ? "shadow-none! border-none! bg-primary/15! hover:bg-primary/20!" : ""}
+              icon={Archive}
+              label="Archive"
+              onClick={() => setIncludeArchived(v => !v)}
+            />
             <NxBtn color="secondary" icon={RotateCw} label="Refresh" onClick={() => load(includeArchived)} />
           </div>
         }
