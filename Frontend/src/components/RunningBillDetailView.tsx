@@ -4,6 +4,7 @@ import dayjs from "dayjs";
 import type { StepItem } from "../ui/Steps";
 import Badge from "../ui/Badge";
 import { Table, Thead, Tbody, Tfoot, Tr, Th, Td } from "../ui/Table";
+import WorkOrderLink from "./WorkOrderLink";
 import { billFinancials } from "../shared/utils/billMath";
 import { BILL_TYPE_CFG } from "../shared/constants/billOptions";
 
@@ -312,11 +313,14 @@ export function BillHistoryTimeline({ history }: { history: RunningBillHistoryEn
 // (if anything) to render for a given bill.status, exactly like
 // AccountsPayment's own renderActionSection already does.
 export default function RunningBillDetailView({
-  bill, woCategory, onViewWorkOrder, supersededByNumbers, renderActionSection,
+  bill, woCategory, onViewWorkOrder, supersededByNumbers, renderActionSection, returnTo,
 }: {
   bill: RunningBillDetail;
   woCategory?: string;
   onViewWorkOrder?: () => void;
+  // Passed straight through to the WO No. link — see WorkOrderLink's own
+  // returnTo prop for what this does.
+  returnTo?: string;
   supersededByNumbers?: string[];
   // Deliberately typed loosely (not `(bill: RunningBillDetail) => ReactNode`)
   // — callers (e.g. AccountsPayment) pass their own richer bill type here
@@ -347,7 +351,18 @@ export default function RunningBillDetailView({
               <td className="w-[13%] px-3 py-2 text-gray-400 border-r border-gray-200 dark:border-gray-700/40">Bill No.</td>
               <td className="w-[37%] px-3 py-2 font-bold text-[#ff7a00] border-r border-gray-200 dark:border-gray-700/40">{bill.billNo}</td>
               <td className="w-[13%] px-3 py-2 text-gray-400 border-r border-gray-200 dark:border-gray-700/40">WO No.</td>
-              <td className="w-[37%] px-3 py-2 font-bold text-[#ff7a00]">{bill.workOrderNo || "—"}</td>
+              <td className="w-[37%] px-3 py-2 font-bold text-[#ff7a00]">
+                {bill.workOrderNo ? (
+                  <WorkOrderLink
+                    workOrderNo={bill.workOrderNo}
+                    workOrderId={bill.workOrderId}
+                    returnTo={returnTo}
+                    className="text-[#ff7a00]"
+                  />
+                ) : (
+                  "—"
+                )}
+              </td>
             </tr>
             <tr className="border-t border-gray-200 dark:border-gray-700/40">
               <td className="px-3 py-2 text-gray-400 border-r border-gray-200 dark:border-gray-700/40">Vendor</td>

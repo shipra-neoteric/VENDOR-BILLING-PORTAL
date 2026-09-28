@@ -49,6 +49,7 @@ function billToSyntheticRequest(bill: Record<string, unknown>): BillDetailReques
   return {
     _id: String(bill._id || bill.id),
     reqNo: (bill.billNo as string) || "",
+    workOrderId: bill.workOrderId ? String(bill.workOrderId) : undefined,
     workOrderNo: (bill.workOrderNo as string) || "",
     projectName: (bill.projectName as string) || "",
     vendorName: (bill.vendorName as string) || "",
@@ -99,6 +100,7 @@ export default function ReviewDrawer({
   onClose: () => void;
   footer?: React.ReactNode;
 }) {
+  const returnTo = `/md-approvals?open=${row.system}:${row.id}`;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
@@ -149,7 +151,7 @@ export default function ReviewDrawer({
           if (bill?.workOrderId) {
             apiClient.get<{ workOrder: Record<string, unknown> }>(`/work-orders/${bill.workOrderId}`)
               .then((r) => { if (!cancelled) setWoCategory((r.data.workOrder?.category as string) || undefined); })
-              .catch(() => {});
+              .catch(() => { });
           }
         }
       } catch {
@@ -180,7 +182,7 @@ export default function ReviewDrawer({
         </Modal>
       );
     }
-    return <BillDetailModal billRequest={billRequest} open onClose={onClose} footer={footer} />;
+    return <BillDetailModal billRequest={billRequest} open onClose={onClose} footer={footer} returnTo={returnTo} />;
   }
 
   // WorkOrder / RunningBill-Accounts — neither WorkOrderDetailView nor
@@ -202,6 +204,7 @@ export default function ReviewDrawer({
           <RunningBillDetailView
             bill={runningBill}
             woCategory={woCategory}
+            returnTo={returnTo}
             renderActionSection={(bill) =>
               bill.status === "l1-approved" ? (
                 <div className="border border-indigo-200 dark:border-indigo-500/30 rounded-lg p-3.5 mt-4 bg-indigo-50 dark:bg-indigo-500/10">
@@ -214,7 +217,7 @@ export default function ReviewDrawer({
                       already go through MdApprovals' own existing
                       l2-director-approve/reject endpoints (see
                       ACTION_ENDPOINTS in MdApprovals/index.tsx). */}
-                  <Field textarea disabled placeholder="Remarks are captured from the Approve action below." value="" onChange={() => {}} />
+                  <Field textarea disabled placeholder="Remarks are captured from the Approve action below." value="" onChange={() => { }} />
                 </div>
               ) : null
             }

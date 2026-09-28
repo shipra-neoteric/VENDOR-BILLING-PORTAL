@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import dayjs from "dayjs";
 import type { Dayjs } from "dayjs";
@@ -102,6 +103,8 @@ const SYSTEM_GROUPS: { key: string; label: string; systems: MdSystem[] }[] = [
 
 export default function MdApprovals() {
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
+  const openKey = searchParams.get("open");
   const [tab, setTab] = useState<MdTab>("pending");
   const [items, setItems] = useState<MdApprovalRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -170,6 +173,16 @@ export default function MdApprovals() {
   }, [tab]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Deep link back from a Work Order detail page opened via this drawer's
+  // WorkOrderLink (?open=<system>:<id>) — reopens the same row's Review
+  // drawer instead of leaving the user on the bare list.
+  useEffect(() => {
+    if (!openKey || items.length === 0) return;
+    const [system, id] = openKey.split(":");
+    const match = items.find((r) => r.system === system && r.id === id);
+    if (match) setReviewRow(match);
+  }, [openKey, items]);
 
   const hasAccess = hasAnyMdApprovalsAccess(user);
 

@@ -7,6 +7,7 @@ import Btn from "../ui/Btn";
 import Badge from "../ui/Badge";
 import { Table, Thead, Tbody, Tfoot, Tr, Th, Td } from "../ui/Table";
 import SlaTimeline from "./SlaTimeline";
+import WorkOrderLink from "./WorkOrderLink";
 
 const fmt = (n: number) => "₹" + (n).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 // Per-unit rates are fractional far more often than totals are — rounding
@@ -53,11 +54,10 @@ export function BillApprovalHistoryList({ history }: { history?: BillApprovalHis
         return (
           <div key={i} className="flex items-start gap-2.5">
             <div
-              className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 border ${
-                isReject
-                  ? "bg-red-50 dark:bg-red-500/10 border-red-500 text-red-600 dark:text-red-400"
-                  : "bg-emerald-50 dark:bg-emerald-500/10 border-emerald-500 text-emerald-600 dark:text-emerald-400"
-              }`}
+              className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 border ${isReject
+                ? "bg-red-50 dark:bg-red-500/10 border-red-500 text-red-600 dark:text-red-400"
+                : "bg-emerald-50 dark:bg-emerald-500/10 border-emerald-500 text-emerald-600 dark:text-emerald-400"
+                }`}
             >
               {isReject ? <X className="w-3 h-3" /> : <Check className="w-3 h-3" />}
             </div>
@@ -155,6 +155,7 @@ export interface BillDetailRequest {
   _id: string;
   reqNo: string;
   stageNo?: number;
+  workOrderId?: string;
   workOrderNo: string;
   projectName: string;
   vendorName: string;
@@ -248,7 +249,7 @@ export function deriveBillApprovalHistory(billRequest: Pick<BillDetailRequest, "
 // Read-only view of a bill request — same layout as the BillRequests page's
 // view modal, minus approve/reject/milestone actions (not applicable outside that workflow).
 export default function BillDetailModal({
-  billRequest, open, onClose, zIndex, footer,
+  billRequest, open, onClose, zIndex, footer, returnTo,
 }: {
   billRequest: BillDetailRequest | null;
   open: boolean;
@@ -262,6 +263,9 @@ export default function BillDetailModal({
   // the one caller that needs its own Approve/Reject/Send Back buttons down
   // here instead, since it reuses this component verbatim as the drawer body.
   footer?: React.ReactNode;
+  // Passed straight through to the Work Order link — see WorkOrderLink's own
+  // returnTo prop for what this does.
+  returnTo?: string;
 }) {
   if (!open || !billRequest) return null;
 
@@ -276,12 +280,24 @@ export default function BillDetailModal({
   const approvalHistory = deriveBillApprovalHistory(billRequest);
 
   const headerRows: [string, React.ReactNode][] = [
-    ["Work Order",    billRequest.workOrderNo],
-    ["Project",       billRequest.projectName],
-    ["Contractor",    billRequest.vendorName],
-    ["Category",      [billRequest.category, billRequest.subCategory].filter(Boolean).join(" › ")],
-    ["Requested By",  billRequest.requestedBy?.name || "—"],
-    ["Date",          dayjs(billRequest.createdAt).format("DD MMM YYYY")],
+    [
+      "Work Order",
+      billRequest.workOrderNo ? (
+        <WorkOrderLink
+          workOrderNo={billRequest.workOrderNo}
+          workOrderId={billRequest.workOrderId}
+          onBeforeNavigate={onClose}
+          returnTo={returnTo}
+        />
+      ) : (
+        "—"
+      ),
+    ],
+    ["Project", billRequest.projectName],
+    ["Contractor", billRequest.vendorName],
+    ["Category", [billRequest.category, billRequest.subCategory].filter(Boolean).join(" › ")],
+    ["Requested By", billRequest.requestedBy?.name || "—"],
+    ["Date", dayjs(billRequest.createdAt).format("DD MMM YYYY")],
     ...(billRequest.periodFrom ? [["Period", `${dayjs(billRequest.periodFrom).format("DD MMM YYYY")} → ${dayjs(billRequest.periodTo ?? billRequest.createdAt).format("DD MMM YYYY")}`] as [string, React.ReactNode]] : []),
     ...(billRequest.billId ? [["Bill No.", billRequest.billId.billNo + " — " + fmt(billRequest.billId.amount)] as [string, React.ReactNode]] : []),
   ];
@@ -424,12 +440,12 @@ export default function BillDetailModal({
 
         {billRequest.status === "approved" && billRequest.billId && (() => {
           const b = billRequest.billId;
-          const gross   = b.amount || 0;
-          const retAmt  = b.retentionAmount ?? 0;
-          const advRec  = b.advanceRecovery ?? 0;
+          const gross = b.amount || 0;
+          const retAmt = b.retentionAmount ?? 0;
+          const advRec = b.advanceRecovery ?? 0;
           const { gstAmount: gstAmt, netAfterHold: netPay } = billFinancials({ gross, gstPercent: b.gstPercent ?? 0, retentionAmount: retAmt, advanceRecovery: advRec, supersedeDeduction: b.supersedeDeduction ?? 0 });
-          const paid    = b.paidAmount;
-          const tdsAmt  = paid != null ? Math.max(0, Math.round(netPay - paid)) : 0;
+          const paid = b.paidAmount;
+          const tdsAmt = paid != null ? Math.max(0, Math.round(netPay - paid)) : 0;
           return (
             <div className="bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-300 dark:border-emerald-500/30 rounded-lg p-3 text-sm">
               <div className="font-bold mb-2 text-emerald-800 dark:text-emerald-300">

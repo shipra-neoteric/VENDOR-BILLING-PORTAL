@@ -18,6 +18,7 @@ import type { PrintableBill } from "../../shared/utils/printBill";
 import type { Contractor } from "../../types/VendorBilling";
 import { billFinancials } from "../../shared/utils/billMath";
 import { BillStageCell } from "../../components/BillDetailModal";
+import WorkOrderLink from "../../components/WorkOrderLink";
 import { downloadBillApprovalPDF } from "../../components/BillApprovalExportPDF";
 import type { BillApprovalExportRow } from "../../components/BillApprovalExportPDF";
 import SlaTimeline from "../../components/SlaTimeline";
@@ -903,11 +904,11 @@ export default function BillApproval() {
     switch (exportScope) {
       case "pending":
       case "in-progress": return PENDING_STATUSES.includes(status);
-      case "completed":   return status === "approved";
-      case "overdue":     return isOverdue(status, since);
-      case "cancelled":   return status === "rejected";
+      case "completed": return status === "approved";
+      case "overdue": return isOverdue(status, since);
+      case "cancelled": return status === "rejected";
       case "all":
-      default:            return true;
+      default: return true;
     }
   };
   const EXPORT_SCOPE_LABEL: Record<string, string> = {
@@ -1029,10 +1030,10 @@ export default function BillApproval() {
     const rangePart = reqDateFrom && reqDateTo
       ? `${reqDateFrom.format("DD MMM YYYY")} - ${reqDateTo.format("DD MMM YYYY")}`
       : reqDateFrom
-      ? `From ${reqDateFrom.format("DD MMM YYYY")}`
-      : reqDateTo
-      ? `Until ${reqDateTo.format("DD MMM YYYY")}`
-      : "All Time";
+        ? `From ${reqDateFrom.format("DD MMM YYYY")}`
+        : reqDateTo
+          ? `Until ${reqDateTo.format("DD MMM YYYY")}`
+          : "All Time";
     const scopeLabel = EXPORT_SCOPE_LABEL[exportScope];
     const dateRangeLabel = exportScope === "all" ? rangePart : `${rangePart} — ${scopeLabel}`;
     downloadBillApprovalPDF(rows, dateRangeLabel);
@@ -1362,7 +1363,19 @@ export default function BillApproval() {
         >
           <div className="flex flex-col gap-3.5">
             <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-[13px]">
-              <div><span className="text-gray-500 dark:text-gray-400">Work Order: </span>{viewReq.workOrderNo}</div>
+              <div>
+                <span className="text-gray-500 dark:text-gray-400">Work Order: </span>
+                {viewReq.workOrderNo ? (
+                  <WorkOrderLink
+                    workOrderNo={viewReq.workOrderNo}
+                    workOrderId={viewReq.workOrderId}
+                    onBeforeNavigate={() => setViewReq(null)}
+                    returnTo={`/bill-requests?open=${viewReq._id}`}
+                  />
+                ) : (
+                  "—"
+                )}
+              </div>
               <div><span className="text-gray-500 dark:text-gray-400">Project: </span>{viewReq.projectName}</div>
               <div><span className="text-gray-500 dark:text-gray-400">Contractor: </span>{viewReq.vendorName}</div>
               <div><span className="text-gray-500 dark:text-gray-400">Requested By: </span>{viewReq.requestedBy?.name || "—"}</div>

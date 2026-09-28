@@ -15,6 +15,7 @@ import Modal from "../../ui/Modal";
 import NxBtn from "../../ui/nexora/Btn";
 import { Descriptions, DescItem, SectionHeading } from "../../ui/Descriptions";
 import { Table, Thead, Tbody, Tr, Th, Td } from "../../ui/Table";
+import WorkOrderLink from "../../components/WorkOrderLink";
 
 // ── Helpers ──────────────────────────────────────────────────────
 function fmtMinutes(min: number): string {
@@ -58,6 +59,7 @@ interface BillRequestQuickView {
   _id: string;
   reqNo: string;
   status?: string;
+  workOrderId?: string;
   workOrderNo?: string;
   projectName?: string;
   vendorName?: string;
@@ -494,7 +496,17 @@ export default function SlaDashboard() {
               <SectionHeading>Overview</SectionHeading>
               <Descriptions columns={2}>
                 <DescItem label="Status"><NxBadge color={entityStatusColor(brDetail.status)}>{entityStatusLabel(brDetail.status)}</NxBadge></DescItem>
-                <DescItem label="Work Order">{brDetail.workOrderNo ?? "—"}</DescItem>
+                <DescItem label="Work Order">
+                  {brDetail.workOrderNo ? (
+                    <WorkOrderLink
+                      workOrderNo={brDetail.workOrderNo}
+                      workOrderId={brDetail.workOrderId}
+                      onBeforeNavigate={() => setViewBillRequestId(null)}
+                    />
+                  ) : (
+                    "—"
+                  )}
+                </DescItem>
                 <DescItem label="Project">{brDetail.projectName ?? "—"}</DescItem>
                 <DescItem label="Contractor">{brDetail.vendorName ?? "—"}</DescItem>
                 <DescItem label="Requested By">{typeof brDetail.requestedBy === "object" ? brDetail.requestedBy?.name : "—"}</DescItem>

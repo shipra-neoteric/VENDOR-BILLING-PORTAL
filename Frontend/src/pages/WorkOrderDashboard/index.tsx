@@ -273,6 +273,10 @@ export default function WorkOrderDashboard() {
   // list, same as how it got here. Absent for every other entry point, which
   // keeps the existing "/work-items" behavior unchanged.
   const cameFromPendingWorkOrders = searchParams.get("from") === "pending-work-orders";
+  // Deep-linked from a specific bill (e.g. Bill Requests' view modal via
+  // WorkOrderLink's returnTo) — the Back button should return there instead
+  // of the default Work Orders list.
+  const returnTo = searchParams.get("returnTo");
   const { user } = useAuth();
   const canManage = user?.role === "owner" || user?.role === "gm" || user?.role === "accounts";
 
@@ -398,7 +402,11 @@ export default function WorkOrderDashboard() {
         <div className="p-6 pb-0">
           <button
             type="button"
-            onClick={() => navigate(cameFromPendingWorkOrders ? "/pending-work-orders" : "/work-items")}
+            onClick={() => {
+              if (returnTo) navigate(returnTo);
+              else if (cameFromPendingWorkOrders) navigate("/pending-work-orders");
+              else navigate(-1);
+            }}
             className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 mb-2.5"
           >
             <ArrowLeft className="w-4 h-4" /> {cameFromPendingWorkOrders ? "Pending Work Orders" : "Work Orders"}

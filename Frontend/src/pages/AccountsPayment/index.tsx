@@ -35,6 +35,7 @@ import { useAuth } from "../../context/AuthContext";
 import type { AuthUser } from "../../context/AuthContext";
 import StatusBadge from "../../ui/StatusBadge";
 import WorkOrderDetailView from "../../components/WorkOrderDetailView";
+import WorkOrderLink from "../../components/WorkOrderLink";
 import ContractorDetailView from "../../components/ContractorDetailView";
 import RunningBillDetailView from "../../components/RunningBillDetailView";
 import type { WorkOrder, Contractor } from "../../types/VendorBilling";
@@ -1218,19 +1219,14 @@ export default function AccountsPayment() {
                     </Td>
                     <Td className="whitespace-nowrap truncate">
                       {r.workOrderNo && r.workOrderId ? (
-                        // Opens the same full bill drawer as clicking anywhere
-                        // else on the row (Bill + Work Order cards,
-                        // Verification, Billing Chain, Line Items, Financial
-                        // Summary, approval sections) — the WO-only quick-view
-                        // (WorkOrderDetailView) is still one click away from
-                        // there via that drawer's own "View Work Order →" button.
-                        <button
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); openDrawer(r); }}
-                          className="text-sm font-medium hover:underline"
-                          style={{ color: "#ff7a00" }} >
-                          {r.workOrderNo}
-                        </button>
+                        <span onClick={(e) => e.stopPropagation()}>
+                          <WorkOrderLink
+                            workOrderNo={r.workOrderNo}
+                            workOrderId={r.workOrderId}
+                            returnTo={`/accounts-payment?bill=${r.id}`}
+                            className="text-sm"
+                          />
+                        </span>
                       ) : <span className="text-gray-300">—</span>}
                     </Td>
                     <Td className="whitespace-nowrap truncate">
@@ -1345,6 +1341,7 @@ export default function AccountsPayment() {
               onViewWorkOrder={drawerBill.workOrderId ? () => openWODrawer(drawerBill.workOrderId!) : undefined}
               supersededByNumbers={supersededByMap[drawerBill.id]}
               renderActionSection={renderActionSection}
+              returnTo={`/accounts-payment?bill=${drawerBill.id}`}
             />
           </Modal>
         )

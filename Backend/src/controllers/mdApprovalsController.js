@@ -47,7 +47,7 @@ const { canActOnDepartment } = require('../utils/departmentAccess');
 const { getApprovalConfig, approverAllowed } = require('../utils/approvalRules');
 const { getWoApprovalConfig, woApproverAllowed } = require('../utils/woApprovalRules');
 
-const WorkOrder   = require('../models/WorkOrder');
+const WorkOrder = require('../models/WorkOrder');
 const BillRequest = require('../models/BillRequest');
 const RunningBill = require('../models/RunningBill');
 
@@ -155,7 +155,7 @@ async function buildPendingItems(user) {
     if (!approverAllowed(user, config, stage)) continue;
     const pendingSince = stage === 'l4' ? (br.l3ApprovedAt || br.createdAt)
       : stage === 'l3' ? (br.gmApprovedAt || br.createdAt)
-      : (br.agmApprovedAt || br.createdAt);
+        : (br.agmApprovedAt || br.createdAt);
     items.push({
       id: String(br._id),
       system: 'BillRequest',
@@ -187,7 +187,7 @@ async function buildPendingItems(user) {
     seenBillIds.add(String(bill._id));
     const pendingSince = stage === 'l4' ? (bill.manualL3ApprovedAt || bill.createdAt)
       : stage === 'l3' ? (bill.manualGmApprovedAt || bill.createdAt)
-      : (bill.manualAgmApprovedAt || bill.createdAt);
+        : (bill.manualAgmApprovedAt || bill.createdAt);
     items.push({
       id: String(bill._id),
       system: 'RunningBill-Manual',
@@ -292,7 +292,7 @@ async function buildDecidedItems(user, decision) {
       const { stage, entry } = found;
       const pendingSince = stage === 'l4' ? (br.l3ApprovedAt || br.createdAt)
         : stage === 'l3' ? (br.gmApprovedAt || br.createdAt)
-        : (br.agmApprovedAt || br.createdAt);
+          : (br.agmApprovedAt || br.createdAt);
       items.push({
         id: String(br._id),
         system: 'BillRequest',
@@ -344,7 +344,7 @@ async function buildDecidedItems(user, decision) {
           const { stage, entry } = manualFound;
           const pendingSince = stage === 'l4' ? (bill.manualL3ApprovedAt || bill.createdAt)
             : stage === 'l3' ? (bill.manualGmApprovedAt || bill.createdAt)
-            : (bill.manualAgmApprovedAt || bill.createdAt);
+              : (bill.manualAgmApprovedAt || bill.createdAt);
           items.push({
             id: String(bill._id),
             system: 'RunningBill-Manual',
@@ -535,6 +535,7 @@ exports.getMdApprovalDetail = asyncHandler(async (req, res) => {
       _id: String(doc._id),
       reqNo: doc.reqNo,
       stageNo: doc.stageNo,
+      workOrderId: doc.workOrderId ? String(doc.workOrderId) : undefined,
       workOrderNo: doc.workOrderNo,
       projectName: doc.projectName,
       vendorName: doc.vendorName,
