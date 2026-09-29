@@ -421,6 +421,27 @@ exports.updateWorkOrder = asyncHandler(async (req, res) => {
     }
   }
 
+  // vendorName/ownerName/mobile are a point-in-time snapshot (see the comment
+  // above on updateWorkOrder) that must NOT be silently refreshed just from
+  // opening/saving Edit — but if the edit actually changes vendorCode itself
+  // (the user picked a different vendor), the snapshot must be re-taken
+  // against the NEW vendor, otherwise vendorCode and vendorName end up
+  // pointing at two different vendors.
+  if ('vendorCode' in updateData && updateData.vendorCode !== before.vendorCode) {
+    const isProfessionalServices = (updateData.contractType || before.contractType) === 'professional-services';
+    const party = isProfessionalServices
+      ? await Consultant.findOne({ consultantCode: updateData.vendorCode })
+      : await Contractor.findOne({ vendorCode: updateData.vendorCode });
+    if (!party) {
+      return notFound(res, isProfessionalServices
+        ? 'Consultant not found for this consultant code'
+        : 'Contractor not found for this vendor code');
+    }
+    updateData.vendorName = isProfessionalServices ? party.firmName : party.companyName;
+    updateData.ownerName  = isProfessionalServices ? party.principalName : party.ownerName;
+    updateData.mobile     = party.mobile;
+  }
+
   // Editing a work order mid-chain (pending-checker/approver/final) or after
   // it already cleared the full chain (only possible once Owner has unlocked
   // it) sends it back through the chain from scratch — but only when the edit
