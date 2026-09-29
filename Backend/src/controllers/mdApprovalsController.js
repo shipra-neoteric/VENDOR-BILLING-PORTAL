@@ -77,7 +77,27 @@ function finalStageFor(status, statusPrefix, config) {
   return null;
 }
 
-const STAGE_LABEL = { gm: 'GM Approval', l3: 'L3 Approval', l4: 'L4 Approval' };
+const STAGE_LABEL = { agm: 'AGM Approval', gm: 'GM Approval', l3: 'L3 Approval', l4: 'L4 Approval' };
+
+// Rahul Gupta (CEO) is a one-off exception: he holds explicit agm-approve AND
+// gm-approve permission on bill-requests, so unlike every other approver he's
+// allowed to act on BOTH the L1 (agm) and L2 (gm)/L3/L4 stages of a
+// BillRequest/RunningBill-manual chain — but this page otherwise deliberately
+// only surfaces a document's genuinely FINAL stage (see finalStageFor above),
+// so his own L1 items would never show up here even though he's allowed to
+// act on them. This flag widens the page for him ONLY: a non-final L1 (agm)
+// stage he's allowed to act on is included too, alongside the normal final-
+// stage-only behavior every other user still gets.
+function isRahulGupta(user) {
+  return user?.email === 'rahul@neotericgrp.in';
+}
+
+// Mirrors finalStageFor's status parsing, but for the L1 (agm) stage —
+// which is NEVER final (a department's requiredApprovals is always >= 2,
+// see DepartmentApprovalConfig), so finalStageFor() itself never returns it.
+function agmStageFor(status, statusPrefix) {
+  return status === statusPrefix.slice(0, -1) ? 'agm' : null;
+}
 
 // The history entries already snapshot byName/byRole at the moment the
 // decision was made (see each model's approvalHistory schema comment) — no
@@ -108,8 +128,8 @@ function findFinalHistoryEntry(history, stagePrefix, action) {
 async function buildPendingItems(user) {
   const [workOrders, billRequests, manualBills, accountsBills] = await Promise.all([
     WorkOrder.find({ approvalStatus: 'pending-final' }).populate('createdBy', 'name').lean(),
-    BillRequest.find({ status: { $in: ['pending-gm', 'pending-l3', 'pending-l4'] } }).populate('requestedBy', 'name').lean(),
-    RunningBill.find({ manualApprovalStatus: { $in: ['pending-gm', 'pending-l3', 'pending-l4'] } }).populate('createdBy', 'name').lean(),
+    BillRequest.find({ status: { $in: ['pending', 'pending-gm', 'pending-l3', 'pending-l4'] } }).populate('requestedBy', 'name').lean(),
+    RunningBill.find({ manualApprovalStatus: { $in: ['pending', 'pending-gm', 'pending-l3', 'pending-l4'] } }).populate('createdBy', 'name').lean(),
     RunningBill.find({ status: 'l1-approved' }).populate('createdBy', 'name').lean(),
   ]);
 
@@ -150,12 +170,14 @@ async function buildPendingItems(user) {
   for (const br of billRequests) {
     if (!canActOnDepartment(user, br)) continue;
     const config = await getApprovalConfig(br);
-    const stage = finalStageFor(br.status, 'pending-', config);
+    const stage = finalStageFor(br.status, 'pending-', config)
+      || (isRahulGupta(user) ? agmStageFor(br.status, 'pending-') : null);
     if (!stage) continue; // genuinely mid-chain for this department, not final yet
     if (!approverAllowed(user, config, stage)) continue;
     const pendingSince = stage === 'l4' ? (br.l3ApprovedAt || br.createdAt)
       : stage === 'l3' ? (br.gmApprovedAt || br.createdAt)
-      : (br.agmApprovedAt || br.createdAt);
+      : stage === 'gm' ? (br.agmApprovedAt || br.createdAt)
+      : br.createdAt;
     items.push({
       id: String(br._id),
       system: 'BillRequest',
@@ -181,13 +203,15 @@ async function buildPendingItems(user) {
   for (const bill of manualBills) {
     if (!canActOnDepartment(user, bill)) continue;
     const config = await getApprovalConfig(bill);
-    const stage = finalStageFor(bill.manualApprovalStatus, 'pending-', config);
+    const stage = finalStageFor(bill.manualApprovalStatus, 'pending-', config)
+      || (isRahulGupta(user) ? agmStageFor(bill.manualApprovalStatus, 'pending-') : null);
     if (!stage) continue;
     if (!approverAllowed(user, config, stage)) continue;
     seenBillIds.add(String(bill._id));
     const pendingSince = stage === 'l4' ? (bill.manualL3ApprovedAt || bill.createdAt)
       : stage === 'l3' ? (bill.manualGmApprovedAt || bill.createdAt)
-      : (bill.manualAgmApprovedAt || bill.createdAt);
+      : stage === 'gm' ? (bill.manualAgmApprovedAt || bill.createdAt)
+      : bill.createdAt;
     items.push({
       id: String(bill._id),
       system: 'RunningBill-Manual',
