@@ -77,7 +77,11 @@ function finalStageFor(status, statusPrefix, config) {
   return null;
 }
 
-const STAGE_LABEL = { agm: 'AGM Approval', gm: 'GM Approval', l3: 'L3 Approval', l4: 'L4 Approval' };
+// 'agm' only ever surfaces here for Rahul Gupta (see isRahulGupta/agmStageFor
+// above) — nobody else's L1 items reach this page, so labeling it "CEO
+// Approval" instead of "AGM Approval" is accurate for every case that can
+// actually hit it, not a mislabel for some other approver.
+const STAGE_LABEL = { agm: 'CEO Approval', gm: 'GM Approval', l3: 'L3 Approval', l4: 'L4 Approval' };
 
 // Rahul Gupta (CEO) is a one-off exception: he holds explicit agm-approve AND
 // gm-approve permission on bill-requests, so unlike every other approver he's
