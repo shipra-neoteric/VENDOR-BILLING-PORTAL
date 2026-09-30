@@ -6,9 +6,11 @@ const RunningBill = require('../models/RunningBill');
 const Contractor = require('../models/Contractor');
 const Consultant = require('../models/Consultant');
 const DrawingRequest = require('../models/DrawingRequest');
+const WorkflowInstance = require('../models/WorkflowInstance');
 const asyncHandler = require('../utils/asyncHandler');
 const { success, badRequest } = require('../utils/responseFormatter');
 const { billFinancialsForBill } = require('../utils/billFinancials');
+const { isStageBreached } = require('../utils/slaEngine');
 const {
   computeProjectStageInfo, buildProjectAlerts, stableAlertId, computeBudgetRiskForecast,
   daysSince, lastStatusChangeAt, HEALTH_THRESHOLDS, isWoApproved,
@@ -296,6 +298,26 @@ async function buildExecutiveDashboardData(query) {
     RunningBill.find(rbFilter).lean(),
     woIds.length ? BillRequest.find({ workOrderId: { $in: woIds } }).lean() : Promise.resolve([]),
   ]);
+
+  // SLA breach lookup for "Needs Your Attention" (Phase 2, below) — a WO/
+  // BillRequest currently sitting past its current stage's dueAt, per the
+  // exact same read-time check the SLA Dashboard itself uses (slaEngine's
+  // isStageBreached), not a re-derived threshold. Only 'in-progress'
+  // instances can be breached (completed/cancelled ones are done, pending
+  // ones haven't started a stage's clock yet).
+  const slaEntityIds = [...woIds, ...billRequests.map(b => b._id)];
+  const breachedInstances = slaEntityIds.length
+    ? await WorkflowInstance.find({
+      entityType: { $in: ['WorkOrder', 'BillRequest'] },
+      entityId: { $in: slaEntityIds },
+      status: 'in-progress',
+    }).select('entityType entityId currentStageIndex stages').lean()
+    : [];
+  const slaBreachedIds = new Set(
+    breachedInstances
+      .filter(inst => isStageBreached(inst.stages[inst.currentStageIndex]))
+      .map(inst => String(inst.entityId))
+  );
 
   // ── Bucket WorkOrders/RunningBills/BillRequests by projectId ────────────
   const woByProject = new Map();
@@ -800,6 +822,7 @@ async function buildExecutiveDashboardData(query) {
   for (const row of projectRows) {
     const projectAlerts = buildProjectAlerts({
       project: row.__project, wos: row.__wos, bills: row.__bills, billReqs: row.__billReqs, financials: row.__financials,
+      slaBreachedIds,
     });
     allAlerts = allAlerts.concat(projectAlerts);
   }

@@ -325,11 +325,41 @@ function computeProjectStageInfo({ project, wos, bills, billReqs, financials }) 
 // ── Alerts ("Needs Your Attention") ─────────────────────────────────────
 // Builds every qualifying alert for ONE project. The caller (controller)
 // concatenates across projects, sorts, and caps the list.
-function buildProjectAlerts({ project, wos, bills, billReqs, financials }) {
+function buildProjectAlerts({ project, wos, bills, billReqs, financials, slaBreachedIds }) {
   const { workExecutedValue, billedGross, certifiedNet, paidAmount } = financials;
   const alerts = [];
   const projectId = String(project._id);
   const projectName = project.name;
+
+  // 0. SLA breached — a Work Order or Bill Request currently sitting past
+  // its current approval stage's dueAt (slaEngine.isStageBreached, the same
+  // read-time check the SLA Dashboard itself uses).
+  if (slaBreachedIds) {
+    for (const wo of wos) {
+      if (slaBreachedIds.has(String(wo._id))) {
+        alerts.push({
+          type: 'sla-breach',
+          severity: 'critical',
+          projectId, projectName,
+          title: 'SLA breached',
+          message: `${wo.workOrderNo} (${project.name}) has missed its current approval stage's SLA.`,
+          link: `/work-items/${wo._id}`,
+        });
+      }
+    }
+    for (const br of billReqs) {
+      if (slaBreachedIds.has(String(br._id))) {
+        alerts.push({
+          type: 'sla-breach',
+          severity: 'critical',
+          projectId, projectName,
+          title: 'SLA breached',
+          message: `${br.reqNo} (${project.name}) has missed its current approval stage's SLA.`,
+          link: `/bill-requests?open=${br._id}`,
+        });
+      }
+    }
+  }
 
   // 1. Billing exceeds executed value
   if (workExecutedValue > 0 && billedGross > workExecutedValue) {
@@ -395,39 +425,6 @@ function buildProjectAlerts({ project, wos, bills, billReqs, financials }) {
         amount: overdueAmount,
         link: `/accounts-payment?bill=${oldest.bill._id}`,
       });
-    }
-  }
-
-  // 4 & 5. No-progress / zero-progress on approved WorkOrders
-  for (const wo of wos.filter(isWoApproved)) {
-    const issuedDays = daysSince(wo.issueDate);
-    if (issuedDays === null) continue;
-    if (woHasPlannedScope(wo) && !woHasAnyProgress(wo) && issuedDays >= HEALTH_THRESHOLDS.zeroProgressAlertDays) {
-      alerts.push({
-        type: 'work-order-zero-progress',
-        severity: issuedDays >= HEALTH_THRESHOLDS.noProgressCriticalDays ? 'critical' : 'attention',
-        projectId, projectName,
-        title: 'Work order issued, no progress recorded',
-        message: `${wo.workOrderNo} (${project.name}) was issued ${issuedDays} days ago with zero completed quantity logged.`,
-        ageDays: issuedDays,
-        link: `/work-items/${wo._id}`,
-      });
-      continue; // don't double-report as "no progress recorded" below
-    }
-    const lastProgress = woLastProgressDate(wo);
-    if (woHasAnyProgress(wo) && lastProgress) {
-      const staleDays = daysSince(lastProgress);
-      if (staleDays !== null && staleDays >= HEALTH_THRESHOLDS.noProgressAttentionDays) {
-        alerts.push({
-          type: 'no-progress-recorded',
-          severity: staleDays >= HEALTH_THRESHOLDS.noProgressCriticalDays ? 'critical' : 'attention',
-          projectId, projectName,
-          title: 'No progress recorded recently',
-          message: `${wo.workOrderNo} (${project.name}) has had no new progress logged in ${staleDays} days.`,
-          ageDays: staleDays,
-          link: `/work-items/${wo._id}`,
-        });
-      }
     }
   }
 

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
   LayoutDashboard, Building2, HardHat, Receipt, Banknote, Hourglass,
-  RotateCcw, X, AlertTriangle, TrendingUp, Clock, FileText, AlertCircle, ArrowUpRight,
+  RotateCcw, X, AlertTriangle, TrendingUp, Clock, AlertCircle, ArrowUpRight, ShieldAlert,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import apiClient from "../../services/apiClient";
@@ -31,12 +31,11 @@ interface ContractorOption { vendorCode: string; companyName: string; }
 // buildAlerts() — a per-alert icon so the compact "Needs Your Attention" rows
 // read at a glance, not just a generic warning triangle for everything.
 const ALERT_TYPE_ICON: Record<string, LucideIcon> = {
+  "sla-breach": ShieldAlert,
   "billing-exceeds-executed": TrendingUp,
   "bill-request-pending-approval": Hourglass,
   "bill-pending-approval": Hourglass,
   "certified-payment-overdue": Clock,
-  "work-order-zero-progress": HardHat,
-  "no-progress-recorded": FileText,
 };
 
 export default function Dashboard() {
