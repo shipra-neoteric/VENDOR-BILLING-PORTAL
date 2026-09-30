@@ -292,12 +292,17 @@ export default function ProjectsList() {
                       {(() => {
                         const costUsedPct = p.awardedContractValue > 0 ? Math.round((p.billedGross / p.awardedContractValue) * 100) : 0;
                         const overspending = costUsedPct > p.progress + 10;
+                        // Displayed text is capped at 100% (a corrupt/missing contractValue
+                        // or genuine overbilling can otherwise show "463%") — the
+                        // overspending flag/bar-color still uses the real, uncapped
+                        // ratio so a genuinely huge overspend still reads as amber.
+                        const displayPct = Math.min(100, costUsedPct);
                         return (
                           <div className="flex items-center gap-2 min-w-[90px]">
                             <div className="w-12 h-1.5 rounded-full bg-gray-100 dark:bg-gray-700 overflow-hidden shrink-0">
-                              <div className={`h-full rounded-full ${overspending ? "bg-amber-500" : "bg-blue-500"}`} style={{ width: `${Math.min(100, costUsedPct)}%` }} />
+                              <div className={`h-full rounded-full ${overspending ? "bg-amber-500" : "bg-blue-500"}`} style={{ width: `${displayPct}%` }} />
                             </div>
-                            <span className="text-xs font-semibold tabular-nums">{costUsedPct}%</span>
+                            <span className="text-xs font-semibold tabular-nums">{displayPct}%{overspending && costUsedPct > 100 ? "+" : ""}</span>
                           </div>
                         );
                       })()}
