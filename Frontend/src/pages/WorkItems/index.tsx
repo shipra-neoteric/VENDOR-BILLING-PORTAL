@@ -97,18 +97,6 @@ const APPROVAL_STATUS_CFG: Record<WorkOrderApprovalStatus, { label: string; colo
 // used to build the Step filter's pill row and its per-stage counts.
 const STEP_KEYS: WorkOrderApprovalStatus[] = ["draft", "pending-checker", "pending-approver", "pending-final"];
 
-// Which module 'work-orders' permission actually acts at each of the 4
-// stages above — a pill is only shown to someone who could act on it, purely
-// off the permission matrix (no owner/role hardcode), same philosophy as
-// Bill Requests' Pending L1-L4 tabs.
-const STEP_PERM: Record<string, string> = {
-  draft: "maker", "pending-checker": "checker", "pending-approver": "approver", "pending-final": "ceo-approve",
-};
-
-function hasWOPerm(user: { permissions?: { module: string; actions: string[] }[] } | null | undefined, action: string): boolean {
-  return !!user?.permissions?.find((p) => p.module === "work-orders")?.actions.includes(action);
-}
-
 const approvalStatusOf = (wo: WorkOrder): WorkOrderApprovalStatus => wo.approvalStatus || "approved";
 
 // Step badge — a plain filled pill (orange while pending, green once
@@ -2469,7 +2457,14 @@ export default function WorkItems() {
           >
             Pending <span className="ml-1 opacity-75">{STEP_KEYS.reduce((s, key) => s + (stepCounts[key] || 0), 0)}</span>
           </button>
-          {STEP_KEYS.filter((key) => hasWOPerm(user, STEP_PERM[key])).map((key) => {
+          {/* Every stage's pending count is visible to anyone who can see this
+              list at all — being ABLE to view where a WO is stuck (L1-L4)
+              is separate from being ALLOWED to act on it there. The actual
+              approve/checker/final buttons stay individually gated by their
+              own checker/approver/ceo-approve permission inside
+              WorkOrderApprovalWorkflow, so a view-only user sees the count
+              and status here but gets no action button once they open it. */}
+          {STEP_KEYS.map((key) => {
             const cfg = APPROVAL_STATUS_CFG[key];
             const active = stepFilter === key;
             return (
