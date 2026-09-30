@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
   Plus, Pencil, Trash2, Building2, FolderOpen, CheckCircle2, Clock, ArrowLeft,
@@ -260,7 +260,7 @@ function ProjectDetail({
   return (
     <div>
       <div className="flex items-center gap-2.5 mb-5">
-        <Btn outline small icon={ArrowLeft} label="Back to Projects" onClick={onBack} />
+        <Btn outline small icon={ArrowLeft} title="Back to Projects" aria-label="Back to Projects" onClick={onBack} />
         {parentProject && (
           <Btn outline small label={`← ${parentProject.name}`} onClick={() => onSelectProject(parentProject)} />
         )}
@@ -671,6 +671,16 @@ export default function Projects() {
   const [clearSlackWebhook, setClearSlackWebhook] = useState(false);
 
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
+
+  // Whether this page was entered via a deep link with ?id= already in the
+  // URL (e.g. Dashboard's Projects Overview row action) rather than by
+  // clicking a project from this page's own list — read once at mount,
+  // before the sync effect below ever adds/removes the param itself, so it
+  // reflects how the page was actually entered. "Back to Projects" uses
+  // this to decide whether to return to wherever that link came from
+  // (browser back) or just close back to this page's own list (clear state).
+  const cameFromDeepLinkRef = useRef(new URLSearchParams(window.location.search).has("id"));
 
   // ── Load ──────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -838,7 +848,7 @@ export default function Projects() {
         is needed here (it would just duplicate that row). ── */
         <ProjectDetail
           project={detailProject}
-          onBack={() => setDetailProject(null)}
+          onBack={() => cameFromDeepLinkRef.current ? navigate(-1) : setDetailProject(null)}
           onEdit={openEdit}
           onDelete={handleDeleteProject}
           allProjects={projects}

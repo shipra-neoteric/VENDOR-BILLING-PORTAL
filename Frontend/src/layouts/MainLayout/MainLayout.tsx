@@ -41,9 +41,10 @@ export default function MainLayout({ children }: Props) {
   // screen). On mobile, users still reach every Masters page directly via
   // the main Sidebar's own "Masters" entry, just without this extra panel.
   // A single project's own detail view (Projects/index.tsx, /projects?id=X)
-  // is a focused, full-screen page — no main Sidebar, no Masters panel/title
-  // bar — same route as the Masters "Projects" list (which keeps all of
-  // that chrome), so this is the only way to tell the two apart from here.
+  // drops the Masters panel/title bar (it's not a Masters management screen
+  // anymore, just one project's page) but keeps the main Sidebar — same
+  // route as the Masters "Projects" list (which keeps all of that chrome),
+  // so this is the only way to tell the two apart from here.
   const isProjectDetail = location.pathname === "/projects" && new URLSearchParams(location.search).has("id");
   const showMastersPanel = !isMobile && !isProjectDetail && isMastersPath(location.pathname);
   // Vendors (Contractors/Consultants/Vendor Groups) doesn't get its own
@@ -57,7 +58,7 @@ export default function MainLayout({ children }: Props) {
 
   return (
     <div style={{ display: "flex", height: "100vh", overflow: "hidden", background: "var(--nx-bg)" }}>
-      {!isProjectDetail && <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />}
+      <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, height: "100%" }}>
         <Header onToggleSidebar={() => setSidebarOpen(o => !o)} />
         {showMastersTitleBar && (

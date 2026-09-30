@@ -184,7 +184,7 @@ export default function ProjectsList() {
         icon={LayoutDashboard}
         actions={
           <Link to="/dashboard">
-            <Btn label="Back to Dashboard" icon={ArrowLeft} outline small />
+            <Btn title="Back to Dashboard" aria-label="Back to Dashboard" icon={ArrowLeft} outline small />
           </Link>
         }
       />
