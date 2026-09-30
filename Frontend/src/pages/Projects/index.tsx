@@ -180,19 +180,14 @@ function buildTimelineSteps(events: ProjectEvent[], woNo: string): TimelineStep[
 
 // ── Project Detail View ────────────────────────────────────────────────────────
 function ProjectDetail({
-  project, onBack, onEdit, onDelete, allProjects, onSelectProject, onAddSubProject,
+  project, onBack, onEdit, onDelete,
 }: {
   project: Project;
   onBack: () => void;
   onEdit: (p: Project, e: React.MouseEvent) => void;
   onDelete: (p: Project) => void;
-  allProjects: Project[];
-  onSelectProject: (p: Project) => void;
-  onAddSubProject: (parent: Project) => void;
 }) {
   const id = project._id || project.id;
-  const parentProject = project.parentId ? allProjects.find(p => p.id === project.parentId) : null;
-  const subProjects = project.parentId ? [] : allProjects.filter(p => p.parentId === project.id);
   const [wos, setWOs] = useState<WORow[]>([]);
   const [stats, setStats] = useState<ProjectStats | null>(null);
   const [activity, setActivity] = useState<ProjectEvent[]>([]);
@@ -261,9 +256,6 @@ function ProjectDetail({
     <div>
       <div className="flex items-center gap-2.5 mb-5">
         <Btn outline small icon={ArrowLeft} title="Back to Projects" aria-label="Back to Projects" onClick={onBack} />
-        {parentProject && (
-          <Btn outline small label={`← ${parentProject.name}`} onClick={() => onSelectProject(parentProject)} />
-        )}
       </div>
 
       {/* Project header card */}
@@ -296,48 +288,11 @@ function ProjectDetail({
             <NxBtn color="primary" icon={Pencil} label="Edit Project" onClick={e => onEdit(project, e)} />
             <NxBtn
               color="danger" icon={Trash2} label="Delete"
-              disabled={subProjects.length > 0}
-              title={subProjects.length > 0 ? "Delete its sub-projects first" : undefined}
               onClick={() => setDeleteTarget(project)}
             />
           </div>
         </div>
       </Card>
-
-      {/* Sub-Projects */}
-      {!project.parentId && (
-        <Card padded={false} className="mb-5 overflow-hidden">
-          <div className="flex justify-between items-center px-5 py-3.5 border-b border-gray-100 dark:border-gray-700/40">
-            <div className="font-bold text-[15px] text-[#1A1A2E] dark:text-[#F1F5F9]">Sub-Projects</div>
-            <Btn small outline icon={Plus} label="Add Sub-Project" onClick={() => onAddSubProject(project)} />
-          </div>
-          {subProjects.length === 0 ? (
-            <div className="text-center py-8 text-[13px] text-gray-400">No sub-projects yet.</div>
-          ) : (
-            <div>
-              {subProjects.map((sp, i) => (
-                <div
-                  key={sp.id}
-                  onClick={() => onSelectProject(sp)}
-                  className={`flex items-center gap-3 px-5 py-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/40 ${i < subProjects.length - 1 ? "border-b border-gray-100 dark:border-gray-700/40" : ""}`}
-                >
-                  <NxBadge color="gray">{sp.code}</NxBadge>
-                  <span className="flex-1 font-semibold text-[13px] text-[#1A1A2E] dark:text-[#F1F5F9]">{sp.name}</span>
-                  <NxBadge color={projectStatusBadge(sp.status).color}>{projectStatusBadge(sp.status).label}</NxBadge>
-                  <button
-                    type="button"
-                    onClick={e => { e.stopPropagation(); setDeleteTarget(sp); }}
-                    className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded transition-colors"
-                    title="Delete"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </Card>
-      )}
 
       {loading ? (
         <Spinner label="Loading project details…" />
@@ -661,7 +616,6 @@ export default function Projects() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [detailProject, setDetailProject] = useState<Project | null>(null);
-  const [creatingUnderParent, setCreatingUnderParent] = useState<Project | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Project | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [formState, setFormState] = useState(EMPTY_FORM);
@@ -710,19 +664,26 @@ export default function Projects() {
   // while viewing one) and so MainLayout can tell "list" from "single
   // project detail" apart purely from the URL (same /projects path either
   // way) to hide the Masters chrome for the latter (see MainLayout.tsx).
+  //
+  // Skipped entirely while projects are still loading: this effect also
+  // fires on the very first render (detailProject is still null then), and
+  // without this guard it would immediately strip a deep-linked ?id= out of
+  // the URL before the effect above ever gets a chance to see it (projects
+  // hasn't loaded yet, so THAT effect just returns early) — the deep link
+  // never resolves, and the ?id= silently vanishes from the URL bar.
   useEffect(() => {
+    if (loading) return;
     setSearchParams(prev => {
       const next = new URLSearchParams(prev);
       if (detailProject) next.set("id", detailProject.id); else next.delete("id");
       return next;
     }, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [detailProject?.id]);
+  }, [loading, detailProject?.id]);
 
   const filtered = useMemo(() =>
     projects
       .filter(p =>
-        !p.parentId &&
         (statusFilter === "all" || p.status === statusFilter) && (
           p.name.toLowerCase().includes(search.toLowerCase()) ||
           p.code.toLowerCase().includes(search.toLowerCase()) ||
@@ -732,9 +693,6 @@ export default function Projects() {
       .sort((a, b) => a.name.localeCompare(b.name)),
     [projects, search, statusFilter]
   );
-
-  const getSubProjects = (parentId: string) =>
-    projects.filter(p => p.parentId === parentId).sort((a, b) => a.name.localeCompare(b.name));
 
   const handleDeleteProject = async (project: Project) => {
     setDeleting(true);
@@ -766,15 +724,6 @@ export default function Projects() {
   // ── Handlers ──────────────────────────────────────────────────────────────
   const openCreate = () => {
     setEditingProject(null);
-    setCreatingUnderParent(null);
-    setFormState(EMPTY_FORM);
-    setClearSlackWebhook(false);
-    setDrawerOpen(true);
-  };
-
-  const openAddSubProject = (parent: Project) => {
-    setEditingProject(null);
-    setCreatingUnderParent(parent);
     setFormState(EMPTY_FORM);
     setClearSlackWebhook(false);
     setDrawerOpen(true);
@@ -783,7 +732,6 @@ export default function Projects() {
   const openEdit = (project: Project, e?: React.MouseEvent) => {
     e?.stopPropagation();
     setEditingProject(project);
-    setCreatingUnderParent(null);
     setFormState({
       name: project.name,
       client: project.client || "",
@@ -826,7 +774,7 @@ export default function Projects() {
         if (detailProject?.id === editingProject.id) setDetailProject(updated);
         toast.success("Project updated");
       } else {
-        const res = await apiClient.post<{ project: Project }>("/projects", { ...payload, parentId: creatingUnderParent?.id ?? undefined });
+        const res = await apiClient.post<{ project: Project }>("/projects", payload);
         setProjects(prev => [normalizeId(res.data.project), ...prev]);
         toast.success(`Project ${res.data.project.code} created`);
       }
@@ -851,9 +799,6 @@ export default function Projects() {
           onBack={() => cameFromDeepLinkRef.current ? navigate(-1) : setDetailProject(null)}
           onEdit={openEdit}
           onDelete={handleDeleteProject}
-          allProjects={projects}
-          onSelectProject={setDetailProject}
-          onAddSubProject={openAddSubProject}
         />
       ) : (
         /* ── List view ────────────────────────────────────────────────────── */
@@ -899,13 +844,8 @@ export default function Projects() {
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
                   {filtered.map(proj => {
-                    const subCount = getSubProjects(proj.id).length;
                     return (
-                      <Card
-                        key={proj.id}
-                        onClick={() => setDetailProject(proj)}
-                        className="cursor-pointer hover:shadow-lg transition-all duration-200"
-                      >
+                      <Card key={proj.id}>
                         <div className="flex items-center justify-between gap-2 mb-2.5">
                           <NxBadge color="gray">{proj.code}</NxBadge>
                           <NxBadge color={projectStatusBadge(proj.status).color}>{projectStatusBadge(proj.status).label}</NxBadge>
@@ -917,12 +857,6 @@ export default function Projects() {
 
                         <div className="text-xs text-gray-500 dark:text-gray-400 mb-1.5">📍 {proj.location || "—"}</div>
 
-                        {subCount > 0 && (
-                          <div className="text-[11px] text-indigo-600 dark:text-indigo-400 font-semibold mb-1.5">
-                            📁 {subCount} sub-project{subCount !== 1 ? "s" : ""}
-                          </div>
-                        )}
-
                         <div className="flex items-center justify-between border-t border-gray-100 dark:border-gray-700/40 mt-2 pt-2.5">
                           {proj.projectType ? (
                             <NxBadge color={proj.projectType === "apartment" ? "indigo" : "teal"}>
@@ -932,8 +866,7 @@ export default function Projects() {
                           <div className="flex gap-1" onClick={e => e.stopPropagation()}>
                             <NxBtn color="icon" icon={Pencil} title="Edit" onClick={e => openEdit(proj, e)} />
                             <NxBtn
-                              color="icon" icon={Trash2} title={subCount > 0 ? "Delete its sub-projects first" : "Delete"}
-                              disabled={subCount > 0}
+                              color="icon" icon={Trash2} title="Delete"
                               onClick={e => { e.stopPropagation(); setDeleteTarget(proj); }}
                             />
                           </div>
@@ -952,13 +885,11 @@ export default function Projects() {
       {drawerOpen && (
         <Modal
           icon={Building2}
-          title={editingProject ? "Edit Project" : creatingUnderParent ? "Add Sub-Project" : "Add Project"}
+          title={editingProject ? "Edit Project" : "Add Project"}
           subtitle={
             editingProject
               ? `Editing ${editingProject.code}`
-              : creatingUnderParent
-                ? `Under "${creatingUnderParent.name}"`
-                : "Project code will be auto-assigned (PRJ-001)"
+              : "Project code will be auto-assigned (PRJ-001)"
           }
           onClose={() => setDrawerOpen(false)}
           footer={

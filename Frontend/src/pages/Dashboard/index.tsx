@@ -58,6 +58,9 @@ export default function Dashboard() {
   const contractorId = searchParams.get("contractorId") ?? "";
   const from = searchParams.get("from") ?? "";
   const to = searchParams.get("to") ?? "";
+  const weekValue = searchParams.get("week") ?? "";
+  const quarterValue = searchParams.get("quarter") ?? "";
+  const yearValue = searchParams.get("year") ?? "";
   // Stage isn't sent to the backend (the API's own `stage` param is a documented
   // no-op today) — filtered client-side against each row's already-computed
   // overallStage, same field the stage cards themselves are counted from.
@@ -84,6 +87,98 @@ export default function Dashboard() {
 
   function resetFilters() {
     setSearchParams(new URLSearchParams(), { replace: true });
+  }
+
+  const iso = (d: Date) => d.toISOString().slice(0, 10);
+
+  // Specific choices for the second dropdown, newest first — 5 years, last 8
+  // quarters, last 12 weeks. Each carries the from/to it resolves to, so
+  // picking one is a single lookup, not a re-derivation.
+  const yearOptions = useMemo(() => {
+    const thisYear = new Date().getFullYear();
+    return Array.from({ length: 5 }, (_, i) => {
+      const y = thisYear - i;
+      return { label: String(y), value: String(y), from: `${y}-01-01`, to: `${y}-12-31` };
+    });
+  }, []);
+
+  // All three filters are always visible — Quarterly/Weekly just default to
+  // the CURRENT year's quarters/weeks until a year is actually picked above,
+  // then re-scope to that year instead.
+  const quarterYear = yearValue ? Number(yearValue) : new Date().getFullYear();
+  const weekYear = yearValue ? Number(yearValue) : new Date().getFullYear();
+
+  const quarterOptionsForYear = useMemo(() => {
+    const y = quarterYear;
+    return [4, 3, 2, 1].map(q => {
+      const startMonth = (q - 1) * 3;
+      const from = new Date(y, startMonth, 1);
+      const to = new Date(y, startMonth + 3, 0); // last day of quarter
+      return { label: `Q${q} ${y}`, value: `${y}-Q${q}`, from: iso(from), to: iso(to) };
+    });
+  }, [quarterYear]);
+
+  const weekOptionsForYear = useMemo(() => {
+    const y = weekYear;
+    // Every Monday-start week that touches this year, newest first.
+    const jan1 = new Date(y, 0, 1);
+    const day = jan1.getDay();
+    const firstMonday = new Date(jan1);
+    firstMonday.setDate(jan1.getDate() - (day === 0 ? 6 : day - 1));
+    const weeks: { label: string; value: string; from: string; to: string }[] = [];
+    for (const start = new Date(firstMonday); start.getFullYear() <= y; start.setDate(start.getDate() + 7)) {
+      const end = new Date(start); end.setDate(start.getDate() + 6);
+      if (start.getFullYear() > y) break;
+      const label = `${start.toLocaleDateString("en-IN", { day: "numeric", month: "short" })} – ${end.toLocaleDateString("en-IN", { day: "numeric", month: "short" })}`;
+      weeks.push({ label, value: iso(start), from: iso(start), to: iso(end) });
+    }
+    return weeks.reverse();
+  }, [weekYear]);
+
+  // Three filters, but hierarchical, not independent — Yearly is always
+  // shown; Quarterly/Weekly only appear once a year is picked, and only ever
+  // offer that year's own quarters/weeks. Picking a quarter or week narrows
+  // from/to further within the selected year; picking a different year
+  // clears whichever quarter/week was chosen (last year's Q2 makes no sense
+  // once the year changes).
+  function setYear(value: string) {
+    const match = yearOptions.find(o => o.value === value);
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      next.delete("quarter"); next.delete("week");
+      if (match) {
+        next.set("year", match.value);
+        next.set("from", match.from);
+        next.set("to", match.to);
+      } else {
+        next.delete("year"); next.delete("from"); next.delete("to");
+      }
+      return next;
+    }, { replace: true });
+  }
+
+  function setQuarter(value: string) {
+    const match = quarterOptionsForYear.find(o => o.value === value);
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      next.delete("week");
+      if (match) { next.set("quarter", match.value); next.set("from", match.from); next.set("to", match.to); }
+      else if (yearValue) { next.delete("quarter"); next.set("from", `${yearValue}-01-01`); next.set("to", `${yearValue}-12-31`); }
+      else { next.delete("quarter"); next.delete("from"); next.delete("to"); }
+      return next;
+    }, { replace: true });
+  }
+
+  function setWeek(value: string) {
+    const match = weekOptionsForYear.find(o => o.value === value);
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      next.delete("quarter");
+      if (match) { next.set("week", match.value); next.set("from", match.from); next.set("to", match.to); }
+      else if (yearValue) { next.delete("week"); next.set("from", `${yearValue}-01-01`); next.set("to", `${yearValue}-12-31`); }
+      else { next.delete("week"); next.delete("from"); next.delete("to"); }
+      return next;
+    }, { replace: true });
   }
 
   // KPI cards and ProjectLifecycle's "View Details" both used to just
@@ -128,12 +223,32 @@ export default function Dashboard() {
         subtitle="Complete view of project progress, cost and attention areas."
         icon={LayoutDashboard}
         actions={
-          <NxBtn
-            color="secondary"
-            label="View All Projects"
-            icon={ArrowUpRight}
-            onClick={() => navigate({ pathname: "/projects-overview", search: searchParams.toString() })}
-          />
+          <div className="flex items-center gap-2">
+            <SelectFilter
+              value={yearValue}
+              onChange={setYear}
+              placeholder="Yearly"
+              options={yearOptions.map(o => ({ label: o.label, value: o.value }))}
+            />
+            <SelectFilter
+              value={quarterValue}
+              onChange={setQuarter}
+              placeholder="Quarterly"
+              options={quarterOptionsForYear.map(o => ({ label: o.label, value: o.value }))}
+            />
+            <SelectFilter
+              value={weekValue}
+              onChange={setWeek}
+              placeholder="Weekly"
+              options={weekOptionsForYear.map(o => ({ label: o.label, value: o.value }))}
+            />
+            <NxBtn
+              color="secondary"
+              label="Projects"
+              icon={ArrowUpRight}
+              onClick={() => navigate({ pathname: "/projects-overview", search: searchParams.toString() })}
+            />
+          </div>
         }
       />
 
