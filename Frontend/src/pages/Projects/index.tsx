@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
   Plus, Pencil, Trash2, Building2, FolderOpen, CheckCircle2, Clock, ArrowLeft,
-  Landmark, HardHat, Receipt, Banknote, TrendingUp, Users, ClipboardList, LayoutGrid, FileText, Activity, ExternalLink
+  Landmark, HardHat, Receipt, Banknote, TrendingUp, Users, ClipboardList, LayoutGrid, FileText, Activity,
 } from "lucide-react";
 import { WorkflowTimeline, type TimelineStep } from "../../components/WorkflowTimeline";
 import dayjs from "dayjs";
@@ -669,6 +670,8 @@ export default function Projects() {
   // is distinguishable from "left the field untouched."
   const [clearSlackWebhook, setClearSlackWebhook] = useState(false);
 
+  const [searchParams, setSearchParams] = useSearchParams();
+
   // ── Load ──────────────────────────────────────────────────────────────────
   useEffect(() => {
     apiClient.get<{ projects: Project[] }>("/projects")
@@ -676,6 +679,35 @@ export default function Projects() {
       .catch(() => { })
       .finally(() => setLoading(false));
   }, []);
+
+  // Deep link support — e.g. Dashboard's "View All Projects" navigating
+  // straight to /projects?id=<projectId> should land on that project's own
+  // detail view directly, not the full Masters list with the id silently
+  // ignored. Runs once projects have loaded (id can't be matched before
+  // then) and only if nothing is open yet, so it doesn't fight a project
+  // the user has since navigated to/away from via the list.
+  useEffect(() => {
+    if (loading || detailProject) return;
+    const id = searchParams.get("id");
+    if (!id) return;
+    const match = projects.find(p => p.id === id);
+    if (match) setDetailProject(match);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, projects]);
+
+  // Keeps the URL's `id` in sync with whichever project's detail is open —
+  // both so the deep link above is reversible (Back button / share the URL
+  // while viewing one) and so MainLayout can tell "list" from "single
+  // project detail" apart purely from the URL (same /projects path either
+  // way) to hide the Masters chrome for the latter (see MainLayout.tsx).
+  useEffect(() => {
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      if (detailProject) next.set("id", detailProject.id); else next.delete("id");
+      return next;
+    }, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detailProject?.id]);
 
   const filtered = useMemo(() =>
     projects

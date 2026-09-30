@@ -40,7 +40,12 @@ export default function MainLayout({ children }: Props) {
   // overlay — stacking a second permanent column there would eat the whole
   // screen). On mobile, users still reach every Masters page directly via
   // the main Sidebar's own "Masters" entry, just without this extra panel.
-  const showMastersPanel = !isMobile && isMastersPath(location.pathname);
+  // A single project's own detail view (Projects/index.tsx, /projects?id=X)
+  // is a focused, full-screen page — no main Sidebar, no Masters panel/title
+  // bar — same route as the Masters "Projects" list (which keeps all of
+  // that chrome), so this is the only way to tell the two apart from here.
+  const isProjectDetail = location.pathname === "/projects" && new URLSearchParams(location.search).has("id");
+  const showMastersPanel = !isMobile && !isProjectDetail && isMastersPath(location.pathname);
   // Vendors (Contractors/Consultants/Vendor Groups) doesn't get its own
   // secondary sidebar column like Masters — instead a pill tab row (same
   // Segmented component/style used elsewhere, e.g. Work Orders' Execution vs
@@ -52,7 +57,7 @@ export default function MainLayout({ children }: Props) {
 
   return (
     <div style={{ display: "flex", height: "100vh", overflow: "hidden", background: "var(--nx-bg)" }}>
-      <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+      {!isProjectDetail && <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, height: "100%" }}>
         <Header onToggleSidebar={() => setSidebarOpen(o => !o)} />
         {showMastersTitleBar && (
