@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
-import { Plus, Printer, Trash2, Wallet } from "lucide-react";
+import { Plus, Printer, Trash2, Wallet, Archive } from "lucide-react";
 import dayjs from "dayjs";
 import apiClient from "../../services/apiClient";
 import { selectableProjects } from "../../utils/projectOptions";
@@ -12,7 +13,6 @@ import Btn from "../../ui/Btn";
 import NxBtn from "../../ui/nexora/Btn";
 import NxBadge from "../../ui/nexora/Badge";
 import type { NxBadgeColor } from "../../ui/nexora/Badge";
-import Switch from "../../ui/Switch";
 import Field from "../../ui/Field";
 import SField from "../../ui/SField";
 import { DatePicker } from "../../ui/DatePicker";
@@ -55,6 +55,12 @@ interface AdvanceSlip {
 const emptyForm = { projectId: "", contractorCode: "", amount: "", date: dayjs().format("YYYY-MM-DD"), reference: "", notes: "" };
 
 export default function AdvancePayments() {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  // Only reached via a specific shortcut (Billing's "Advance Slips" button
+  // passes ?from=billing) does this page show a way back — it has no
+  // sidebar entry of its own to return to otherwise.
+  const cameFromBilling = searchParams.get("from") === "billing";
   const [slips,    setSlips]    = useState<AdvanceSlip[]>([]);
   const [loading,  setLoading]  = useState(false);
   const [modal,    setModal]    = useState(false);
@@ -140,11 +146,21 @@ export default function AdvancePayments() {
         title="Advance Payments"
         subtitle="Track advance amounts given to contractors against projects. Recoveries are auto-deducted at bill release."
         icon={Wallet}
+        onBack={cameFromBilling ? () => navigate("/billing") : undefined}
         actions={<NxBtn color="primary" icon={Plus} label="New Advance Slip" onClick={() => { setForm(emptyForm); setModal(true); }} />}
       />
 
       <div className="flex items-center gap-3 flex-wrap mb-4">
-        <Switch checked={showArchived} onChange={setShowArchived} onLabel="Archived" offLabel="Active" />
+        {/* Same gray-outline -> light-orange-filled-when-active Archive
+            toggle as WorkItems/index.tsx's own Archive button. */}
+        <Btn
+          small outline={!showArchived}
+          style={showArchived ? { color: "var(--theme-primary)" } : undefined}
+          className={showArchived ? "shadow-none! border-none! bg-primary/15! hover:bg-primary/20!" : ""}
+          icon={Archive}
+          label="Archive"
+          onClick={() => setShowArchived(v => !v)}
+        />
       </div>
 
       {loading ? (

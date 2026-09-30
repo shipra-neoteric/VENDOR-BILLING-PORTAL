@@ -7,6 +7,7 @@ import Btn from "../../ui/Btn";
 import SField from "../../ui/SField";
 import { Table, Thead, Tbody, Tr, Th, Td, TdText } from "../../ui/Table";
 import { Skeleton } from "../../ui/Skeleton";
+import { UNIT_OPTIONS } from "../../shared/constants/unitOptions";
 
 const BASE = (import.meta.env.VITE_API_URL || "http://localhost:5000/api").replace(/^﻿/, "");
 const pub = axios.create({ baseURL: BASE.replace(/\/api$/, "/api/public") });
@@ -51,28 +52,6 @@ interface CustomItem {
 }
 let _customItemKey = 0;
 const newCustomItem = (): CustomItem => ({ key: String(++_customItemKey), description: "", unit: "", plannedQty: "", rate: "" });
-
-// Same list Work Orders' own scope-item unit picker uses (WorkItems/index.tsx,
-// PublicWorkOrderForm/index.tsx) — kept consistent rather than free-text so a
-// contractor's extra item's unit always matches something the rest of the app
-// already recognizes.
-const UNIT_OPTIONS = [
-  { label: "Sq.Ft (Square Feet)", value: "sq.ft"      },
-  { label: "Sq.M (Square Meter)", value: "sq.m"       },
-  { label: "Cu.M (Cubic Meter)",  value: "cu.m"       },
-  { label: "Cu.Ft (Cubic Feet)",  value: "cu.ft"      },
-  { label: "RMT (Running Meter)", value: "rmt"        },
-  { label: "Kg (Kilogram)",       value: "kg"         },
-  { label: "MT (Metric Ton)",     value: "mt"         },
-  { label: "Nos (Numbers)",       value: "nos"        },
-  { label: "Daily Wage",          value: "daily-wage" },
-  { label: "Per Day",             value: "per-day"    },
-  { label: "Per Person",          value: "per-person" },
-  { label: "Per Hour",            value: "per-hr"     },
-  { label: "Per Trip",            value: "per-trip"   },
-  { label: "RFT (Running Foot)",  value: "rft"        },
-  { label: "Lump Sum",            value: "lump-sum"   },
-];
 
 function workOrderIdFromPath(): string {
   // /public/quotation/:workOrderId — the first per-record-scoped public link

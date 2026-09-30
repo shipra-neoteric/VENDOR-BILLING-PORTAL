@@ -21,6 +21,7 @@ import { Table, Thead, Tbody, Tr, Th, Td } from "../../ui/Table";
 import type { Contractor, Consultant } from "../../types/VendorBilling";
 import { BILL_TYPE_CFG, RELATIONSHIP_OPTIONS } from "../../shared/constants/billOptions";
 import { billFinancials, holdAmountFromPercent } from "../../shared/utils/billMath";
+import { UNIT_OPTIONS } from "../../shared/constants/unitOptions";
 
 // ── Types — a self-contained slice of what AccountsPayment's own Bill/LineItem
 // types look like, since this drawer fetches and posts independently ────────
@@ -127,6 +128,58 @@ const GST_SLABS = [
   { value: "18", label: "18% (Standard)" },
   { value: "-1", label: "Custom…" },
 ];
+
+function BillUnitCell({
+  value,
+  onChange,
+  className = "",
+}: {
+  value: string;
+  onChange: (val: string) => void;
+  className?: string;
+}) {
+  const isKnown = UNIT_OPTIONS.some((u) => u.value === value && u.value !== "custom");
+  const [isCustomMode, setIsCustomMode] = useState(!isKnown && !!value);
+
+  if (isCustomMode || (!isKnown && value)) {
+    return (
+      <div className="flex items-center gap-1 min-w-[110px]">
+        <input
+          value={value}
+          placeholder="Unit (e.g. bags)"
+          onChange={(e) => onChange(e.target.value)}
+          className={`${className} text-center flex-1`}
+          autoFocus={isCustomMode && !value}
+        />
+        <button
+          type="button"
+          title="Choose from list"
+          onClick={() => { setIsCustomMode(false); onChange("sq.ft"); }}
+          className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-xs px-1 shrink-0"
+        >
+          ✕
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-w-[110px]">
+      <SField
+        value={value || "sq.ft"}
+        onChange={(v) => {
+          if (v === "custom") {
+            setIsCustomMode(true);
+            onChange("");
+          } else {
+            onChange(v);
+          }
+        }}
+        options={UNIT_OPTIONS}
+      />
+    </div>
+  );
+}
 
 export default function NewBillDrawer({
   open,
@@ -1309,11 +1362,10 @@ export default function NewBillDrawer({
                           />
                         </Td>
                         <Td className="text-center">
-                          <input
+                          <BillUnitCell
                             value={item.unit}
-                            placeholder="sqft"
-                            onChange={(e) => updateLineItem(item.key, "unit", e.target.value)}
-                            className={`${cellInputClass} text-center`}
+                            onChange={(v) => updateLineItem(item.key, "unit", v)}
+                            className={cellInputClass}
                           />
                         </Td>
                         <Td className="text-right font-mono text-gray-500 dark:text-gray-400">

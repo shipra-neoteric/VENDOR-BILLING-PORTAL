@@ -47,6 +47,7 @@ const Backup              = lazy(() => import("../pages/Backup"));
 const NexoraPreview        = lazy(() => import("../pages/NexoraPreview"));
 const ContractorMatrix     = lazy(() => import("../pages/ContractorMatrix"));
 const ProjectsList         = lazy(() => import("../pages/ProjectsList"));
+const MastersOverview      = lazy(() => import("../pages/MastersOverview"));
 const PendingWorkOrders    = lazy(() => import("../pages/PendingWorkOrders"));
 const PendingPayments      = lazy(() => import("../pages/PendingPayments"));
 
@@ -119,6 +120,7 @@ function AdminRoutes() {
             <Route path="/pending-work-orders" element={<PendingWorkOrders />} />
             <Route path="/pending-payments" element={<PendingPayments />} />
             <Route path="/projects-overview" element={<ProjectsList />} />
+            <Route path="/masters"          element={<MastersOverview />} />
             <Route path="/projects"         element={<Projects />} />
             <Route path="/contractors"      element={<Contractors />} />
             <Route path="/consultants"      element={<Consultants />} />

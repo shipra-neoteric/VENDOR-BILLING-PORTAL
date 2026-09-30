@@ -1,14 +1,16 @@
-const mongoose     = require('mongoose');
-const Project      = require('../models/Project');
-const WorkOrder     = require('../models/WorkOrder');
-const BillRequest   = require('../models/BillRequest');
-const RunningBill   = require('../models/RunningBill');
-const Contractor    = require('../models/Contractor');
-const Consultant    = require('../models/Consultant');
+const mongoose = require('mongoose');
+const Project = require('../models/Project');
+const WorkOrder = require('../models/WorkOrder');
+const BillRequest = require('../models/BillRequest');
+const RunningBill = require('../models/RunningBill');
+const Contractor = require('../models/Contractor');
+const Consultant = require('../models/Consultant');
 const DrawingRequest = require('../models/DrawingRequest');
-const asyncHandler  = require('../utils/asyncHandler');
+const WorkflowInstance = require('../models/WorkflowInstance');
+const asyncHandler = require('../utils/asyncHandler');
 const { success, badRequest } = require('../utils/responseFormatter');
 const { billFinancialsForBill } = require('../utils/billFinancials');
+const { isStageBreached } = require('../utils/slaEngine');
 const {
   computeProjectStageInfo, buildProjectAlerts, stableAlertId, computeBudgetRiskForecast,
   daysSince, lastStatusChangeAt, HEALTH_THRESHOLDS, isWoApproved,
@@ -33,7 +35,7 @@ const {
 // into the same 400 response asyncHandler/badRequest already produced before
 // this function was split out of the route handler, so its own signature
 // stays a plain `(query) => payload` without needing an `res` passed in.
-class BadRequestError extends Error {}
+class BadRequestError extends Error { }
 
 const isValidObjectId = (id) => typeof id === 'string' && mongoose.Types.ObjectId.isValid(id);
 // Matches this codebase's existing "all" sentinel convention (see
@@ -297,6 +299,26 @@ async function buildExecutiveDashboardData(query) {
     woIds.length ? BillRequest.find({ workOrderId: { $in: woIds } }).lean() : Promise.resolve([]),
   ]);
 
+  // SLA breach lookup for "Needs Your Attention" (Phase 2, below) — a WO/
+  // BillRequest currently sitting past its current stage's dueAt, per the
+  // exact same read-time check the SLA Dashboard itself uses (slaEngine's
+  // isStageBreached), not a re-derived threshold. Only 'in-progress'
+  // instances can be breached (completed/cancelled ones are done, pending
+  // ones haven't started a stage's clock yet).
+  const slaEntityIds = [...woIds, ...billRequests.map(b => b._id)];
+  const breachedInstances = slaEntityIds.length
+    ? await WorkflowInstance.find({
+      entityType: { $in: ['WorkOrder', 'BillRequest'] },
+      entityId: { $in: slaEntityIds },
+      status: 'in-progress',
+    }).select('entityType entityId currentStageIndex stages').lean()
+    : [];
+  const slaBreachedIds = new Set(
+    breachedInstances
+      .filter(inst => isStageBreached(inst.stages[inst.currentStageIndex]))
+      .map(inst => String(inst.entityId))
+  );
+
   // ── Bucket WorkOrders/RunningBills/BillRequests by projectId ────────────
   const woByProject = new Map();
   for (const w of workOrders) {
@@ -320,8 +342,8 @@ async function buildExecutiveDashboardData(query) {
   }
 
   const PENDING_BILL_REQ_STATUSES = ['pending', 'pending-gm', 'pending-l3', 'pending-l4'];
-  const CERTIFIED_BILL_STATUSES   = ['approved', 'paid'];
-  const CLOSED_BILL_STATUSES      = ['approved', 'paid', 'rejected'];
+  const CERTIFIED_BILL_STATUSES = ['approved', 'paid'];
+  const CLOSED_BILL_STATUSES = ['approved', 'paid', 'rejected'];
 
   // ── Per-project rollup — same fields projectController.getProjectStats
   // computes for one project, generalized across the filtered set. ────────
@@ -334,29 +356,29 @@ async function buildExecutiveDashboardData(query) {
     const awardedContractValue = wos.reduce((s, w) => s + (w.contractValue || 0), 0);
 
     let workExecutedValue = 0;
-    let totalPlannedQty   = 0;
+    let totalPlannedQty = 0;
     let totalCompletedQty = 0;
     for (const wo of wos) {
       for (const si of wo.scopeItems || []) {
-        const planned   = si.plannedQty   || 0;
+        const planned = si.plannedQty || 0;
         const completed = si.completedQty || 0;
-        const rate      = si.rate         || 0;
+        const rate = si.rate || 0;
         workExecutedValue += completed * rate;
-        totalPlannedQty   += planned;
+        totalPlannedQty += planned;
         totalCompletedQty += completed;
       }
     }
 
-    const billedGross    = bills.reduce((s, b) => s + (b.amount || 0), 0);
+    const billedGross = bills.reduce((s, b) => s + (b.amount || 0), 0);
     const certifiedBills = bills.filter(b => CERTIFIED_BILL_STATUSES.includes(b.status));
-    const certifiedNet   = certifiedBills.reduce((s, b) => s + billFinancialsForBill(b).netAfterHold, 0);
-    const paidBills      = bills.filter(b => b.status === 'paid');
-    const paidAmount     = paidBills.reduce((s, b) => s + billFinancialsForBill(b).netPayable, 0);
+    const certifiedNet = certifiedBills.reduce((s, b) => s + billFinancialsForBill(b).netAfterHold, 0);
+    const paidBills = bills.filter(b => b.status === 'paid');
+    const paidAmount = paidBills.reduce((s, b) => s + billFinancialsForBill(b).netPayable, 0);
 
     const pendingBillReqs = billReqs.filter(b => PENDING_BILL_REQ_STATUSES.includes(b.status)).length;
-    const openBills       = bills.filter(b => !CLOSED_BILL_STATUSES.includes(b.status)).length;
-    const activeVendors   = new Set(wos.map(w => w.vendorCode).filter(Boolean)).size;
-    const progress         = totalPlannedQty > 0
+    const openBills = bills.filter(b => !CLOSED_BILL_STATUSES.includes(b.status)).length;
+    const activeVendors = new Set(wos.map(w => w.vendorCode).filter(Boolean)).size;
+    const progress = totalPlannedQty > 0
       ? Math.min(100, Math.round((totalCompletedQty / totalPlannedQty) * 100))
       : 0;
 
@@ -366,10 +388,10 @@ async function buildExecutiveDashboardData(query) {
     });
 
     return {
-      projectId:   key,
-      code:        project.code,
-      name:        project.name,
-      status:      project.status,
+      projectId: key,
+      code: project.code,
+      name: project.name,
+      status: project.status,
       awardedContractValue,
       workExecutedValue,
       billedGross,
@@ -394,22 +416,22 @@ async function buildExecutiveDashboardData(query) {
 
   // ── Top-level KPIs, aggregated across the filtered project set ──────────
   const kpis = {
-    activeProjects:    projects.filter(p => p.status === 'active').length,
+    activeProjects: projects.filter(p => p.status === 'active').length,
     totalContractValue: projectRows.reduce((s, p) => s + p.awardedContractValue, 0),
-    workExecuted:       projectRows.reduce((s, p) => s + p.workExecutedValue, 0),
-    totalBilled:         projectRows.reduce((s, p) => s + p.billedGross, 0),
+    workExecuted: projectRows.reduce((s, p) => s + p.workExecutedValue, 0),
+    totalBilled: projectRows.reduce((s, p) => s + p.billedGross, 0),
     // Sum of certifiedNet (see checkProjectReconciliation's comment above for
     // exactly what certifiedNet means) across every project in the filtered
     // set — same basis as forecasts.cashRequirement below, just as a
     // top-level KPI for the Contract-to-Payment Flow visual.
-    totalCertified:      projectRows.reduce((s, p) => s + p.certifiedNet, 0),
-    totalPaid:            projectRows.reduce((s, p) => s + p.paidAmount, 0),
-    pendingApprovals:    projectRows.reduce((s, p) => s + p.pendingBillReqs, 0),
+    totalCertified: projectRows.reduce((s, p) => s + p.certifiedNet, 0),
+    totalPaid: projectRows.reduce((s, p) => s + p.paidAmount, 0),
+    pendingApprovals: projectRows.reduce((s, p) => s + p.pendingBillReqs, 0),
     // Certified but not yet paid, across every project in the filtered set —
     // same basis as forecasts.cashRequirement.totalCertifiedUnpaid (kept as
     // its own top-level KPI so the summary cards don't need to reach into
     // forecasts for it).
-    outstandingAmount:   Math.round(projectRows.reduce((s, p) => s + Math.max(0, p.certifiedNet - p.paidAmount), 0)),
+    outstandingAmount: Math.round(projectRows.reduce((s, p) => s + Math.max(0, p.certifiedNet - p.paidAmount), 0)),
   };
   // Overdue = certified (status 'approved') but unpaid AND aged past the
   // same certifiedUnpaidAttentionDays threshold projectStageRules.js already
@@ -463,11 +485,11 @@ async function buildExecutiveDashboardData(query) {
     for (const si of wo.scopeItems || []) {
       woWorkExecutedValue += (si.completedQty || 0) * (si.rate || 0);
     }
-    const woBilledGross    = woBills.reduce((s, b) => s + (b.amount || 0), 0);
+    const woBilledGross = woBills.reduce((s, b) => s + (b.amount || 0), 0);
     const woCertifiedBills = woBills.filter(b => CERTIFIED_BILL_STATUSES.includes(b.status));
-    const woCertifiedNet   = woCertifiedBills.reduce((s, b) => s + billFinancialsForBill(b).netAfterHold, 0);
-    const woPaidBills      = woBills.filter(b => b.status === 'paid');
-    const woPaidAmount     = woPaidBills.reduce((s, b) => s + billFinancialsForBill(b).netPayable, 0);
+    const woCertifiedNet = woCertifiedBills.reduce((s, b) => s + billFinancialsForBill(b).netAfterHold, 0);
+    const woPaidBills = woBills.filter(b => b.status === 'paid');
+    const woPaidAmount = woPaidBills.reduce((s, b) => s + billFinancialsForBill(b).netPayable, 0);
 
     const { overallStage: woStage } = computeProjectStageInfo({
       project: projectById.get(String(wo.projectId)),
@@ -576,10 +598,10 @@ async function buildExecutiveDashboardData(query) {
   // bottleneck rules already use, see projectStageRules.js's own comment on
   // it), NOT a new aging concept invented for this widget alone.
   const AGING_BUCKETS = [
-    { key: '0-30',  label: '0-30 Days',  min: 0,  max: 30 },
+    { key: '0-30', label: '0-30 Days', min: 0, max: 30 },
     { key: '31-60', label: '31-60 Days', min: 31, max: 60 },
     { key: '61-90', label: '61-90 Days', min: 61, max: 90 },
-    { key: '90+',   label: '90+ Days',   min: 91, max: Infinity },
+    { key: '90+', label: '90+ Days', min: 91, max: Infinity },
   ];
   const agingAmounts = new Map(AGING_BUCKETS.map(b => [b.key, 0]));
   // Same loop also builds the uncapped per-bill list behind the "Pending
@@ -623,25 +645,65 @@ async function buildExecutiveDashboardData(query) {
   // the data model, so this deliberately uses the actual status values
   // rather than inventing role labels that don't correspond to real data).
   const WO_APPROVAL_LEVELS = [
-    { key: 'wo-checker',  label: 'Work Order — Checker',        status: 'pending-checker' },
-    { key: 'wo-approver', label: 'Work Order — Approver',       status: 'pending-approver' },
-    { key: 'wo-final',    label: 'Work Order — Final Approver',  status: 'pending-final' },
+    { key: 'wo-checker', label: 'Work Order — Checker', status: 'pending-checker', type: 'work-order' },
+    { key: 'wo-approver', label: 'Work Order — Approver', status: 'pending-approver', type: 'work-order' },
+    { key: 'wo-final', label: 'Work Order — Final Approver', status: 'pending-final', type: 'work-order' },
   ];
   const BR_APPROVAL_LEVELS = [
-    { key: 'br-l1', label: 'Bill Request — L1', status: 'pending' },
-    { key: 'br-l2', label: 'Bill Request — L2', status: 'pending-gm' },
-    { key: 'br-l3', label: 'Bill Request — L3', status: 'pending-l3' },
-    { key: 'br-l4', label: 'Bill Request — L4', status: 'pending-l4' },
+    { key: 'br-l1', label: 'Bill Request — L1', status: 'pending', type: 'bill-request' },
+    { key: 'br-l2', label: 'Bill Request — L2', status: 'pending-gm', type: 'bill-request' },
+    { key: 'br-l3', label: 'Bill Request — L3', status: 'pending-l3', type: 'bill-request' },
+    { key: 'br-l4', label: 'Bill Request — L4', status: 'pending-l4', type: 'bill-request' },
   ];
+  // Accounts Payment's own maker/checker/AGM/Director chain (RunningBill.status)
+  // — 'approved' onward (Ready for TMS, Sent to TMS, Hold, Paid, Rejected)
+  // isn't still-in-approval, so only these 3 pre-handoff statuses count as a
+  // bottleneck level here, matching AccountsPayment/index.tsx's own tab set.
+  const PAYMENT_APPROVAL_LEVELS = [
+    { key: 'pay-verify', label: 'Payment — Awaiting Verification', status: 'draft', type: 'payment' },
+    { key: 'pay-l1', label: 'Payment — L1', status: 'verify-done', type: 'payment' },
+    { key: 'pay-l2', label: 'Payment — L2 Director', status: 'l1-approved', type: 'payment' },
+  ];
+  // Per-item fields the frontend's drawer needs to both display a row and
+  // deep-link into that exact document's own detail view (?wo=/?open=/?bill=
+  // are existing auto-open params each of those 3 pages already reads).
+  function itemFor(type, d) {
+    if (type === 'work-order') {
+      return {
+        id: String(d._id),
+        primary: d.workOrderNo,
+        secondary: projectById.get(String(d.projectId))?.name || '',
+        amount: d.contractValue || 0,
+      };
+    }
+    if (type === 'bill-request') {
+      return {
+        id: String(d._id),
+        primary: d.reqNo,
+        secondary: [d.vendorName, d.projectName].filter(Boolean).join(' · '),
+        amount: d.amount || 0,
+      };
+    }
+    return {
+      id: String(d._id),
+      primary: d.billNo,
+      secondary: [d.vendorName, d.projectName].filter(Boolean).join(' · '),
+      amount: d.amount || 0,
+    };
+  }
   function levelSummary(level, docs) {
     const pending = docs.filter(d => d.status === level.status);
-    const ages = pending.map(d => daysSince(lastStatusChangeAt(d))).filter(d => d !== null);
+    const items = pending
+      .map(d => ({ ...itemFor(level.type, d), daysPending: daysSince(lastStatusChangeAt(d)) ?? 0 }))
+      .sort((a, b) => b.daysPending - a.daysPending);
+    const ages = items.map(i => i.daysPending);
     const avgDays = ages.length > 0 ? Math.round(ages.reduce((s, d) => s + d, 0) / ages.length) : 0;
-    return { level: level.key, label: level.label, count: pending.length, avgDays };
+    return { level: level.key, label: level.label, type: level.type, count: items.length, avgDays, items };
   }
   const approvalsByLevel = [
     ...WO_APPROVAL_LEVELS.map(l => levelSummary(l, workOrders)),
     ...BR_APPROVAL_LEVELS.map(l => levelSummary(l, billRequests)),
+    ...PAYMENT_APPROVAL_LEVELS.map(l => levelSummary(l, runningBills)),
   ].filter(l => l.count > 0)
     .sort((a, b) => b.count - a.count);
 
@@ -760,6 +822,7 @@ async function buildExecutiveDashboardData(query) {
   for (const row of projectRows) {
     const projectAlerts = buildProjectAlerts({
       project: row.__project, wos: row.__wos, bills: row.__bills, billReqs: row.__billReqs, financials: row.__financials,
+      slaBreachedIds,
     });
     allAlerts = allAlerts.concat(projectAlerts);
   }
@@ -882,12 +945,12 @@ async function buildExecutiveDashboardData(query) {
     meta: {
       generatedAt: new Date(),
       filters: {
-        projectId:    isNoFilter(projectId) ? null : projectId,
-        stage:        isNoFilter(stage) ? null : stage,
-        categoryId:   isNoFilter(categoryId) ? null : categoryId,
+        projectId: isNoFilter(projectId) ? null : projectId,
+        stage: isNoFilter(stage) ? null : stage,
+        categoryId: isNoFilter(categoryId) ? null : categoryId,
         contractorId: isNoFilter(contractorId) ? null : contractorId,
-        from:         fromDate ? fromDate.toISOString() : null,
-        to:           toDate ? toDate.toISOString() : null,
+        from: fromDate ? fromDate.toISOString() : null,
+        to: toDate ? toDate.toISOString() : null,
       },
       currency: 'INR',
       dataWarnings,
@@ -952,22 +1015,22 @@ function toCsvRow(cells) {
 // spreadsheet export) and with no leftover floating-point noise.
 const money = (v) => Math.round(v || 0);
 const CSV_EXPORT_COLUMNS = [
-  { key: 'code',                 label: 'Code' },
-  { key: 'name',                 label: 'Project Name' },
-  { key: 'status',                label: 'Status' },
-  { key: 'overallStage',         label: 'Stage' },
-  { key: 'health',                label: 'Health' },
-  { key: 'bottleneck',            label: 'Bottleneck' },
+  { key: 'code', label: 'Code' },
+  { key: 'name', label: 'Project Name' },
+  { key: 'status', label: 'Status' },
+  { key: 'overallStage', label: 'Stage' },
+  { key: 'health', label: 'Health' },
+  { key: 'bottleneck', label: 'Bottleneck' },
   { key: 'awardedContractValue', label: 'Contract Value (Rs)', format: money },
-  { key: 'workExecutedValue',    label: 'Executed Value (Rs)', format: money },
-  { key: 'billedGross',           label: 'Billed Gross (Rs)', format: money },
-  { key: 'certifiedNet',          label: 'Certified Net (Rs)', format: money },
-  { key: 'paidAmount',            label: 'Paid Amount (Rs)', format: money },
-  { key: 'remainingContract',    label: 'Remaining Contract (Rs)', format: money },
-  { key: 'progress',              label: 'Progress %' },
-  { key: 'pendingBillReqs',      label: 'Pending Bill Requests' },
-  { key: 'openBills',             label: 'Open Bills' },
-  { key: 'activeVendors',         label: 'Active Vendors' },
+  { key: 'workExecutedValue', label: 'Executed Value (Rs)', format: money },
+  { key: 'billedGross', label: 'Billed Gross (Rs)', format: money },
+  { key: 'certifiedNet', label: 'Certified Net (Rs)', format: money },
+  { key: 'paidAmount', label: 'Paid Amount (Rs)', format: money },
+  { key: 'remainingContract', label: 'Remaining Contract (Rs)', format: money },
+  { key: 'progress', label: 'Progress %' },
+  { key: 'pendingBillReqs', label: 'Pending Bill Requests' },
+  { key: 'openBills', label: 'Open Bills' },
+  { key: 'activeVendors', label: 'Active Vendors' },
 ];
 
 // GET /api/dashboard/executive/export.csv — same filters/auth gate as GET
@@ -1061,7 +1124,7 @@ async function buildContractorMatrixData(query) {
   // distinct projects rather than emitting one row per WorkOrder.
   const cellsByKey = new Map();
   for (const row of perWorkOrderRows) {
-    const key = `${row.contractorCode} ${row.category}`;
+    const key = `${row.contractorCode}::${row.category}`;
     let cell = cellsByKey.get(key);
     if (!cell) {
       cell = {

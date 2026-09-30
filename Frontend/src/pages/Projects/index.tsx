@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
   Plus, Pencil, Trash2, Building2, FolderOpen, CheckCircle2, Clock, ArrowLeft,
@@ -102,22 +103,22 @@ interface ProjectEvent {
 }
 
 const EVENT_CONFIG: Record<string, { icon: string; color: string; label: string }> = {
-  WORK_ORDER_CREATED:      { icon: "📋", color: "#3b82f6", label: "Work Order Created" },
-  WORK_ORDER_ISSUED:       { icon: "📝", color: "#6366f1", label: "Work Order Issued" },
-  WORK_ORDER_COMPLETED:    { icon: "✅", color: "#16a34a", label: "Work Order Completed" },
-  PROGRESS_ADDED:          { icon: "📊", color: "#FF7A00", label: "Progress Recorded" },
-  BILL_REQUESTED:          { icon: "🧾", color: "#f59e0b", label: "Bill Request Submitted" },
+  WORK_ORDER_CREATED: { icon: "📋", color: "#3b82f6", label: "Work Order Created" },
+  WORK_ORDER_ISSUED: { icon: "📝", color: "#6366f1", label: "Work Order Issued" },
+  WORK_ORDER_COMPLETED: { icon: "✅", color: "#16a34a", label: "Work Order Completed" },
+  PROGRESS_ADDED: { icon: "📊", color: "#FF7A00", label: "Progress Recorded" },
+  BILL_REQUESTED: { icon: "🧾", color: "#f59e0b", label: "Bill Request Submitted" },
   BILL_REQUEST_AGM_APPROVED: { icon: "📝", color: "#0ea5e9", label: "L1 Approved" },
-  BILL_REQUEST_APPROVED:   { icon: "✅", color: "#16a34a", label: "L2 Approved — Bill Raised" },
-  BILL_REQUEST_REJECTED:   { icon: "❌", color: "#ef4444", label: "Bill Request Rejected" },
-  RUNNING_BILL_CREATED:    { icon: "📄", color: "#3b82f6", label: "Running Bill Created" },
-  RUNNING_BILL_SUBMITTED:  { icon: "📤", color: "#6366f1", label: "Running Bill Submitted" },
-  RUNNING_BILL_VERIFIED:   { icon: "🔍", color: "#FF7A00", label: "Running Bill Verified" },
-  RUNNING_BILL_APPROVED:   { icon: "✅", color: "#16a34a", label: "Running Bill Approved" },
-  RUNNING_BILL_REJECTED:   { icon: "❌", color: "#ef4444", label: "Running Bill Rejected" },
-  PAYMENT_INITIATED:       { icon: "💸", color: "#7c3aed", label: "Payment Initiated" },
-  PAYMENT_RELEASED:        { icon: "💰", color: "#16a34a", label: "Payment Released" },
-  MILESTONE_ACHIEVED:      { icon: "🏆", color: "#d97706", label: "Milestone Achieved" },
+  BILL_REQUEST_APPROVED: { icon: "✅", color: "#16a34a", label: "L2 Approved — Bill Raised" },
+  BILL_REQUEST_REJECTED: { icon: "❌", color: "#ef4444", label: "Bill Request Rejected" },
+  RUNNING_BILL_CREATED: { icon: "📄", color: "#3b82f6", label: "Running Bill Created" },
+  RUNNING_BILL_SUBMITTED: { icon: "📤", color: "#6366f1", label: "Running Bill Submitted" },
+  RUNNING_BILL_VERIFIED: { icon: "🔍", color: "#FF7A00", label: "Running Bill Verified" },
+  RUNNING_BILL_APPROVED: { icon: "✅", color: "#16a34a", label: "Running Bill Approved" },
+  RUNNING_BILL_REJECTED: { icon: "❌", color: "#ef4444", label: "Running Bill Rejected" },
+  PAYMENT_INITIATED: { icon: "💸", color: "#7c3aed", label: "Payment Initiated" },
+  PAYMENT_RELEASED: { icon: "💰", color: "#16a34a", label: "Payment Released" },
+  MILESTONE_ACHIEVED: { icon: "🏆", color: "#d97706", label: "Milestone Achieved" },
 };
 
 // ── Config ─────────────────────────────────────────────────────────────────────
@@ -147,23 +148,23 @@ const fmt = (n: number) => "₹" + (n ?? 0).toLocaleString("en-IN", { maximumFra
 
 // ── Workflow Timeline helpers ──────────────────────────────────────────────────
 const WF_STEPS: { key: string; name: string; icon: string; types: string[] }[] = [
-  { key: "wo_created",   name: "Work Order\nGenerated",   icon: "📋", types: ["WORK_ORDER_CREATED"] },
-  { key: "dri_viewed",   name: "Issued\nto DRI",          icon: "👷", types: ["WORK_ORDER_ISSUED"] },
-  { key: "bill_req",     name: "Stage 1\nBill Request",   icon: "🧾", types: ["BILL_REQUESTED"] },
-  { key: "agm_approved", name: "L1\nApproved",           icon: "📝", types: ["BILL_REQUEST_AGM_APPROVED"] },
+  { key: "wo_created", name: "Work Order\nGenerated", icon: "📋", types: ["WORK_ORDER_CREATED"] },
+  { key: "dri_viewed", name: "Issued\nto DRI", icon: "👷", types: ["WORK_ORDER_ISSUED"] },
+  { key: "bill_req", name: "Stage 1\nBill Request", icon: "🧾", types: ["BILL_REQUESTED"] },
+  { key: "agm_approved", name: "L1\nApproved", icon: "📝", types: ["BILL_REQUEST_AGM_APPROVED"] },
   { key: "gm_bill_approved", name: "L2 Approved &\nBill Raised", icon: "📄", types: ["BILL_REQUEST_APPROVED"] },
-  { key: "rb_approved",  name: "Running Bill\nApproved",  icon: "🔏", types: ["RUNNING_BILL_APPROVED", "RUNNING_BILL_VERIFIED"] },
-  { key: "pay_init",     name: "Payment\nInitiated",      icon: "💸", types: ["PAYMENT_INITIATED"] },
-  { key: "pay_out",      name: "Payment\nReleased",       icon: "💰", types: ["PAYMENT_RELEASED", "MILESTONE_ACHIEVED"] },
-  { key: "wo_done",      name: "Work Order\nCompleted",   icon: "🏆", types: ["WORK_ORDER_COMPLETED"] },
+  { key: "rb_approved", name: "Running Bill\nApproved", icon: "🔏", types: ["RUNNING_BILL_APPROVED", "RUNNING_BILL_VERIFIED"] },
+  { key: "pay_init", name: "Payment\nInitiated", icon: "💸", types: ["PAYMENT_INITIATED"] },
+  { key: "pay_out", name: "Payment\nReleased", icon: "💰", types: ["PAYMENT_RELEASED", "MILESTONE_ACHIEVED"] },
+  { key: "wo_done", name: "Work Order\nCompleted", icon: "🏆", types: ["WORK_ORDER_COMPLETED"] },
 ];
 
 function buildTimelineSteps(events: ProjectEvent[], woNo: string): TimelineStep[] {
-  const evs    = events.filter(e => e.workOrderNo === woNo);
+  const evs = events.filter(e => e.workOrderNo === woNo);
   const findEv = (types: string[]) => evs.find(e => types.includes(e.type));
   const billRejected = evs.some(e => e.type === "BILL_REQUEST_REJECTED");
 
-  const mapped  = WF_STEPS.map(s => ({ ...s, ev: findEv(s.types) }));
+  const mapped = WF_STEPS.map(s => ({ ...s, ev: findEv(s.types) }));
   const lastIdx = mapped.reduce((acc, s, i) => s.ev ? i : acc, -1);
   const currIdx = lastIdx + 1;
 
@@ -179,31 +180,26 @@ function buildTimelineSteps(events: ProjectEvent[], woNo: string): TimelineStep[
 
 // ── Project Detail View ────────────────────────────────────────────────────────
 function ProjectDetail({
-  project, onBack, onEdit, onDelete, allProjects, onSelectProject, onAddSubProject,
+  project, onBack, onEdit, onDelete,
 }: {
   project: Project;
   onBack: () => void;
   onEdit: (p: Project, e: React.MouseEvent) => void;
   onDelete: (p: Project) => void;
-  allProjects: Project[];
-  onSelectProject: (p: Project) => void;
-  onAddSubProject: (parent: Project) => void;
 }) {
   const id = project._id || project.id;
-  const parentProject = project.parentId ? allProjects.find(p => p.id === project.parentId) : null;
-  const subProjects = project.parentId ? [] : allProjects.filter(p => p.parentId === project.id);
-  const [wos,           setWOs]          = useState<WORow[]>([]);
-  const [stats,         setStats]        = useState<ProjectStats | null>(null);
-  const [activity,      setActivity]     = useState<ProjectEvent[]>([]);
-  const [billRequests,  setBillRequests] = useState<BillDetailRequest[]>([]);
-  const [contractors,   setContractors]  = useState<ContractorRow[]>([]);
-  const [loading,       setLoading]      = useState(true);
-  const [selectedWONo,  setSelectedWONo] = useState<string>("");
-  const [activeTab,     setActiveTab]    = useState<"vendors" | "workorders" | "category" | "bills" | "activity">("workorders");
+  const [wos, setWOs] = useState<WORow[]>([]);
+  const [stats, setStats] = useState<ProjectStats | null>(null);
+  const [activity, setActivity] = useState<ProjectEvent[]>([]);
+  const [billRequests, setBillRequests] = useState<BillDetailRequest[]>([]);
+  const [contractors, setContractors] = useState<ContractorRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedWONo, setSelectedWONo] = useState<string>("");
+  const [activeTab, setActiveTab] = useState<"vendors" | "workorders" | "category" | "bills" | "activity">("workorders");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [viewBill,      setViewBill]     = useState<BillDetailRequest | null>(null);
-  const [deleteTarget,  setDeleteTarget] = useState<Project | null>(null);
-  const [deleting,      setDeleting]     = useState(false);
+  const [viewBill, setViewBill] = useState<BillDetailRequest | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Project | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   async function confirmDelete() {
     if (!deleteTarget) return;
@@ -238,7 +234,7 @@ function ProjectDetail({
           setSelectedWONo(active.workOrderNo);
         }
       })
-      .catch(() => {})
+      .catch(() => { })
       .finally(() => setLoading(false));
   }, [id]);
 
@@ -259,10 +255,7 @@ function ProjectDetail({
   return (
     <div>
       <div className="flex items-center gap-2.5 mb-5">
-        <Btn outline small icon={ArrowLeft} label="Back to Projects" onClick={onBack} />
-        {parentProject && (
-          <Btn outline small label={`← ${parentProject.name}`} onClick={() => onSelectProject(parentProject)} />
-        )}
+        <Btn outline small icon={ArrowLeft} title="Back to Projects" aria-label="Back to Projects" onClick={onBack} />
       </div>
 
       {/* Project header card */}
@@ -295,48 +288,11 @@ function ProjectDetail({
             <NxBtn color="primary" icon={Pencil} label="Edit Project" onClick={e => onEdit(project, e)} />
             <NxBtn
               color="danger" icon={Trash2} label="Delete"
-              disabled={subProjects.length > 0}
-              title={subProjects.length > 0 ? "Delete its sub-projects first" : undefined}
               onClick={() => setDeleteTarget(project)}
             />
           </div>
         </div>
       </Card>
-
-      {/* Sub-Projects */}
-      {!project.parentId && (
-        <Card padded={false} className="mb-5 overflow-hidden">
-          <div className="flex justify-between items-center px-5 py-3.5 border-b border-gray-100 dark:border-gray-700/40">
-            <div className="font-bold text-[15px] text-[#1A1A2E] dark:text-[#F1F5F9]">Sub-Projects</div>
-            <Btn small outline icon={Plus} label="Add Sub-Project" onClick={() => onAddSubProject(project)} />
-          </div>
-          {subProjects.length === 0 ? (
-            <div className="text-center py-8 text-[13px] text-gray-400">No sub-projects yet.</div>
-          ) : (
-            <div>
-              {subProjects.map((sp, i) => (
-                <div
-                  key={sp.id}
-                  onClick={() => onSelectProject(sp)}
-                  className={`flex items-center gap-3 px-5 py-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/40 ${i < subProjects.length - 1 ? "border-b border-gray-100 dark:border-gray-700/40" : ""}`}
-                >
-                  <NxBadge color="gray">{sp.code}</NxBadge>
-                  <span className="flex-1 font-semibold text-[13px] text-[#1A1A2E] dark:text-[#F1F5F9]">{sp.name}</span>
-                  <NxBadge color={projectStatusBadge(sp.status).color}>{projectStatusBadge(sp.status).label}</NxBadge>
-                  <button
-                    type="button"
-                    onClick={e => { e.stopPropagation(); setDeleteTarget(sp); }}
-                    className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded transition-colors"
-                    title="Delete"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </Card>
-      )}
 
       {loading ? (
         <Spinner label="Loading project details…" />
@@ -347,12 +303,12 @@ function ProjectDetail({
             <>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
                 <NxStatCard label="Total Contract Value" value={fmt(stats.awardedContractValue)} icon={Landmark} />
-                <NxStatCard label="Work Executed"    value={fmt(stats.workExecutedValue)}    icon={HardHat} />
-                <NxStatCard label="Total Billed"     value={fmt(stats.billedGross)}          icon={Receipt} />
-                <NxStatCard label="Total Certified (Net)" value={fmt(stats.certifiedNet)}    icon={CheckCircle2} />
-                <NxStatCard label="Paid"             value={fmt(stats.paidAmount)}           icon={Banknote} />
-                <NxStatCard label="Remaining"        value={fmt(stats.remainingContract)}    icon={Clock} />
-                <NxStatCard label="Overall Progress" value={`${stats.progress}%`}            icon={TrendingUp} />
+                <NxStatCard label="Work Executed" value={fmt(stats.workExecutedValue)} icon={HardHat} />
+                <NxStatCard label="Total Billed" value={fmt(stats.billedGross)} icon={Receipt} />
+                <NxStatCard label="Total Certified (Net)" value={fmt(stats.certifiedNet)} icon={CheckCircle2} />
+                <NxStatCard label="Paid" value={fmt(stats.paidAmount)} icon={Banknote} />
+                <NxStatCard label="Remaining" value={fmt(stats.remainingContract)} icon={Clock} />
+                <NxStatCard label="Overall Progress" value={`${stats.progress}%`} icon={TrendingUp} />
               </div>
 
               {/* Quick indicators */}
@@ -370,13 +326,14 @@ function ProjectDetail({
           <div className="mb-5">
             <Segmented
               value={activeTab}
-              onChange={setActiveTab}
+              // ✅ Correct (type-safe wrapper)
+              onChange={(val) => setActiveTab(val as any)}
               options={[
-                { value: "vendors",    label: <span className="flex items-center gap-1.5"><Users className="w-3.5 h-3.5" />Vendors</span> },
+                { value: "vendors", label: <span className="flex items-center gap-1.5"><Users className="w-3.5 h-3.5" />Vendors</span> },
                 { value: "workorders", label: <span className="flex items-center gap-1.5"><ClipboardList className="w-3.5 h-3.5" />Work Orders</span> },
-                { value: "category",   label: <span className="flex items-center gap-1.5"><LayoutGrid className="w-3.5 h-3.5" />Category</span> },
-                { value: "bills",      label: <span className="flex items-center gap-1.5"><FileText className="w-3.5 h-3.5" />Bills</span> },
-                { value: "activity",   label: <span className="flex items-center gap-1.5"><Activity className="w-3.5 h-3.5" />Live Activity</span> },
+                { value: "category", label: <span className="flex items-center gap-1.5"><LayoutGrid className="w-3.5 h-3.5" />Category</span> },
+                { value: "bills", label: <span className="flex items-center gap-1.5"><FileText className="w-3.5 h-3.5" />Bills</span> },
+                { value: "activity", label: <span className="flex items-center gap-1.5"><Activity className="w-3.5 h-3.5" />Live Activity</span> },
               ]}
             />
           </div>
@@ -651,35 +608,82 @@ const EMPTY_FORM = {
 };
 
 export default function Projects() {
-  const [projects, setProjects]           = useState<Project[]>([]);
-  const [loading, setLoading]             = useState(true);
-  const [saving, setSaving]               = useState(false);
-  const [search, setSearch]               = useState("");
-  const [statusFilter, setStatusFilter]   = useState<"all" | "active" | "completed" | "on-hold">("all");
-  const [drawerOpen, setDrawerOpen]       = useState(false);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "completed" | "on-hold">("all");
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [detailProject, setDetailProject] = useState<Project | null>(null);
-  const [creatingUnderParent, setCreatingUnderParent] = useState<Project | null>(null);
-  const [deleteTarget, setDeleteTarget]   = useState<Project | null>(null);
-  const [deleting, setDeleting]           = useState(false);
-  const [formState, setFormState]         = useState(EMPTY_FORM);
+  const [deleteTarget, setDeleteTarget] = useState<Project | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [formState, setFormState] = useState(EMPTY_FORM);
   // Separate from formState.slackWebhookUrl (which is write-only and always
   // starts blank) — set only by the "Clear" action, so an explicit removal
   // is distinguishable from "left the field untouched."
   const [clearSlackWebhook, setClearSlackWebhook] = useState(false);
 
+  const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
+
+  // Whether this page was entered via a deep link with ?id= already in the
+  // URL (e.g. Dashboard's Projects Overview row action) rather than by
+  // clicking a project from this page's own list — read once at mount,
+  // before the sync effect below ever adds/removes the param itself, so it
+  // reflects how the page was actually entered. "Back to Projects" uses
+  // this to decide whether to return to wherever that link came from
+  // (browser back) or just close back to this page's own list (clear state).
+  const cameFromDeepLinkRef = useRef(new URLSearchParams(window.location.search).has("id"));
+
   // ── Load ──────────────────────────────────────────────────────────────────
   useEffect(() => {
     apiClient.get<{ projects: Project[] }>("/projects")
       .then(r => setProjects(r.data.projects.map(normalizeId)))
-      .catch(() => {})
+      .catch(() => { })
       .finally(() => setLoading(false));
   }, []);
+
+  // Deep link support — e.g. Dashboard's "View All Projects" navigating
+  // straight to /projects?id=<projectId> should land on that project's own
+  // detail view directly, not the full Masters list with the id silently
+  // ignored. Runs once projects have loaded (id can't be matched before
+  // then) and only if nothing is open yet, so it doesn't fight a project
+  // the user has since navigated to/away from via the list.
+  useEffect(() => {
+    if (loading || detailProject) return;
+    const id = searchParams.get("id");
+    if (!id) return;
+    const match = projects.find(p => p.id === id);
+    if (match) setDetailProject(match);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, projects]);
+
+  // Keeps the URL's `id` in sync with whichever project's detail is open —
+  // both so the deep link above is reversible (Back button / share the URL
+  // while viewing one) and so MainLayout can tell "list" from "single
+  // project detail" apart purely from the URL (same /projects path either
+  // way) to hide the Masters chrome for the latter (see MainLayout.tsx).
+  //
+  // Skipped entirely while projects are still loading: this effect also
+  // fires on the very first render (detailProject is still null then), and
+  // without this guard it would immediately strip a deep-linked ?id= out of
+  // the URL before the effect above ever gets a chance to see it (projects
+  // hasn't loaded yet, so THAT effect just returns early) — the deep link
+  // never resolves, and the ?id= silently vanishes from the URL bar.
+  useEffect(() => {
+    if (loading) return;
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      if (detailProject) next.set("id", detailProject.id); else next.delete("id");
+      return next;
+    }, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, detailProject?.id]);
 
   const filtered = useMemo(() =>
     projects
       .filter(p =>
-        !p.parentId &&
         (statusFilter === "all" || p.status === statusFilter) && (
           p.name.toLowerCase().includes(search.toLowerCase()) ||
           p.code.toLowerCase().includes(search.toLowerCase()) ||
@@ -689,9 +693,6 @@ export default function Projects() {
       .sort((a, b) => a.name.localeCompare(b.name)),
     [projects, search, statusFilter]
   );
-
-  const getSubProjects = (parentId: string) =>
-    projects.filter(p => p.parentId === parentId).sort((a, b) => a.name.localeCompare(b.name));
 
   const handleDeleteProject = async (project: Project) => {
     setDeleting(true);
@@ -714,24 +715,15 @@ export default function Projects() {
   // narrows `filtered` to that status; clicking it again (or "Total Projects")
   // clears back to "all".
   const statCards: { label: string; value: number; icon: typeof Building2; filterValue: "all" | "active" | "completed" | "on-hold" }[] = [
-    { label: "Total Projects", value: projects.length,                                     icon: Building2,    filterValue: "all" },
-    { label: "Active",         value: projects.filter(p => p.status === "active").length,    icon: CheckCircle2, filterValue: "active" },
-    { label: "Completed",      value: projects.filter(p => p.status === "completed").length, icon: CheckCircle2, filterValue: "completed" },
-    { label: "On Hold",        value: projects.filter(p => p.status === "on-hold").length,   icon: Clock,        filterValue: "on-hold" },
+    { label: "Total Projects", value: projects.length, icon: Building2, filterValue: "all" },
+    { label: "Active", value: projects.filter(p => p.status === "active").length, icon: CheckCircle2, filterValue: "active" },
+    { label: "Completed", value: projects.filter(p => p.status === "completed").length, icon: CheckCircle2, filterValue: "completed" },
+    { label: "On Hold", value: projects.filter(p => p.status === "on-hold").length, icon: Clock, filterValue: "on-hold" },
   ];
 
   // ── Handlers ──────────────────────────────────────────────────────────────
   const openCreate = () => {
     setEditingProject(null);
-    setCreatingUnderParent(null);
-    setFormState(EMPTY_FORM);
-    setClearSlackWebhook(false);
-    setDrawerOpen(true);
-  };
-
-  const openAddSubProject = (parent: Project) => {
-    setEditingProject(null);
-    setCreatingUnderParent(parent);
     setFormState(EMPTY_FORM);
     setClearSlackWebhook(false);
     setDrawerOpen(true);
@@ -740,7 +732,6 @@ export default function Projects() {
   const openEdit = (project: Project, e?: React.MouseEvent) => {
     e?.stopPropagation();
     setEditingProject(project);
-    setCreatingUnderParent(null);
     setFormState({
       name: project.name,
       client: project.client || "",
@@ -783,7 +774,7 @@ export default function Projects() {
         if (detailProject?.id === editingProject.id) setDetailProject(updated);
         toast.success("Project updated");
       } else {
-        const res = await apiClient.post<{ project: Project }>("/projects", { ...payload, parentId: creatingUnderParent?.id ?? undefined });
+        const res = await apiClient.post<{ project: Project }>("/projects", payload);
         setProjects(prev => [normalizeId(res.data.project), ...prev]);
         toast.success(`Project ${res.data.project.code} created`);
       }
@@ -805,12 +796,9 @@ export default function Projects() {
         is needed here (it would just duplicate that row). ── */
         <ProjectDetail
           project={detailProject}
-          onBack={() => setDetailProject(null)}
+          onBack={() => cameFromDeepLinkRef.current ? navigate(-1) : setDetailProject(null)}
           onEdit={openEdit}
           onDelete={handleDeleteProject}
-          allProjects={projects}
-          onSelectProject={setDetailProject}
-          onAddSubProject={openAddSubProject}
         />
       ) : (
         /* ── List view ────────────────────────────────────────────────────── */
@@ -856,13 +844,8 @@ export default function Projects() {
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
                   {filtered.map(proj => {
-                    const subCount = getSubProjects(proj.id).length;
                     return (
-                      <Card
-                        key={proj.id}
-                        onClick={() => setDetailProject(proj)}
-                        className="cursor-pointer hover:shadow-lg transition-all duration-200"
-                      >
+                      <Card key={proj.id}>
                         <div className="flex items-center justify-between gap-2 mb-2.5">
                           <NxBadge color="gray">{proj.code}</NxBadge>
                           <NxBadge color={projectStatusBadge(proj.status).color}>{projectStatusBadge(proj.status).label}</NxBadge>
@@ -874,12 +857,6 @@ export default function Projects() {
 
                         <div className="text-xs text-gray-500 dark:text-gray-400 mb-1.5">📍 {proj.location || "—"}</div>
 
-                        {subCount > 0 && (
-                          <div className="text-[11px] text-indigo-600 dark:text-indigo-400 font-semibold mb-1.5">
-                            📁 {subCount} sub-project{subCount !== 1 ? "s" : ""}
-                          </div>
-                        )}
-
                         <div className="flex items-center justify-between border-t border-gray-100 dark:border-gray-700/40 mt-2 pt-2.5">
                           {proj.projectType ? (
                             <NxBadge color={proj.projectType === "apartment" ? "indigo" : "teal"}>
@@ -889,8 +866,7 @@ export default function Projects() {
                           <div className="flex gap-1" onClick={e => e.stopPropagation()}>
                             <NxBtn color="icon" icon={Pencil} title="Edit" onClick={e => openEdit(proj, e)} />
                             <NxBtn
-                              color="icon" icon={Trash2} title={subCount > 0 ? "Delete its sub-projects first" : "Delete"}
-                              disabled={subCount > 0}
+                              color="icon" icon={Trash2} title="Delete"
                               onClick={e => { e.stopPropagation(); setDeleteTarget(proj); }}
                             />
                           </div>
@@ -909,13 +885,11 @@ export default function Projects() {
       {drawerOpen && (
         <Modal
           icon={Building2}
-          title={editingProject ? "Edit Project" : creatingUnderParent ? "Add Sub-Project" : "Add Project"}
+          title={editingProject ? "Edit Project" : "Add Project"}
           subtitle={
             editingProject
               ? `Editing ${editingProject.code}`
-              : creatingUnderParent
-                ? `Under "${creatingUnderParent.name}"`
-                : "Project code will be auto-assigned (PRJ-001)"
+              : "Project code will be auto-assigned (PRJ-001)"
           }
           onClose={() => setDrawerOpen(false)}
           footer={

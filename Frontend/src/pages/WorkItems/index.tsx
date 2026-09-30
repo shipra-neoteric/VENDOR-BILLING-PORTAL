@@ -97,18 +97,6 @@ const APPROVAL_STATUS_CFG: Record<WorkOrderApprovalStatus, { label: string; colo
 // used to build the Step filter's pill row and its per-stage counts.
 const STEP_KEYS: WorkOrderApprovalStatus[] = ["draft", "pending-checker", "pending-approver", "pending-final"];
 
-// Which module 'work-orders' permission actually acts at each of the 4
-// stages above — a pill is only shown to someone who could act on it, purely
-// off the permission matrix (no owner/role hardcode), same philosophy as
-// Bill Requests' Pending L1-L4 tabs.
-const STEP_PERM: Record<string, string> = {
-  draft: "maker", "pending-checker": "checker", "pending-approver": "approver", "pending-final": "ceo-approve",
-};
-
-function hasWOPerm(user: { permissions?: { module: string; actions: string[] }[] } | null | undefined, action: string): boolean {
-  return !!user?.permissions?.find((p) => p.module === "work-orders")?.actions.includes(action);
-}
-
 const approvalStatusOf = (wo: WorkOrder): WorkOrderApprovalStatus => wo.approvalStatus || "approved";
 
 // Step badge — a plain filled pill (orange while pending, green once
@@ -886,18 +874,13 @@ function ScopeItemsBuilder({ items, onChange, allCategories = [], topCatId = nul
                         onChange={e => updSub(item.id, si.id, { description: e.target.value })}
                         className="flex-[2] min-w-[200px] h-8 px-2.5 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0F172A] text-[13px] focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
                       />
-                      {si.unit === "custom" ? (
-                        <input
-                          placeholder="Type unit"
-                          value={si.customUnit}
-                          onChange={e => updSub(item.id, si.id, { customUnit: e.target.value })}
-                          className="w-[180px] h-8 px-2.5 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0F172A] text-[13px] focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                      <div className="w-[180px]">
+                        <UnitCell
+                          unit={si.unit}
+                          customUnit={si.customUnit}
+                          onChange={patch => updSub(item.id, si.id, patch)}
                         />
-                      ) : (
-                        <div className="w-[180px]">
-                          <SField value={si.unit} onChange={v => updSub(item.id, si.id, { unit: v, customUnit: "" })} options={UNIT_OPTIONS} />
-                        </div>
-                      )}
+                      </div>
                       <input
                         type="number" placeholder="Qty" min={0}
                         value={si.plannedQty ?? ""}
@@ -1482,7 +1465,7 @@ export default function WorkItems() {
   const { user } = useAuth();
   const navigate  = useNavigate();
   const isOwner = user?.role === "owner";
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   // Two sidebar nav items ("Work Orders" / "Consultancy Orders") both land
   // here, pre-filtered via ?type= — one shared list/table, not a second page.
   const [contractTypeFilter, setContractTypeFilter] = useState<"all" | "execution" | "professional-services">(
@@ -1535,6 +1518,18 @@ export default function WorkItems() {
   // the View Drawer.
   const [selectedWOId, setSelectedWOId] = useState<string | null>(null);
   const [drawerOpen,   setDrawerOpen]   = useState(false);
+
+  // Deep link (e.g. from the Dashboard's Approval Bottleneck drawer, ?wo=<id>)
+  // — opens the same View Drawer a normal row click would, same pattern as
+  // AccountsPayment's ?bill= and BillRequests' ?open=.
+  useEffect(() => {
+    const woId = searchParams.get("wo");
+    if (!woId || loadingData) return;
+    const wo = workOrders.find(w => w.id === woId);
+    if (wo) { setSelectedWOId(wo.id); setDrawerOpen(true); }
+    setSearchParams(prev => { prev.delete("wo"); return prev; }, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, workOrders, loadingData]);
   const [woBillsMap,   setWoBillsMap]   = useState<Record<string, { status: string; amount: number }[]>>({});
   const [docsRecord,   setDocsRecord]   = useState<WorkOrder | null>(null);
   const [cancelRecord,    setCancelRecord]    = useState<WorkOrder | null>(null);
@@ -2388,7 +2383,10 @@ export default function WorkItems() {
       />
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-5">
-        <NxStatCard label="Total Work Orders" value={statusCounts.total} icon={Briefcase} />
+        <NxStatCard
+          label="Total Work Orders" value={statusCounts.total} icon={Briefcase}
+          active={statusFilter === "all"} onClick={() => setStatusFilter("all")}
+        />
         <NxStatCard
           label="Draft" value={statusCounts.draft} icon={FileText}
           active={statusFilter === "draft"} onClick={() => setStatusFilter(statusFilter === "draft" ? "all" : "draft")}
@@ -2407,27 +2405,106 @@ export default function WorkItems() {
           shell, matching the app's sidebar/header treatment. */}
       <div className="bg-white/90 dark:bg-gray-800/95 backdrop-blur-xl border border-gray-100 dark:border-gray-700/50 rounded-xl shadow-sm p-5">
         {/* ── Tabs ────────────────────────────────────────────── */}
-        <div className="flex items-center justify-end flex-wrap gap-2.5 mb-3">
-          <Btn
-            small outline={!showArchived} color="primary"
-            icon={Archive}
-            label={`Archive${statusCounts.cancelled ? ` (${statusCounts.cancelled})` : ""}`}
-            onClick={() => setShowArchived(v => !v)}
-          />
+        <div className="flex items-center justify-between flex-wrap gap-2.5 mb-3">
           <Segmented
             value={contractTypeFilter}
             onChange={(v) => setContractTypeFilter(v)}
+            divided
             options={[
               { label: "All", value: "all" },
               { label: "Execution", value: "execution" },
-              { label: "Professional Services", value: "professional-services" },
+              { label: "Consultancy Orders", value: "professional-services" },
             ]}
           />
+          <div className="flex items-center gap-2.5">
+            <Btn small outline icon={Download} label="Report" onClick={downloadWorkOrdersPDFExport} />
+            <Btn
+              small outline={!showArchived}
+              style={!showArchived ? undefined : { color: "var(--theme-primary)" }}
+              className={!showArchived ? "" : "shadow-none! border-none! bg-primary/15! hover:bg-primary/20!"}
+              icon={Archive}
+              label={`Archive${statusCounts.cancelled ? ` (${statusCounts.cancelled})` : ""}`}
+              onClick={() => setShowArchived(v => !v)}
+            />
+          </div>
         </div>
 
-        {/* ── Filters ─────────────────────────────────────────── */}
+        {/* Step toggle row — one pill per real approval-chain stage (see
+            APPROVAL_STATUS_CFG); clicking one filters the table below. */}
+        <div className="flex items-center gap-2 mb-4 overflow-x-auto pb-1">
+          <button
+            type="button"
+            onClick={() => setStepFilter("all")}
+            className={
+              stepFilter === "all"
+                ? "shrink-0 px-3.5 py-1.5 rounded-lg text-sm font-semibold theme-text"
+                : "shrink-0 px-3.5 py-1.5 rounded-lg text-sm font-medium bg-gray-100 dark:bg-gray-700 text-gray-500! dark:text-gray-400!"
+            }
+            style={stepFilter === "all" ? { backgroundColor: "var(--theme-primary-tint)" } : undefined}
+          >
+            All Steps <span className="ml-1 opacity-75">{filteredIgnoringStep.length}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setStepFilter(stepFilter === "pending-any" ? "all" : "pending-any")}
+            className={
+              stepFilter === "pending-any"
+                ? "shrink-0 px-3.5 py-1.5 rounded-lg text-sm font-semibold theme-text"
+                : "shrink-0 px-3.5 py-1.5 rounded-lg text-sm font-medium bg-gray-100 dark:bg-gray-700 text-gray-500! dark:text-gray-400!"
+            }
+            style={stepFilter === "pending-any" ? { backgroundColor: "var(--theme-primary-tint)" } : undefined}
+            title="Every Work Order still awaiting approval at any level (L1-L4)"
+          >
+            Pending <span className="ml-1 opacity-75">{STEP_KEYS.reduce((s, key) => s + (stepCounts[key] || 0), 0)}</span>
+          </button>
+          {/* Every stage's pending count is visible to anyone who can see this
+              list at all — being ABLE to view where a WO is stuck (L1-L4)
+              is separate from being ALLOWED to act on it there. The actual
+              approve/checker/final buttons stay individually gated by their
+              own checker/approver/ceo-approve permission inside
+              WorkOrderApprovalWorkflow, so a view-only user sees the count
+              and status here but gets no action button once they open it. */}
+          {STEP_KEYS.map((key) => {
+            const cfg = APPROVAL_STATUS_CFG[key];
+            const active = stepFilter === key;
+            return (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setStepFilter(active ? "all" : key)}
+                className={
+                  active
+                    ? "shrink-0 px-3.5 py-1.5 rounded-lg text-sm font-semibold theme-text"
+                    : "shrink-0 px-3.5 py-1.5 rounded-lg text-sm font-medium bg-gray-100 dark:bg-gray-700 text-gray-500! dark:text-gray-400!"
+                }
+                style={active ? { backgroundColor: "var(--theme-primary-tint)" } : undefined}
+              >
+                {cfg.level} Pending <span className="ml-1 opacity-75">{stepCounts[key]}</span>
+              </button>
+            );
+          })}
+          <button
+            type="button"
+            onClick={() => setStepFilter(stepFilter === "approved" ? "all" : "approved")}
+            className={
+              stepFilter === "approved"
+                ? "shrink-0 px-3.5 py-1.5 rounded-lg text-sm font-semibold theme-text"
+                : "shrink-0 px-3.5 py-1.5 rounded-lg text-sm font-medium bg-gray-100 dark:bg-gray-700 text-gray-500! dark:text-gray-400!"
+            }
+            style={stepFilter === "approved" ? { backgroundColor: "var(--theme-primary-tint)" } : undefined}
+          >
+            Approved <span className="ml-1 opacity-75">{stepCounts.approved}</span>
+          </button>
+        </div>
+
+        {/* ── Filters — own separate box with a gap before the table, same
+            plain layout as Billing/index.tsx's own filter box. ────────── */}
         <div className="bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700/40 rounded-lg p-3.5 mb-4">
-          <div className="flex gap-2.5 items-center flex-wrap">
+          {/* Scoped size-down (this row only, not the shared components
+              themselves) — the search box and dropdown triggers were the
+              same h-10 as everywhere else in the app, and just looked
+              oversized crammed into this one dense filter row. */}
+          <div className="flex gap-2 items-center flex-wrap [&_input]:h-9! [&_button]:h-9! [&_input]:text-[13px]! [&_button]:text-[13px]!">
             <SearchFilter placeholder="Search by WO No, project, vendor…" value={search} onChange={setSearch} />
 
             <DropdownSelectFilter
@@ -2463,13 +2540,7 @@ export default function WorkItems() {
 
             <DateRangeFilter onChange={(from, to) => { setDateFrom(from); setDateTo(to); }} />
 
-            <Btn small outline icon={Download} label="Download PDF" onClick={downloadWorkOrdersPDFExport} />
-
             {hasActiveFilters && <Btn small outline label="Clear all" onClick={clearAllFilters} />}
-
-            <span className="ml-auto text-gray-400 text-xs whitespace-nowrap">
-              {filtered.length} work order{filtered.length !== 1 ? "s" : ""}
-            </span>
           </div>
 
           {/* Active filter chips */}
@@ -2503,67 +2574,6 @@ export default function WorkItems() {
           )}
         </div>
 
-        {/* Step toggle row — one pill per real approval-chain stage (see
-            APPROVAL_STATUS_CFG); clicking one filters the table below. */}
-        <div className="flex items-center gap-2 mb-4 overflow-x-auto pb-1">
-          <button
-            type="button"
-            onClick={() => setStepFilter("all")}
-            className={
-              stepFilter === "all"
-                ? "shrink-0 px-3.5 py-1.5 rounded-full text-sm font-semibold theme-text"
-                : "shrink-0 px-3.5 py-1.5 rounded-full text-sm font-medium bg-gray-100 dark:bg-gray-700 text-gray-500! dark:text-gray-400!"
-            }
-            style={stepFilter === "all" ? { backgroundColor: "var(--theme-primary-tint)" } : undefined}
-          >
-            All Steps <span className="ml-1 opacity-75">{filteredIgnoringStep.length}</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setStepFilter(stepFilter === "pending-any" ? "all" : "pending-any")}
-            className={
-              stepFilter === "pending-any"
-                ? "shrink-0 px-3.5 py-1.5 rounded-full text-sm font-semibold theme-text"
-                : "shrink-0 px-3.5 py-1.5 rounded-full text-sm font-medium bg-gray-100 dark:bg-gray-700 text-gray-500! dark:text-gray-400!"
-            }
-            style={stepFilter === "pending-any" ? { backgroundColor: "var(--theme-primary-tint)" } : undefined}
-            title="Every Work Order still awaiting approval at any level (L1-L4)"
-          >
-            Pending <span className="ml-1 opacity-75">{STEP_KEYS.reduce((s, key) => s + (stepCounts[key] || 0), 0)}</span>
-          </button>
-          {STEP_KEYS.filter((key) => hasWOPerm(user, STEP_PERM[key])).map((key) => {
-            const cfg = APPROVAL_STATUS_CFG[key];
-            const active = stepFilter === key;
-            return (
-              <button
-                key={key}
-                type="button"
-                onClick={() => setStepFilter(active ? "all" : key)}
-                className={
-                  active
-                    ? "shrink-0 px-3.5 py-1.5 rounded-full text-sm font-semibold theme-text"
-                    : "shrink-0 px-3.5 py-1.5 rounded-full text-sm font-medium bg-gray-100 dark:bg-gray-700 text-gray-500! dark:text-gray-400!"
-                }
-                style={active ? { backgroundColor: "var(--theme-primary-tint)" } : undefined}
-              >
-                {cfg.level} Pending <span className="ml-1 opacity-75">{stepCounts[key]}</span>
-              </button>
-            );
-          })}
-          <button
-            type="button"
-            onClick={() => setStepFilter(stepFilter === "approved" ? "all" : "approved")}
-            className={
-              stepFilter === "approved"
-                ? "shrink-0 px-3.5 py-1.5 rounded-full text-sm font-semibold theme-text"
-                : "shrink-0 px-3.5 py-1.5 rounded-full text-sm font-medium bg-gray-100 dark:bg-gray-700 text-gray-500! dark:text-gray-400!"
-            }
-            style={stepFilter === "approved" ? { backgroundColor: "var(--theme-primary-tint)" } : undefined}
-          >
-            Approved <span className="ml-1 opacity-75">{stepCounts.approved}</span>
-          </button>
-        </div>
-
         {/* Table — no horizontal scrollbar: every column gets a percentage
             width (summing to 100%) so the row always fits the container's
             width. Vertical scroll only, via Table's own containerClassName
@@ -2580,7 +2590,7 @@ export default function WorkItems() {
             <EmptyState icon={ClipboardList} title="No work orders yet" message='Click "New Work Order" to create your first one.' />
           ) : (
             <>
-              <Table containerClassName="h-[650px] overflow-y-auto" className="min-w-[1200px]">
+              <Table containerClassName="h-[650px] overflow-y-auto">
                 <Thead>
                   <Tr>
                     <Th className="w-[9%]">WO No</Th>

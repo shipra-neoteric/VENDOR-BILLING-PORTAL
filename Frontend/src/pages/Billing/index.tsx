@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, Receipt, FileText, Ban, CheckCircle2, Eye, Download, Printer } from "lucide-react";
+import { Plus, Receipt, FileText, Ban, CheckCircle2, Eye, Download, Printer, FileStack } from "lucide-react";
 import toast from "react-hot-toast";
 import dayjs from "dayjs";
 import type { Dayjs } from "dayjs";
@@ -372,9 +372,10 @@ export default function Billing() {
         title="Billing"
         subtitle="Every bill in the system — from DRI-progress → L1 → L2 approvals, or created directly here — still processed through Accounts Payment"
         actions={
-          canCreate ? (
-            <NxBtn color="primary" icon={Plus} label="New Bill" onClick={() => setNewOpen(true)} />
-          ) : undefined
+          <div className="flex items-center gap-2">
+            <NxBtn color="secondary" icon={FileStack} label="Advance Slips" onClick={() => navigate("/advance-payments?from=billing")} />
+            {canCreate && <NxBtn color="primary" icon={Plus} label="New Bill" onClick={() => setNewOpen(true)} />}
+          </div>
         }
       />
 

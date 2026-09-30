@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import { Plus, Pencil, Trash2, Clock } from "lucide-react";
 import apiClient from "../../services/apiClient";
-import type { WorkflowTemplate } from "../../types/Workflow";
+import type { WorkflowTemplate, WorkflowTemplateStage } from "../../types/Workflow";
 import PageHeader from "../../ui/PageHeader";
 import NxBtn from "../../ui/nexora/Btn";
 import NxBadge from "../../ui/nexora/Badge";
@@ -14,6 +14,11 @@ import Switch from "../../ui/Switch";
 import Spinner from "../../ui/Spinner";
 import Alert from "../../ui/Alert";
 import ConfirmModal from "../../ui/ConfirmModal";
+import Modal from "../../ui/Modal";
+import Btn from "../../ui/Btn";
+import Field from "../../ui/Field";
+import SField from "../../ui/SField";
+import { ENTITY_OPTIONS, StageBuilder, type UserOption } from "./shared";
 
 // NxBadge (see ui/nexora/Badge.tsx) has no "purple", so BillRequest maps onto
 // the closest allowed Nexora color instead.
@@ -22,6 +27,12 @@ const ENTITY_BADGE_COLOR: Record<string, NxBadgeColor> = {
   BillRequest: "indigo",
 };
 
+// Empty-state shape for the "New Workflow" drawer — same fields
+// SlaSettingsDetail.tsx's own `form` state starts a fresh template with.
+function emptyForm() {
+  return { name: "", description: "", entityType: "WorkOrder" as const, isActive: true };
+}
+
 export default function SlaSettings() {
   const navigate = useNavigate();
   const [templates, setTemplates] = useState<WorkflowTemplate[]>([]);
@@ -29,6 +40,15 @@ export default function SlaSettings() {
   const [error, setError] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<WorkflowTemplate | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  // "New Workflow" now opens a right-side drawer in place instead of
+  // navigating to /sla-settings/new — SlaSettingsDetail.tsx (and its route)
+  // is untouched and still handles editing an existing template.
+  const [showNewDrawer, setShowNewDrawer] = useState(false);
+  const [users, setUsers] = useState<UserOption[]>([]);
+  const [newForm, setNewForm] = useState(emptyForm());
+  const [newStages, setNewStages] = useState<WorkflowTemplateStage[]>([]);
+  const [creating, setCreating] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true); setError("");
@@ -39,6 +59,34 @@ export default function SlaSettings() {
       setError((e as Error).message || "Failed to load SLA templates");
     } finally { setLoading(false); }
   }, []);
+
+  function openNewDrawer() {
+    setNewForm(emptyForm());
+    setNewStages([]);
+    setShowNewDrawer(true);
+    if (users.length === 0) {
+      apiClient.get("/auth/users").then(res => setUsers(res.data.users ?? [])).catch(() => {});
+    }
+  }
+
+  async function handleCreate() {
+    if (!newForm.name.trim()) return toast.error("Name is required");
+    if (newStages.length === 0) return toast.error("Add at least one stage");
+    if (newStages.some(s => !s.name.trim())) return toast.error("Every stage needs a name");
+
+    setCreating(true);
+    try {
+      await apiClient.post("/workflows/templates", { ...newForm, stages: newStages });
+      toast.success("Workflow template created");
+      setShowNewDrawer(false);
+      await load();
+    } catch (e: unknown) {
+      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message || "Save failed";
+      toast.error(msg);
+    } finally {
+      setCreating(false);
+    }
+  }
 
   useEffect(() => { load(); }, [load]);
 
@@ -77,7 +125,7 @@ export default function SlaSettings() {
         title="SLA Settings"
         subtitle="Define multi-stage approval workflows with per-stage SLA timers, so real approvals in your system are tracked and timed automatically."
         icon={Clock}
-        actions={<NxBtn label="New Workflow" icon={Plus} color="primary" onClick={() => navigate("/sla-settings/new")} />}
+        actions={<NxBtn label="New Workflow" icon={Plus} color="primary" onClick={openNewDrawer} />}
       />
 
       {templates.length === 0 ? (
@@ -135,6 +183,45 @@ export default function SlaSettings() {
           onConfirm={handleDelete}
           onCancel={() => setDeleteTarget(null)}
         />
+      )}
+
+      {showNewDrawer && (
+        <Modal
+          title="New SLA Workflow"
+          subtitle="Configure the stages, SLA timers, and assignees for this workflow."
+          icon={Clock}
+          onClose={() => setShowNewDrawer(false)}
+          footer={
+            <div className="flex justify-end gap-2">
+              <Btn label="Cancel" outline onClick={() => setShowNewDrawer(false)} />
+              <Btn label="Create Workflow" color="primary" loading={creating} onClick={handleCreate} />
+            </div>
+          }
+        >
+          <Card className="mb-5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+              <Field
+                label="Workflow Name" required placeholder='e.g. "Work Order Sign-off Chain"'
+                value={newForm.name} onChange={e => setNewForm(f => ({ ...f, name: e.target.value }))}
+              />
+              <SField
+                label="Applies To" required value={newForm.entityType} options={ENTITY_OPTIONS}
+                onChange={v => setNewForm(f => ({ ...f, entityType: v as typeof f.entityType }))}
+              />
+            </div>
+            <div className="mb-4">
+              <Field
+                textarea label="Description (optional)" rows={2} placeholder="What is this workflow for?"
+                value={newForm.description} onChange={e => setNewForm(f => ({ ...f, description: e.target.value }))}
+              />
+            </div>
+            <Switch checked={newForm.isActive} onChange={v => setNewForm(f => ({ ...f, isActive: v }))} onLabel="Active" offLabel="Inactive" />
+          </Card>
+
+          <Card>
+            <StageBuilder stages={newStages} onChange={setNewStages} users={users} />
+          </Card>
+        </Modal>
       )}
     </div>
   );

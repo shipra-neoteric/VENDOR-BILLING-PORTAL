@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useState, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
   HardHat, Users, Briefcase, Activity, CheckCircle2, Clock, Building2, FileText,
@@ -9,7 +10,6 @@ import { useAuth } from "../../context/AuthContext";
 import { useFormErrors } from "../../hooks/useFormErrors";
 import PageHeader from "../../ui/PageHeader";
 import Btn from "../../ui/Btn";
-import SField from "../../ui/SField";
 import Field from "../../ui/Field";
 import { DatePicker } from "../../ui/DatePicker";
 import Modal from "../../ui/Modal";
@@ -294,13 +294,14 @@ const emptyProgForm: ProgFormValues = {
 };
 
 export default function DRIDashboard() {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const canEdit = !!user?.permissions?.find(p => p.module === "dri-dashboard")?.actions.includes("edit");
 
-  const [allDRIs,  setAllDRIs]  = useState<DRIUser[]>([]);
-  const [allWOs,   setAllWOs]   = useState<WORow[]>([]);
+  const [allDRIs, setAllDRIs] = useState<DRIUser[]>([]);
+  const [allWOs, setAllWOs] = useState<WORow[]>([]);
   const [allBills, setAllBills] = useState<BillReq[]>([]);
-  const [loading,  setLoading]  = useState(true);
+  const [loading, setLoading] = useState(true);
   // Work Order → real bill(s) map, keyed off the actual RunningBill
   // collection (/bills) — same source WorkItems/index.tsx already uses for
   // its own `hasBill()` check. `allBills` above is /bill-requests (the
@@ -313,23 +314,23 @@ export default function DRIDashboard() {
   const [woBillsMap, setWoBillsMap] = useState<Record<string, { status: string; amount: number }[]>>({});
 
   // Navigation state
-  const [view,         setView]         = useState<PageView>("overview");
-  const [selectedDRI,  setSelectedDRI]  = useState<DRIUser | null>(null);
+  const [view, setView] = useState<PageView>("overview");
+  const [selectedDRI, setSelectedDRI] = useState<DRIUser | null>(null);
   const [selProjectId, setSelProjectId] = useState<string | null>(null);
-  const [selProjName,  setSelProjName]  = useState<string>("");
+  const [selProjName, setSelProjName] = useState<string>("");
 
   // Project detail
-  const [woDetails,     setWoDetails]     = useState<Map<string, WODetail>>(new Map());
+  const [woDetails, setWoDetails] = useState<Map<string, WODetail>>(new Map());
   const [detailLoading, setDetailLoading] = useState(false);
 
   // Add-progress modal (owner/edit-permission only). `subItem` is set when
   // progress is being logged against one particular rather than the item
   // itself — an item with particulars can only take progress that way.
-  const [progModal,  setProgModal]  = useState(false);
+  const [progModal, setProgModal] = useState(false);
   const [progTarget, setProgTarget] = useState<{ woId: string; item: ScopeItemDetail; subItem?: SubItemDetail } | null>(null);
   const [progFormValues, setProgFormValues] = useState<ProgFormValues>(emptyProgForm);
   const progErrors = useFormErrors<"date" | "qtyAdded" | "plannedQty">();
-  const [progSaving,  setProgSaving]  = useState(false);
+  const [progSaving, setProgSaving] = useState(false);
 
   // Edit entry modal (owner/edit-permission only) — same parity as Work Progress.
   // editProjectType is tracked separately from progProjectType (which follows
@@ -340,24 +341,24 @@ export default function DRIDashboard() {
   const [editProjectType, setEditProjectType] = useState<"apartment" | "plot">("apartment");
   const [editFormValues, setEditFormValues] = useState<ProgFormValues>(emptyProgForm);
   const editErrors = useFormErrors<"qtyAdded">();
-  const [deleting,  setDeleting]  = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
 
   // Invalidate entry modal — for entries a rejected bill was made from
   const [invalidateModal, setInvalidateModal] = useState(false);
   const [invalidateEntry, setInvalidateEntry] = useState<EntryRow | null>(null);
-  const [invalidateWOId,  setInvalidateWOId]  = useState<string | null>(null);
+  const [invalidateWOId, setInvalidateWOId] = useState<string | null>(null);
   const [invalidateReason, setInvalidateReason] = useState("");
   const invalidateErrors = useFormErrors<"reason">();
-  const [invalidating,    setInvalidating]    = useState(false);
+  const [invalidating, setInvalidating] = useState(false);
 
   // View all entries modal
   const [allEntriesWOId, setAllEntriesWOId] = useState<string | null>(null);
 
   // Generate-bill modal (owner/edit-permission only)
-  const [billModal,     setBillModal]     = useState(false);
-  const [billWOIds,     setBillWOIds]     = useState<Set<string>>(new Set());
-  const [billRemarks,   setBillRemarks]   = useState("");
-  const [billGenerating,setBillGenerating]= useState(false);
+  const [billModal, setBillModal] = useState(false);
+  const [billWOIds, setBillWOIds] = useState<Set<string>>(new Set());
+  const [billRemarks, setBillRemarks] = useState("");
+  const [billGenerating, setBillGenerating] = useState(false);
 
   // ── Initial load ─────────────────────────────────────────────────────────────
   // Each fetch settles independently — one endpoint failing must not blank out
@@ -427,7 +428,7 @@ export default function DRIDashboard() {
         results.forEach(r => { const d = r.data.workOrder; if (d) map.set(d._id, d); });
         setWoDetails(map);
       })
-      .catch(() => {})
+      .catch(() => { })
       .finally(() => setDetailLoading(false));
   }, [projectWOs]);
 
@@ -626,16 +627,16 @@ export default function DRIDashboard() {
 
   // ── Per-DRI stats for overview table ──────────────────────────────────────────
   const driStats = useMemo(() => allDRIs.map(dri => {
-    const wos   = allWOs.filter(wo => (wo.assignedDRI ?? []).some(d => d._id === dri._id));
+    const wos = allWOs.filter(wo => (wo.assignedDRI ?? []).some(d => d._id === dri._id));
     const woIds = new Set(wos.map(w => w._id));
     const bills = allBills.filter(b => b.workOrderId && woIds.has(b.workOrderId));
     return {
       dri,
-      total:        wos.length,
-      active:       wos.filter(w => w.status === "in-progress" || w.status === "issued").length,
-      completed:    wos.filter(w => w.status === "completed").length,
+      total: wos.length,
+      active: wos.filter(w => w.status === "in-progress" || w.status === "issued").length,
+      completed: wos.filter(w => w.status === "completed").length,
       pendingBills: bills.filter(b => b.status === "pending").length,
-      approvedBills:bills.filter(b => b.status === "approved").length,
+      approvedBills: bills.filter(b => b.status === "approved").length,
     };
   }), [allDRIs, allWOs, allBills]);
 
@@ -679,37 +680,14 @@ export default function DRIDashboard() {
       )}
       <PageHeader
         icon={HardHat}
-        title="DRI Work Dashboard"
+        title="DRI Dashboard"
+        onBack={() => navigate("/dashboard")}
         subtitle={selectedDRI && view !== "overview" ? (
           <>
             Viewing as <span className="text-primary font-bold">{selectedDRI.name}</span>
             <span className="text-gray-400 dark:text-gray-500 ml-2">{selectedDRI.email}</span>
           </>
         ) : undefined}
-        actions={
-          <div className="min-w-[280px]">
-            <SField
-              placeholder="Select DRI to view their dashboard →"
-              value={selectedDRI?._id ?? ""}
-              onChange={(val) => {
-                if (!val) { goToOverview(); return; }
-                const dri = allDRIs.find(d => d._id === val);
-                if (dri) selectDRI(dri);
-              }}
-              options={[{ value: "", label: "— View All DRIs —" }, ...allDRIs.map(d => ({ value: d._id, label: d.name }))]}
-              renderOption={(o) => {
-                if (!o.value) return <span className="text-gray-400">{o.label}</span>;
-                const dri = allDRIs.find(d => d._id === o.value);
-                return (
-                  <div className="leading-tight">
-                    <div className="font-semibold text-[13px] text-[#1A1A2E] dark:text-[#F1F5F9]">{o.label}</div>
-                    {dri && <div className="text-[11px] text-gray-400">{dri.email}</div>}
-                  </div>
-                );
-              }}
-            />
-          </div>
-        }
       />
     </>
   );
@@ -721,9 +699,9 @@ export default function DRIDashboard() {
   // VIEW: OVERVIEW — all DRIs summary table
   // ════════════════════════════════════════════════════════════════════════════
   if (view === "overview") {
-    const totalActive    = allWOs.filter(w => w.status === "in-progress" || w.status === "issued").length;
+    const totalActive = allWOs.filter(w => w.status === "in-progress" || w.status === "issued").length;
     const totalCompleted = allWOs.filter(w => w.status === "completed").length;
-    const totalPending   = allBills.filter(b => b.status === "pending").length;
+    const totalPending = allBills.filter(b => b.status === "pending").length;
 
     return (
       <div className="pb-10">
@@ -737,10 +715,14 @@ export default function DRIDashboard() {
           <KPICard label="Pending Bill Requests" value={totalPending} icon={Clock} accent="#F59E0B" />
         </div>
 
+
         <div className="bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700/40 rounded-lg overflow-hidden shadow-sm">
           <div className="px-5 py-3.5 border-b border-gray-200 dark:border-gray-700/40 font-bold text-[15px] text-[#1A1A2E] dark:text-[#F1F5F9]">
             All DRIs — click any row to view their dashboard
+
           </div>
+
+
           {allDRIs.length === 0 ? (
             <EmptyState icon={Users} title="No DRI users found." />
           ) : (
@@ -941,9 +923,9 @@ export default function DRIDashboard() {
                         </Thead>
                         <Tbody>
                           {detail.scopeItems.map((si, idx) => {
-                            const p          = pctOf(si.completedQty, si.plannedQty);
-                            const billed     = si.lastBilledQty || 0;
-                            const unbilled   = hasBill(wo._id) ? 0 : Math.max(0, si.completedQty - billed);
+                            const p = pctOf(si.completedQty, si.plannedQty);
+                            const billed = si.lastBilledQty || 0;
+                            const unbilled = hasBill(wo._id) ? 0 : Math.max(0, si.completedQty - billed);
                             const hasSubItems = (si.subItems?.length ?? 0) > 0;
                             return (
                               <Fragment key={si._id}>
@@ -1322,39 +1304,39 @@ export default function DRIDashboard() {
                     };
                     const canEditRow = canEdit && !e.invalidated?.done && !e.billedInRequestId;
                     return (
-                    <div
-                      key={e._id + i}
-                      onClick={canEditRow ? openEdit : undefined}
-                      className={`flex gap-3 items-center text-xs py-2 border-b border-gray-100 dark:border-gray-700/40 ${canEditRow ? "cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/40" : ""}`}
-                      style={{ opacity: e.invalidated?.done ? 0.55 : 1 }}
-                    >
-                      <span className="text-gray-400 min-w-[90px] whitespace-nowrap flex items-center gap-1">
-                        {dayjs(e.date).format("DD MMM")}
-                        {dayjs(e.date).format("YYYY-MM-DD") === todayStr && <NxBadge color="blue">Today</NxBadge>}
-                      </span>
-                      <span className={`font-semibold text-[#1A1A2E] dark:text-[#F1F5F9] flex-1 ${e.invalidated?.done ? "line-through" : ""}`}>
-                        {e.description}
-                        {personName(e.enteredBy) && (
-                          <span className="font-normal text-gray-400 text-[11px]"> · {personName(e.enteredBy)}</span>
+                      <div
+                        key={e._id + i}
+                        onClick={canEditRow ? openEdit : undefined}
+                        className={`flex gap-3 items-center text-xs py-2 border-b border-gray-100 dark:border-gray-700/40 ${canEditRow ? "cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/40" : ""}`}
+                        style={{ opacity: e.invalidated?.done ? 0.55 : 1 }}
+                      >
+                        <span className="text-gray-400 min-w-[90px] whitespace-nowrap flex items-center gap-1">
+                          {dayjs(e.date).format("DD MMM")}
+                          {dayjs(e.date).format("YYYY-MM-DD") === todayStr && <NxBadge color="blue">Today</NxBadge>}
+                        </span>
+                        <span className={`font-semibold text-[#1A1A2E] dark:text-[#F1F5F9] flex-1 ${e.invalidated?.done ? "line-through" : ""}`}>
+                          {e.description}
+                          {personName(e.enteredBy) && (
+                            <span className="font-normal text-gray-400 text-[11px]"> · {personName(e.enteredBy)}</span>
+                          )}
+                        </span>
+                        <span className="text-gray-500 dark:text-gray-400 min-w-[80px]">{formatLocation(e, wpt)}</span>
+                        <span className="text-emerald-600 font-bold font-mono min-w-[60px]">+{fmtN(e.qtyAdded)} {e.unit}</span>
+                        {canEdit && (
+                          <EntryActions
+                            e={e} deleting={deleting === e._id}
+                            onEdit={openEdit}
+                            onDelete={() => handleDeleteEntry(e, detail._id)}
+                            onInvalidate={() => {
+                              setInvalidateEntry(e);
+                              setInvalidateWOId(detail._id);
+                              invalidateErrors.clearAll();
+                              setInvalidateReason("");
+                              setInvalidateModal(true);
+                            }}
+                          />
                         )}
-                      </span>
-                      <span className="text-gray-500 dark:text-gray-400 min-w-[80px]">{formatLocation(e, wpt)}</span>
-                      <span className="text-emerald-600 font-bold font-mono min-w-[60px]">+{fmtN(e.qtyAdded)} {e.unit}</span>
-                      {canEdit && (
-                        <EntryActions
-                          e={e} deleting={deleting === e._id}
-                          onEdit={openEdit}
-                          onDelete={() => handleDeleteEntry(e, detail._id)}
-                          onInvalidate={() => {
-                            setInvalidateEntry(e);
-                            setInvalidateWOId(detail._id);
-                            invalidateErrors.clearAll();
-                            setInvalidateReason("");
-                            setInvalidateModal(true);
-                          }}
-                        />
-                      )}
-                    </div>
+                      </div>
                     );
                   })}
                 </div>

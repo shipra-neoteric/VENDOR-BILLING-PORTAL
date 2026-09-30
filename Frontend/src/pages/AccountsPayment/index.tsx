@@ -5,7 +5,7 @@ import toast from "react-hot-toast";
 import {
   XCircle, IndianRupee, FilePlus,
   PauseCircle, Printer, ShieldCheck, Send, FileText, ClipboardList, Building2, Wallet, Pencil,
-  Eye,
+  Eye, Archive,
 } from "lucide-react";
 import dayjs from "dayjs";
 import type { Dayjs } from "dayjs";
@@ -544,15 +544,12 @@ export default function AccountsPayment() {
 
   interface TabDef { key: string; label: string; count: number; }
   const tabs: TabDef[] = [
-    { key: "all", label: "All", count: 0 },
+    { key: "all", label: "All", count: bills.length },
     { key: "draft", label: "Awaiting Verification", count: draftBills.length },
     { key: "verifyDone", label: "Pending L1", count: verifyDoneBills.length },
     { key: "l1Approved", label: "Pending L2", count: l1ApprovedBills.length },
     { key: "approved", label: "Ready for TMS", count: approvedBills.length },
     { key: "sentToTms", label: "Sent to TMS", count: sentToTmsBills.length },
-    { key: "hold", label: "Hold", count: holdBills.length },
-    { key: "paid", label: "Paid", count: paidBills.length },
-    { key: "rejected", label: "Rejected", count: rejectedBills.length },
   ];
 
   const drawerBill = useMemo(
@@ -1077,7 +1074,12 @@ export default function AccountsPayment() {
         icon={Wallet}
         title="Accounts Payment"
         subtitle="Verification → L1 → L2 Director — then handed off to TMS for payment"
-        actions={<NxBtn color="secondary" label="Procurement Tracker" onClick={() => window.open("/procurement-tracker", "_blank", "noopener,noreferrer")} />}
+        actions={
+          <div className="flex items-center gap-2">
+            <NxBtn color="secondary" label="Ledger" onClick={() => navigate("/ledger?from=accounts-payment")} />
+            <NxBtn color="secondary" label="Procurement Tracker" onClick={() => window.open("/procurement-tracker?from=accounts-payment", "_blank", "noopener,noreferrer")} />
+          </div>
+        }
       />
 
       {/* Stat cards — each doubles as a shortcut into the matching tab filter below */}
@@ -1131,8 +1133,8 @@ export default function AccountsPayment() {
               onClick={() => setActiveTab(t.key)}
               className={
                 active
-                  ? "shrink-0 px-3.5 py-1.5 rounded-full text-sm font-semibold theme-text focus:outline-none inline-flex items-center gap-1.5"
-                  : "shrink-0 px-3.5 py-1.5 rounded-full text-sm font-medium bg-gray-100 dark:bg-gray-700 text-gray-500! dark:text-gray-400! focus:outline-none inline-flex items-center gap-1.5"
+                  ? "shrink-0 px-3.5 py-1.5 rounded-lg text-sm font-semibold theme-text focus:outline-none inline-flex items-center gap-1.5"
+                  : "shrink-0 px-3.5 py-1.5 rounded-lg text-sm font-medium bg-gray-100 dark:bg-gray-700 text-gray-500! dark:text-gray-400! focus:outline-none inline-flex items-center gap-1.5"
               }
               style={active ? { backgroundColor: "var(--theme-primary-tint)" } : undefined}
             >
@@ -1141,18 +1143,6 @@ export default function AccountsPayment() {
             </button>
           );
         })}
-        <button
-          type="button"
-          onClick={() => setShowArchived((a) => !a)}
-          className={
-            showArchived
-              ? "shrink-0 px-3.5 py-1.5 rounded-full text-sm font-semibold theme-text focus:outline-none"
-              : "shrink-0 px-3.5 py-1.5 rounded-full text-sm font-medium bg-gray-100 dark:bg-gray-700 text-gray-500! dark:text-gray-400! focus:outline-none"
-          }
-          style={showArchived ? { backgroundColor: "var(--theme-primary-tint)" } : undefined}
-        >
-          Archived
-        </button>
       </div>
 
 
@@ -1178,9 +1168,16 @@ export default function AccountsPayment() {
           onChange={setCompanyFilter}
           options={companies.map((c) => ({ label: c.name, value: c.name }))}
         />
-        <span className="ml-auto text-gray-400 text-xs">
-          {filteredBills.length} bill{filteredBills.length !== 1 ? "s" : ""}
-        </span>
+        {/* Same gray-outline -> light-orange-filled-when-active Archive
+            toggle as WorkItems/index.tsx's own Archive button. */}
+        <Btn
+          outline={!showArchived}
+          style={showArchived ? { color: "var(--theme-primary)" } : undefined}
+          className={showArchived ? "shadow-none! border-none! bg-primary/15! hover:bg-primary/20!" : ""}
+          icon={Archive}
+          label="Archive"
+          onClick={() => setShowArchived(v => !v)}
+        />
       </FilterRow >
 
       {

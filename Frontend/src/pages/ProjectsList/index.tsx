@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useSearchParams, useNavigate } from "react-router-dom";
 import {
-  LayoutDashboard, ArrowLeft, RotateCcw, X, ArrowUp, ArrowDown, ArrowUpDown, Download,
+  LayoutDashboard, ArrowLeft, RotateCcw, X, ArrowUp, ArrowDown, ArrowUpDown, Download, ExternalLink
 } from "lucide-react";
 import apiClient from "../../services/apiClient";
 import { useExecutiveDashboard } from "../../features/dashboard/hooks/useExecutiveDashboard";
@@ -18,25 +18,25 @@ import { Table, Thead, Tbody, Tr, Th, Td } from "../../ui/Table";
 import { SkeletonTable } from "../../ui/Skeleton";
 import EmptyState from "../../ui/EmptyState";
 
-interface ProjectOption { _id: string; name: string; parentId?: string | null; }
-interface ContractorOption { vendorCode: string; companyName: string; }
+// ── Type Definitions ──────────────────────────────────────────────────────────
+interface ProjectOption {
+  _id: string;
+  name: string;
+  code?: string;
+  parentId?: string | null;
+}
 
-// Excel/spreadsheet-style cell chrome — visible column borders on every
-// cell (not just the outer table border) plus comfortable, readable padding
-// and font size. The `!` (Tailwind's important modifier) is needed because
-// the shared Th/Td components hardcode their own padding/font-size classes
-// (see Frontend/src/ui/Table.tsx) — a plain same-specificity utility class
-// passed in isn't guaranteed to win over those (Tailwind's compiled
-// stylesheet order decides ties, not the order class names are written in
-// the DOM attribute), so without `!` these overrides could silently lose.
+interface ContractorOption {
+  vendorCode: string;
+  companyName: string;
+}
+
+type SortKey = "name" | "awardedContractValue" | "workExecutedValue" | "billedGross" | "certifiedNet" | "paidAmount" | "remainingContract" | "progress" | "pendingBillReqs";
+
+// ── Styling Constants ──────────────────────────────────────────────────────────
 const HEADER_CELL = "px-3! py-2! text-[11px]! border-r border-gray-200 dark:border-gray-700/60 last:border-r-0";
 const BODY_CELL = "px-3! py-1.5! text-[13px]! align-middle! border-r border-gray-100 dark:border-gray-700/40 last:border-r-0";
 
-// Same stage->color mapping ProjectLifecycle's pipeline tiles use on the
-// dashboard. Rendered as plain colored text, sized to actually fit inside
-// the column (truncated, not wrapped) instead of a dot/pill/badge — every
-// boxed version kept reading as either too tiny or too heavy against the
-// rest of the table.
 const STAGE_TEXT: Record<string, string> = {
   "Planning": "text-blue-600 dark:text-blue-400",
   "Work Orders Issued": "text-blue-600 dark:text-blue-400",
@@ -50,10 +50,7 @@ const HEALTH_BADGE: Record<string, "green" | "amber" | "red"> = {
   Healthy: "green", Attention: "amber", Critical: "red",
 };
 
-type SortKey = "name" | "awardedContractValue" | "workExecutedValue" | "billedGross" | "certifiedNet" | "paidAmount" | "remainingContract" | "progress" | "pendingBillReqs";
-
-// Same createObjectURL/synthetic-<a>/revokeObjectURL pattern used elsewhere
-// (see Frontend/src/pages/Backup/index.tsx's saveBlob).
+// ── Helper Functions ──────────────────────────────────────────────────────────
 function saveBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -69,13 +66,6 @@ function SortHeader({ label, sortKey, active, dir, onClick, className }: {
   label: string; sortKey: SortKey; active: boolean; dir: "asc" | "desc"; onClick: (k: SortKey) => void; className?: string;
 }) {
   const Icon = !active ? ArrowUpDown : dir === "asc" ? ArrowUp : ArrowDown;
-  // Right-aligned columns pass `text-right` in `className` for the <th>
-  // itself, but a <th>'s own text-align can't reliably win over the base Th
-  // component's hardcoded `text-left` (both are plain utility classes of
-  // equal specificity, so which one wins depends on Tailwind's internal
-  // stylesheet order, not the order these class names are written in) — so
-  // alignment is driven explicitly here instead, via flex justify-end on the
-  // button itself, which always works regardless of that ordering.
   const alignRight = className?.includes("text-right");
   return (
     <Th className={`${HEADER_CELL} ${className ?? ""}`}>
@@ -90,11 +80,9 @@ function SortHeader({ label, sortKey, active, dir, onClick, className }: {
   );
 }
 
-// Extracted out of Dashboard/index.tsx into its own page — same data
-// (GET /api/dashboard/executive via useExecutiveDashboard, unchanged),
-// filters, sorting and export, just given its own route instead of being
-// embedded at the bottom of the dashboard.
+// ── Main Component ─────────────────────────────────────────────────────────────
 export default function ProjectsList() {
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { data, loading, error, retry } = useExecutiveDashboard();
 
@@ -108,8 +96,8 @@ export default function ProjectsList() {
   const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
-    apiClient.get("/projects").then(res => setProjects(res.data.projects ?? [])).catch(() => {});
-    apiClient.get("/contractors").then(res => setContractors(res.data.contractors ?? [])).catch(() => {});
+    apiClient.get("/projects").then(res => setProjects(res.data.projects ?? [])).catch(() => { });
+    apiClient.get("/contractors").then(res => setContractors(res.data.contractors ?? [])).catch(() => { });
   }, []);
 
   const projectId = searchParams.get("projectId") ?? "";
@@ -117,9 +105,6 @@ export default function ProjectsList() {
   const contractorId = searchParams.get("contractorId") ?? "";
   const from = searchParams.get("from") ?? "";
   const to = searchParams.get("to") ?? "";
-  // Stage isn't sent to the backend (the API's own `stage` param is a
-  // documented no-op) — filtered client-side against each row's already-
-  // computed overallStage, same field the dashboard's stage tiles count from.
   const stage = searchParams.get("stage") ?? "";
   const hasFilters = !!(projectId || categoryId || contractorId || from || to || stage);
 
@@ -153,7 +138,7 @@ export default function ProjectsList() {
       const res = await apiClient.get("/dashboard/executive/export.csv", { params, responseType: "blob" });
       saveBlob(res.data as Blob, `projects-overview-${new Date().toISOString().slice(0, 10)}.csv`);
     } catch {
-      // apiClient's response interceptor already surfaces the error via toast.
+      // Handled globally
     } finally {
       setExporting(false);
     }
@@ -199,7 +184,7 @@ export default function ProjectsList() {
         icon={LayoutDashboard}
         actions={
           <Link to="/dashboard">
-            <Btn label="Back to Dashboard" icon={ArrowLeft} outline small />
+            <Btn title="Back to Dashboard" aria-label="Back to Dashboard" icon={ArrowLeft} outline small />
           </Link>
         }
       />
@@ -273,6 +258,9 @@ export default function ProjectsList() {
                   <Th className={`w-[12%] ${HEADER_CELL}`}>Cost Used</Th>
                   <Th className={`w-[7%] text-right ${HEADER_CELL}`}>Pending</Th>
                   <Th className={`w-[8%] ${HEADER_CELL}`}>Health</Th>
+                  <Th className={`w-[5%] text-center uppercase tracking-wider ${HEADER_CELL}`}>
+                    ACTION
+                  </Th>
                 </Tr>
               </Thead>
               <Tbody>
@@ -318,12 +306,16 @@ export default function ProjectsList() {
                       {(() => {
                         const pendingPayment = Math.max(0, p.certifiedNet - p.paidAmount);
                         return pendingPayment > 0 ? (
-                          <span className="font-bold text-amber-600 dark:text-amber-400 tabular-nums">{fmtCr(pendingPayment)}</span>
+                          <span className="font-bold text-amber-600 dark:text-amber-400 tabular-nums">
+                            {fmtCr(pendingPayment)}
+                          </span>
                         ) : (
                           <span className="text-gray-300 dark:text-gray-600">₹0</span>
                         );
                       })()}
                     </Td>
+
+                    {/* Health Column */}
                     <Td className={BODY_CELL}>
                       <button
                         type="button"
@@ -331,7 +323,23 @@ export default function ProjectsList() {
                         title={p.healthReasons.length ? p.healthReasons.join(" · ") : "No issues detected"}
                         aria-label={`Health: ${p.health}.${p.healthReasons.length ? " " + p.healthReasons.join(". ") : " No issues detected."}`}
                       >
-                        <Badge color={HEALTH_BADGE[p.health] ?? "gray"} small>{p.health}</Badge>
+                        <Badge color={HEALTH_BADGE[p.health] ?? "gray"} small>
+                          {p.health}
+                        </Badge>
+                      </button>
+                    </Td>
+
+                    {/* Action Column opening full Detail View directly without Masters sidebar */}
+                    {/* Action Column with Redirect Icon */}
+                    {/* Action Column with Redirect Icon */}
+                    <Td className={`${BODY_CELL} text-center`}>
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/projects?id=${p.projectId}`)}
+                        className="inline-flex items-center justify-center p-1 text-gray-500 hover:text-primary hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors"
+                        title="View Project Details"
+                      >
+                        <ExternalLink className="w-4 h-4" />
                       </button>
                     </Td>
                   </Tr>

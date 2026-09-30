@@ -62,7 +62,7 @@ export default function PendingWorkOrders() {
         icon={UserX}
         actions={
           <Link to={{ pathname: "/dashboard", search: backLinkSearch }}>
-            <Btn label="Back to Dashboard" icon={ArrowLeft} outline small />
+            <Btn title="Back to Dashboard" aria-label="Back to Dashboard" icon={ArrowLeft} outline small />
           </Link>
         }
       />

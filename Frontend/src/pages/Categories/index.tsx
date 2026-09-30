@@ -227,7 +227,7 @@ export default function Categories() {
             const isOpen = expanded.has(cat._id);
 
             return (
-              <Card key={cat._id} padded={false} className={`overflow-hidden ${cat.isActive ? "" : "opacity-60"}`} style={{ borderLeft: `4px solid ${cat.color}` }}>
+              <Card key={cat._id} padded={false} className={`overflow-hidden ${cat.isActive ? "" : "opacity-60"}`}>
                 {/* ── Level-1 header ── */}
                 <div className="flex items-center px-4 py-3 gap-2.5 cursor-pointer select-none" onClick={() => toggleExpand(cat._id)}>
                   <ChevronRight className={`w-3 h-3 text-gray-400 transition-transform shrink-0 ${isOpen ? "rotate-90" : ""}`} />
@@ -240,17 +240,16 @@ export default function Categories() {
                     <button
                       type="button"
                       title="Add sub-category"
-                      style={{ background: lighten(cat.color), borderColor: cat.color, color: cat.color }}
                       onClick={() => { openAdd(cat._id); setExpanded(p => new Set([...p, cat._id])); }}
-                      className="w-8 h-8 rounded-lg border flex items-center justify-center shrink-0 hover:opacity-80 transition-opacity"
+                      className="w-8 h-8 rounded-lg border border-primary bg-primary/10 text-primary flex items-center justify-center shrink-0 hover:bg-primary/20 transition-colors"
                     >
                       <Plus className="w-4 h-4" />
                     </button>
                     <NxBtn color="icon" title="Edit" icon={Pencil} onClick={() => openEdit(cat)} />
                     <NxBtn
-                      color="icon" title="Delete" icon={Trash2} disabled={subs.length > 0}
+                      color="icon" title="Delete" icon={Trash2}
                       className="text-red-500! hover:text-red-600! hover:bg-red-50! dark:hover:bg-red-500/10!"
-                      onClick={() => requestDelete(cat, subs.length > 0 ? "Delete all sub-categories first." : "")}
+                      onClick={() => requestDelete(cat, "")}
                     />
                   </div>
                 </div>
@@ -272,7 +271,7 @@ export default function Categories() {
                           const subIsOpen = subExpanded.has(sub._id);
 
                           return (
-                            <div key={sub._id} className={`bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700/40 rounded-lg overflow-hidden ${sub.isActive ? "" : "opacity-55"}`} style={{ borderLeft: `3px solid ${sub.color}` }}>
+                            <div key={sub._id} className={`bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700/40 rounded-lg overflow-hidden ${sub.isActive ? "" : "opacity-55"}`}>
                               {/* Sub-cat row */}
                               <div className="flex items-center gap-2 px-3 py-2 cursor-pointer select-none" onClick={() => toggleSubExpand(sub._id)}>
                                 <ChevronRight className={`w-2.5 h-2.5 text-gray-400 transition-transform shrink-0 ${subIsOpen ? "rotate-90" : ""}`} />
@@ -294,9 +293,9 @@ export default function Categories() {
                                   </button>
                                   <NxBtn color="icon" title="Edit" icon={Pencil} onClick={() => openEdit(sub)} />
                                   <NxBtn
-                                    color="icon" title="Delete" icon={Trash2} disabled={subSubs.length > 0}
+                                    color="icon" title="Delete" icon={Trash2}
                                     className="text-red-500! hover:text-red-600! hover:bg-red-50! dark:hover:bg-red-500/10!"
-                                    onClick={() => requestDelete(sub, subSubs.length > 0 ? "Delete all sub-sub-categories first." : "")}
+                                    onClick={() => requestDelete(sub, "")}
                                   />
                                 </div>
                               </div>
@@ -314,7 +313,7 @@ export default function Categories() {
                                   ) : (
                                     <div className="flex flex-col gap-1">
                                       {subSubs.map(ss => (
-                                        <div key={ss._id} className={`flex items-center gap-2 px-2.5 py-1.5 bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700/40 rounded-md ${ss.isActive ? "" : "opacity-50"}`} style={{ borderLeft: `2px solid ${ss.color}` }}>
+                                        <div key={ss._id} className={`flex items-center gap-2 px-2.5 py-1.5 bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700/40 rounded-md ${ss.isActive ? "" : "opacity-50"}`}>
                                           <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: ss.color }} />
                                           <span className="font-semibold text-xs text-gray-700 dark:text-gray-300 flex-1">
                                             {ss.name}{!ss.isActive && <span className="ml-1.5 align-middle"><NxBadge color="red">Inactive</NxBadge></span>}
