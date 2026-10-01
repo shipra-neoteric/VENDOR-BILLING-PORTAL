@@ -509,11 +509,12 @@ export default function WorkOrderDetailView({
                             return (
                               <Fragment key={flat.key}>
                                 <Tr className="bg-gray-50/70 dark:bg-gray-800/25">
-                                  <Td colSpan={5} style={{ paddingLeft: "24px" }}>
+                                  <Td colSpan={5} style={{ paddingLeft: "24px" }} className="p-0">
                                     <button
                                       type="button"
                                       onClick={() => toggleNode(flat.key)}
-                                      className="flex items-center gap-1.5 font-bold text-[#1A1A2E] dark:text-[#F1F5F9] text-left"
+                                      style={{ paddingLeft: "24px" }}
+                                      className="w-full flex items-center gap-1.5 font-bold text-[#1A1A2E] dark:text-[#F1F5F9] text-left px-2.5 py-2"
                                     >
                                       <span className="text-gray-400 text-xs">•</span>
                                       <span>{flat.label}</span>
@@ -528,11 +529,12 @@ export default function WorkOrderDetailView({
                           return (
                             <Fragment key={flat.key}>
                               <Tr className="bg-gray-50/70 dark:bg-gray-800/25">
-                                <Td colSpan={5} style={{ paddingLeft: "24px" }}>
+                                <Td colSpan={5} className="p-0">
                                   <button
                                     type="button"
                                     onClick={() => toggleNode(flat.key)}
-                                    className="flex items-center gap-1.5 font-bold text-[#1A1A2E] dark:text-[#F1F5F9]"
+                                    style={{ paddingLeft: "24px" }}
+                                    className="w-full flex items-center gap-1.5 font-bold text-[#1A1A2E] dark:text-[#F1F5F9] text-left px-2.5 py-2"
                                   >
                                     <span className="text-gray-400 text-xs">•</span>
                                     {flat.label}
@@ -545,11 +547,12 @@ export default function WorkOrderDetailView({
                                 return (
                                   <Fragment key={room.key}>
                                     <Tr>
-                                      <Td colSpan={5} style={{ paddingLeft: "40px" }}>
+                                      <Td colSpan={5} className="p-0">
                                         <button
                                           type="button"
                                           onClick={() => toggleNode(room.key)}
-                                          className="flex items-center gap-1.5 text-[#1A1A2E] dark:text-[#F1F5F9] text-left"
+                                          style={{ paddingLeft: "40px" }}
+                                          className="w-full flex items-center gap-1.5 text-[#1A1A2E] dark:text-[#F1F5F9] text-left px-2.5 py-2"
                                         >
                                           <span className="text-gray-400 text-xs">•</span>
                                           <span>{room.label}</span>
