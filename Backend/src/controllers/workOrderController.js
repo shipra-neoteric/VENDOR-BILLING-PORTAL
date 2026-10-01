@@ -650,14 +650,18 @@ exports.checkerApprove = asyncHandler(async (req, res) => {
   await workOrder.save();
 
   await advanceInstance('WorkOrder', workOrder._id, req.user._id, 'Checker approved — forwarded to approver');
-  // NOTE: for a 2-level department, the real approval chain skips the
-  // approver stage (see woLevels above), but the SLA WorkflowInstance's own
-  // stage list (from whichever WorkflowTemplate snapshot this instance
-  // started from — not always the same stage count) is untouched here.
-  // Its "approver"-equivalent stage will sit in-progress until finalApprove
-  // reconciles it — same class of stuck-instance case already handled by
-  // Backend/scripts/backfill_reconcile_stale_sla_instances.js, not a data
-  // problem, just an SLA-reporting quirk for these departments.
+  // For a 2-level department the real approval chain skips the approver
+  // stage entirely (see woLevels above) — so the SLA WorkflowInstance's
+  // matching "approver" stage must be skipped too, right now, instead of
+  // sitting there as a phantom "Pending" step until finalApprove eventually
+  // reconciles it (the stuck-instance class of issue
+  // backfill_reconcile_stale_sla_instances.js exists for). completedByUserId
+  // is deliberately left null — no one actually approved this stage, it was
+  // never applicable for this department, so the SLA timeline/audit trail
+  // must not read as if a real person signed off on it.
+  if (woLevels <= 2) {
+    await advanceInstance('WorkOrder', workOrder._id, null, 'Auto-skipped — this department is configured for 2 approval levels');
+  }
 
   await logAudit({
     action: 'APPROVE', module: 'work-orders', user: req.user,

@@ -54,6 +54,11 @@ function durationLabel(stage: InstanceStage): string {
 function stageVisual(stage: InstanceStage, isLast: boolean, instanceCompleted: boolean) {
   if (stage.status === "completed") {
     if (stage.breached) return { color: "#DC2626", status: "Breached" };
+    // No completedBy means no one actually acted on this stage — it was
+    // auto-skipped (e.g. a department configured for fewer approval levels
+    // than this entity's generic stage template has), not really approved,
+    // so the timeline must say so rather than implying a real sign-off.
+    if (!stage.completedBy) return { color: "#9CA3AF", status: "Skipped" };
     return { color: "#16A34A", status: isLast && instanceCompleted ? "Approved" : "Completed" };
   }
   if (stage.status === "in-progress") {

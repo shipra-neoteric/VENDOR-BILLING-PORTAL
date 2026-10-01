@@ -180,12 +180,10 @@ function buildTimelineSteps(events: ProjectEvent[], woNo: string): TimelineStep[
 
 // ── Project Detail View ────────────────────────────────────────────────────────
 function ProjectDetail({
-  project, onBack, onEdit, onDelete,
+  project, onBack,
 }: {
   project: Project;
   onBack: () => void;
-  onEdit: (p: Project, e: React.MouseEvent) => void;
-  onDelete: (p: Project) => void;
 }) {
   const id = project._id || project.id;
   const [wos, setWOs] = useState<WORow[]>([]);
@@ -198,19 +196,6 @@ function ProjectDetail({
   const [activeTab, setActiveTab] = useState<"vendors" | "workorders" | "category" | "bills" | "activity">("workorders");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [viewBill, setViewBill] = useState<BillDetailRequest | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<Project | null>(null);
-  const [deleting, setDeleting] = useState(false);
-
-  async function confirmDelete() {
-    if (!deleteTarget) return;
-    setDeleting(true);
-    try {
-      await onDelete(deleteTarget);
-    } finally {
-      setDeleting(false);
-      setDeleteTarget(null);
-    }
-  }
 
   useEffect(() => {
     setLoading(true);
@@ -283,13 +268,6 @@ function ProjectDetail({
                 </NxBadge>
               )}
             </div>
-          </div>
-          <div className="flex gap-2 shrink-0">
-            <NxBtn color="primary" icon={Pencil} label="Edit Project" onClick={e => onEdit(project, e)} />
-            <NxBtn
-              color="danger" icon={Trash2} label="Delete"
-              onClick={() => setDeleteTarget(project)}
-            />
           </div>
         </div>
       </Card>
@@ -582,18 +560,6 @@ function ProjectDetail({
       )}
 
       <BillDetailModal billRequest={viewBill} open={!!viewBill} onClose={() => setViewBill(null)} />
-
-      {deleteTarget && (
-        <ConfirmModal
-          title={`Delete "${deleteTarget.name}"?`}
-          message="This cannot be undone."
-          confirmLabel="Delete"
-          danger
-          loading={deleting}
-          onConfirm={confirmDelete}
-          onCancel={() => setDeleteTarget(null)}
-        />
-      )}
     </div>
   );
 }
@@ -797,8 +763,6 @@ export default function Projects() {
         <ProjectDetail
           project={detailProject}
           onBack={() => cameFromDeepLinkRef.current ? navigate(-1) : setDetailProject(null)}
-          onEdit={openEdit}
-          onDelete={handleDeleteProject}
         />
       ) : (
         /* ── List view ────────────────────────────────────────────────────── */
