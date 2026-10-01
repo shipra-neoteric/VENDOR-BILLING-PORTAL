@@ -324,6 +324,13 @@ exports.listBills = asyncHandler(async (req, res) => {
     workOrderNo: r.workOrderNo,
     vendorCode: r.vendorCode,
     vendorName: r.vendorName,
+    // A GM/L3/L4 approver may have overridden who actually gets paid (a
+    // fellow Vendor Group member) via payeeVendorCode/payeeVendorName on the
+    // BillRequest itself — without passing these through, this page's print/
+    // download falls back to the request's own base vendorCode and shows the
+    // wrong bank details.
+    payeeVendorCode: r.payeeVendorCode || '',
+    payeeVendorName: r.payeeVendorName || '',
     projectId: r.projectId,
     projectName: r.projectName,
     department: r.department,
@@ -332,7 +339,11 @@ exports.listBills = asyncHandler(async (req, res) => {
     // (items[].amount when set, else rate*billedQty) — this is a request,
     // not yet a bill, so there's no RunningBill.amount to read instead.
     amount: (r.items || []).reduce((s, it) => s + (it.amount ?? (it.rate ?? 0) * it.billedQty), 0),
-    lineItems: [],
+    // Same shape RunningBill.lineItems already uses (description/unit/
+    // billedQty/rate/amount) — BillRequest.items carries identical field
+    // names, so the frontend's existing Scope Items table renders these
+    // correctly with no extra branching, instead of showing an empty table.
+    lineItems: r.items || [],
     gstPercent: 0,
     manualApprovalStatus: undefined,
     // Re-purposed, same as the AdvanceSlip merge — the frontend distinguishes
@@ -341,6 +352,11 @@ exports.listBills = asyncHandler(async (req, res) => {
     status: STAGE_LABEL[r.status] || r.status,
     billDate: r.createdAt,
     createdAt: r.createdAt,
+    // BillRequest's own AGM/GM/L3/L4 chain (byName already snapshotted on
+    // each entry — see BillRequest.approvalHistory's own schema comment —
+    // so the frontend can render a RunningBill-style approvals row for
+    // this without a second populate/fetch).
+    approvalHistory: r.approvalHistory || [],
   }));
 
   const rows = [...bills, ...slipRows, ...requestRows].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));

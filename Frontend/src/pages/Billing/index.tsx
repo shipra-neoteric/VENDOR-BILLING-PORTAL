@@ -52,6 +52,11 @@ interface Bill {
   projectName?: string;
   vendorCode?: string;
   vendorName?: string;
+  // Set on a merged-in BillRequest row when a GM/L3/L4 approver overrode who
+  // actually gets paid (a fellow Vendor Group member) — print/download must
+  // resolve bank details for this payee, not the row's own vendorCode.
+  payeeVendorCode?: string;
+  payeeVendorName?: string;
   companyName?: string;
   billDate: string;
   generatedBy?: string;
@@ -70,6 +75,10 @@ interface Bill {
   manualApprovalStatus?: "pending" | "pending-gm" | "approved" | "rejected";
   billType?: string;
   createdAt?: string;
+  // Only set on a merged-in BillRequest row (billType === 'bill_request') —
+  // its own AGM/GM/L3/L4 chain, read instead of the RunningBill stage
+  // fields below for that row's "Bill Approvals" table.
+  approvalHistory?: { stage: string; action: string; byName?: string; at?: string }[];
   // Set only for a manually-created bill saved via "Save as Draft" — hasn't
   // entered the AGM/GM approval chain yet (manualApprovalStatus stays
   // unset/undefined for it). The backend already scopes listBills to only
@@ -242,7 +251,13 @@ export default function Billing() {
     setDownloadingId(bill.id);
     try {
       const contractor = await resolvePrintParty(bill.vendorCode);
-      printBill(bill, contractor, bill.status === "paid" ? "post" : "pre");
+      // Bank Details must reflect who actually gets paid — a GM/L3/L4
+      // approver's payeeVendorCode override, when one was set, same as
+      // BillRequests page's own printBillRequest already does.
+      const payeeContractor = bill.payeeVendorCode && bill.payeeVendorCode !== bill.vendorCode
+        ? await resolvePrintParty(bill.payeeVendorCode)
+        : null;
+      printBill(bill, contractor, bill.status === "paid" ? "post" : "pre", undefined, payeeContractor);
     } catch {
       toast.error("Failed to prepare the bill for download");
     } finally {
@@ -559,32 +574,63 @@ export default function Billing() {
           <div className="border-t border-gray-200 dark:border-gray-700/40 my-4" />
 
           {/* Accounts Payment's own Verification → L1 AGM → L2 Director → TMS
-              chain — same table the Work Order's own bill view shows. */}
-          <div className="mb-4">
-            <div className="font-bold text-xs text-gray-600 dark:text-gray-300 mb-1.5 uppercase tracking-wide">
-              Bill Approvals
+              chain — same table the Work Order's own bill view shows. Only
+              meaningful for a real RunningBill: a merged-in BillRequest row
+              (billType === 'bill_request') never has these fields at all —
+              it's still on its own separate AGM/GM approval chain, not yet
+              a RunningBill — so it gets a plain status line instead of a
+              table of all-blank stage cells. */}
+          {viewBill.billType === "bill_request" ? (
+            <div className="mb-4">
+              <div className="font-bold text-xs text-gray-600 dark:text-gray-300 mb-1.5 uppercase tracking-wide">
+                Bill Request Approvals
+              </div>
+              <Table>
+                <Thead>
+                  <Tr>
+                    <Th>L1 (AGM)</Th>
+                    <Th>L2 (GM)</Th>
+                    <Th>L3</Th>
+                    <Th>L4</Th>
+                  </Tr>
+                </Thead>
+                <Tbody>
+                  <Tr>
+                    {(["agm", "gm", "l3", "l4"] as const).map((stage) => {
+                      const entry = (viewBill.approvalHistory ?? []).find((h) => h.stage === stage && h.action === "approved");
+                      return <Td key={stage} className="align-top"><BillStageCell by={entry?.byName} at={entry?.at} /></Td>;
+                    })}
+                  </Tr>
+                </Tbody>
+              </Table>
             </div>
-            <Table>
-              <Thead>
-                <Tr>
-                  <Th>Verification</Th>
-                  <Th>L1 AGM</Th>
-                  <Th>L2 Director</Th>
-                  <Th>Sent to TMS</Th>
-                  <Th>Paid</Th>
-                </Tr>
-              </Thead>
-              <Tbody>
-                <Tr>
-                  <Td className="align-top"><BillStageCell by={viewBill.verificationBy?.name} at={viewBill.verificationAt} /></Td>
-                  <Td className="align-top"><BillStageCell by={viewBill.l1ApprovedBy?.name} at={viewBill.l1ApprovedAt} /></Td>
-                  <Td className="align-top"><BillStageCell by={viewBill.l2ApprovedBy?.name} at={viewBill.l2ApprovedAt} /></Td>
-                  <Td className="align-top"><BillStageCell at={viewBill.tmsSentAt} /></Td>
-                  <Td className="align-top"><BillStageCell at={viewBill.tmsCallbackReceivedAt} /></Td>
-                </Tr>
-              </Tbody>
-            </Table>
-          </div>
+          ) : (
+            <div className="mb-4">
+              <div className="font-bold text-xs text-gray-600 dark:text-gray-300 mb-1.5 uppercase tracking-wide">
+                Bill Approvals
+              </div>
+              <Table>
+                <Thead>
+                  <Tr>
+                    <Th>Verification</Th>
+                    <Th>L1 AGM</Th>
+                    <Th>L2 Director</Th>
+                    <Th>Sent to TMS</Th>
+                    <Th>Paid</Th>
+                  </Tr>
+                </Thead>
+                <Tbody>
+                  <Tr>
+                    <Td className="align-top"><BillStageCell by={viewBill.verificationBy?.name} at={viewBill.verificationAt} /></Td>
+                    <Td className="align-top"><BillStageCell by={viewBill.l1ApprovedBy?.name} at={viewBill.l1ApprovedAt} /></Td>
+                    <Td className="align-top"><BillStageCell by={viewBill.l2ApprovedBy?.name} at={viewBill.l2ApprovedAt} /></Td>
+                    <Td className="align-top"><BillStageCell at={viewBill.tmsSentAt} /></Td>
+                    <Td className="align-top"><BillStageCell at={viewBill.tmsCallbackReceivedAt} /></Td>
+                  </Tr>
+                </Tbody>
+              </Table>
+            </div>
+          )}
 
           <div className="font-bold text-xs text-gray-600 dark:text-gray-300 mb-1.5 uppercase tracking-wide">Scope Items</div>
           <div className="mb-4">
@@ -627,7 +673,7 @@ export default function Billing() {
             return (
               <div className="bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-300 dark:border-emerald-500/30 rounded-lg p-3 text-sm mb-4">
                 <div className="font-bold mb-2 text-emerald-800 dark:text-emerald-300">
-                  Running Bill: {viewBill.billNo}
+                  {viewBill.billType === "bill_request" ? "Bill Request" : "Running Bill"}: {viewBill.billNo}
                   {supersededByMap[viewBill.billNo]?.length ? (
                     <span
                       className="ml-2 align-middle inline-block text-[10px] font-semibold text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-500/20 px-1.5 py-0.5 rounded-full whitespace-nowrap"
