@@ -1,5 +1,4 @@
 import { Fragment, useEffect, useState, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
   HardHat, Users, Briefcase, Activity, CheckCircle2, Clock, Building2, FileText,
@@ -23,6 +22,7 @@ import EmptyState from "../../ui/EmptyState";
 import Alert from "../../ui/Alert";
 import { Descriptions, DescItem } from "../../ui/Descriptions";
 import { Table, Thead, Tbody, Tr, Th, Td } from "../../ui/Table";
+import { SearchFilter } from "../../ui/Filters";
 import RemarksListInput from "../../components/RemarksListInput";
 import dayjs from "dayjs";
 
@@ -40,7 +40,7 @@ interface WORow {
   status: string;
   contractValue?: number;
   assignedDRI?: DRIUser[];
-  scopeItems?: { description: string; completedQty: number; plannedQty: number }[];
+  scopeItems?: ScopeItemDetail[];
 }
 
 interface ProgressEntry {
@@ -294,7 +294,6 @@ const emptyProgForm: ProgFormValues = {
 };
 
 export default function DRIDashboard() {
-  const navigate = useNavigate();
   const { user } = useAuth();
   const canEdit = !!user?.permissions?.find(p => p.module === "dri-dashboard")?.actions.includes("edit");
 
@@ -313,6 +312,18 @@ export default function DRIDashboard() {
   // completedQty, or any billing calculation.
   const [woBillsMap, setWoBillsMap] = useState<Record<string, { status: string; amount: number }[]>>({});
 
+  // Search within the DRI Detail (project) view — filters by WO No/vendor
+  // name (keeps the whole WO visible) or by a scope item's own description
+  // (keeps just the matching items visible within that WO).
+  const [detailSearch, setDetailSearch] = useState("");
+
+  // Global search (Overview only) — one box searching across DRI name/email,
+  // Work Order No, Project name and Vendor name all at once, instead of only
+  // the DRI table. Matching a WO/Project jumps straight into that DRI's
+  // project view (same screen "View Dashboard" already opens), since that's
+  // the only place this data is actually browsable.
+  const [globalSearch, setGlobalSearch] = useState("");
+
   // Navigation state
   const [view, setView] = useState<PageView>("overview");
   const [selectedDRI, setSelectedDRI] = useState<DRIUser | null>(null);
@@ -321,7 +332,6 @@ export default function DRIDashboard() {
 
   // Project detail
   const [woDetails, setWoDetails] = useState<Map<string, WODetail>>(new Map());
-  const [detailLoading, setDetailLoading] = useState(false);
 
   // Add-progress modal (owner/edit-permission only). `subItem` is set when
   // progress is being logged against one particular rather than the item
@@ -418,18 +428,20 @@ export default function DRIDashboard() {
     [allBills, projectWOs]
   );
 
-  // ── Load WO details when project changes ──────────────────────────────────────
+  // ── Build WO details when project changes ───────────────────────────────────
+  // The /work-orders LIST call already made above (allWOs) returns every
+  // field WODetail needs — projectId populated, scopeItems with full
+  // progressEntries/subItems — nothing here is actually summary-only. This
+  // used to re-fetch each WO individually (N parallel requests for an
+  // N-work-order project, e.g. 30 requests for a 30-WO project), which was
+  // the main reason opening a large project felt slow; it's the same data
+  // already sitting in allWOs, just copied in instead of re-fetched.
+  // reloadWODetail() below still does a real single-WO fetch after an edit,
+  // so each row stays fresh after a mutation without needing a full refetch.
   useEffect(() => {
-    if (!projectWOs.length) { setWoDetails(new Map()); return; }
-    setDetailLoading(true);
-    Promise.all(projectWOs.map(wo => apiClient.get(`/work-orders/${wo._id}`)))
-      .then(results => {
-        const map = new Map<string, WODetail>();
-        results.forEach(r => { const d = r.data.workOrder; if (d) map.set(d._id, d); });
-        setWoDetails(map);
-      })
-      .catch(() => { })
-      .finally(() => setDetailLoading(false));
+    const map = new Map<string, WODetail>();
+    for (const wo of projectWOs) map.set(wo._id, wo as unknown as WODetail);
+    setWoDetails(map);
   }, [projectWOs]);
 
   // Any real bill at all (any status, not just paid) against a Work Order —
@@ -640,12 +652,51 @@ export default function DRIDashboard() {
     };
   }), [allDRIs, allWOs, allBills]);
 
+  // ── Global search (Overview) — DRIs matched by name/email, work orders
+  // matched by WO No/Project/Vendor. Both read off the same already-loaded
+  // allDRIs/allWOs — no extra fetch.
+  const searchQuery = globalSearch.trim().toLowerCase();
+  const filteredDriStats = useMemo(() => {
+    if (!searchQuery) return driStats;
+    return driStats.filter(row =>
+      row.dri.name.toLowerCase().includes(searchQuery) || row.dri.email.toLowerCase().includes(searchQuery)
+    );
+  }, [driStats, searchQuery]);
+  const matchingWOs = useMemo(() => {
+    if (!searchQuery) return [];
+    return allWOs.filter(wo =>
+      wo.workOrderNo.toLowerCase().includes(searchQuery) ||
+      wo.projectName.toLowerCase().includes(searchQuery) ||
+      (wo.vendorName ?? "").toLowerCase().includes(searchQuery) ||
+      (wo.scopeItems ?? []).some(si => si.description.toLowerCase().includes(searchQuery))
+    ).slice(0, 30);
+  }, [allWOs, searchQuery]);
+
   // ── Navigation helpers ────────────────────────────────────────────────────────
   const selectDRI = (dri: DRIUser) => {
     setSelectedDRI(dri);
     setSelProjectId(null);
     setWoDetails(new Map());
     setView("dri-projects");
+  };
+
+  // Jumps a global-search WO result straight into its project, under
+  // whichever DRI it's assigned to (the first one, if more than one) — same
+  // destination "View Dashboard" -> project card already reaches, just
+  // skipping both intermediate clicks.
+  const jumpToWO = (wo: WORow) => {
+    const dri = (wo.assignedDRI ?? [])[0];
+    const projId = getProjId(wo);
+    if (!dri || !projId) {
+      toast.error("This work order has no assigned DRI to view it under.");
+      return;
+    }
+    setGlobalSearch("");
+    setSelectedDRI(dri);
+    setSelProjectId(projId);
+    setSelProjName(wo.projectName);
+    setWoDetails(new Map());
+    setView("dri-detail");
   };
 
   const goToOverview = () => {
@@ -664,24 +715,17 @@ export default function DRIDashboard() {
   const openProject = (projectId: string, projectName: string) => {
     setSelProjectId(projectId);
     setSelProjName(projectName);
+    setDetailSearch("");
     setView("dri-detail");
   };
 
   // ── Shared header ─────────────────────────────────────────────────────────────
   const Header = () => (
     <>
-      {view !== "overview" && (
-        <div className="flex items-center gap-2 mb-3 flex-wrap">
-          <Btn small outline label="← All DRIs" onClick={goToOverview} />
-          {view === "dri-detail" && (
-            <Btn small outline label={`← ${selectedDRI?.name}'s Projects`} onClick={goToProjects} />
-          )}
-        </div>
-      )}
       <PageHeader
         icon={HardHat}
         title="DRI Dashboard"
-        onBack={() => navigate("/dashboard")}
+        onBack={view === "dri-detail" ? goToProjects : view === "dri-projects" ? goToOverview : undefined}
         subtitle={selectedDRI && view !== "overview" ? (
           <>
             Viewing as <span className="text-primary font-bold">{selectedDRI.name}</span>
@@ -715,6 +759,39 @@ export default function DRIDashboard() {
           <KPICard label="Pending Bill Requests" value={totalPending} icon={Clock} accent="#F59E0B" />
         </div>
 
+        <div className="mb-5">
+          <SearchFilter value={globalSearch} onChange={setGlobalSearch} placeholder="Search DRI, Work Order No, Project or Vendor…" />
+        </div>
+
+        {searchQuery && matchingWOs.length > 0 && (
+          <div className="bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700/40 rounded-lg overflow-hidden shadow-sm mb-5">
+            <div className="px-5 py-3.5 border-b border-gray-200 dark:border-gray-700/40 font-bold text-[15px] text-[#1A1A2E] dark:text-[#F1F5F9]">
+              Matching Work Orders ({matchingWOs.length})
+            </div>
+            <Table className="min-w-[900px]">
+              <Thead>
+                <Tr>
+                  <Th className="w-[15%]">WO No</Th>
+                  <Th className="w-[25%]">Project</Th>
+                  <Th className="w-[20%]">Vendor</Th>
+                  <Th className="w-[20%]">Assigned DRI</Th>
+                  <Th className="w-[20%]"></Th>
+                </Tr>
+              </Thead>
+              <Tbody>
+                {matchingWOs.map(wo => (
+                  <Tr key={wo._id} className="cursor-pointer" onClick={() => jumpToWO(wo)}>
+                    <Td className="font-bold text-primary whitespace-nowrap">{wo.workOrderNo}</Td>
+                    <Td className="truncate">{wo.projectName}</Td>
+                    <Td className="truncate text-gray-500 dark:text-gray-400">{wo.vendorName || "—"}</Td>
+                    <Td className="truncate">{(wo.assignedDRI ?? []).map(d => d.name).join(", ") || "—"}</Td>
+                    <Td><span className="text-primary font-semibold text-xs whitespace-nowrap">Open →</span></Td>
+                  </Tr>
+                ))}
+              </Tbody>
+            </Table>
+          </div>
+        )}
 
         <div className="bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700/40 rounded-lg overflow-hidden shadow-sm">
           <div className="px-5 py-3.5 border-b border-gray-200 dark:border-gray-700/40 font-bold text-[15px] text-[#1A1A2E] dark:text-[#F1F5F9]">
@@ -723,8 +800,8 @@ export default function DRIDashboard() {
           </div>
 
 
-          {allDRIs.length === 0 ? (
-            <EmptyState icon={Users} title="No DRI users found." />
+          {filteredDriStats.length === 0 ? (
+            <EmptyState icon={Users} title={searchQuery ? "No DRIs match your search." : "No DRI users found."} />
           ) : (
             <Table className="min-w-[1080px]">
               <Thead>
@@ -740,7 +817,7 @@ export default function DRIDashboard() {
                 </Tr>
               </Thead>
               <Tbody>
-                {driStats.map(row => (
+                {filteredDriStats.map(row => (
                   <Tr key={row.dri._id} className="cursor-pointer" onClick={() => selectDRI(row.dri)}>
                     <Td className="whitespace-nowrap truncate">
                       <div className="flex items-center gap-2 min-w-0">
@@ -853,21 +930,45 @@ export default function DRIDashboard() {
       </div>
 
       {/* Summary stats */}
-      {!detailLoading && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-5">
-          <KPICard label="Contractors" value={vendorGroups.length} icon={Users} accent="var(--theme-primary)" />
-          <KPICard label="Work Orders" value={projectWOs.length} icon={Briefcase} accent="#3B82F6" />
-          <KPICard label="Bill Requests" value={projectBills.length} icon={FileText} accent="#A855F7" />
-          <KPICard label="Approved" value={projectBills.filter(b => b.status === "approved").length} icon={CheckCircle2} accent="#10B981" />
-        </div>
-      )}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-5">
+        <KPICard label="Contractors" value={vendorGroups.length} icon={Users} accent="var(--theme-primary)" />
+        <KPICard label="Work Orders" value={projectWOs.length} icon={Briefcase} accent="#3B82F6" />
+        <KPICard label="Bill Requests" value={projectBills.length} icon={FileText} accent="#A855F7" />
+        <KPICard label="Approved" value={projectBills.filter(b => b.status === "approved").length} icon={CheckCircle2} accent="#10B981" />
+      </div>
 
-      {detailLoading ? (
-        <Spinner size="large" />
-      ) : (
-        <>
-          {/* Vendor + WO cards */}
-          {vendorGroups.map(vg => (
+      <div className="mb-5">
+        <SearchFilter value={detailSearch} onChange={setDetailSearch} placeholder="Search WO No, Vendor or Work Item…" />
+      </div>
+
+      <>
+          {/* Vendor + WO cards — a WO stays fully visible (all its scope
+              items) if the search matches its own WO No/vendor; otherwise
+              only its matching scope items show, and the WO is hidden
+              entirely if none match. Wrapped in its own fixed-height,
+              vertically-scrolling box — with many vendors/WOs on a project
+              this list could otherwise push the page to several screens
+              tall; this keeps it to one bounded area instead. */}
+          <div className="max-h-[70vh] overflow-y-auto pr-1">
+          {(() => {
+            const q = detailSearch.trim().toLowerCase();
+            if (!q) return vendorGroups;
+            return vendorGroups
+              .map(vg => {
+                const vendorMatches = vg.vendorName.toLowerCase().includes(q) || vg.vendorCode.toLowerCase().includes(q);
+                const wos = vg.wos
+                  .map(wo => {
+                    const woMatches = vendorMatches || wo.workOrderNo.toLowerCase().includes(q);
+                    if (woMatches) return wo;
+                    const detail = woDetails.get(wo._id);
+                    const hasMatchingItem = detail?.scopeItems.some(si => si.description.toLowerCase().includes(q));
+                    return hasMatchingItem ? wo : null;
+                  })
+                  .filter((wo): wo is WORow => !!wo);
+                return wos.length ? { ...vg, wos } : null;
+              })
+              .filter((vg): vg is typeof vendorGroups[number] => !!vg);
+          })().map(vg => (
             <div key={vg.vendorCode} className="bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700/40 rounded-lg overflow-hidden mb-4 shadow-sm">
               <div className="bg-gray-800 dark:bg-gray-900 px-5 py-3.5">
                 <div className="text-white font-bold text-[15px]">👷 {vg.vendorName}</div>
@@ -881,6 +982,12 @@ export default function DRIDashboard() {
                 const avgPct = detail?.scopeItems.length
                   ? Math.round(detail.scopeItems.reduce((s, si) => s + pctOf(si.completedQty, si.plannedQty), 0) / detail.scopeItems.length)
                   : 0;
+                // If the search only matched via a scope item's description
+                // (not this WO's own No/vendor), only show the matching
+                // items — the WO wouldn't be in this list at all otherwise.
+                const q = detailSearch.trim().toLowerCase();
+                const woOrVendorMatches = !q || wo.workOrderNo.toLowerCase().includes(q) || vg.vendorName.toLowerCase().includes(q) || vg.vendorCode.toLowerCase().includes(q);
+                const visibleScopeItems = (detail?.scopeItems ?? []).filter(si => woOrVendorMatches || si.description.toLowerCase().includes(q));
 
                 return (
                   <div key={wo._id} className="border-b border-gray-200 dark:border-gray-700/40">
@@ -904,8 +1011,10 @@ export default function DRIDashboard() {
                     {/* Scope items table */}
                     {!detail ? (
                       <Spinner size="small" />
-                    ) : detail.scopeItems.length === 0 ? (
-                      <div className="py-5 text-center text-gray-400 text-sm">No scope items defined.</div>
+                    ) : visibleScopeItems.length === 0 ? (
+                      <div className="py-5 text-center text-gray-400 text-sm">
+                        {detail.scopeItems.length === 0 ? "No scope items defined." : "No work items match your search."}
+                      </div>
                     ) : (
                       <Table className="min-w-[980px]">
                         <Thead>
@@ -922,7 +1031,7 @@ export default function DRIDashboard() {
                           </Tr>
                         </Thead>
                         <Tbody>
-                          {detail.scopeItems.map((si, idx) => {
+                          {visibleScopeItems.map((si, idx) => {
                             const p = pctOf(si.completedQty, si.plannedQty);
                             const billed = si.lastBilledQty || 0;
                             const unbilled = hasBill(wo._id) ? 0 : Math.max(0, si.completedQty - billed);
@@ -1025,7 +1134,8 @@ export default function DRIDashboard() {
                               </button>
                             )}
                           </div>
-                          <div className="flex flex-col gap-1.5 max-h-56 overflow-y-auto pr-1">
+                          <div className="max-h-56 overflow-y-auto overflow-x-auto pr-1">
+                            <div className="flex flex-col gap-1.5 min-w-max">
                             {recentEntries.map((e, i) => {
                               const openEdit = () => {
                                 setEditEntry(e);
@@ -1045,7 +1155,7 @@ export default function DRIDashboard() {
                                 <div
                                   key={e._id + i}
                                   onClick={canEditRow ? openEdit : undefined}
-                                  className={`flex gap-3 items-center text-xs rounded-md px-1.5 py-1 -mx-1.5 ${canEditRow ? "cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/40" : ""}`}
+                                  className={`flex gap-3 items-center text-xs rounded-md px-1.5 py-1 -mx-1.5 whitespace-nowrap ${canEditRow ? "cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/40" : ""}`}
                                   style={{ opacity: e.invalidated?.done ? 0.55 : 1 }}
                                 >
                                   <span className="text-gray-400 min-w-[90px] whitespace-nowrap flex items-center gap-1">
@@ -1077,6 +1187,7 @@ export default function DRIDashboard() {
                                 </div>
                               );
                             })}
+                            </div>
                           </div>
                         </div>
                       );
@@ -1086,6 +1197,7 @@ export default function DRIDashboard() {
               })}
             </div>
           ))}
+          </div>
 
           {/* Billing history */}
           {projectBills.length > 0 && (
@@ -1112,7 +1224,6 @@ export default function DRIDashboard() {
             </div>
           )}
         </>
-      )}
 
       {/* ── Add Measurement Modal (owner/edit-permission only) ──────────────────── */}
       {progModal && (
