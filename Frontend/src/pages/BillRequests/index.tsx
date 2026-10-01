@@ -99,6 +99,7 @@ interface ManualBillRow {
   manualAgmApprovedAt?: string;
   manualGmApprovedAt?: string;
   manualL3ApprovedAt?: string;
+  manualAgmApprovedBy?: { name?: string } | null;
 }
 
 interface ProjectOption { _id: string; name: string; code?: string; parentId?: string | null; }
@@ -457,7 +458,16 @@ export default function BillApproval() {
   const pendingL3Reqs = useMemo(() => billReqs.filter(r => r.status === "pending-l3" && !r.isArchived), [billReqs]);
   const pendingL4Reqs = useMemo(() => billReqs.filter(r => r.status === "pending-l4" && !r.isArchived), [billReqs]);
   const pendingManualAgm = useMemo(() => manualBills.filter(b => b.manualApprovalStatus === "pending"), [manualBills]);
-  const pendingManualGm = useMemo(() => manualBills.filter(b => b.manualApprovalStatus === "pending-gm"), [manualBills]);
+  // Hides a bill from the L2 queue when the CURRENT user is also the one who
+  // already gave its L1 (AGM) sign-off — segregation of duties means they'd
+  // just hit "The L1 approver cannot also give L2 sign-off" clicking it
+  // anyway. Matched by name (manualAgmApprovedBy is only populated with
+  // name/role here, no id) — good enough since two users sharing an exact
+  // display name is not a real scenario in this org.
+  const pendingManualGm = useMemo(() => manualBills.filter(b =>
+    b.manualApprovalStatus === "pending-gm" &&
+    !(user?.name && b.manualAgmApprovedBy?.name === user.name)
+  ), [manualBills, user?.name]);
   const pendingManualL3 = useMemo(() => manualBills.filter(b => b.manualApprovalStatus === "pending-l3"), [manualBills]);
   const pendingManualL4 = useMemo(() => manualBills.filter(b => b.manualApprovalStatus === "pending-l4"), [manualBills]);
   // Which manual bills belong under a given reqTab — mirrors the BillRequest
