@@ -54,11 +54,6 @@ function durationLabel(stage: InstanceStage): string {
 function stageVisual(stage: InstanceStage, isLast: boolean, instanceCompleted: boolean) {
   if (stage.status === "completed") {
     if (stage.breached) return { color: "#DC2626", status: "Breached" };
-    // No completedBy means no one actually acted on this stage — it was
-    // auto-skipped (e.g. a department configured for fewer approval levels
-    // than this entity's generic stage template has), not really approved,
-    // so the timeline must say so rather than implying a real sign-off.
-    if (!stage.completedBy) return { color: "#9CA3AF", status: "Skipped" };
     return { color: "#16A34A", status: isLast && instanceCompleted ? "Approved" : "Completed" };
   }
   if (stage.status === "in-progress") {
@@ -94,7 +89,18 @@ export default function SlaTimeline({ entityType, entityId }: { entityType: "Wor
 
   if (!loaded || !instance || instance.stages.length === 0) return null;
 
-  const currentIndex = instance.stages.findIndex((s) => s.status !== "completed");
+  // A stage completed with no completedBy was never actually acted on by
+  // anyone — it was auto-skipped because this entity's department is
+  // configured for fewer approval levels than the generic SLA template has
+  // (e.g. a 2-level department skips the Approver/GM stage entirely). It
+  // must not render as a real step in the timeline at all, not even as a
+  // "Skipped" entry — the real approval chain never passed through it, so
+  // showing it (under any label) reads as one extra stage that doesn't
+  // exist for this entity.
+  const visibleStages = instance.stages.filter((s) => !(s.status === "completed" && !s.completedBy));
+  if (visibleStages.length === 0) return null;
+
+  const currentIndex = visibleStages.findIndex((s) => s.status !== "completed");
 
   return (
     <div className="mt-1">
@@ -102,8 +108,8 @@ export default function SlaTimeline({ entityType, entityId }: { entityType: "Wor
         SLA Timeline
       </div>
       <div className="flex flex-col">
-        {instance.stages.map((stage, i) => {
-          const isLast = i === instance.stages.length - 1;
+        {visibleStages.map((stage, i) => {
+          const isLast = i === visibleStages.length - 1;
           const isCurrent = i === currentIndex || (currentIndex === -1 && isLast);
           const { color, status } = stageVisual(stage, isLast, instance.status === "completed");
           // A stage that hasn't started yet has no one who's "initiated"
