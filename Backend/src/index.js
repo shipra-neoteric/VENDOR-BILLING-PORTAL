@@ -20,6 +20,14 @@ connectDB().then(async () => {
   await seedCategories();
   await seedCompanies();
   await seedUsers();
+}).catch((err) => {
+  // Startup seeding is best-effort housekeeping, not a prerequisite for the
+  // server to actually serve traffic — the app.listen() below runs
+  // regardless of whether this chain ever resolves. An uncaught rejection
+  // here crashed the ENTIRE Node process on every boot (not just this one
+  // seed step), since nothing else in this file was around to catch it —
+  // logging instead keeps the server up even when a seed step fails.
+  console.error('[startup] seeding failed (server continues running):', err);
 });
 
 const app = express();
