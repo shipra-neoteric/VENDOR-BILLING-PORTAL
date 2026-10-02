@@ -56,6 +56,7 @@ export interface BillApprovalExportRow {
   billNo: string;
   description: string;
   project: string;
+  company: string;
   stage: string;
   requestedOn: string;
   days: string;
@@ -79,9 +80,9 @@ function BillApprovalExportDocument({ rows, dateRangeLabel }: { rows: BillApprov
 
         <DataTable
           title="Bill Approval — Pending Bills"
-          columns={["Bill No.", "Description", "Project", "Stage", "Requested On", "Days"]}
-          widths={[0.9, 1.8, 1.2, 1.2, 1, 0.6]}
-          rows={rows.map(r => [r.billNo, r.description, r.project, r.stage, r.requestedOn, r.days])}
+          columns={["Bill No.", "Requested On", "Description", "Project", "Company", "Stage", "Pending Days"]}
+          widths={[0.8, 0.9, 1.5, 1, 1.1, 1.1, 0.7]}
+          rows={rows.map(r => [r.billNo, r.requestedOn, r.description, r.project, r.company, r.stage, r.days])}
           emptyLabel="No pending bills match the current filters."
         />
       </Page>

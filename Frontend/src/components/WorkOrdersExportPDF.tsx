@@ -50,15 +50,13 @@ function DataTable({ title, columns, widths, rows, emptyLabel }: { title: string
 
 export interface WorkOrderExportRow {
   woNo: string;
-  date: string;
+  created: string;
   project: string;
   category: string;
   vendorCode: string;
   companyName: string;
-  contractValue: string;
-  status: string;
   step: string;
-  created: string;
+  pendingDays: string;
 }
 
 function WorkOrdersExportDocument({ rows, dateRangeLabel }: { rows: WorkOrderExportRow[]; dateRangeLabel: string }) {
@@ -79,9 +77,9 @@ function WorkOrdersExportDocument({ rows, dateRangeLabel }: { rows: WorkOrderExp
 
         <DataTable
           title="Work Orders"
-          columns={["WO No.", "Date", "Project", "Category", "Vendor Code", "Company Name", "Contract Value", "Status", "Step", "Created"]}
-          widths={[0.9, 0.8, 1.2, 1, 0.9, 1.2, 1, 0.9, 1, 0.8]}
-          rows={rows.map(r => [r.woNo, r.date, r.project, r.category, r.vendorCode, r.companyName, r.contractValue, r.status, r.step, r.created])}
+          columns={["WO No.", "Date of Creation", "Project", "Category", "Vendor Code", "Company Name", "Step", "Pending Days"]}
+          widths={[0.9, 0.9, 1.3, 1, 0.9, 1.3, 1.1, 1]}
+          rows={rows.map(r => [r.woNo, r.created, r.project, r.category, r.vendorCode, r.companyName, r.step, r.pendingDays])}
           emptyLabel="No work orders match the current filters."
         />
       </Page>

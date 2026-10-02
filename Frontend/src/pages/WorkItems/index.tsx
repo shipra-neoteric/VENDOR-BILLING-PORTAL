@@ -1909,23 +1909,34 @@ export default function WorkItems() {
   // search/status/category/dept/project/date-range — whatever's applied),
   // same visual style as the Daily Progress Report PDF.
   function downloadWorkOrdersPDFExport() {
-    const rows: WorkOrderExportRow[] = filtered.map(wo => ({
-      woNo: wo.workOrderNo,
-      date: wo.issueDate ? dayjs(wo.issueDate).format("DD MMM YYYY") : "",
-      project: wo.projectName,
-      category: wo.category || "",
-      vendorCode: wo.vendorCode || "",
-      companyName: wo.vendorName || "",
-      contractValue: fmt(wo.contractValue || 0),
-      status: displayStatus(wo.status).label,
-      step: (() => {
-        const st = approvalStatusOf(wo);
-        if ((STEP_KEYS as string[]).includes(st)) return `${APPROVAL_STATUS_CFG[st].level} Pending`;
-        if (st === "sent-back") return "Sent Back";
-        return "Approved";
-      })(),
-      created: wo.createdAt ? dayjs(wo.createdAt).format("DD MMM YYYY") : "",
-    }));
+    const rows: WorkOrderExportRow[] = filtered.map(wo => {
+      // Pending Days = time since the WO entered its CURRENT step — the last
+      // approvalHistory entry's timestamp (append-only log; its most recent
+      // entry is exactly the action that pushed the WO into whatever step
+      // it's sitting at now), not the WO's own creation date.
+      const lastHistoryAt = wo.approvalHistory?.length
+        ? wo.approvalHistory[wo.approvalHistory.length - 1].at
+        : undefined;
+      const pendingSinceDate = lastHistoryAt || wo.createdAt;
+      const pendingDays = pendingSinceDate
+        ? String(Math.floor((Date.now() - new Date(pendingSinceDate).getTime()) / (24 * 60 * 60 * 1000)))
+        : "";
+      return {
+        woNo: wo.workOrderNo,
+        created: wo.createdAt ? dayjs(wo.createdAt).format("DD MMM YYYY") : "",
+        project: wo.projectName,
+        category: wo.category || "",
+        vendorCode: wo.vendorCode || "",
+        companyName: wo.vendorName || "",
+        step: (() => {
+          const st = approvalStatusOf(wo);
+          if ((STEP_KEYS as string[]).includes(st)) return `${APPROVAL_STATUS_CFG[st].level} Pending`;
+          if (st === "sent-back") return "Sent Back";
+          return "Approved";
+        })(),
+        pendingDays,
+      };
+    });
     const dateRangeLabel = dateFrom && dateTo
       ? `${dateFrom.format("DD MMM YYYY")} - ${dateTo.format("DD MMM YYYY")}`
       : dateFrom
