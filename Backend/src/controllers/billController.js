@@ -919,7 +919,7 @@ async function manualGmApproveHandler(req, res) {
   if (bill.manualApprovalStatus !== 'pending-gm') {
     return badRequest(res, `This bill's AGM/GM sign-off is already ${bill.manualApprovalStatus}`);
   }
-  if (bill.manualAgmApprovedBy && bill.manualAgmApprovedBy.toString() === req.user._id.toString() && req.user.role !== 'owner') {
+  if (bill.manualAgmApprovedBy && bill.manualAgmApprovedBy.toString() === req.user._id.toString() && req.user.role !== 'owner' && req.user.role !== 'CEO') {
     return badRequest(res, 'The L1 approver cannot also give L2 sign-off — segregation of duties requires a different approver.');
   }
 
@@ -1471,6 +1471,19 @@ exports.tmsCallback = asyncHandler(async (req, res) => {
 function hasAction(user, module, action) {
   const perm = (user.permissions || []).find(p => p.module === module);
   return !!perm?.actions?.includes(action);
+}
+
+// Segregation-of-duty self-checks below (one approver can't also sign the
+// next stage of the SAME bill) are the default — but if User Management's
+// permission matrix has explicitly granted someone BOTH actions in a pair,
+// that explicit grant is the admin's call that this person may carry a bill
+// through both stages, and it must win over the default block. Same pattern
+// as hasBothWOPermissions in workOrderController.js. Owner is exempt outright
+// (routinely does every stage alone); everyone else — including CEO — needs
+// both permissions actually granted, nothing is auto-bypassed by role alone.
+function hasBothBillPermissions(user, module, action1, action2) {
+  if (user.role === 'owner') return true;
+  return hasAction(user, module, action1) && hasAction(user, module, action2);
 }
 
 // Reject means two different things depending on where the bill currently

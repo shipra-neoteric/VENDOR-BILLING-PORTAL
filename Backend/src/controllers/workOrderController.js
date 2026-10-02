@@ -20,10 +20,12 @@ const { getWoApprovalConfig, woApproverAllowed } = require('../utils/woApprovalR
 // through both; that explicit grant must win over the default restriction,
 // not get silently blocked by it.
 function hasBothWOPermissions(user, action1, action2) {
-  // Owner is exempt from every segregation-of-duty self-check that calls
-  // this — same as the department-approver-config bypass in woApproverAllowed
-  // (woApprovalRules.js) — Owner routinely does every stage alone.
-  if (user.role === 'owner') return true;
+  // Owner (and CEO — the top approver in this org, same standing as Owner
+  // for this purpose) is exempt from every segregation-of-duty self-check
+  // that calls this — same as the department-approver-config bypass in
+  // woApproverAllowed (woApprovalRules.js) — Owner/CEO routinely does every
+  // stage alone.
+  if (user.role === 'owner' || user.role === 'CEO') return true;
   const actions = (user.permissions || []).find((p) => p.module === 'work-orders')?.actions || [];
   return actions.includes(action1) && actions.includes(action2);
 }
