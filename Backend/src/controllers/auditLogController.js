@@ -2,15 +2,16 @@ const AuditLog = require('../models/AuditLog');
 const asyncHandler = require('../utils/asyncHandler');
 const { success } = require('../utils/responseFormatter');
 
-// GET /api/audit-logs?module=&action=&source=&dateFrom=&dateTo=&search=&page=&limit=
+// GET /api/audit-logs?module=&action=&source=&userEmail=&dateFrom=&dateTo=&search=&page=&limit=
 exports.listAuditLogs = asyncHandler(async (req, res) => {
-  const { module, action, source, dateFrom, dateTo, search } = req.query;
+  const { module, action, source, userEmail, dateFrom, dateTo, search } = req.query;
   const page  = Math.max(1, Number(req.query.page) || 1);
   const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 50));
 
   const filter = {};
   if (module) filter.module = module;
   if (action) filter.action = action;
+  if (userEmail) filter.userEmail = userEmail;
   // "System" covers webhook/cron/public-form actors, which are written with
   // userId: null (see utils/auditLog.js) since there's no logged-in user to
   // attribute them to.
@@ -36,6 +37,33 @@ exports.listAuditLogs = asyncHandler(async (req, res) => {
   ]);
 
   success(res, { logs, total, page, limit });
+});
+
+// GET /api/audit-logs/users?module= — one row per distinct actor who has at
+// least one log in this module, {userEmail, userName, count, lastActivityAt},
+// newest-active first. Powers the module page's own user-picker landing
+// view (click a user to drill into just their logs) instead of dumping
+// every raw log row immediately. "System" actors (userId: null — webhook/
+// cron/public-form writes, see utils/auditLog.js) are grouped under a
+// single synthetic userEmail: '' row so they don't vanish from this list.
+exports.listAuditLogUsers = asyncHandler(async (req, res) => {
+  const { module } = req.query;
+  const match = {};
+  if (module) match.module = module;
+
+  const users = await AuditLog.aggregate([
+    { $match: match },
+    { $group: {
+      _id: { $ifNull: ['$userEmail', ''] },
+      userName: { $first: '$userName' },
+      count: { $sum: 1 },
+      lastActivityAt: { $max: '$createdAt' },
+    } },
+    { $project: { _id: 0, userEmail: '$_id', userName: 1, count: 1, lastActivityAt: 1 } },
+    { $sort: { lastActivityAt: -1 } },
+  ]);
+
+  success(res, { users });
 });
 
 // GET /api/audit-logs/summary — per-module {module, count, lastActivityAt},
