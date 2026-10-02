@@ -91,7 +91,7 @@ interface BillRequestRow {
 // manualAgmApprove/manualGmApprove/manualReject).
 interface ManualBillRow {
   _id: string; billNo: string; amount: number; workOrderId?: string; workOrderNo?: string;
-  projectId?: string; projectName?: string; vendorCode?: string; vendorName?: string; billDate: string; createdAt: string;
+  projectId?: string; projectName?: string; vendorCode?: string; vendorName?: string; companyName?: string; billDate: string; createdAt: string;
   manualApprovalStatus: "pending" | "pending-gm" | "pending-l3" | "pending-l4" | "approved" | "rejected";
   department?: string; customDepartment?: string;
   retentionAmount?: number; advanceRecovery?: number; supersedeDeduction?: number; gstPercent?: number;
