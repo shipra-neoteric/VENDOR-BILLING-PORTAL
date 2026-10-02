@@ -72,7 +72,6 @@ export default function PublicQuotationForm() {
   // THIS quotation (never touches the real scope item on the work order
   // itself) — same end result as leaving its rate blank, just an explicit
   // action instead of an implicit one.
-  const [excludedIds, setExcludedIds] = useState<Set<string>>(new Set());
   const [customItems, setCustomItems] = useState<CustomItem[]>([]);
   const [contractorName, setContractorName] = useState("");
   const [contractorMobile, setContractorMobile] = useState("");
@@ -94,7 +93,7 @@ export default function PublicQuotationForm() {
     setCustomItems(items => items.map(i => (i.key === key ? { ...i, ...patch } : i)));
   }
 
-  const visibleScopeItems = (context?.scopeItems || []).filter(i => !excludedIds.has(i._id));
+  const visibleScopeItems = context?.scopeItems || [];
   const customTotal = customItems.reduce((s, i) => s + (Number(i.plannedQty) || 0) * (Number(i.rate) || 0), 0);
   const total = visibleScopeItems.reduce((s, i) => s + (i.plannedQty || 0) * (Number(rates[i._id]) || 0), 0) + customTotal;
 
@@ -195,9 +194,9 @@ export default function PublicQuotationForm() {
 
             <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
               <div className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Quote a Rate Per Item</div>
-              <Table>
+              <Table className="min-w-[650px] sm:min-w-0">
                 <Thead>
-                  <Tr><Th>Description</Th><Th>Unit</Th><Th>Qty</Th><Th>Your Rate (₹)</Th><Th>Amount</Th><Th></Th></Tr>
+                  <Tr><Th>Description</Th><Th>Unit</Th><Th>Qty</Th><Th>Your Rate (₹)</Th><Th>Amount</Th></Tr>
                 </Thead>
                 <Tbody>
                   {visibleScopeItems.map(item => (
@@ -215,9 +214,6 @@ export default function PublicQuotationForm() {
                         />
                       </Td>
                       <Td><TdText>{fmt((item.plannedQty || 0) * (Number(rates[item._id]) || 0))}</TdText></Td>
-                      <Td>
-                        <Btn small outline icon={Trash2} onClick={() => setExcludedIds(s => new Set(s).add(item._id))} />
-                      </Td>
                     </Tr>
                   ))}
                 </Tbody>
