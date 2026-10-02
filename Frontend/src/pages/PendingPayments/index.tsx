@@ -77,7 +77,7 @@ export default function PendingPayments() {
       ) : rows.length === 0 ? (
         <EmptyState title="No bills match that search" message="Try a different bill number, project, or vendor." />
       ) : (
-        <Table containerClassName="max-h-[70vh]">
+        <Table containerClassName="max-h-[70vh]" className="min-w-[700px] sm:min-w-0">
           <Thead>
             <Tr>
               <Th className="w-[14%]">Bill No</Th>

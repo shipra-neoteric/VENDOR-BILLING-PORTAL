@@ -86,7 +86,7 @@ export default function PendingWorkOrders() {
       ) : rows.length === 0 ? (
         <EmptyState title="No work orders match that search" message="Try a different WO number, project, or category." />
       ) : (
-        <Table containerClassName="max-h-[70vh]">
+        <Table containerClassName="max-h-[70vh]" className="min-w-[650px] sm:min-w-0">
           <Thead>
             <Tr>
               <Th className="w-[18%]">Work Order</Th>

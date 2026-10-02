@@ -18,7 +18,7 @@ export default function TopVendorsScorecard({ vendors }: { vendors: ExecutiveDas
       {vendors.length === 0 ? (
         <EmptyState title="No vendor activity yet" message="Vendors will appear here once work orders are raised." />
       ) : (
-        <Table containerClassName="max-h-[320px] overflow-y-auto">
+        <Table containerClassName="max-h-[320px] overflow-y-auto" className="min-w-[480px] sm:min-w-0">
           <Thead>
             <Tr>
               <Th dense>Vendor</Th>
