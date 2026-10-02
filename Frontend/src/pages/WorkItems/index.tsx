@@ -2620,7 +2620,12 @@ export default function WorkItems() {
             <EmptyState icon={ClipboardList} title="No work orders yet" message='Click "New Work Order" to create your first one.' />
           ) : (
             <>
-              <Table containerClassName="h-[650px] overflow-y-auto">
+              {/* min-w-[900px] below the sm breakpoint only — table-fixed's
+                  percentage columns otherwise force-shrink every column to
+                  fit a phone's width, wrapping/overlapping text into an
+                  unreadable mess instead of just scrolling sideways. sm:min-w-0
+                  restores today's exact "no horizontal scroll" desktop fit. */}
+              <Table containerClassName="h-[650px] overflow-y-auto" className="min-w-[900px] sm:min-w-0">
                 <Thead>
                   <Tr>
                     <Th className="w-[9%]">WO No</Th>
