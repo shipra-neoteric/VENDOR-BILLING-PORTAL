@@ -438,9 +438,9 @@ export default function MdApprovals() {
             message={tab === "pending" ? "You're all caught up — nothing across any approval chain needs you right now." : "Nothing matches this view right now."}
           />
         ) : (
-        {/* min-w-[900px] below sm only — table-fixed otherwise force-shrinks
-            every column to fit a phone's width, overlapping text instead of
-            just scrolling sideways; sm:min-w-0 keeps desktop unchanged. */}
+        // min-w-[900px] below sm only — table-fixed otherwise force-shrinks
+        // every column to fit a phone's width, overlapping text instead of
+        // just scrolling sideways; sm:min-w-0 keeps desktop unchanged.
         <Table containerClassName="h-[650px] overflow-y-auto" className="min-w-[900px] sm:min-w-0">
           <Thead>
             <Tr>
