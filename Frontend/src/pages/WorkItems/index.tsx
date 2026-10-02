@@ -1350,7 +1350,7 @@ function WOFormFields({
             placeholder={isProfessionalServices ? "Select consultant" : "Select vendor"}
             value={values.vendorCode}
             onChange={isProfessionalServices ? fillConsultant : fillVendor}
-            disabled={values.noVendorYet}
+            disabled={!isEdit && values.noVendorYet}
             options={isProfessionalServices
               ? consultantsList.map(c => ({ label: `${c.consultantCode} — ${c.firmName}`, value: c.consultantCode }))
               // Archived (inactive) vendors shouldn't be pickable for a new/changed
@@ -2130,7 +2130,12 @@ export default function WorkItems() {
       subCategory: wo.subCategory || "",
       department: wo.department || "",
       customDepartment: wo.customDepartment || "",
-      noVendorYet: false,
+      // A WO created with "No vendor yet" still has no vendorCode here — it
+      // isn't meant to be forced on through this generic Edit form, only
+      // through Quotation Comparison's own approveQuotation. The checkbox
+      // itself stays hidden on Edit either way (isEdit guards it below),
+      // this just carries the same bypass through to validateWOForm.
+      noVendorYet: !wo.vendorCode,
       status: wo.status || "draft",
       gstPercent: wo.gstPercent ?? 18,
       retentionPercent: (wo as any).retentionPercent ?? 0,
