@@ -301,15 +301,21 @@ exports.createWorkOrder = asyncHandler(async (req, res) => {
 
   // Professional-services WOs resolve their party against Consultant instead
   // of Contractor — vendorCode doubles as the lookup key into either
-  // collection (CN-/VC- prefixes never collide).
+  // collection (CN-/VC- prefixes never collide). A blank vendorCode is the
+  // "No vendor yet — select later via Quotation Comparison" path (see
+  // WorkItems/index.tsx) — no party to look up yet, so this skips straight
+  // past the lookup instead of 404ing on an empty code.
   const isProfessionalServices = req.body.contractType === 'professional-services';
-  const party = isProfessionalServices
-    ? await Consultant.findOne({ consultantCode: req.body.vendorCode })
-    : await Contractor.findOne({ vendorCode: req.body.vendorCode });
-  if (!party) {
-    return notFound(res, isProfessionalServices
-      ? 'Consultant not found for this consultant code'
-      : 'Contractor not found for this vendor code');
+  let party = null;
+  if (req.body.vendorCode) {
+    party = isProfessionalServices
+      ? await Consultant.findOne({ consultantCode: req.body.vendorCode })
+      : await Contractor.findOne({ vendorCode: req.body.vendorCode });
+    if (!party) {
+      return notFound(res, isProfessionalServices
+        ? 'Consultant not found for this consultant code'
+        : 'Contractor not found for this vendor code');
+    }
   }
 
   let workOrderNo = (req.body.workOrderNo || '').trim();
@@ -338,9 +344,9 @@ exports.createWorkOrder = asyncHandler(async (req, res) => {
     companyName,
     projectName: project.name,
     projectLocation: req.body.projectLocation || '',
-    vendorName:  isProfessionalServices ? party.firmName : party.companyName,
-    ownerName:   isProfessionalServices ? party.principalName : party.ownerName,
-    mobile:      party.mobile,
+    vendorName:  party ? (isProfessionalServices ? party.firmName : party.companyName) : '',
+    ownerName:   party ? (isProfessionalServices ? party.principalName : party.ownerName) : '',
+    mobile:      party?.mobile || '',
     assignedDRI,
     preparedByName:    req.user.name,
     preparedByContact: req.user.email,
@@ -430,18 +436,26 @@ exports.updateWorkOrder = asyncHandler(async (req, res) => {
   // against the NEW vendor, otherwise vendorCode and vendorName end up
   // pointing at two different vendors.
   if ('vendorCode' in updateData && updateData.vendorCode !== before.vendorCode) {
-    const isProfessionalServices = (updateData.contractType || before.contractType) === 'professional-services';
-    const party = isProfessionalServices
-      ? await Consultant.findOne({ consultantCode: updateData.vendorCode })
-      : await Contractor.findOne({ vendorCode: updateData.vendorCode });
-    if (!party) {
-      return notFound(res, isProfessionalServices
-        ? 'Consultant not found for this consultant code'
-        : 'Contractor not found for this vendor code');
+    if (!updateData.vendorCode) {
+      // Cleared back to "no vendor yet" — same as createWorkOrder's own
+      // blank-vendorCode path, no party to look up.
+      updateData.vendorName = '';
+      updateData.ownerName  = '';
+      updateData.mobile     = '';
+    } else {
+      const isProfessionalServices = (updateData.contractType || before.contractType) === 'professional-services';
+      const party = isProfessionalServices
+        ? await Consultant.findOne({ consultantCode: updateData.vendorCode })
+        : await Contractor.findOne({ vendorCode: updateData.vendorCode });
+      if (!party) {
+        return notFound(res, isProfessionalServices
+          ? 'Consultant not found for this consultant code'
+          : 'Contractor not found for this vendor code');
+      }
+      updateData.vendorName = isProfessionalServices ? party.firmName : party.companyName;
+      updateData.ownerName  = isProfessionalServices ? party.principalName : party.ownerName;
+      updateData.mobile     = party.mobile;
     }
-    updateData.vendorName = isProfessionalServices ? party.firmName : party.companyName;
-    updateData.ownerName  = isProfessionalServices ? party.principalName : party.ownerName;
-    updateData.mobile     = party.mobile;
   }
 
   // Editing a work order mid-chain (pending-checker/approver/final) or after

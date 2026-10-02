@@ -81,7 +81,7 @@ exports.submitQuotation = asyncHandler(async (req, res) => {
 // unscoped public route below.
 exports.getWorkOrderQuotationContext = asyncHandler(async (req, res) => {
   const workOrder = await WorkOrder.findById(req.params.workOrderId)
-    .select('workOrderNo projectName vendorName isLocked scopeItems.description scopeItems.unit scopeItems.plannedQty')
+    .select('workOrderNo projectName vendorName description isLocked scopeItems.description scopeItems.unit scopeItems.plannedQty')
     .lean();
   if (!workOrder) return notFound(res, 'Work order not found');
 
@@ -90,6 +90,7 @@ exports.getWorkOrderQuotationContext = asyncHandler(async (req, res) => {
       _id: workOrder._id,
       workOrderNo: workOrder.workOrderNo,
       projectName: workOrder.projectName,
+      description: workOrder.description || '',
       // isLocked kept for reference, but it's no longer what actually gates
       // whether quotations are accepted (see submitQuotation/approveQuotation
       // above) — quotationsClosed reflects the real cutoff (a bill already

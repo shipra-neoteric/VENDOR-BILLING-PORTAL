@@ -27,6 +27,7 @@ interface WorkOrderContext {
   _id: string;
   workOrderNo: string;
   projectName: string;
+  description: string;
   // Whether a bill already exists for this WO — the real cutoff for
   // quotations now (a WO's own approval-lock happens independently, often
   // long before any billing starts, so it's no longer what closes this).
@@ -173,6 +174,9 @@ export default function PublicQuotationForm() {
               <p className="text-sm text-gray-500 mt-1">
                 {context.workOrderNo} · {context.projectName}
               </p>
+              {context.description && (
+                <p className="text-sm text-gray-600 mt-2 whitespace-pre-wrap">{context.description}</p>
+              )}
             </div>
 
             <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
