@@ -67,7 +67,10 @@ interface BillRequestRow {
   agmApprovedAt?: string;
   gmApprovedBy?: { name: string; role?: string } | string | null;
   gmApprovedAt?: string;
+  l3ApprovedBy?: { name: string; role?: string } | string | null;
   l3ApprovedAt?: string;
+  l4ApprovedBy?: { name: string; role?: string } | string | null;
+  l4ApprovedAt?: string;
   processedBy?: { name: string; role?: string } | string | null;
   processedAt?: string;
   retentionAmount?: number;
@@ -332,6 +335,15 @@ async function printBillRequest(br: BillRequestRow) {
       // separate Accounts Payment "Verify" step.
       gmApprovedBy: br.gmApprovedBy ? { name: actorName(br.gmApprovedBy) || "—", role: actorRole(br.gmApprovedBy) } : null,
       gmApprovedAt: br.gmApprovedAt,
+      // Same reasoning as gmApprovedBy above — a 4-level department's
+      // request still mid-chain past L3 has no RunningBill yet either, so
+      // L3's sign-off must come straight off the BillRequest too. Previously
+      // missing here, which silently dropped the L3 (and L4) signature
+      // column from the print for any such request.
+      l3ApprovedBy: br.l3ApprovedBy ? { name: actorName(br.l3ApprovedBy) || "—", role: actorRole(br.l3ApprovedBy) } : null,
+      l3ApprovedAt: br.l3ApprovedAt,
+      l4ApprovedBy: br.l4ApprovedBy ? { name: actorName(br.l4ApprovedBy) || "—", role: actorRole(br.l4ApprovedBy) } : null,
+      l4ApprovedAt: br.l4ApprovedAt,
       approvedBy: null,
       paymentInitiatedBy: null,
     };
