@@ -1169,6 +1169,18 @@ function WOFormFields({
   const [extractNote, setExtractNote] = useState("");
   const isProfessionalServices = values.contractType === "professional-services";
 
+  // Custom teams already registered in User Management → Departments (via
+  // "Add Department", or just picked once before on some other WO) — listed
+  // here directly so picking one again is a single click instead of
+  // re-typing the exact name under "Custom Team" and risking a typo that'd
+  // silently create a second, disconnected department.
+  const [registeredCustomDepts, setRegisteredCustomDepts] = useState<string[]>([]);
+  useEffect(() => {
+    apiClient.get<{ rules: { department: string; isCustom: boolean }[] }>("/approval-rules")
+      .then(r => setRegisteredCustomDepts((r.data.rules || []).filter(x => x.isCustom).map(x => x.department)))
+      .catch(() => {});
+  }, []);
+
   const handleExtract = async () => {
     const target = [...values.documents].reverse().find(d => /\.(pdf|jpe?g|png)$/i.test(d.name));
     if (!target) {
@@ -1295,20 +1307,27 @@ function WOFormFields({
         <SField
           label="Department"
           placeholder="Select department (optional)"
-          value={values.department}
-          onChange={v => onChange({ department: v, ...(v !== "custom" ? { customDepartment: "" } : {}) })}
+          value={values.department === "custom" && registeredCustomDepts.includes(values.customDepartment) ? `custom:${values.customDepartment}` : values.department}
+          onChange={v => {
+            if (v.startsWith("custom:")) {
+              onChange({ department: "custom", customDepartment: v.slice("custom:".length) });
+            } else {
+              onChange({ department: v, ...(v !== "custom" ? { customDepartment: "" } : {}) });
+            }
+          }}
           options={[
             { value: "", label: "— None —" },
             { value: "civil", label: "Civil Team" },
             { value: "marketing", label: "Marketing Team" },
             { value: "planning", label: "Planning Team" },
             { value: "maintenance", label: "Maintenance Team" },
-            { value: "custom", label: "Custom Team" },
+            ...registeredCustomDepts.map(name => ({ value: `custom:${name}`, label: name })),
+            { value: "custom", label: "Custom" },
           ]}
         />
       </div>
 
-      {values.department === "custom" && (
+      {values.department === "custom" && !registeredCustomDepts.includes(values.customDepartment) && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
           <Field
             label="Custom Team Name"

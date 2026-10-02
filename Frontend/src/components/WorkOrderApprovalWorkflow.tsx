@@ -53,6 +53,12 @@ export interface ApprovalWorkOrder {
   approverBy?: ActorRef; approverAt?: string; approverRemarks?: string;
   finalApprovedBy?: ActorRef; finalApprovedAt?: string; finalRemarks?: string;
   approvalHistory?: ApprovalHistoryEntry[];
+  // Needed to look up this WO's department-specific approval-level count
+  // (2 = Checker→Final, skipping Approver entirely — see
+  // workOrderController.js's checkerApprove) so the cycles table below shows
+  // the right columns instead of a permanently-blank "L3" for every such WO.
+  department?: string;
+  customDepartment?: string;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -175,7 +181,7 @@ function CycleCell({
 // but organized as one row per submit→resolution cycle instead of one flat
 // event list, so a sent-back-and-resubmitted work order shows its prior
 // cycle's approvals and its new cycle's approvals as clearly separate rows.
-function ApprovalCyclesTable({ history, actorLabel, showAllCycles }: { history: ApprovalHistoryEntry[]; actorLabel: (by: ActorRef | undefined, roleFallback: string, at?: string | null, byName?: string, byRole?: string) => string; showAllCycles: boolean }) {
+function ApprovalCyclesTable({ history, actorLabel, showAllCycles, stages, stageLabels }: { history: ApprovalHistoryEntry[]; actorLabel: (by: ActorRef | undefined, roleFallback: string, at?: string | null, byName?: string, byRole?: string) => string; showAllCycles: boolean; stages: ApprovalStage[]; stageLabels: Record<ApprovalStage, string> }) {
   const allCycles = groupIntoCycles(history);
   if (allCycles.length === 0) {
     return <div className="text-[12.5px] text-gray-400">No workflow activity yet.</div>;
@@ -189,7 +195,7 @@ function ApprovalCyclesTable({ history, actorLabel, showAllCycles }: { history: 
       <Thead>
         <Tr>
           <Th>Cycle</Th>
-          {STAGE_ORDER.map(stage => <Th key={stage}>{TABLE_ROLE_LABEL[stage]}</Th>)}
+          {stages.map(stage => <Th key={stage}>{stageLabels[stage]}</Th>)}
         </Tr>
       </Thead>
       <Tbody>
@@ -198,11 +204,11 @@ function ApprovalCyclesTable({ history, actorLabel, showAllCycles }: { history: 
             <Td className="align-top text-[12.5px] font-semibold text-gray-500 dark:text-gray-400 whitespace-nowrap">
               #{startIndex + i + 1}{i === cycles.length - 1 && <div className="text-[10px] font-bold text-primary uppercase mt-0.5">Current</div>}
             </Td>
-            {STAGE_ORDER.map(stage => {
+            {stages.map(stage => {
               if (stage === "maker") {
                 return (
                   <Td key={stage} className="align-top">
-                    {cycle.maker ? <CycleCell action="submitted" entry={cycle.maker} actorLabel={actorLabel} roleLabel={TABLE_ROLE_LABEL.maker} /> : <span className="text-gray-300">—</span>}
+                    {cycle.maker ? <CycleCell action="submitted" entry={cycle.maker} actorLabel={actorLabel} roleLabel={stageLabels.maker} /> : <span className="text-gray-300">—</span>}
                   </Td>
                 );
               }
@@ -211,9 +217,9 @@ function ApprovalCyclesTable({ history, actorLabel, showAllCycles }: { history: 
               return (
                 <Td key={stage} className="align-top">
                   {approved ? (
-                    <CycleCell action="approved" entry={approved} actorLabel={actorLabel} roleLabel={TABLE_ROLE_LABEL[stage]} />
+                    <CycleCell action="approved" entry={approved} actorLabel={actorLabel} roleLabel={stageLabels[stage]} />
                   ) : rejectedHere ? (
-                    <CycleCell action="sent-back" entry={rejectedHere} actorLabel={actorLabel} roleLabel={TABLE_ROLE_LABEL[stage]} />
+                    <CycleCell action="sent-back" entry={rejectedHere} actorLabel={actorLabel} roleLabel={stageLabels[stage]} />
                   ) : (
                     <span className="text-gray-300">—</span>
                   )}
@@ -263,6 +269,23 @@ export default function WorkOrderApprovalWorkflow<T extends ApprovalWorkOrder>({
       })
       .catch(() => {});
   }, []);
+
+  // This department's own Work Order approval-level count (2 = Checker→
+  // Final, Approver skipped entirely — see workOrderController.js's
+  // checkerApprove) so the cycles table below shows the right columns
+  // instead of a permanently-blank "Approver" for every such WO.
+  const [woLevelsByDept, setWoLevelsByDept] = useState<Record<string, number>>({});
+  useEffect(() => {
+    apiClient.get<{ rules: { department: string; woRequiredApprovals: number }[] }>("/approval-rules")
+      .then(r => setWoLevelsByDept(Object.fromEntries((r.data.rules || []).map(x => [x.department, x.woRequiredApprovals]))))
+      .catch(() => {});
+  }, []);
+  const effectiveWoDept = wo.department === "custom" ? (wo.customDepartment || "") : (wo.department || "");
+  const woLevels = woLevelsByDept[effectiveWoDept] ?? 3;
+  const stages: ApprovalStage[] = woLevels <= 2 ? ["maker", "checker", "final"] : STAGE_ORDER;
+  const stageLabels: Record<ApprovalStage, string> = woLevels <= 2
+    ? { maker: "L1 (Maker)", checker: "L2", approver: "", final: "L3 (Final)" }
+    : TABLE_ROLE_LABEL;
 
   const [submitRemarks, setSubmitRemarks]     = useState("");
   const [submitSaving,  setSubmitSaving]      = useState(false);
@@ -476,7 +499,7 @@ export default function WorkOrderApprovalWorkflow<T extends ApprovalWorkOrder>({
       <div className="text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2.5">
         Approval Workflow &amp; Signatures
       </div>
-      <ApprovalCyclesTable history={wo.approvalHistory || []} actorLabel={actorLabel} showAllCycles={user?.role === "owner"} />
+      <ApprovalCyclesTable history={wo.approvalHistory || []} actorLabel={actorLabel} showAllCycles={user?.role === "owner"} stages={stages} stageLabels={stageLabels} />
 
       <div className="mt-3.5">
         <SlaTimeline entityType="WorkOrder" entityId={wo._id} />

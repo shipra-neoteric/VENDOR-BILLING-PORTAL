@@ -79,11 +79,15 @@ export default function EditUser() {
       .catch(() => {});
   }, []);
 
+  const [registeredCustomDepts, setRegisteredCustomDepts] = useState<string[]>([]);
   useEffect(() => {
-    apiClient.get<{ rules: { department: string; requiredApprovals: number }[] }>("/approval-rules")
-      .then(r => setApprovalLevelsByDept(
-        Object.fromEntries((r.data.rules ?? []).map(rule => [rule.department, rule.requiredApprovals]))
-      ))
+    apiClient.get<{ rules: { department: string; requiredApprovals: number; isCustom: boolean }[] }>("/approval-rules")
+      .then(r => {
+        setApprovalLevelsByDept(
+          Object.fromEntries((r.data.rules ?? []).map(rule => [rule.department, rule.requiredApprovals]))
+        );
+        setRegisteredCustomDepts((r.data.rules ?? []).filter(x => x.isCustom).map(x => x.department));
+      })
       .catch(() => {});
   }, []);
 
@@ -242,24 +246,38 @@ export default function EditUser() {
           <MultiSelect
             label="Department"
             placeholder="Select department(s)"
-            values={departmentsField}
+            // A custom department has only one slot in the data model (one
+            // department:'custom' + customDepartmentField pair) — so a
+            // registered custom name (e.g. "MDO") shows here as its own
+            // checked entry only when it's the one currently occupying that
+            // slot; picking a different registered name below replaces it.
+            values={departmentsField.includes("custom") && registeredCustomDepts.includes(customDepartmentField)
+              ? [...departmentsField.filter(d => d !== "custom"), `custom:${customDepartmentField}`]
+              : departmentsField}
             onChange={(v) => {
-              setDepartmentsField(v);
-              if (!v.includes("custom")) setCustomDepartmentField("");
+              const customPicks = v.filter(x => x.startsWith("custom:"));
+              if (customPicks.length) {
+                setCustomDepartmentField(customPicks[customPicks.length - 1].slice("custom:".length));
+                setDepartmentsField([...v.filter(x => !x.startsWith("custom:")), "custom"]);
+              } else {
+                setDepartmentsField(v);
+                if (!v.includes("custom")) setCustomDepartmentField("");
+              }
             }}
             options={[
               { value: "civil", label: "Civil Team" },
               { value: "marketing", label: "Marketing Team" },
               { value: "planning", label: "Planning Team" },
               { value: "maintenance", label: "Maintenance Team" },
-              { value: "custom", label: "Custom Team" },
+              ...registeredCustomDepts.map(name => ({ value: `custom:${name}`, label: name })),
+              { value: "custom", label: "Custom" },
             ]}
           />
           <div className="text-xs text-gray-400 mt-1">
             Every team whose bills this person should see and be able to approve in Bill Approval — check all that apply.
           </div>
         </div>
-        {departmentsField.includes("custom") && (
+        {departmentsField.includes("custom") && !registeredCustomDepts.includes(customDepartmentField) && (
           <Field
             label="Custom Team Name"
             placeholder="e.g. Legal, IT, Procurement"

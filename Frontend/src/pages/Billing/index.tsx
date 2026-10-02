@@ -113,6 +113,15 @@ interface Bill {
   // only the RunningBill-level fallbacks for older/batch-created bills.
   agmApprovedBy?: { name: string } | null;
   agmApprovedAt?: string;
+  // Only set on a merged-in BillRequest row whose department needed more
+  // than 2 levels — see approvalHistory's own comment above; these mirror
+  // agmApprovedBy's shape so printBill's signature block can read them.
+  gmApprovedBy?: { name: string } | null;
+  gmApprovedAt?: string;
+  l3ApprovedBy?: { name: string } | null;
+  l3ApprovedAt?: string;
+  l4ApprovedBy?: { name: string } | null;
+  l4ApprovedAt?: string;
   // A manually created bill (Billing → New Bill) has no BillRequest at all —
   // this is its own, separate AGM/GM sign-off chain instead.
   manualAgmApprovedBy?: { name: string } | null;
@@ -257,7 +266,26 @@ export default function Billing() {
       const payeeContractor = bill.payeeVendorCode && bill.payeeVendorCode !== bill.vendorCode
         ? await resolvePrintParty(bill.payeeVendorCode)
         : null;
-      printBill(bill, contractor, bill.status === "paid" ? "post" : "pre", undefined, payeeContractor);
+      // A merged-in BillRequest row (billType === 'bill_request') never
+      // carries the flat agmApprovedBy/gmApprovedBy/etc. fields the print
+      // template's signature block reads — only approvalHistory (used for
+      // the "Bill Request Approvals" table above) — so the printout showed
+      // a blank L1/L2 signature even once actually approved. Derived here,
+      // same stage/byName/at shape printBillRequest's own pseudoBill build
+      // already uses on the BillRequests page.
+      const approvalByStage = (stage: string) => bill.approvalHistory?.find(h => h.stage === stage && h.action === "approved");
+      const printableBill = bill.billType === "bill_request" ? {
+        ...bill,
+        agmApprovedBy: approvalByStage("agm")?.byName ? { name: approvalByStage("agm")!.byName! } : bill.agmApprovedBy,
+        agmApprovedAt: approvalByStage("agm")?.at ?? bill.agmApprovedAt,
+        gmApprovedBy: approvalByStage("gm")?.byName ? { name: approvalByStage("gm")!.byName! } : bill.gmApprovedBy,
+        gmApprovedAt: approvalByStage("gm")?.at ?? bill.gmApprovedAt,
+        l3ApprovedBy: approvalByStage("l3")?.byName ? { name: approvalByStage("l3")!.byName! } : bill.l3ApprovedBy,
+        l3ApprovedAt: approvalByStage("l3")?.at ?? bill.l3ApprovedAt,
+        l4ApprovedBy: approvalByStage("l4")?.byName ? { name: approvalByStage("l4")!.byName! } : bill.l4ApprovedBy,
+        l4ApprovedAt: approvalByStage("l4")?.at ?? bill.l4ApprovedAt,
+      } : bill;
+      printBill(printableBill, contractor, bill.status === "paid" ? "post" : "pre", undefined, payeeContractor);
     } catch {
       toast.error("Failed to prepare the bill for download");
     } finally {

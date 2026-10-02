@@ -224,6 +224,15 @@ export default function NewBillDrawer({
   // it from.
   const [department, setDepartment] = useState<string>("");
   const [customDepartment, setCustomDepartment] = useState<string>("");
+  // Custom teams already registered in User Management → Departments — see
+  // WorkItems/index.tsx's identical fetch for why this is listed directly
+  // instead of forcing "Custom Team" + re-typing the exact name every time.
+  const [registeredCustomDepts, setRegisteredCustomDepts] = useState<string[]>([]);
+  useEffect(() => {
+    apiClient.get<{ rules: { department: string; isCustom: boolean }[] }>("/approval-rules")
+      .then(r => setRegisteredCustomDepts((r.data.rules || []).filter(x => x.isCustom).map(x => x.department)))
+      .catch(() => {});
+  }, []);
   // Who to route this bill to for L1 sign-off — narrowed to this bill's own
   // department's L1-authority holders (see the candidate filter near the
   // field below). Purely informational routing, not an exclusivity lock —
@@ -985,8 +994,14 @@ export default function NewBillDrawer({
               <SField
                 label="Department"
                 placeholder="Select department (optional)"
-                value={department}
-                onChange={(v) => { setDepartment(v); if (v !== "custom") setCustomDepartment(""); }}
+                value={department === "custom" && registeredCustomDepts.includes(customDepartment) ? `custom:${customDepartment}` : department}
+                onChange={(v) => {
+                  if (v.startsWith("custom:")) {
+                    setDepartment("custom"); setCustomDepartment(v.slice("custom:".length));
+                  } else {
+                    setDepartment(v); if (v !== "custom") setCustomDepartment("");
+                  }
+                }}
                 disabled={departmentLocked}
                 error={formErrors.errors.department}
                 options={[
@@ -995,12 +1010,13 @@ export default function NewBillDrawer({
                   { value: "marketing", label: "Marketing Team" },
                   { value: "planning", label: "Planning Team" },
                   { value: "maintenance", label: "Maintenance Team" },
-                  { value: "custom", label: "Custom Team" },
+                  ...registeredCustomDepts.map(name => ({ value: `custom:${name}`, label: name })),
+                  { value: "custom", label: "Custom" },
                 ]}
                 hint={isStandalone ? undefined : "Inherited from the linked work order."}
               />
             </div>
-            {department === "custom" && (
+            {department === "custom" && !registeredCustomDepts.includes(customDepartment) && (
               <div className="max-w-xs flex-1 min-w-[200px]">
                 <Field
                   label="Custom Team Name"

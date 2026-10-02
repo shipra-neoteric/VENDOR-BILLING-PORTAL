@@ -418,7 +418,7 @@ export default function AccountsPayment() {
   const loadBills = useCallback((archived: boolean) => {
     setLoading(true);
     apiClient
-      .get<{ bills: Record<string, unknown>[] }>(`/bills${archived ? "?archived=true" : ""}`)
+      .get<{ bills: Record<string, unknown>[] }>(`/bills?accountsReady=true${archived ? "&archived=true" : ""}`)
       .then((r) => setBills((r.data.bills || []).map((b) => normalizeId(b) as unknown as Bill)))
       .catch(() => { })
       .finally(() => setLoading(false));

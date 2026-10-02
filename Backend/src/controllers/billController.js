@@ -88,12 +88,25 @@ function pushHistory(bill, stage, action, by, remarks) {
 const POPULATE_FIELDS = ['agmApprovedBy', 'gmApprovedBy', 'l3ApprovedBy', 'l4ApprovedBy', 'makerBy', 'verifiedBy', 'checkerBy', 'approvedBy', 'paymentInitiatedBy', 'rejectedBy', 'verificationBy', 'l1ApprovedBy', 'l2ApprovedBy', 'holdBy', 'holdReleasedBy', 'lineItems.varianceApprovedBy', 'manualAgmApprovedBy', 'manualGmApprovedBy', 'manualL3ApprovedBy', 'manualL4ApprovedBy', 'manualRejectedBy', 'sentForApprovalTo', 'sentForL2ApprovalTo'];
 
 exports.listBills = asyncHandler(async (req, res) => {
-  const { workOrderId, vendorCode, projectId, status, manualApprovalStatus, search, archived } = req.query;
+  const { workOrderId, vendorCode, projectId, status, manualApprovalStatus, search, archived, accountsReady } = req.query;
   const filter = {};
   if (workOrderId) filter.workOrderId = workOrderId;
   if (vendorCode)  filter.vendorCode  = vendorCode;
   if (projectId)   filter.projectId   = projectId;
   if (status)      filter.status      = status;
+  // Accounts Payment only wants bills whose own internal AGM/GM(/L3/L4)
+  // sign-off chain has actually cleared — a manual bill still sitting at
+  // 'pending'/'pending-gm'/'pending-l3'/'pending-l4' hasn't finished that
+  // chain yet (verifyBill itself already blocks it — see there), so it has
+  // no business showing up here at all. A progress-driven bill never sets
+  // this field (stays undefined forever), so it's let through unconditionally.
+  if (accountsReady === 'true') {
+    if (!filter.$and) filter.$and = [];
+    filter.$and.push({ $or: [
+      { manualApprovalStatus: { $exists: false } },
+      { manualApprovalStatus: 'approved' },
+    ] });
+  }
   // Unsubmitted drafts (Billing -> New Bill "Save as Draft") are invisible to
   // everyone except their own creator and the Owner role (codebase convention
   // — Owner sees everything). Applied here in the base filter, not inside the

@@ -21,6 +21,11 @@ const departmentApprovalConfigSchema = new mongoose.Schema(
     // gmApproveHandler/l3ApproveHandler for exactly where the bill gets
     // created based on this number.
     requiredApprovals: { type: Number, enum: [1, 2, 3, 4], default: 2 },
+    // Only meaningful when requiredApprovals === 1 — that single stage IS
+    // the whole chain, so an admin may want it displayed as e.g. "Final
+    // Approval" instead of the generic "L1 (AGM)" wording. Empty = keep the
+    // generic wording.
+    singleLevelLabel: { type: String, default: '' },
     // Empty array = fall back to the hardcoded default roles (['owner','agm']
     // for the AGM stage, ['owner','gm'] for the GM stage; L3/L4 have no
     // hardcoded default — an empty list there means ONLY Owner can act,

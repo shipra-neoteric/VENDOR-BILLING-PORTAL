@@ -67,6 +67,9 @@ export interface ApprovalRule {
   department: string;
   isCustom: boolean;
   requiredApprovals: 1 | 2 | 3 | 4;
+  // Only meaningful when requiredApprovals === 1 — lets that single stage
+  // be displayed as e.g. "Final Approval" instead of the generic "L1 (AGM)".
+  singleLevelLabel: string;
   agmRoles: string[];
   gmRoles: string[];
   l3Roles: string[];
@@ -78,6 +81,15 @@ export interface ApprovalRule {
   l3Users:  { _id: string; name: string; email: string }[];
   l4Users:  { _id: string; name: string; email: string }[];
   isDefault: boolean;
+  // Work Order's own maker→checker→approver→final chain — separate from the
+  // bill fields above (same DepartmentApprovalConfig doc, see its own note).
+  // No role-list narrowing on this side (Work Order access is purely the
+  // 'work-orders' module permission grants) — only an optional named-people
+  // override per stage, same pattern as agmUsers/gmUsers above.
+  woRequiredApprovals: 2 | 3;
+  checkerUsers:  { _id: string; name: string; email: string }[];
+  approverUsers: { _id: string; name: string; email: string }[];
+  finalUsers:    { _id: string; name: string; email: string }[];
 }
 
 // Ordered so `.slice(0, requiredApprovals)` always yields exactly the
@@ -484,6 +496,7 @@ export default function UserManagement() {
   const [approvalDefaults, setApprovalDefaults] = useState<{ agmRoles: string[]; gmRoles: string[]; l3Roles: string[]; l4Roles: string[] }>({ agmRoles: [], gmRoles: [], l3Roles: [], l4Roles: [] });
   const [editRuleTarget, setEditRuleTarget] = useState<ApprovalRule | null>(null);
   const [editRuleRequired, setEditRuleRequired] = useState<1 | 2 | 3 | 4>(2);
+  const [editRuleSingleLabel, setEditRuleSingleLabel] = useState("");
   const [editRuleAgmRoles, setEditRuleAgmRoles] = useState<string[]>([]);
   const [editRuleGmRoles, setEditRuleGmRoles] = useState<string[]>([]);
   const [editRuleL3Roles, setEditRuleL3Roles] = useState<string[]>([]);
@@ -492,7 +505,42 @@ export default function UserManagement() {
   const [editRuleGmUserIds, setEditRuleGmUserIds] = useState<string[]>([]);
   const [editRuleL3UserIds, setEditRuleL3UserIds] = useState<string[]>([]);
   const [editRuleL4UserIds, setEditRuleL4UserIds] = useState<string[]>([]);
+  const [editRuleWoRequired, setEditRuleWoRequired] = useState<2 | 3>(3);
+  const [editRuleCheckerUserIds, setEditRuleCheckerUserIds] = useState<string[]>([]);
+  const [editRuleApproverUserIds, setEditRuleApproverUserIds] = useState<string[]>([]);
+  const [editRuleFinalUserIds, setEditRuleFinalUserIds] = useState<string[]>([]);
   const [savingRule, setSavingRule] = useState(false);
+  // Name-entry step for a brand-new department — once confirmed, it just
+  // opens the same edit-rule modal (handleSaveRule's upsert PUT creates the
+  // DepartmentApprovalConfig doc on first Save, same as editing one in place).
+  const [addDeptOpen, setAddDeptOpen] = useState(false);
+  const [newDeptName, setNewDeptName] = useState("");
+  const [newDeptError, setNewDeptError] = useState<string | undefined>(undefined);
+  const [newDeptRequired, setNewDeptRequired] = useState<1 | 2 | 3 | 4>(2);
+  const [newDeptSingleLabel, setNewDeptSingleLabel] = useState("");
+
+  function openAddDepartment() {
+    setNewDeptName("");
+    setNewDeptError(undefined);
+    setNewDeptRequired(2);
+    setNewDeptSingleLabel("");
+    setAddDeptOpen(true);
+  }
+  function confirmAddDepartment() {
+    const name = newDeptName.trim();
+    if (!name) { setNewDeptError("Department name is required"); return; }
+    if (approvalRules.some(r => r.department.toLowerCase() === name.toLowerCase())) {
+      setNewDeptError("A department with this name already exists");
+      return;
+    }
+    setAddDeptOpen(false);
+    openEditRule({
+      department: name, isCustom: true, requiredApprovals: newDeptRequired, singleLevelLabel: newDeptSingleLabel,
+      agmRoles: [], gmRoles: [], l3Roles: [], l4Roles: [],
+      agmUsers: [], gmUsers: [], l3Users: [], l4Users: [], isDefault: true,
+      woRequiredApprovals: 3, checkerUsers: [], approverUsers: [], finalUsers: [],
+    });
+  }
 
   const loadApprovalRules = useCallback(() => {
     setApprovalRulesLoading(true);
@@ -506,6 +554,7 @@ export default function UserManagement() {
   function openEditRule(rule: ApprovalRule) {
     setEditRuleTarget(rule);
     setEditRuleRequired(rule.requiredApprovals);
+    setEditRuleSingleLabel(rule.singleLevelLabel || "");
     setEditRuleAgmRoles(rule.agmRoles);
     setEditRuleGmRoles(rule.gmRoles);
     setEditRuleL3Roles(rule.l3Roles);
@@ -514,6 +563,10 @@ export default function UserManagement() {
     setEditRuleGmUserIds(rule.gmUsers.map(u => u._id));
     setEditRuleL3UserIds(rule.l3Users.map(u => u._id));
     setEditRuleL4UserIds(rule.l4Users.map(u => u._id));
+    setEditRuleWoRequired(rule.woRequiredApprovals);
+    setEditRuleCheckerUserIds(rule.checkerUsers.map(u => u._id));
+    setEditRuleApproverUserIds(rule.approverUsers.map(u => u._id));
+    setEditRuleFinalUserIds(rule.finalUsers.map(u => u._id));
   }
   async function handleSaveRule() {
     if (!editRuleTarget) return;
@@ -521,6 +574,7 @@ export default function UserManagement() {
     try {
       await apiClient.put(`/approval-rules/${encodeURIComponent(editRuleTarget.department)}`, {
         requiredApprovals: editRuleRequired,
+        singleLevelLabel: editRuleSingleLabel,
         agmRoles: editRuleAgmRoles,
         gmRoles: editRuleGmRoles,
         l3Roles: editRuleL3Roles,
@@ -529,6 +583,10 @@ export default function UserManagement() {
         gmUserIds: editRuleGmUserIds,
         l3UserIds: editRuleL3UserIds,
         l4UserIds: editRuleL4UserIds,
+        woRequiredApprovals: editRuleWoRequired,
+        checkerUserIds: editRuleCheckerUserIds,
+        approverUserIds: editRuleApproverUserIds,
+        finalUserIds: editRuleFinalUserIds,
       });
       toast.success(`Approval rule for "${departmentLabelForUser(editRuleTarget.department)}" saved`);
       setEditRuleTarget(null);
@@ -690,7 +748,7 @@ export default function UserManagement() {
           ? <NxBtn color="primary" icon={Plus} label="Register New User" onClick={openCreate} />
           : mainTab === "roles"
           ? <NxBtn color="primary" icon={Plus} label="Define New Role" onClick={openCreateRole} />
-          : undefined}
+          : <NxBtn color="primary" icon={Plus} label="Add Department" onClick={openAddDepartment} />}
       />
 
       <div className="mb-4">
@@ -760,7 +818,7 @@ export default function UserManagement() {
           {approvalRulesLoading ? (
             <div className="flex justify-center py-16 text-gray-400 text-sm">Loading…</div>
           ) : approvalRules.length === 0 ? (
-            <EmptyState icon={ShieldAlert} title="No departments yet" message="Departments show up here once a work order is assigned to one." />
+            <EmptyState icon={ShieldAlert} title="No departments yet" message="Add one above, or it'll show up here once a work order is assigned to one." />
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
               {approvalRules.map((rule) => (
@@ -1003,6 +1061,59 @@ export default function UserManagement() {
         />
       )}
 
+      {addDeptOpen && (
+        <Modal
+          icon={ShieldAlert}
+          title="Add Department"
+          onClose={() => setAddDeptOpen(false)}
+          footer={
+            <div className="flex justify-end gap-2">
+              <Btn outline label="Cancel" onClick={() => setAddDeptOpen(false)} />
+              <Btn color="primary" label="Continue" onClick={confirmAddDepartment} />
+            </div>
+          }
+        >
+          <div className="flex flex-col gap-4">
+            <div>
+              <Field
+                label="Department Name" required placeholder="e.g. Procurement Team"
+                value={newDeptName} onChange={(e) => { setNewDeptName(e.target.value); setNewDeptError(undefined); }}
+                error={newDeptError}
+              />
+              <div className="text-[11px] text-gray-400 mt-1.5">
+                Use this same name when picking "Custom" department on a work order, so it links up to this rule.
+              </div>
+            </div>
+            <div>
+              <MultiSelect
+                label="Approval Levels"
+                placeholder="L1 only"
+                values={APPROVAL_LEVEL_STAGES.slice(0, newDeptRequired).map((_, i) => String(i + 1))}
+                onChange={(vals) => {
+                  const highest = Math.max(1, ...vals.map(Number));
+                  setNewDeptRequired(Math.min(4, highest) as 1 | 2 | 3 | 4);
+                }}
+                options={APPROVAL_LEVEL_STAGES.map((s, i) => ({ value: String(i + 1), label: s.short }))}
+                disabledValues={["1"]}
+                onDisabledOptionClick={() => toast("L1 is always required — a bill needs at least one sign-off.")}
+              />
+              <div className="text-[11px] text-gray-400 mt-1.5">
+                Who approves at each level is picked on the next step.
+              </div>
+            </div>
+            {newDeptRequired === 1 && (
+              <Field
+                label="Stage Label (optional)"
+                placeholder="e.g. Final Approval"
+                value={newDeptSingleLabel}
+                onChange={(e) => setNewDeptSingleLabel(e.target.value)}
+                hint={`Since this department has only one approval level, it's shown by default as "L1 (AGM)" — set this to display something else instead, like "Final Approval".`}
+              />
+            )}
+          </div>
+        </Modal>
+      )}
+
       {editRuleTarget && (() => {
         // Every user is selectable here, not just ones whose own `department`
         // field happens to match — most accounts never get that field set at
@@ -1045,6 +1156,15 @@ export default function UserManagement() {
                 Bill requests and manually-created bills in this department stop at whichever level is checked highest — the RunningBill is created right after that level's sign-off, with no further stage.
               </div>
             </div>
+            {editRuleRequired === 1 && (
+              <Field
+                label="Stage Label (optional)"
+                placeholder="e.g. Final Approval"
+                value={editRuleSingleLabel}
+                onChange={(e) => setEditRuleSingleLabel(e.target.value)}
+                hint={`Since this department has only one approval level, it's shown by default as "L1 (AGM)" — set this to display something else instead, like "Final Approval".`}
+              />
+            )}
             {(() => {
               const STAGE_STATE = {
                 agm: { roles: editRuleAgmRoles, setRoles: setEditRuleAgmRoles, userIds: editRuleAgmUserIds, setUserIds: setEditRuleAgmUserIds, defaults: approvalDefaults.agmRoles },
@@ -1078,6 +1198,47 @@ export default function UserManagement() {
             })()}
             <div className="text-[11px] text-gray-400">
               Owner can always approve regardless of these lists. Leaving a list empty keeps the original default roles for that stage — L3/L4 default to Owner-only until named, since no role in this org is inherently "the L3/L4 approver".
+            </div>
+
+            <div className="pt-3 border-t border-gray-200 dark:border-gray-700/60">
+              <div className="font-bold text-[13px] text-[#1A1A2E] dark:text-[#F1F5F9] mb-2">Work Order Approval</div>
+              <MultiSelect
+                label="Approval Levels"
+                placeholder="Checker → Final"
+                values={editRuleWoRequired === 3 ? ["checker", "approver", "final"] : ["checker", "final"]}
+                onChange={(vals) => setEditRuleWoRequired(vals.includes("approver") ? 3 : 2)}
+                options={[
+                  { value: "checker", label: "Checker" },
+                  { value: "approver", label: "Approver" },
+                  { value: "final", label: "Final" },
+                ]}
+                disabledValues={["checker", "final"]}
+                onDisabledOptionClick={() => toast("Checker and Final are always required for a work order.")}
+              />
+              <div className="text-[11px] text-gray-400 mt-1.5">
+                Checker → Final (2 levels) skips the separate Approver stage entirely. This is this department's own work orders' maker/checker/approver/final chain — unrelated to the bill levels above.
+              </div>
+              {(() => {
+                const WO_STAGE_STATE = [
+                  { stage: "checker", label: "Checker", userIds: editRuleCheckerUserIds, setUserIds: setEditRuleCheckerUserIds },
+                  ...(editRuleWoRequired === 3 ? [{ stage: "approver", label: "Approver", userIds: editRuleApproverUserIds, setUserIds: setEditRuleApproverUserIds }] : []),
+                  { stage: "final", label: "Final", userIds: editRuleFinalUserIds, setUserIds: setEditRuleFinalUserIds },
+                ];
+                return WO_STAGE_STATE.map(st => (
+                  <div key={st.stage} className="pt-2 mt-2 border-t border-gray-100 dark:border-gray-700/40 first:border-t-0 first:pt-0 first:mt-0">
+                    <MultiSelect
+                      label={`Specific ${st.label} approvers (optional)`}
+                      placeholder="Leave blank to allow anyone with the matching permission"
+                      values={st.userIds}
+                      onChange={st.setUserIds}
+                      options={departmentUsers.map(u => ({ label: `${u.name} (${ROLE_CFG[u.role]?.label || u.role})`, value: u._id }))}
+                    />
+                  </div>
+                ));
+              })()}
+              <div className="text-[11px] text-gray-400 mt-1.5">
+                Owner can always approve. Leaving a stage's list empty keeps it open to anyone already granted that permission in User Management — naming people here narrows it down to exactly them instead.
+              </div>
             </div>
           </div>
         </Modal>
