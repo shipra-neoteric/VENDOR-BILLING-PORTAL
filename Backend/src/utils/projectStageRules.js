@@ -372,7 +372,7 @@ function buildProjectAlerts({ project, wos, bills, billReqs, financials, slaBrea
       title: 'Billing exceeds executed value',
       message: `${project.name}: billed ₹${billedGross.toLocaleString('en-IN')} against executed value of ₹${workExecutedValue.toLocaleString('en-IN')} — ₹${overAmount.toLocaleString('en-IN')} over.`,
       amount: overAmount,
-      link: `/dashboard?projectId=${projectId}`,
+      link: `/projects?id=${projectId}`,
     });
   }
 
