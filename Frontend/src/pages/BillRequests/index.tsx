@@ -185,6 +185,7 @@ const BILL_STATUS_BADGE_COLOR: Record<string, NxBadgeColor> = {
 // that shared type for one screen.
 interface ManualBillDetail extends PrintableBill {
   workOrderNo?: string;
+  workOrderId?: string;
   verificationBy?: { name?: string } | null;
   verificationAt?: string;
   l1ApprovedBy?: { name?: string } | null;
@@ -1003,7 +1004,23 @@ export default function BillApproval() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [billReqs, reqTab, exportScope, reqProjectFilter, reqDeptFilter, reqSearch, showArchived, woDeptMap, reqDateFrom, reqDateTo]);
 
-  const reqPager = usePagination(filteredReqs, 20);
+  // One merged, number-sorted list of manual bills + bill requests — same
+  // data each already-existing table showed separately, just interleaved by
+  // bill/request number instead of grouped into two blocks (Site Progress's
+  // own combined bill table uses this same convention).
+  type CombinedBillRow =
+    | { kind: "manual"; key: string; sortNo: number; data: ManualBillRow }
+    | { kind: "request"; key: string; sortNo: number; data: BillRequestRow };
+  const combinedRows: CombinedBillRow[] = useMemo(() => {
+    const manual: CombinedBillRow[] = manualBillsForTab(reqTab)
+      .filter(b => matchesDept(b) && matchesProject(b))
+      .map(b => ({ kind: "manual" as const, key: b._id, sortNo: parseInt(b.billNo.replace(/\D/g, ""), 10) || 0, data: b }));
+    const requests: CombinedBillRow[] = filteredReqs
+      .map(r => ({ kind: "request" as const, key: r._id, sortNo: parseInt((r.billId?.billNo || r.reqNo).replace(/\D/g, ""), 10) || 0, data: r }));
+    return [...manual, ...requests].sort((a, b) => b.sortNo - a.sortNo);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [manualBills, reqTab, exportScope, reqDeptFilter, reqProjectFilter, reqSearch, reqDateFrom, reqDateTo, filteredReqs, woDeptMap]);
+  const combinedPager = usePagination(combinedRows, 20);
 
   // Stage labels matching the Daily Progress Report's own Pending Bills
   // section convention (see billController.js PENDING_STAGE_LABEL) — kept
@@ -1176,14 +1193,14 @@ export default function BillApproval() {
         </div>
       </div>
 
-      {/* Manual bills (Billing -> New Bill) — no BillRequest of their own, so
-          they're never in billReqs above; this is their own AGM/GM sign-off,
-          tracked directly on the bill. */}
-      {manualBillsForTab(reqTab).filter(b => matchesDept(b) && matchesProject(b)).length > 0 && (
-        <div className="mb-5">
-          <div className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">
-            Manual Bills — Billing → New Bill
-          </div>
+      {/* One merged, number-sorted table — manual bills (Billing -> New Bill,
+          no BillRequest of their own, own AGM/GM sign-off tracked directly on
+          the bill) interleaved with bill requests by bill/request number,
+          instead of two separate blocks. */}
+      {combinedRows.length === 0 ? (
+        <EmptyState title={`No ${reqTab === "all" ? "" : STATUS_CFG[reqTab]?.label.toLowerCase() || reqTab} bills`} />
+      ) : (
+        <>
           <Table className="min-w-[960px]">
             <Thead>
               <Tr>
@@ -1199,73 +1216,63 @@ export default function BillApproval() {
               </Tr>
             </Thead>
             <Tbody>
-              {manualBillsForTab(reqTab).filter(b => matchesDept(b) && matchesProject(b)).map(b => (
-                <Tr key={b._id} className="cursor-pointer" onClick={() => openManualBillView(b)}>
-                  <Td><span className="text-primary font-bold text-[13px]">{b.billNo}</span></Td>
-                  <Td>{b.workOrderNo || <span className="text-gray-300 dark:text-gray-600">—</span>}</Td>
-                  <Td>{b.projectName || "—"}</Td>
-                  <Td>{departmentLabel(resolveDeptRow(b))}</Td>
-                  <Td>{b.vendorName || "—"}</Td>
-                  <Td className="font-mono">{fmt(b.amount)}</Td>
-                  <Td>{dayjs(b.billDate || b.createdAt).format("DD MMM YYYY")}</Td>
-                  <Td className="whitespace-nowrap">
-                    <div className="flex flex-wrap items-center gap-1">
-                      <NxBadge color={STATUS_CFG[b.manualApprovalStatus]?.color as any ?? "gray"}>{STATUS_CFG[b.manualApprovalStatus]?.label ?? b.manualApprovalStatus}</NxBadge>
-                      <OverdueBadge status={b.manualApprovalStatus} since={stageEnteredAt(b)} />
-                    </div>
-                  </Td>
-                  <Td onClick={e => e.stopPropagation()}>
-                    <div className="flex items-center gap-1">
-                      <NxBtn color="icon-blue" title="View" icon={Eye} loading={viewManualBillLoadingId === b._id} onClick={() => openManualBillView(b)} />
-                      <NxBtn color="icon" title="Print" icon={Printer} loading={printingReqId === b._id} onClick={() => handlePrintManualBill(b)} />
-                      {b.manualApprovalStatus === "pending" && canAgmApprove && (
-                        <NxBtn color="icon-green" title="L1 Approve" icon={Check} onClick={() => setManualApproveTarget(b)} />
+              {combinedPager.pageItems.map(row => row.kind === "manual" ? (() => {
+                const b = row.data;
+                return (
+                  <Tr key={row.key} className="cursor-pointer" onClick={() => openManualBillView(b)}>
+                    <Td><span className="text-primary font-bold text-[13px]">{b.billNo}</span></Td>
+                    <Td>
+                      {b.workOrderNo ? (
+                        <code
+                          className="cursor-pointer text-blue-600 dark:text-blue-400"
+                          onClick={e => { e.stopPropagation(); if (b.workOrderId) navigate(`/work-items/${b.workOrderId}`); }}
+                        >
+                          {b.workOrderNo}
+                        </code>
+                      ) : (
+                        <span className="text-gray-300 dark:text-gray-600">—</span>
                       )}
-                      {b.manualApprovalStatus === "pending-gm" && canGmApprove && (
-                        <NxBtn color="icon-green" title="L2 Approve" icon={Check} onClick={() => setManualApproveTarget(b)} />
-                      )}
-                      {b.manualApprovalStatus === "pending-l3" && canL3Approve && (
-                        <NxBtn color="icon-green" title="L3 Approve" icon={Check} onClick={() => setManualApproveTarget(b)} />
-                      )}
-                      {b.manualApprovalStatus === "pending-l4" && canL4Approve && (
-                        <NxBtn color="icon-green" title="L4 Approve" icon={Check} onClick={() => setManualApproveTarget(b)} />
-                      )}
-                      {["pending", "pending-gm", "pending-l3", "pending-l4"].includes(b.manualApprovalStatus) && canRejectThisStage(b.manualApprovalStatus) && (
-                        <NxBtn color="icon-red" title="Reject" icon={X} onClick={() => setManualRejectTarget(b)} />
-                      )}
-                    </div>
-                  </Td>
-                </Tr>
-              ))}
-            </Tbody>
-          </Table>
-        </div>
-      )}
-
-      {filteredReqs.length === 0 ? (
-        <EmptyState title={`No ${reqTab === "all" ? "" : STATUS_CFG[reqTab]?.label.toLowerCase() || reqTab} bill requests`} />
-      ) : (
-        <>
-          <Table className="min-w-[960px]">
-            <Thead>
-              <Tr>
-                <Th className="w-[10%]">Stage / Request</Th>
-                <Th className="w-[9%]">Work Order</Th>
-                <Th className="w-[13%]">Project</Th>
-                <Th className="w-[11%]">Department</Th>
-                <Th className="w-[14%]">Vendor</Th>
-                <Th className="w-[11%]">Amount</Th>
-                <Th className="w-[10%]">Date</Th>
-                <Th className="w-[10%]">Status</Th>
-                <Th className="w-[12%]">Actions</Th>
-              </Tr>
-            </Thead>
-            <Tbody>
-              {reqPager.pageItems.map(r => {
+                    </Td>
+                    <Td>{b.projectName || "—"}</Td>
+                    <Td>{departmentLabel(resolveDeptRow(b))}</Td>
+                    <Td>{b.vendorName || "—"}</Td>
+                    <Td className="font-mono">{fmt(b.amount)}</Td>
+                    <Td>{dayjs(b.billDate || b.createdAt).format("DD MMM YYYY")}</Td>
+                    <Td className="whitespace-nowrap">
+                      <div className="flex flex-wrap items-center gap-1">
+                        <NxBadge color={STATUS_CFG[b.manualApprovalStatus]?.color as any ?? "gray"}>{STATUS_CFG[b.manualApprovalStatus]?.label ?? b.manualApprovalStatus}</NxBadge>
+                        <OverdueBadge status={b.manualApprovalStatus} since={stageEnteredAt(b)} />
+                      </div>
+                    </Td>
+                    <Td onClick={e => e.stopPropagation()}>
+                      <div className="flex items-center gap-1">
+                        <NxBtn color="icon-blue" title="View" icon={Eye} loading={viewManualBillLoadingId === b._id} onClick={() => openManualBillView(b)} />
+                        <NxBtn color="icon" title="Print" icon={Printer} loading={printingReqId === b._id} onClick={() => handlePrintManualBill(b)} />
+                        {b.manualApprovalStatus === "pending" && canAgmApprove && (
+                          <NxBtn color="icon-green" title="L1 Approve" icon={Check} onClick={() => setManualApproveTarget(b)} />
+                        )}
+                        {b.manualApprovalStatus === "pending-gm" && canGmApprove && (
+                          <NxBtn color="icon-green" title="L2 Approve" icon={Check} onClick={() => setManualApproveTarget(b)} />
+                        )}
+                        {b.manualApprovalStatus === "pending-l3" && canL3Approve && (
+                          <NxBtn color="icon-green" title="L3 Approve" icon={Check} onClick={() => setManualApproveTarget(b)} />
+                        )}
+                        {b.manualApprovalStatus === "pending-l4" && canL4Approve && (
+                          <NxBtn color="icon-green" title="L4 Approve" icon={Check} onClick={() => setManualApproveTarget(b)} />
+                        )}
+                        {["pending", "pending-gm", "pending-l3", "pending-l4"].includes(b.manualApprovalStatus) && canRejectThisStage(b.manualApprovalStatus) && (
+                          <NxBtn color="icon-red" title="Reject" icon={X} onClick={() => setManualRejectTarget(b)} />
+                        )}
+                      </div>
+                    </Td>
+                  </Tr>
+                );
+              })() : (() => {
+                const r = row.data;
                 const cfg = STATUS_CFG[r.status] ?? { color: "gray", label: r.status };
                 const reqAmount = r.items.reduce((s, it) => s + (it.amount ?? (it.rate ?? 0) * it.billedQty), 0);
                 return (
-                  <Tr key={r._id} className="cursor-pointer" onClick={() => openViewReq(r)}>
+                  <Tr key={row.key} className="cursor-pointer" onClick={() => openViewReq(r)}>
                     <Td>
                       <div className="flex gap-1.5 items-center">
                         {r.stageNo && <NxBadge color="orange">S{r.stageNo}</NxBadge>}
@@ -1320,11 +1327,11 @@ export default function BillApproval() {
                     </Td>
                   </Tr>
                 );
-              })}
+              })())}
             </Tbody>
           </Table>
-          {reqPager.totalPages > 1 && (
-            <div className="mt-3"><Pagination page={reqPager.page} totalPages={reqPager.totalPages} onChange={reqPager.setPage} /></div>
+          {combinedPager.totalPages > 1 && (
+            <div className="mt-3"><Pagination page={combinedPager.page} totalPages={combinedPager.totalPages} onChange={combinedPager.setPage} /></div>
           )}
         </>
       )}
@@ -1870,7 +1877,14 @@ export default function BillApproval() {
         <Modal
           extraWide
           icon={FileText}
-          title={viewManualBill.billNo}
+          title={
+            <span className="inline-flex items-center gap-2">
+              <span>Bill — {viewManualBill.billNo}</span>
+              <NxBadge color={STATUS_CFG[viewManualBill.manualApprovalStatus]?.color as any ?? "gray"}>
+                {STATUS_CFG[viewManualBill.manualApprovalStatus]?.label ?? viewManualBill.manualApprovalStatus}
+              </NxBadge>
+            </span>
+          }
           subtitle="Read-only — process this bill in Accounts Payment"
           onClose={() => setViewManualBill(null)}
           footer={
@@ -1913,7 +1927,16 @@ export default function BillApproval() {
             <DescItem label="Status"><NxBadge color={BILL_STATUS_BADGE_COLOR[viewManualBill.status] ?? "gray"}>{BILL_STATUS_LABEL[viewManualBill.status] || viewManualBill.status}</NxBadge></DescItem>
             <DescItem label="Bill Date">{viewManualBill.billDate ? dayjs(viewManualBill.billDate).format("DD MMM YYYY") : "—"}</DescItem>
             <DescItem label="Project">{viewManualBill.projectName || "—"}</DescItem>
-            <DescItem label="Work Order">{viewManualBill.workOrderNo || "—"}</DescItem>
+            <DescItem label="Work Order">
+              {viewManualBill.workOrderNo ? (
+                <code
+                  className="cursor-pointer text-blue-600 dark:text-blue-400"
+                  onClick={() => { if (viewManualBill.workOrderId) navigate(`/work-items/${viewManualBill.workOrderId}`); }}
+                >
+                  {viewManualBill.workOrderNo}
+                </code>
+              ) : "—"}
+            </DescItem>
             <DescItem label="Vendor">{viewManualBill.vendorName || "—"}</DescItem>
             <DescItem label="Generated By">{viewManualBill.generatedBy || "—"}</DescItem>
             {viewManualBill.projectLocation && <DescItem label="Location">{viewManualBill.projectLocation}</DescItem>}
