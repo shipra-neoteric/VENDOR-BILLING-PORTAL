@@ -93,7 +93,8 @@ export default function PublicQuotationForm() {
     setCustomItems(items => items.map(i => (i.key === key ? { ...i, ...patch } : i)));
   }
 
-  const visibleScopeItems = context?.scopeItems || [];
+  const [excludedIds, setExcludedIds] = useState<Set<string>>(new Set());
+  const visibleScopeItems = (context?.scopeItems || []).filter(i => !excludedIds.has(i._id));
   const customTotal = customItems.reduce((s, i) => s + (Number(i.plannedQty) || 0) * (Number(i.rate) || 0), 0);
   const total = visibleScopeItems.reduce((s, i) => s + (i.plannedQty || 0) * (Number(rates[i._id]) || 0), 0) + customTotal;
 
@@ -194,9 +195,9 @@ export default function PublicQuotationForm() {
 
             <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
               <div className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Quote a Rate Per Item</div>
-              <Table className="min-w-[650px] sm:min-w-0">
+              <Table className="min-w-[760px] sm:min-w-0">
                 <Thead>
-                  <Tr><Th>Description</Th><Th>Unit</Th><Th>Qty</Th><Th>Your Rate (₹)</Th><Th>Amount</Th></Tr>
+                  <Tr><Th>Description</Th><Th>Unit</Th><Th>Qty</Th><Th>Your Rate (₹)</Th><Th>Amount</Th><Th></Th></Tr>
                 </Thead>
                 <Tbody>
                   {visibleScopeItems.map(item => (
@@ -210,10 +211,13 @@ export default function PublicQuotationForm() {
                           min={0}
                           value={rates[item._id] ?? ""}
                           onChange={e => setRates(r => ({ ...r, [item._id]: e.target.value }))}
-                          className="w-28 h-8 px-2 rounded-md border border-gray-200 text-[13px] text-[#1A1A2E] focus:outline-none focus:ring-2 focus:ring-primary/30"
+                          className="w-24 h-8 px-2 rounded-md border border-gray-200 text-[13px] text-[#1A1A2E] focus:outline-none focus:ring-2 focus:ring-primary/30"
                         />
                       </Td>
                       <Td><TdText>{fmt((item.plannedQty || 0) * (Number(rates[item._id]) || 0))}</TdText></Td>
+                      <Td>
+                        <Btn small outline icon={Trash2} onClick={() => setExcludedIds(s => new Set(s).add(item._id))} />
+                      </Td>
                     </Tr>
                   ))}
                 </Tbody>
