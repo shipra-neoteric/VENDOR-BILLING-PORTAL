@@ -2660,7 +2660,7 @@ export default function WorkItems() {
                             )}
                             {delays > 0 && (
                               <span title={`${delays} scope item${delays > 1 ? "s" : ""} past their planned end date`}>
-                                <NxBadge color="red"><span className="inline-flex items-center gap-1"><AlertTriangle className="w-2.5 h-2.5" /> {delays} overdue</span></NxBadge>
+                                <NxBadge color="red"><span className="inline-flex items-center gap-1"><AlertTriangle className="w-2.5 h-2.5" /> {delays} item{delays > 1 ? "s" : ""} overdue</span></NxBadge>
                               </span>
                             )}
                           </div>
