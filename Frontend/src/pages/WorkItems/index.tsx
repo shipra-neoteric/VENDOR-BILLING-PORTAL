@@ -1113,6 +1113,11 @@ interface WOFormValues {
   subCategory: string;
   department: string;
   customDepartment: string;
+  // Opts out of the vendor requirement at creation — the WO goes straight
+  // into Quotation Comparison's draft-WO list (any WO with no bill raised
+  // yet already shows up there) and gets a vendor once a quotation is
+  // approved (see contractorQuotationController.js's approveQuotation).
+  noVendorYet: boolean;
   status: string;
   gstPercent: number;
   retentionPercent: number;
@@ -1130,7 +1135,7 @@ interface WOFormValues {
 const blankWOForm = (): WOFormValues => ({
   contractType: "execution", workOrderNo: "", companyId: "", projectId: "", projectName: "",
   projectLocation: "", issueDate: "", vendorCode: "", category: "", subCategory: "",
-  department: "", customDepartment: "",
+  department: "", customDepartment: "", noVendorYet: false,
   status: "draft", gstPercent: 18, retentionPercent: 0, assignedDRI: [], vendorName: "",
   ownerName: "", mobile: "", issuedUnder: "company", description: "", totalTenure: "",
   documents: [], internalRemark: "",
@@ -1339,21 +1344,34 @@ function WOFormFields({
       )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
-        <SField
-          label={isProfessionalServices ? "Consultant" : "Vendor Code"} required
-          placeholder={isProfessionalServices ? "Select consultant" : "Select vendor"}
-          value={values.vendorCode}
-          onChange={isProfessionalServices ? fillConsultant : fillVendor}
-          options={isProfessionalServices
-            ? consultantsList.map(c => ({ label: `${c.consultantCode} — ${c.firmName}`, value: c.consultantCode }))
-            // Archived (inactive) vendors shouldn't be pickable for a new/changed
-            // assignment — but keep the already-selected one visible so editing an
-            // existing WO whose vendor has since gone inactive doesn't blank out.
-            : contractorsList
-                .filter(c => c.status !== 'inactive' || c.vendorCode === values.vendorCode)
-                .map(c => ({ label: `${c.vendorCode} — ${vendorLabel(c.companyName, c.shortCode)}`, value: c.vendorCode }))}
-          error={errors?.vendorCode}
-        />
+        <div>
+          <SField
+            label={isProfessionalServices ? "Consultant" : "Vendor Code"} required={!values.noVendorYet}
+            placeholder={isProfessionalServices ? "Select consultant" : "Select vendor"}
+            value={values.vendorCode}
+            onChange={isProfessionalServices ? fillConsultant : fillVendor}
+            disabled={values.noVendorYet}
+            options={isProfessionalServices
+              ? consultantsList.map(c => ({ label: `${c.consultantCode} — ${c.firmName}`, value: c.consultantCode }))
+              // Archived (inactive) vendors shouldn't be pickable for a new/changed
+              // assignment — but keep the already-selected one visible so editing an
+              // existing WO whose vendor has since gone inactive doesn't blank out.
+              : contractorsList
+                  .filter(c => c.status !== 'inactive' || c.vendorCode === values.vendorCode)
+                  .map(c => ({ label: `${c.vendorCode} — ${vendorLabel(c.companyName, c.shortCode)}`, value: c.vendorCode }))}
+            error={errors?.vendorCode}
+          />
+          {!isEdit && (
+            <label className="flex items-center gap-1.5 mt-1.5 text-xs text-gray-500 dark:text-gray-400 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={values.noVendorYet}
+                onChange={e => onChange({ noVendorYet: e.target.checked, ...(e.target.checked ? { vendorCode: "", vendorName: "", ownerName: "", mobile: "" } : {}) })}
+              />
+              No vendor yet — select later via Quotation Comparison
+            </label>
+          )}
+        </div>
         <SField
           label="Category"
           placeholder="Select category (optional)"
@@ -1995,7 +2013,7 @@ export default function WorkItems() {
     let ok = true;
     if (!values.projectId) { errs.setError("projectId", "Select a project"); ok = false; }
     if (!values.issueDate) { errs.setError("issueDate", "Select issue date"); ok = false; }
-    if (!values.vendorCode) { errs.setError("vendorCode", values.contractType === "professional-services" ? "Select a consultant" : "Select a vendor"); ok = false; }
+    if (!values.vendorCode && !values.noVendorYet) { errs.setError("vendorCode", values.contractType === "professional-services" ? "Select a consultant" : "Select a vendor"); ok = false; }
     if (!values.description?.trim()) { errs.setError("description", "Required — this is printed as the Work Title / Scope on the WO PDF"); ok = false; }
     if (!values.companyId) { errs.setError("companyId", "Select the issuing company"); ok = false; }
     return ok;
@@ -2112,6 +2130,7 @@ export default function WorkItems() {
       subCategory: wo.subCategory || "",
       department: wo.department || "",
       customDepartment: wo.customDepartment || "",
+      noVendorYet: false,
       status: wo.status || "draft",
       gstPercent: wo.gstPercent ?? 18,
       retentionPercent: (wo as any).retentionPercent ?? 0,

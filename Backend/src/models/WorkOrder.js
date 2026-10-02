@@ -158,7 +158,12 @@ const workOrderSchema = new mongoose.Schema(
     // For professional-services, this resolves against Consultant instead of
     // Contractor (consultantCode/vendorCode prefixes CN-/VC- never collide,
     // so the same field doubles as the lookup key into either collection).
-    vendorCode:    { type: String, required: true },
+    // Optional — a WO can be created with no vendor yet (Quotation
+    // Comparison's own flow: raise the WO first, invite quotes, then
+    // approveQuotation fills this in once a winner is picked). Every other
+    // creation path still has the frontend require it; this just lifts the
+    // schema-level block so that one path can leave it blank.
+    vendorCode:    { type: String, default: '' },
     vendorName:    { type: String },
     ownerName:     { type: String },
     mobile:        { type: String },

@@ -193,7 +193,7 @@ export default function PublicQuotationForm() {
               <div className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Quote a Rate Per Item</div>
               <Table>
                 <Thead>
-                  <Tr><Th>Item</Th><Th>Unit</Th><Th>Qty</Th><Th>Your Rate (₹)</Th><Th>Amount</Th><Th></Th></Tr>
+                  <Tr><Th>Description</Th><Th>Unit</Th><Th>Qty</Th><Th>Your Rate (₹)</Th><Th>Amount</Th><Th></Th></Tr>
                 </Thead>
                 <Tbody>
                   {visibleScopeItems.map(item => (
