@@ -71,14 +71,15 @@ exports.importBackup = asyncHandler(async (req, res) => {
 // e.g. cron-job.org) instead of authenticate/authorize('owner'). See
 // routes/backup.js — this route is deliberately mounted before the
 // router.use(authenticate) line so it stays reachable with no JWT.
-exports.scheduledBackupEmail = asyncHandler(async (req, res) => {
-  if (!process.env.BACKUP_CRON_SECRET || req.get(CRON_SECRET_HEADER) !== process.env.BACKUP_CRON_SECRET) {
-    return badRequest(res, 'Missing or incorrect cron secret');
-  }
-  if (!process.env.BACKUP_EMAIL_TO) {
-    return badRequest(res, 'BACKUP_EMAIL_TO is not configured yet');
-  }
-
+// Responds immediately once the secret/env checks pass, then does the
+// actual export+email in the background — exportBackupZip alone was
+// measured at ~21s even on a warm instance; stacked on top of a cold
+// Render free-tier instance waking from sleep, that pushed the external
+// cron's own request past its timeout, which it reports back as a 503 (the
+// backup itself was never the failure — the HTTP round-trip just never
+// finished in time). The cron trigger only needs to know the job started,
+// not wait for it to finish.
+async function runScheduledBackup() {
   const buffer = await exportBackupZip();
   const dateLabel = new Date().toDateString();
   const filename = `vbp-backup-${new Date().toISOString().replace(/[:.]/g, '-')}.zip`;
@@ -101,6 +102,34 @@ exports.scheduledBackupEmail = asyncHandler(async (req, res) => {
     entityType: 'Database', entityId: null, entityLabel: filename,
     description: 'Scheduled daily backup emailed',
   });
+}
 
-  success(res, { sentTo: process.env.BACKUP_EMAIL_TO, sizeBytes: buffer.length, attached: !tooLarge }, 'Scheduled backup email sent');
+exports.scheduledBackupEmail = asyncHandler(async (req, res) => {
+  if (!process.env.BACKUP_CRON_SECRET || req.get(CRON_SECRET_HEADER) !== process.env.BACKUP_CRON_SECRET) {
+    return badRequest(res, 'Missing or incorrect cron secret');
+  }
+  if (!process.env.BACKUP_EMAIL_TO) {
+    return badRequest(res, 'BACKUP_EMAIL_TO is not configured yet');
+  }
+
+  success(res, { sentTo: process.env.BACKUP_EMAIL_TO }, 'Scheduled backup started');
+
+  // Fire-and-forget, deliberately after the response above — a failure here
+  // can no longer change what the cron trigger already got back, but it must
+  // still be visible somewhere other than a swallowed rejection, so it's
+  // logged to both the audit trail (surfaces in the app's own Audit Logs
+  // page) and stderr (Render's own logs) rather than just console.error alone.
+  runScheduledBackup().catch(async (err) => {
+    console.error('[backup] scheduled backup failed:', err);
+    try {
+      await logAudit({
+        action: 'CREATE', module: 'backup',
+        user: { _id: null, name: 'Scheduled Cron', role: 'system' },
+        entityType: 'Database', entityId: null, entityLabel: 'scheduled-backup-failure',
+        description: `Scheduled daily backup FAILED: ${err.message}`,
+      });
+    } catch (logErr) {
+      console.error('[backup] failed to log backup failure:', logErr);
+    }
+  });
 });
