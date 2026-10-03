@@ -213,12 +213,14 @@ exports.listWorkOrders = asyncHandler(async (req, res) => {
       ],
     }]);
   }
-  // Attached files are stored as base64 data URIs directly on the document, which can
-  // run into MBs per work order — excluding the actual bytes here (keeping just the
-  // file names, so document counts/badges still work) is what keeps this list fast.
-  // Any screen that needs the real file content re-fetches the single work order.
+  // Only the legacy single-document field (documentUrl, written before
+  // multi-document support) ever held a base64 data URI big enough to slow
+  // this list down — the current `documents[]` array only ever holds short
+  // Cloudinary URLs, so it's safe (and necessary: the View drawer below
+  // reads straight off this cached list row, it never re-fetches the single
+  // work order) to keep `documents.url` in the list response.
   const workOrders = await WorkOrder.find(filter)
-    .select('-documents.url -documentUrl')
+    .select('-documentUrl')
     .populate('projectId', 'code name projectType')
     .populate('assignedDRI', 'name email mobile')
     .populate('createdBy', 'name email')
