@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Building2, Landmark, Tags, UserPlus, Settings, Database, Share2, LayoutGrid } from "lucide-react";
+import { Building2, Landmark, Tags, UserPlus, Settings, Database, Share2, LayoutGrid, Repeat } from "lucide-react";
 import { createElement } from "react";
 
 export interface MastersNavItem {
@@ -30,6 +30,7 @@ export const MASTERS_ITEMS: MastersNavItem[] = [
   { name: "SLA",          path: "/sla-settings", icon: createElement(Settings, { className: "w-4 h-4" }) },
   { name: "Users",        path: "/users",        icon: createElement(UserPlus, { className: "w-4 h-4" }) },
   { name: "Backup",       path: "/backup",       icon: createElement(Database, { className: "w-4 h-4" }) },
+  { name: "Recurring Billing", path: "/recurring-billing", icon: createElement(Repeat, { className: "w-4 h-4" }) },
 ];
 
 export const MASTERS_PATHS = [MASTERS_OVERVIEW_ITEM.path, ...MASTERS_ITEMS.map(i => i.path)];

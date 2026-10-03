@@ -47,6 +47,18 @@ function durationLabel(stage: InstanceStage): string {
   return `${stage.slaHours}h SLA`;
 }
 
+// Stage names are free text typed into the SLA Settings template admin UI
+// (WorkflowTemplate.stages[].name) — an admin can type "L4 - Final Approval"
+// for what is actually the 3rd visible stage, and nothing validates that
+// number against the stage's real position. Stripping any leading "L<n> -"
+// the admin typed and re-deriving it from the stage's own index in the
+// (already-skip-filtered) visible sequence means the displayed level number
+// is always correct, regardless of what text is stored.
+const LEVEL_PREFIX_RE = /^L\d+\s*[-–:]\s*/i;
+function stageLabel(name: string, position: number): string {
+  return `L${position} - ${name.replace(LEVEL_PREFIX_RE, "")}`;
+}
+
 // The stage's own name (e.g. "L1 AGM Approval") is the actual identifier —
 // status used to be shown INSTEAD of it ("Pending"/"Completed" for every
 // stage, indistinguishable from one another except by the tiny SLA-hours
@@ -126,7 +138,7 @@ export default function SlaTimeline({ entityType, entityId }: { entityType: "Wor
               </div>
               <div className="pb-4">
                 <div className="text-[13px] font-bold text-[#1A1A2E] dark:text-[#F1F5F9]">
-                  {stage.name}
+                  {stageLabel(stage.name, i + 1)}
                   <span className="ml-1.5 font-semibold" style={{ color }}>· {status}</span>
                   {isCurrent && <span className="ml-1.5 text-[10px] font-bold text-gray-400 uppercase">(Current State)</span>}
                 </div>

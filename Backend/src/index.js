@@ -84,6 +84,7 @@ app.use('/api/workflows',    require('./routes/workflows'));
 app.use('/api/dpr',          require('./routes/dpr'));
 app.use('/api/dashboard',    require('./routes/executiveDashboard'));
 app.use('/api/report-schedules', require('./routes/reportSchedules'));
+app.use('/api/recurring',    require('./routes/recurring'));
 app.use('/api/audit-logs',   require('./routes/auditLogs'));
 app.use('/api/ai',           require('./routes/ai'));
 // Legacy — superseded by /api/daily-progress-reports (the merged form). Kept

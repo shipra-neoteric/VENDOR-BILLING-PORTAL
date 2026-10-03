@@ -2649,20 +2649,20 @@ export default function WorkItems() {
                   fit a phone's width, wrapping/overlapping text into an
                   unreadable mess instead of just scrolling sideways. sm:min-w-0
                   restores today's exact "no horizontal scroll" desktop fit. */}
-              <Table containerClassName="h-[650px] overflow-y-auto" className="min-w-[900px] sm:min-w-0">
+              <Table containerClassName="h-[650px] overflow-y-auto" className="min-w-[1050px]">
                 <Thead>
                   <Tr>
                     <Th className="w-[9%]">WO No</Th>
                     <Th className="w-[8%]">Date</Th>
-                    <Th className="w-[10%]">Project</Th>
-                    <Th className="w-[9%]">Category</Th>
-                    <Th className="w-[8%]">Vendor Code</Th>
-                    <Th className="w-[10%]">Company Name</Th>
+                    <Th className="w-[8%]">Project</Th>
+                    <Th className="w-[7%]">Category</Th>
+                    <Th className="w-[7%]">Vendor Code</Th>
+                    <Th className="w-[8%]">Company Name</Th>
                     <Th className="text-right w-[10%]">Contract Value</Th>
-                    <Th className="w-[8%]">Status</Th>
-                    <Th className="w-[8%]">Step</Th>
-                    <Th className="w-[8%]">Created</Th>
-                    <Th className="w-[12%]">Actions</Th>
+                    <Th className="w-[14%]">Status</Th>
+                    <Th className="w-[11%]">Step</Th>
+                    <Th className="w-[7%]">Created</Th>
+                    <Th className="w-[11%]">Actions</Th>
                   </Tr>
                 </Thead>
                 <Tbody>
