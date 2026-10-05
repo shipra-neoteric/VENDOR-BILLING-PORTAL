@@ -87,7 +87,12 @@ export default function MyTasksDashboard() {
 
   useEffect(() => {
     setLoading(true);
-    Promise.all([
+    // allSettled, not all — a user without sla-dashboard permission 403s on
+    // the workflow-instances call below; with Promise.all that one failure
+    // used to reject the whole batch and silently zero out every other card
+    // (bills, bill requests, DPR KPIs) too, even though those calls
+    // succeeded. Each card now only loses its own data if its own call fails.
+    Promise.allSettled([
       apiClient.get("/bills"),
       apiClient.get("/bill-requests", { params: { status: "pending" } }),
       apiClient.get("/bill-requests", { params: { status: "pending-gm" } }),
@@ -95,18 +100,19 @@ export default function MyTasksDashboard() {
       apiClient.get("/dpr"),
     ])
       .then(([billsR, brR, brGmR, wfR, dprR]) => {
-        setBills(billsR.data.bills ?? []);
-        setBillReqs(brR.data.billRequests ?? []);
-        setBillReqsGm(brGmR.data.billRequests ?? []);
-        setWoInstances(wfR.data.instances ?? []);
-        const k = dprR.data?.operational?.kpis || {};
-        setKpis({
-          progressEntriesToday: k.progressEntriesToday || 0,
-          drisActiveToday:      k.drisActiveToday || 0,
-          projectsActiveToday:  k.projectsActiveToday || 0,
-        });
+        if (billsR.status === "fulfilled") setBills(billsR.value.data.bills ?? []);
+        if (brR.status === "fulfilled") setBillReqs(brR.value.data.billRequests ?? []);
+        if (brGmR.status === "fulfilled") setBillReqsGm(brGmR.value.data.billRequests ?? []);
+        if (wfR.status === "fulfilled") setWoInstances(wfR.value.data.instances ?? []);
+        if (dprR.status === "fulfilled") {
+          const k = dprR.value.data?.operational?.kpis || {};
+          setKpis({
+            progressEntriesToday: k.progressEntriesToday || 0,
+            drisActiveToday:      k.drisActiveToday || 0,
+            projectsActiveToday:  k.projectsActiveToday || 0,
+          });
+        }
       })
-      .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
 

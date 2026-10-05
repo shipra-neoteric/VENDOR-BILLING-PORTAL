@@ -304,7 +304,7 @@ export default function SlaDashboard() {
                 <Th className="text-right w-[13%]">Total SLA</Th>
                 <Th className="text-right w-[13%]">SLA Done</Th>
                 <Th className="text-right w-[13%]">SLA Breach</Th>
-                <Th className="text-right w-[13%]">Overdue Time</Th>
+                <Th className="text-right w-[13%]">Total Overdue</Th>
                 <Th className="text-right w-[13%]">Score (%)</Th>
                 <Th className="text-right w-[13%]">SLA Avg Time</Th>
               </Tr>
@@ -398,7 +398,7 @@ export default function SlaDashboard() {
                       <Td className="whitespace-nowrap">
                         {d.breached ? <span className="text-red-500 dark:text-red-400">Overdue {fmtMinutes(d.overdueMinutes)}</span>
                           : remainingMs !== null ? <span className="text-emerald-600 dark:text-emerald-400">{fmtMinutes(Math.round(remainingMs / 60000))} left</span>
-                          : "—"}
+                            : "—"}
                       </Td>
                       <Td className="text-right">
                         {d.breached ? <NxBadge color="red">🔴 Overdue</NxBadge> : <NxBadge color="green">🟢 On Track</NxBadge>}
