@@ -241,7 +241,9 @@ async function buildPendingItems(user) {
   if (hasL2DirectorAccess) {
     for (const bill of accountsBills) {
       if (seenBillIds.has(String(bill._id))) continue;
-      const pendingSince = bill.finalApprovalPendingSince || bill.l1ApprovedAt || bill.createdAt;
+      // finalApprovalPendingSince set = re-queued bill: show no age / Overdue at all.
+      const hideAge = !!bill.finalApprovalPendingSince;
+      const pendingSince = bill.l1ApprovedAt || bill.createdAt;
       items.push({
         id: String(bill._id),
         system: 'RunningBill-Accounts',
@@ -255,8 +257,8 @@ async function buildPendingItems(user) {
         department: departmentOf(bill),
         amount: bill.amount || 0,
         submittedAt: bill.createdAt,
-        pendingSince,
-        daysPending: dayFloor(pendingSince, now),
+        pendingSince: hideAge ? null : pendingSince,
+        daysPending: hideAge ? null : dayFloor(pendingSince, now),
         status: bill.status,
         currentStage: 'L2 Director Approval',
       });

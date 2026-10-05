@@ -14,8 +14,8 @@ export interface MdApprovalRow {
   isArchived?: boolean;
   amount: number;
   submittedAt?: string;
-  pendingSince?: string;
-  daysPending?: number;
+  pendingSince?: string | null;
+  daysPending?: number | null;
   status: string;
   currentStage: string;
   // BillRequest/RunningBill-Manual only — which stage actually finalizes

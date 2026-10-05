@@ -477,7 +477,7 @@ export default function MdApprovals() {
                     </div>
                   ) : (
                     <div className="flex items-center gap-2">
-                      <span>{row.daysPending ?? 0} days</span>
+                      <span>{row.daysPending === null ? "—" : `${row.daysPending ?? 0} days`}</span>
                       {isOverdue(row) && <NxBadge color="red">Overdue</NxBadge>}
                     </div>
                   )}

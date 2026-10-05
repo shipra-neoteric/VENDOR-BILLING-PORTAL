@@ -77,6 +77,7 @@ export interface RunningBillDetail {
   isActive?: boolean;
   supersededBy?: { _id: string; billNo: string; billType?: string } | null;
   approvalHistory?: RunningBillHistoryEntry[];
+  finalApprovalPendingSince?: string | null;
 }
 
 export const fmt = (n: number) => "₹" + (n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -256,7 +257,7 @@ function historyEventStyle(h: RunningBillHistoryEntry): { border: string; header
   return { border: "border-emerald-200 dark:border-emerald-500/30", header: "bg-emerald-50 dark:bg-emerald-500/10", title: "text-emerald-700 dark:text-emerald-400", icon: "bg-emerald-500 text-white", iconGlyph: "✓" };
 }
 
-export function BillHistoryTimeline({ history }: { history: RunningBillHistoryEntry[] }) {
+export function BillHistoryTimeline({ history, hideVerifyDate = false }: { history: RunningBillHistoryEntry[]; hideVerifyDate?: boolean }) {
   if (!history || history.length === 0) return null;
   return (
     <div className="mt-4">
@@ -279,7 +280,7 @@ export function BillHistoryTimeline({ history }: { history: RunningBillHistoryEn
                   </span>
                 </div>
                 <span className="text-[11px] text-gray-500 dark:text-gray-400 shrink-0 whitespace-nowrap">
-                  {h.at ? dayjs(h.at).format("DD-MM-YYYY · hh:mm A") : "—"}
+                  {hideVerifyDate && h.stage === "verify" ? "" : h.at ? dayjs(h.at).format("DD-MM-YYYY · hh:mm A") : "—"}
                 </span>
               </div>
               <div className="px-3 py-2 bg-white dark:bg-[#1E293B] flex flex-col gap-1">
@@ -560,7 +561,7 @@ export default function RunningBillDetailView({
           Rejection) renders here, alongside History. */}
       {bill.status !== "draft" && renderActionSection?.(bill)}
 
-      <BillHistoryTimeline history={bill.approvalHistory || []} />
+      <BillHistoryTimeline history={bill.approvalHistory || []} hideVerifyDate={!!bill.finalApprovalPendingSince} />
 
       {bill.remarks && (
         <>
