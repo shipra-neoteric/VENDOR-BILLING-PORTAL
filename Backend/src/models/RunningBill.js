@@ -329,6 +329,9 @@ const runningBillSchema = new mongoose.Schema(
     // Keeps a bill out of the Final Approval (MD) pending queue without
     // touching its status — it stays actionable from Accounts Payment.
     hideFromFinalApproval: { type: Boolean, default: false },
+    // When set, the Final Approval queue ages this bill from here instead of
+    // from l1ApprovedAt (so a bill re-queued after a correction isn't Overdue).
+    finalApprovalPendingSince: { type: Date },
     isArchived:  { type: Boolean, default: false },
     archivedAt:  { type: Date, default: null },
     createdBy:   { type: mongoose.Schema.Types.ObjectId, ref: 'User' },

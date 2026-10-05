@@ -241,7 +241,7 @@ async function buildPendingItems(user) {
   if (hasL2DirectorAccess) {
     for (const bill of accountsBills) {
       if (seenBillIds.has(String(bill._id))) continue;
-      const pendingSince = bill.l1ApprovedAt || bill.createdAt;
+      const pendingSince = bill.finalApprovalPendingSince || bill.l1ApprovedAt || bill.createdAt;
       items.push({
         id: String(bill._id),
         system: 'RunningBill-Accounts',
