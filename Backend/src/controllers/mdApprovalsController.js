@@ -134,7 +134,7 @@ async function buildPendingItems(user) {
     WorkOrder.find({ approvalStatus: 'pending-final' }).populate('createdBy', 'name').lean(),
     BillRequest.find({ status: { $in: ['pending', 'pending-gm', 'pending-l3', 'pending-l4'] } }).populate('requestedBy', 'name').lean(),
     RunningBill.find({ manualApprovalStatus: { $in: ['pending', 'pending-gm', 'pending-l3', 'pending-l4'] } }).populate('createdBy', 'name').lean(),
-    RunningBill.find({ status: 'l1-approved' }).populate('createdBy', 'name').lean(),
+    RunningBill.find({ status: 'l1-approved', hideFromFinalApproval: { $ne: true } }).populate('createdBy', 'name').lean(),
   ]);
 
   const items = [];

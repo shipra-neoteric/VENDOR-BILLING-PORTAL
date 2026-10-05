@@ -326,6 +326,9 @@ const runningBillSchema = new mongoose.Schema(
     // nonzero, same convention as adjustmentAmount below.
     retentionReleased:       { type: Number, default: 0 },
     retentionReleaseRemark:  { type: String, default: '' },
+    // Keeps a bill out of the Final Approval (MD) pending queue without
+    // touching its status — it stays actionable from Accounts Payment.
+    hideFromFinalApproval: { type: Boolean, default: false },
     isArchived:  { type: Boolean, default: false },
     archivedAt:  { type: Date, default: null },
     createdBy:   { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
