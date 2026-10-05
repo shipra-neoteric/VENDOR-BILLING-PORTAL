@@ -364,6 +364,7 @@ body{font-family:Arial,sans-serif;padding:30px;color:#333;font-size:13px;-webkit
           retentionAmount: bill.retentionAmount ?? 0, advanceRecovery: bill.advanceRecovery ?? 0,
           supersedeDeduction: bill.supersedeDeduction ?? 0,
           tdsAmount: bill.tdsAmount ?? 0, adjustmentAmount: bill.adjustmentAmount ?? 0,
+          retentionReleased: bill.retentionReleased ?? 0,
         }).netPayable;
         return `
     <div style="display:flex;justify-content:space-between;padding:13px 14px;background:#fff7ed;font-weight:bold;font-size:15px;color:#f47b20;border-top:2px solid #fed7aa">

@@ -15,6 +15,7 @@ const { logAudit, diffFields } = require('../utils/auditLog');
 const { hasUnapprovedVarianceForLineItem, resolveBillableItem, findOverbilledLineItem, isWorkOrderApproved } = require('../utils/varianceCheck');
 const { recomputeAfterInvalidate, recomputeParentFromSubItems, deriveStatus } = require('../utils/progressHelpers');
 const { applyAdvanceRecoveries, reverseAdvanceRecoveries } = require('../utils/advanceRecovery');
+const { getRetentionHeldForWorkOrder } = require('../utils/retentionHeld');
 const AdvanceSlip  = require('../models/AdvanceSlip');
 const Contractor   = require('../models/Contractor');
 const { nextCode } = require('../utils/sequence');
@@ -584,12 +585,28 @@ exports.createBill = asyncHandler(async (req, res) => {
     }
   }
 
+  // Releasing held retention at creation time needs the same server-side
+  // guard as the approve stages below: a remark is mandatory, and the
+  // amount can never exceed what's actually held-and-available on this WO.
+  const retentionReleaseAmount = req.body.retentionReleaseAmount != null ? Number(req.body.retentionReleaseAmount) : 0;
+  if (retentionReleaseAmount > 0) {
+    if (!String(req.body.retentionReleaseRemark || '').trim()) {
+      return badRequest(res, 'A remark is required when releasing held retention');
+    }
+    const held = await getRetentionHeldForWorkOrder(req.body.workOrderId);
+    if (retentionReleaseAmount > held) {
+      return badRequest(res, `Cannot release ₹${retentionReleaseAmount} — only ₹${held} is currently held on this work order`);
+    }
+  }
+
   const bill = await RunningBill.create({
     ...req.body,
     billNo,
     amount,
     lineItems,
     linkedBills,
+    retentionReleased: Number(req.body.retentionReleaseAmount) || 0,
+    retentionReleaseRemark: req.body.retentionReleaseRemark || '',
     billingCycle: cycleCount + 1,
     milestoneId:    milestone ? milestone._id : null,
     milestoneStage: milestone ? (milestone.stage || milestone.type || '') : '',

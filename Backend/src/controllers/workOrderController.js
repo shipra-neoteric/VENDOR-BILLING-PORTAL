@@ -36,6 +36,7 @@ const { milestonesExceedContract } = require('../utils/validateMilestones');
 const { documentsExceedLimit } = require('../utils/validateDocuments');
 const { logAudit, diffFields } = require('../utils/auditLog');
 const { sumActiveQty, applyVarianceGate, recomputeParentFromSubItems } = require('../utils/progressHelpers');
+const { getRetentionHeldForWorkOrder } = require('../utils/retentionHeld');
 const { notifyStagePending, settleAllPendingForEntity } = require('../utils/slackApprovals');
 const { notifyStageInApp, notifyUser, notifyByPermission } = require('../utils/notificationService');
 
@@ -283,6 +284,67 @@ exports.getWorkOrder = asyncHandler(async (req, res) => {
   }
 
   success(res, { workOrder });
+});
+
+// GET /api/work-orders/bulk-detail?ids=id1,id2,id3 — the full per-WO detail
+// (scope items + progress entries, same populate chain as getWorkOrder
+// above) for several work orders in ONE query, instead of the N individual
+// GET /work-orders/:id requests DRIDashboard/SiteProgress used to fire in
+// parallel (one per WO in the selected project) — an N+1 pattern that was
+// the main cause of those two pages being slow to load once a project with
+// many work orders was selected, since each of those N requests ran the
+// same 7-way populate chain independently.
+exports.getWorkOrdersBulkDetail = asyncHandler(async (req, res) => {
+  const ids = String(req.query.ids || '').split(',').map(s => s.trim()).filter(Boolean);
+  if (!ids.length) return success(res, { workOrders: [] });
+
+  const workOrders = await WorkOrder.find({ _id: { $in: ids } })
+    .populate('projectId', 'code name projectType')
+    .populate('createdBy', 'name email')
+    .populate('assignedDRI', 'name email mobile')
+    .populate('scopeItems.progressEntries.enteredBy', 'name')
+    .populate('scopeItems.progressEntries.invalidated.by', 'name')
+    .populate('scopeItems.subItems.progressEntries.enteredBy', 'name')
+    .populate('scopeItems.subItems.progressEntries.invalidated.by', 'name')
+    .lean();
+
+  // Same draft-visibility rule as getWorkOrder/listWorkOrders.
+  const visible = workOrders.filter(wo =>
+    wo.approvalStatus !== 'draft' || req.user.role === 'owner'
+    || String(wo.createdBy?._id || wo.createdBy) === String(req.user._id)
+  );
+
+  // Same batched live-party overlay listWorkOrders already does — one query
+  // per party type across the whole batch, not one per WO.
+  const contractorCodes = [...new Set(visible.filter(w => w.contractType !== 'professional-services' && w.vendorCode).map(w => w.vendorCode))];
+  const consultantCodes = [...new Set(visible.filter(w => w.contractType === 'professional-services' && w.vendorCode).map(w => w.vendorCode))];
+  const [contractors, consultants] = await Promise.all([
+    contractorCodes.length ? Contractor.find({ vendorCode: { $in: contractorCodes } }).select(`vendorCode ${BANK_DETAIL_FIELDS} ${LIVE_NAME_FIELDS}`).lean() : [],
+    consultantCodes.length ? Consultant.find({ consultantCode: { $in: consultantCodes } }).select(`consultantCode ${BANK_DETAIL_FIELDS} ${LIVE_NAME_FIELDS}`).lean() : [],
+  ]);
+  const contractorMap = new Map(contractors.map(c => [c.vendorCode, c]));
+  const consultantMap = new Map(consultants.map(c => [c.consultantCode, c]));
+  visible.forEach(w => {
+    const isProfessionalServices = w.contractType === 'professional-services';
+    const party = isProfessionalServices ? consultantMap.get(w.vendorCode) : contractorMap.get(w.vendorCode);
+    const details = toContractorDetails(party);
+    if (details) w.contractorDetails = details;
+    overlayLiveContractorFields(w, party, isProfessionalServices);
+  });
+
+  success(res, { workOrders: visible });
+});
+
+// GET /api/work-orders/:id/retention-held — how much retention is currently
+// withheld across this WO's own bills and still available to release back
+// out on a new/in-progress bill (see utils/retentionHeld.js). Read-only;
+// used by NewBillDrawer and the BillRequest approve modals to show a cap/hint
+// before someone enters a "Release Held Retention" amount — the real
+// validation against this same figure happens server-side at the point the
+// amount is actually saved (createBill / each approve stage).
+exports.getWorkOrderRetentionHeld = asyncHandler(async (req, res) => {
+  const held = await getRetentionHeldForWorkOrder(req.params.id);
+  success(res, { held });
 });
 
 exports.createWorkOrder = asyncHandler(async (req, res) => {

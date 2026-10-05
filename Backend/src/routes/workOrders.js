@@ -2,7 +2,7 @@ const router = require('express').Router();
 const { authenticate, authorize, authorizeOr, authorizeAnyOr } = require('../middleware/auth');
 const { createWorkOrderRules } = require('../validators/workOrder.validator');
 const {
-  listWorkOrders, getWorkOrder, createWorkOrder, updateWorkOrder, deleteWorkOrder, cancelWorkOrder,
+  listWorkOrders, getWorkOrder, getWorkOrdersBulkDetail, getWorkOrderRetentionHeld, createWorkOrder, updateWorkOrder, deleteWorkOrder, cancelWorkOrder,
   lockWorkOrder, unlockWorkOrder,
   submitWorkOrder, checkerApprove, approverApprove, finalApprove, sendBack,
   addScopeProgress, editProgressEntry, deleteProgressEntry, invalidateProgressEntry,
@@ -12,8 +12,12 @@ const {
 
 router.use(authenticate);
 
-router.get('/',    listWorkOrders);
-router.get('/:id', getWorkOrder);
+router.get('/',            listWorkOrders);
+// Must come before '/:id' — otherwise Express would match "bulk-detail" as
+// an :id value and this route would never be reached.
+router.get('/bulk-detail', getWorkOrdersBulkDetail);
+router.get('/:id',         getWorkOrder);
+router.get('/:id/retention-held', getWorkOrderRetentionHeld);
 // 'create'/'edit' are the pre-existing broad grants; 'maker' is the new,
 // more specific L1 grant for the 4-level approval chain — either unlocks these.
 router.post('/',      authorizeAnyOr('work-orders', ['create', 'maker']), createWorkOrderRules, createWorkOrder);

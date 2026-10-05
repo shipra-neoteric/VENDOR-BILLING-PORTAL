@@ -23,6 +23,13 @@ export interface BillFinancialsInput {
   // below); 0/absent for every other bill keeps the original order exactly,
   // so this is fully backward compatible with every existing bill.
   supersedeDeduction?: number;
+  // How much of this WO's retention held on EARLIER bills is being released
+  // back out on this one — unrelated to this bill's own `retentionAmount`
+  // (what's newly withheld on THIS bill). Always adds to net payable (money
+  // flowing back to the vendor), applied alongside adjustmentAmount at the
+  // very last step. 0/absent for every existing bill — same backward-
+  // compatible, purely additive shape as adjustmentAmount/supersedeDeduction.
+  retentionReleased?: number;
 }
 
 export interface BillFinancials {
@@ -42,7 +49,7 @@ function round2(n: number): number {
 
 export function billFinancials({
   gross, gstPercent = 0, retentionAmount = 0, advanceRecovery = 0, tdsAmount = 0, adjustmentAmount = 0,
-  supersedeDeduction = 0,
+  supersedeDeduction = 0, retentionReleased = 0,
 }: BillFinancialsInput): BillFinancials {
   const netBeforeGst = round2(gross - retentionAmount - advanceRecovery);
 
@@ -56,13 +63,13 @@ export function billFinancials({
   if (supersedeDeduction > 0) {
     const gstAmount    = round2(gross * gstPercent / 100);
     const netAfterHold = round2(gross + gstAmount - supersedeDeduction - advanceRecovery - retentionAmount);
-    const netPayable   = round2(netAfterHold - tdsAmount + adjustmentAmount);
+    const netPayable   = round2(netAfterHold - tdsAmount + adjustmentAmount + retentionReleased);
     return { gstAmount, netBeforeGst, netAfterHold, netPayable };
   }
 
   const gstAmount    = round2(netBeforeGst * gstPercent / 100);
   const netAfterHold = round2(netBeforeGst + gstAmount);
-  const netPayable   = round2(netAfterHold - tdsAmount + adjustmentAmount);
+  const netPayable   = round2(netAfterHold - tdsAmount + adjustmentAmount + retentionReleased);
   return { gstAmount, netBeforeGst, netAfterHold, netPayable };
 }
 

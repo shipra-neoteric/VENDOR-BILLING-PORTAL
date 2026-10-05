@@ -191,7 +191,7 @@ export default function NewBillDrawer({
   onCreated: (bill: Record<string, unknown>) => void;
 }) {
   const [saving, setSaving] = useState(false);
-  const formErrors = useFormErrors<"contractorId" | "billDate" | "generatedBy" | "companyId" | "department">();
+  const formErrors = useFormErrors<"contractorId" | "billDate" | "generatedBy" | "companyId" | "department" | "retentionReleaseRemark">();
 
   const [projects, setProjects] = useState<ProjectOpt[]>([]);
   const [contractors, setContractors] = useState<Contractor[]>([]);
@@ -290,6 +290,15 @@ export default function NewBillDrawer({
   const [advancesUnavailable, setAdvancesUnavailable] = useState(false);
   const [recoveryAmount, setRecoveryAmount] = useState<number | null>(null);
 
+  // Release Held Retention — lets this new bill also pay back some of the
+  // retention already held on this WO's earlier bills, on top of (and
+  // independent of) this bill's own Hold/Retention above. `retentionHeldForWO`
+  // is just a live read-only hint of how much is currently releasable —
+  // the server is the authoritative validator.
+  const [retentionReleaseAmount, setRetentionReleaseAmount] = useState<number>(0);
+  const [retentionReleaseRemark, setRetentionReleaseRemark] = useState<string>("");
+  const [retentionHeldForWO, setRetentionHeldForWO] = useState<number>(0);
+
   useEffect(() => {
     if (!open) return;
     formErrors.clearAll();
@@ -327,6 +336,9 @@ export default function NewBillDrawer({
     setPendingAdvances([]);
     setAdvancesUnavailable(false);
     setRecoveryAmount(null);
+    setRetentionReleaseAmount(0);
+    setRetentionReleaseRemark("");
+    setRetentionHeldForWO(0);
 
     apiClient.get<{ projects: Record<string, unknown>[] }>("/projects")
       .then((r) => setProjects((r.data.projects || []).map((p) => normalizeId(p) as unknown as ProjectOpt)))
@@ -377,6 +389,16 @@ export default function NewBillDrawer({
   // field) leaves the maker stuck with a required-but-empty, disabled field
   // otherwise — let them fill it in directly in just that case.
   const departmentLocked = !isStandalone && !!linkedWO?.department;
+
+  // How much retention is currently held-and-releasable on the linked WO —
+  // purely a live hint for the Release Held Retention field below; re-fetched
+  // whenever the linked WO changes, cleared when there's none.
+  useEffect(() => {
+    if (!linkedWO?.id) { setRetentionHeldForWO(0); return; }
+    apiClient.get<{ held: number }>(`/work-orders/${linkedWO.id}/retention-held`)
+      .then((r) => setRetentionHeldForWO(Number(r.data.held) || 0))
+      .catch(() => setRetentionHeldForWO(0));
+  }, [linkedWO?.id]);
 
   const selectedContractor = useMemo(
     () => contractors.find((c) => c.id === contractorId) || null,
@@ -760,7 +782,7 @@ export default function NewBillDrawer({
     li.scopeItemId ? (supersedeQtyMap[li.scopeItemId + (li.subItemId ? `|${li.subItemId}` : "")] || 0) : 0;
   const { gstAmount: gstAmt, netAfterHold } = billFinancials({
     gross, gstPercent, retentionAmount: holdAmount, advanceRecovery: recoveryAmount || 0,
-    supersedeDeduction: supersedeDeductionAmount,
+    supersedeDeduction: supersedeDeductionAmount, retentionReleased: retentionReleaseAmount,
   });
   const maxRecovery = pendingAdvances.reduce((s, sl) => s + sl.balance, 0);
   const payableNow = netAfterHold;
@@ -798,6 +820,10 @@ export default function NewBillDrawer({
     }
     if (department === "custom" && !customDepartment.trim()) {
       formErrors.setError("department", "Enter the custom team's name");
+      hasError = true;
+    }
+    if (retentionReleaseAmount > 0 && !retentionReleaseRemark.trim()) {
+      formErrors.setError("retentionReleaseRemark", "Required when releasing held retention");
       hasError = true;
     }
     if (hasError) return;
@@ -851,6 +877,8 @@ export default function NewBillDrawer({
       ...(isStandalone ? { companyId } : {}),
       retentionPercent: holdMode === "percent" ? (holdPercent || 0) : (gross > 0 ? Math.round((holdAmount / gross) * 10000) / 100 : 0),
       retentionAmount: holdAmount,
+      retentionReleaseAmount: retentionReleaseAmount || 0,
+      retentionReleaseRemark: retentionReleaseRemark ?? "",
       supersedeDeduction: supersedeDeductionAmount,
       ...(recoveries.length ? { advanceRecoveries: recoveries } : {}),
       lineItems: validItems.map(({ key: _k, lastBilledQty: _l, percentComplete: _p, groupLabel: _g, ...rest }) => ({
@@ -1518,6 +1546,40 @@ export default function NewBillDrawer({
                   disabled={pendingAdvances.length === 0}
                   hint="Recovered right now, real-time — the advance slip's own balance updates immediately."
                 />
+              </div>
+            )}
+
+            {/* Release Held Retention — pays back some of the retention
+                already held on THIS WO's earlier bills, increasing this
+                bill's payable. Independent of the Hold (Retention) box
+                above, which is unaffected. */}
+            {!isStandalone && (
+              <div className="p-3.5 border-b border-gray-100 dark:border-gray-700/40 bg-emerald-50 dark:bg-emerald-500/10">
+                <div className="font-bold text-xs text-emerald-800 dark:text-emerald-300 mb-2">Release Held Retention</div>
+                <div className="text-[11px] text-emerald-700 dark:text-emerald-400 mb-2">
+                  Retention currently held on this WO: {fmt(retentionHeldForWO)}
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <Field
+                    label="Release Held Retention (₹)"
+                    type="number" min="0" placeholder="0 — leave blank to skip"
+                    value={retentionReleaseAmount || ""}
+                    onChange={(e) => setRetentionReleaseAmount(Number(e.target.value) || 0)}
+                    hint={retentionReleaseAmount > retentionHeldForWO ? `Only ${fmt(retentionHeldForWO)} is currently held on this work order` : undefined}
+                  />
+                  <Field
+                    label={`Release Remark${retentionReleaseAmount > 0 ? " *" : ""}`}
+                    placeholder="Reason for releasing this retention…"
+                    value={retentionReleaseRemark}
+                    onChange={(e) => setRetentionReleaseRemark(e.target.value)}
+                    error={formErrors.errors.retentionReleaseRemark}
+                  />
+                </div>
+                {retentionReleaseAmount > 0 && (
+                  <div className="flex justify-between text-xs mt-1.5 text-emerald-700 dark:text-emerald-400 font-mono">
+                    <span>Released this bill</span><span>+ {fmt(retentionReleaseAmount)}</span>
+                  </div>
+                )}
               </div>
             )}
 

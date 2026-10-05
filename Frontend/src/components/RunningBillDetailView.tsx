@@ -88,7 +88,7 @@ export const netAfterAdvance = (b: RunningBillDetail) =>
   billFinancials({
     gross: b.amount || 0, gstPercent: b.gstPercent ?? 0,
     retentionAmount: b.retentionAmount ?? 0, advanceRecovery: b.advanceRecovery ?? 0,
-    supersedeDeduction: b.supersedeDeduction ?? 0,
+    supersedeDeduction: b.supersedeDeduction ?? 0, retentionReleased: b.retentionReleased ?? 0,
   }).netPayable;
 
 export function SectionLabel({ title }: { title: string }) {
@@ -514,7 +514,7 @@ export default function RunningBillDetailView({
 
         const { gstAmount: gstAmt, netPayable: finalNetPayable } = billFinancials({
           gross, gstPercent: gstPct, retentionAmount: retAmt, advanceRecovery: advRec, tdsAmount: tdsAmt, adjustmentAmount: adjAmt,
-          supersedeDeduction: bill.supersedeDeduction ?? 0,
+          supersedeDeduction: bill.supersedeDeduction ?? 0, retentionReleased: retRel,
         });
         const retReleaseRemark = bill.retentionReleaseRemark;
 

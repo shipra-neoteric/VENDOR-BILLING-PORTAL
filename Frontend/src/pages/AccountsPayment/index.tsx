@@ -176,7 +176,7 @@ const netAfterAdvance = (b: Bill) =>
   billFinancials({
     gross: b.amount || 0, gstPercent: b.gstPercent ?? 0,
     retentionAmount: b.retentionAmount ?? 0, advanceRecovery: b.advanceRecovery ?? 0,
-    supersedeDeduction: b.supersedeDeduction ?? 0,
+    supersedeDeduction: b.supersedeDeduction ?? 0, retentionReleased: b.retentionReleased ?? 0,
   }).netPayable;
 // The true bottom line — same Gross → Hold/Advance → GST → TDS → Adjustment
 // chain as the drawer's own Payment Summary, so a Paid bill's displayed
@@ -187,7 +187,7 @@ const netPayableFinal = (b: Bill) =>
     gross: b.amount || 0, gstPercent: b.gstPercent ?? 0,
     retentionAmount: b.retentionAmount ?? 0, advanceRecovery: b.advanceRecovery ?? 0,
     tdsAmount: b.tdsAmount ?? 0, adjustmentAmount: b.adjustmentAmount ?? 0,
-    supersedeDeduction: b.supersedeDeduction ?? 0,
+    supersedeDeduction: b.supersedeDeduction ?? 0, retentionReleased: b.retentionReleased ?? 0,
   }).netPayable;
 // What the list/search should treat as "the amount" for a bill — once a bill
 // is Paid, that's its actual paidAmount (post-TDS/adjustment, from TMS), not

@@ -42,6 +42,7 @@ interface Bill {
   gstPercent: number; tdsPercent: number; tdsAmount?: number; paidAmount?: number;
   retentionAmount?: number; advanceRecovery?: number; supersedeDeduction?: number;
   adjustmentAmount?: number;
+  retentionReleased?: number;
   remarks?: string; status: BillStatus;
   billType?: string; relationshipType?: string; isActive?: boolean;
   supersededBy?: { _id: string; billNo: string; billType?: string } | null;
@@ -72,6 +73,9 @@ function calcBill(b: Bill) {
   // here made this page's Net/Running Balance/portfolio totals disagree with
   // every other screen for any bill that had one applied.
   const adjustment = b.adjustmentAmount ?? 0;
+  // Retention already held on this WO's earlier bills, released back out on
+  // this one — increases net payable, independent of this bill's own hold.
+  const retentionReleased = b.retentionReleased ?? 0;
   const netBeforeGst = b.amount - retention - advance;
   // SUPERSEDES bills: GST is charged on the full amount (not amount-minus-
   // hold-minus-advance), matching billFinancials' own supersede branch
@@ -80,7 +84,7 @@ function calcBill(b: Bill) {
   const gst   = supersede > 0 ? (b.amount * (b.gstPercent ?? 18)) / 100 : (netBeforeGst * (b.gstPercent ?? 18)) / 100;
   const gross = b.amount + gst;
   const tds   = b.tdsAmount ?? 0;
-  const net   = gross - tds - retention - advance - supersede + adjustment;
+  const net   = gross - tds - retention - advance - supersede + adjustment + retentionReleased;
   return { gst, gross, tds, retention, advance, net };
 }
 

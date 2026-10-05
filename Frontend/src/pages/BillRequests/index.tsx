@@ -75,12 +75,15 @@ interface BillRequestRow {
   processedAt?: string;
   retentionAmount?: number;
   advanceRecovery?: number;
+  retentionReleaseAmount?: number;
+  retentionReleaseRemark?: string;
+  retentionReleased?: number;
   gstPercentOverride?: number | null;
   payeeVendorCode?: string;
   payeeVendorName?: string;
   rejectReason?: string;
   approvalHistory?: ApprovalHistoryEntry[];
-  billId?: { _id: string; billNo: string; status: string; amount: number; paidAmount?: number; retentionPercent?: number; retentionAmount?: number; advanceRecovery?: number; gstPercent?: number; tdsAmount?: number; paymentDate?: string; paymentMode?: string; paymentUTR?: string; paymentBank?: string; paymentReleasedBy?: string };
+  billId?: { _id: string; billNo: string; status: string; amount: number; paidAmount?: number; retentionPercent?: number; retentionAmount?: number; advanceRecovery?: number; gstPercent?: number; tdsAmount?: number; paymentDate?: string; paymentMode?: string; paymentUTR?: string; paymentBank?: string; paymentReleasedBy?: string; retentionReleased?: number };
   milestoneAchieved?: boolean;
   milestoneDate?: string;
   createdAt: string;
@@ -584,6 +587,7 @@ export default function BillApproval() {
         retentionAmount: bill.retentionAmount ?? r.retentionAmount,
         advanceRecovery: bill.advanceRecovery ?? r.advanceRecovery,
         gstPercentOverride: bill.gstPercent ?? r.gstPercentOverride,
+        retentionReleased: bill.retentionReleased ?? r.retentionReleaseAmount ?? 0,
       });
     } catch {
       setViewReq(r);
@@ -608,6 +612,12 @@ export default function BillApproval() {
   // instead of being a bare number no AdvanceSlip ever finds out about.
   const [approvePendingAdvances, setApprovePendingAdvances] = useState<{ _id: string; slipNo: string; balance: number }[]>([]);
   const [approveProjectId, setApproveProjectId] = useState<string>("");
+  // Release Held Retention — releases retention already withheld on this
+  // work order's EARLIER bills back on this new bill, increasing its payable.
+  // Independent of this bill's own Hold/Retention amount above.
+  const [approveRetentionReleaseAmount, setApproveRetentionReleaseAmount] = useState<number | null>(null);
+  const [approveRetentionReleaseRemark, setApproveRetentionReleaseRemark] = useState("");
+  const [approveRetentionHeld, setApproveRetentionHeld] = useState<number>(0);
   const [gmModal, setGmModal] = useState(false); // GM (L2)
   const [gmTarget, setGmTarget] = useState<string | null>(null);
   const [gmRemarks, setGmRemarks] = useState("");
@@ -623,6 +633,9 @@ export default function BillApproval() {
   const [gmAdvance, setGmAdvance] = useState<number | null>(null);
   const [gmGst, setGmGst] = useState<number | null>(null);
   const [gmPendingAdvances, setGmPendingAdvances] = useState<{ _id: string; slipNo: string; balance: number }[]>([]);
+  const [gmRetentionReleaseAmount, setGmRetentionReleaseAmount] = useState<number | null>(null);
+  const [gmRetentionReleaseRemark, setGmRetentionReleaseRemark] = useState("");
+  const [gmRetentionHeld, setGmRetentionHeld] = useState<number>(0);
   const [rejectModal, setRejectModal] = useState(false);
   const [rejectTarget, setRejectTarget] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState("");
@@ -646,7 +659,14 @@ export default function BillApproval() {
   const openApprove = async (id: string) => {
     setApproveTarget(id); setApproveRetention(null); setApproveAdvance(null); setApproveGst(null); setApproveModal(true);
     setApprovePayeeCode(""); setApproveGroupSiblings([]); setApprovePendingAdvances([]); setApproveSentForL2To("");
+    setApproveRetentionReleaseAmount(null); setApproveRetentionReleaseRemark(""); setApproveRetentionHeld(0);
     const br = billReqs.find(r => r._id === id);
+    setApproveRetentionReleaseAmount(br?.retentionReleaseAmount ?? null);
+    setApproveRetentionReleaseRemark(br?.retentionReleaseRemark ?? "");
+    if (br?.workOrderId) {
+      apiClient.get<{ held: number }>(`/work-orders/${br.workOrderId}/retention-held`)
+        .then(res => setApproveRetentionHeld(res.data.held || 0)).catch(() => setApproveRetentionHeld(0));
+    }
     if (!br?.vendorCode) return;
     setApprovePayeeCode(br.vendorCode);
     const projectId = br.projectId ?? "";
@@ -662,6 +682,9 @@ export default function BillApproval() {
   };
   const handleAgmApprove = async () => {
     if (!approveTarget) return;
+    if (approveRetentionReleaseAmount != null && approveRetentionReleaseAmount > 0 && !approveRetentionReleaseRemark.trim()) {
+      toast.error("Release remark is required when releasing held retention"); return;
+    }
     setSaving(true);
     try {
       const body: Record<string, unknown> = {};
@@ -669,6 +692,8 @@ export default function BillApproval() {
       if (approveGst != null) body.gstPercent = approveGst;
       if (approvePayeeCode) body.payeeVendorCode = approvePayeeCode;
       if (approveSentForL2To) body.sentForL2ApprovalTo = approveSentForL2To;
+      body.retentionReleaseAmount = approveRetentionReleaseAmount;
+      body.retentionReleaseRemark = approveRetentionReleaseRemark;
       if (approveAdvance != null) {
         body.advanceRecovery = approveAdvance;
         // Distribute the entered recovery across outstanding slips
@@ -702,6 +727,13 @@ export default function BillApproval() {
     setGmAdvance(br?.advanceRecovery || null);
     setGmGst(br?.gstPercentOverride ?? null);
     setGmPendingAdvances([]);
+    setGmRetentionReleaseAmount(br?.retentionReleaseAmount || null);
+    setGmRetentionReleaseRemark(br?.retentionReleaseRemark || "");
+    setGmRetentionHeld(0);
+    if (br?.workOrderId) {
+      apiClient.get<{ held: number }>(`/work-orders/${br.workOrderId}/retention-held`)
+        .then(res => setGmRetentionHeld(res.data.held || 0)).catch(() => setGmRetentionHeld(0));
+    }
     if (!br?.vendorCode) return;
     const payee = br.payeeVendorCode || br.vendorCode;
     setGmPayeeCode(payee);
@@ -720,12 +752,17 @@ export default function BillApproval() {
   };
   const handleGmApprove = async () => {
     if (!gmTarget) return;
+    if (gmRetentionReleaseAmount != null && gmRetentionReleaseAmount > 0 && !gmRetentionReleaseRemark.trim()) {
+      toast.error("Release remark is required when releasing held retention"); return;
+    }
     setSaving(true);
     try {
       const body: Record<string, unknown> = { remarks: gmRemarks };
       if (gmPayeeCode) body.payeeVendorCode = gmPayeeCode;
       if (gmRetention != null) body.retentionAmount = gmRetention;
       if (gmGst != null) body.gstPercent = gmGst;
+      body.retentionReleaseAmount = gmRetentionReleaseAmount;
+      body.retentionReleaseRemark = gmRetentionReleaseRemark;
       if (gmAdvance != null) {
         body.advanceRecovery = gmAdvance;
         const recoveries: { slipId: string; amount: number }[] = [];
@@ -755,20 +792,35 @@ export default function BillApproval() {
   const [l3Retention, setL3Retention] = useState<number | null>(null);
   const [l3Advance, setL3Advance] = useState<number | null>(null);
   const [l3Gst, setL3Gst] = useState<number | null>(null);
+  const [l3RetentionReleaseAmount, setL3RetentionReleaseAmount] = useState<number | null>(null);
+  const [l3RetentionReleaseRemark, setL3RetentionReleaseRemark] = useState("");
+  const [l3RetentionHeld, setL3RetentionHeld] = useState<number>(0);
   useEffect(() => {
     const br = billReqs.find(r => r._id === l3Target);
     setL3Retention(br?.retentionAmount ?? null);
     setL3Advance(br?.advanceRecovery ?? null);
     setL3Gst(br?.gstPercentOverride ?? null);
+    setL3RetentionReleaseAmount(br?.retentionReleaseAmount ?? null);
+    setL3RetentionReleaseRemark(br?.retentionReleaseRemark ?? "");
+    setL3RetentionHeld(0);
+    if (br?.workOrderId) {
+      apiClient.get<{ held: number }>(`/work-orders/${br.workOrderId}/retention-held`)
+        .then(res => setL3RetentionHeld(res.data.held || 0)).catch(() => setL3RetentionHeld(0));
+    }
   }, [l3Target]);
   const handleL3Approve = async () => {
     if (!l3Target) return;
+    if (l3RetentionReleaseAmount != null && l3RetentionReleaseAmount > 0 && !l3RetentionReleaseRemark.trim()) {
+      toast.error("Release remark is required when releasing held retention"); return;
+    }
     setSaving(true);
     try {
       const body: Record<string, unknown> = { remarks: l3Remarks };
       if (l3Retention != null) body.retentionAmount = l3Retention;
       if (l3Advance != null) body.advanceRecovery = l3Advance;
       if (l3Gst != null) body.gstPercent = l3Gst;
+      body.retentionReleaseAmount = l3RetentionReleaseAmount;
+      body.retentionReleaseRemark = l3RetentionReleaseRemark;
       const res = await apiClient.put(`/bill-requests/${l3Target}/l3-approve`, body);
       toast.success(res.data.message || "L3 approved");
       setL3Modal(false); setL3Target(null); setViewReq(null);
@@ -783,20 +835,35 @@ export default function BillApproval() {
   const [l4Retention, setL4Retention] = useState<number | null>(null);
   const [l4Advance, setL4Advance] = useState<number | null>(null);
   const [l4Gst, setL4Gst] = useState<number | null>(null);
+  const [l4RetentionReleaseAmount, setL4RetentionReleaseAmount] = useState<number | null>(null);
+  const [l4RetentionReleaseRemark, setL4RetentionReleaseRemark] = useState("");
+  const [l4RetentionHeld, setL4RetentionHeld] = useState<number>(0);
   useEffect(() => {
     const br = billReqs.find(r => r._id === l4Target);
     setL4Retention(br?.retentionAmount ?? null);
     setL4Advance(br?.advanceRecovery ?? null);
     setL4Gst(br?.gstPercentOverride ?? null);
+    setL4RetentionReleaseAmount(br?.retentionReleaseAmount ?? null);
+    setL4RetentionReleaseRemark(br?.retentionReleaseRemark ?? "");
+    setL4RetentionHeld(0);
+    if (br?.workOrderId) {
+      apiClient.get<{ held: number }>(`/work-orders/${br.workOrderId}/retention-held`)
+        .then(res => setL4RetentionHeld(res.data.held || 0)).catch(() => setL4RetentionHeld(0));
+    }
   }, [l4Target]);
   const handleL4Approve = async () => {
     if (!l4Target) return;
+    if (l4RetentionReleaseAmount != null && l4RetentionReleaseAmount > 0 && !l4RetentionReleaseRemark.trim()) {
+      toast.error("Release remark is required when releasing held retention"); return;
+    }
     setSaving(true);
     try {
       const body: Record<string, unknown> = { remarks: l4Remarks };
       if (l4Retention != null) body.retentionAmount = l4Retention;
       if (l4Advance != null) body.advanceRecovery = l4Advance;
       if (l4Gst != null) body.gstPercent = l4Gst;
+      body.retentionReleaseAmount = l4RetentionReleaseAmount;
+      body.retentionReleaseRemark = l4RetentionReleaseRemark;
       const res = await apiClient.put(`/bill-requests/${l4Target}/l4-approve`, body);
       toast.success(res.data.message || "L4 approved & bill generated");
       setL4Modal(false); setL4Target(null); setViewReq(null);
@@ -1494,7 +1561,7 @@ export default function BillApproval() {
               const retAmt = viewReq.retentionAmount ?? 0;
               const advRec = viewReq.advanceRecovery ?? 0;
               const gstPct = viewReq.gstPercentOverride ?? 0;
-              const { gstAmount, netAfterHold } = billFinancials({ gross: viewTotal, gstPercent: gstPct, retentionAmount: retAmt, advanceRecovery: advRec });
+              const { gstAmount, netAfterHold } = billFinancials({ gross: viewTotal, gstPercent: gstPct, retentionAmount: retAmt, advanceRecovery: advRec, retentionReleased: viewReq.retentionReleased ?? 0 });
               return (
                 <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 font-mono text-[13px]">
                   <div className="flex justify-between text-gray-500 dark:text-gray-400">
@@ -1594,6 +1661,25 @@ export default function BillApproval() {
                 : "No outstanding advance slips for this payee on this project."}
             />
           </div>
+          <div className="mb-3">
+            <Field
+              label="Release Held Retention (₹, optional)"
+              type="number" min="0" max={approveRetentionHeld || undefined}
+              placeholder="0"
+              value={approveRetentionReleaseAmount ?? ""}
+              onChange={(e) => setApproveRetentionReleaseAmount(e.target.value ? Number(e.target.value) : null)}
+              hint={`Retention currently held on this WO: ${fmt(approveRetentionHeld)}`}
+            />
+          </div>
+          <div className="mb-3">
+            <Field
+              label="Release Remark"
+              placeholder="Required if releasing a non-zero amount"
+              value={approveRetentionReleaseRemark}
+              onChange={(e) => setApproveRetentionReleaseRemark(e.target.value)}
+              error={approveRetentionReleaseAmount != null && approveRetentionReleaseAmount > 0 && !approveRetentionReleaseRemark.trim() ? "Remark is required when releasing held retention" : undefined}
+            />
+          </div>
           <Field
             label="GST % (optional)"
             type="number" min="0" max="100"
@@ -1671,6 +1757,25 @@ export default function BillApproval() {
           </div>
           <div className="mb-3">
             <Field
+              label="Release Held Retention (₹, optional)"
+              type="number" min="0" max={gmRetentionHeld || undefined}
+              placeholder="0"
+              value={gmRetentionReleaseAmount ?? ""}
+              onChange={(e) => setGmRetentionReleaseAmount(e.target.value ? Number(e.target.value) : null)}
+              hint={`Retention currently held on this WO: ${fmt(gmRetentionHeld)}`}
+            />
+          </div>
+          <div className="mb-3">
+            <Field
+              label="Release Remark"
+              placeholder="Required if releasing a non-zero amount"
+              value={gmRetentionReleaseRemark}
+              onChange={(e) => setGmRetentionReleaseRemark(e.target.value)}
+              error={gmRetentionReleaseAmount != null && gmRetentionReleaseAmount > 0 && !gmRetentionReleaseRemark.trim() ? "Remark is required when releasing held retention" : undefined}
+            />
+          </div>
+          <div className="mb-3">
+            <Field
               label="GST % (optional)"
               type="number" min="0" max="100"
               placeholder="Leave blank to use the work order's GST%"
@@ -1720,6 +1825,25 @@ export default function BillApproval() {
           </div>
           <div className="mb-3">
             <Field
+              label="Release Held Retention (₹, optional)"
+              type="number" min="0" max={l3RetentionHeld || undefined}
+              placeholder="0"
+              value={l3RetentionReleaseAmount ?? ""}
+              onChange={(e) => setL3RetentionReleaseAmount(e.target.value ? Number(e.target.value) : null)}
+              hint={`Retention currently held on this WO: ${fmt(l3RetentionHeld)}`}
+            />
+          </div>
+          <div className="mb-3">
+            <Field
+              label="Release Remark"
+              placeholder="Required if releasing a non-zero amount"
+              value={l3RetentionReleaseRemark}
+              onChange={(e) => setL3RetentionReleaseRemark(e.target.value)}
+              error={l3RetentionReleaseAmount != null && l3RetentionReleaseAmount > 0 && !l3RetentionReleaseRemark.trim() ? "Remark is required when releasing held retention" : undefined}
+            />
+          </div>
+          <div className="mb-3">
+            <Field
               label="GST % (optional)"
               type="number" min="0" max="100"
               placeholder="Leave blank to use the work order's GST%"
@@ -1764,6 +1888,25 @@ export default function BillApproval() {
               placeholder="0"
               value={l4Advance ?? ""}
               onChange={(e) => setL4Advance(e.target.value ? Number(e.target.value) : null)}
+            />
+          </div>
+          <div className="mb-3">
+            <Field
+              label="Release Held Retention (₹, optional)"
+              type="number" min="0" max={l4RetentionHeld || undefined}
+              placeholder="0"
+              value={l4RetentionReleaseAmount ?? ""}
+              onChange={(e) => setL4RetentionReleaseAmount(e.target.value ? Number(e.target.value) : null)}
+              hint={`Retention currently held on this WO: ${fmt(l4RetentionHeld)}`}
+            />
+          </div>
+          <div className="mb-3">
+            <Field
+              label="Release Remark"
+              placeholder="Required if releasing a non-zero amount"
+              value={l4RetentionReleaseRemark}
+              onChange={(e) => setL4RetentionReleaseRemark(e.target.value)}
+              error={l4RetentionReleaseAmount != null && l4RetentionReleaseAmount > 0 && !l4RetentionReleaseRemark.trim() ? "Remark is required when releasing held retention" : undefined}
             />
           </div>
           <div className="mb-3">
@@ -2007,7 +2150,7 @@ export default function BillApproval() {
             const gross = viewManualBill.amount || 0;
             const retAmt = viewManualBill.retentionAmount ?? 0;
             const advRec = viewManualBill.advanceRecovery ?? 0;
-            const { gstAmount, netAfterHold } = billFinancials({ gross, gstPercent: viewManualBill.gstPercent ?? 0, retentionAmount: retAmt, advanceRecovery: advRec, supersedeDeduction: viewManualBill.supersedeDeduction ?? 0 });
+            const { gstAmount, netAfterHold } = billFinancials({ gross, gstPercent: viewManualBill.gstPercent ?? 0, retentionAmount: retAmt, advanceRecovery: advRec, supersedeDeduction: viewManualBill.supersedeDeduction ?? 0, retentionReleased: viewManualBill.retentionReleased ?? 0 });
             return (
               <div className="rounded-lg border border-emerald-300 dark:border-emerald-500/30 bg-emerald-50 dark:bg-emerald-500/10 p-3 font-mono text-[13px]">
                 <div className="font-bold mb-2 text-emerald-800 dark:text-emerald-300">

@@ -12,6 +12,7 @@ const { nextBillNo, nextBillRequestReqNo } = require('../utils/codeGen');
 const { recomputeAfterInvalidate, expandBillableCandidates, recomputeParentFromSubItems } = require('../utils/progressHelpers');
 const { resolvePayee } = require('../utils/vendorGroupHelpers');
 const { applyAdvanceRecoveries } = require('../utils/advanceRecovery');
+const { getRetentionHeldForWorkOrder } = require('../utils/retentionHeld');
 const { notifyStagePending, settleAllPendingForEntity } = require('../utils/slackApprovals');
 const { canActOnDepartment } = require('../utils/departmentAccess');
 const { can } = require('../middleware/auth');
@@ -381,6 +382,21 @@ exports.agmApprove = asyncHandler(async (req, res) => {
     advanceRecovery = advanceRecoveries.reduce((s, r) => s + (Number(r.amount) || 0), 0);
   }
 
+  if (req.body.retentionReleaseAmount != null) {
+    const amt = Number(req.body.retentionReleaseAmount);
+    if (amt > 0) {
+      if (!req.body.retentionReleaseRemark || !String(req.body.retentionReleaseRemark).trim()) {
+        return badRequest(res, 'A remark is required when releasing held retention');
+      }
+      const held = await getRetentionHeldForWorkOrder(wo._id);
+      if (amt > held) {
+        return badRequest(res, `Cannot release ₹${amt} — only ₹${held} is currently held on this work order`);
+      }
+    }
+    br.retentionReleaseAmount = amt;
+    br.retentionReleaseRemark = req.body.retentionReleaseRemark || '';
+  }
+
   br.retentionAmount = retentionAmount;
   br.advanceRecovery = advanceRecovery;
   br.advanceRecoveries = advanceRecoveries;
@@ -527,6 +543,8 @@ async function finalizeBillRequest(br, wo, req, res, finalStage) {
     retentionPercent: wo.retentionPercent ?? 0,
     retentionAmount,
     advanceRecovery,
+    retentionReleased: br.retentionReleaseAmount || 0,
+    retentionReleaseRemark: br.retentionReleaseRemark || '',
     gstPercent:  br.gstPercentOverride ?? (wo.gstPercent ?? 18),
     tdsPercent:  0,
     generatedBy: req.user.name,
@@ -645,6 +663,21 @@ async function gmApproveHandler(req, res) {
     br.advanceRecoveries = Array.isArray(req.body.advanceRecoveries) ? req.body.advanceRecoveries : [];
   }
 
+  if (req.body.retentionReleaseAmount != null) {
+    const amt = Number(req.body.retentionReleaseAmount);
+    if (amt > 0) {
+      if (!req.body.retentionReleaseRemark || !String(req.body.retentionReleaseRemark).trim()) {
+        return badRequest(res, 'A remark is required when releasing held retention');
+      }
+      const held = await getRetentionHeldForWorkOrder(wo._id);
+      if (amt > held) {
+        return badRequest(res, `Cannot release ₹${amt} — only ₹${held} is currently held on this work order`);
+      }
+    }
+    br.retentionReleaseAmount = amt;
+    br.retentionReleaseRemark = req.body.retentionReleaseRemark || '';
+  }
+
   br.gmApprovedBy = req.user._id;
   br.gmApprovedAt = new Date();
   br.approvalHistory.push({ stage: 'gm', action: 'approved', by: req.user._id, byName: req.user.name, byRole: req.user.role, remarks: req.body.remarks || '' });
@@ -701,6 +734,21 @@ async function l3ApproveHandler(req, res) {
     br.advanceRecoveries = Array.isArray(req.body.advanceRecoveries) ? req.body.advanceRecoveries : [];
   }
 
+  if (req.body.retentionReleaseAmount != null) {
+    const amt = Number(req.body.retentionReleaseAmount);
+    if (amt > 0) {
+      if (!req.body.retentionReleaseRemark || !String(req.body.retentionReleaseRemark).trim()) {
+        return badRequest(res, 'A remark is required when releasing held retention');
+      }
+      const held = await getRetentionHeldForWorkOrder(wo._id);
+      if (amt > held) {
+        return badRequest(res, `Cannot release ₹${amt} — only ₹${held} is currently held on this work order`);
+      }
+    }
+    br.retentionReleaseAmount = amt;
+    br.retentionReleaseRemark = req.body.retentionReleaseRemark || '';
+  }
+
   br.l3ApprovedBy = req.user._id;
   br.l3ApprovedAt = new Date();
   br.approvalHistory.push({ stage: 'l3', action: 'approved', by: req.user._id, byName: req.user.name, byRole: req.user.role, remarks: req.body.remarks || '' });
@@ -748,6 +796,21 @@ async function l4ApproveHandler(req, res) {
   if (req.body.advanceRecovery != null) {
     br.advanceRecovery = Number(req.body.advanceRecovery);
     br.advanceRecoveries = Array.isArray(req.body.advanceRecoveries) ? req.body.advanceRecoveries : [];
+  }
+
+  if (req.body.retentionReleaseAmount != null) {
+    const amt = Number(req.body.retentionReleaseAmount);
+    if (amt > 0) {
+      if (!req.body.retentionReleaseRemark || !String(req.body.retentionReleaseRemark).trim()) {
+        return badRequest(res, 'A remark is required when releasing held retention');
+      }
+      const held = await getRetentionHeldForWorkOrder(wo._id);
+      if (amt > held) {
+        return badRequest(res, `Cannot release ₹${amt} — only ₹${held} is currently held on this work order`);
+      }
+    }
+    br.retentionReleaseAmount = amt;
+    br.retentionReleaseRemark = req.body.retentionReleaseRemark || '';
   }
 
   br.l4ApprovedBy = req.user._id;

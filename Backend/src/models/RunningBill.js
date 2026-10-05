@@ -314,6 +314,16 @@ const runningBillSchema = new mongoose.Schema(
     paymentBank:             { type: String },
     paymentMode:             { type: String, enum: ['neft', 'rtgs', 'imps', 'internet_banking', 'upi', 'cheque', 'dd', 'cash', ''] },
     paymentReleasedBy:       { type: String },
+    // How much of the retention withheld on THIS WO's earlier bills is being
+    // paid back out on this one — a one-off figure entered at the same point
+    // Hold/Advance already are (manual bill creation, or AGM/GM/L3/L4
+    // approve for a progress-driven bill), added back into this bill's own
+    // netPayable (see billFinancials' retentionReleased term). Independent
+    // of this bill's OWN retentionAmount (what's newly held on THIS bill),
+    // and independent of the 'Release Hold' status action (AccountsPayment)
+    // which just resumes a bill parked in the 'hold' workflow status — not a
+    // retention amount at all. Remark required whenever the amount is
+    // nonzero, same convention as adjustmentAmount below.
     retentionReleased:       { type: Number, default: 0 },
     retentionReleaseRemark:  { type: String, default: '' },
     isArchived:  { type: Boolean, default: false },

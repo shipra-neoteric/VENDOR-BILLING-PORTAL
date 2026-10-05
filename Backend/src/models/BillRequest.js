@@ -82,6 +82,14 @@ const billRequestSchema = new Schema(
     l4ApprovedAt:     { type: Date },
     retentionAmount:  { type: Number, default: 0 },
     advanceRecovery:  { type: Number, default: 0 },
+    // How much of this WO's previously-held retention (across its earlier
+    // RunningBills) is being released back out on the bill this request will
+    // become — same "fill in or re-edit at any approve stage, nothing locked
+    // in until finalizeBillRequest" treatment as retentionAmount/
+    // advanceRecovery above. Copied into RunningBill.retentionReleased only
+    // once finalizeBillRequest actually creates the bill.
+    retentionReleaseAmount: { type: Number, default: 0 },
+    retentionReleaseRemark: { type: String, default: '' },
     // Which real AdvanceSlip(s) advanceRecovery is actually settling — set by
     // AGM alongside advanceRecovery, but not applied (slip balances updated)
     // until gmApprove actually creates the RunningBill, exactly like the
