@@ -304,7 +304,7 @@ export default function SlaDashboard() {
                 <Th className="text-right w-[13%]">Total SLA</Th>
                 <Th className="text-right w-[13%]">SLA Done</Th>
                 <Th className="text-right w-[13%]">SLA Breach</Th>
-                <Th className="text-right w-[13%]">Overdue Time</Th>
+                <Th className="text-right w-[13%]">Total Overdue</Th>
                 <Th className="text-right w-[13%]">Score (%)</Th>
                 <Th className="text-right w-[13%]">SLA Avg Time</Th>
               </Tr>
