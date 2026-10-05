@@ -352,18 +352,37 @@ body{font-family:Arial,sans-serif;padding:30px;color:#333;font-size:13px;-webkit
     ${(() => {
       const netPay = billFinancials({ gross: bill.amount || 0, gstPercent: bill.gstPercent ?? 0, retentionAmount: bill.retentionAmount ?? 0, advanceRecovery: bill.advanceRecovery ?? 0, supersedeDeduction: bill.supersedeDeduction ?? 0 }).netAfterHold;
       if (mode === 'pre') {
-        // PRE-PAYMENT: end at net payable (Hold/Advance already deducted above)
+        // PRE-PAYMENT: end at net payable (Hold/Advance already deducted
+        // above) — also net of TDS and any Verify-stage adjustment, both of
+        // which are already decided by the time a bill reaches this print
+        // view (same fields the post-payment branch below shows as their
+        // own line items) but were previously missing from this figure,
+        // same bug class as the Ledger page's net-payable bug (fixed in
+        // commit fe11c3c).
+        const netPayFinal = billFinancials({
+          gross: bill.amount || 0, gstPercent: bill.gstPercent ?? 0,
+          retentionAmount: bill.retentionAmount ?? 0, advanceRecovery: bill.advanceRecovery ?? 0,
+          supersedeDeduction: bill.supersedeDeduction ?? 0,
+          tdsAmount: bill.tdsAmount ?? 0, adjustmentAmount: bill.adjustmentAmount ?? 0,
+        }).netPayable;
         return `
     <div style="display:flex;justify-content:space-between;padding:13px 14px;background:#fff7ed;font-weight:bold;font-size:15px;color:#f47b20;border-top:2px solid #fed7aa">
       <span>NET PAYABLE</span>
-      <span>₹${netPay.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+      <span>₹${netPayFinal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
     </div>`;
       } else {
         // POST-PAYMENT: show net payable, TDS, hold release, actually paid —
         // rounded to paise (2 decimals), not the nearest whole rupee.
+        // TDS used to be re-derived as (netPay - billPortion) — a leftover
+        // from before `adjustmentAmount` existed, back when that subtraction
+        // happened to equal the real TDS exactly. Once a bill has a nonzero
+        // Verify-stage adjustment, that derivation silently absorbs the
+        // adjustment into the "TDS Deducted" figure instead (netPay - tds +
+        // adjustment + retRel no longer reconciles to Actually Paid below by
+        // exactly the adjustment amount) — use the bill's own real tdsAmount
+        // directly instead, same field already used for the adjustment line.
         const retRel = Math.round((bill.retentionReleased ?? 0) * 100) / 100;
-        const billPortion = bill.paidAmount != null ? Math.max(0, Math.round((bill.paidAmount - retRel) * 100) / 100) : null;
-        const tds = billPortion != null ? Math.max(0, Math.round((netPay - billPortion) * 100) / 100) : 0;
+        const tds = Math.max(0, Math.round((bill.tdsAmount ?? 0) * 100) / 100);
         return `
     <div style="display:flex;justify-content:space-between;padding:11px 14px;background:#fff7ed;font-weight:bold;font-size:14px;color:#f47b20;border-top:2px solid #fed7aa">
       <span>Net Payable</span><span>₹${netPay.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
