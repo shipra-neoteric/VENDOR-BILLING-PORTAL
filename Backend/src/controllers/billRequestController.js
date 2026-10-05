@@ -1050,10 +1050,17 @@ exports.unarchiveBillRequest = asyncHandler(async (req, res) => {
 exports.archiveBillRequestsBulk = asyncHandler(async (req, res) => {
   const { ids } = req.body;
   if (!Array.isArray(ids) || ids.length === 0) return badRequest(res, 'Provide at least one bill request id');
-  const requests = await BillRequest.find({ _id: { $in: ids } }).select('billId');
+  const requests = await BillRequest.find({ _id: { $in: ids } }).select('billId reqNo');
   const billIds = requests.map(r => r.billId).filter(Boolean);
   await BillRequest.updateMany({ _id: { $in: ids } }, { isArchived: true, archivedAt: new Date() });
   if (billIds.length) await RunningBill.updateMany({ _id: { $in: billIds } }, { isArchived: true, archivedAt: new Date() });
+
+  await logAudit({
+    action: 'UPDATE', module: 'bill-requests', user: req.user,
+    description: `${requests.length} bill request(s) archived: ${requests.map(r => r.reqNo).join(', ')}`,
+    entityType: 'BillRequest', entityLabel: `${requests.length} bill requests`,
+  });
+
   success(res, {}, `${ids.length} bill request(s) archived`);
 });
 
@@ -1061,9 +1068,16 @@ exports.archiveBillRequestsBulk = asyncHandler(async (req, res) => {
 exports.unarchiveBillRequestsBulk = asyncHandler(async (req, res) => {
   const { ids } = req.body;
   if (!Array.isArray(ids) || ids.length === 0) return badRequest(res, 'Provide at least one bill request id');
-  const requests = await BillRequest.find({ _id: { $in: ids } }).select('billId');
+  const requests = await BillRequest.find({ _id: { $in: ids } }).select('billId reqNo');
   const billIds = requests.map(r => r.billId).filter(Boolean);
   await BillRequest.updateMany({ _id: { $in: ids } }, { isArchived: false, archivedAt: null });
   if (billIds.length) await RunningBill.updateMany({ _id: { $in: billIds } }, { isArchived: false, archivedAt: null });
+
+  await logAudit({
+    action: 'UPDATE', module: 'bill-requests', user: req.user,
+    description: `${requests.length} bill request(s) unarchived: ${requests.map(r => r.reqNo).join(', ')}`,
+    entityType: 'BillRequest', entityLabel: `${requests.length} bill requests`,
+  });
+
   success(res, {}, `${ids.length} bill request(s) unarchived`);
 });

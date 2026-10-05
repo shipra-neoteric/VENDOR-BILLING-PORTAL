@@ -1711,8 +1711,16 @@ exports.unarchiveBill = asyncHandler(async (req, res) => {
 exports.archiveBillsBulk = asyncHandler(async (req, res) => {
   const { ids } = req.body;
   if (!Array.isArray(ids) || ids.length === 0) return badRequest(res, 'Provide at least one bill id');
+  const bills = await RunningBill.find({ _id: { $in: ids } }).select('billNo');
   await RunningBill.updateMany({ _id: { $in: ids } }, { isArchived: true, archivedAt: new Date() });
   await BillRequest.updateMany({ billId: { $in: ids } }, { isArchived: true, archivedAt: new Date() });
+
+  await logAudit({
+    action: 'UPDATE', module: MODULE, user: req.user,
+    description: `${bills.length} bill(s) archived: ${bills.map(b => b.billNo).join(', ')}`,
+    entityType: 'RunningBill', entityLabel: `${bills.length} bills`,
+  });
+
   success(res, {}, `${ids.length} bill(s) archived`);
 });
 
@@ -1720,8 +1728,16 @@ exports.archiveBillsBulk = asyncHandler(async (req, res) => {
 exports.unarchiveBillsBulk = asyncHandler(async (req, res) => {
   const { ids } = req.body;
   if (!Array.isArray(ids) || ids.length === 0) return badRequest(res, 'Provide at least one bill id');
+  const bills = await RunningBill.find({ _id: { $in: ids } }).select('billNo');
   await RunningBill.updateMany({ _id: { $in: ids } }, { isArchived: false, archivedAt: null });
   await BillRequest.updateMany({ billId: { $in: ids } }, { isArchived: false, archivedAt: null });
+
+  await logAudit({
+    action: 'UPDATE', module: MODULE, user: req.user,
+    description: `${bills.length} bill(s) unarchived: ${bills.map(b => b.billNo).join(', ')}`,
+    entityType: 'RunningBill', entityLabel: `${bills.length} bills`,
+  });
+
   success(res, {}, `${ids.length} bill(s) unarchived`);
 });
 
