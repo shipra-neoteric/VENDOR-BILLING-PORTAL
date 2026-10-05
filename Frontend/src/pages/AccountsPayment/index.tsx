@@ -440,6 +440,18 @@ export default function AccountsPayment() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, bills, loading]);
 
+  // Deep link from MIS Overview's "Bill approval pipeline" stage click
+  // (?tab=<matchesTab key>) — same camelCase keys matchesTab() above already
+  // understands (draft/verifyDone/l1Approved/approved/sentToTms/hold/paid),
+  // just settable from a URL instead of only a tile click.
+  useEffect(() => {
+    const tab = searchParams.get("tab");
+    if (!tab) return;
+    setActiveTab(tab);
+    setSearchParams((prev) => { prev.delete("tab"); return prev; }, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
   useEffect(() => {
     apiClient.get<{ projects: Record<string, unknown>[] }>("/projects")
       .then((r) => setProjects((r.data.projects || []).map((p) => normalizeId(p) as unknown as ProjectOpt)))
