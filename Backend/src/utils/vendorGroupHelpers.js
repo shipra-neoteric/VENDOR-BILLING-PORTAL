@@ -13,11 +13,19 @@ async function resolvePayee(defaultVendorCode, defaultVendorName, requestedVendo
 
   const [woVendor, payee] = await Promise.all([
     Contractor.findOne({ vendorCode: defaultVendorCode }).select('groupId'),
-    Contractor.findOne({ vendorCode: requestedVendorCode }).select('vendorCode companyName groupId'),
+    Contractor.findOne({ vendorCode: requestedVendorCode }).select('vendorCode companyName groupId status'),
   ]);
 
   if (!payee) {
     const err = new Error('Payee vendor not found'); err.status = 404; throw err;
+  }
+  // A deactivated vendor-group member must never be payable out to, even if
+  // they're still a genuine (former) group member — paying an account the
+  // business has marked inactive is exactly the kind of mistake this
+  // override exists to prevent elsewhere, not enable here.
+  if (payee.status === 'inactive') {
+    const err = new Error(`${payee.companyName || payee.vendorCode} is an inactive vendor and cannot be set as the payee`);
+    err.status = 400; throw err;
   }
   if (!woVendor?.groupId || String(payee.groupId) !== String(woVendor.groupId)) {
     const err = new Error("Payee vendor must belong to the same vendor group as this work order's own contractor");
