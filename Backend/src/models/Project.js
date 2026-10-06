@@ -5,12 +5,6 @@ const projectSchema = new mongoose.Schema(
     code:               { type: String, required: true, unique: true, trim: true },
     name:               { type: String, required: true, trim: true },
     location:           { type: String, trim: true },
-    // Set once via the one-time map picker on the Projects page (click to
-    // drop a pin) — not a pasted link, so it never goes stale from someone
-    // copying the wrong share URL. Undefined means no pin set yet, so
-    // Location stays plain, non-clickable text everywhere it's shown.
-    lat:                { type: Number },
-    lng:                { type: Number },
     contractValue:      { type: Number, default: 0 },
     budget:             { type: Number, default: 0 },
     client:             { type: String, trim: true, default: '' },

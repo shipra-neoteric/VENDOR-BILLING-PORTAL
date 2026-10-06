@@ -4,7 +4,6 @@ import toast from "react-hot-toast";
 import {
   Plus, Pencil, Trash2, Building2, FolderOpen, CheckCircle2, Clock, ArrowLeft,
   Landmark, HardHat, Receipt, Banknote, TrendingUp, Users, ClipboardList, LayoutGrid, FileText, Activity,
-  MapPin,
 } from "lucide-react";
 import { WorkflowTimeline, type TimelineStep } from "../../components/WorkflowTimeline";
 import dayjs from "dayjs";
@@ -28,7 +27,6 @@ import { SearchFilter } from "../../ui/Filters";
 import apiClient from "../../services/apiClient";
 import BillDetailModal, { type BillDetailRequest } from "../../components/BillDetailModal";
 import { vendorLabel } from "../../utils/vendorLabel";
-import LocationMapPicker from "../../components/LocationMapPicker";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 interface Project {
@@ -37,8 +35,6 @@ interface Project {
   code: string;
   name: string;
   location: string;
-  lat?: number;
-  lng?: number;
   contractValue: number;
   status: "active" | "completed" | "on-hold";
   projectType?: "apartment" | "plot";
@@ -572,7 +568,6 @@ function ProjectDetail({
 const EMPTY_FORM = {
   name: "", client: "", location: "", projectType: "apartment", status: "active",
   startDate: "", expectedCompletion: "", slackChannelId: "",
-  lat: undefined as number | undefined, lng: undefined as number | undefined,
   // Write-only — always starts blank, even when editing a project that
   // already has one set (see Field's hint/indicator below).
   slackWebhookUrl: "",
@@ -594,7 +589,6 @@ export default function Projects() {
   // starts blank) — set only by the "Clear" action, so an explicit removal
   // is distinguishable from "left the field untouched."
   const [clearSlackWebhook, setClearSlackWebhook] = useState(false);
-  const [mapPickerOpen, setMapPickerOpen] = useState(false);
 
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -708,8 +702,6 @@ export default function Projects() {
       name: project.name,
       client: project.client || "",
       location: project.location,
-      lat: project.lat,
-      lng: project.lng,
       projectType: project.projectType || "apartment",
       status: project.status,
       startDate: project.startDate ? project.startDate.slice(0, 10) : "",
@@ -729,8 +721,6 @@ export default function Projects() {
       name: formState.name.trim(),
       client: formState.client.trim() || undefined,
       location: formState.location.trim(),
-      lat: formState.lat,
-      lng: formState.lng,
       projectType: formState.projectType,
       status: formState.status,
       startDate: formState.startDate || undefined,
@@ -886,15 +876,6 @@ export default function Projects() {
               label="Location" required placeholder="e.g. Bhopal"
               value={formState.location} onChange={e => setFormState(f => ({ ...f, location: e.target.value }))}
             />
-            <div>
-              <Btn
-                label={formState.lat != null ? "Pin set — change location" : "Pick location on map"}
-                outline icon={MapPin} onClick={() => setMapPickerOpen(true)}
-              />
-              {formState.lat != null && formState.lng != null && (
-                <div className="text-xs text-gray-400 mt-1 font-mono">{formState.lat.toFixed(6)}, {formState.lng.toFixed(6)}</div>
-              )}
-            </div>
             <SField
               label="Project Type" value={formState.projectType}
               options={[
@@ -971,15 +952,6 @@ export default function Projects() {
           loading={deleting}
           onConfirm={() => handleDeleteProject(deleteTarget)}
           onCancel={() => setDeleteTarget(null)}
-        />
-      )}
-
-      {mapPickerOpen && (
-        <LocationMapPicker
-          initialLat={formState.lat}
-          initialLng={formState.lng}
-          onConfirm={(lat, lng) => { setFormState(f => ({ ...f, lat, lng })); setMapPickerOpen(false); }}
-          onClose={() => setMapPickerOpen(false)}
         />
       )}
     </div>
