@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Trophy, HardHat, Check, X, AlertTriangle, ChevronDown } from "lucide-react";
+import { Trophy, ArrowRight, Check, X, AlertTriangle, ChevronDown } from "lucide-react";
 import dayjs from "dayjs";
 import { billFinancials } from "../shared/utils/billMath";
 import Modal from "../ui/Modal";
@@ -134,6 +134,7 @@ export interface BillDetailItem {
   // The DRI's own notes from the day-to-day progress entries billed here —
   // distinct from the scope item's static instruction note.
   progressRemarks?: string;
+  location?: string;
   unit: string;
   billedQty: number;
   rate?: number;
@@ -158,6 +159,7 @@ export interface BillDetailRequest {
   workOrderId?: string;
   workOrderNo: string;
   projectName: string;
+  projectLocation?: string;
   vendorName: string;
   category: string;
   subCategory: string;
@@ -298,6 +300,15 @@ export default function BillDetailModal({
     ["Project", billRequest.projectName],
     ["Contractor", billRequest.vendorName],
     ["Category", [billRequest.category, billRequest.subCategory].filter(Boolean).join(" › ")],
+    ...(() => {
+      // The specific site location (Tower/Floor/Plot…) the DRI actually
+      // logged this progress against is more useful here than the work
+      // order's own generic overall location — same fallback BillRequests'
+      // own view modal already uses.
+      const itemLocations = [...new Set(displayItems.map((it) => it.location).filter(Boolean))];
+      const location = itemLocations.length > 0 ? itemLocations.join("\n\n") : billRequest.projectLocation;
+      return location ? [["Location", location] as [string, React.ReactNode]] : [];
+    })(),
     ["Requested By", billRequest.requestedBy?.name || "—"],
     ["Date", dayjs(billRequest.createdAt).format("DD MMM YYYY")],
     ...(billRequest.periodFrom ? [["Period", `${dayjs(billRequest.periodFrom).format("DD MMM YYYY")} → ${dayjs(billRequest.periodTo ?? billRequest.createdAt).format("DD MMM YYYY")}`] as [string, React.ReactNode]] : []),
@@ -328,7 +339,7 @@ export default function BillDetailModal({
           {headerRows.map(([label, val]) => (
             <div key={label}>
               <div className="text-[10px] text-gray-500 dark:text-gray-400 uppercase tracking-wide">{label}</div>
-              <div className="font-semibold text-[#1A1A2E] dark:text-[#F1F5F9] text-[13px]">{val}</div>
+              <div className="font-semibold text-[#1A1A2E] dark:text-[#F1F5F9] text-[13px]" style={{ whiteSpace: "pre-line" }}>{val}</div>
             </div>
           ))}
         </div>
@@ -392,7 +403,7 @@ export default function BillDetailModal({
                       {it.description}
                       {it.progressRemarks && (
                         <div className="text-xs text-blue-600 dark:text-blue-400 mt-0.5 flex items-center gap-1">
-                          <HardHat className="w-3 h-3" /> {it.progressRemarks}
+                          <ArrowRight className="w-3 h-3" /> {it.progressRemarks}
                         </div>
                       )}
                       <LineVarianceEvidence item={it} />

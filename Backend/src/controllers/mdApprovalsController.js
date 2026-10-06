@@ -568,6 +568,7 @@ exports.getMdApprovalDetail = asyncHandler(async (req, res) => {
       workOrderId: doc.workOrderId ? String(doc.workOrderId) : undefined,
       workOrderNo: doc.workOrderNo,
       projectName: doc.projectName,
+      projectLocation: doc.projectLocation,
       vendorName: doc.vendorName,
       category: doc.category,
       subCategory: doc.subCategory,
