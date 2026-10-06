@@ -1561,7 +1561,8 @@ export default function BillApproval() {
               const retAmt = viewReq.retentionAmount ?? 0;
               const advRec = viewReq.advanceRecovery ?? 0;
               const gstPct = viewReq.gstPercentOverride ?? 0;
-              const { gstAmount, netAfterHold } = billFinancials({ gross: viewTotal, gstPercent: gstPct, retentionAmount: retAmt, advanceRecovery: advRec, retentionReleased: viewReq.retentionReleased ?? 0 });
+              const retRel = viewReq.retentionReleaseAmount ?? viewReq.retentionReleased ?? 0;
+              const { gstAmount, netPayable } = billFinancials({ gross: viewTotal, gstPercent: gstPct, retentionAmount: retAmt, advanceRecovery: advRec, retentionReleased: retRel });
               return (
                 <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 font-mono text-[13px]">
                   <div className="flex justify-between text-gray-500 dark:text-gray-400">
@@ -1582,8 +1583,13 @@ export default function BillApproval() {
                       <span>GST @ {gstPct}%</span><span>+ {fmt(gstAmount)}</span>
                     </div>
                   )}
+                  {retRel > 0 && (
+                    <div className="flex justify-between text-sky-600">
+                      <span>Hold / Retention Released{viewReq.retentionReleaseRemark ? ` (${viewReq.retentionReleaseRemark})` : ""}</span><span>+ {fmt(retRel)}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between font-bold text-primary border-t border-primary/20 pt-1 mt-1">
-                    <span>Final Amount</span><span>{fmt(netAfterHold)}</span>
+                    <span>Final Amount</span><span>{fmt(netPayable)}</span>
                   </div>
                 </div>
               );
@@ -2150,7 +2156,8 @@ export default function BillApproval() {
             const gross = viewManualBill.amount || 0;
             const retAmt = viewManualBill.retentionAmount ?? 0;
             const advRec = viewManualBill.advanceRecovery ?? 0;
-            const { gstAmount, netAfterHold } = billFinancials({ gross, gstPercent: viewManualBill.gstPercent ?? 0, retentionAmount: retAmt, advanceRecovery: advRec, supersedeDeduction: viewManualBill.supersedeDeduction ?? 0, retentionReleased: viewManualBill.retentionReleased ?? 0 });
+            const retRel = viewManualBill.retentionReleased ?? 0;
+            const { gstAmount, netPayable } = billFinancials({ gross, gstPercent: viewManualBill.gstPercent ?? 0, retentionAmount: retAmt, advanceRecovery: advRec, supersedeDeduction: viewManualBill.supersedeDeduction ?? 0, retentionReleased: retRel });
             return (
               <div className="rounded-lg border border-emerald-300 dark:border-emerald-500/30 bg-emerald-50 dark:bg-emerald-500/10 p-3 font-mono text-[13px]">
                 <div className="font-bold mb-2 text-emerald-800 dark:text-emerald-300">
@@ -2174,8 +2181,13 @@ export default function BillApproval() {
                     <span>GST @ {viewManualBill.gstPercent ?? 0}%</span><span>+ {fmt(gstAmount)}</span>
                   </div>
                 )}
+                {retRel > 0 && (
+                  <div className="flex justify-between text-sky-600">
+                    <span>Hold / Retention Released{viewManualBill.retentionReleaseRemark ? ` (${viewManualBill.retentionReleaseRemark})` : ""}</span><span>+ {fmt(retRel)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between font-bold text-primary border-t border-emerald-200 dark:border-emerald-500/30 pt-1 mt-1">
-                  <span>Net Payable</span><span>{fmt(netAfterHold)}</span>
+                  <span>Net Payable</span><span>{fmt(netPayable)}</span>
                 </div>
               </div>
             );
