@@ -366,7 +366,11 @@ body{font-family:Arial,sans-serif;padding:30px;color:#333;font-size:13px;-webkit
           tdsAmount: bill.tdsAmount ?? 0, adjustmentAmount: bill.adjustmentAmount ?? 0,
           retentionReleased: bill.retentionReleased ?? 0,
         }).netPayable;
-        return `
+        const retRelPre = Math.round((bill.retentionReleased ?? 0) * 100) / 100;
+        return `${retRelPre > 0 ? `
+    <div style="display:flex;justify-content:space-between;padding:9px 14px;border-bottom:1px solid #eee;color:#0369a1;font-weight:600">
+      <span>Hold / Retention Released${bill.retentionReleaseRemark ? ` (${bill.retentionReleaseRemark})` : ""}</span><span>+ ₹${retRelPre.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+    </div>` : ""}
     <div style="display:flex;justify-content:space-between;padding:13px 14px;background:#fff7ed;font-weight:bold;font-size:15px;color:#f47b20;border-top:2px solid #fed7aa">
       <span>NET PAYABLE</span>
       <span>₹${netPayFinal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
