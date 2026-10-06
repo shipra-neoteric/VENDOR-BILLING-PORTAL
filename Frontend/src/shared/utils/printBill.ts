@@ -193,7 +193,7 @@ export function printBill(
       (li, i) => `
       <tr>
         <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:center">${i + 1}</td>
-        <td style="padding:8px 12px;border-bottom:1px solid #eee">${li.description}${li.remarks ? `<div style="font-size:10px;color:#d97706;margin-top:3px">📌 ${li.remarks}</div>` : ""}${li.location ? `<div style="font-size:10px;color:#555;margin-top:3px"><strong>Location:</strong> ${li.location}</div>` : ""}${li.progressRemarks ? `<ul style="font-size:10px;color:#2563eb;margin:3px 0 0;padding-left:14px">${li.progressRemarks.split("\n").filter(Boolean).map(note => `<li>${note}</li>`).join("")}</ul>` : ""}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #eee">${li.description}${li.remarks ? `<div style="font-size:10px;color:#d97706;margin-top:3px">📌 ${li.remarks}</div>` : ""}${li.location ? `<div style="font-size:10px;color:#555;margin-top:3px"><strong>Location:</strong> ${li.location.replace(/\n/g, "<br>")}</div>` : ""}${li.progressRemarks ? `<ul style="font-size:10px;color:#2563eb;margin:3px 0 0;padding-left:14px">${li.progressRemarks.split("\n").filter(Boolean).map(note => `<li>${note}</li>`).join("")}</ul>` : ""}</td>
         <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:center">${li.unit || "-"}</td>
         <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:right">${(li.billedQty || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
         <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:right">${(li.rate || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
@@ -207,7 +207,8 @@ export function printBill(
   // generic overall location — same fallback the Bill Approval view modal
   // uses, so print and view show the same thing.
   const itemLocations = [...new Set((bill.lineItems || []).map(li => li.location).filter(Boolean))];
-  const headerLocation = itemLocations.length > 0 ? itemLocations.join(" · ") : bill.projectLocation;
+  const headerLocation = (itemLocations.length > 0 ? itemLocations.join("\n\n") : bill.projectLocation || "")
+    .replace(/\n/g, "<br>");
 
   const bankContractor = payeeContractor ?? contractor;
   const bankSection =

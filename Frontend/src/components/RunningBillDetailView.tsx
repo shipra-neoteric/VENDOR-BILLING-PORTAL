@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
-import { CheckCircle2, XCircle, AlertCircle, Eye } from "lucide-react";
+import { CheckCircle2, XCircle, AlertCircle, Eye, ExternalLink } from "lucide-react";
 import dayjs from "dayjs";
+import { useNavigate } from "react-router-dom";
 import type { StepItem } from "../ui/Steps";
 import Badge from "../ui/Badge";
 import { Table, Thead, Tbody, Tfoot, Tr, Th, Td } from "../ui/Table";
@@ -313,6 +314,30 @@ export function BillHistoryTimeline({ history, hideVerifyDate = false }: { histo
 // the post-financial-summary slot (every other status) — callers decide what
 // (if anything) to render for a given bill.status, exactly like
 // AccountsPayment's own renderActionSection already does.
+// A row merged into Accounts Payment's bill list from a still-pending
+// BillRequest (billType: 'bill_request') uses the BillRequest's own _id as
+// `bill.id` (see billController.listBills' requestRows mapping) — so this
+// never needs a lookup, unlike WorkOrderLink's workOrderNo->id resolve.
+function BillRequestLink({ id, billNo }: { id: string; billNo: string }) {
+  const navigate = useNavigate();
+  const href = `/bill-requests?open=${id}`;
+  return (
+    <a
+      href={href}
+      onClick={(e) => {
+        if (e.ctrlKey || e.metaKey || e.button === 1) return;
+        e.preventDefault();
+        navigate(href);
+      }}
+      className="inline-flex items-center gap-1.5 text-[#ff7a00] hover:underline font-bold cursor-pointer group"
+      title={`Open Bill Request ${billNo}`}
+    >
+      <span>{billNo}</span>
+      <ExternalLink className="w-3.5 h-3.5 opacity-60 group-hover:opacity-100 transition-opacity shrink-0" />
+    </a>
+  );
+}
+
 export default function RunningBillDetailView({
   bill, woCategory, onViewWorkOrder, supersededByNumbers, renderActionSection, returnTo,
 }: {
@@ -350,7 +375,13 @@ export default function RunningBillDetailView({
           <tbody>
             <tr className="border-t border-gray-200 dark:border-gray-700/40">
               <td className="w-[13%] px-3 py-2 text-gray-400 border-r border-gray-200 dark:border-gray-700/40">Bill No.</td>
-              <td className="w-[37%] px-3 py-2 font-bold text-[#ff7a00] border-r border-gray-200 dark:border-gray-700/40">{bill.billNo}</td>
+              <td className="w-[37%] px-3 py-2 font-bold text-[#ff7a00] border-r border-gray-200 dark:border-gray-700/40">
+                {bill.billType === 'bill_request' ? (
+                  <BillRequestLink id={bill.id} billNo={bill.billNo} />
+                ) : (
+                  bill.billNo
+                )}
+              </td>
               <td className="w-[13%] px-3 py-2 text-gray-400 border-r border-gray-200 dark:border-gray-700/40">WO No.</td>
               <td className="w-[37%] px-3 py-2 font-bold text-[#ff7a00]">
                 {bill.workOrderNo ? (
