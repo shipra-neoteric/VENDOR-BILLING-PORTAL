@@ -872,7 +872,11 @@ export default function AccountsPayment() {
                 two small rows themselves. */}
             <div className="flex justify-end">
               <div className="w-full max-w-[320px] flex flex-col gap-2 py-2">
-                {/* TDS row: %/₹ toggle → small input → calculated TDS Amount */}
+                {/* TDS row: %/₹ toggle → small input → calculated TDS Amount.
+                    Base shown explicitly (gross + retention released, e.g.
+                    "on ₹26,000") so it's visible this isn't just the gross
+                    Total Billed Amount shown above in Line Items. */}
+                <div className="text-[11px] text-gray-400 text-right">TDS calculated on {fmt(tdsBase())}</div>
                 <div className="flex items-center gap-2 text-[13px]">
                   <span className="text-gray-400 shrink-0">TDS</span>
                   <div className="inline-flex items-center rounded border border-gray-200 dark:border-gray-700 overflow-hidden shrink-0">
