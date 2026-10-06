@@ -171,7 +171,6 @@ export function DailyProgressReportDocument({ summary }: { summary: DailyProgres
           widths={[1.5, 1.1, 0.9, 0.5, 0.7, 0.7, 0.7]}
           rows={s.workProgress.map(w => [w.description, w.projectName, w.workOrderNo, w.unit || "—", w.planned.toLocaleString("en-IN"), w.completed.toLocaleString("en-IN"), `${w.pct}%`])}
           emptyLabel="No scope items recorded."
-          breakBefore
         />
 
         <DataTable
