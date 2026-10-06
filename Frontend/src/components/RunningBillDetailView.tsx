@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { CheckCircle2, XCircle, AlertCircle, Eye, ExternalLink } from "lucide-react";
+import { CheckCircle2, XCircle, AlertCircle, ExternalLink } from "lucide-react";
 import dayjs from "dayjs";
 import { useNavigate } from "react-router-dom";
 import type { StepItem } from "../ui/Steps";
@@ -339,10 +339,13 @@ function BillRequestLink({ id, billNo }: { id: string; billNo: string }) {
 }
 
 export default function RunningBillDetailView({
-  bill, woCategory, onViewWorkOrder, supersededByNumbers, renderActionSection, returnTo,
+  bill, woCategory, supersededByNumbers, renderActionSection, returnTo,
 }: {
   bill: RunningBillDetail;
   woCategory?: string;
+  // Kept in the type for backward compatibility with existing callers that
+  // still pass it — no longer rendered here (the "View Work Order" button
+  // was removed; the WO No. link above already does the same navigation).
   onViewWorkOrder?: () => void;
   // Passed straight through to the WO No. link — see WorkOrderLink's own
   // returnTo prop for what this does.
@@ -416,20 +419,7 @@ export default function RunningBillDetailView({
             </tr>
             <tr className="border-t border-gray-200 dark:border-gray-700/40">
               <td className="px-3 py-2 text-gray-400 border-r border-gray-700/40">Project</td>
-              <td className="px-3 py-2 font-medium border-r border-gray-200 dark:border-gray-700/40">{bill.projectName || "—"}</td>
-              <td className="px-3 py-2 border-r border-gray-200 dark:border-gray-700/40" />
-              <td className="px-3 py-2">
-                {bill.workOrderId && onViewWorkOrder && (
-                  <button
-                    type="button"
-                    onClick={onViewWorkOrder}
-                    className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[12px] font-semibold text-blue-600 bg-blue-50 border border-blue-200 hover:bg-blue-100 dark:text-blue-400 dark:bg-blue-500/10 dark:border-blue-500/30 transition-colors"
-                  >
-                    <Eye className="w-3 h-3" />
-                    View Work Order
-                  </button>
-                )}
-              </td>
+              <td className="px-3 py-2 font-medium border-r border-gray-200 dark:border-gray-700/40" colSpan={3}>{bill.projectName || "—"}</td>
             </tr>
           </tbody>
         </table>
