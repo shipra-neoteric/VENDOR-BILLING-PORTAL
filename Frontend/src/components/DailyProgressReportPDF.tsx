@@ -55,9 +55,15 @@ function KpiTable({ title, rows }: { title: string; rows: { label: string; value
   );
 }
 
-function DataTable({ title, columns, widths, rows, emptyLabel, breakBefore }: { title: string; columns: string[]; widths?: number[]; rows: string[][]; emptyLabel?: string; breakBefore?: boolean }) {
+// keepTogether forces the whole table (header + every row) onto one page —
+// if it doesn't fit the remaining space it flows whole to the next page
+// instead of splitting mid-table with the header left behind (what was
+// happening to the short, bounded Work Categories table). Only safe for
+// small, bounded tables — an unbounded one (e.g. one row per work item)
+// could be taller than a full page and get clipped instead of paginating.
+function DataTable({ title, columns, widths, rows, emptyLabel, breakBefore, keepTogether }: { title: string; columns: string[]; widths?: number[]; rows: string[][]; emptyLabel?: string; breakBefore?: boolean; keepTogether?: boolean }) {
   return (
-    <View style={S.table} break={breakBefore}>
+    <View style={S.table} break={breakBefore} wrap={keepTogether ? false : undefined}>
       <View style={S.secHeader} wrap={false}><Text style={S.secTitle}>{title}</Text></View>
       <View style={S.hdr} wrap={false}>
         {columns.map((c, i) => <Text key={c} style={[S.col, S.hdrText, widths ? { flex: widths[i] } : {}]}>{c}</Text>)}
@@ -156,6 +162,7 @@ export function DailyProgressReportDocument({ summary }: { summary: DailyProgres
           columns={["Work Type", "Entries", "% Share"]}
           rows={s.workTypeSummary.map(w => [w.workType, String(w.entries), `${w.pct}%`])}
           emptyLabel="No work categories logged in this period."
+          keepTogether
         />
 
         <DataTable

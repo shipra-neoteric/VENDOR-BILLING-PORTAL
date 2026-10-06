@@ -1186,7 +1186,17 @@ export default function BillApproval() {
         <NxStatCard
           label="Pending" value={totalPendingCount} icon={Clock}
           active={["pending", "pending-gm", "pending-l3", "pending-l4"].includes(reqTab)}
-          onClick={() => setReqTab("pending")}
+          onClick={() => {
+            // Land on whichever stage actually has something pending —
+            // always jumping to L1 regardless left the list looking empty
+            // ("No pending L1 bills") whenever the real backlog sat at L2/L3
+            // instead, even though the stat card's own count said otherwise.
+            if (pendingAgmReqs.length + pendingManualAgm.length > 0) setReqTab("pending");
+            else if (pendingGmReqs.length + pendingManualGm.length > 0) setReqTab("pending-gm");
+            else if (pendingL3Reqs.length + pendingManualL3.length > 0) setReqTab("pending-l3");
+            else if (pendingL4Reqs.length + pendingManualL4.length > 0) setReqTab("pending-l4");
+            else setReqTab("pending");
+          }}
         />
         <NxStatCard
           label="Approved" value={totalApprovedCount} icon={CheckCircle2}
