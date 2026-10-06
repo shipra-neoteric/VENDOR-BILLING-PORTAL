@@ -56,20 +56,20 @@ function collectAndMarkProgressRemarks(target, billRequestId) {
   const locations = [];
   for (const entry of target.progressEntries) {
     if (entry.billedInRequestId || entry.invalidated?.done) continue;
-    // Same "Tower X · Floor · ..." format Site Progress's own entry log
-    // already shows — kept as its own field (not embedded in the remark
-    // text), separate from the work order's own overall projectLocation.
-    // Floor isn't prefixed with "Floor " — unlike Tower/Flat/Plot it already
-    // reads naturally on its own, whether someone typed a bare code ("1",
-    // "G") or a full phrase ("First Floor"); prefixing it again produced
-    // "Floor First Floor".
+    // Each part labelled with its own field name — kept as its own field
+    // (not embedded in the remark text), separate from the work order's own
+    // overall projectLocation.
+    // Tower is the primary identifier — left plain (no arrow/colon) so it
+    // reads naturally right next to the "Location:" label on the same line
+    // wherever this is displayed. Floor/Flat No/Plot/Note are sub-details,
+    // each its own arrow-bulleted line below it.
     const location = [
       entry.tower && `Tower ${entry.tower}`,
-      entry.floor,
-      entry.flatNo && `Flat ${entry.flatNo}`,
-      entry.plotNo && `Plot ${entry.plotNo}`,
-      entry.locationNote,
-    ].filter(Boolean).join(" · ");
+      entry.floor && `→ Floor: ${entry.floor}`,
+      entry.flatNo && `→ Flat No: ${entry.flatNo}`,
+      entry.plotNo && `→ Plot: ${entry.plotNo}`,
+      entry.locationNote && `→ Note: ${entry.locationNote}`,
+    ].filter(Boolean).join("\n");
     if (location && !locations.includes(location)) locations.push(location);
     if (entry.remarks && entry.remarks.trim()) notes.push(entry.remarks.trim());
     entry.billedInRequestId = billRequestId;
@@ -77,7 +77,9 @@ function collectAndMarkProgressRemarks(target, billRequestId) {
   // Newline-separated (not '; ') — several days' worth of separate remarks
   // run together into one unreadable sentence otherwise once they land on a
   // bill; the frontend renders this as a bullet list, one line per entry.
-  return { remarks: notes.join('\n'), location: locations.join(' · ') };
+  // Multiple distinct entries' locations are blank-line separated (not ' · '),
+  // same reasoning — each entry's own location is itself now multi-line.
+  return { remarks: notes.join('\n'), location: locations.join('\n\n') };
 }
 
 // Moved to Backend/src/utils/codeGen.js as nextBillRequestReqNo — shared

@@ -1484,9 +1484,9 @@ export default function BillApproval() {
                 // than the work order's own generic overall location — fall
                 // back to that only when none of the billed items have one.
                 const itemLocations = [...new Set(viewReq.items.map(it => it.location).filter(Boolean))];
-                const location = itemLocations.length > 0 ? itemLocations.join(" · ") : viewReq.projectLocation;
+                const location = itemLocations.length > 0 ? itemLocations.join("\n\n") : viewReq.projectLocation;
                 return location ? (
-                  <div><span className="text-gray-500 dark:text-gray-400">Location: </span>{location}</div>
+                  <div><span className="text-gray-500 dark:text-gray-400">Location: </span><span style={{ whiteSpace: "pre-line" }}>{location}</span></div>
                 ) : null;
               })()}
               {viewReq.periodFrom && (
