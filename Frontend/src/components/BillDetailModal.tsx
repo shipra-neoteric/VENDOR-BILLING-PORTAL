@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Trophy, ArrowRight, Check, X, AlertTriangle, ChevronDown } from "lucide-react";
 import dayjs from "dayjs";
 import { billFinancials } from "../shared/utils/billMath";
@@ -158,6 +159,7 @@ export interface BillDetailRequest {
   stageNo?: number;
   workOrderId?: string;
   workOrderNo: string;
+  projectId?: string;
   projectName: string;
   projectLocation?: string;
   vendorName: string;
@@ -271,6 +273,7 @@ export default function BillDetailModal({
   // returnTo prop for what this does.
   returnTo?: string;
 }) {
+  const navigate = useNavigate();
   if (!open || !billRequest) return null;
 
   // Once a RunningBill actually exists, its own lineItems are the
@@ -307,7 +310,27 @@ export default function BillDetailModal({
       // own view modal already uses.
       const itemLocations = [...new Set(displayItems.map((it) => it.location).filter(Boolean))];
       const location = itemLocations.length > 0 ? itemLocations.join("\n\n") : billRequest.projectLocation;
-      return location ? [["Location", location] as [string, React.ReactNode]] : [];
+      if (!location) return [];
+      // Jumps to Work Progress with this exact bill's Project/Category/Work
+      // Order pre-applied — that page's own filters auto-load on change, so
+      // this lands straight on the matching Work Order's progress detail.
+      const goToProgress = billRequest.workOrderId ? () => {
+        const params = new URLSearchParams();
+        if (billRequest.projectId) params.set("projectId", billRequest.projectId);
+        if (billRequest.category) params.set("categoryName", billRequest.category);
+        params.set("workOrderId", billRequest.workOrderId!);
+        onClose();
+        navigate(`/work-progress?${params.toString()}`);
+      } : undefined;
+      return [["Location", (
+        <span
+          className={goToProgress ? "cursor-pointer hover:underline" : undefined}
+          onClick={goToProgress}
+          title={goToProgress ? "View this Work Order's progress" : undefined}
+        >
+          {location}
+        </span>
+      )] as [string, React.ReactNode]];
     })(),
     ["Requested By", billRequest.requestedBy?.name || "—"],
     ["Date", dayjs(billRequest.createdAt).format("DD MMM YYYY")],

@@ -1,4 +1,5 @@
-import { Fragment, useState, useEffect, useMemo } from "react";
+import { Fragment, useState, useEffect, useMemo, useRef } from "react";
+import { useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import { HardHat, ClipboardList, TrendingUp, CheckCircle2, Layers, Lock, Pin, ArrowLeft, Users, Briefcase, Clock, FileText } from "lucide-react";
 import dayjs from "dayjs";
@@ -247,6 +248,34 @@ function WorkProgressAdmin() {
     apiClient.get("/projects").then(r => setProjects(r.data.projects ?? []));
     apiClient.get("/categories").then(r => setCategories(r.data.categories ?? []));
   }, []);
+
+  // Deep link from a Bill Request's clickable Location (see BillRequests'
+  // and BillDetailModal's own Location row) — ?projectId=&categoryName=&
+  // workOrderId= pre-applies those exact filters and, once set, the
+  // existing auto-load effect below fires loadProgress on its own (same as
+  // if the user had picked them by hand), landing straight on that Work
+  // Order's detail view. categoryName (not an id) is what the bill carries,
+  // so it's resolved against the loaded `categories` list once available —
+  // consumed once via a ref so a later manual filter change doesn't get
+  // silently re-overridden by a stale query param still sitting in the URL.
+  const [searchParams] = useSearchParams();
+  const deepLinkConsumed = useRef(false);
+  useEffect(() => {
+    if (deepLinkConsumed.current) return;
+    const projectId = searchParams.get("projectId");
+    const categoryName = searchParams.get("categoryName");
+    const workOrderId = searchParams.get("workOrderId");
+    if (!projectId && !categoryName && !workOrderId) return;
+    if (categoryName && categories.length === 0) return; // wait for categories to load first
+    deepLinkConsumed.current = true;
+    if (projectId) setSelProject(projectId);
+    if (categoryName) {
+      const cat = categories.find(c => c.name === categoryName);
+      if (cat) setSelCategory(cat._id);
+    }
+    if (workOrderId) setSelWorkOrder(workOrderId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [categories]);
 
   // Project/Category/Work Order all auto-load progress on change now —
   // previously only the initial mount auto-loaded, so picking a different

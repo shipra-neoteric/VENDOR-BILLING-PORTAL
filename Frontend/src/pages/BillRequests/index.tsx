@@ -1485,9 +1485,31 @@ export default function BillApproval() {
                 // back to that only when none of the billed items have one.
                 const itemLocations = [...new Set(viewReq.items.map(it => it.location).filter(Boolean))];
                 const location = itemLocations.length > 0 ? itemLocations.join("\n\n") : viewReq.projectLocation;
-                return location ? (
-                  <div><span className="text-gray-500 dark:text-gray-400">Location: </span><span style={{ whiteSpace: "pre-line" }}>{location}</span></div>
-                ) : null;
+                if (!location) return null;
+                // Jumps to Work Progress with this exact bill's Project/
+                // Category/Work Order pre-applied — that page's own filters
+                // auto-load on change, so this lands straight on the matching
+                // Work Order's progress detail with no extra click needed.
+                const goToProgress = viewReq.workOrderId ? () => {
+                  const params = new URLSearchParams();
+                  if (viewReq.projectId) params.set("projectId", viewReq.projectId);
+                  if (viewReq.category) params.set("categoryName", viewReq.category);
+                  params.set("workOrderId", viewReq.workOrderId!);
+                  navigate(`/work-progress?${params.toString()}`);
+                } : undefined;
+                return (
+                  <div>
+                    <span className="text-gray-500 dark:text-gray-400">Location: </span>
+                    <span
+                      style={{ whiteSpace: "pre-line" }}
+                      className={goToProgress ? "cursor-pointer hover:underline text-primary" : undefined}
+                      onClick={goToProgress}
+                      title={goToProgress ? "View this Work Order's progress" : undefined}
+                    >
+                      {location}
+                    </span>
+                  </div>
+                );
               })()}
               {viewReq.periodFrom && (
                 <div><span className="text-gray-500 dark:text-gray-400">Period: </span>{`${dayjs(viewReq.periodFrom).format("DD MMM YYYY")} → ${dayjs(viewReq.periodTo ?? viewReq.createdAt).format("DD MMM YYYY")}`}</div>

@@ -51,6 +51,7 @@ function billToSyntheticRequest(bill: Record<string, unknown>): BillDetailReques
     reqNo: (bill.billNo as string) || "",
     workOrderId: bill.workOrderId ? String(bill.workOrderId) : undefined,
     workOrderNo: (bill.workOrderNo as string) || "",
+    projectId: bill.projectId ? String(bill.projectId) : undefined,
     projectName: (bill.projectName as string) || "",
     vendorName: (bill.vendorName as string) || "",
     category: "",
