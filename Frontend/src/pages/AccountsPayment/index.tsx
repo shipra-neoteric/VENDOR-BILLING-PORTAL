@@ -856,10 +856,14 @@ export default function AccountsPayment() {
         }
 
         if (!canVerify) return <MutedNote text="Awaiting Verification against its work order and vendor details." />;
+        // Retention released on this bill is added into the TDS base too —
+        // confirmed deliberately (not a double-deduction concern here): it's
+        // new taxable value becoming payable on THIS bill, not a re-charge of
+        // tax already withheld when the retention was first held back.
         const tdsBase = () => billFinancials({
           gross: getLineItemsGross(bill), retentionAmount: bill.retentionAmount ?? 0, advanceRecovery: bill.advanceRecovery ?? 0,
           supersedeDeduction: bill.supersedeDeduction ?? 0,
-        }).netBeforeGst;
+        }).netBeforeGst + (bill.retentionReleased ?? 0);
         return (
           <>
             {/* Compact TDS + Adjustment — sit directly under Line Items'
