@@ -1555,6 +1555,16 @@ export default function WorkItems() {
   const [stepFilter,          setStepFilter]          = useState<string>("all");
   const [categoryFilter,      setCategoryFilter]      = useState<string>("all");
   const [deptFilter,          setDeptFilter]          = useState<string>("all");
+  // Every registered custom department name (e.g. "MDO") — separate from
+  // WOFormFields' own copy of the same fetch (a different component/closure
+  // entirely), needed here so the filter bar can list each one by name
+  // instead of lumping them all under one generic "Custom Team" bucket.
+  const [registeredCustomDepts, setRegisteredCustomDepts] = useState<string[]>([]);
+  useEffect(() => {
+    apiClient.get<{ rules: { department: string; isCustom: boolean }[] }>("/approval-rules")
+      .then(r => setRegisteredCustomDepts((r.data.rules || []).filter(x => x.isCustom).map(x => x.department)))
+      .catch(() => {});
+  }, []);
   const [progressFilter,      setProgressFilter]      = useState<string>("all");
   // Cancelled work orders are archived — hidden from the normal list unless
   // this is on, in which case the list flips to showing ONLY cancelled ones.

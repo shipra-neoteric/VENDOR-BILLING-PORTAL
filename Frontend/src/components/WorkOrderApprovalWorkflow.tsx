@@ -59,6 +59,7 @@ export interface ApprovalWorkOrder {
   // the right columns instead of a permanently-blank "L3" for every such WO.
   department?: string;
   customDepartment?: string;
+  contractType?: "execution" | "professional-services";
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
