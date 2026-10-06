@@ -81,7 +81,7 @@ export default function PublicContractorForm() {
   function validate(): boolean {
     errors.clearAll();
     let ok = true;
-    const required: RequiredField[] = ["companyName", "ownerName", "mobile", "email", "address", "accountHolderName", "bankName", "accountNumber", "ifscCode", "branchName", "gstNumber", "panNumber", "aadhaarNumber"];
+    const required: RequiredField[] = ["companyName", "ownerName", "mobile", "email", "address", "accountHolderName", "bankName", "accountNumber", "ifscCode", "branchName", "panNumber", "aadhaarNumber"];
     for (const f of required) {
       if (!values[f].trim()) { errors.setError(f, "Required"); ok = false; }
     }
@@ -193,7 +193,7 @@ export default function PublicContractorForm() {
           <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
             <div className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Tax & Work Details</div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <Field label="GST Number" required placeholder="15-char GST" value={values.gstNumber} onChange={e => patch({ gstNumber: e.target.value })} error={errors.errors.gstNumber} />
+              <Field label="GST Number" placeholder="15-char GST" value={values.gstNumber} onChange={e => patch({ gstNumber: e.target.value })} error={errors.errors.gstNumber} />
               <Field label="PAN Number" required placeholder="10-char PAN" value={values.panNumber} onChange={e => patch({ panNumber: e.target.value })} error={errors.errors.panNumber} />
               <Field label="Aadhaar Number" required placeholder="12-digit Aadhaar" value={values.aadhaarNumber} onChange={e => patch({ aadhaarNumber: e.target.value })} error={errors.errors.aadhaarNumber} />
               <Field label="Reference Company 1" placeholder="Optional" value={values.reference1} onChange={e => patch({ reference1: e.target.value })} />
