@@ -73,7 +73,7 @@ exports.updateProject = asyncHandler(async (req, res) => {
 
   // slackWebhookUrl is a bearer credential (see model) — never diffed/logged.
   const changes = diffFields(before, project, [
-    'code', 'name', 'location', 'contractValue', 'budget', 'client',
+    'code', 'name', 'location', 'lat', 'lng', 'contractValue', 'budget', 'client',
     'startDate', 'expectedCompletion', 'projectType', 'status',
     'slackChannelId', 'parentId',
   ]);
