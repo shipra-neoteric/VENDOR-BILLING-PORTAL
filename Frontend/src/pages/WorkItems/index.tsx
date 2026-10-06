@@ -164,6 +164,18 @@ function matchUnit(raw?: string): { unit: string; customUnit: string } {
   return { unit: "custom", customUnit: raw.trim() };
 }
 
+// deptFilter is either a fixed department ("civil"…), the generic "custom"
+// bucket (any work order with department:'custom', regardless of which name
+// is in customDepartment), or `custom:<name>` — one specific registered
+// custom department name picked from the filter dropdown.
+function matchesDeptFilter(wo: { department?: string; customDepartment?: string }, deptFilter: string): boolean {
+  if (deptFilter === "all") return true;
+  if (deptFilter.startsWith("custom:")) {
+    return wo.department === "custom" && wo.customDepartment === deptFilter.slice("custom:".length);
+  }
+  return (wo.department || "") === deptFilter;
+}
+
 // ── Draft types ───────────────────────────────────────────────
 
 interface ScopeSubItemDraft {
@@ -1777,7 +1789,7 @@ export default function WorkItems() {
       const matchDate    = inDateRange(wo.issueDate, dateFrom, dateTo);
       const matchProject = projectFilter.length === 0 || projectFilter.includes(getWorkOrderProjectId(wo.projectId) ?? "");
       const matchContractType = contractTypeFilter === "all" || (wo.contractType || "execution") === contractTypeFilter;
-      const matchDept = deptFilter === "all" || (wo.department || "") === deptFilter;
+      const matchDept = matchesDeptFilter(wo, deptFilter);
       return matchSearch && matchStatus && matchStep && matchCategory && matchProgress && matchArchive && matchDate && matchProject && matchContractType && matchDept;
     }).sort((a, b) => {
       const numA = parseInt(a.workOrderNo.replace(/\D/g, ""), 10) || 0;
@@ -1846,7 +1858,7 @@ export default function WorkItems() {
       const matchDate    = inDateRange(wo.issueDate, dateFrom, dateTo);
       const matchProject = projectFilter.length === 0 || projectFilter.includes(getWorkOrderProjectId(wo.projectId) ?? "");
       const matchContractType = contractTypeFilter === "all" || (wo.contractType || "execution") === contractTypeFilter;
-      const matchDept = deptFilter === "all" || (wo.department || "") === deptFilter;
+      const matchDept = matchesDeptFilter(wo, deptFilter);
       return matchSearch && matchStatus && matchCategory && matchProgress && matchArchive && matchDate && matchProject && matchContractType && matchDept;
     });
   }, [workOrders, search, statusFilter, categoryFilter, deptFilter, progressFilter, showArchived, projectFilter, subCatsOfSelected, dateFrom, dateTo, contractTypeFilter, woBillsMap]);
@@ -2572,7 +2584,8 @@ export default function WorkItems() {
                 { label: "Marketing Team", value: "marketing" },
                 { label: "Planning Team", value: "planning" },
                 { label: "Maintenance Team", value: "maintenance" },
-                { label: "Custom Team", value: "custom" },
+                ...registeredCustomDepts.map(name => ({ label: name, value: `custom:${name}` })),
+                { label: "Custom Team (other)", value: "custom" },
               ]}
             />
             <DropdownSelectFilter
@@ -2608,7 +2621,7 @@ export default function WorkItems() {
               )}
               {deptFilter !== "all" && (
                 <span className="bg-purple-50 dark:bg-purple-500/10 border border-purple-600 text-purple-600 text-[11px] px-2 py-0.5 rounded flex items-center gap-1">
-                  Department: {deptFilter === "civil" ? "Civil Team" : deptFilter === "marketing" ? "Marketing Team" : deptFilter === "planning" ? "Planning Team" : deptFilter === "maintenance" ? "Maintenance Team" : "Custom Team"}
+                  Department: {deptFilter === "civil" ? "Civil Team" : deptFilter === "marketing" ? "Marketing Team" : deptFilter === "planning" ? "Planning Team" : deptFilter === "maintenance" ? "Maintenance Team" : deptFilter.startsWith("custom:") ? deptFilter.slice("custom:".length) : "Custom Team (other)"}
                   <button type="button" onClick={() => setDeptFilter("all")} className="text-purple-600">×</button>
                 </span>
               )}

@@ -55,7 +55,12 @@ function durationLabel(stage: InstanceStage): string {
 // (already-skip-filtered) visible sequence means the displayed level number
 // is always correct, regardless of what text is stored.
 const LEVEL_PREFIX_RE = /^L\d+\s*[-–:]\s*/i;
-function stageLabel(name: string, position: number): string {
+function stageLabel(name: string, position: number, genericLabels?: boolean): string {
+  // A professional-services (consultancy) Work Order shares the same
+  // WorkflowTemplate as a regular execution one — "AGM"/"GM" are civil-team
+  // role titles that don't apply to a consultancy's approval chain, so this
+  // drops the stage's own template text entirely and shows just "L2"/"L3".
+  if (genericLabels) return `L${position}`;
   return `L${position} - ${name.replace(LEVEL_PREFIX_RE, "")}`;
 }
 
@@ -80,7 +85,7 @@ function stageVisual(stage: InstanceStage, isLast: boolean, instanceCompleted: b
 // Work Order/Bill Request. Renders nothing if no active template covers this
 // entity type (SLA tracking is opt-in via WorkflowTemplate, not every entity
 // has an instance).
-export default function SlaTimeline({ entityType, entityId }: { entityType: "WorkOrder" | "BillRequest"; entityId: string }) {
+export default function SlaTimeline({ entityType, entityId, genericLabels }: { entityType: "WorkOrder" | "BillRequest"; entityId: string; genericLabels?: boolean }) {
   const [instance, setInstance] = useState<WorkflowInstance | null>(null);
   const [loaded, setLoaded] = useState(false);
 
@@ -138,7 +143,7 @@ export default function SlaTimeline({ entityType, entityId }: { entityType: "Wor
               </div>
               <div className="pb-4">
                 <div className="text-[13px] font-bold text-[#1A1A2E] dark:text-[#F1F5F9]">
-                  {stageLabel(stage.name, i + 1)}
+                  {stageLabel(stage.name, i + 1, genericLabels)}
                   <span className="ml-1.5 font-semibold" style={{ color }}>· {status}</span>
                   {isCurrent && <span className="ml-1.5 text-[10px] font-bold text-gray-400 uppercase">(Current State)</span>}
                 </div>

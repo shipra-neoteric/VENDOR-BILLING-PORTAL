@@ -502,7 +502,7 @@ export default function WorkOrderApprovalWorkflow<T extends ApprovalWorkOrder>({
       <ApprovalCyclesTable history={wo.approvalHistory || []} actorLabel={actorLabel} showAllCycles={user?.role === "owner"} stages={stages} stageLabels={stageLabels} />
 
       <div className="mt-3.5">
-        <SlaTimeline entityType="WorkOrder" entityId={wo._id} />
+        <SlaTimeline entityType="WorkOrder" entityId={wo._id} genericLabels={wo.contractType === "professional-services"} />
       </div>
 
       {!readOnly && renderWorkflowAction()}
