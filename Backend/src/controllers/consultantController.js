@@ -8,7 +8,7 @@ const { logAudit, diffFields } = require('../utils/auditLog');
 // Business fields only — `documents` holds KYC data URIs and must never be
 // diffed/logged.
 const CONSULTANT_DIFF_FIELDS = [
-  'consultantCode', 'firmName', 'principalName', 'consultancyType',
+  'consultantCode', 'firmName', 'principalName', 'consultancyType', 'consultancyTypeOther',
   'professionalRegistration', 'licenseNo', 'experience', 'designSoftware',
   'portfolioUrl', 'address', 'mobile', 'alternateMobile', 'email',
   'accountHolderName', 'bankName', 'accountNumber', 'ifscCode', 'branchName',

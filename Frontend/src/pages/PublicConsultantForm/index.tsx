@@ -39,7 +39,7 @@ const DOCUMENT_FIELDS: { key: string; label: string; required?: boolean }[] = [
 const MAX_FILE_MB = 5;
 
 interface FormValues {
-  firmName: string; principalName: string; consultancyType: string;
+  firmName: string; principalName: string; consultancyType: string; consultancyTypeOther: string;
   mobile: string; alternateMobile: string; email: string; address: string;
   professionalRegistration: string; licenseNo: string; experience: string; portfolioUrl: string;
   designSoftware: string[];
@@ -48,7 +48,7 @@ interface FormValues {
 }
 
 const blankForm = (): FormValues => ({
-  firmName: "", principalName: "", consultancyType: "",
+  firmName: "", principalName: "", consultancyType: "", consultancyTypeOther: "",
   mobile: "", alternateMobile: "", email: "", address: "",
   professionalRegistration: "", licenseNo: "", experience: "", portfolioUrl: "",
   designSoftware: [],
@@ -56,7 +56,7 @@ const blankForm = (): FormValues => ({
   panNumber: "", aadhaarNumber: "", gstNumber: "",
 });
 
-type RequiredField = "firmName" | "principalName" | "consultancyType" | "mobile" | "alternateMobile" | "email" | "address"
+type RequiredField = "firmName" | "principalName" | "consultancyType" | "consultancyTypeOther" | "mobile" | "alternateMobile" | "email" | "address"
   | "designSoftware"
   | "accountHolderName" | "bankName" | "accountNumber" | "ifscCode" | "branchName" | "panNumber" | "aadhaarNumber";
 
@@ -132,14 +132,17 @@ export default function PublicConsultantForm() {
   function validate(): boolean {
     errors.clearAll();
     let ok = true;
-    const required: Exclude<RequiredField, "designSoftware">[] = [
-      "firmName", "principalName", "consultancyType", "mobile", "alternateMobile", "email", "address",
-      "accountHolderName", "bankName", "accountNumber", "ifscCode", "branchName", "panNumber", "aadhaarNumber",
+    const required: Exclude<RequiredField, "designSoftware" | "consultancyTypeOther">[] = [
+      "firmName", "principalName", "consultancyType", "mobile", "address",
+      "accountHolderName", "bankName", "accountNumber", "ifscCode", "branchName", "panNumber",
     ];
     for (const f of required) {
       if (!values[f].trim()) { errors.setError(f, "Required"); ok = false; }
     }
-    if (values.designSoftware.length === 0) { errors.setError("designSoftware", "Select at least one"); ok = false; }
+    if (values.consultancyType === "Other" && !values.consultancyTypeOther.trim()) {
+      errors.setError("consultancyTypeOther", "Please specify the consultancy type");
+      ok = false;
+    }
     return ok;
   }
 
@@ -223,9 +226,16 @@ export default function PublicConsultantForm() {
                 options={CONSULTANCY_TYPES.map(t => ({ label: t, value: t }))}
                 error={errors.errors.consultancyType}
               />
+              {values.consultancyType === "Other" && (
+                <Field
+                  label="Specify Consultancy Type" required placeholder="e.g. Acoustic Consultant"
+                  value={values.consultancyTypeOther} onChange={e => patch({ consultancyTypeOther: e.target.value })}
+                  error={errors.errors.consultancyTypeOther}
+                />
+              )}
               <Field label="Mobile" required placeholder="10-digit mobile number" maxLength={10} value={values.mobile} onChange={e => patch({ mobile: e.target.value })} error={errors.errors.mobile} />
-              <Field label="Alternate Mobile" required maxLength={10} value={values.alternateMobile} onChange={e => patch({ alternateMobile: e.target.value })} error={errors.errors.alternateMobile} />
-              <Field label="Email" required value={values.email} onChange={e => patch({ email: e.target.value })} error={errors.errors.email} />
+              <Field label="Alternate Mobile" maxLength={10} value={values.alternateMobile} onChange={e => patch({ alternateMobile: e.target.value })} error={errors.errors.alternateMobile} />
+              <Field label="Email" value={values.email} onChange={e => patch({ email: e.target.value })} error={errors.errors.email} />
             </div>
             <div className="mt-3">
               <Field textarea label="Address" required placeholder="Full address…" value={values.address} onChange={e => patch({ address: e.target.value })} error={errors.errors.address} />
@@ -245,7 +255,7 @@ export default function PublicConsultantForm() {
               <Field label="Portfolio URL" placeholder="https://…" value={values.portfolioUrl} onChange={e => patch({ portfolioUrl: e.target.value })} />
             </div>
             <div className="mt-3">
-              <span className="block text-xs font-bold text-gray-600 uppercase tracking-wide mb-1.5">Design Software <span className="text-red-500">*</span></span>
+              <span className="block text-xs font-bold text-gray-600 uppercase tracking-wide mb-1.5">Design Software</span>
               <SoftwareTagPicker values={values.designSoftware} onChange={v => patch({ designSoftware: v })} />
               {errors.errors.designSoftware && <span className="block text-xs text-red-500 mt-1">{errors.errors.designSoftware}</span>}
             </div>
@@ -260,7 +270,7 @@ export default function PublicConsultantForm() {
               <Field label="IFSC Code" required placeholder="e.g. SBIN0001234" value={values.ifscCode} onChange={e => patch({ ifscCode: e.target.value })} error={errors.errors.ifscCode} />
               <Field label="Branch" required placeholder="Branch name" value={values.branchName} onChange={e => patch({ branchName: e.target.value })} error={errors.errors.branchName} />
               <Field label="PAN Number" required placeholder="10-char PAN" value={values.panNumber} onChange={e => patch({ panNumber: e.target.value })} error={errors.errors.panNumber} />
-              <Field label="Aadhaar Number" required placeholder="12-digit Aadhaar" maxLength={12} value={values.aadhaarNumber} onChange={e => patch({ aadhaarNumber: e.target.value })} error={errors.errors.aadhaarNumber} />
+              <Field label="Aadhaar Number" placeholder="12-digit Aadhaar" maxLength={12} value={values.aadhaarNumber} onChange={e => patch({ aadhaarNumber: e.target.value })} error={errors.errors.aadhaarNumber} />
               <Field
                 label="GST Number" placeholder="15-char GST (optional)" value={values.gstNumber} onChange={e => patch({ gstNumber: e.target.value })}
                 hint="Optional — many individual consultants aren't GST-registered"

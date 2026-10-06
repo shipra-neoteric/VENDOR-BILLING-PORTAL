@@ -18,6 +18,11 @@ const consultantSchema = new mongoose.Schema(
     firmName:            { type: String, required: true, trim: true },
     principalName:       { type: String, required: true, trim: true },
     consultancyType:     { type: String, enum: CONSULTANCY_TYPES, default: 'Other' },
+    // Only meaningful when consultancyType === 'Other' — the free-text name
+    // actually typed in, since 'Other' itself tells nobody what kind of
+    // consultant this is. Same "custom" escape-hatch pattern used for
+    // department elsewhere in this app.
+    consultancyTypeOther: { type: String, default: '' },
     professionalRegistration: { type: String, default: '' },
     licenseNo:           { type: String, default: '' },
     experience:          { type: String, default: '' },
