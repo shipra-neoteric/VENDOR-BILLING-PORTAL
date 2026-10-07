@@ -102,10 +102,15 @@ exports.listReports = asyncHandler(async (req, res) => {
   if (projectId)  filter.projectId  = projectId;
   if (vendorCode) filter.vendorCode = vendorCode;
 
+  // No .limit() here — the Daily Progress Report page's own "Total Labour"/
+  // Work Progress stats are computed client-side off this exact list, so
+  // silently capping it (as this used to, at 200) quietly understated every
+  // "All Time" aggregate once real usage grew past that — a flat .limit()
+  // written for "don't return a huge list" had the side effect of also
+  // truncating every sum that reused the same fetch.
   const reports = await DailyProgressReport.find(filter)
     .populate('submittedBy', 'name email')
     .sort({ date: -1, createdAt: -1 })
-    .limit(200)
     .lean();
 
   success(res, { reports });

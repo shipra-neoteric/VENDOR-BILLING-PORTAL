@@ -605,7 +605,18 @@ export default function AccountsPayment() {
   const downloadBill = useCallback(
     async (bill: Bill, mode: 'pre' | 'post' = 'pre') => {
       const contractor = await resolvePrintParty(bill.vendorCode);
-      printBill(bill, contractor, mode);
+      // Same "Others" + Note fallback the review drawers use — a bill with
+      // no real project matched (projectName "Other") has a generic
+      // projectLocation snapshot; the real site context (if any) only
+      // lives in the Work Order's free-text description.
+      let workOrderNote: string | undefined;
+      if (bill.projectName === "Other" && bill.workOrderId) {
+        try {
+          const woRes = await apiClient.get<{ workOrder: { description?: string } }>(`/work-orders/${bill.workOrderId}`);
+          workOrderNote = (woRes.data.workOrder?.description || "").split("\n")[0].trim() || undefined;
+        } catch { /* non-critical — print still works without it */ }
+      }
+      printBill({ ...bill, workOrderNote }, contractor, mode);
     },
     []
   );

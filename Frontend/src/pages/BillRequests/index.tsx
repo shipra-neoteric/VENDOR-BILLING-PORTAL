@@ -374,12 +374,24 @@ async function printManualBill(b: ManualBillRow) {
     // agmApprovedBy/verifiedBy fields a progress-driven bill uses, so without
     // this the name/role never shows on a manual bill's print, even once
     // fully approved.
+    // Same "Others" + Note fallback the review drawers use — a manual
+    // bill's own projectLocation is often just a generic snapshot, while the
+    // real site context (if any) only lives in the Work Order's free-text
+    // description.
+    let workOrderNote: string | undefined;
+    if (bill.workOrderId) {
+      try {
+        const woRes = await apiClient.get<{ workOrder: { description?: string } }>(`/work-orders/${bill.workOrderId}`);
+        workOrderNote = (woRes.data.workOrder?.description || "").split("\n")[0].trim() || undefined;
+      } catch { /* non-critical — print still works without it */ }
+    }
     const printableBill: PrintableBill = {
       ...bill,
       agmApprovedBy: bill.agmApprovedBy ?? (bill.manualAgmApprovedBy ? { name: bill.manualAgmApprovedBy.name, role: bill.manualAgmApprovedBy.role } : null),
       agmApprovedAt: bill.agmApprovedAt ?? bill.manualAgmApprovedAt,
       verifiedBy: bill.verifiedBy ?? (bill.manualGmApprovedBy ? { name: bill.manualGmApprovedBy.name, role: bill.manualGmApprovedBy.role } : null),
       verifiedAt: bill.verifiedAt ?? bill.manualGmApprovedAt,
+      workOrderNote,
     };
     const contractor = await resolvePrintParty(bill.vendorCode);
     printBill(printableBill, contractor, bill.status === "paid" ? "post" : "pre");

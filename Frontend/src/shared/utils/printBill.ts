@@ -86,6 +86,11 @@ export interface PrintableBill {
   workOrderNo?: string;
   projectName?: string;
   projectLocation?: string;
+  // Whatever else the maker typed alongside the Work Order's own location
+  // line (e.g. a cost breakdown) — only relevant when projectName is the
+  // generic "Other" placeholder (a manual bill with no real project
+  // matched) — see the Location header's own fallback below.
+  workOrderNote?: string;
   vendorCode?: string;
   vendorName?: string;
   // The issuing entity this bill was raised under — this system spans
@@ -207,7 +212,14 @@ export function printBill(
   // generic overall location — same fallback the Bill Approval view modal
   // uses, so print and view show the same thing.
   const itemLocations = [...new Set((bill.lineItems || []).map(li => li.location).filter(Boolean))];
-  const headerLocation = (itemLocations.length > 0 ? itemLocations.join("\n\n") : bill.projectLocation || "")
+  // "Other" means no real project was matched — its own projectLocation
+  // snapshot is generic/unhelpful, so this names that plainly instead, with
+  // whatever real site context exists (bill.workOrderNote) added as its own
+  // "Note:" line — same convention the review drawers already use.
+  const rawLocation = itemLocations.length > 0
+    ? itemLocations.join("\n\n")
+    : bill.projectName === "Other" ? "Others" : bill.projectLocation || "";
+  const headerLocation = (rawLocation + (bill.workOrderNote ? `\nNote: ${bill.workOrderNote}` : ""))
     .replace(/\n/g, "<br>");
 
   const bankContractor = payeeContractor ?? contractor;
