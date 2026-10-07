@@ -98,7 +98,11 @@ exports.getReportImage = asyncHandler(async (req, res) => {
 exports.listReports = asyncHandler(async (req, res) => {
   const { projectId, vendorCode } = req.query;
   const filter = {};
-  if (req.user.role === 'site-dri') filter.driUserId = req.user._id;
+  // Match on driName too: public-form and admin-on-behalf submissions carry the
+  // DRI's name but not their driUserId, so filtering on driUserId alone hid them.
+  if (req.user.role === 'site-dri') {
+    filter.$or = [{ driUserId: req.user._id }, { driName: req.user.name }];
+  }
   if (projectId)  filter.projectId  = projectId;
   if (vendorCode) filter.vendorCode = vendorCode;
 
@@ -120,7 +124,7 @@ exports.listReports = asyncHandler(async (req, res) => {
 exports.getReport = asyncHandler(async (req, res) => {
   const report = await DailyProgressReport.findById(req.params.id).populate('submittedBy', 'name email').lean();
   if (!report) return notFound(res, 'Report not found');
-  if (req.user.role === 'site-dri' && String(report.driUserId) !== String(req.user._id)) {
+  if (req.user.role === 'site-dri' && String(report.driUserId) !== String(req.user._id) && report.driName !== req.user.name) {
     return notFound(res, 'Report not found');
   }
   success(res, { report });
