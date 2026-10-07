@@ -45,9 +45,9 @@ router.put('/:id/l4-approve',  authorizeOr('bill-requests', 'l4-approve'), l4App
 router.put('/:id/reject',    authorizeAnyOr('bill-requests', ['agm-approve', 'gm-approve', 'l3-approve', 'l4-approve']), rejectBillRequest);
 // Payment release lives entirely in the Accounts Payment module now (see
 // billController.releasePayment) — no milestone route here anymore.
-router.patch('/archive-bulk',   authorizeOr('bill-requests', 'edit'), archiveBillRequestsBulk);
-router.patch('/unarchive-bulk', authorizeOr('bill-requests', 'edit'), unarchiveBillRequestsBulk);
-router.patch('/:id/archive',    authorizeOr('bill-requests', 'edit'), archiveBillRequest);
-router.patch('/:id/unarchive',  authorizeOr('bill-requests', 'edit'), unarchiveBillRequest);
+router.patch('/archive-bulk',   authorizeOr('bill-requests', 'edit', 'CEO'), archiveBillRequestsBulk);
+router.patch('/unarchive-bulk', authorizeOr('bill-requests', 'edit', 'CEO'), unarchiveBillRequestsBulk);
+router.patch('/:id/archive',    authorizeOr('bill-requests', 'edit', 'CEO'), archiveBillRequest);
+router.patch('/:id/unarchive',  authorizeOr('bill-requests', 'edit', 'CEO'), unarchiveBillRequest);
 
 module.exports = router;
