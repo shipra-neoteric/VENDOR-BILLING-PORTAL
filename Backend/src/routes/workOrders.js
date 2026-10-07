@@ -30,10 +30,15 @@ router.delete('/:id', authorizeOr('work-orders', 'delete'), deleteWorkOrder);
 
 // ── 4-level approval workflow ──
 router.patch('/:id/submit',          authorizeOr('work-orders', 'maker'), submitWorkOrder);
-router.patch('/:id/checker-approve', authorizeOr('work-orders', 'checker'), checkerApprove);
-router.patch('/:id/approver-approve', authorizeOr('work-orders', 'approver'), approverApprove);
-router.patch('/:id/final-approve',   authorizeOr('work-orders', 'ceo-approve'), finalApprove);
-router.patch('/:id/send-back',       authorizeAnyOr('work-orders', ['checker', 'approver', 'ceo-approve']), sendBack);
+// CEO bypasses every stage's own permission gate here (same convention as
+// 'owner' elsewhere) — CEO's own permission grant only ever covers
+// 'ceo-approve' (the final stage), so without this explicit bypass he'd be
+// wrongly blocked acting at an earlier stage (checker/approver) on a work
+// order that hasn't reached 'pending-final' yet.
+router.patch('/:id/checker-approve', authorizeOr('work-orders', 'checker', 'CEO'), checkerApprove);
+router.patch('/:id/approver-approve', authorizeOr('work-orders', 'approver', 'CEO'), approverApprove);
+router.patch('/:id/final-approve',   authorizeOr('work-orders', 'ceo-approve', 'CEO'), finalApprove);
+router.patch('/:id/send-back',       authorizeAnyOr('work-orders', ['checker', 'approver', 'ceo-approve'], 'CEO'), sendBack);
 // site-dri is hardcoded here (unlike most other modules) because logging
 // progress is that role's actual job — none of today's real DRI accounts have
 // 'work-progress' ticked in their checklist, so gating this on the checklist
