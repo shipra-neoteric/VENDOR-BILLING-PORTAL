@@ -31,7 +31,7 @@ export function BillStageCell({ by, at }: { by?: string; at?: string }) {
 }
 
 export interface BillApprovalHistoryEntry {
-  stage: "agm" | "gm";
+  stage: "agm" | "gm" | "l3" | "l4";
   action: "approved" | "rejected";
   by?: { name: string; role?: string } | string | null;
   at?: string;
@@ -45,7 +45,7 @@ export interface BillApprovalHistoryEntry {
 // shape and rendering convention as SiteProgress's own ApprovalHistoryTimeline.
 export function BillApprovalHistoryList({ history }: { history?: BillApprovalHistoryEntry[] }) {
   if (!history || history.length === 0) return null;
-  const stageLabel = (s: string) => (s === "agm" ? "L1" : "L2");
+  const stageLabel = (s: string) => (s === "agm" ? "L1" : s === "gm" ? "L2" : s === "l3" ? "L3" : "L4");
   return (
     <div className="flex flex-col gap-2.5">
       {history.map((h, i) => {

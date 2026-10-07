@@ -5,7 +5,7 @@ import Spinner from "../../ui/Spinner";
 import Field from "../../ui/Field";
 import WorkOrderDetailView from "../../components/WorkOrderDetailView";
 import BillDetailModal from "../../components/BillDetailModal";
-import type { BillDetailRequest } from "../../components/BillDetailModal";
+import type { BillDetailRequest, BillApprovalHistoryEntry } from "../../components/BillDetailModal";
 import RunningBillDetailView from "../../components/RunningBillDetailView";
 import type { RunningBillDetail } from "../../components/RunningBillDetailView";
 import type { WorkOrder } from "../../types/VendorBilling";
@@ -35,6 +35,12 @@ const normalizeFullWO = (wo: Record<string, unknown>): WorkOrder => ({
   paymentMilestones: ((wo.paymentMilestones as Record<string, unknown>[]) || []).map(normalizeId),
 } as unknown as WorkOrder);
 
+// Same labels/convention as BillRequests/index.tsx's own DEPARTMENT_LABEL.
+const DEPARTMENT_LABEL: Record<string, string> = {
+  civil: "Civil Team", marketing: "Marketing Team", planning: "Planning Team",
+  maintenance: "Maintenance Team",
+};
+
 // A manually-created RunningBill (system 'RunningBill-Manual') never had a
 // BillRequest of its own (see RunningBill.js's own comment on why — created
 // directly via Billing -> New Bill) — so there's nothing to fetch that's
@@ -46,6 +52,31 @@ const normalizeFullWO = (wo: Record<string, unknown>): WorkOrder => ({
 // read off billRequest.billId, still render).
 function billToSyntheticRequest(bill: Record<string, unknown>): BillDetailRequest {
   const status = bill.manualApprovalStatus === "approved" ? "approved" : bill.manualApprovalStatus === "rejected" ? "rejected" : "pending";
+
+  // Built from each stage's own real by/at fields, independent of the
+  // bill's current overall status — the old approach (deriving GM's row
+  // from status === "approved") hid a genuinely-already-approved L2/L3 the
+  // moment a later stage (e.g. L3 at a 3-level department) was still
+  // pending, which is exactly the normal state for a bill mid-chain, not an
+  // edge case.
+  const approvalHistory: BillApprovalHistoryEntry[] = [];
+  if (bill.manualAgmApprovedBy || bill.manualAgmApprovedAt) {
+    approvalHistory.push({ stage: "agm", action: "approved", by: bill.manualAgmApprovedBy as BillApprovalHistoryEntry["by"], at: bill.manualAgmApprovedAt as string });
+  }
+  if (bill.manualGmApprovedBy || bill.manualGmApprovedAt) {
+    approvalHistory.push({ stage: "gm", action: "approved", by: bill.manualGmApprovedBy as BillApprovalHistoryEntry["by"], at: bill.manualGmApprovedAt as string });
+  }
+  if (bill.manualL3ApprovedBy || bill.manualL3ApprovedAt) {
+    approvalHistory.push({ stage: "l3", action: "approved", by: bill.manualL3ApprovedBy as BillApprovalHistoryEntry["by"], at: bill.manualL3ApprovedAt as string });
+  }
+  if (bill.manualL4ApprovedBy || bill.manualL4ApprovedAt) {
+    approvalHistory.push({ stage: "l4", action: "approved", by: bill.manualL4ApprovedBy as BillApprovalHistoryEntry["by"], at: bill.manualL4ApprovedAt as string });
+  }
+  if (bill.manualApprovalStatus === "rejected") {
+    const rejectedStage = bill.manualL3ApprovedBy || bill.manualL3ApprovedAt ? "l4" : bill.manualGmApprovedBy || bill.manualGmApprovedAt ? "l3" : bill.manualAgmApprovedBy || bill.manualAgmApprovedAt ? "gm" : "agm";
+    approvalHistory.push({ stage: rejectedStage, action: "rejected", by: bill.manualRejectedBy as BillApprovalHistoryEntry["by"], at: bill.updatedAt as string, remarks: bill.manualRejectReason as string });
+  }
+
   return {
     _id: String(bill._id || bill.id),
     reqNo: (bill.billNo as string) || "",
@@ -53,12 +84,19 @@ function billToSyntheticRequest(bill: Record<string, unknown>): BillDetailReques
     workOrderNo: (bill.workOrderNo as string) || "",
     projectId: bill.projectId ? String(bill.projectId) : undefined,
     projectName: (bill.projectName as string) || "",
+    projectLocation: (bill.projectLocation as string) || "",
     vendorName: (bill.vendorName as string) || "",
-    category: "",
+    // A manual bill has no real category field (that's a BillRequest-only
+    // concept) — department is the closest equivalent it actually carries,
+    // same label convention BillRequests/index.tsx's own departmentLabel uses.
+    category: bill.department === "custom"
+      ? (bill.customDepartment as string) || "Custom Team"
+      : (DEPARTMENT_LABEL[bill.department as string] || ""),
     subCategory: "",
     items: (bill.lineItems as BillDetailRequest["items"]) || [],
     remarks: (bill.remarks as string) || "",
     status: status as BillDetailRequest["status"],
+    approvalHistory,
     rejectReason: (bill.manualRejectReason as string) || "",
     requestedBy: bill.createdBy as BillDetailRequest["requestedBy"],
     processedBy: (bill.manualL4ApprovedBy || bill.manualGmApprovedBy) as BillDetailRequest["processedBy"],
