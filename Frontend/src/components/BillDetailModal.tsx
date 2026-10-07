@@ -162,6 +162,9 @@ export interface BillDetailRequest {
   projectId?: string;
   projectName: string;
   projectLocation?: string;
+  // Whatever else the maker typed alongside the Work Order's location line
+  // (e.g. a cost breakdown) — see ReviewDrawer's RunningBill-Manual loader.
+  workOrderNote?: string;
   vendorName: string;
   category: string;
   subCategory: string;
@@ -309,7 +312,13 @@ export default function BillDetailModal({
       // order's own generic overall location — same fallback BillRequests'
       // own view modal already uses.
       const itemLocations = [...new Set(displayItems.map((it) => it.location).filter(Boolean))];
-      const location = itemLocations.length > 0 ? itemLocations.join("\n\n") : billRequest.projectLocation;
+      // "Other" means no real project was matched — its own projectLocation
+      // snapshot is generic/unhelpful here, so Location falls back to just
+      // naming that ("Others"), with the real site context (if any) shown
+      // as its own Note line below instead (see workOrderNote).
+      const location = itemLocations.length > 0
+        ? itemLocations.join("\n\n")
+        : billRequest.projectName === "Other" ? "Others" : billRequest.projectLocation;
       if (!location) return [];
       // Jumps to Work Progress with this exact bill's Project/Category/Work
       // Order pre-applied — that page's own filters auto-load on change, so
@@ -323,13 +332,18 @@ export default function BillDetailModal({
         navigate(`/work-progress?${params.toString()}`);
       } : undefined;
       return [["Location", (
-        <span
-          className={goToProgress ? "cursor-pointer hover:underline" : undefined}
-          onClick={goToProgress}
-          title={goToProgress ? "View this Work Order's progress" : undefined}
-        >
-          {location}
-        </span>
+        <>
+          <span
+            className={goToProgress ? "cursor-pointer hover:underline" : undefined}
+            onClick={goToProgress}
+            title={goToProgress ? "View this Work Order's progress" : undefined}
+          >
+            {location}
+          </span>
+          {billRequest.workOrderNote && (
+            <div className="text-[11px] font-normal text-gray-400 mt-0.5">Note: {billRequest.workOrderNote}</div>
+          )}
+        </>
       )] as [string, React.ReactNode]];
     })(),
     ["Requested By", billRequest.requestedBy?.name || "—"],

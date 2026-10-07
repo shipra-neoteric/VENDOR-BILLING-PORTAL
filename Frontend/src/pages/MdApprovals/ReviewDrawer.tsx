@@ -183,18 +183,18 @@ export default function ReviewDrawer({
           if (cancelled) return;
           const bill = res.data.bill;
           setBillRequest(bill ? billToSyntheticRequest(bill) : null);
-          // The Work Order's own free-text `description` is where the real
-          // site location sometimes actually lives (e.g. "Green Garden
-          // Temple, City Centre\nMaterial Approximate - 6500/-\n...") — a
-          // manual bill's own projectLocation is often just a generic
-          // one-word snapshot ("Temple"). First line only — the rest is a
-          // cost breakdown the maker typed alongside it, not location text.
+          // Location itself stays "Others" (billRequest.projectName as-is)
+          // when there's no real project matched — the Work Order's own
+          // free-text `description` (e.g. "Green Garden Temple, City
+          // Centre\nMaterial Approximate - 6500/-\n...") goes in the Note
+          // line below it instead, first line only (the rest is a cost
+          // breakdown the maker typed alongside it, not location text).
           if (bill?.workOrderId) {
             apiClient.get<{ workOrder: Record<string, unknown> }>(`/work-orders/${bill.workOrderId}`)
               .then((r) => {
                 if (cancelled) return;
                 const firstLine = ((r.data.workOrder?.description as string) || "").split("\n")[0].trim();
-                if (firstLine) setBillRequest((prev) => prev ? { ...prev, projectLocation: firstLine } : prev);
+                if (firstLine) setBillRequest((prev) => prev ? { ...prev, workOrderNote: firstLine } : prev);
               })
               .catch(() => { });
           }
