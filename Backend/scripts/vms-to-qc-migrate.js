@@ -34,7 +34,6 @@ const vmsEnv = dotenv.config({ path: vmsEnvPath });
 if (vmsEnv.error) throw new Error(`Could not load VMS .env: ${vmsEnvPath}`);
 
 const VMS_MONGO_URI = process.env.MONGO_URI;
-const VMS_DB_NAME = "vbp";
 if (!VMS_MONGO_URI) throw new Error("VMS MONGO_URI missing from VMS backend .env");
 
 // ============================================================
@@ -58,7 +57,7 @@ if (!QC_DB_NAME) throw new Error("QC_MONGODB_DB missing from VMS backend .env");
 // so the two never drift apart again).
 // ============================================================
 
-const { PROJECT_MAPPINGS } = require("../src/utils/qcProjectMappings");
+const { PROJECT_MAPPINGS, mapDrawingReviewStatus: sharedMapDrawingReviewStatus, VMS_DB_NAME } = require("../src/utils/qcProjectMappings");
 
 // ============================================================
 // HELPERS
@@ -164,13 +163,13 @@ function transformDpr(source, qcProjectMap, warnings, vmsProjectById, userMap) {
   };
 }
 
-function mapDrawingReviewStatus(status, sourceId, warnings) {
-  const validQcStatuses = new Set([
-    "stage-1-screen", "stage-2-produce", "stage-3-crosscheck", "stage-4-final-approve", "approved", "returned",
-  ]);
-  if (validQcStatuses.has(status)) return { value: status, mapping: "already-qc-status" };
-  if (status === "l1-gm") return { value: "stage-1-screen", mapping: "VMS l1-gm → QC stage-1-screen" };
-  if (status === "l2-architect") return { value: "stage-2-produce", mapping: "VMS l2-architect → QC stage-2-produce" };
+// Thin wrapper over the shared mapper (src/utils/qcProjectMappings.js) —
+// this script additionally wants a warning pushed and an "UNMAPPED" marker
+// for its own dry-run report, which the shared function (used directly by
+// syncToQc.js's live path) doesn't need.
+function mapDrawingReviewStatusForReport(status, sourceId, warnings) {
+  const mapped = sharedMapDrawingReviewStatus(status);
+  if (mapped) return { value: mapped, mapping: mapped === status ? "already-qc-status" : `VMS ${status} → QC ${mapped}` };
   warnings.push(`Drawing Request ${sourceId}: reviewStatus "${status}" has no mapping`);
   return { value: "UNMAPPED", mapping: null };
 }
@@ -185,7 +184,7 @@ function transformDrawingRequest(source, qcProjectMap, userMap, warnings, vmsPro
     warnings.push(`Drawing Request ${sourceId}: submittedBy "${source.submittedBy}" could not be mapped`);
   }
 
-  const status = mapDrawingReviewStatus(source.reviewStatus, sourceId, warnings);
+  const status = mapDrawingReviewStatusForReport(source.reviewStatus, sourceId, warnings);
 
   const files = Array.isArray(source.drawingFiles)
     ? source.drawingFiles

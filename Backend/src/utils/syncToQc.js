@@ -41,7 +41,7 @@ function normalizeProjectName(value) {
 // scripts/vms-to-qc-migrate.js's bulk backfill, so the two never drift
 // apart again) — fallback only for a project renamed on QC's side with no
 // project-code match.
-const { PROJECT_MAPPINGS } = require('./qcProjectMappings');
+const { PROJECT_MAPPINGS, mapDrawingReviewStatus } = require('./qcProjectMappings');
 
 async function resolveProject(qcDb, projectName, projectCode) {
   const qcProjects = await qcDb.collection('projects').find({}).toArray();
@@ -113,14 +113,6 @@ async function syncDprToQc(report) {
   } catch (err) {
     console.error('[syncToQc] failed to sync DPR', report._id, err.message);
   }
-}
-
-function mapDrawingReviewStatus(status) {
-  const validQcStatuses = new Set(['stage-1-screen', 'stage-2-produce', 'stage-3-crosscheck', 'stage-4-final-approve', 'approved', 'returned']);
-  if (validQcStatuses.has(status)) return status;
-  if (status === 'l1-gm') return 'stage-1-screen';
-  if (status === 'l2-architect') return 'stage-2-produce';
-  return null;
 }
 
 async function syncDrawingRequestToQc(request) {

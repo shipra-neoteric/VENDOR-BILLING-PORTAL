@@ -23,6 +23,7 @@
 const path = require("path");
 const dotenv = require("dotenv");
 const { MongoClient } = require("mongodb");
+const { VMS_DB_NAME } = require("../src/utils/qcProjectMappings");
 
 const APPLY = process.argv.includes("--apply");
 
@@ -31,7 +32,6 @@ const vmsEnv = dotenv.config({ path: vmsEnvPath });
 if (vmsEnv.error) throw new Error(`Could not load VMS .env: ${vmsEnvPath}`);
 
 const VMS_MONGO_URI = process.env.MONGO_URI;
-const VMS_DB_NAME = "vbp";
 if (!VMS_MONGO_URI) throw new Error("VMS MONGO_URI missing from VMS backend .env");
 
 // Loaded from VMS's OWN .env (QC_MONGODB_URI/QC_MONGODB_DB) — never from

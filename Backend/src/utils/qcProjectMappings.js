@@ -22,4 +22,22 @@ const PROJECT_MAPPINGS = {
   "automated test project prj 4096": { id: "PRJ-059", name: "Automated Test Project PRJ-4096", proposed: true, vmsCode: "PRJ-059" },
 };
 
-module.exports = { PROJECT_MAPPINGS };
+// Same reasoning as PROJECT_MAPPINGS above — VMS's drawing-request review
+// stages that have no direct QC equivalent map to the closest QC stage.
+// Was duplicated identically in both callers before; a third VMS status
+// added to fix one path would've silently left the other unmapped.
+function mapDrawingReviewStatus(status) {
+  const validQcStatuses = new Set([
+    'stage-1-screen', 'stage-2-produce', 'stage-3-crosscheck', 'stage-4-final-approve', 'approved', 'returned',
+  ]);
+  if (validQcStatuses.has(status)) return status;
+  if (status === 'l1-gm') return 'stage-1-screen';
+  if (status === 'l2-architect') return 'stage-2-produce';
+  return null;
+}
+
+// VMS's own Mongo database name — was separately hardcoded as "vbp" in
+// both vms-to-qc-migrate.js and vms-to-qc-vendors-migrate.js.
+const VMS_DB_NAME = 'vbp';
+
+module.exports = { PROJECT_MAPPINGS, mapDrawingReviewStatus, VMS_DB_NAME };
