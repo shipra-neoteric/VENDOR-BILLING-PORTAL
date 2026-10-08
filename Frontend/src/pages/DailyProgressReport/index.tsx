@@ -6,6 +6,7 @@ import type { Dayjs } from "dayjs";
 import apiClient from "../../services/apiClient";
 import { useAuth } from "../../context/AuthContext";
 import WorkCategoryChecklist from "../../components/WorkCategoryChecklist";
+import QcMigrationNotice from "../../components/QcMigrationNotice";
 import DrawingRequestButton from "../../components/DrawingRequestButton";
 import DateRangeFilter, { inDateRange } from "../../components/DateRangeFilter";
 import { buildDailyProgressReportSummary, periodLabel } from "../../utils/dailyProgressReportSummary";
@@ -454,6 +455,7 @@ export default function DailyProgressReport() {
 
   return (
     <div>
+      <QcMigrationNotice />
       <PageHeader
         title="Daily Progress Report"
         subtitle="Track labour, work progress, and drawing requests across all your projects."

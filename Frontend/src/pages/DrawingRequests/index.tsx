@@ -11,6 +11,7 @@ import {
 } from "../../shared/constants/drawingRequestOptions";
 import type { DrawingRequest } from "../../shared/constants/drawingRequestOptions";
 import PageHeader from "../../ui/PageHeader";
+import QcMigrationNotice from "../../components/QcMigrationNotice";
 import Btn from "../../ui/Btn";
 import Badge from "../../ui/Badge";
 import { FilterRow, SearchFilter, SelectFilter } from "../../ui/Filters";
@@ -101,6 +102,7 @@ export default function DrawingRequests() {
 
   return (
     <div>
+      <QcMigrationNotice />
       <PageHeader
         title="Drawing Requests"
         subtitle={`Manage drawing requests — ${requests.length} total`}
