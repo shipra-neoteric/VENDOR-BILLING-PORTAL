@@ -37,17 +37,11 @@ function normalizeProjectName(value) {
   return normalize(value).replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
-// Same verified name->id fallback as scripts/vms-to-qc-migrate.js, for a
-// project that's been renamed on QC's side and has no project-code match
-// (e.g. newly created QC-only project codes aren't known here yet).
-const PROJECT_MAPPINGS = {
-  'garden city villa extension': { id: 'PRJ-027', name: 'Garden city Villa Extension' },
-  'hyde park': { id: 'PRJ-012', name: 'Hyde park' },
-  'milestone': { id: 'PRJ-039', name: 'Milestone' },
-  'ng grande': { id: 'PRJ-040', name: 'NG Grande' },
-  'nature park hotel': { id: 'PRJ-001', name: 'Nature park Hotel' },
-  'zen garden': { id: 'PRJ-013', name: 'Zen Garden' },
-};
+// Single shared source, see ./qcProjectMappings.js (also used by
+// scripts/vms-to-qc-migrate.js's bulk backfill, so the two never drift
+// apart again) — fallback only for a project renamed on QC's side with no
+// project-code match.
+const { PROJECT_MAPPINGS } = require('./qcProjectMappings');
 
 async function resolveProject(qcDb, projectName, projectCode) {
   const qcProjects = await qcDb.collection('projects').find({}).toArray();

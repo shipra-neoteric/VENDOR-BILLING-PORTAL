@@ -53,20 +53,12 @@ if (!QC_MONGO_URI) throw new Error("QC_MONGODB_URI missing from VMS backend .env
 if (!QC_DB_NAME) throw new Error("QC_MONGODB_DB missing from VMS backend .env");
 
 // ============================================================
-// VERIFIED VMS → QC PROJECT MAPPINGS (same as dry-run script)
+// VERIFIED VMS → QC PROJECT MAPPINGS — single shared source, see
+// src/utils/qcProjectMappings.js (also used by syncToQc.js's live sync,
+// so the two never drift apart again).
 // ============================================================
 
-const PROJECT_MAPPINGS = {
-  "garden city villa extension": { id: "PRJ-027", name: "Garden city Villa Extension" },
-  "hyde park": { id: "PRJ-012", name: "Hyde park" },
-  "milestone": { id: "PRJ-039", name: "Milestone" },
-  "ng grande": { id: "PRJ-040", name: "NG Grande" },
-  "nature park hotel": { id: "PRJ-001", name: "Nature park Hotel" },
-  "zen garden": { id: "PRJ-013", name: "Zen Garden" },
-  "automated test project prj 8320": { id: "PRJ-055", name: "Automated Test Project PRJ-8320", proposed: true, vmsCode: "PRJ-055" },
-  "automated test project prj 6176": { id: "PRJ-057", name: "Automated Test Project PRJ-6176", proposed: true, vmsCode: "PRJ-057" },
-  "automated test project prj 4096": { id: "PRJ-059", name: "Automated Test Project PRJ-4096", proposed: true, vmsCode: "PRJ-059" },
-};
+const { PROJECT_MAPPINGS } = require("../src/utils/qcProjectMappings");
 
 // ============================================================
 // HELPERS
