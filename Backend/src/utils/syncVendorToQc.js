@@ -1,4 +1,4 @@
-const { MongoClient } = require('mongodb');
+const { getQcDb } = require('./qcMongoClient');
 
 // Pushes a single contractor's non-sensitive fields into QC's `vendors`
 // collection the moment it's created/updated in VMS, so a new VMS vendor
@@ -10,15 +10,11 @@ const { MongoClient } = require('mongodb');
 //
 // Fire-and-forget: a QC-side outage must never block a VMS contractor
 // save, so every caller catches/logs rather than awaiting a hard failure.
-// Connects fresh per call rather than holding a second pooled connection
-// alongside VMS's own Mongoose one — contractor writes are infrequent
-// enough that this cost is negligible.
 let warnedMissingConfig = false;
 
 async function syncVendorToQc(contractor) {
-  const uri = process.env.QC_MONGODB_URI;
-  const dbName = process.env.QC_MONGODB_DB;
-  if (!uri || !dbName) {
+  const qcDb = await getQcDb();
+  if (!qcDb) {
     if (!warnedMissingConfig) {
       console.warn('[syncVendorToQc] QC_MONGODB_URI/QC_MONGODB_DB not set — skipping QC vendor sync');
       warnedMissingConfig = true;
@@ -26,9 +22,7 @@ async function syncVendorToQc(contractor) {
     return;
   }
 
-  const client = new MongoClient(uri);
   try {
-    await client.connect();
     const record = {
       vendorCode: contractor.vendorCode,
       vendorName: contractor.companyName,
@@ -37,15 +31,13 @@ async function syncVendorToQc(contractor) {
       status: contractor.status === 'inactive' ? 'inactive' : 'active',
       source: 'vms',
     };
-    await client.db(dbName).collection('vendors').updateOne(
+    await qcDb.collection('vendors').updateOne(
       { vendorCode: record.vendorCode },
       { $set: record },
       { upsert: true }
     );
   } catch (err) {
     console.error('[syncVendorToQc] failed to sync vendor', contractor.vendorCode, err.message);
-  } finally {
-    await client.close().catch(() => {});
   }
 }
 

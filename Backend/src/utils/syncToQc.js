@@ -1,4 +1,4 @@
-const { MongoClient } = require('mongodb');
+const { getQcDb } = require('./qcMongoClient');
 
 // Pushes a single, just-created VMS Daily Progress Report or Drawing Request
 // straight into QC's `dpr`/`drawingRequests` collections, live — a stopgap
@@ -17,17 +17,16 @@ const { MongoClient } = require('mongodb');
 
 let warnedMissingConfig = false;
 
-function qcConfigOrNull() {
-  const uri = process.env.QC_MONGODB_URI;
-  const dbName = process.env.QC_MONGODB_DB;
-  if (!uri || !dbName) {
+async function qcDbOrNull() {
+  const qcDb = await getQcDb();
+  if (!qcDb) {
     if (!warnedMissingConfig) {
       console.warn('[syncToQc] QC_MONGODB_URI/QC_MONGODB_DB not set — skipping live QC sync');
       warnedMissingConfig = true;
     }
     return null;
   }
-  return { uri, dbName };
+  return qcDb;
 }
 
 function normalize(value) {
@@ -76,12 +75,9 @@ function makeId(prefix, sourceId) {
 }
 
 async function syncDprToQc(report) {
-  const cfg = qcConfigOrNull();
-  if (!cfg) return;
-  const client = new MongoClient(cfg.uri);
+  const qcDb = await qcDbOrNull();
+  if (!qcDb) return;
   try {
-    await client.connect();
-    const qcDb = client.db(cfg.dbName);
     const sourceId = String(report._id);
     const id = makeId('DPR', sourceId);
 
@@ -122,8 +118,6 @@ async function syncDprToQc(report) {
     });
   } catch (err) {
     console.error('[syncToQc] failed to sync DPR', report._id, err.message);
-  } finally {
-    await client.close().catch(() => {});
   }
 }
 
@@ -136,12 +130,9 @@ function mapDrawingReviewStatus(status) {
 }
 
 async function syncDrawingRequestToQc(request) {
-  const cfg = qcConfigOrNull();
-  if (!cfg) return;
-  const client = new MongoClient(cfg.uri);
+  const qcDb = await qcDbOrNull();
+  if (!qcDb) return;
   try {
-    await client.connect();
-    const qcDb = client.db(cfg.dbName);
     const sourceId = String(request._id);
     const id = makeId('DR', sourceId);
 
@@ -186,8 +177,6 @@ async function syncDrawingRequestToQc(request) {
     });
   } catch (err) {
     console.error('[syncToQc] failed to sync Drawing Request', request._id, err.message);
-  } finally {
-    await client.close().catch(() => {});
   }
 }
 
