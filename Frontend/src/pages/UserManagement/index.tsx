@@ -172,6 +172,7 @@ export const MODULE_DEFS: ModuleDef[] = [
   { id: "procurement-tracker", name: "Procurement Tracker", icon: "🔗", group: "Billing",   actions: ["view"] },
   { id: "ledger",           name: "Ledger",             icon: "📒", group: "Billing",       actions: ["view"] },
   { id: "advance-payments", name: "Advance Payments",   icon: "🏦", group: "Billing",       actions: ["view","create","edit","delete"] },
+  { id: "recurring-billing", name: "Recurring Billing", icon: "🔁", group: "Billing",       actions: ["view","create","edit","delete"] },
   { id: "companies",        name: "Companies",          icon: "🏢", group: "Admin",         actions: ["view","create","edit","delete"] },
   { id: "categories",       name: "Categories",         icon: "🏷️", group: "Admin",         actions: ["view","create","edit","delete"] },
   { id: "dri-dashboard",    name: "DRI Work Dashboard", icon: "🏗️", group: "Admin",         actions: ["view","create","edit"] },

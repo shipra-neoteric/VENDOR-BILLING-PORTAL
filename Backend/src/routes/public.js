@@ -1,4 +1,5 @@
 const router      = require('express').Router();
+const rateLimit    = require('express-rate-limit');
 const asyncHandler = require('../utils/asyncHandler');
 const { success, created, notFound, badRequest } = require('../utils/responseFormatter');
 const Project    = require('../models/Project');
@@ -18,6 +19,21 @@ const { createPublicReport: createProgressReport, getReportImage } = require('..
 const { createPublicRequest: createDrawingRequest } = require('../controllers/drawingRequestController');
 const { getWorkOrderQuotationContext, submitQuotation } = require('../controllers/contractorQuotationController');
 const { signUpload } = require('../utils/cloudinary');
+
+// No authentication exists anywhere on this router (by design — these serve
+// external contractors/vendors with no login) — same proportionate IP-based
+// cap already used for /api/auth/login, just a higher ceiling since a single
+// genuine form page load fires several lookup GETs (projects/contractors/
+// consultants/categories/companies) plus the eventual submit + upload-sign
+// calls, all from the same IP in a normal session.
+const publicLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Too many requests from this IP, please try again later.' },
+});
+router.use(publicLimiter);
 
 // ── Lookup lists (read-only, no auth) ──────────────────────────
 router.get('/projects', asyncHandler(async (_req, res) => {

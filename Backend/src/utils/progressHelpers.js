@@ -37,7 +37,14 @@ function recomputeParentFromSubItems(item) {
     si.plannedQty > 0 ? Math.min(1, (si.completedQty || 0) / si.plannedQty) : (si.status === 'completed' ? 1 : 0)
   );
   const avgFraction = fractions.reduce((s, f) => s + f, 0) / fractions.length;
-  item.completedQty = Math.round((item.plannedQty || 0) * avgFraction);
+  // A parent whose own plannedQty was never set (common when particulars
+  // carry the real planned quantities — see ScopeItemsBuilder's "Particulars
+  // are reference only" setup) must not have completedQty hard-pinned at 0
+  // regardless of actual progress; fall back to the particulars' own planned
+  // total as the baseline, same fallback the frontend already uses when
+  // deriving a completion % from this field (getCompletionPct).
+  const effectivePlanned = item.plannedQty || item.subItems.reduce((s, si) => s + (si.plannedQty || 0), 0);
+  item.completedQty = Math.round(effectivePlanned * avgFraction);
   const allCompleted = item.subItems.every(si =>
     si.plannedQty > 0 ? si.completedQty >= si.plannedQty : si.status === 'completed'
   );

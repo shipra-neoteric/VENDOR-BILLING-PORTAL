@@ -2,6 +2,7 @@ const WorkflowTemplate = require('../models/WorkflowTemplate');
 const WorkflowInstance  = require('../models/WorkflowInstance');
 const MISSnapshot       = require('../models/MISSnapshot');
 const WorkOrder         = require('../models/WorkOrder');
+const BillRequest       = require('../models/BillRequest');
 const asyncHandler = require('../utils/asyncHandler');
 const { success, created, notFound, badRequest, conflict, forbidden } = require('../utils/responseFormatter');
 const { completeStageById, isStageBreached, captureDailySnapshotIfNeeded, overdueMinutesFor } = require('../utils/slaEngine');
@@ -54,7 +55,12 @@ exports.updateTemplate = asyncHandler(async (req, res) => {
 
   await template.save();
 
-  const changes = diffFields(before, template.toObject(), ['name', 'description', 'entityType', 'isActive']);
+  // 'stages' tracked too — editing only the stage order/SLA hours/assignee
+  // config (the entire point of the StageBuilder UI) while leaving name/
+  // description/entityType/isActive untouched used to produce changes:null
+  // and skip the audit log entirely for what is this module's most
+  // consequential admin action (e.g. silently extending an SLA deadline).
+  const changes = diffFields(before, template.toObject(), ['name', 'description', 'entityType', 'isActive', 'stages']);
   if (changes) {
     await logAudit({
       action: 'UPDATE', module: 'workflows', user: req.user,
@@ -193,14 +199,20 @@ function assigneeKey(stage) {
   return { key: `role:${stage.assignedRole}`, label: `${stage.assignedRole} (role)` };
 }
 
-const DEPARTMENTS = {
-  'site-dri': 'Site / Engineering',
-  gm: 'Management', agm: 'Management', owner: 'Management',
-  accounts: 'Finance / Accounts',
+// The system's real department list (see WorkOrder.department /
+// BillRequest.department — the same field NewBillDrawer.tsx's "Department"
+// picker writes) — NOT a role-based bucket. A stage/instance is grouped by
+// the actual business department of the WorkOrder/BillRequest it belongs to,
+// so this tab's "Approver Group" list matches the departments that exist
+// everywhere else in the app (Civil/Marketing/Planning/Maintenance/custom).
+const DEPARTMENT_LABELS = {
+  civil: 'Civil Team', marketing: 'Marketing Team',
+  planning: 'Planning Team', maintenance: 'Maintenance Team',
 };
-function stageDepartment(stage) {
-  const role = stage.completedBy?.role || stage.assignedUserId?.role || stage.assignedRole;
-  return DEPARTMENTS[role] || 'Other';
+function departmentLabel(dept, customDept) {
+  if (!dept) return 'No Department';
+  if (dept === 'custom') return customDept || 'Custom';
+  return DEPARTMENT_LABELS[dept] || dept;
 }
 
 const AGING_BUCKETS = [
@@ -211,12 +223,19 @@ const AGING_BUCKETS = [
   { label: '15+ days', maxDays: Infinity },
 ];
 
-exports.getMISReport = asyncHandler(async (req, res) => {
-  const { entityType, days } = req.query;
+// Extracted out of exports.getMISReport (below) so misController.js's
+// financial/ops MIS can pull the exact same SLA rollup (process-wise,
+// department-wise, person-wise, aging, trend, bottlenecks) instead of
+// re-querying WorkflowInstance and re-deriving breach/aging math a second
+// time — this SLA-MIS report is the single source of truth for that data,
+// same relationship buildExecutiveDashboardData has with misController's
+// financial figures.
+async function buildSlaMisReport(query) {
+  const { entityType, days, department, process } = query;
   const filter = {};
   if (entityType) filter.entityType = entityType;
 
-  const instances = await WorkflowInstance.find(filter)
+  const allInstances = await WorkflowInstance.find(filter)
     .populate('stages.assignedUserId', 'name role')
     .populate('stages.completedBy', 'name role')
     .sort({ createdAt: -1 });
@@ -224,6 +243,32 @@ exports.getMISReport = asyncHandler(async (req, res) => {
   const now = new Date();
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const since = days ? new Date(now.getTime() - Number(days) * 24 * 60 * 60 * 1000) : null;
+
+  // Resolve each instance's real department up front — one batched query per
+  // entity type instead of one per instance.
+  const woIds = allInstances.filter(i => i.entityType === 'WorkOrder').map(i => i.entityId);
+  const brIds = allInstances.filter(i => i.entityType === 'BillRequest').map(i => i.entityId);
+  const [wos, brs] = await Promise.all([
+    woIds.length ? WorkOrder.find({ _id: { $in: woIds } }).select('department customDepartment').lean() : [],
+    brIds.length ? BillRequest.find({ _id: { $in: brIds } }).select('department customDepartment').lean() : [],
+  ]);
+  const deptByEntityId = new Map();
+  for (const w of wos) deptByEntityId.set(String(w._id), departmentLabel(w.department, w.customDepartment));
+  for (const b of brs) deptByEntityId.set(String(b._id), departmentLabel(b.department, b.customDepartment));
+
+  // All stage names and all resolved departments across the *unfiltered* set
+  // — the dropdown option lists in the UI, so picking one filter doesn't
+  // shrink what the other dropdown can be set to next.
+  const allStageNames = [...new Set(allInstances.flatMap(i => i.stages.map(s => s.name)))];
+  const allDeptNames = [...new Set(allInstances.map(i => deptByEntityId.get(String(i.entityId)) || 'No Department'))];
+
+  // Department/process are instance-level filters applied before every
+  // downstream rollup (health score, trend, bottlenecks, financials, etc.)
+  // so selecting one genuinely scopes the whole SLA report to it, not just
+  // one panel.
+  let instances = allInstances;
+  if (department) instances = instances.filter(i => (deptByEntityId.get(String(i.entityId)) || 'No Department') === department);
+  if (process) instances = instances.filter(i => i.stages.some(s => s.name === process));
 
   // ── KPIs ──
   let totalSla = instances.length, slaCompleted = 0, slaBreach = 0, ongoing = 0, onTimeCompleted = 0, completedToday = 0, critical48h = 0;
@@ -383,7 +428,7 @@ exports.getMISReport = asyncHandler(async (req, res) => {
       }
 
       // Per-department
-      const dept = stageDepartment(stage);
+      const dept = deptByEntityId.get(String(inst.entityId)) || 'No Department';
       if (!byDept.has(dept)) byDept.set(dept, { totalSla: 0, slaComplete: 0, slaBreach: 0 });
       const d = byDept.get(dept);
       d.totalSla++;
@@ -532,10 +577,18 @@ exports.getMISReport = asyncHandler(async (req, res) => {
   const trendSince = new Date(now.getTime() - trendDays * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const trend = await MISSnapshot.find({ date: { $gte: trendSince } }).sort({ date: 1 }).select('-_id -__v -createdAt -updatedAt');
 
-  success(res, {
+  return {
     health, alerts, bottlenecks: bottlenecksArr, pipeline,
     byStage: byStageArr, byAssignee: byAssigneeArr, departments,
     projectHealth, financial, contractorDelays, agingBuckets, drilldown,
     heatmap: heatmapArr, recentActivity, trend,
-  });
+    allStageNames, allDeptNames,
+  };
+}
+
+exports.buildSlaMisReport = buildSlaMisReport;
+
+exports.getMISReport = asyncHandler(async (req, res) => {
+  const data = await buildSlaMisReport(req.query);
+  success(res, data);
 });

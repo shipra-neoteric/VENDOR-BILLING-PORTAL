@@ -3,6 +3,7 @@ const { success, badRequest } = require('../utils/responseFormatter');
 const { exportBackupZip, restoreFromZip } = require('../utils/backup');
 const { sendMail } = require('../utils/mailer');
 const { logAudit } = require('../utils/auditLog');
+const { timingSafeEqualStr } = require('../utils/secretCompare');
 
 const CONFIRM_HEADER = 'x-confirm-restore';
 const CONFIRM_VALUE = 'RESTORE';
@@ -105,7 +106,7 @@ async function runScheduledBackup() {
 }
 
 exports.scheduledBackupEmail = asyncHandler(async (req, res) => {
-  if (!process.env.BACKUP_CRON_SECRET || req.get(CRON_SECRET_HEADER) !== process.env.BACKUP_CRON_SECRET) {
+  if (!timingSafeEqualStr(req.get(CRON_SECRET_HEADER), process.env.BACKUP_CRON_SECRET)) {
     return badRequest(res, 'Missing or incorrect cron secret');
   }
   if (!process.env.BACKUP_EMAIL_TO) {

@@ -7,13 +7,12 @@ import dayjs from "dayjs";
 import type { Dayjs } from "dayjs";
 import apiClient from "../../services/apiClient";
 import { useAuth } from "../../context/AuthContext";
-import { DropdownSelectFilter } from "../../ui/Filters";
+import { DropdownSelectFilter, FilterRow } from "../../ui/Filters";
 import DateRangeFilter, { inDateRange } from "../../components/DateRangeFilter";
 import WorkflowInstanceStepper from "../../components/WorkflowInstanceStepper";
 import type { WorkflowInstance } from "../../types/Workflow";
 import UIBadge from "../../ui/Badge";
 import Btn from "../../ui/Btn";
-import Card from "../../ui/Card";
 import EmptyState from "../../ui/EmptyState";
 import Spinner from "../../ui/Spinner";
 import PageHeader from "../../ui/PageHeader";
@@ -26,6 +25,7 @@ import { usePagination } from "../../ui/usePagination";
 import Pagination from "../../ui/Pagination";
 import NxBadge from "../../ui/nexora/Badge";
 import NxBtn from "../../ui/nexora/Btn";
+import NxCard from "../../ui/nexora/Card";
 import NxStatCard from "../../ui/nexora/StatCard";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -248,10 +248,13 @@ export default function SiteProgress() {
   useEffect(() => {
     if (!projectWOs.length) { setWoDetails(new Map()); return; }
     setDetailLoading(true);
-    Promise.all(projectWOs.map(wo => apiClient.get(`/work-orders/${wo._id}`)))
-      .then(results => {
+    // One batched request instead of one GET /work-orders/:id per WO — see
+    // the same fix in DRIDashboard/index.tsx for why this was the main
+    // cause of slow loads on a project with many work orders.
+    apiClient.get("/work-orders/bulk-detail", { params: { ids: projectWOs.map(wo => wo._id).join(",") } })
+      .then(r => {
         const map = new Map<string, WODetail>();
-        results.forEach(r => { const d = r.data.workOrder; if (d) map.set(d._id, d); });
+        (r.data.workOrders ?? []).forEach((d: WODetail) => { if (d) map.set(d._id, d); });
         setWoDetails(map);
       })
       .catch(() => { })
@@ -391,21 +394,19 @@ export default function SiteProgress() {
 
       <>
           {/* ── Filters ── */}
-          <div className="bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700/40 rounded-lg p-3.5 mb-4">
-            <div className="flex gap-2.5 flex-wrap items-center">
-              <DropdownSelectFilter
-                value={selProjectId ?? ""} onChange={v => setSelProjectId(v || undefined)}
-                placeholder="All projects" resetValue=""
-                options={projects.map(p => ({ label: p.name, value: p._id }))}
-              />
-              <DropdownSelectFilter
-                value={selDriId ?? ""} onChange={v => setSelDriId(v || undefined)}
-                placeholder="All DRIs" resetValue=""
-                options={driList.map(d => ({ label: `${d.name} (${d.email})`, value: d._id }))}
-              />
-              <DateRangeFilter onChange={(from, to) => { setDateFrom(from); setDateTo(to); }} />
-            </div>
-          </div>
+          <FilterRow>
+            <DropdownSelectFilter
+              value={selProjectId ?? ""} onChange={v => setSelProjectId(v || undefined)}
+              placeholder="All projects" resetValue=""
+              options={projects.map(p => ({ label: p.name, value: p._id }))}
+            />
+            <DropdownSelectFilter
+              value={selDriId ?? ""} onChange={v => setSelDriId(v || undefined)}
+              placeholder="All DRIs" resetValue=""
+              options={driList.map(d => ({ label: `${d.name} (${d.email})`, value: d._id }))}
+            />
+            <DateRangeFilter onChange={(from, to) => { setDateFrom(from); setDateTo(to); }} />
+          </FilterRow>
 
           {/* ── Recent DRI Progress ── */}
           <div className="mb-7">
@@ -478,7 +479,7 @@ export default function SiteProgress() {
                   const anyVariance = detail?.scopeItems.some(si => itemHasUnapprovedVariance(si));
                   const pendingBR = pendingBRForWO(wo._id);
                   return (
-                    <Card key={wo._id} className="flex justify-between items-center flex-wrap gap-2.5">
+                    <NxCard key={wo._id} padded={false} className="p-3.5 flex justify-between items-center flex-wrap gap-2.5">
                       <div>
                         <div className="flex gap-2 items-center flex-wrap">
                           <span className="font-bold text-primary">{wo.workOrderNo}</span>
@@ -501,7 +502,7 @@ export default function SiteProgress() {
                         </div>
                         <NxBtn color="primary" label="View & Bill" onClick={() => openWO(wo._id)} />
                       </div>
-                    </Card>
+                    </NxCard>
                   );
                 })}
               </div>
@@ -523,7 +524,7 @@ export default function SiteProgress() {
               </span>
               <div className="flex gap-2">
                 <Btn outline label="Close" onClick={() => setViewWOId(null)} />
-                <Btn color="primary" label="Generate Bill Request" disabled={checked.size === 0} loading={generating} onClick={handleGenerateBill} />
+                <NxBtn color="primary" label="Generate Bill Request" disabled={checked.size === 0} loading={generating} onClick={handleGenerateBill} />
               </div>
             </div>
           }
@@ -567,14 +568,15 @@ export default function SiteProgress() {
                 <Table>
                   <Thead>
                     <Tr>
-                      <Th></Th>
-                      <Th>Description</Th>
-                      <Th>Unit</Th>
-                      <Th>Planned</Th>
-                      <Th>Done</Th>
-                      <Th>Unbilled</Th>
-                      <Th>Variance</Th>
-                      <Th></Th>
+                      <Th dense></Th>
+                      <Th dense>Description</Th>
+                      <Th dense>Unit</Th>
+                      <Th dense>Planned</Th>
+                      <Th dense>Executed</Th>
+                      <Th dense>Billed</Th>
+                      <Th dense>Unbilled</Th>
+                      <Th dense>Variance</Th>
+                      <Th dense></Th>
                     </Tr>
                   </Thead>
                   <Tbody>
@@ -587,6 +589,12 @@ export default function SiteProgress() {
                       const unbilled = hasSubItems
                         ? si.subItems!.reduce((s, sub) => s + Math.max(0, (sub.completedQty || 0) - (sub.lastBilledQty || 0)), 0)
                         : Math.max(0, si.completedQty - (si.lastBilledQty || 0));
+                      // Billed is a pure display sum of already-loaded
+                      // lastBilledQty — mirrors the Unbilled aggregation
+                      // pattern above, just applied to lastBilledQty instead.
+                      const billed = hasSubItems
+                        ? si.subItems!.reduce((s, sub) => s + (sub.lastBilledQty || 0), 0)
+                        : (si.lastBilledQty || 0);
                       const level = varianceLevel(si.plannedQty, si.completedQty);
                       const blocked = itemHasUnapprovedVariance(si);
                       const canBill = unbilled > 0 && !blocked;
@@ -595,14 +603,14 @@ export default function SiteProgress() {
                       return (
                         <Fragment key={si._id}>
                           <Tr>
-                            <Td>
+                            <Td dense>
                               {unbilled > 0 && (
                                 <span title={blocked ? `Approve the variance${hasSubItems ? " on every particular" : ""} below first` : undefined}>
                                   <Checkbox checked={checked.has(si._id)} disabled={!canBill} onChange={() => toggleCheck(si._id)} />
                                 </span>
                               )}
                             </Td>
-                            <Td className="font-semibold">
+                            <Td dense className="font-semibold">
                               {!hasSubItems && entryCount > 0 && (
                                 <button type="button" onClick={() => toggleEntries(si._id)} className="mr-1.5 text-gray-500 dark:text-gray-400 align-middle">
                                   {isExpanded ? <ChevronDown className="w-3.5 h-3.5 inline" /> : <ChevronRight className="w-3.5 h-3.5 inline" />}
@@ -614,11 +622,12 @@ export default function SiteProgress() {
                               )}
                               {si.remarks && <div className="text-[11px] text-amber-600 font-normal">📌 {si.remarks}</div>}
                             </Td>
-                            <Td>{si.unit}</Td>
-                            <Td className="font-mono">{fmtN(si.plannedQty)}</Td>
-                            <Td className="font-mono">{fmtN(si.completedQty)}</Td>
-                            <Td className={`font-mono ${unbilled > 0 ? "text-primary font-bold" : "text-gray-400"}`}>{fmtN(unbilled)}</Td>
-                            <Td>
+                            <Td dense>{si.unit}</Td>
+                            <Td dense className="font-mono">{fmtN(si.plannedQty)}</Td>
+                            <Td dense className="font-mono">{fmtN(si.completedQty)}</Td>
+                            <Td dense className="font-mono">{fmtN(billed)}</Td>
+                            <Td dense className={`font-mono ${unbilled > 0 ? "text-primary font-bold" : "text-gray-400"}`}>{fmtN(unbilled)}</Td>
+                            <Td dense>
                               {!hasSubItems && level !== "none" && (
                                 <div className="flex items-center gap-1.5">
                                   <VarianceTag level={level} />
@@ -629,12 +638,12 @@ export default function SiteProgress() {
                               )}
                               {hasSubItems && itemHasUnapprovedVariance(si) && <UIBadge color="red" small>See particulars</UIBadge>}
                             </Td>
-                            <Td></Td>
+                            <Td dense></Td>
                           </Tr>
                           {!hasSubItems && isExpanded && (
                             <Tr>
-                              <Td></Td>
-                              <Td colSpan={7} className="!py-0 pb-2.5">
+                              <Td dense></Td>
+                              <Td dense colSpan={8} className="!py-0 pb-2.5">
                                 <ProgressEntryLog entries={si.progressEntries} />
                               </Td>
                             </Tr>
@@ -647,8 +656,8 @@ export default function SiteProgress() {
                             return (
                               <Fragment key={sub._id}>
                                 <Tr className="bg-gray-50/60 dark:bg-gray-800/20">
-                                  <Td></Td>
-                                  <Td className="pl-6 text-xs text-gray-500 dark:text-gray-400">
+                                  <Td dense></Td>
+                                  <Td dense className="pl-6 text-xs text-gray-500 dark:text-gray-400">
                                     {subEntryCount > 0 && (
                                       <button type="button" onClick={() => toggleEntries(sub._id)} className="mr-1.5 text-gray-400 align-middle">
                                         {subExpanded ? <ChevronDown className="w-3 h-3 inline" /> : <ChevronRight className="w-3 h-3 inline" />}
@@ -657,11 +666,12 @@ export default function SiteProgress() {
                                     {sub.description}
                                     {subEntryCount > 0 && <span className="text-[10px] text-gray-400 ml-1.5">({subEntryCount})</span>}
                                   </Td>
-                                  <Td className="text-xs">{sub.unit}</Td>
-                                  <Td className="font-mono text-xs">{fmtN(sub.plannedQty)}</Td>
-                                  <Td className="font-mono text-xs">{fmtN(sub.completedQty)}</Td>
-                                  <Td className={`font-mono text-xs ${subUnbilled > 0 ? "text-primary font-bold" : "text-gray-400"}`}>{fmtN(subUnbilled)}</Td>
-                                  <Td>
+                                  <Td dense className="text-xs">{sub.unit}</Td>
+                                  <Td dense className="font-mono text-xs">{fmtN(sub.plannedQty)}</Td>
+                                  <Td dense className="font-mono text-xs">{fmtN(sub.completedQty)}</Td>
+                                  <Td dense className="font-mono text-xs">{fmtN(sub.lastBilledQty || 0)}</Td>
+                                  <Td dense className={`font-mono text-xs ${subUnbilled > 0 ? "text-primary font-bold" : "text-gray-400"}`}>{fmtN(subUnbilled)}</Td>
+                                  <Td dense>
                                     {subLevel !== "none" && (
                                       <div className="flex items-center gap-1.5">
                                         <VarianceTag level={subLevel} />
@@ -671,12 +681,12 @@ export default function SiteProgress() {
                                       </div>
                                     )}
                                   </Td>
-                                  <Td></Td>
+                                  <Td dense></Td>
                                 </Tr>
                                 {subExpanded && (
                                   <Tr className="bg-gray-50/60 dark:bg-gray-800/20">
-                                    <Td></Td><Td></Td>
-                                    <Td colSpan={6} className="pl-6">
+                                    <Td dense></Td><Td dense></Td>
+                                    <Td dense colSpan={7} className="pl-6">
                                       <ProgressEntryLog entries={sub.progressEntries} />
                                     </Td>
                                   </Tr>

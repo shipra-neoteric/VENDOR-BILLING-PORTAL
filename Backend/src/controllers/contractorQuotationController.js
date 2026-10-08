@@ -149,6 +149,16 @@ exports.approveQuotation = asyncHandler(async (req, res) => {
   if (await hasExistingBill(workOrder._id)) {
     return badRequest(res, 'A bill has already been raised against this work order — its rates can no longer be changed via quotation');
   }
+  // A quotation already approved for this WO is never auto-rejected by
+  // approving a different one (only still-'submitted' quotations get
+  // auto-rejected below) — without this guard, approving a second quotation
+  // would silently overwrite the WO's rates with the newer contractor's
+  // numbers while BOTH quotations keep showing "approved" in the UI, with no
+  // way to tell which one's rates actually ended up live on the WO.
+  const alreadyApproved = await ContractorQuotation.exists({ workOrderId: workOrder._id, status: 'approved', _id: { $ne: quotation._id } });
+  if (alreadyApproved) {
+    return badRequest(res, 'Another quotation is already approved for this work order — reject it first before approving a different one');
+  }
 
   let vendorName = quotation.contractorName;
   let ownerName  = quotation.contractorName;
@@ -211,7 +221,15 @@ exports.approveQuotation = asyncHandler(async (req, res) => {
 exports.rejectQuotation = asyncHandler(async (req, res) => {
   const quotation = await ContractorQuotation.findById(req.params.id);
   if (!quotation) return notFound(res, 'Quotation not found');
-  if (quotation.status !== 'submitted') return badRequest(res, 'Only a submitted quotation can be rejected');
+  // Also allowed from 'approved' — lets someone undo a wrong approval (see
+  // approveQuotation's own guard against two simultaneously-approved
+  // quotations for the same WO) without needing a separate "unapprove"
+  // action; this does NOT revert the WO's scopeItems rates that approving it
+  // already applied — only a fresh approveQuotation on a different quotation
+  // (or a manual WO edit) changes those.
+  if (quotation.status !== 'submitted' && quotation.status !== 'approved') {
+    return badRequest(res, 'Only a submitted or approved quotation can be rejected');
+  }
 
   quotation.status       = 'rejected';
   quotation.rejectedBy    = req.user._id;

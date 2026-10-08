@@ -4,6 +4,7 @@ const RecurringSchedule = require('../models/RecurringSchedule');
 const User = require('../models/User');
 const { advanceByFrequency } = require('../utils/recurringSchedule');
 const { logAudit } = require('../utils/auditLog');
+const { timingSafeEqualStr } = require('../utils/secretCompare');
 
 const CRON_SECRET_HEADER = 'x-cron-secret';
 const FREQUENCIES = ['weekly', 'monthly', 'quarterly', 'yearly'];
@@ -145,7 +146,7 @@ async function runOneSchedule(schedule) {
 // background, same reasoning as the backup endpoint: the external cron only
 // needs to know the job started, not wait for every schedule to finish.
 exports.runDueSchedules = asyncHandler(async (req, res) => {
-  if (!process.env.BACKUP_CRON_SECRET || req.get(CRON_SECRET_HEADER) !== process.env.BACKUP_CRON_SECRET) {
+  if (!timingSafeEqualStr(req.get(CRON_SECRET_HEADER), process.env.BACKUP_CRON_SECRET)) {
     return badRequest(res, 'Missing or incorrect cron secret');
   }
 
@@ -164,7 +165,7 @@ exports.runDueSchedules = asyncHandler(async (req, res) => {
         const { entityId, entityLabel } = await runOneSchedule(schedule);
         schedule.runHistory.push({ ranAt: now, success: true, entityId, entityLabel });
         schedule.lastRunAt = now;
-        schedule.nextRunAt = advanceByFrequency(schedule.nextRunAt, schedule.frequency);
+        schedule.nextRunAt = advanceByFrequency(schedule.nextRunAt, schedule.frequency, schedule.startDate);
         await schedule.save();
       } catch (err) {
         console.error(`[recurring] schedule "${schedule.label}" (${schedule._id}) failed:`, err);
@@ -174,7 +175,7 @@ exports.runDueSchedules = asyncHandler(async (req, res) => {
         // future cron tick instead of surfacing once and waiting for the
         // next real due date, same as a human would just try again later.
         schedule.lastRunAt = now;
-        schedule.nextRunAt = advanceByFrequency(schedule.nextRunAt, schedule.frequency);
+        schedule.nextRunAt = advanceByFrequency(schedule.nextRunAt, schedule.frequency, schedule.startDate);
         await schedule.save().catch((saveErr) => console.error('[recurring] failed to save failure state:', saveErr));
       }
     }

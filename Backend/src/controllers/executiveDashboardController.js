@@ -975,6 +975,13 @@ async function buildExecutiveDashboardData(query) {
 }
 
 // GET /api/dashboard/executive?projectId=&stage=&categoryId=&contractorId=&from=&to=
+// Exported (not just used internally below) so misController.js can reuse
+// the exact same per-project financial/health rollup instead of re-deriving
+// workExecutedValue/billedGross/certifiedNet/paidAmount/health/alerts a
+// second time — the MIS module is a different presentation of the same
+// underlying numbers, not a separate source of truth for them.
+exports.buildExecutiveDashboardData = buildExecutiveDashboardData;
+
 exports.getExecutiveDashboard = asyncHandler(async (req, res) => {
   try {
     const payload = await buildExecutiveDashboardData(req.query);

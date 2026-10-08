@@ -661,8 +661,19 @@ async function gmApproveHandler(req, res) {
     br.gstPercentOverride = gst;
   }
   if (req.body.advanceRecovery != null) {
+    const advanceRecoveries = Array.isArray(req.body.advanceRecoveries) ? req.body.advanceRecoveries : [];
+    if (advanceRecoveries.length) {
+      // Same ownership check agmApprove already does above — without it, a
+      // GM/L3/L4 approver could pass a slipId belonging to a different
+      // vendor and wrongly debit that vendor's advance balance.
+      const AdvanceSlip = require('../models/AdvanceSlip');
+      const slips = await AdvanceSlip.find({ _id: { $in: advanceRecoveries.map(r => r.slipId).filter(Boolean) } }).select('contractorCode');
+      const payeeCode = br.payeeVendorCode || wo.vendorCode;
+      const mismatch = slips.find(s => s.contractorCode !== payeeCode);
+      if (mismatch) return badRequest(res, `Advance slip ${mismatch._id} does not belong to this bill's payee (${payeeCode}).`);
+    }
     br.advanceRecovery = Number(req.body.advanceRecovery);
-    br.advanceRecoveries = Array.isArray(req.body.advanceRecoveries) ? req.body.advanceRecoveries : [];
+    br.advanceRecoveries = advanceRecoveries;
   }
 
   if (req.body.retentionReleaseAmount != null) {
@@ -732,8 +743,16 @@ async function l3ApproveHandler(req, res) {
     br.gstPercentOverride = gst;
   }
   if (req.body.advanceRecovery != null) {
+    const advanceRecoveries = Array.isArray(req.body.advanceRecoveries) ? req.body.advanceRecoveries : [];
+    if (advanceRecoveries.length) {
+      const AdvanceSlip = require('../models/AdvanceSlip');
+      const slips = await AdvanceSlip.find({ _id: { $in: advanceRecoveries.map(r => r.slipId).filter(Boolean) } }).select('contractorCode');
+      const payeeCode = br.payeeVendorCode || wo.vendorCode;
+      const mismatch = slips.find(s => s.contractorCode !== payeeCode);
+      if (mismatch) return badRequest(res, `Advance slip ${mismatch._id} does not belong to this bill's payee (${payeeCode}).`);
+    }
     br.advanceRecovery = Number(req.body.advanceRecovery);
-    br.advanceRecoveries = Array.isArray(req.body.advanceRecoveries) ? req.body.advanceRecoveries : [];
+    br.advanceRecoveries = advanceRecoveries;
   }
 
   if (req.body.retentionReleaseAmount != null) {
@@ -796,8 +815,16 @@ async function l4ApproveHandler(req, res) {
     br.gstPercentOverride = gst;
   }
   if (req.body.advanceRecovery != null) {
+    const advanceRecoveries = Array.isArray(req.body.advanceRecoveries) ? req.body.advanceRecoveries : [];
+    if (advanceRecoveries.length) {
+      const AdvanceSlip = require('../models/AdvanceSlip');
+      const slips = await AdvanceSlip.find({ _id: { $in: advanceRecoveries.map(r => r.slipId).filter(Boolean) } }).select('contractorCode');
+      const payeeCode = br.payeeVendorCode || wo.vendorCode;
+      const mismatch = slips.find(s => s.contractorCode !== payeeCode);
+      if (mismatch) return badRequest(res, `Advance slip ${mismatch._id} does not belong to this bill's payee (${payeeCode}).`);
+    }
     br.advanceRecovery = Number(req.body.advanceRecovery);
-    br.advanceRecoveries = Array.isArray(req.body.advanceRecoveries) ? req.body.advanceRecoveries : [];
+    br.advanceRecoveries = advanceRecoveries;
   }
 
   if (req.body.retentionReleaseAmount != null) {

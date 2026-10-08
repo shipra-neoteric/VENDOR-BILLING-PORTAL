@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
   HardHat, Users, Briefcase, Activity, CheckCircle2, Clock, Building2, FileText,
-  Receipt, Ruler, Pencil, Ban, History, Send,
+  Receipt, Ruler, Pencil, Ban, History, Send, ClipboardList, Info,
 } from "lucide-react";
 import apiClient from "../../services/apiClient";
 import { useAuth } from "../../context/AuthContext";
@@ -17,6 +17,7 @@ import ConfirmModal from "../../ui/ConfirmModal";
 import KPICard from "../../ui/KPICard";
 import NxBadge from "../../ui/nexora/Badge";
 import NxBtn from "../../ui/nexora/Btn";
+import NxCard from "../../ui/nexora/Card";
 import Checkbox from "../../ui/Checkbox";
 import Spinner from "../../ui/Spinner";
 import EmptyState from "../../ui/EmptyState";
@@ -422,10 +423,14 @@ export default function DRIDashboard() {
   useEffect(() => {
     if (!projectWOs.length) { setWoDetails(new Map()); return; }
     setDetailLoading(true);
-    Promise.all(projectWOs.map(wo => apiClient.get(`/work-orders/${wo._id}`)))
-      .then(results => {
+    // One batched request instead of one GET /work-orders/:id per WO — the
+    // old N-parallel-requests pattern was the main reason this page was slow
+    // to load a project with many work orders (each request independently
+    // ran the same 7-way populate chain server-side).
+    apiClient.get("/work-orders/bulk-detail", { params: { ids: projectWOs.map(wo => wo._id).join(",") } })
+      .then(r => {
         const map = new Map<string, WODetail>();
-        results.forEach(r => { const d = r.data.workOrder; if (d) map.set(d._id, d); });
+        (r.data.workOrders ?? []).forEach((d: WODetail) => { if (d) map.set(d._id, d); });
         setWoDetails(map);
       })
       .catch(() => { })
@@ -648,19 +653,6 @@ export default function DRIDashboard() {
     setView("dri-projects");
   };
 
-  const goToOverview = () => {
-    setSelectedDRI(null);
-    setSelProjectId(null);
-    setWoDetails(new Map());
-    setView("overview");
-  };
-
-  const goToProjects = () => {
-    setSelProjectId(null);
-    setWoDetails(new Map());
-    setView("dri-projects");
-  };
-
   const openProject = (projectId: string, projectName: string) => {
     setSelProjectId(projectId);
     setSelProjName(projectName);
@@ -668,20 +660,16 @@ export default function DRIDashboard() {
   };
 
   // ── Shared header ─────────────────────────────────────────────────────────────
+  // Single back control (PageHeader's own icon button) — goes to whichever
+  // page the user actually came from (browser history), not a hardcoded
+  // route. The old breadcrumb buttons ("← All DRIs" / "← X's Projects") were
+  // redundant with it and are gone.
   const Header = () => (
     <>
-      {view !== "overview" && (
-        <div className="flex items-center gap-2 mb-3 flex-wrap">
-          <Btn small outline label="← All DRIs" onClick={goToOverview} />
-          {view === "dri-detail" && (
-            <Btn small outline label={`← ${selectedDRI?.name}'s Projects`} onClick={goToProjects} />
-          )}
-        </div>
-      )}
       <PageHeader
         icon={HardHat}
         title="DRI Dashboard"
-        onBack={() => navigate("/dashboard")}
+        onBack={() => navigate(-1)}
         subtitle={selectedDRI && view !== "overview" ? (
           <>
             Viewing as <span className="text-primary font-bold">{selectedDRI.name}</span>
@@ -885,21 +873,30 @@ export default function DRIDashboard() {
                 return (
                   <div key={wo._id} className="border-b border-gray-200 dark:border-gray-700/40">
                     {/* WO sub-header */}
-                    <div className="px-5 py-3 bg-gray-50 dark:bg-gray-800/40 border-b border-gray-200 dark:border-gray-700/40 flex justify-between items-center flex-wrap gap-2">
-                      <div className="flex gap-2 items-center flex-wrap">
-                        <span className="font-bold text-primary text-[13px]">{wo.workOrderNo}</span>
-                        {wo.category && <NxBadge color="gray">{wo.category}</NxBadge>}
-                        <NxBadge color={STATUS_BADGE[wo.status] ?? "gray"}>{STATUS_LABEL[wo.status] ?? wo.status}</NxBadge>
-                      </div>
-                      {detail && (
-                        <div className="flex items-center gap-2 text-xs">
-                          <div className="w-20 h-1.5 bg-gray-100 dark:bg-gray-700/40 rounded-full overflow-hidden">
-                            <div className={`h-full rounded-full ${avgPct >= 100 ? "bg-emerald-500" : "bg-primary"}`} style={{ width: `${avgPct}%` }} />
-                          </div>
-                          <span className={`font-bold ${avgPct >= 100 ? "text-emerald-600" : "text-primary"}`}>{avgPct}%</span>
+                    <NxCard padded={false} className="rounded-none border-0 border-b border-gray-200 dark:border-gray-700/40 shadow-none px-5 py-3.5">
+                      <div className="flex justify-between items-center flex-wrap gap-2.5">
+                        <div className="flex gap-2 items-center flex-wrap min-w-0">
+                          <span className="font-bold text-primary text-[13px]">{wo.workOrderNo}</span>
+                          <span className="text-gray-400 dark:text-gray-500 text-xs">·</span>
+                          <span className="text-xs text-gray-600 dark:text-gray-300 font-medium truncate">{vg.vendorName}</span>
+                          {wo.category && <NxBadge color="gray">{wo.category}</NxBadge>}
+                          <NxBadge color={STATUS_BADGE[wo.status] ?? "gray"}>{STATUS_LABEL[wo.status] ?? wo.status}</NxBadge>
+                          {(wo.assignedDRI ?? []).length > 0 && (
+                            <span className="text-[11px] text-gray-400 dark:text-gray-500">
+                              DRI: {(wo.assignedDRI ?? []).map(d => d.name).join(", ")}
+                            </span>
+                          )}
                         </div>
-                      )}
-                    </div>
+                        {detail && (
+                          <div className="flex items-center gap-2 text-xs shrink-0">
+                            <div className="w-20 h-1.5 bg-gray-100 dark:bg-gray-700/40 rounded-full overflow-hidden">
+                              <div className={`h-full rounded-full ${avgPct >= 100 ? "bg-emerald-500" : "bg-primary"}`} style={{ width: `${avgPct}%` }} />
+                            </div>
+                            <span className={`font-bold ${avgPct >= 100 ? "text-emerald-600" : "text-primary"}`}>{avgPct}%</span>
+                          </div>
+                        )}
+                      </div>
+                    </NxCard>
 
                     {/* Scope items table */}
                     {!detail ? (
@@ -910,15 +907,15 @@ export default function DRIDashboard() {
                       <Table className="min-w-[980px]">
                         <Thead>
                           <Tr>
-                            <Th className="w-[4%]">#</Th>
-                            <Th className="w-[24%]">Description</Th>
-                            <Th className="w-[7%]">Unit</Th>
-                            <Th className="w-[8%]">Planned</Th>
-                            <Th className="w-[8%]">Done</Th>
-                            <Th className="w-[8%]">Billed</Th>
-                            <Th className="w-[8%]">Unbilled</Th>
-                            <Th className="w-[15%]">Measurement</Th>
-                            {canEdit && <Th className="w-[130px]">Action</Th>}
+                            <Th dense className="w-[4%]">#</Th>
+                            <Th dense className="w-[24%]">Description</Th>
+                            <Th dense className="w-[7%]">Unit</Th>
+                            <Th dense className="w-[8%]">Planned</Th>
+                            <Th dense className="w-[8%]">Executed</Th>
+                            <Th dense className="w-[8%]">Billed</Th>
+                            <Th dense className="w-[8%]">Unbilled</Th>
+                            <Th dense className="w-[15%]">Measurement</Th>
+                            {canEdit && <Th dense className="w-[130px]">Action</Th>}
                           </Tr>
                         </Thead>
                         <Tbody>
@@ -930,8 +927,8 @@ export default function DRIDashboard() {
                             return (
                               <Fragment key={si._id}>
                                 <Tr>
-                                  <Td className="text-gray-400 text-xs whitespace-nowrap">{idx + 1}</Td>
-                                  <Td className="font-semibold text-[#1A1A2E] dark:text-[#F1F5F9] text-sm">
+                                  <Td dense className="text-gray-400 whitespace-nowrap">{idx + 1}</Td>
+                                  <Td dense className="font-semibold text-[#1A1A2E] dark:text-[#F1F5F9]">
                                     {si.description}
                                     {hasSubItems && (
                                       <span className="ml-1.5 text-[10px] font-bold text-gray-400 uppercase">
@@ -940,16 +937,16 @@ export default function DRIDashboard() {
                                     )}
                                     {si.remarks && <div className="text-[11px] font-normal text-amber-600 mt-0.5">📌 {si.remarks}</div>}
                                   </Td>
-                                  <Td className="text-gray-500 dark:text-gray-400 text-xs whitespace-nowrap">{si.unit}</Td>
-                                  <Td className="font-mono text-xs whitespace-nowrap">{fmtN(si.plannedQty)}</Td>
-                                  <Td className={`font-mono text-xs whitespace-nowrap ${si.completedQty > 0 ? "text-emerald-600" : "text-gray-400"}`}>{fmtN(si.completedQty)}</Td>
-                                  <Td className="font-mono text-xs text-blue-600 whitespace-nowrap">{fmtN(billed)}</Td>
-                                  <Td className="font-mono text-xs whitespace-nowrap">
+                                  <Td dense className="text-gray-500 dark:text-gray-400 whitespace-nowrap">{si.unit}</Td>
+                                  <Td dense className="font-mono whitespace-nowrap">{fmtN(si.plannedQty)}</Td>
+                                  <Td dense className={`font-mono whitespace-nowrap ${si.completedQty > 0 ? "text-emerald-600" : "text-gray-400"}`}>{fmtN(si.completedQty)}</Td>
+                                  <Td dense className="font-mono text-blue-600 whitespace-nowrap">{fmtN(billed)}</Td>
+                                  <Td dense className="font-mono whitespace-nowrap">
                                     {unbilled > 0
                                       ? <span className="text-primary font-bold">{fmtN(unbilled)}</span>
                                       : <span className="text-gray-400">—</span>}
                                   </Td>
-                                  <Td className="min-w-[120px]">
+                                  <Td dense className="min-w-[120px]">
                                     <div className="flex items-center gap-1.5">
                                       <div className="flex-1 h-1.5 bg-gray-100 dark:bg-gray-700/40 rounded-full overflow-hidden">
                                         <div className={`h-full rounded-full ${p >= 100 ? "bg-emerald-500" : "bg-primary"}`} style={{ width: `${p}%` }} />
@@ -958,9 +955,9 @@ export default function DRIDashboard() {
                                     </div>
                                   </Td>
                                   {canEdit && (
-                                    <Td>
+                                    <Td dense>
                                       {!hasSubItems && (
-                                        <Btn small outline label="+ Measurement" onClick={() => openAddProgress(wo._id, si)} />
+                                        <NxBtn color="secondary" className="text-[11px]! px-2.5! py-1!" label="+ Measurement" onClick={() => openAddProgress(wo._id, si)} />
                                       )}
                                     </Td>
                                   )}
@@ -969,20 +966,20 @@ export default function DRIDashboard() {
                                   const sp = pctOf(sub.completedQty, sub.plannedQty);
                                   return (
                                     <Tr key={sub._id} className="bg-gray-50/60 dark:bg-gray-800/20">
-                                      <Td className="pl-7 text-gray-400 text-[11px]">{idx + 1}.{subIdx + 1}</Td>
-                                      <Td className="font-medium text-gray-600 dark:text-gray-300 text-xs">
+                                      <Td dense className="pl-7 text-gray-400 text-[11px]">{idx + 1}.{subIdx + 1}</Td>
+                                      <Td dense className="font-medium text-gray-600 dark:text-gray-300">
                                         {sub.description}
                                         {sub.status === "completed" && <span className="ml-1.5 text-emerald-600 text-[10px] font-bold">✓</span>}
                                         {sub.remarks && <div className="text-[11px] font-normal text-amber-600 mt-0.5">📌 {sub.remarks}</div>}
                                       </Td>
-                                      <Td className="text-gray-500 dark:text-gray-400 text-[11px]">{sub.unit}</Td>
-                                      <Td className="font-mono text-[11px]">{fmtN(sub.plannedQty)}</Td>
-                                      <Td className={`font-mono text-[11px] ${sub.completedQty > 0 ? "text-emerald-600" : "text-gray-400"}`}>{fmtN(sub.completedQty)}</Td>
+                                      <Td dense className="text-gray-500 dark:text-gray-400 text-[11px]">{sub.unit}</Td>
+                                      <Td dense className="font-mono text-[11px]">{fmtN(sub.plannedQty)}</Td>
+                                      <Td dense className={`font-mono text-[11px] ${sub.completedQty > 0 ? "text-emerald-600" : "text-gray-400"}`}>{fmtN(sub.completedQty)}</Td>
                                       {/* Billing tracks at the item level (its completedQty rolls up from all
                                           particulars), not per particular — shown blank here on purpose. */}
-                                      <Td className="text-[11px] text-gray-400">—</Td>
-                                      <Td className="text-[11px] text-gray-400">—</Td>
-                                      <Td className="min-w-[120px]">
+                                      <Td dense className="text-[11px] text-gray-400">—</Td>
+                                      <Td dense className="text-[11px] text-gray-400">—</Td>
+                                      <Td dense className="min-w-[120px]">
                                         <div className="flex items-center gap-1.5">
                                           <div className="flex-1 h-[5px] bg-gray-100 dark:bg-gray-700/40 rounded-full overflow-hidden">
                                             <div className={`h-full rounded-full ${sp >= 100 ? "bg-emerald-500" : "bg-primary"}`} style={{ width: `${sp}%` }} />
@@ -991,8 +988,8 @@ export default function DRIDashboard() {
                                         </div>
                                       </Td>
                                       {canEdit && (
-                                        <Td>
-                                          <Btn small outline label="+ Measurement" onClick={() => openAddProgress(wo._id, si, sub)} />
+                                        <Td dense>
+                                          <NxBtn color="secondary" className="text-[11px]! px-2.5! py-1!" label="+ Measurement" onClick={() => openAddProgress(wo._id, si, sub)} />
                                         </Td>
                                       )}
                                     </Tr>
@@ -1115,89 +1112,143 @@ export default function DRIDashboard() {
       )}
 
       {/* ── Add Measurement Modal (owner/edit-permission only) ──────────────────── */}
-      {progModal && (
-        <Modal
-          icon={Ruler}
-          title={
-            progTarget?.subItem
-              ? `Add Measurement — ${progTarget.item.description} › ${progTarget.subItem.description}`
-              : `Add Measurement — ${progTarget?.item.description ?? ""}`
-          }
-          onClose={() => { setProgModal(false); setProgFormValues(emptyProgForm); }}
-          footer={
-            <div className="flex justify-end gap-2">
-              <Btn outline label="Cancel" onClick={() => { setProgModal(false); setProgFormValues(emptyProgForm); }} />
-              <Btn color="primary" label="Save Measurement" loading={progSaving} onClick={handleAddProgress} />
+      {progModal && (() => {
+        const addedQty = parseFloat(progFormValues.qtyAdded) || 0;
+        const prevExecuted = progModalTarget?.completedQty ?? 0;
+        const newExecuted = prevExecuted + addedQty;
+        const plannedQty = progModalTarget?.plannedQty ?? 0;
+        const newPct = plannedQty > 0 ? Math.min(100, Math.round((newExecuted / plannedQty) * 100)) : 0;
+        const billed = progModalTarget?.lastBilledQty ?? 0;
+        const unbilled = Math.max(0, newExecuted - billed);
+        return (
+          <Modal
+            icon={Ruler}
+            title={
+              progTarget?.subItem
+                ? `Add Measurement — ${progTarget.item.description} › ${progTarget.subItem.description}`
+                : `Add Measurement — ${progTarget?.item.description ?? ""}`
+            }
+            onClose={() => { setProgModal(false); setProgFormValues(emptyProgForm); }}
+            footer={
+              <div className="flex justify-end gap-2">
+                <NxBtn color="secondary" label="Cancel" onClick={() => { setProgModal(false); setProgFormValues(emptyProgForm); }} />
+                <NxBtn color="primary" label="Save Measurement" loading={progSaving} onClick={handleAddProgress} />
+              </div>
+            }
+          >
+            {progTarget && (
+              <div className="text-[11px] font-semibold text-gray-400 dark:text-gray-500 -mt-1 mb-3.5">
+                WO {woDetails.get(progTarget.woId)?.workOrderNo ?? ""}
+              </div>
+            )}
+
+            {progModalTarget?.remarks && (
+              <div className="flex items-start gap-2.5 bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700/40 rounded-lg p-3.5 mb-3.5">
+                <ClipboardList className="w-4 h-4 shrink-0 mt-0.5 text-gray-400 dark:text-gray-500" />
+                <div>
+                  <div className="text-xs font-semibold text-gray-600 dark:text-gray-300">Instruction</div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{progModalTarget.remarks}</div>
+                </div>
+              </div>
+            )}
+
+            <div className="mb-3.5">
+              <DatePicker
+                label="Date"
+                value={progFormValues.date}
+                onChange={(v) => setProgFormValues(prev => ({ ...prev, date: v }))}
+                max={dayjs().format("YYYY-MM-DD")}
+              />
+              {progErrors.errors.date && <span className="block text-xs text-red-500 mt-1">{progErrors.errors.date}</span>}
             </div>
-          }
-        >
-          {progModalTarget?.remarks && (
-            <Alert type="warning" message="Instruction" description={progModalTarget.remarks} />
-          )}
-          <div className="mt-3.5">
-            <DatePicker
-              label="Date"
-              value={progFormValues.date}
-              onChange={(v) => setProgFormValues(prev => ({ ...prev, date: v }))}
-              max={dayjs().format("YYYY-MM-DD")}
-            />
-            {progErrors.errors.date && <span className="block text-xs text-red-500 mt-1">{progErrors.errors.date}</span>}
-          </div>
-          <div className="mt-3.5">
+
             <LocationFields
               pt={progProjectType}
               tower={progFormValues.tower} floor={progFormValues.floor} flatNo={progFormValues.flatNo}
               plotNo={progFormValues.plotNo} locationNote={progFormValues.locationNote}
               onChange={(field, value) => setProgFormValues(prev => ({ ...prev, [field]: value }))}
             />
-          </div>
-          {progModalTarget && !progModalTarget.plannedQty && (
-            <div className="rounded-lg border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 p-3 mb-3.5">
-              <div className="text-xs font-semibold text-amber-700 dark:text-amber-300 mb-1.5">Planned quantity not set for this item</div>
-              <div className="text-[11px] text-amber-600/80 dark:text-amber-300/70 mb-2.5">You can set the total planned quantity now, or leave blank to log measurement without a cap.</div>
-              <Field
-                label={`Total Planned Qty (${progModalTarget.unit})`}
-                type="number" min="0.00001" step="0.00001"
-                placeholder={progModalTarget.unit === "per-hr" ? "e.g. 200.0000" : "e.g. 5000"}
-                value={progFormValues.plannedQty}
-                onChange={(e) => setProgFormValues(prev => ({ ...prev, plannedQty: e.target.value }))}
-                error={progErrors.errors.plannedQty}
-              />
+
+            {progModalTarget && !progModalTarget.plannedQty && (
+              <div className="bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700/40 rounded-lg p-3.5 mb-3.5">
+                <div className="flex items-start gap-2.5">
+                  <Info className="w-4 h-4 shrink-0 mt-0.5 text-gray-400 dark:text-gray-500" />
+                  <div>
+                    <div className="text-xs font-semibold text-gray-600 dark:text-gray-300">Planned quantity not set for this item</div>
+                    <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5 mb-2.5">You can set the total planned quantity now, or leave blank to log measurement without a cap.</div>
+                    <Field
+                      label={`Total Planned Qty (${progModalTarget.unit})`}
+                      type="number" min="0.00001" step="0.00001"
+                      placeholder={progModalTarget.unit === "per-hr" ? "e.g. 200.0000" : "e.g. 5000"}
+                      value={progFormValues.plannedQty}
+                      onChange={(e) => setProgFormValues(prev => ({ ...prev, plannedQty: e.target.value }))}
+                      error={progErrors.errors.plannedQty}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <Field
+              label={`Quantity Added (${progModalTarget?.unit ?? ""})`}
+              type="number" min="0.00001" step="0.00001"
+              hint={progModalTarget?.unit === "per-hr" ? "Tip: enter decimals for minutes — e.g. 13.67 = 13 hr 40 min" : undefined}
+              placeholder={progModalTarget?.unit === "per-hr" ? "e.g. 13.6667" : "e.g. 500"}
+              value={progFormValues.qtyAdded}
+              onChange={(e) => setProgFormValues(prev => ({ ...prev, qtyAdded: e.target.value }))}
+              error={progErrors.errors.qtyAdded}
+            />
+
+            {progModalTarget && (
+              <div className="mt-3.5 bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700/40 rounded-lg p-3.5">
+                <div className="flex items-center justify-between gap-2 text-xs mb-2.5">
+                  <div className="text-center flex-1">
+                    <div className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wide">Previous Executed</div>
+                    <div className="font-mono font-semibold text-gray-600 dark:text-gray-300">{fmtN(prevExecuted)} {progModalTarget.unit}</div>
+                  </div>
+                  <span className="text-gray-300 dark:text-gray-600">→</span>
+                  <div className="text-center flex-1">
+                    <div className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wide">+ Added</div>
+                    <div className="font-mono font-semibold text-primary">+{fmtN(addedQty)} {progModalTarget.unit}</div>
+                  </div>
+                  <span className="text-gray-300 dark:text-gray-600">→</span>
+                  <div className="text-center flex-1">
+                    <div className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wide">New Executed</div>
+                    <div className="font-mono font-bold text-emerald-600">{fmtN(newExecuted)} {progModalTarget.unit}</div>
+                  </div>
+                </div>
+                {plannedQty > 0 && (
+                  <div className="flex items-center gap-1.5 mb-2.5">
+                    <div className="flex-1 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                      <div className={`h-full rounded-full ${newPct >= 100 ? "bg-emerald-500" : newPct >= 75 ? "bg-primary" : "bg-amber-500"}`} style={{ width: `${newPct}%` }} />
+                    </div>
+                    <span className={`text-[10px] font-bold min-w-[26px] ${newPct >= 100 ? "text-emerald-600" : "text-primary"}`}>{newPct}%</span>
+                  </div>
+                )}
+                <Descriptions columns={3}>
+                  <DescItem label="Planned">
+                    {plannedQty > 0 ? `${fmtN(plannedQty)} ${progModalTarget.unit}` : "Not set"}
+                  </DescItem>
+                  <DescItem label="Remaining">
+                    <span className="text-primary font-semibold">
+                      {plannedQty > 0
+                        ? `${fmtN(Math.max(0, plannedQty - newExecuted))} ${progModalTarget.unit}`
+                        : "Unlimited"}
+                    </span>
+                  </DescItem>
+                  <DescItem label="Unbilled">
+                    <span className="font-semibold">{fmtN(unbilled)} {progModalTarget.unit}</span>
+                  </DescItem>
+                </Descriptions>
+              </div>
+            )}
+
+            <div className="mt-3.5">
+              <RemarksListInput value={progFormValues.remarks} onChange={(v) => setProgFormValues(prev => ({ ...prev, remarks: v }))} />
             </div>
-          )}
-          <Field
-            label={`Quantity Added (${progModalTarget?.unit ?? ""})`}
-            type="number" min="0.00001" step="0.00001"
-            hint={progModalTarget?.unit === "per-hr" ? "Tip: enter decimals for minutes — e.g. 13.67 = 13 hr 40 min" : undefined}
-            placeholder={progModalTarget?.unit === "per-hr" ? "e.g. 13.6667" : "e.g. 500"}
-            value={progFormValues.qtyAdded}
-            onChange={(e) => setProgFormValues(prev => ({ ...prev, qtyAdded: e.target.value }))}
-            error={progErrors.errors.qtyAdded}
-          />
-          <div className="mt-3.5">
-            <RemarksListInput value={progFormValues.remarks} onChange={(v) => setProgFormValues(prev => ({ ...prev, remarks: v }))} />
-          </div>
-          {progModalTarget && (
-            <div className="mt-3.5 bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700/40 rounded-lg p-3">
-              <Descriptions columns={3}>
-                <DescItem label="Planned">
-                  {progModalTarget.plannedQty > 0 ? `${fmtN(progModalTarget.plannedQty)} ${progModalTarget.unit}` : "Not set"}
-                </DescItem>
-                <DescItem label="Done">
-                  <span className="text-emerald-600 font-semibold">{fmtN(progModalTarget.completedQty)} {progModalTarget.unit}</span>
-                </DescItem>
-                <DescItem label="Remaining">
-                  <span className="text-primary font-semibold">
-                    {progModalTarget.plannedQty > 0
-                      ? `${fmtN(Math.max(0, progModalTarget.plannedQty - (progModalTarget.completedQty ?? 0)))} ${progModalTarget.unit}`
-                      : "Unlimited"}
-                  </span>
-                </DescItem>
-              </Descriptions>
-            </div>
-          )}
-        </Modal>
-      )}
+          </Modal>
+        );
+      })()}
 
       {/* ── Edit Entry Modal ───────────────────────────────────────────────── */}
       {editModal && (
@@ -1355,8 +1406,8 @@ export default function DRIDashboard() {
           onClose={() => setBillModal(false)}
           footer={
             <div className="flex justify-end gap-2">
-              <Btn outline label="Cancel" onClick={() => setBillModal(false)} />
-              <Btn
+              <NxBtn color="secondary" label="Cancel" onClick={() => setBillModal(false)} />
+              <NxBtn
                 color="primary"
                 label={`Submit Bill Request${billWOIds.size > 1 ? ` (${billWOIds.size} Work Orders)` : ""}`}
                 loading={billGenerating}

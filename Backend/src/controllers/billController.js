@@ -890,15 +890,16 @@ exports.manualAgmApprove = asyncHandler(async (req, res) => {
     return forbidden(res, "You're not configured as an L1 (AGM) approver for this department.");
   }
 
-  // AGM can re-edit the hold/GST that were set when this bill was created —
-  // advance recovery is deliberately NOT editable here: it's already been
-  // applied against real AdvanceSlip balances at creation time (see
-  // billController.createBill), and changing it here without also
-  // reconciling those slips would desync the two.
+  // AGM can re-edit the hold/GST that were set when this bill was created.
   if (req.body.retentionAmount != null) bill.retentionAmount = Number(req.body.retentionAmount);
-  // Simple overwrite, same as the existing patchDeductions endpoint (used to
-  // correct a paid bill) — not reconciled against any AdvanceSlip's own
-  // amountRecovered/balance, consistent with that same existing precedent.
+  // Advance recovery is also editable here, as a simple overwrite — same as
+  // the existing patchDeductions endpoint (used to correct a paid bill) —
+  // NOT reconciled against any AdvanceSlip's own amountRecovered/balance
+  // (those were already applied at bill creation, see billController.
+  // createBill). This is an accepted, pre-existing gap in this codebase
+  // (patchDeductions has the same limitation); fixing it properly needs a
+  // dedicated pass across all ~5 call sites that touch advanceRecovery this
+  // way, together with the AdvanceSlip model, not a one-off patch here.
   if (req.body.advanceRecovery != null) bill.advanceRecovery = Number(req.body.advanceRecovery);
   if (req.body.gstPercent != null) {
     const gst = Number(req.body.gstPercent);

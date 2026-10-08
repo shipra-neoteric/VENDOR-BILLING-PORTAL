@@ -164,7 +164,15 @@ exports.unarchiveAdvanceSlip = asyncHandler(async (req, res) => {
 exports.archiveAdvanceSlipsBulk = asyncHandler(async (req, res) => {
   const { ids } = req.body;
   if (!Array.isArray(ids) || ids.length === 0) return badRequest(res, 'Provide at least one advance slip id');
+  const slips = await AdvanceSlip.find({ _id: { $in: ids } }).select('slipNo');
   await AdvanceSlip.updateMany({ _id: { $in: ids } }, { isArchived: true, archivedAt: new Date() });
+
+  await logAudit({
+    action: 'UPDATE', module: 'advance-slips', user: req.user,
+    description: `${slips.length} advance slip(s) archived: ${slips.map(s => s.slipNo).join(', ')}`,
+    entityType: 'AdvanceSlip', entityLabel: `${slips.length} advance slips`,
+  });
+
   success(res, {}, `${ids.length} advance slip(s) archived`);
 });
 
@@ -172,6 +180,14 @@ exports.archiveAdvanceSlipsBulk = asyncHandler(async (req, res) => {
 exports.unarchiveAdvanceSlipsBulk = asyncHandler(async (req, res) => {
   const { ids } = req.body;
   if (!Array.isArray(ids) || ids.length === 0) return badRequest(res, 'Provide at least one advance slip id');
+  const slips = await AdvanceSlip.find({ _id: { $in: ids } }).select('slipNo');
   await AdvanceSlip.updateMany({ _id: { $in: ids } }, { isArchived: false, archivedAt: null });
+
+  await logAudit({
+    action: 'UPDATE', module: 'advance-slips', user: req.user,
+    description: `${slips.length} advance slip(s) unarchived: ${slips.map(s => s.slipNo).join(', ')}`,
+    entityType: 'AdvanceSlip', entityLabel: `${slips.length} advance slips`,
+  });
+
   success(res, {}, `${ids.length} advance slip(s) unarchived`);
 });

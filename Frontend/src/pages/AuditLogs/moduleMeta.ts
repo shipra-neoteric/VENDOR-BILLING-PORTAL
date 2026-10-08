@@ -35,6 +35,7 @@ export const AUDIT_MODULES: ModuleMeta[] = [
   { key: "stages", label: "Stages", icon: Layers, subtitle: "Stages and activities configuration" },
   { key: "advance-slips", label: "Advance Slips", icon: Receipt, subtitle: "Advance payment slips" },
   { key: "workflows", label: "Workflows", icon: Workflow, subtitle: "Workflow templates and instances" },
+  { key: "recurring-billing", label: "Recurring Billing", icon: Clock, subtitle: "Recurring Work Order/Bill schedules" },
   { key: "report-schedules", label: "Report Schedules", icon: Clock, subtitle: "Scheduled report configuration" },
   { key: "backup", label: "Backup & Restore", icon: Database, subtitle: "Manual and automatic backups, restores" },
 ];
