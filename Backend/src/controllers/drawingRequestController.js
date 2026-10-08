@@ -5,6 +5,7 @@ const Project = require('../models/Project');
 const { nextDrawingRequestTicketNo } = require('../utils/codeGen');
 const { logAudit } = require('../utils/auditLog');
 const { notifyByPermission, notifyUser } = require('../utils/notificationService');
+const { syncDrawingRequestToQc } = require('../utils/syncToQc');
 
 // No pre-existing Slack STAGES entry for this chain (see approvalStages.js's
 // own comment — it's Slack-notified separately/not at all today), so this
@@ -72,6 +73,7 @@ exports.createRequest = asyncHandler(async (req, res) => {
     type: 'DRAWING_REQUEST_L1_REVIEW', title: `Drawing Request ${request.ticketNo} — L1 review required`,
     message: `${request.ticketNo} (${request.projectName}) needs L1 review — ${request.description.slice(0, 120)}`,
   });
+  syncDrawingRequestToQc(request).catch(() => {});
 
   created(res, { request }, 'Drawing request submitted');
 });
@@ -87,6 +89,8 @@ exports.createPublicRequest = asyncHandler(async (req, res) => {
     submittedBy: null,
     isPublicSubmission: true,
   });
+
+  syncDrawingRequestToQc(request).catch(() => {});
 
   created(res, { request }, 'Drawing request submitted');
 });
@@ -375,5 +379,12 @@ exports.resubmitRequest = asyncHandler(async (req, res) => {
 exports.deleteRequest = asyncHandler(async (req, res) => {
   const request = await DrawingRequest.findByIdAndDelete(req.params.id);
   if (!request) return notFound(res, 'Drawing request not found');
+
+  await logAudit({
+    action: 'DELETE', module: 'drawing-requests', user: req.user,
+    description: `Drawing request ${request.ticketNo} deleted (was ${request.reviewStatus})`,
+    entityType: 'DrawingRequest', entityId: request._id, entityLabel: request.ticketNo,
+  });
+
   success(res, {}, 'Drawing request deleted');
 });

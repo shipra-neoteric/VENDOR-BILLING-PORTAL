@@ -6,6 +6,7 @@ const Contractor = require('../models/Contractor');
 const { workEntriesInvalidReason } = require('../utils/validateWorkEntries');
 const { notifyDailyProgressReport } = require('../utils/n8nWebhook');
 const { flattenReportImages } = require('../utils/dprImages');
+const { syncDprToQc } = require('../utils/syncToQc');
 
 const REQUIRED_FIELDS = ['projectId', 'driName', 'date', 'vendorCode', 'shiftType', 'labourCount'];
 
@@ -53,6 +54,7 @@ exports.createReport = asyncHandler(async (req, res) => {
 
   // Fire-and-forget — an n8n/webhook outage should never fail the submission itself.
   notifyDailyProgressReport(report, project).catch(() => {});
+  syncDprToQc(report).catch(() => {});
 
   created(res, { report }, 'Daily Progress Report submitted');
 });
@@ -70,6 +72,7 @@ exports.createPublicReport = asyncHandler(async (req, res) => {
 
   // Fire-and-forget — an n8n/webhook outage should never fail the submission itself.
   notifyDailyProgressReport(report, project).catch(() => {});
+  syncDprToQc(report).catch(() => {});
 
   created(res, { report }, 'Daily Progress Report submitted');
 });
