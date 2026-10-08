@@ -5,6 +5,7 @@ const { success, created, notFound, badRequest } = require('../utils/responseFor
 const { nextVendorCode } = require('../utils/codeGen');
 const { logAudit, diffFields } = require('../utils/auditLog');
 const { notifyByPermission } = require('../utils/notificationService');
+const { syncVendorToQc } = require('../utils/syncVendorToQc');
 
 // Business fields only — `documents` holds KYC data URIs and must never be
 // diffed/logged.
@@ -58,6 +59,8 @@ exports.createContractor = asyncHandler(async (req, res) => {
     entityType: 'Contractor', entityId: contractor._id, entityLabel: contractor.companyName,
   });
 
+  syncVendorToQc(contractor).catch(() => {});
+
   created(res, { contractor }, 'Contractor created successfully');
 });
 
@@ -97,6 +100,7 @@ exports.bulkImport = asyncHandler(async (req, res) => {
             : [],
         createdBy: req.user._id,
       });
+      syncVendorToQc(contractor).catch(() => {});
       results.created.push(contractor);
     } catch (err) {
       results.errors.push({ row: row.companyName || '?', reason: err.message });
@@ -146,6 +150,8 @@ exports.updateContractor = asyncHandler(async (req, res) => {
       entityType: 'Contractor', entityId: contractor._id, link: `/contractors?open=${contractor._id}`,
     }).catch((err) => console.error('[notifications] VENDOR_COMPLIANCE_INACTIVE notify failed', err.message));
   }
+
+  syncVendorToQc(contractor).catch(() => {});
 
   success(res, { contractor }, 'Contractor updated successfully');
 });
