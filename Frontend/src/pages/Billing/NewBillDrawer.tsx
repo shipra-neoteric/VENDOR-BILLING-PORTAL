@@ -371,6 +371,15 @@ export default function NewBillDrawer({
   // chosen under it (e.g. a standalone Mobilisation Advance) — that still
   // needs a Company, so this can't just check "is a project picked".
   const isStandalone = !selectedWOId && !importedFromWOId;
+  // A Mobilisation Advance raised as ADVANCE_FOR (see billController.js's own
+  // "bypass the whole RunningBill/approval chain" comment) always becomes a
+  // standalone AdvanceSlip server-side, regardless of whether a Work Order
+  // happens to be picked in the Bill Relationship section below — that WO
+  // selection is simply ignored by that code path. So this specific
+  // combination needs a Company exactly like a true standalone bill does,
+  // even while a WO is selected (which would otherwise hide the field).
+  const isMobAdvanceFor = billType === "advance_mobilization" && relType === "ADVANCE_FOR";
+  const needsCompany = isStandalone || isMobAdvanceFor;
 
   // Once a Work Order is linked, its own Department is authoritative — pull
   // it in automatically instead of asking the maker to redundantly pick the
@@ -814,7 +823,7 @@ export default function NewBillDrawer({
     }
     if (!billDate) { formErrors.setError("billDate", "Required"); hasError = true; }
     if (!generatedBy.trim()) { formErrors.setError("generatedBy", "Required"); hasError = true; }
-    if (isStandalone && !companyId) {
+    if (needsCompany && !companyId) {
       formErrors.setError("companyId", "Select which company this bill is raised through");
       hasError = true;
     }
@@ -874,7 +883,7 @@ export default function NewBillDrawer({
       linkedBills: linkedBills.length > 0 ? linkedBills : [],
       workOrderId: linkedToScopeItems ? (importedFromWOId || selectedWOId || undefined) : (selectedWOId || undefined),
       ...(selectedMilestoneIds.length ? { milestoneIds: selectedMilestoneIds } : {}),
-      ...(isStandalone ? { companyId } : {}),
+      ...(needsCompany ? { companyId } : {}),
       retentionPercent: holdMode === "percent" ? (holdPercent || 0) : (gross > 0 ? Math.round((holdAmount / gross) * 10000) / 100 : 0),
       retentionAmount: holdAmount,
       retentionReleaseAmount: retentionReleaseAmount || 0,
@@ -1001,7 +1010,7 @@ export default function NewBillDrawer({
             )}
           </div>
 
-          {isStandalone && (
+          {needsCompany && (
             <div className="mb-4 flex gap-4 flex-wrap">
               <div className="max-w-xs flex-1 min-w-[200px]">
                 <SField
@@ -1011,7 +1020,7 @@ export default function NewBillDrawer({
                   onChange={setCompanyId}
                   options={companies.map((c) => ({ value: c.id, label: `${c.name} (${c.shortCode})` }))}
                   error={formErrors.errors.companyId}
-                  hint="No project/work order linked — pick which group company this bill is raised through."
+                  hint={isStandalone ? "No project/work order linked — pick which group company this bill is raised through." : "A mobilisation advance is raised independently of any Work Order — pick which group company this is raised through."}
                 />
               </div>
             </div>

@@ -1,5 +1,6 @@
 const AdvanceSlip   = require('../models/AdvanceSlip');
 const Contractor    = require('../models/Contractor');
+const Company       = require('../models/Company');
 const asyncHandler  = require('../utils/asyncHandler');
 const { success, notFound, badRequest } = require('../utils/responseFormatter');
 const { nextCode } = require('../utils/sequence');
@@ -77,7 +78,7 @@ exports.getPendingAdvances = asyncHandler(async (req, res) => {
 
 // POST /api/advance-slips
 exports.createAdvanceSlip = asyncHandler(async (req, res) => {
-  const { contractorCode, contractorName, projectId, projectName, amount, date, reference, notes } = req.body;
+  const { contractorCode, contractorName, projectId, projectName, amount, date, reference, notes, companyId } = req.body;
   if (!contractorCode || !projectId || amount === undefined || amount === null || !date) {
     return badRequest(res, 'contractorCode, projectId, amount and date are required');
   }
@@ -87,10 +88,20 @@ exports.createAdvanceSlip = asyncHandler(async (req, res) => {
     return badRequest(res, 'Advance amount must be a valid number greater than 0');
   }
 
+  // Not linked to any Work Order (an advance slip never is), so — same as
+  // RunningBill's own standalone-bill case — which group company this is
+  // raised through has no other source to infer it from; required up front.
+  if (!companyId) {
+    return badRequest(res, 'Company is required for an advance slip.');
+  }
+  const company = await Company.findById(companyId);
+  if (!company) return notFound(res, 'Company not found');
+
   const slipNo = await nextSlipNo();
   const slip = await AdvanceSlip.create({
     slipNo, contractorCode, contractorName, projectId, projectName,
     amount: numAmount, date, reference, notes, createdBy: req.user._id,
+    companyId: company._id, companyName: company.name,
   });
 
   await logAudit({

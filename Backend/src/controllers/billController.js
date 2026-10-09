@@ -421,6 +421,18 @@ exports.createBill = asyncHandler(async (req, res) => {
       return badRequest(res, 'Advance amount must be a valid number greater than 0');
     }
 
+    // This path has no work order (same "no company to inherit" case as the
+    // standalone RunningBill path below) — the New Bill drawer's own Company
+    // field (isStandalone) already collects and sends this; it was
+    // previously silently dropped here, leaving every advance slip raised
+    // this way with no company at all and print falling back to a
+    // hardcoded default name.
+    if (!req.body.companyId) {
+      return badRequest(res, 'Company is required for a mobilisation advance.');
+    }
+    const advCompany = await Company.findById(req.body.companyId);
+    if (!advCompany) return notFound(res, 'Company not found');
+
     const slipNo = await nextCode('advanceSlipNo', 'ADV-', 4);
     const slip = await AdvanceSlip.create({
       slipNo,
@@ -433,6 +445,8 @@ exports.createBill = asyncHandler(async (req, res) => {
       reference:      req.body.contractorRefNo || undefined,
       notes:          req.body.remarks || 'Mobilisation advance raised via Billing → New Bill',
       createdBy:      req.user._id,
+      companyId:      advCompany._id,
+      companyName:    advCompany.name,
     });
 
     await logAudit({

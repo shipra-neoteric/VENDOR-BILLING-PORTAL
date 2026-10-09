@@ -15,6 +15,12 @@ const advanceSlipSchema = new Schema(
     contractorName:  { type: String },
     projectId:       { type: Schema.Types.ObjectId, ref: 'Project', required: true },
     projectName:     { type: String },
+    // Which group company this advance is raised through — same concept as
+    // RunningBill's own companyId/companyName (createBill's "no work order,
+    // no company to inherit" case). Previously never collected at all, so
+    // the print template always fell back to a hardcoded default name.
+    companyId:       { type: Schema.Types.ObjectId, ref: 'Company' },
+    companyName:     { type: String, default: '' },
     amount:          { type: Number, required: true },
     amountRecovered: { type: Number, default: 0 },
     date:            { type: Date, required: true },
