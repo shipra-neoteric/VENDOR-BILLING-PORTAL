@@ -46,11 +46,12 @@ function round2(n) {
  * @param {number} [input.tdsAmount]
  * @param {number} [input.adjustmentAmount] - signed manual correction, applied last.
  * @param {number} [input.supersedeDeduction] - >0 only for a SUPERSEDES bill; switches calculation order (see below).
+ * @param {number} [input.retentionReleased] - how much of this WO's retention held on EARLIER bills is being released back out on this one; always adds to net payable. 0/absent for every existing bill.
  * @returns {{ gstAmount: number, netBeforeGst: number, netAfterHold: number, netPayable: number }}
  */
 function billFinancials({
   gross, gstPercent = 0, retentionAmount = 0, advanceRecovery = 0, tdsAmount = 0, adjustmentAmount = 0,
-  supersedeDeduction = 0,
+  supersedeDeduction = 0, retentionReleased = 0,
 }) {
   const netBeforeGst = round2(gross - retentionAmount - advanceRecovery);
 
@@ -64,13 +65,13 @@ function billFinancials({
   if (supersedeDeduction > 0) {
     const gstAmount    = round2(gross * gstPercent / 100);
     const netAfterHold = round2(gross + gstAmount - supersedeDeduction - advanceRecovery - retentionAmount);
-    const netPayable   = round2(netAfterHold - tdsAmount + adjustmentAmount);
+    const netPayable   = round2(netAfterHold - tdsAmount + adjustmentAmount + retentionReleased);
     return { gstAmount, netBeforeGst, netAfterHold, netPayable };
   }
 
   const gstAmount    = round2(netBeforeGst * gstPercent / 100);
   const netAfterHold = round2(netBeforeGst + gstAmount);
-  const netPayable   = round2(netAfterHold - tdsAmount + adjustmentAmount);
+  const netPayable   = round2(netAfterHold - tdsAmount + adjustmentAmount + retentionReleased);
   return { gstAmount, netBeforeGst, netAfterHold, netPayable };
 }
 
@@ -99,6 +100,7 @@ function billFinancialsForBill(b) {
     tdsAmount:          b.tdsAmount || 0,
     adjustmentAmount:   b.adjustmentAmount || 0,
     supersedeDeduction: b.supersedeDeduction || 0,
+    retentionReleased:  b.retentionReleased || 0,
   });
 }
 

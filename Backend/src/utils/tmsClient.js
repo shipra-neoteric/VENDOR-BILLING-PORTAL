@@ -4,25 +4,19 @@
 // fetch (no HTTP client dependency needed for one POST call) with a plain
 // shared-API-key header, since there's no existing OAuth/webhook-signing
 // precedent anywhere in this backend to match instead.
+const { billFinancialsForBill } = require('./billFinancials');
+
 const TMS_TIMEOUT_MS = 15000;
 
-// netAfterAdvance-equivalent for what TMS should actually pay out — matches
-// the same Gross -> Hold/Advance -> GST -> Net breakdown used throughout the
-// rest of this system (e.g. Frontend/src/shared/utils/billMath.ts's
-// billFinancials). Neither Hold nor Advance Recovery is the contractor's
-// taxable value, so both come off the gross FIRST, and GST is calculated
-// only on what's actually left.
+// Was previously its own hand-rolled copy of the Gross -> Hold/Advance ->
+// GST -> Net breakdown, independently drifted from the shared one (missing
+// both the SUPERSEDES-bill branch and retentionReleased) — dormant while
+// TMS_INTEGRATION_ENABLED stays false, but would have sent the wrong real
+// payment amount to the external payment system the moment that flag flips
+// on. Now delegates to billFinancials.js, the same single source of truth
+// used everywhere else, so there's nothing left here to drift.
 function netPayable(bill) {
-  const netBeforeGst = (bill.amount || 0) - (bill.retentionAmount || 0) - (bill.advanceRecovery || 0);
-  const gstAmount     = netBeforeGst * (bill.gstPercent ?? 0) / 100;
-  const netAfterHold  = netBeforeGst + gstAmount;
-  // adjustmentAmount is a one-off manual correction set at Verify (e.g.
-  // clawing back a prior small overpayment) — signed, applied last, same as
-  // Frontend/src/shared/utils/billMath.ts's billFinancials.
-  const beforeAdjustment = netAfterHold - (bill.tdsAmount || 0);
-  // Rounded to paise (2 decimals), not the nearest whole rupee — see
-  // Frontend/src/shared/utils/billMath.ts's round2 for why.
-  return Math.round((beforeAdjustment + (bill.adjustmentAmount || 0)) * 100) / 100;
+  return billFinancialsForBill(bill).netPayable;
 }
 
 async function sendBill(bill, contractor) {
