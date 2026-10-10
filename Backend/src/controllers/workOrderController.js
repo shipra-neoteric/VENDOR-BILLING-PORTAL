@@ -214,6 +214,14 @@ exports.listWorkOrders = asyncHandler(async (req, res) => {
       ],
     }]);
   }
+  if (req.query.light === 'true') {
+    const workOrders = await WorkOrder.find(filter)
+      .select('_id workOrderNo department customDepartment projectId vendorName vendorCode status approvalStatus contractValue createdAt')
+      .sort({ createdAt: -1 })
+      .lean();
+    return success(res, { workOrders });
+  }
+
   // Only the legacy single-document field (documentUrl, written before
   // multi-document support) ever held a base64 data URI big enough to slow
   // this list down — the current `documents[]` array only ever holds short

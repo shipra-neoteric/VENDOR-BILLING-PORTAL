@@ -278,5 +278,7 @@ workOrderSchema.index({ assignedDRI: 1, createdAt: -1 });
 workOrderSchema.index({ vendorCode: 1 });
 workOrderSchema.index({ status: 1 });
 workOrderSchema.index({ projectId: 1, assignedDRI: 1, status: 1 });
+workOrderSchema.index({ approvalStatus: 1, createdAt: -1 });
+workOrderSchema.index({ 'approvalHistory.stage': 1, 'approvalHistory.action': 1 });
 
 module.exports = mongoose.model('WorkOrder', workOrderSchema);

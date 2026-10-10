@@ -158,5 +158,7 @@ billRequestSchema.index(
   { workOrderId: 1 },
   { unique: true, partialFilterExpression: { status: { $in: ['pending', 'pending-gm', 'pending-l3', 'pending-l4'] } } }
 );
+billRequestSchema.index({ status: 1, createdAt: -1 });
+billRequestSchema.index({ 'approvalHistory.stage': 1, 'approvalHistory.action': 1 });
 
 module.exports = mongoose.model('BillRequest', billRequestSchema);

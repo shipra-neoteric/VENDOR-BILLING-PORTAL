@@ -253,7 +253,7 @@ const isItemDelayed = (item: ScopeItem): boolean => {
 const countDelays = (wo: WorkOrder) =>
   (wo.scopeItems || []).filter(isItemDelayed).length;
 
-const normalizeId = (obj: any) => ({ ...obj, id: obj._id || obj.id });
+import { normalizeId } from "../../shared/utils/normalizeId";
 
 const normalizeWO = (wo: any): WorkOrder => ({
   ...normalizeId(wo),
@@ -1668,7 +1668,7 @@ export default function WorkItems() {
         .then(r => setDriList(r.data.users ?? [])),
       apiClient.get<{ users: any[] }>("/auth/users?role=agm,gm")
         .then(r => setAgmGmList(r.data.users ?? [])),
-      apiClient.get<{ bills: any[] }>("/bills")
+      apiClient.get<{ bills: any[] }>("/bills", { params: { light: "true" } })
         .then(r => {
           const billMap: Record<string, { status: string; amount: number }[]> = {};
           (r.data.bills ?? []).forEach((b: any) => {
