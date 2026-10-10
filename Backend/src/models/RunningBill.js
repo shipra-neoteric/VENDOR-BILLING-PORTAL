@@ -353,5 +353,9 @@ runningBillSchema.index({ workOrderId: 1, createdAt: -1 });
 runningBillSchema.index({ projectId: 1, status: 1 });
 runningBillSchema.index({ vendorCode: 1, createdAt: -1 });
 runningBillSchema.index({ status: 1 });
+runningBillSchema.index({ manualApprovalStatus: 1, createdAt: -1 });
+runningBillSchema.index({ manualApprovalStatus: 1, manualAgmApprovedBy: 1 });
+runningBillSchema.index({ status: 1, hideFromFinalApproval: 1 });
+runningBillSchema.index({ 'approvalHistory.stage': 1, 'approvalHistory.action': 1 });
 
 module.exports = mongoose.model('RunningBill', runningBillSchema);

@@ -129,29 +129,38 @@ exports.listBills = asyncHandler(async (req, res) => {
     ] });
   }
   if (manualApprovalStatus) {
-    filter.manualApprovalStatus = Array.isArray(manualApprovalStatus) ? { $in: manualApprovalStatus } : manualApprovalStatus;
-    // 'approved'/'rejected' are also the schema's own default/end state for
-    // every non-manual, progress-driven bill (manualApprovalStatus just sits
-    // at 'approved' forever since nothing ever touches it) — so asking for
-    // those two statuses alone would flood this manual-bill queue with bills
-    // that were never actually manual. A bill that genuinely went through
-    // manual-agm-approve/manual-reject always has one of these two fields
-    // set, which a progress-driven bill never does — 'pending'/'pending-gm'
-    // need no such guard since createBill always sets that status explicitly
-    // only for genuinely manual bills.
-    // $and (not two separate top-level $or keys, which would collide —
-    // object keys are unique, so a second filter.$or here would silently
-    // overwrite the marker-guard one above) collects every OR-shaped
-    // condition below so both apply together. `|| []` (not a bare `= []`)
-    // since the draft-visibility check above may have already started this
-    // array — a bare reassignment here would silently drop that condition.
+    const rawStatuses = (typeof manualApprovalStatus === 'string' && manualApprovalStatus.includes(','))
+      ? manualApprovalStatus.split(',').map((s) => s.trim())
+      : (Array.isArray(manualApprovalStatus) ? manualApprovalStatus : [manualApprovalStatus]);
+
     filter.$and = filter.$and || [];
-    const statuses = Array.isArray(manualApprovalStatus) ? manualApprovalStatus : [manualApprovalStatus];
-    if (statuses.every((s) => ['approved', 'rejected'].includes(s))) {
-      filter.$and.push({ $or: [
-        { manualAgmApprovedBy: { $exists: true, $ne: null } },
-        { manualRejectedBy:    { $exists: true, $ne: null } },
-      ] });
+
+    const pendingStatuses = rawStatuses.filter((s) => ['pending', 'pending-gm', 'pending-l3', 'pending-l4'].includes(s));
+    const decidedStatuses = rawStatuses.filter((s) => ['approved', 'rejected'].includes(s));
+
+    if (decidedStatuses.length && pendingStatuses.length) {
+      filter.$and.push({
+        $or: [
+          { manualApprovalStatus: { $in: pendingStatuses } },
+          {
+            manualApprovalStatus: { $in: decidedStatuses },
+            $or: [
+              { manualAgmApprovedBy: { $exists: true, $ne: null } },
+              { manualRejectedBy:    { $exists: true, $ne: null } },
+            ],
+          },
+        ],
+      });
+    } else if (rawStatuses.every((s) => ['approved', 'rejected'].includes(s))) {
+      filter.manualApprovalStatus = rawStatuses.length > 1 ? { $in: rawStatuses } : rawStatuses[0];
+      filter.$and.push({
+        $or: [
+          { manualAgmApprovedBy: { $exists: true, $ne: null } },
+          { manualRejectedBy:    { $exists: true, $ne: null } },
+        ],
+      });
+    } else {
+      filter.manualApprovalStatus = rawStatuses.length > 1 ? { $in: rawStatuses } : rawStatuses[0];
     }
     // Department-scoped visibility — only applied to this manual-bill L1/L2
     // approval queue (identified by the manualApprovalStatus filter itself),
@@ -185,6 +194,14 @@ exports.listBills = asyncHandler(async (req, res) => {
       { workOrderNo: { $regex: search, $options: 'i' } },
       { generatedBy: { $regex: search, $options: 'i' } },
     ];
+  }
+
+  if (req.query.light === 'true') {
+    const bills = await RunningBill.find(filter)
+      .select('_id billNo workOrderId workOrderNo status manualApprovalStatus amount netPayable createdAt')
+      .sort({ createdAt: -1 })
+      .lean();
+    return success(res, { bills });
   }
 
   let query = RunningBill.find(filter);

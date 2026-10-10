@@ -1,5 +1,4 @@
-const DepartmentApprovalConfig = require('../models/DepartmentApprovalConfig');
-const { effectiveDepartment } = require('./approvalRules');
+const { effectiveDepartment, getApprovalConfig } = require('./approvalRules');
 
 // Work Order equivalent of approvalRules.js's getApprovalConfig/approverAllowed
 // — same DepartmentApprovalConfig doc, just the WO-specific fields
@@ -12,9 +11,7 @@ const STAGE_FIELDS = {
 };
 
 async function getWoApprovalConfig(workOrder) {
-  const dept = effectiveDepartment(workOrder);
-  if (!dept) return null;
-  return DepartmentApprovalConfig.findOne({ department: dept }).lean();
+  return getApprovalConfig(workOrder);
 }
 
 // Same rule as bills' approverAllowed/hasExplicitPermission: a department

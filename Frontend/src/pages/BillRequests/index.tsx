@@ -447,26 +447,14 @@ export default function BillApproval() {
     Promise.all([
       apiClient.get("/projects"),
       apiClient.get("/bill-requests", { params: { scope: "approval" } }),
-      apiClient.get("/bills", { params: { manualApprovalStatus: "pending" } }),
-      apiClient.get("/bills", { params: { manualApprovalStatus: "pending-gm" } }),
-      apiClient.get("/bills", { params: { manualApprovalStatus: "pending-l3" } }),
-      apiClient.get("/bills", { params: { manualApprovalStatus: "pending-l4" } }),
-      apiClient.get("/bills", { params: { manualApprovalStatus: "approved" } }),
-      apiClient.get("/bills", { params: { manualApprovalStatus: "rejected" } }),
-      apiClient.get("/work-orders"),
+      apiClient.get("/bills", { params: { manualApprovalStatus: "pending,pending-gm,pending-l3,pending-l4,approved,rejected" } }),
+      apiClient.get("/work-orders", { params: { light: "true" } }),
       apiClient.get("/auth/users"),
     ])
-      .then(([projR, brR, manualPendingR, manualGmR, manualL3R, manualL4R, manualApprovedR, manualRejectedR, woR, usersR]) => {
+      .then(([projR, brR, manualBillsR, woR, usersR]) => {
         setProjects(projR.data.projects ?? []);
         setBillReqs(brR.data.billRequests ?? []);
-        setManualBills([
-          ...(manualPendingR.data.bills ?? []),
-          ...(manualGmR.data.bills ?? []),
-          ...(manualL3R.data.bills ?? []),
-          ...(manualL4R.data.bills ?? []),
-          ...(manualApprovedR.data.bills ?? []),
-          ...(manualRejectedR.data.bills ?? []),
-        ]);
+        setManualBills(manualBillsR.data.bills ?? []);
         const wos = (woR.data.workOrders ?? []) as WorkOrderDeptRow[];
         setWoDeptMap(new Map(wos.map(wo => [wo._id, wo])));
         setAllUsers((usersR.data.users ?? []) as any);

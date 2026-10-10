@@ -42,18 +42,37 @@ function effectiveDepartment(doc) {
   return doc.department === 'custom' ? (doc.customDepartment || '') : doc.department;
 }
 
+let configCache = new Map();
+let configCacheExpiry = 0;
+
+async function getAllApprovalConfigs() {
+  const now = Date.now();
+  if (now < configCacheExpiry && configCache.size > 0) {
+    return configCache;
+  }
+  const all = await DepartmentApprovalConfig.find().lean();
+  const map = new Map();
+  for (const c of all) {
+    if (c.department) map.set(c.department, c);
+  }
+  configCache = map;
+  configCacheExpiry = now + 30000; // 30s TTL
+  return map;
+}
+
+function invalidateApprovalConfigCache() {
+  configCache.clear();
+  configCacheExpiry = 0;
+}
+
 // Looks up this department's approval config, if any — returns null (not a
 // default object) when nothing's configured, so callers can cheaply tell
 // "no override, use hardcoded defaults" apart from "1-approval override".
 async function getApprovalConfig(doc) {
   const dept = effectiveDepartment(doc);
   if (!dept) return null;
-  return DepartmentApprovalConfig.findOne({ department: dept }).lean();
-}
-
-function roleAllowed(role, configuredRoles, fallbackRoles) {
-  const list = configuredRoles && configuredRoles.length ? configuredRoles : fallbackRoles;
-  return list.includes(role);
+  const map = await getAllApprovalConfigs();
+  return map.get(dept) || null;
 }
 
 // Named approvers are a stronger, more specific choice than a role list —
@@ -89,7 +108,12 @@ function approverAllowed(user, config, stage) {
   return fields.fallback.includes(user.role) || hasExplicitPermission(user, fields.action);
 }
 
+function roleAllowed(role, configuredRoles, fallbackRoles) {
+  const list = configuredRoles && configuredRoles.length ? configuredRoles : fallbackRoles;
+  return list.includes(role);
+}
+
 module.exports = {
   DEFAULT_AGM_ROLES, DEFAULT_GM_ROLES, DEFAULT_L3_ROLES, DEFAULT_L4_ROLES,
-  effectiveDepartment, getApprovalConfig, roleAllowed, approverAllowed,
+  effectiveDepartment, getApprovalConfig, roleAllowed, approverAllowed, invalidateApprovalConfigCache,
 };
