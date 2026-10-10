@@ -23,7 +23,16 @@ router.get('/activity',     authorizeOr('bill-review', 'view'), getAllProjectsAc
 // granted 'projects' explicitly) that can see the Projects page today but
 // was never granted 'dashboard'.
 router.get('/:id/stats',    authorizeOr('projects', 'view'), getProjectStats);
-router.get('/:id/activity', getProjectActivity);
+// Same financial-events feed as GET /activity above (PAYMENT_RELEASED,
+// BILL_REQUESTED, etc., unfiltered) — was missing any gate at all, so any
+// authenticated user who knew/guessed a project id could read its full
+// payment/approval history. Gated the same way getProjectStats right above
+// already is, not on 'bill-review' like the cross-project route — this one
+// is only ever called from the Projects page (Frontend/src/pages/Projects/
+// index.tsx), which itself only requires 'projects', so gating on
+// 'bill-review' would wrongly 403 a normal Projects-page user who has
+// 'projects' but not 'bill-review'.
+router.get('/:id/activity', authorizeOr('projects', 'view'), getProjectActivity);
 router.get('/:id', getProject);
 router.post('/',      authorizeOr('projects', 'create'), createProjectRules, createProject);
 router.put('/:id',    authorizeOr('projects', 'edit'), updateProject);
