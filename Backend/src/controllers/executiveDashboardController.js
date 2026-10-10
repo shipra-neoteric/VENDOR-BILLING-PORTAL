@@ -53,6 +53,19 @@ function tryParseDate(input) {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
+// Same as tryParseDate, but for a range's "to" bound specifically — a plain
+// "YYYY-MM-DD" parses as that day's midnight UTC, so used directly as a
+// $lte it silently excludes the entire end day (including "today", the
+// single most common thing someone filters a date range up to). Mirrors
+// the end-of-day fix auditLogController.js/drawingRequestController.js
+// already apply to their own date-range "to" bound.
+function tryParseEndDate(input) {
+  if (isNoFilter(input)) return undefined;
+  const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(String(input).trim());
+  const d = new Date(dateOnly ? `${input}T23:59:59.999Z` : input);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
 // ── Phase 3: reconciliation warnings ────────────────────────────────────
 // Internal-consistency check for ONE project row, using only fields already
 // computed for it — never re-queries anything. Flags real, honest
@@ -224,7 +237,7 @@ async function buildExecutiveDashboardData(query) {
     if (fromDate === null) { dataWarnings.push(`Invalid 'from' date: '${from}' — ignored.`); fromDate = undefined; }
   }
   if (!isNoFilter(to)) {
-    toDate = tryParseDate(to);
+    toDate = tryParseEndDate(to);
     if (toDate === null) { dataWarnings.push(`Invalid 'to' date: '${to}' — ignored.`); toDate = undefined; }
   }
 
@@ -1085,7 +1098,7 @@ async function buildContractorMatrixData(query) {
     if (fromDate === null) { dataWarnings.push(`Invalid 'from' date: '${from}' — ignored.`); fromDate = undefined; }
   }
   if (!isNoFilter(to)) {
-    toDate = tryParseDate(to);
+    toDate = tryParseEndDate(to);
     if (toDate === null) { dataWarnings.push(`Invalid 'to' date: '${to}' — ignored.`); toDate = undefined; }
   }
 
