@@ -145,5 +145,18 @@ const billRequestSchema = new Schema(
 
 billRequestSchema.index({ workOrderId: 1 });
 billRequestSchema.index({ requestedBy: 1, status: 1 });
+// Enforces "at most one in-flight BillRequest per work order" at the DB
+// level — createBillRequest's own findOne-then-create check (see there) is
+// not atomic, so two near-simultaneous requests (double-click, slow-network
+// retry, two open tabs) could both pass that check before either's create
+// lands, producing two BillRequests for the same completed work — each
+// independently eligible to become its own RunningBill, a real double-
+// billing risk. This index makes the second create's own write throw a
+// duplicate-key error instead, which the controller catches and turns into
+// the same "already pending" message the findOne check already gives.
+billRequestSchema.index(
+  { workOrderId: 1 },
+  { unique: true, partialFilterExpression: { status: { $in: ['pending', 'pending-gm', 'pending-l3', 'pending-l4'] } } }
+);
 
 module.exports = mongoose.model('BillRequest', billRequestSchema);

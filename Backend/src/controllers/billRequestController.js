@@ -240,7 +240,15 @@ exports.createBillRequest = asyncHandler(async (req, res) => {
     progressRemarksByItem.set(String(pi.subItemId || pi.scopeItemId), collectAndMarkProgressRemarks(target, billRequestId));
   }
 
-  const billRequest = await BillRequest.create({
+  // The findOne check above isn't atomic — two near-simultaneous requests
+  // (double-click, retry, two tabs) could both pass it before either's
+  // create lands. BillRequest's own unique partial index (see the model)
+  // closes that race at the DB level: the second create here throws a
+  // duplicate-key error instead of silently succeeding, caught below and
+  // turned into the same friendly message the findOne check already gives.
+  let billRequest;
+  try {
+    billRequest = await BillRequest.create({
     _id: billRequestId,
     reqNo,
     stageNo,
@@ -271,7 +279,13 @@ exports.createBillRequest = asyncHandler(async (req, res) => {
     })),
     remarks:     remarks || '',
     requestedBy: req.user._id,
-  });
+    });
+  } catch (err) {
+    if (err.code === 11000) {
+      return badRequest(res, `A bill request for this work order is already pending approval (raised by a near-simultaneous request). Wait for admin review before submitting a new request.`);
+    }
+    throw err;
+  }
 
   // Lock in lastBilledQty on each billed particular (or plain scope item) so
   // it can't be double-billed.
