@@ -185,6 +185,263 @@ async function run() {
     assert.strictEqual(qcDb._store.drawingRequests[0].reviewStatus, 'stage-2-produce', 'stage was advanced in place');
   });
 
+  // ── Phase 2: syncDprToQcViaApi ──────────────────────────────────────────
+  // fetch is a Node global (no import to mock) — stub/restore it per test.
+  const realFetch = global.fetch;
+  function stubFetch(handler) { global.fetch = handler; }
+  function restoreFetch() { global.fetch = realFetch; }
+
+  await test('syncDprToQcViaApi — posts the exact same doc shape the direct-db path would insert', async () => {
+    const qcDb = makeFakeQcDb({ projects: [{ id: 'PRJ-01', code: 'NTA', name: 'Nature Park Hotel' }] });
+    const failureModel = makeFakeQcSyncFailureModel();
+    const { syncDprToQcViaApi, buildDprDoc, makeId } = loadSyncToQcWithFakes({ qcDb, failureModel });
+    process.env.QC_API_BASE_URL = 'https://qc.example.test';
+    process.env.VMS_SYNC_SECRET = 'test-secret';
+    let captured = null;
+    stubFetch(async (url, opts) => {
+      captured = { url, opts };
+      return { ok: true, status: 200, json: async () => ({ ok: true, id: JSON.parse(opts.body).id, created: true }) };
+    });
+    try {
+      const report = { _id: 'eee555', projectName: 'Nature Park Hotel', vendorCode: 'VC-01', workEntries: [{ workType: 'Civil', images: [{ url: 'https://x/1.jpg' }] }] };
+      await syncDprToQcViaApi(report);
+      assert.strictEqual(captured.url, 'https://qc.example.test/api/integrations/vms/dpr');
+      assert.strictEqual(captured.opts.headers['X-Vms-Sync-Secret'], 'test-secret');
+      const sentDoc = JSON.parse(captured.opts.body);
+      const expectedDoc = buildDprDoc(makeId('DPR', 'eee555'), report, { id: 'PRJ-01', name: 'Nature Park Hotel' }, null);
+      assert.deepStrictEqual(sentDoc, expectedDoc, 'API payload must be byte-identical to what the direct-db path would have inserted');
+      assert.strictEqual(qcDb._store.dpr.length, 0, 'API path never writes to Mongo directly — only the HTTP call does');
+    } finally {
+      restoreFetch();
+      delete process.env.QC_API_BASE_URL;
+      delete process.env.VMS_SYNC_SECRET;
+    }
+  });
+
+  await test('syncDprToQcViaApi — an existing id (created:false from QC) clears any prior logged failure, same as a fresh insert', async () => {
+    const qcDb = makeFakeQcDb({ projects: [{ id: 'PRJ-01', code: 'NTA', name: 'Nature Park Hotel' }] });
+    const failureModel = makeFakeQcSyncFailureModel();
+    failureModel._docs.push({ type: 'dpr', sourceId: 'fff666', reason: 'QC API responded 500', resolvedAt: null, attempts: 2 });
+    const { syncDprToQcViaApi } = loadSyncToQcWithFakes({ qcDb, failureModel });
+    process.env.QC_API_BASE_URL = 'https://qc.example.test';
+    process.env.VMS_SYNC_SECRET = 'test-secret';
+    stubFetch(async () => ({ ok: true, status: 200, json: async () => ({ ok: true, created: false }) }));
+    try {
+      await syncDprToQcViaApi({ _id: 'fff666', projectName: 'Nature Park Hotel', workEntries: [] });
+      assert.ok(failureModel._docs[0].resolvedAt instanceof Date);
+    } finally {
+      restoreFetch();
+      delete process.env.QC_API_BASE_URL;
+      delete process.env.VMS_SYNC_SECRET;
+    }
+  });
+
+  await test('syncDprToQcViaApi — 401 (bad secret) is caught, logged as a retriable failure, never thrown', async () => {
+    const qcDb = makeFakeQcDb({ projects: [{ id: 'PRJ-01', code: 'NTA', name: 'Nature Park Hotel' }] });
+    const failureModel = makeFakeQcSyncFailureModel();
+    const { syncDprToQcViaApi } = loadSyncToQcWithFakes({ qcDb, failureModel });
+    process.env.QC_API_BASE_URL = 'https://qc.example.test';
+    process.env.VMS_SYNC_SECRET = 'wrong-secret';
+    stubFetch(async () => ({ ok: false, status: 401, json: async () => ({ error: 'Invalid VMS sync secret' }) }));
+    try {
+      await assert.doesNotReject(() => syncDprToQcViaApi({ _id: 'ggg777', projectName: 'Nature Park Hotel', workEntries: [] }));
+      assert.strictEqual(failureModel._docs.length, 1);
+      assert.ok(failureModel._docs[0].reason.includes('401'));
+    } finally {
+      restoreFetch();
+      delete process.env.QC_API_BASE_URL;
+      delete process.env.VMS_SYNC_SECRET;
+    }
+  });
+
+  await test('syncDprToQcViaApi — 400 (invalid payload/unmapped project) is caught and logged, never thrown', async () => {
+    const qcDb = makeFakeQcDb({ projects: [{ id: 'PRJ-01', code: 'NTA', name: 'Nature Park Hotel' }] });
+    const failureModel = makeFakeQcSyncFailureModel();
+    const { syncDprToQcViaApi } = loadSyncToQcWithFakes({ qcDb, failureModel });
+    process.env.QC_API_BASE_URL = 'https://qc.example.test';
+    process.env.VMS_SYNC_SECRET = 'test-secret';
+    stubFetch(async () => ({ ok: false, status: 400, json: async () => ({ error: 'projectId "PRJ-99" is not a known QC project' }) }));
+    try {
+      await assert.doesNotReject(() => syncDprToQcViaApi({ _id: 'hhh888', projectName: 'Nature Park Hotel', workEntries: [] }));
+      assert.strictEqual(failureModel._docs.length, 1);
+      assert.ok(failureModel._docs[0].reason.includes('400'));
+    } finally {
+      restoreFetch();
+      delete process.env.QC_API_BASE_URL;
+      delete process.env.VMS_SYNC_SECRET;
+    }
+  });
+
+  await test('syncDprToQcViaApi — a network/fetch-level failure is caught, logged, and retriable (not thrown)', async () => {
+    const qcDb = makeFakeQcDb({ projects: [{ id: 'PRJ-01', code: 'NTA', name: 'Nature Park Hotel' }] });
+    const failureModel = makeFakeQcSyncFailureModel();
+    const { syncDprToQcViaApi } = loadSyncToQcWithFakes({ qcDb, failureModel });
+    process.env.QC_API_BASE_URL = 'https://qc.example.test';
+    process.env.VMS_SYNC_SECRET = 'test-secret';
+    stubFetch(async () => { throw new Error('ECONNREFUSED (simulated QC API outage)'); });
+    try {
+      await assert.doesNotReject(() => syncDprToQcViaApi({ _id: 'iii999', projectName: 'Nature Park Hotel', workEntries: [] }));
+      assert.strictEqual(failureModel._docs.length, 1);
+      assert.ok(failureModel._docs[0].reason.includes('ECONNREFUSED'));
+    } finally {
+      restoreFetch();
+      delete process.env.QC_API_BASE_URL;
+      delete process.env.VMS_SYNC_SECRET;
+    }
+  });
+
+  await test('syncDprToQcViaApi — passes a 10s AbortSignal.timeout so an unreachable QC never hangs indefinitely', async () => {
+    const qcDb = makeFakeQcDb({ projects: [{ id: 'PRJ-01', code: 'NTA', name: 'Nature Park Hotel' }] });
+    const failureModel = makeFakeQcSyncFailureModel();
+    const { syncDprToQcViaApi } = loadSyncToQcWithFakes({ qcDb, failureModel });
+    process.env.QC_API_BASE_URL = 'https://qc.example.test';
+    process.env.VMS_SYNC_SECRET = 'test-secret';
+    let capturedSignal = null;
+    stubFetch(async (url, opts) => {
+      capturedSignal = opts.signal;
+      return { ok: true, status: 200, json: async () => ({ ok: true, created: true }) };
+    });
+    try {
+      await syncDprToQcViaApi({ _id: 'jjj000', projectName: 'Nature Park Hotel', workEntries: [] });
+      assert.ok(capturedSignal instanceof AbortSignal, 'fetch must be called with an AbortSignal');
+      assert.strictEqual(capturedSignal.aborted, false, 'the 10s timeout must not have already elapsed for a fast, successful call');
+    } finally {
+      restoreFetch();
+      delete process.env.QC_API_BASE_URL;
+      delete process.env.VMS_SYNC_SECRET;
+    }
+  });
+
+  await test('syncDprToQcViaApi — a timeout (AbortSignal fires) is caught, logged as retriable, never thrown, never falsely reports success', async () => {
+    const qcDb = makeFakeQcDb({ projects: [{ id: 'PRJ-01', code: 'NTA', name: 'Nature Park Hotel' }] });
+    const failureModel = makeFakeQcSyncFailureModel();
+    const { syncDprToQcViaApi } = loadSyncToQcWithFakes({ qcDb, failureModel });
+    process.env.QC_API_BASE_URL = 'https://qc.example.test';
+    process.env.VMS_SYNC_SECRET = 'test-secret';
+    // Simulates exactly what Node's fetch throws when an AbortSignal.timeout
+    // fires mid-request — a DOMException named "TimeoutError", not a plain
+    // Error. The call must still be caught and logged like any other
+    // failure, not crash or report a false success.
+    stubFetch(async () => { throw new DOMException('The operation timed out.', 'TimeoutError'); });
+    try {
+      await assert.doesNotReject(() => syncDprToQcViaApi({ _id: 'kkk111', projectName: 'Nature Park Hotel', workEntries: [] }));
+      assert.strictEqual(qcDb._store.dpr.length, 0, 'a timed-out call must never be treated as a successful insert');
+      assert.strictEqual(failureModel._docs.length, 1);
+      assert.strictEqual(failureModel._docs[0].type, 'dpr');
+      assert.ok(failureModel._docs[0].reason.includes('timed out') || failureModel._docs[0].reason.includes('TimeoutError'));
+      assert.ok(failureModel._docs[0].resolvedAt === null || failureModel._docs[0].resolvedAt === undefined, 'logged as still-unresolved, i.e. retriable');
+    } finally {
+      restoreFetch();
+      delete process.env.QC_API_BASE_URL;
+      delete process.env.VMS_SYNC_SECRET;
+    }
+  });
+
+  await test('syncDprToQcViaApi — after a logged timeout failure, a subsequent successful retry clears it (retry recovery intact)', async () => {
+    const qcDb = makeFakeQcDb({ projects: [{ id: 'PRJ-01', code: 'NTA', name: 'Nature Park Hotel' }] });
+    const failureModel = makeFakeQcSyncFailureModel();
+    failureModel._docs.push({ type: 'dpr', sourceId: 'lll222', reason: 'The operation timed out.', resolvedAt: null, attempts: 1 });
+    const { syncDprToQcViaApi } = loadSyncToQcWithFakes({ qcDb, failureModel });
+    process.env.QC_API_BASE_URL = 'https://qc.example.test';
+    process.env.VMS_SYNC_SECRET = 'test-secret';
+    stubFetch(async () => ({ ok: true, status: 200, json: async () => ({ ok: true, created: true }) }));
+    try {
+      await syncDprToQcViaApi({ _id: 'lll222', projectName: 'Nature Park Hotel', workEntries: [] });
+      // API mode never writes to qcDb directly — only the HTTP call does
+      // (confirmed by the "never writes to Mongo directly" test above) — so
+      // the thing to verify here is the failure getting cleared, not qcDb.
+      assert.ok(failureModel._docs[0].resolvedAt instanceof Date, 'the earlier timeout failure is now marked resolved');
+    } finally {
+      restoreFetch();
+      delete process.env.QC_API_BASE_URL;
+      delete process.env.VMS_SYNC_SECRET;
+    }
+  });
+
+  await test('syncDprToQcViaApi — a hung QC request times out, is caught and logged, and never reports success', async () => {
+    const qcDb = makeFakeQcDb({ projects: [{ id: 'PRJ-01', code: 'NTA', name: 'Nature Park Hotel' }] });
+    const failureModel = makeFakeQcSyncFailureModel();
+    const { syncDprToQcViaApi } = loadSyncToQcWithFakes({ qcDb, failureModel });
+    process.env.QC_API_BASE_URL = 'https://qc.example.test';
+    process.env.VMS_SYNC_SECRET = 'test-secret';
+    // Simulates exactly what AbortSignal.timeout(10000) does to fetch() when
+    // QC hangs instead of erroring — the real code's signal isn't hit at all
+    // here (10s is too slow for a test run), this just reproduces fetch's
+    // own rejection shape so the error-propagation path is verified without
+    // actually waiting out a real timeout.
+    stubFetch(async () => {
+      const err = new Error('The operation was aborted due to timeout');
+      err.name = 'TimeoutError';
+      throw err;
+    });
+    try {
+      await assert.doesNotReject(() => syncDprToQcViaApi({ _id: 'lll222', projectName: 'Nature Park Hotel', workEntries: [] }));
+      assert.strictEqual(qcDb._store.dpr.length, 0, 'a timed-out call must never be treated as a successful sync');
+      assert.strictEqual(failureModel._docs.length, 1);
+      assert.strictEqual(failureModel._docs[0].resolvedAt, null, 'stays open/unresolved — it genuinely failed');
+      assert.ok(/abort|timeout/i.test(failureModel._docs[0].reason), 'logged reason should be identifiable as a timeout, not a mystery failure');
+    } finally {
+      restoreFetch();
+      delete process.env.QC_API_BASE_URL;
+      delete process.env.VMS_SYNC_SECRET;
+    }
+  });
+
+  await test('syncDprToQcViaApi — a later retry after a timeout succeeds and clears the logged failure (retry recovery intact)', async () => {
+    const qcDb = makeFakeQcDb({ projects: [{ id: 'PRJ-01', code: 'NTA', name: 'Nature Park Hotel' }] });
+    const failureModel = makeFakeQcSyncFailureModel();
+    failureModel._docs.push({ type: 'dpr', sourceId: 'lll222', reason: 'QC API timed out after 10000ms', resolvedAt: null, attempts: 1 });
+    const { syncDprToQcViaApi } = loadSyncToQcWithFakes({ qcDb, failureModel });
+    process.env.QC_API_BASE_URL = 'https://qc.example.test';
+    process.env.VMS_SYNC_SECRET = 'test-secret';
+    stubFetch(async () => ({ ok: true, status: 200, json: async () => ({ ok: true, created: true }) }));
+    try {
+      await syncDprToQcViaApi({ _id: 'lll222', projectName: 'Nature Park Hotel', workEntries: [] });
+      assert.ok(failureModel._docs[0].resolvedAt instanceof Date, 'a successful retry after a timeout must clear the logged failure');
+    } finally {
+      restoreFetch();
+      delete process.env.QC_API_BASE_URL;
+      delete process.env.VMS_SYNC_SECRET;
+    }
+  });
+
+  await test('syncDprToQc — VMS_SYNC_MODE=api routes through the API path, not the direct-db insert', async () => {
+    const qcDb = makeFakeQcDb({ projects: [{ id: 'PRJ-01', code: 'NTA', name: 'Nature Park Hotel' }] });
+    const failureModel = makeFakeQcSyncFailureModel();
+    process.env.VMS_SYNC_MODE = 'api';
+    process.env.QC_API_BASE_URL = 'https://qc.example.test';
+    process.env.VMS_SYNC_SECRET = 'test-secret';
+    let fetchCalled = false;
+    stubFetch(async () => { fetchCalled = true; return { ok: true, status: 200, json: async () => ({ ok: true, created: true }) }; });
+    try {
+      const { syncDprToQc } = loadSyncToQcWithFakes({ qcDb, failureModel });
+      await syncDprToQc({ _id: 'jjj000', projectName: 'Nature Park Hotel', workEntries: [] });
+      assert.ok(fetchCalled, 'VMS_SYNC_MODE=api must route the default entry point through the API, not Mongo');
+      assert.strictEqual(qcDb._store.dpr.length, 0, 'no direct insert when mode is api');
+    } finally {
+      restoreFetch();
+      delete process.env.VMS_SYNC_MODE;
+      delete process.env.QC_API_BASE_URL;
+      delete process.env.VMS_SYNC_SECRET;
+    }
+  });
+
+  await test('syncDprToQc — default VMS_SYNC_MODE (unset) still uses the direct-db path, unchanged (rollback safety)', async () => {
+    const qcDb = makeFakeQcDb({ projects: [{ id: 'PRJ-01', code: 'NTA', name: 'Nature Park Hotel' }] });
+    const failureModel = makeFakeQcSyncFailureModel();
+    assert.strictEqual(process.env.VMS_SYNC_MODE, undefined, 'test isolation check');
+    let fetchCalled = false;
+    stubFetch(async () => { fetchCalled = true; return { ok: true, status: 200, json: async () => ({}) }; });
+    try {
+      const { syncDprToQc } = loadSyncToQcWithFakes({ qcDb, failureModel });
+      await syncDprToQc({ _id: 'kkk111', projectName: 'Nature Park Hotel', workEntries: [] });
+      assert.strictEqual(fetchCalled, false, 'default mode must never call the API');
+      assert.strictEqual(qcDb._store.dpr.length, 1, 'default mode still inserts directly, exactly as before Phase 2');
+    } finally {
+      restoreFetch();
+    }
+  });
+
   // ── Report ──
   console.log('');
   for (const r of results) {

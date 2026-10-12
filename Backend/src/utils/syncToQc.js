@@ -1,6 +1,16 @@
 const { getQcDb } = require('./qcMongoClient');
 const QcSyncFailure = require('../models/QcSyncFailure');
 
+// Phase 2 — an alternative to this file's long-standing direct-Mongo DPR
+// write: POST to a QC-owned HTTP endpoint instead, authenticated the same
+// way QC's own AUTOMATION_SECRET/BACKUP_CRON_SECRET endpoints already are
+// (a shared secret header, see project-quality/backend/server.js's
+// /api/integrations/vms/dpr). Defaults to the original direct-db path —
+// this is an explicit, reversible switch, not a replacement: flipping it
+// back requires no code change and no data migration, since both paths
+// write the identical shape to the identical id.
+const VMS_SYNC_MODE = (process.env.VMS_SYNC_MODE || 'direct-db').trim();
+
 // Pushes a single, just-created VMS Daily Progress Report or Drawing Request
 // straight into QC's `dpr`/`drawingRequests` collections, live — a stopgap
 // for the migration period while DRIs are still filing on VMS instead of QC
@@ -69,6 +79,64 @@ function makeId(prefix, sourceId) {
   return `${prefix}-VMS-${sourceId}`;
 }
 
+// Shared by both the direct-db write (syncDprToQc) and the API write
+// (syncDprToQcViaApi) so the two can never silently drift apart in field
+// mapping — exactly the parity Phase 2's audit required.
+function buildDprDoc(id, report, project, user) {
+  const workEntries = Array.isArray(report.workEntries)
+    ? report.workEntries.map((entry) => ({
+        category: entry.workType || entry.category || 'Other',
+        generalPhotos: Array.isArray(entry.images) ? entry.images.filter((p) => p && p.url).map((p) => ({ url: p.url, publicId: p.publicId || null })) : [],
+        beforePhotos: Array.isArray(entry.beforeImages) ? entry.beforeImages.filter((p) => p && p.url).map((p) => ({ url: p.url, publicId: p.publicId || null })) : [],
+        afterPhotos: Array.isArray(entry.afterImages) ? entry.afterImages.filter((p) => p && p.url).map((p) => ({ url: p.url, publicId: p.publicId || null })) : [],
+        ...(typeof entry.qty === 'number' ? { qty: entry.qty } : {}),
+        ...(entry.unit ? { unit: entry.unit } : {}),
+      }))
+    : [];
+
+  return {
+    id,
+    projectId: project.id,
+    projectName: project.name,
+    date: report.date ? new Date(report.date).toISOString() : null,
+    vendorCode: report.vendorCode || '',
+    vendorName: report.vendorName || '',
+    shift: report.shiftType === 'Night' ? 'Night' : 'Day',
+    labourCount: Number(report.labourCount) || 0,
+    workEntries,
+    submittedByUserId: user?.id || null,
+    submittedByName: user?.name || report.driName || '',
+    isPublic: Boolean(report.isPublicSubmission),
+  };
+}
+
+// Phase 2 API write — same auth convention as QC's other unattended-caller
+// endpoints (AUTOMATION_SECRET/BACKUP_CRON_SECRET): a shared secret header,
+// no session. Returns `{created}` on success; throws on anything else so
+// the caller's existing logFailure/retry plumbing (built for the direct-db
+// path) keeps working unchanged for this path too.
+async function postDprToQcApi(doc) {
+  const baseUrl = (process.env.QC_API_BASE_URL || '').trim().replace(/\/+$/, '');
+  const secret = process.env.VMS_SYNC_SECRET || '';
+  if (!baseUrl) throw new Error('QC_API_BASE_URL is not configured');
+  if (!secret) throw new Error('VMS_SYNC_SECRET is not configured');
+
+  // Without a timeout, an unreachable/black-holed QC_API_BASE_URL leaves
+  // this fire-and-forget call hanging far longer than acceptable (Node's
+  // own TCP-level timeout is often minutes) before logFailure ever runs —
+  // AbortSignal.timeout rejects this fetch (and lets it fall through to
+  // syncDprCore's existing catch, same as any other error) well before that.
+  const res = await fetch(`${baseUrl}/api/integrations/vms/dpr`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Vms-Sync-Secret': secret },
+    body: JSON.stringify(doc),
+    signal: AbortSignal.timeout(10000),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(`QC API responded ${res.status}: ${body.error || 'unknown error'}`);
+  return { created: Boolean(body.created) };
+}
+
 // Mirrors a failed/unmapped sync into QcSyncFailure so Phase 1's retry path
 // (scripts/vms-to-qc-migrate.js --retry-failures) has a targeted list to
 // re-attempt instead of a full rescan. Best-effort — this logging must never
@@ -97,7 +165,13 @@ async function clearFailure(type, sourceId) {
   }
 }
 
-async function syncDprToQc(report) {
+// Shared implementation for both the direct-db and API DPR write paths —
+// identical resolution (existing-id check, project/user lookup), differing
+// only in how the final doc gets written. `mode` overrides VMS_SYNC_MODE
+// for a single call — used by syncDprToQcViaApi below so it always writes
+// via the API regardless of the configured default, exactly as its name
+// promises, independent of whatever VMS_SYNC_MODE currently is.
+async function syncDprCore(report, mode) {
   const sourceId = String(report._id);
   let qcDb;
   try {
@@ -127,37 +201,33 @@ async function syncDprToQc(report) {
       return;
     }
     const user = await resolveUser(qcDb, report.driName);
+    const doc = buildDprDoc(id, report, project, user);
 
-    const workEntries = Array.isArray(report.workEntries)
-      ? report.workEntries.map((entry) => ({
-          category: entry.workType || entry.category || 'Other',
-          generalPhotos: Array.isArray(entry.images) ? entry.images.filter((p) => p && p.url).map((p) => ({ url: p.url, publicId: p.publicId || null })) : [],
-          beforePhotos: Array.isArray(entry.beforeImages) ? entry.beforeImages.filter((p) => p && p.url).map((p) => ({ url: p.url, publicId: p.publicId || null })) : [],
-          afterPhotos: Array.isArray(entry.afterImages) ? entry.afterImages.filter((p) => p && p.url).map((p) => ({ url: p.url, publicId: p.publicId || null })) : [],
-          ...(typeof entry.qty === 'number' ? { qty: entry.qty } : {}),
-          ...(entry.unit ? { unit: entry.unit } : {}),
-        }))
-      : [];
-
-    await qcDb.collection('dpr').insertOne({
-      id,
-      projectId: project.id,
-      projectName: project.name,
-      date: report.date ? new Date(report.date).toISOString() : null,
-      vendorCode: report.vendorCode || '',
-      vendorName: report.vendorName || '',
-      shift: report.shiftType === 'Night' ? 'Night' : 'Day',
-      labourCount: Number(report.labourCount) || 0,
-      workEntries,
-      submittedByUserId: user?.id || null,
-      submittedByName: user?.name || report.driName || '',
-      isPublic: Boolean(report.isPublicSubmission),
-    });
+    if (mode === 'api') {
+      await postDprToQcApi(doc);
+    } else {
+      await qcDb.collection('dpr').insertOne(doc);
+    }
     await clearFailure('dpr', sourceId);
   } catch (err) {
     console.error('[syncToQc] failed to sync DPR', report._id, err.message);
     await logFailure('dpr', String(report._id), err.message);
   }
+}
+
+// The call site every controller already uses (dailyProgressReportController.js)
+// — unchanged name and signature, so no controller edit was needed for
+// Phase 2. Picks direct-db or api per VMS_SYNC_MODE (default 'direct-db').
+async function syncDprToQc(report) {
+  return syncDprCore(report, VMS_SYNC_MODE);
+}
+
+// Phase 2 — always writes via QC's new HTTP endpoint regardless of
+// VMS_SYNC_MODE, for the dual-write verification window described in the
+// Phase 2 rollout plan (call this alongside syncDprToQc, compare results,
+// before flipping VMS_SYNC_MODE=api as the default).
+async function syncDprToQcViaApi(report) {
+  return syncDprCore(report, 'api');
 }
 
 async function syncDrawingRequestToQc(request) {
@@ -241,10 +311,12 @@ async function syncDrawingRequestToQc(request) {
 
 module.exports = {
   syncDprToQc,
+  syncDprToQcViaApi,
   syncDrawingRequestToQc,
   // Exported for scripts/tests/qcSync.test.js only — pure helpers, no
   // behavior change to the two sync functions above.
   normalizeProjectName,
   makeId,
   resolveProject,
+  buildDprDoc,
 };
