@@ -263,7 +263,7 @@ export default function ReviewDrawer({
             renderActionSection={(bill) =>
               bill.status === "l1-approved" ? (
                 <div className="border border-indigo-200 dark:border-indigo-500/30 rounded-lg p-3.5 mt-4 bg-indigo-50 dark:bg-indigo-500/10">
-                  <div className="font-bold text-[13px] text-indigo-700 dark:text-indigo-300 mb-2">L2 Director Approval</div>
+                  <div className="font-bold text-[13px] text-indigo-700 dark:text-indigo-300 mb-2">L2 Approval</div>
                   <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">
                     This is the last internal sign-off — approving sends this bill straight to TMS for payment.
                   </div>

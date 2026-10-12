@@ -262,6 +262,11 @@ const runningBillSchema = new mongoose.Schema(
     // AGM then GM have — the same order a progress-driven bill already goes
     // through, just happening here instead of on a separate BillRequest.
     manualApprovalStatus: { type: String, enum: ['pending', 'pending-gm', 'pending-l3', 'pending-l4', 'approved', 'rejected'], default: 'approved' },
+    // One-off exception to this bill's department's usual requiredApprovals
+    // (e.g. a Civil bill that only needs AGM+GM, not the department's normal
+    // 3rd L3 level) — null/unset for every bill today, which keeps the
+    // department config as the sole source of truth exactly as before.
+    requiredApprovalsOverride: { type: Number, enum: [1, 2, 3, 4], default: null },
     manualAgmApprovedBy:  { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     manualAgmApprovedAt:  { type: Date },
     manualGmApprovedBy:   { type: mongoose.Schema.Types.ObjectId, ref: 'User' },

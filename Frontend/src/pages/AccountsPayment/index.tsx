@@ -700,7 +700,7 @@ export default function AccountsPayment() {
         remarks: l1Remarks || undefined,
       });
       updateBillInList(normalizeId(res.data.bill) as unknown as Bill);
-      toast.success("L1 approved — ready for L2 Director approval");
+      toast.success("L1 approved — ready for L2 approval");
     } catch (err: unknown) {
       const e = err as { response?: { data?: { message?: string } } };
       toast.error(e?.response?.data?.message || "L1 approval failed");
@@ -717,13 +717,13 @@ export default function AccountsPayment() {
         remarks: l2Remarks || undefined,
       });
       updateBillInList(normalizeId(res.data.bill) as unknown as Bill);
-      toast.success("L2 Director approved — sending to TMS…");
+      toast.success("L2 approved — sending to TMS…");
       // Fires right after a successful L2 approval so it still feels like one
       // click, while the two backend actions stay independently retryable.
       await handleSendToTms(drawerBillId);
     } catch (err: unknown) {
       const e = err as { response?: { data?: { message?: string } } };
-      toast.error(e?.response?.data?.message || "L2 Director approval failed");
+      toast.error(e?.response?.data?.message || "L2 approval failed");
     } finally {
       setL2Saving(false);
     }
@@ -1010,7 +1010,7 @@ export default function AccountsPayment() {
         const guard = sameActor(user, bill.l1ApprovedBy) ? "You gave L1 approval — a different user must give L2 approval." : undefined;
         return (
           <div className={sectionPanelClass}>
-            <div className="font-bold text-[13px] text-indigo-700 mb-2">L2 Director Approval</div>
+            <div className="font-bold text-[13px] text-indigo-700 mb-2">L2 Approval</div>
             {guard && <div className="text-xs text-amber-600 mb-2">⚠ {guard}</div>}
             <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">
               This is the last internal sign-off — approving sends this bill straight to TMS for payment.
@@ -1021,12 +1021,12 @@ export default function AccountsPayment() {
       }
 
       case "approved": {
-        if (!canRetryTms) return <MutedNote text="L2 Director approved — awaiting handoff to TMS." />;
+        if (!canRetryTms) return <MutedNote text="L2 approved — awaiting handoff to TMS." />;
         return (
           <div className={sectionPanelClass}>
             <div className="font-bold text-[13px] text-purple-700 mb-2">Ready for TMS</div>
             <div className="text-xs text-gray-500 dark:text-gray-400 mb-2.5">
-              L2 Director approved this bill — send it to the Transaction Management System to process the payment.
+              L2 approved this bill — send it to the Transaction Management System to process the payment.
             </div>
             {bill.tmsLastError && (
               <Alert
@@ -1082,7 +1082,7 @@ export default function AccountsPayment() {
       case "l1-approved": {
         if (!canL2Director) return null;
         const guard = sameActor(user, bill.l1ApprovedBy) ? "You gave L1 approval — a different user must give L2 approval." : undefined;
-        return { label: "L2 Director Approve & Send to TMS", color: "blue", onClick: handleL2DirectorApprove, loading: l2Saving, disabled: !!guard, tooltip: guard };
+        return { label: "L2 Approve & Send to TMS", color: "blue", onClick: handleL2DirectorApprove, loading: l2Saving, disabled: !!guard, tooltip: guard };
       }
       case "approved":
         return canRetryTms ? { label: bill.tmsLastError ? "Retry Send to TMS" : "Send to TMS", color: "purple", onClick: () => handleSendToTms(), loading: sendTmsSaving } : null;
@@ -1104,7 +1104,7 @@ export default function AccountsPayment() {
       <PageHeader
         icon={Wallet}
         title="Accounts Payment"
-        subtitle="Verification → L1 → L2 Director — then handed off to TMS for payment"
+        subtitle="Verification → L1 → L2 — then handed off to TMS for payment"
         actions={
           <div className="flex items-center gap-2">
             <NxBtn color="secondary" label="Ledger" onClick={() => navigate("/ledger?from=accounts-payment")} />

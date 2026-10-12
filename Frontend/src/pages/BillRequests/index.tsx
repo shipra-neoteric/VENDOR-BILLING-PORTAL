@@ -2157,8 +2157,8 @@ export default function BillApproval() {
               <Thead>
                 <Tr>
                   <Th>Verification</Th>
-                  <Th>L1 AGM</Th>
-                  <Th>L2 Director</Th>
+                  <Th>L1</Th>
+                  <Th>L2</Th>
                   <Th>Sent to TMS</Th>
                   <Th>Paid</Th>
                 </Tr>

@@ -618,8 +618,8 @@ export default function Billing() {
               <Table>
                 <Thead>
                   <Tr>
-                    <Th>L1 (AGM)</Th>
-                    <Th>L2 (GM)</Th>
+                    <Th>L1</Th>
+                    <Th>L2</Th>
                     <Th>L3</Th>
                     <Th>L4</Th>
                   </Tr>
@@ -643,8 +643,8 @@ export default function Billing() {
                 <Thead>
                   <Tr>
                     <Th>Verification</Th>
-                    <Th>L1 AGM</Th>
-                    <Th>L2 Director</Th>
+                    <Th>L1</Th>
+                    <Th>L2</Th>
                     <Th>Sent to TMS</Th>
                     <Th>Paid</Th>
                   </Tr>

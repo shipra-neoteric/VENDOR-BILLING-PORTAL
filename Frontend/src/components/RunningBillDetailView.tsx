@@ -118,7 +118,7 @@ export function buildSteps(bill: RunningBillDetail): StepItem[] {
   const meta = [
     { title: "Verification", by: bill.verificationBy?.name, at: bill.verificationAt },
     { title: "L1", by: bill.l1ApprovedBy?.name, at: bill.l1ApprovedAt },
-    { title: "L2 Director", by: bill.l2ApprovedBy?.name, at: bill.l2ApprovedAt },
+    { title: "L2", by: bill.l2ApprovedBy?.name, at: bill.l2ApprovedAt },
     { title: "Sent to TMS", by: undefined, at: bill.tmsSentAt },
     { title: "Paid", by: undefined, at: bill.tmsCallbackReceivedAt },
   ];

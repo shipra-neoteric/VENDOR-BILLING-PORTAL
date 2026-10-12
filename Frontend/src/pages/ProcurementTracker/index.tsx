@@ -170,7 +170,7 @@ export default function ProcurementTracker() {
     <div>
       <PageHeader
         title="Procurement Tracker"
-        subtitle="Track every bill's Verification → L1 AGM → L2 Director → TMS Payment lifecycle in one place"
+        subtitle="Track every bill's Verification → L1 → L2 → TMS Payment lifecycle in one place"
         icon={ClipboardList}
         onBack={cameFromAccountsPayment ? () => navigate("/accounts-payment") : undefined}
         actions={<NxBtn color="secondary" label="Accounts Payment" onClick={() => navigate("/accounts-payment")} />}

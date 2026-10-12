@@ -948,7 +948,7 @@ exports.manualAgmApprove = asyncHandler(async (req, res) => {
   // manualGmApproveHandler for this — that used to also stamp a phantom
   // bill.manualGmApprovedBy/'manual-gm' history entry onto this same AGM's
   // action, which is wrong for a department with no real L2 stage at all.
-  const isFinal = approvalConfig?.requiredApprovals === 1;
+  const isFinal = (bill.requiredApprovalsOverride ?? approvalConfig?.requiredApprovals) === 1;
   bill.manualApprovalStatus = isFinal ? 'approved' : 'pending-gm';
   // This department's chain ends here — swap the "BR-####" placeholder
   // (see createBill's own comment) for a real "RA-####" number now that the
@@ -1005,7 +1005,7 @@ async function manualGmApproveHandler(req, res) {
   bill.manualGmApprovedAt = new Date();
   pushHistory(bill, 'manual-gm', 'approved', req.user._id, req.body.remarks || '');
 
-  const totalLevels = approvalConfig?.requiredApprovals ?? 2;
+  const totalLevels = bill.requiredApprovalsOverride ?? approvalConfig?.requiredApprovals ?? 2;
   if (totalLevels >= 3) {
     bill.manualApprovalStatus = 'pending-l3';
     await bill.save();
@@ -1065,7 +1065,7 @@ async function manualL3ApproveHandler(req, res) {
   bill.manualL3ApprovedAt = new Date();
   pushHistory(bill, 'manual-l3', 'approved', req.user._id, req.body.remarks || '');
 
-  const totalLevels = approvalConfig?.requiredApprovals ?? 2;
+  const totalLevels = bill.requiredApprovalsOverride ?? approvalConfig?.requiredApprovals ?? 2;
   if (totalLevels >= 4) {
     bill.manualApprovalStatus = 'pending-l4';
     await bill.save();
