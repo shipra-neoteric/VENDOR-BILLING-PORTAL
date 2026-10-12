@@ -4,8 +4,10 @@ import axios from "axios";
 import dayjs from "dayjs";
 import toast from "react-hot-toast";
 import WorkCategoryChecklist from "../../components/WorkCategoryChecklist";
-import { firstMissingProgressField, MIN_IMAGES_PER_CATEGORY } from "../../shared/constants/dailyProgressReportOptions";
+import { MIN_IMAGES_PER_CATEGORY } from "../../shared/constants/dailyProgressReportOptions";
 import type { DailyProgressReportFormValues, WorkEntry } from "../../shared/constants/dailyProgressReportOptions";
+import type { FormFieldConfig } from "../../shared/constants/formConfig";
+import { uploadToCloudinary } from "../../utils/cloudinaryUpload";
 import Btn from "../../ui/Btn";
 import Card from "../../ui/Card";
 import Field from "../../ui/Field";
@@ -31,28 +33,58 @@ const emptyForm: DailyProgressReportFormValues = {
 export default function PublicDailyProgressReportForm() {
   const [projects, setProjects] = useState<Lookup[]>([]);
   const [contractors, setContractors] = useState<ContractorLookup[]>([]);
+  const [fields, setFields] = useState<FormFieldConfig[]>([]);
+  const [customValues, setCustomValues] = useState<Record<string, string | number>>({});
+  const [uploadingKey, setUploadingKey] = useState<string | null>(null);
   const [loading, setLoading]   = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted]   = useState(false);
   const [form, setForm] = useState(emptyForm);
 
   useEffect(() => {
-    Promise.all([pub.get("/projects"), pub.get("/contractors")])
-      .then(([p, c]) => {
+    Promise.all([pub.get("/projects"), pub.get("/contractors"), pub.get("/form-config/daily-progress-report")])
+      .then(([p, c, fc]) => {
         setProjects(p.data.projects || []);
         setContractors(c.data.contractors || []);
+        setFields(fc.data.fields || []);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
 
+  // Admin-configured fields are optional — if the config call ever fails or
+  // hasn't loaded, every built-in field falls back to "required", matching
+  // this form's original, always-required behavior before Form Builder
+  // existed, rather than silently becoming optional.
+  const fieldByKey = (key: string) => fields.find((f) => f.key === key);
+  const isHidden = (key: string) => fieldByKey(key)?.hidden ?? false;
+  const isRequired = (key: string) => fieldByKey(key)?.required ?? true;
+  const customFields = fields.filter((f) => f.type !== "built-in" && !f.hidden);
+
   function setEntries(workEntries: WorkEntry[]) {
     setForm(f => ({ ...f, workEntries }));
   }
 
+  async function handleCustomFileChange(field: FormFieldConfig, file: File | null) {
+    if (!file) return;
+    setUploadingKey(field.key);
+    try {
+      const url = await uploadToCloudinary(pub, file, "dpr-custom-fields", file.name);
+      setCustomValues((v) => ({ ...v, [field.key]: url }));
+    } catch {
+      toast.error(`Failed to upload "${field.label}"`);
+    } finally {
+      setUploadingKey(null);
+    }
+  }
+
   async function onSubmit() {
-    const missing = firstMissingProgressField(form);
-    if (missing) return toast.error(`Select ${missing}`);
+    if (!isHidden("projectId") && isRequired("projectId") && !form.projectId) return toast.error("Select a project");
+    if (!isHidden("vendorCode") && isRequired("vendorCode") && !form.vendorCode) return toast.error("Select a contractor");
+    if (!isHidden("driName") && isRequired("driName") && !form.driName) return toast.error("Enter the DRI name");
+    if (!isHidden("date") && isRequired("date") && !form.date) return toast.error("Select a date");
+    if (!isHidden("shiftType") && isRequired("shiftType") && !form.shiftType) return toast.error("Select a shift type");
+    if (!isHidden("labourCount") && isRequired("labourCount") && form.labourCount === "") return toast.error("Enter the number of labourers");
     if (form.workEntries.length === 0) return toast.error("Check at least one work type");
     // No labour on site that day means no work photos to take either — the
     // mandatory-photo rule only makes sense once there's actually a crew
@@ -61,10 +93,15 @@ export default function PublicDailyProgressReportForm() {
       const short = form.workEntries.find(e => e.images.length < MIN_IMAGES_PER_CATEGORY);
       if (short) return toast.error(`"${short.workType}" needs at least ${MIN_IMAGES_PER_CATEGORY} photo${MIN_IMAGES_PER_CATEGORY === 1 ? "" : "s"}`);
     }
+    for (const f of customFields) {
+      if (f.required && (customValues[f.key] === undefined || customValues[f.key] === "")) {
+        return toast.error(`"${f.label}" is required`);
+      }
+    }
 
     setSubmitting(true);
     try {
-      await pub.post("/daily-progress-reports", form);
+      await pub.post("/daily-progress-reports", { ...form, customFields: customValues });
       setSubmitted(true);
     } catch {
       // axios interceptor shows the error toast
@@ -75,6 +112,7 @@ export default function PublicDailyProgressReportForm() {
 
   function reset() {
     setForm(emptyForm);
+    setCustomValues({});
     setSubmitted(false);
   }
 
@@ -121,54 +159,117 @@ export default function PublicDailyProgressReportForm() {
 
         <Card className="mb-5">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <SField
-              label="Project Name" required placeholder="Choose"
-              value={form.projectId || null}
-              onChange={v => setForm(f => ({ ...f, projectId: v }))}
-              options={projects.map(p => ({ label: p.name, value: p._id }))}
-            />
-            <SField
-              label="Contractor Name" required placeholder="Choose"
-              value={form.vendorCode || null}
-              onChange={v => setForm(f => ({ ...f, vendorCode: v }))}
-              options={contractors.map(c => ({
-                label: c.companyName || c.name || "",
-                value: c.vendorCode || c.vendorId || "",
-                vendorId: c.vendorId || c.vendorCode || "",
-                name: c.name || c.companyName || "",
-                searchText: `${c.companyName || c.name || ""} ${c.vendorCode || ""} ${c.vendorId || ""}`.trim(),
-              }))}
-              filterFn={(opt, search) => {
-                const s = search.toLowerCase().trim();
-                const contractorName = (opt.name || opt.label || "").toLowerCase();
-                const vendorId = (opt.vendorId || opt.vendorCode || opt.value || "").toLowerCase();
-                return contractorName.includes(s) || vendorId.includes(s);
-              }}
-            />
-            <Field
-              label="DRI Name" required placeholder="Type your name"
-              value={form.driName}
-              onChange={e => setForm(f => ({ ...f, driName: e.target.value }))}
-            />
-            <DatePicker
-              label="Date" value={form.date}
-              onChange={v => setForm(f => ({ ...f, date: v }))}
-              max={dayjs().format("YYYY-MM-DD")}
-            />
-            <SField
-              label="Shift Type" required placeholder="Choose"
-              value={form.shiftType || null}
-              onChange={v => setForm(f => ({ ...f, shiftType: v }))}
-              options={[{ label: "Day", value: "Day" }, { label: "Night", value: "Night" }]}
-            />
-            <Field
-              label="Number of Labourers" required type="number" min={0}
-              placeholder="e.g. 12"
-              value={form.labourCount}
-              onChange={e => setForm(f => ({ ...f, labourCount: e.target.value === "" ? "" : Number(e.target.value) }))}
-            />
+            {!isHidden("projectId") && (
+              <SField
+                label="Project Name" required={isRequired("projectId")} placeholder="Choose"
+                value={form.projectId || null}
+                onChange={v => setForm(f => ({ ...f, projectId: v }))}
+                options={projects.map(p => ({ label: p.name, value: p._id }))}
+              />
+            )}
+            {!isHidden("vendorCode") && (
+              <SField
+                label="Contractor Name" required={isRequired("vendorCode")} placeholder="Choose"
+                value={form.vendorCode || null}
+                onChange={v => setForm(f => ({ ...f, vendorCode: v }))}
+                options={contractors.map(c => ({
+                  label: c.companyName || c.name || "",
+                  value: c.vendorCode || c.vendorId || "",
+                  vendorId: c.vendorId || c.vendorCode || "",
+                  name: c.name || c.companyName || "",
+                  searchText: `${c.companyName || c.name || ""} ${c.vendorCode || ""} ${c.vendorId || ""}`.trim(),
+                }))}
+                filterFn={(opt, search) => {
+                  const s = search.toLowerCase().trim();
+                  const contractorName = (opt.name || opt.label || "").toLowerCase();
+                  const vendorId = (opt.vendorId || opt.vendorCode || opt.value || "").toLowerCase();
+                  return contractorName.includes(s) || vendorId.includes(s);
+                }}
+              />
+            )}
+            {!isHidden("driName") && (
+              <Field
+                label="DRI Name" required={isRequired("driName")} placeholder="Type your name"
+                value={form.driName}
+                onChange={e => setForm(f => ({ ...f, driName: e.target.value }))}
+              />
+            )}
+            {!isHidden("date") && (
+              <DatePicker
+                label="Date" value={form.date}
+                onChange={v => setForm(f => ({ ...f, date: v }))}
+                max={dayjs().format("YYYY-MM-DD")}
+              />
+            )}
+            {!isHidden("shiftType") && (
+              <SField
+                label="Shift Type" required={isRequired("shiftType")} placeholder="Choose"
+                value={form.shiftType || null}
+                onChange={v => setForm(f => ({ ...f, shiftType: v }))}
+                options={[{ label: "Day", value: "Day" }, { label: "Night", value: "Night" }]}
+              />
+            )}
+            {!isHidden("labourCount") && (
+              <Field
+                label="Number of Labourers" required={isRequired("labourCount")} type="number" min={0}
+                placeholder="e.g. 12"
+                value={form.labourCount}
+                onChange={e => setForm(f => ({ ...f, labourCount: e.target.value === "" ? "" : Number(e.target.value) }))}
+              />
+            )}
           </div>
         </Card>
+
+        {customFields.length > 0 && (
+          <Card className="mb-5">
+            <div className="font-bold text-sm text-[#1a1f2e] mb-3">Additional Details</div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {customFields.map((f) => {
+                if (f.type === "dropdown") {
+                  return (
+                    <SField
+                      key={f.key} label={f.label} required={f.required} placeholder="Choose"
+                      value={(customValues[f.key] as string) || null}
+                      onChange={(v) => setCustomValues((c) => ({ ...c, [f.key]: v }))}
+                      options={(f.options || []).map((o) => ({ label: o, value: o }))}
+                    />
+                  );
+                }
+                if (f.type === "date") {
+                  return (
+                    <DatePicker
+                      key={f.key} label={f.label}
+                      value={(customValues[f.key] as string) || ""}
+                      onChange={(v) => setCustomValues((c) => ({ ...c, [f.key]: v }))}
+                    />
+                  );
+                }
+                if (f.type === "file") {
+                  return (
+                    <div key={f.key}>
+                      <div className="text-xs font-semibold text-gray-500 mb-1.5">{f.label}{f.required ? " *" : ""}</div>
+                      <input
+                        type="file" accept="image/*"
+                        disabled={uploadingKey === f.key}
+                        onChange={(e) => handleCustomFileChange(f, e.target.files?.[0] || null)}
+                      />
+                      {uploadingKey === f.key && <div className="text-xs text-gray-400 mt-1">Uploading…</div>}
+                      {customValues[f.key] && uploadingKey !== f.key && <div className="text-xs text-emerald-600 mt-1">Uploaded</div>}
+                    </div>
+                  );
+                }
+                return (
+                  <Field
+                    key={f.key} label={f.label} required={f.required}
+                    type={f.type === "number" ? "number" : "text"}
+                    value={customValues[f.key] ?? ""}
+                    onChange={(e) => setCustomValues((c) => ({ ...c, [f.key]: f.type === "number" ? (e.target.value === "" ? "" : Number(e.target.value)) : e.target.value }))}
+                  />
+                );
+              })}
+            </div>
+          </Card>
+        )}
 
         <Card className="mb-5">
           <div className="font-bold text-sm text-[#1a1f2e] mb-3">Work Type — check what happened today</div>

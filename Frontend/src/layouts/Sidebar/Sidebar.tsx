@@ -87,7 +87,7 @@ const ADMIN_GROUPS: NavGroup[] = [
       // the underlying pages' own per-module permissions below.
       { name: "DRI Dashboard", path: "/dri-dashboard", icon: <Monitor className="w-4 h-4" />, moduleId: "dri-dashboard" },
       { name: "Masters", path: MASTERS_OVERVIEW_ITEM.path, icon: <ShieldCheck className="w-4 h-4" />, moduleId: "masters" },
-
+      { name: "Form Builder", path: "/form-builder", icon: <PenLine className="w-4 h-4" />, moduleId: "user-management" },
       { name: "Audit Logs", path: "/audit-logs", icon: <History className="w-4 h-4" />, moduleId: "audit-logs" },
     ],
   },

@@ -42,6 +42,14 @@ const dailyProgressReportSchema = new Schema(
 
     submittedBy:        { type: Schema.Types.ObjectId, ref: 'User', default: null },
     isPublicSubmission: { type: Boolean, default: false },
+
+    // Answers to admin-added custom fields (see FormConfig.js /
+    // formConfigController.js) — keyed by the field's own `key`
+    // ("custom_<id>"), value shape depends on the field's `type`
+    // (string for text/date/dropdown, number for number, a Cloudinary
+    // {url, publicId} object for file). Built-in fields never live here —
+    // they're still the real typed columns above.
+    customFields: { type: Schema.Types.Mixed, default: {} },
   },
   { timestamps: true }
 );

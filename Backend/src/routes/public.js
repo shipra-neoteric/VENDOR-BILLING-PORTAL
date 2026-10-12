@@ -17,6 +17,7 @@ const { createPublicReport: createLegacyProjectReport } = require('../controller
 const { createPublicReport: createLegacyLabourReport } = require('../controllers/dailyLabourReportController');
 const { createPublicReport: createProgressReport, getReportImage } = require('../controllers/dailyProgressReportController');
 const { createPublicRequest: createDrawingRequest } = require('../controllers/drawingRequestController');
+const { getPublicFormConfig } = require('../controllers/formConfigController');
 const { getWorkOrderQuotationContext, submitQuotation } = require('../controllers/contractorQuotationController');
 const { signUpload } = require('../utils/cloudinary');
 
@@ -36,6 +37,8 @@ const publicLimiter = rateLimit({
 router.use(publicLimiter);
 
 // ── Lookup lists (read-only, no auth) ──────────────────────────
+router.get('/form-config/:formType', getPublicFormConfig);
+
 router.get('/projects', asyncHandler(async (_req, res) => {
   const projects = await Project.find({ status: { $ne: 'completed' } }).select('_id name code projectType location').sort({ name: 1 }).lean();
   success(res, { projects });

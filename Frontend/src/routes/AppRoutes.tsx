@@ -38,6 +38,7 @@ const PublicForms       = lazy(() => import("../pages/PublicForms"));
 const SlaSettings       = lazy(() => import("../pages/SlaSettings"));
 const SlaSettingsDetail = lazy(() => import("../pages/SlaSettings/Detail"));
 const SlaDashboard      = lazy(() => import("../pages/SlaDashboard"));
+const FormBuilder       = lazy(() => import("../pages/FormBuilder"));
 const AuditLogs         = lazy(() => import("../pages/AuditLogs"));
 const AuditLogModule    = lazy(() => import("../pages/AuditLogs/ModuleLogs"));
 const DailyProgressReport = lazy(() => import("../pages/DailyProgressReport"));
@@ -149,6 +150,7 @@ function AdminRoutes() {
             <Route path="/sla-settings"    element={<SlaSettings />} />
             <Route path="/sla-settings/:id" element={<SlaSettingsDetail />} />
             <Route path="/sla-dashboard"   element={<SlaDashboard />} />
+            <Route path="/form-builder"    element={<FormBuilder />} />
             <Route path="/audit-logs"      element={<AuditLogs />} />
             <Route path="/audit-logs/:module" element={<AuditLogModule />} />
             <Route path="/backup"          element={<Backup />} />
