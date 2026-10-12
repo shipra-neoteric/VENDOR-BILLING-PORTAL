@@ -2,6 +2,12 @@ import { useRef, useState } from "react";
 import { Calendar as CalendarIcon, ChevronDown, ChevronLeft, ChevronRight, Check } from "lucide-react";
 import type { Dayjs } from "dayjs";
 import dayjs from "dayjs";
+// Monday-start weeks (ISO), not dayjs's own locale-default Sunday-start —
+// matches QC's own "This Week"/"Last Week" convention (shared/dateRange.ts
+// there computes Monday..Sunday explicitly), so the same preset resolves to
+// the same real date range on both systems instead of being off by a day.
+import isoWeek from "dayjs/plugin/isoWeek";
+dayjs.extend(isoWeek);
 import Calendar from "../ui/Calendar";
 import Btn from "../ui/Btn";
 import { useClickOutside } from "../ui/useClickOutside";
@@ -38,17 +44,17 @@ export function inDateRange(
   return true;
 }
 
-// One ISO-ish week per row (Sunday-start, matching this file's own prior
-// convention), most recent first, capped at the current week — a report
-// can't be run for a week that hasn't happened yet.
+// One ISO week per row (Monday-start — see the isoWeek import above),
+// most recent first, capped at the current week — a report can't be run
+// for a week that hasn't happened yet.
 function weeksForYear(year: number) {
   const weeks: { label: string; from: Dayjs; to: Dayjs; disabled: boolean }[] = [];
-  let cursor = dayjs(`${year}-01-01`).startOf("week");
+  let cursor = dayjs(`${year}-01-01`).startOf("isoWeek");
   const now = dayjs();
   let n = 1;
   while (cursor.year() <= year) {
     const from = cursor;
-    const to = cursor.endOf("week");
+    const to = cursor.endOf("isoWeek");
     if (from.year() === year || to.year() === year) {
       weeks.push({ label: `Wk ${n}`, from, to, disabled: from.isAfter(now, "day") });
       n++;
@@ -132,8 +138,8 @@ export default function DateRangeFilter({ onChange }: Props) {
       case "all":       return onChange(null, null);
       case "today":     return onChange(now.startOf("day"), now.endOf("day"));
       case "yesterday": { const y = now.subtract(1, "day"); return onChange(y.startOf("day"), y.endOf("day")); }
-      case "week":      return onChange(now.startOf("week"), now.endOf("week"));
-      case "lastweek":  { const s = now.subtract(1, "week"); return onChange(s.startOf("week"), s.endOf("week")); }
+      case "week":      return onChange(now.startOf("isoWeek"), now.endOf("isoWeek"));
+      case "lastweek":  { const s = now.subtract(1, "week"); return onChange(s.startOf("isoWeek"), s.endOf("isoWeek")); }
       case "month":     return onChange(now.startOf("month"), now.endOf("month"));
       default: return;
     }
