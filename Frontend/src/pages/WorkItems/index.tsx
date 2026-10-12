@@ -2715,9 +2715,9 @@ export default function WorkItems() {
                           <div>{record.projectName}</div>
                           {record.projectLocation && <div className="text-[11px] text-gray-400">{record.projectLocation}</div>}
                         </Td>
-                        <Td>{record.category || <span className="text-gray-300">—</span>}</Td>
-                        <Td>{record.vendorCode || <span className="text-gray-300">—</span>}</Td>
-                        <Td>{record.vendorName}</Td>
+                        <Td className="truncate" title={record.category || undefined}>{record.category || <span className="text-gray-300">—</span>}</Td>
+                        <Td className="truncate" title={record.vendorCode || undefined}>{record.vendorCode || <span className="text-gray-300">—</span>}</Td>
+                        <Td className="truncate" title={record.vendorName || undefined}>{record.vendorName}</Td>
                         <Td className="text-right font-bold">
                           {record.contractValue ? fmt(record.contractValue) : <span className="text-gray-300">—</span>}
                         </Td>
