@@ -2675,15 +2675,15 @@ export default function WorkItems() {
               <Table containerClassName="h-[650px] overflow-y-auto" className="min-w-[1050px]">
                 <Thead>
                   <Tr>
-                    <Th className="w-[9%]">WO No</Th>
-                    <Th className="w-[8%]">Date</Th>
+                    <Th className="w-[8%]">WO No</Th>
+                    <Th className="w-[7%]">Date</Th>
                     <Th className="w-[8%]">Project</Th>
-                    <Th className="w-[7%]">Category</Th>
-                    <Th className="w-[7%]">Vendor Code</Th>
-                    <Th className="w-[8%]">Company Name</Th>
-                    <Th className="text-right w-[10%]">Contract Value</Th>
-                    <Th className="w-[14%]">Status</Th>
-                    <Th className="w-[11%]">Step</Th>
+                    <Th className="w-[9%]">Category</Th>
+                    <Th className="w-[9%]">Vendor Code</Th>
+                    <Th className="w-[10%]">Company Name</Th>
+                    <Th className="text-right w-[9%]">Contract Value</Th>
+                    <Th className="w-[12%]">Status</Th>
+                    <Th className="w-[10%]">Step</Th>
                     <Th className="w-[7%]">Created</Th>
                     <Th className="w-[11%]">Actions</Th>
                   </Tr>
@@ -2715,9 +2715,9 @@ export default function WorkItems() {
                           <div>{record.projectName}</div>
                           {record.projectLocation && <div className="text-[11px] text-gray-400">{record.projectLocation}</div>}
                         </Td>
-                        <Td className="truncate" title={record.category || undefined}>{record.category || <span className="text-gray-300">—</span>}</Td>
-                        <Td className="truncate" title={record.vendorCode || undefined}>{record.vendorCode || <span className="text-gray-300">—</span>}</Td>
-                        <Td className="truncate" title={record.vendorName || undefined}>{record.vendorName}</Td>
+                        <Td className="truncate text-xs" title={record.category || undefined}>{record.category || <span className="text-gray-300">—</span>}</Td>
+                        <Td className="truncate text-xs" title={record.vendorCode || undefined}>{record.vendorCode || <span className="text-gray-300">—</span>}</Td>
+                        <Td className="truncate text-xs" title={record.vendorName || undefined}>{record.vendorName}</Td>
                         <Td className="text-right font-bold">
                           {record.contractValue ? fmt(record.contractValue) : <span className="text-gray-300">—</span>}
                         </Td>
