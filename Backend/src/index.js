@@ -80,7 +80,6 @@ app.use('/api/md/approvals', require('./routes/mdApprovals'));
 app.use('/api/users',        require('./routes/users'));
 app.use('/api/roles',        require('./routes/roles'));
 app.use('/api/approval-rules', require('./routes/approvalRules'));
-app.use('/api/form-config', require('./routes/formConfig'));
 app.use('/api/workflows',    require('./routes/workflows'));
 app.use('/api/dpr',          require('./routes/dpr'));
 app.use('/api/dashboard',    require('./routes/executiveDashboard'));

@@ -8,8 +8,6 @@ const { notifyDailyProgressReport } = require('../utils/n8nWebhook');
 const { flattenReportImages } = require('../utils/dprImages');
 const { syncDprToQc } = require('../utils/syncToQc');
 const { logAudit } = require('../utils/auditLog');
-const FormConfig = require('../models/FormConfig');
-const { DEFAULT_FIELDS } = require('./formConfigController');
 
 const REQUIRED_FIELDS = ['projectId', 'driName', 'date', 'vendorCode', 'shiftType', 'labourCount'];
 
@@ -37,57 +35,6 @@ async function buildReportDoc(body) {
       shiftType: body.shiftType,
       labourCount: Number(body.labourCount),
       workEntries: body.workEntries,
-    },
-    project,
-  };
-}
-
-// Public-form-only variant — the no-login form is the one this session's
-// Form Builder (FormConfig) actually drives, so its required-field rules
-// and custom-field support live here instead of in buildReportDoc, which
-// the authenticated DRI-dashboard form (createReport, above) still uses
-// completely unchanged — that form has no custom-field UI, so it must never
-// be blocked by a required custom field only the public form knows how to
-// collect.
-async function buildPublicReportDoc(body) {
-  const config = await FormConfig.findOne({ formType: 'daily-progress-report' }).lean();
-  const fields = config?.fields?.length ? config.fields : DEFAULT_FIELDS['daily-progress-report'];
-
-  for (const f of fields) {
-    if (!f.required || f.hidden) continue;
-    if (f.type === 'built-in') {
-      if (body[f.key] === undefined || body[f.key] === null || body[f.key] === '') {
-        return { error: `"${f.label}" is required` };
-      }
-    } else {
-      const value = body.customFields?.[f.key];
-      if (value === undefined || value === null || value === '') {
-        return { error: `"${f.label}" is required` };
-      }
-    }
-  }
-
-  const entriesError = workEntriesInvalidReason(body.workEntries);
-  if (entriesError) return { error: entriesError };
-
-  const project = await Project.findById(body.projectId).select('name slackChannelId slackWebhookUrl');
-  if (!project) return { error: 'Project not found' };
-
-  const contractor = await Contractor.findOne({ vendorCode: body.vendorCode }).select('companyName');
-  if (!contractor) return { error: 'Contractor not found for this vendor code' };
-
-  return {
-    doc: {
-      projectId: body.projectId,
-      projectName: project.name,
-      driName: body.driName || '',
-      date: body.date,
-      vendorCode: body.vendorCode,
-      vendorName: contractor.companyName,
-      shiftType: body.shiftType || '',
-      labourCount: Number(body.labourCount) || 0,
-      workEntries: body.workEntries,
-      customFields: body.customFields && typeof body.customFields === 'object' ? body.customFields : {},
     },
     project,
   };
@@ -121,7 +68,7 @@ exports.createReport = asyncHandler(async (req, res) => {
 
 // POST /api/public/daily-progress-reports — no auth
 exports.createPublicReport = asyncHandler(async (req, res) => {
-  const { doc, error, project } = await buildPublicReportDoc(req.body);
+  const { doc, error, project } = await buildReportDoc(req.body);
   if (error) return badRequest(res, error);
 
   const report = await DailyProgressReport.create({
