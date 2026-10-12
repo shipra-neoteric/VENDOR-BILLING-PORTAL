@@ -2,6 +2,30 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const Role = require('../models/Role');
 
+// In-memory cache for the Role lookup below — this ran on EVERY single
+// authenticated request (every page load fires several), and this app's
+// Render region sits far enough from its MongoDB Atlas cluster that one
+// round trip alone measured ~500-600ms in production (confirmed directly:
+// a no-DB health check responded in ~340ms, any DB-touching endpoint took
+// 550-990ms). A single approval action chains 5-6 sequential DB calls on
+// top of this one, so trimming this one query off every request is a real,
+// broad win. A role's permission set changes rarely (an admin edit via
+// User Management), so a short TTL is an acceptable staleness window —
+// same "best-effort, bounded staleness" tradeoff this codebase already
+// makes elsewhere (e.g. notifications/Slack are fire-and-forget) — worst
+// case, a just-edited role's new permissions take up to ROLE_CACHE_TTL_MS
+// to reach a user's very next already-logged-in request.
+const ROLE_CACHE_TTL_MS = 30000;
+const roleCache = new Map(); // roleName -> { role, expiresAt }
+
+async function getCachedRole(roleName) {
+  const cached = roleCache.get(roleName);
+  if (cached && cached.expiresAt > Date.now()) return cached.role;
+  const role = await Role.findOne({ name: roleName }).select('permissions').lean();
+  roleCache.set(roleName, { role, expiresAt: Date.now() + ROLE_CACHE_TTL_MS });
+  return role;
+}
+
 // Merges a role's library permissions (Backend/src/models/Role.js) into a
 // user's own permissions array — union per module, so a permission granted
 // either on the Role or directly on the User is honored either way. This is
@@ -11,7 +35,7 @@ const Role = require('../models/Role');
 // remain in authorizeOr/authorizeAnyOr call sites), so editing a role here
 // genuinely changes what everyone on it can do.
 async function mergeRolePermissions(user) {
-  const role = await Role.findOne({ name: user.role }).select('permissions').lean();
+  const role = await getCachedRole(user.role);
   if (!role || !role.permissions?.length) return user;
 
   const merged = new Map((user.permissions || []).map(p => [p.module, new Set(p.actions)]));

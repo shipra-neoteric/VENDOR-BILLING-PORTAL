@@ -172,13 +172,23 @@ function expandBillRequestStages(templateStages, requiredApprovals) {
 // project, contractor, and value without re-joining WorkOrder/BillRequest documents.
 // `meta.requiredApprovals` (BillRequest only) drives expandBillRequestStages above.
 async function startInstance(entityType, entityId, entityLabel, actorUserId, meta = {}) {
-  // .lean() — template.stages just needs to be plain objects to safely
-  // clone/reorder below (expandBillRequestStages), nothing here calls a
-  // mongoose document method on it.
-  const template = await WorkflowTemplate.findOne({ entityType, isActive: true }).sort({ createdAt: 1 }).lean();
+  // Neither query depends on the other's result, so run them concurrently
+  // instead of back-to-back — this production DB's per-query round trip
+  // runs ~500-600ms (Render-to-Atlas cross-region latency, confirmed
+  // directly), so every sequential-but-independent query pair removed here
+  // is a real, measurable saving on every approval action that calls this.
+  // .lean() on template — template.stages just needs to be plain objects to
+  // safely clone/reorder below (expandBillRequestStages), nothing here calls
+  // a mongoose document method on it.
+  const [template, existing] = await Promise.all([
+    WorkflowTemplate.findOne({ entityType, isActive: true }).sort({ createdAt: 1 }).lean(),
+    WorkflowInstance.findOne({ entityType, entityId, status: 'in-progress' }),
+  ]);
+  // Same precedence as before parallelizing these two reads: no active
+  // template still means "no workflow tracking", even if an instance
+  // happens to already exist (e.g. the template was deactivated after that
+  // instance started).
   if (!template || !template.stages.length) return null;
-
-  const existing = await WorkflowInstance.findOne({ entityType, entityId, status: 'in-progress' });
   if (existing) return existing;
 
   const now = new Date();
