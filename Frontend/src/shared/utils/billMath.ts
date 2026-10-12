@@ -5,7 +5,7 @@
 // gross FIRST, and GST is calculated only on what's actually left, not on
 // the full gross with these subtracted afterwards.
 
-export interface BillFinancialsInput {
+interface BillFinancialsInput {
   gross: number;
   gstPercent?: number;
   retentionAmount?: number;
@@ -32,7 +32,7 @@ export interface BillFinancialsInput {
   retentionReleased?: number;
 }
 
-export interface BillFinancials {
+interface BillFinancials {
   gstAmount: number;
   netBeforeGst: number;
   netAfterHold: number;

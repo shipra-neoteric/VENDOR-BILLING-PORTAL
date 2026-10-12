@@ -123,18 +123,30 @@ async function syncDrawingRequestToQc(request) {
     const id = makeId('DR', sourceId);
 
     const existing = await qcDb.collection('drawingRequests').findOne({ id });
-    if (existing) return;
+    const statusValue = mapDrawingReviewStatus(request.reviewStatus) || 'stage-1-screen';
+    const files = Array.isArray(request.drawingFiles)
+      ? request.drawingFiles.map((f) => ({ name: f.name || f.fileName || 'Drawing', url: f.url || '', publicId: f.publicId || null })).filter((f) => f.url)
+      : [];
+
+    // Already synced once — this call is now one of l1Review/l2Drawing/
+    // l3Review/l4Review advancing the request's stage, not a fresh create.
+    // Only the fields VMS is authoritative for during the migration period
+    // (its own review stage and any attached drawing files) get updated;
+    // QC-side-only fields (assignedTo, remarks, trackingStatus, etc.) are
+    // left alone since QC staff may already be editing those independently.
+    if (existing) {
+      await qcDb.collection('drawingRequests').updateOne(
+        { id },
+        { $set: { reviewStatus: statusValue, files } }
+      );
+      return;
+    }
 
     const project = await resolveProject(qcDb, request.projectName, request.projectCode);
     if (!project) {
       console.warn(`[syncToQc] Drawing Request ${sourceId}: project "${request.projectName}" not mapped on QC yet — skipped, will need a backfill run`);
       return;
     }
-    const statusValue = mapDrawingReviewStatus(request.reviewStatus) || 'stage-1-screen';
-
-    const files = Array.isArray(request.drawingFiles)
-      ? request.drawingFiles.map((f) => ({ name: f.name || f.fileName || 'Drawing', url: f.url || '', publicId: f.publicId || null })).filter((f) => f.url)
-      : [];
 
     await qcDb.collection('drawingRequests').insertOne({
       id,

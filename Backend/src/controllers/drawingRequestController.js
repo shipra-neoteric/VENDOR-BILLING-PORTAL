@@ -207,6 +207,7 @@ exports.l1Review = asyncHandler(async (req, res) => {
     request.reviewHistory.push({ stage: 'l1-gm', action: 'forwarded', by: req.user._id, remarks: (remarks || '').trim() });
   }
   await request.save();
+  syncDrawingRequestToQc(request).catch(() => {});
 
   await logAudit({
     action: action === 'approve' ? 'APPROVE' : 'REJECT', module: 'drawing-requests', user: req.user,
@@ -253,6 +254,7 @@ exports.l2Drawing = asyncHandler(async (req, res) => {
   request.reviewStatus = 'l3-gm';
   request.reviewHistory.push({ stage: 'l2-architect', action: 'submitted', by: req.user._id, remarks: '' });
   await request.save();
+  syncDrawingRequestToQc(request).catch(() => {});
 
   await logAudit({
     action: 'UPDATE', module: 'drawing-requests', user: req.user,
@@ -290,6 +292,7 @@ exports.l3Review = asyncHandler(async (req, res) => {
     request.reviewHistory.push({ stage: 'l3-gm', action: 'forwarded', by: req.user._id, remarks: (remarks || '').trim() });
   }
   await request.save();
+  syncDrawingRequestToQc(request).catch(() => {});
 
   await logAudit({
     action: action === 'approve' ? 'APPROVE' : 'REJECT', module: 'drawing-requests', user: req.user,
@@ -332,6 +335,7 @@ exports.l4Review = asyncHandler(async (req, res) => {
     request.reviewHistory.push({ stage: 'l4-gm', action: 'approved', by: req.user._id, remarks: (remarks || '').trim() });
   }
   await request.save();
+  syncDrawingRequestToQc(request).catch(() => {});
 
   await logAudit({
     action: action === 'approve' ? 'APPROVE' : 'REJECT', module: 'drawing-requests', user: req.user,
@@ -365,6 +369,7 @@ exports.resubmitRequest = asyncHandler(async (req, res) => {
   request.reviewStatus = 'l1-gm';
   request.reviewHistory.push({ stage: 'dri', action: 'resubmitted', by: req.user._id, remarks: (req.body.remarks || '').trim() });
   await request.save();
+  syncDrawingRequestToQc(request).catch(() => {});
 
   await logAudit({
     action: 'UPDATE', module: 'drawing-requests', user: req.user,

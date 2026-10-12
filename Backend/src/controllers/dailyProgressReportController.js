@@ -7,6 +7,7 @@ const { workEntriesInvalidReason } = require('../utils/validateWorkEntries');
 const { notifyDailyProgressReport } = require('../utils/n8nWebhook');
 const { flattenReportImages } = require('../utils/dprImages');
 const { syncDprToQc } = require('../utils/syncToQc');
+const { logAudit } = require('../utils/auditLog');
 
 const REQUIRED_FIELDS = ['projectId', 'driName', 'date', 'vendorCode', 'shiftType', 'labourCount'];
 
@@ -55,6 +56,12 @@ exports.createReport = asyncHandler(async (req, res) => {
   // Fire-and-forget — an n8n/webhook outage should never fail the submission itself.
   notifyDailyProgressReport(report, project).catch(() => {});
   syncDprToQc(report).catch(() => {});
+
+  await logAudit({
+    action: 'CREATE', module: 'daily-progress-reports', user: req.user,
+    description: `Daily Progress Report submitted for ${report.projectName} (${report.vendorName}, ${report.labourCount} labour)`,
+    entityType: 'DailyProgressReport', entityId: report._id, entityLabel: `${report.projectName} — ${report.date instanceof Date ? report.date.toDateString() : report.date}`,
+  });
 
   created(res, { report }, 'Daily Progress Report submitted');
 });

@@ -20,7 +20,7 @@ import type { NxBadgeColor } from "../../ui/nexora/Badge";
 import { SearchFilter } from "../../ui/Filters";
 import dayjs from "dayjs";
 
-const normalizeId = <T extends { _id?: string; id?: string }>(obj: T) => ({ ...obj, id: obj._id || obj.id });
+import { normalizeId } from "../../shared/utils/normalizeId";
 const fmt = (n: number) => "₹" + (n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 interface GroupMember {

@@ -1,7 +1,7 @@
 import { useTheme } from "../../context/ThemeContext";
 import { CATEGORICAL_LIGHT, CATEGORICAL_DARK } from "./palette";
 
-export interface DonutSegment {
+interface DonutSegment {
   label: string;
   value: number;
   /** Optional explicit color — falls back to the validated categorical order by position. */

@@ -161,7 +161,7 @@ const netAfterAdvance = (b: Bill) =>
     retentionAmount: b.retentionAmount ?? 0, advanceRecovery: b.advanceRecovery ?? 0,
     supersedeDeduction: b.supersedeDeduction ?? 0, retentionReleased: b.retentionReleased ?? 0,
   }).netPayable;
-const normalizeId = (obj: Record<string, unknown>) => ({ ...obj, id: (obj._id || obj.id)?.toString() || "" });
+import { normalizeId } from "../../shared/utils/normalizeId";
 
 // Nexora semantic mapping for each backend bill status — gray/amber for the
 // early not-yet-approved stages, blue/indigo/cyan as it moves through the

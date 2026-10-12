@@ -78,7 +78,7 @@ interface WorkOrderOpt { id: string; workOrderNo: string; projectId: string; pro
 interface AdvanceSlipOpt { _id: string; slipNo: string; amount: number; amountRecovered: number; balance: number; date?: string; reference?: string; }
 
 const fmt = (n: number) => "₹" + (n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const normalizeId = (obj: Record<string, unknown>) => ({ ...obj, id: (obj._id || obj.id)?.toString() || "" });
+import { normalizeId } from "../../shared/utils/normalizeId";
 const normalizeWO = (wo: Record<string, unknown>): WorkOrderOpt => ({
   ...normalizeId(wo),
   scopeItems: ((wo.scopeItems as Record<string, unknown>[]) || []).map((si) => ({

@@ -8,10 +8,6 @@ export function formatThousands(n: number | string | undefined | null): string {
   return `${n}`.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 }
 
-export function parseThousands(v: string): number {
-  return Number(v.replace(/,/g, "")) || 0;
-}
-
 export function formatPercent(n: number | undefined | null): string {
   return n ? `${n}%` : "";
 }

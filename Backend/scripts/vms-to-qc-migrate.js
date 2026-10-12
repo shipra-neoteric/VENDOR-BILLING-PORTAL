@@ -258,7 +258,7 @@ async function run() {
       qcDb.collection("projects").find({}).toArray(),
       qcDb.collection("users").find({}).toArray(),
       qcDb.collection("dpr").find({}, { projection: { id: 1 } }).toArray(),
-      qcDb.collection("drawingRequests").find({}, { projection: { id: 1 } }).toArray(),
+      qcDb.collection("drawingRequests").find({}, { projection: { id: 1, reviewStatus: 1 } }).toArray(),
     ]);
 
     const qcProjectMap = { byId: new Map(), byName: new Map() };
@@ -285,6 +285,7 @@ async function run() {
 
     const existingDprIds = new Set(qcExistingDprs.map((d) => d.id));
     const existingDrawingIds = new Set(qcExistingDrawings.map((d) => d.id));
+    const existingDrawingStatusById = new Map(qcExistingDrawings.map((d) => [d.id, d.reviewStatus]));
 
     const warnings = [];
     const dprResults = vmsDprs.map((dpr) => transformDpr(dpr, qcProjectMap, warnings, vmsProjectById, userMap));
@@ -303,14 +304,26 @@ async function run() {
     const drawingSkippedExisting = drawingResults.filter(
       (item) => item.qcProjectId && item.reviewStatusValue !== "UNMAPPED" && existingDrawingIds.has(item.record.id)
     ).length;
+    // A Drawing Request already synced once but whose review stage has since
+    // moved on in VMS (l1Review/l2Drawing/l3Review/l4Review each only ran
+    // the live per-record sync, never this bulk one) sits stale on QC's side
+    // forever otherwise — this catches that and brings its stage current.
+    const drawingToUpdate = drawingResults.filter(
+      (item) =>
+        item.qcProjectId &&
+        item.reviewStatusValue !== "UNMAPPED" &&
+        existingDrawingIds.has(item.record.id) &&
+        existingDrawingStatusById.get(item.record.id) !== item.reviewStatusValue
+    );
 
     console.log("----------------------------------------------");
     console.log(`DPR to insert            : ${dprToInsert.length}`);
     console.log(`DPR skipped (unmapped)    : ${dprSkippedUnmapped}`);
     console.log(`DPR skipped (already in QC): ${dprSkippedExisting}`);
     console.log(`Drawing to insert         : ${drawingToInsert.length}`);
+    console.log(`Drawing to update (stale stage): ${drawingToUpdate.length}`);
     console.log(`Drawing skipped (unmapped): ${drawingSkippedUnmapped}`);
-    console.log(`Drawing skipped (already in QC): ${drawingSkippedExisting}`);
+    console.log(`Drawing skipped (already in QC, up to date): ${drawingSkippedExisting - drawingToUpdate.length}`);
     console.log(`Warnings                  : ${warnings.length}`);
     console.log("----------------------------------------------");
 
@@ -329,8 +342,8 @@ async function run() {
     }
 
     console.log("");
-    if (dprToInsert.length === 0 && drawingToInsert.length === 0) {
-      console.log("Nothing to insert — all records already migrated.");
+    if (dprToInsert.length === 0 && drawingToInsert.length === 0 && drawingToUpdate.length === 0) {
+      console.log("Nothing to insert or update — all records already migrated and current.");
     } else {
       if (dprToInsert.length) {
         const res = await qcDb.collection("dpr").insertMany(dprToInsert, { ordered: false });
@@ -339,6 +352,15 @@ async function run() {
       if (drawingToInsert.length) {
         const res = await qcDb.collection("drawingRequests").insertMany(drawingToInsert, { ordered: false });
         console.log(`✓ Inserted ${res.insertedCount} Drawing Request record(s) into QC.`);
+      }
+      if (drawingToUpdate.length) {
+        for (const item of drawingToUpdate) {
+          await qcDb.collection("drawingRequests").updateOne(
+            { id: item.record.id },
+            { $set: { reviewStatus: item.reviewStatusValue, files: item.record.files } }
+          );
+        }
+        console.log(`✓ Updated ${drawingToUpdate.length} Drawing Request record(s) to their current review stage.`);
       }
     }
     console.log("");

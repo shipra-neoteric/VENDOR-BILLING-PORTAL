@@ -150,5 +150,5 @@ async function notifyByPermission({ module, action, roles = [], entityDoc, depar
 }
 
 module.exports = {
-  notifyStageInApp, notifyUser, notifyByPermission, resolveEligibleUsers,
+  notifyStageInApp, notifyUser, notifyByPermission,
 };

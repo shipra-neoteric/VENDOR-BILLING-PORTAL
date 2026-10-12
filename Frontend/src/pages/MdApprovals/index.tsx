@@ -343,7 +343,7 @@ export default function MdApprovals() {
           tabs row, since that would just duplicate the same 4-way switch. */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
         <NxStatCard
-          label="Pending My Approval"
+          label="Pending For My Approval"
           value={<>{tileStats.pendingCount}<span className="block text-xs font-normal text-gray-500 mt-0.5">{fmt(tileStats.pendingAmount)}</span></>}
           icon={Hourglass}
           active={tab === "pending"}

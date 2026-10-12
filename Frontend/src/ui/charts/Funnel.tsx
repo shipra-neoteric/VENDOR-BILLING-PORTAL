@@ -1,7 +1,7 @@
 import { useTheme } from "../../context/ThemeContext";
 import { FUNNEL_LIGHT, FUNNEL_DARK } from "./palette";
 
-export interface FunnelStage {
+interface FunnelStage {
   label: string;
   count: number;
 }

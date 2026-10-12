@@ -6,7 +6,7 @@ import type { Contractor } from "../../types/VendorBilling";
 // own shape: no line items/GST/approval chain, so the "item table" is a
 // single synthetic row for the advance itself, and the summary box shows
 // Advance Given / Recovered / Balance instead of Gross/GST/Net Payable.
-export interface PrintableAdvanceSlip {
+interface PrintableAdvanceSlip {
   slipNo: string;
   contractorName?: string;
   contractorCode?: string;

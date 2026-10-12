@@ -143,7 +143,7 @@ function billReqStatusBadge(status: string): { label: string; color: NxBadgeColo
   return { label: "Pending", color: "amber" };
 }
 
-const normalizeId = (obj: any): Project => ({ ...obj, id: obj._id || obj.id });
+import { normalizeId } from "../../shared/utils/normalizeId";
 const fmt = (n: number) => "₹" + (n ?? 0).toLocaleString("en-IN", { maximumFractionDigits: 0 });
 
 // ── Workflow Timeline helpers ──────────────────────────────────────────────────

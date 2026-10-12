@@ -199,7 +199,7 @@ const getLineItemsGross = (bill: Bill) =>
     (sum, li) => sum + (Number(li.amount) || 0),
     0
   );
-const normalizeId = (obj: Record<string, unknown>) => ({ ...obj, id: (obj._id || obj.id)?.toString() || "" });
+import { normalizeId } from "../../shared/utils/normalizeId";
 
 // Full-fidelity normalize — for the WO quick-view drawer, which
 // needs the exact same shape WorkOrderDetailView already renders elsewhere.

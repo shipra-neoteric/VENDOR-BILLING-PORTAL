@@ -52,7 +52,7 @@ interface BillRow {
 interface ProjectOpt { id: string; name: string; code: string; parentId?: string | null; }
 
 const fmt = (n: number) => "₹" + (n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const normalizeId = (obj: Record<string, unknown>) => ({ ...obj, id: (obj._id || obj.id)?.toString() || "" });
+import { normalizeId } from "../../shared/utils/normalizeId";
 
 // The bill status's own bordered-outline StatusBadge look predates the
 // Nexora badge palette (a fixed set of filled pills) — mapped locally here

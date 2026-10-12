@@ -24,7 +24,7 @@ import { Table, Thead, Tbody, Tr, Th, Td } from "../../ui/Table";
 import { usePagination } from "../../ui/usePagination";
 import Pagination from "../../ui/Pagination";
 
-const normalizeId = (obj: any) => ({ ...obj, id: obj._id || obj.id });
+import { normalizeId } from "../../shared/utils/normalizeId";
 
 const WORK_OPTIONS = [
   "General Contractors",

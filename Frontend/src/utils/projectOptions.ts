@@ -1,4 +1,4 @@
-export interface ProjectLike {
+interface ProjectLike {
   id?: string;
   _id?: string;
   name?: string;

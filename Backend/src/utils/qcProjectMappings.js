@@ -31,8 +31,16 @@ function mapDrawingReviewStatus(status) {
     'stage-1-screen', 'stage-2-produce', 'stage-3-crosscheck', 'stage-4-final-approve', 'approved', 'returned',
   ]);
   if (validQcStatuses.has(status)) return status;
+  // VMS's DrawingRequest.reviewStatus enum (src/models/DrawingRequest.js) has
+  // 4 real review levels — l3-gm/l4-gm were missing here entirely, so any
+  // Drawing Request that progressed past L2 either got skipped by the bulk
+  // migration script (reported as "UNMAPPED") or, on the live-sync path,
+  // silently fell back to stage-1-screen (resetting it back to the first
+  // stage on QC's side instead of reflecting its real, later stage).
   if (status === 'l1-gm') return 'stage-1-screen';
   if (status === 'l2-architect') return 'stage-2-produce';
+  if (status === 'l3-gm') return 'stage-3-crosscheck';
+  if (status === 'l4-gm') return 'stage-4-final-approve';
   return null;
 }
 

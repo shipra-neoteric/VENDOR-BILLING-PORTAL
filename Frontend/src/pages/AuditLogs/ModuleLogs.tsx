@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate, useSearchParams, Link } from "react-router-dom";
 import dayjs from "dayjs";
-import { ArrowLeft, FileText, History } from "lucide-react";
+import { FileText, History } from "lucide-react";
 import apiClient from "../../services/apiClient";
 import PageHeader from "../../ui/PageHeader";
 import { FilterRow, SearchFilter, SelectFilter } from "../../ui/Filters";
@@ -180,14 +180,7 @@ export default function ModuleLogs() {
         title={isAllModules ? "All Activity" : (meta?.label ?? module ?? "")}
         subtitle={isAllModules ? "Every module's activity for this user" : meta?.subtitle}
         icon={isAllModules ? History : meta?.icon}
-        actions={
-          <button
-            onClick={() => navigate("/audit-logs")}
-            className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 dark:text-gray-400 hover:text-primary"
-          >
-            <ArrowLeft className="w-3.5 h-3.5" /> All Audit Logs
-          </button>
-        }
+        onBack={() => navigate("/audit-logs")}
       />
 
       <FilterRow>

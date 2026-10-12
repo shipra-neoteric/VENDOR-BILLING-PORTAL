@@ -19,7 +19,7 @@ import { COMPARISON_LABELS } from "./MiniCharts";
 import type { ComparisonMode } from "./MiniCharts";
 import type { DPRDetailRow } from "../../../types/DPR";
 
-const normalizeId = (obj: Record<string, unknown>) => ({ ...obj, id: (obj._id || obj.id)?.toString() || "" });
+import { normalizeId } from "../../../shared/utils/normalizeId";
 
 // Same shape ensureFullWorkOrder/WorkItems normalize a raw API work order
 // into before handing it to WorkOrderDetailView — duplicated here (rather

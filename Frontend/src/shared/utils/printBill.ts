@@ -52,13 +52,13 @@ export async function resolvePrintParty(vendorCode: string | undefined): Promise
   return null;
 }
 
-export interface PrintableBillUser {
+interface PrintableBillUser {
   _id?: string;
   name?: string;
   role?: string;
 }
 
-export interface PrintableLineItem {
+interface PrintableLineItem {
   description: string;
   remarks?: string;
   // The DRI's own notes from the day-to-day progress entries billed here —

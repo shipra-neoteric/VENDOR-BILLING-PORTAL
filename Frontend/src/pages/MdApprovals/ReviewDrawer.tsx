@@ -24,7 +24,7 @@ import type { MdApprovalRow } from "./types";
 
 // ── id-normalizing helpers (same convention AccountsPayment/WorkItems
 // already use for their own fetched docs) ──────────────────────────────────
-const normalizeId = (obj: Record<string, unknown>) => ({ ...obj, id: (obj._id || obj.id)?.toString() || "" });
+import { normalizeId } from "../../shared/utils/normalizeId";
 const normalizeFullWO = (wo: Record<string, unknown>): WorkOrder => ({
   ...normalizeId(wo),
   scopeItems: ((wo.scopeItems as Record<string, unknown>[]) || []).map((si) => ({

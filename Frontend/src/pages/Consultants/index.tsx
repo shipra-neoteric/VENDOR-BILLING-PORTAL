@@ -19,7 +19,7 @@ import ConsultantDetailView from "../../components/ConsultantDetailView";
 import apiClient from "../../services/apiClient";
 import type { Consultant, ConsultancyType } from "../../types/VendorBilling";
 
-const normalizeId = (obj: Consultant & { _id?: string }) => ({ ...obj, id: obj._id || obj.id });
+import { normalizeId } from "../../shared/utils/normalizeId";
 
 const CONSULTANCY_TYPES: ConsultancyType[] = [
   "Architect", "Interior Designer", "Structural Consultant", "MEP Consultant",

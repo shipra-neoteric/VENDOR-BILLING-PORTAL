@@ -14,7 +14,6 @@
 @theme {
   --color-primary: #FF7A00;
   --color-primary-light: #FF9A3C;
-  --color-primary-dark: #E56E00;
 }
 
 :root {
@@ -60,7 +59,6 @@
 
   /* Form / Card */
   --nx-form-label-color: #374151;
-  --nx-section-label-color: #9CA3AF;
   --nx-card-border: #E5E7EB;
 
   /* Extra text/fill scales */
@@ -111,7 +109,6 @@
 
   /* Form / Card */
   --nx-form-label-color: #CBD5E1;
-  --nx-section-label-color: #64748B;
   --nx-card-border: #334155;
 
   /* Extra text/fill scales */
@@ -138,28 +135,12 @@
   --theme-primary-tint: #FFECDA;
 }
 
-.theme-bg {
-  background-color: var(--theme-primary);
-}
-
-.theme-bg-hover:hover {
-  background-color: var(--theme-primary-dark);
-}
-
 /* !important on the two color rules: antd (still loaded during the Nexora
    migration) injects an unlayered global `button, input, select { color:
    inherit }` reset that otherwise silently beats these — same reason
    ui/Btn.tsx's own color classes need the same treatment. */
 .theme-text {
   color: var(--theme-primary) !important;
-}
-
-.theme-text-light {
-  color: var(--theme-primary-light) !important;
-}
-
-.theme-border {
-  border-color: var(--theme-primary);
 }
 
 .theme-ring:focus {
@@ -292,16 +273,6 @@ body {
 .ant-tag {
   font-size: 12px !important;
   font-weight: 600 !important;
-}
-
-/* Page section divider */
-.nx-section-label {
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--nx-section-label-color);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  padding: 16px 20px 6px;
 }
 
 /* ── Sidebar nav items ────────────────────────────────────── */

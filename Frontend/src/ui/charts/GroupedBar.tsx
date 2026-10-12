@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useTheme } from "../../context/ThemeContext";
 import { PAIR_LIGHT, PAIR_DARK } from "./palette";
 
-export interface GroupedBarGroup {
+interface GroupedBarGroup {
   label: string;
   values: [number, number];
 }
