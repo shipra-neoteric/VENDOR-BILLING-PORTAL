@@ -1,4 +1,5 @@
 const { getQcDb } = require('./qcMongoClient');
+const QcSyncFailure = require('../models/QcSyncFailure');
 
 // Pushes a single, just-created VMS Daily Progress Report or Drawing Request
 // straight into QC's `dpr`/`drawingRequests` collections, live — a stopgap
@@ -68,19 +69,61 @@ function makeId(prefix, sourceId) {
   return `${prefix}-VMS-${sourceId}`;
 }
 
+// Mirrors a failed/unmapped sync into QcSyncFailure so Phase 1's retry path
+// (scripts/vms-to-qc-migrate.js --retry-failures) has a targeted list to
+// re-attempt instead of a full rescan. Best-effort — this logging must never
+// be the thing that breaks the fire-and-forget sync it's trying to record,
+// so it swallows its own errors.
+async function logFailure(type, sourceId, reason) {
+  try {
+    await QcSyncFailure.findOneAndUpdate(
+      { type, sourceId },
+      { $set: { reason, lastAttemptAt: new Date(), resolvedAt: null }, $inc: { attempts: 1 } },
+      { upsert: true }
+    );
+  } catch (err) {
+    console.error('[syncToQc] failed to log sync failure', type, sourceId, err.message);
+  }
+}
+
+// Marks any previously-logged failure for this record resolved once a sync
+// (live or retried) actually succeeds — kept, not deleted, as a visible
+// history of what used to fail and when it got fixed.
+async function clearFailure(type, sourceId) {
+  try {
+    await QcSyncFailure.updateOne({ type, sourceId, resolvedAt: null }, { $set: { resolvedAt: new Date() } });
+  } catch (err) {
+    console.error('[syncToQc] failed to clear sync failure', type, sourceId, err.message);
+  }
+}
+
 async function syncDprToQc(report) {
-  const qcDb = await qcDbOrNull();
+  const sourceId = String(report._id);
+  let qcDb;
+  try {
+    qcDb = await qcDbOrNull();
+  } catch (err) {
+    // getQcDb() rejects (rather than resolving null) when QC is configured
+    // but unreachable — a genuine outage, not "sync not set up at all".
+    // Must still be caught and logged here: this function is always called
+    // fire-and-forget (`.catch(() => {})`), so an uncaught rejection here
+    // would otherwise vanish with no record of the failed attempt at all.
+    console.error('[syncToQc] failed to connect to QC', report._id, err.message);
+    await logFailure('dpr', sourceId, `QC connection failed: ${err.message}`);
+    return;
+  }
   if (!qcDb) return;
   try {
-    const sourceId = String(report._id);
     const id = makeId('DPR', sourceId);
 
     const existing = await qcDb.collection('dpr').findOne({ id });
-    if (existing) return;
+    if (existing) { await clearFailure('dpr', sourceId); return; }
 
     const project = await resolveProject(qcDb, report.projectName, report.projectCode);
     if (!project) {
-      console.warn(`[syncToQc] DPR ${sourceId}: project "${report.projectName}" not mapped on QC yet — skipped, will need a backfill run`);
+      const reason = `project "${report.projectName}" not mapped on QC yet`;
+      console.warn(`[syncToQc] DPR ${sourceId}: ${reason} — skipped, will need a backfill run`);
+      await logFailure('dpr', sourceId, reason);
       return;
     }
     const user = await resolveUser(qcDb, report.driName);
@@ -110,16 +153,29 @@ async function syncDprToQc(report) {
       submittedByName: user?.name || report.driName || '',
       isPublic: Boolean(report.isPublicSubmission),
     });
+    await clearFailure('dpr', sourceId);
   } catch (err) {
     console.error('[syncToQc] failed to sync DPR', report._id, err.message);
+    await logFailure('dpr', String(report._id), err.message);
   }
 }
 
 async function syncDrawingRequestToQc(request) {
-  const qcDb = await qcDbOrNull();
+  const sourceId = String(request._id);
+  let qcDb;
+  try {
+    qcDb = await qcDbOrNull();
+  } catch (err) {
+    // See the identical comment in syncDprToQc above — getQcDb() rejects on
+    // a genuine QC outage rather than resolving null, and this function is
+    // always called fire-and-forget, so this must be caught here or the
+    // failed attempt leaves no record at all.
+    console.error('[syncToQc] failed to connect to QC', request._id, err.message);
+    await logFailure('drawing-request', sourceId, `QC connection failed: ${err.message}`);
+    return;
+  }
   if (!qcDb) return;
   try {
-    const sourceId = String(request._id);
     const id = makeId('DR', sourceId);
 
     const existing = await qcDb.collection('drawingRequests').findOne({ id });
@@ -139,12 +195,15 @@ async function syncDrawingRequestToQc(request) {
         { id },
         { $set: { reviewStatus: statusValue, files } }
       );
+      await clearFailure('drawing-request', sourceId);
       return;
     }
 
     const project = await resolveProject(qcDb, request.projectName, request.projectCode);
     if (!project) {
-      console.warn(`[syncToQc] Drawing Request ${sourceId}: project "${request.projectName}" not mapped on QC yet — skipped, will need a backfill run`);
+      const reason = `project "${request.projectName}" not mapped on QC yet`;
+      console.warn(`[syncToQc] Drawing Request ${sourceId}: ${reason} — skipped, will need a backfill run`);
+      await logFailure('drawing-request', sourceId, reason);
       return;
     }
 
@@ -173,9 +232,19 @@ async function syncDrawingRequestToQc(request) {
       submittedByUserId: null,
       isPublic: Boolean(request.isPublicSubmission),
     });
+    await clearFailure('drawing-request', sourceId);
   } catch (err) {
     console.error('[syncToQc] failed to sync Drawing Request', request._id, err.message);
+    await logFailure('drawing-request', String(request._id), err.message);
   }
 }
 
-module.exports = { syncDprToQc, syncDrawingRequestToQc };
+module.exports = {
+  syncDprToQc,
+  syncDrawingRequestToQc,
+  // Exported for scripts/tests/qcSync.test.js only — pure helpers, no
+  // behavior change to the two sync functions above.
+  normalizeProjectName,
+  makeId,
+  resolveProject,
+};

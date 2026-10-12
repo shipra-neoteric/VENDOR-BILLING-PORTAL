@@ -24,6 +24,14 @@ const dotenv = require("dotenv");
 const { MongoClient } = require("mongodb");
 
 const APPLY = process.argv.includes("--apply");
+// Phase 1 retry mode — instead of scanning every VMS DPR/Drawing Request,
+// only re-attempts the specific records logged in VMS's own QcSyncFailure
+// collection (written by src/utils/syncToQc.js on a failed/unmapped live
+// push). Cheap and targeted: a fixed mapping gap or a QC outage that's since
+// recovered gets retried without re-touching anything that already synced
+// fine. Marks each retried record resolved in QcSyncFailure once it's
+// actually inserted — never marks anything resolved that's still unmapped.
+const RETRY_FAILURES_ONLY = process.argv.includes("--retry-failures");
 
 // ============================================================
 // LOAD VMS ENV
@@ -231,7 +239,7 @@ function transformDrawingRequest(source, qcProjectMap, userMap, warnings, vmsPro
 async function run() {
   console.log("");
   console.log("==============================================");
-  console.log(" VMS → QC MIGRATION — " + (APPLY ? "APPLY (WRITES ENABLED)" : "DRY RUN (NO WRITES)"));
+  console.log(" VMS → QC MIGRATION — " + (APPLY ? "APPLY (WRITES ENABLED)" : "DRY RUN (NO WRITES)") + (RETRY_FAILURES_ONLY ? " [RETRY FAILURES ONLY]" : ""));
   console.log("==============================================");
   console.log("");
 
@@ -248,11 +256,23 @@ async function run() {
     const vmsDb = vmsClient.db(VMS_DB_NAME);
     const qcDb = qcClient.db(QC_DB_NAME);
 
-    const [vmsDprs, vmsDrawings, vmsProjects] = await Promise.all([
+    let failedDprIds = null;
+    let failedDrawingIds = null;
+    if (RETRY_FAILURES_ONLY) {
+      const failures = await vmsDb.collection("qcsyncfailures").find({ resolvedAt: null }).toArray();
+      failedDprIds = new Set(failures.filter((f) => f.type === "dpr").map((f) => f.sourceId));
+      failedDrawingIds = new Set(failures.filter((f) => f.type === "drawing-request").map((f) => f.sourceId));
+      console.log(`--retry-failures: ${failedDprIds.size} DPR + ${failedDrawingIds.size} Drawing Request failure(s) logged, retrying only those.`);
+      console.log("");
+    }
+
+    const [vmsDprsAll, vmsDrawingsAll, vmsProjects] = await Promise.all([
       vmsDb.collection("dailyprogressreports").find({}).toArray(),
       vmsDb.collection("drawingrequests").find({}).toArray(),
       vmsDb.collection("projects").find({}).toArray(),
     ]);
+    const vmsDprs = failedDprIds ? vmsDprsAll.filter((d) => failedDprIds.has(String(d._id))) : vmsDprsAll;
+    const vmsDrawings = failedDrawingIds ? vmsDrawingsAll.filter((d) => failedDrawingIds.has(String(d._id))) : vmsDrawingsAll;
 
     const [qcProjects, qcUsers, qcExistingDprs, qcExistingDrawings] = await Promise.all([
       qcDb.collection("projects").find({}).toArray(),
@@ -348,10 +368,28 @@ async function run() {
       if (dprToInsert.length) {
         const res = await qcDb.collection("dpr").insertMany(dprToInsert, { ordered: false });
         console.log(`✓ Inserted ${res.insertedCount} DPR record(s) into QC.`);
+        if (RETRY_FAILURES_ONLY) {
+          const insertedSourceIds = dprResults
+            .filter((item) => dprToInsert.some((rec) => rec.id === item.record.id))
+            .map((item) => item.sourceId);
+          await vmsDb.collection("qcsyncfailures").updateMany(
+            { type: "dpr", sourceId: { $in: insertedSourceIds } },
+            { $set: { resolvedAt: new Date() } }
+          );
+        }
       }
       if (drawingToInsert.length) {
         const res = await qcDb.collection("drawingRequests").insertMany(drawingToInsert, { ordered: false });
         console.log(`✓ Inserted ${res.insertedCount} Drawing Request record(s) into QC.`);
+        if (RETRY_FAILURES_ONLY) {
+          const insertedSourceIds = drawingResults
+            .filter((item) => drawingToInsert.some((rec) => rec.id === item.record.id))
+            .map((item) => item.sourceId);
+          await vmsDb.collection("qcsyncfailures").updateMany(
+            { type: "drawing-request", sourceId: { $in: insertedSourceIds } },
+            { $set: { resolvedAt: new Date() } }
+          );
+        }
       }
       if (drawingToUpdate.length) {
         for (const item of drawingToUpdate) {
