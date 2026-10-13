@@ -499,7 +499,7 @@ export default function MdApprovals() {
         // min-w-[900px] below sm only — table-fixed otherwise force-shrinks
         // every column to fit a phone's width, overlapping text instead of
         // just scrolling sideways; sm:min-w-0 keeps desktop unchanged.
-        <Table containerClassName="h-[650px] overflow-y-auto" className="min-w-[1050px] sm:min-w-0">
+        <Table containerClassName="h-[650px] overflow-y-auto" className="min-w-[1150px] sm:min-w-0">
           <Thead>
             <Tr>
               {!isDecidedTab && (
@@ -518,7 +518,7 @@ export default function MdApprovals() {
                   </label>
                 </Th>
               )}
-              <Th className="whitespace-nowrap">System</Th>
+              <Th className="w-40 whitespace-nowrap">System</Th>
               <Th>Reference</Th>
               <Th>Work Order</Th>
               <Th>Project</Th>
