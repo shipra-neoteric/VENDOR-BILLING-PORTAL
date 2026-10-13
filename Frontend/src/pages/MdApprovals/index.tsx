@@ -156,6 +156,16 @@ export default function MdApprovals() {
 
   useEffect(() => { loadTileStats(); }, [loadTileStats]);
 
+  // Bulk-approve selection — keyed the same way as the table's own row key
+  // (`${system}-${id}`) since id alone isn't unique across systems. Cleared
+  // on tab switch so a stale selection from "Pending" can't accidentally
+  // get approved after flipping to "Approved"/"Rejected" (where rows have
+  // no approve action at all, but the set should still start empty there).
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkApproveOpen, setBulkApproveOpen] = useState(false);
+  const [bulkSaving, setBulkSaving] = useState(false);
+  useEffect(() => { setSelected(new Set()); }, [tab]);
+
   const [reviewRow, setReviewRow] = useState<MdApprovalRow | null>(null);
   const [approveTarget, setApproveTarget] = useState<MdApprovalRow | null>(null);
   const [rejectTarget, setRejectTarget] = useState<MdApprovalRow | null>(null);
@@ -271,15 +281,47 @@ export default function MdApprovals() {
     if (!approveTarget) return;
     setSaving(true);
     try {
-      const { method, path } = approveTarget.system === "BillRequest" || approveTarget.system === "RunningBill-Manual"
-        ? stageApproveEndpoint(approveTarget)
-        : { method: ACTION_ENDPOINTS[approveTarget.system].approve.method, path: ACTION_ENDPOINTS[approveTarget.system].approve.path(approveTarget.id) };
+      const { method, path } = approveEndpointFor(approveTarget);
       const res = await apiClient[method](path, { remarks: "" });
       toast.success(res.data?.message || "Approved");
       refetchAndClose();
     } catch (e: any) {
       toast.error(e?.response?.data?.message || "Failed to approve");
     } finally { setSaving(false); }
+  };
+
+  // Same endpoint-resolution handleApprove already uses per row, factored out
+  // so both the single-row ConfirmModal and this bulk action call the exact
+  // same real per-system route — no separate bulk-only backend endpoint.
+  function approveEndpointFor(row: MdApprovalRow): { method: "put" | "patch"; path: string } {
+    return row.system === "BillRequest" || row.system === "RunningBill-Manual"
+      ? stageApproveEndpoint(row)
+      : { method: ACTION_ENDPOINTS[row.system].approve.method, path: ACTION_ENDPOINTS[row.system].approve.path(row.id) };
+  }
+
+  const handleBulkApprove = async () => {
+    const rows = filtered.filter((r) => selected.has(`${r.system}-${r.id}`));
+    if (rows.length === 0) return;
+    setBulkSaving(true);
+    try {
+      const results = await Promise.allSettled(
+        rows.map((row) => {
+          const { method, path } = approveEndpointFor(row);
+          return apiClient[method](path, { remarks: "" });
+        })
+      );
+      const failCount = results.filter((r) => r.status === "rejected").length;
+      const okCount = results.length - failCount;
+      if (failCount === 0) toast.success(`Approved ${okCount} item${okCount === 1 ? "" : "s"}`);
+      else if (okCount === 0) toast.error(`Failed to approve ${failCount} item${failCount === 1 ? "" : "s"}`);
+      else toast(`Approved ${okCount}, failed ${failCount} — check the remaining rows`, { icon: "⚠️" });
+      setBulkApproveOpen(false);
+      setSelected(new Set());
+      load();
+      loadTileStats();
+    } finally {
+      setBulkSaving(false);
+    }
   };
 
   const handleReject = async () => {
@@ -429,6 +471,22 @@ export default function MdApprovals() {
           </div>
         </div>
 
+        {/* Bulk-approve bar — only ever shown with a live selection on a tab
+            that actually has an approve action (pending/aging); Reject/Send
+            Back stay single-row-only via the existing modals, since those
+            need a reason per item. */}
+        {!isDecidedTab && selected.size > 0 && (
+          <div className="flex items-center justify-between gap-3 bg-primary/10 border border-primary/30 rounded-lg px-4 py-2.5 mb-3">
+            <span className="text-[13px] font-semibold" style={{ color: "var(--theme-primary)" }}>
+              {selected.size} selected
+            </span>
+            <div className="flex items-center gap-2">
+              <Btn small outline label="Clear" onClick={() => setSelected(new Set())} />
+              <Btn small color="green" icon={Check} label={`Approve Selected (${selected.size})`} onClick={() => setBulkApproveOpen(true)} />
+            </div>
+          </div>
+        )}
+
         {loading ? (
           <div className="flex justify-center py-20"><Spinner size="large" /></div>
         ) : filtered.length === 0 ? (
@@ -444,6 +502,22 @@ export default function MdApprovals() {
         <Table containerClassName="h-[650px] overflow-y-auto" className="min-w-[900px] sm:min-w-0">
           <Thead>
             <Tr>
+              {!isDecidedTab && (
+                <Th className="w-28 whitespace-nowrap">
+                  <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      className="cursor-pointer"
+                      checked={filtered.length > 0 && filtered.every((r) => selected.has(`${r.system}-${r.id}`))}
+                      onChange={(e) => {
+                        if (e.target.checked) setSelected(new Set(filtered.map((r) => `${r.system}-${r.id}`)));
+                        else setSelected(new Set());
+                      }}
+                    />
+                    Select All
+                  </label>
+                </Th>
+              )}
               <Th>System</Th>
               <Th>Reference</Th>
               <Th>Work Order</Th>
@@ -462,6 +536,23 @@ export default function MdApprovals() {
                 className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/60"
                 onClick={() => setReviewRow(row)}
               >
+                {!isDecidedTab && (
+                  <Td onClick={(e) => e.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      className="cursor-pointer"
+                      checked={selected.has(`${row.system}-${row.id}`)}
+                      onChange={(e) => {
+                        const key = `${row.system}-${row.id}`;
+                        setSelected((prev) => {
+                          const next = new Set(prev);
+                          if (e.target.checked) next.add(key); else next.delete(key);
+                          return next;
+                        });
+                      }}
+                    />
+                  </Td>
+                )}
                 <Td><NxBadge color="indigo">{SYSTEM_LABEL[row.system]}</NxBadge></Td>
                 <Td className="font-bold">{row.referenceNumber || "—"}</Td>
                 <Td>{row.workOrderNo || "—"}</Td>
@@ -516,6 +607,17 @@ export default function MdApprovals() {
           loading={saving}
           onConfirm={handleApprove}
           onCancel={() => setApproveTarget(null)}
+        />
+      )}
+
+      {bulkApproveOpen && (
+        <ConfirmModal
+          title="Approve Selected"
+          message={`Approve ${selected.size} selected item${selected.size === 1 ? "" : "s"}? This is the final approval stage for each one — this can't be bulk-undone.`}
+          confirmLabel="Approve All"
+          loading={bulkSaving}
+          onConfirm={handleBulkApprove}
+          onCancel={() => setBulkApproveOpen(false)}
         />
       )}
 
