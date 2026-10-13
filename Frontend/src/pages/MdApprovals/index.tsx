@@ -499,12 +499,12 @@ export default function MdApprovals() {
         // min-w-[900px] below sm only — table-fixed otherwise force-shrinks
         // every column to fit a phone's width, overlapping text instead of
         // just scrolling sideways; sm:min-w-0 keeps desktop unchanged.
-        <Table containerClassName="h-[650px] overflow-y-auto" className="min-w-[900px] sm:min-w-0">
+        <Table containerClassName="h-[650px] overflow-y-auto" className="min-w-[1050px] sm:min-w-0">
           <Thead>
             <Tr>
               {!isDecidedTab && (
-                <Th className="w-28 whitespace-nowrap">
-                  <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                <Th className="w-32 whitespace-nowrap">
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
                     <input
                       type="checkbox"
                       className="cursor-pointer"
@@ -518,7 +518,7 @@ export default function MdApprovals() {
                   </label>
                 </Th>
               )}
-              <Th>System</Th>
+              <Th className="whitespace-nowrap">System</Th>
               <Th>Reference</Th>
               <Th>Work Order</Th>
               <Th>Project</Th>
@@ -553,7 +553,7 @@ export default function MdApprovals() {
                     />
                   </Td>
                 )}
-                <Td><NxBadge color="indigo">{SYSTEM_LABEL[row.system]}</NxBadge></Td>
+                <Td className="whitespace-nowrap"><NxBadge color="indigo">{SYSTEM_LABEL[row.system]}</NxBadge></Td>
                 <Td className="font-bold">{row.referenceNumber || "—"}</Td>
                 <Td>{row.workOrderNo || "—"}</Td>
                 <Td>{row.projectName || "—"}</Td>
