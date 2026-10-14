@@ -54,6 +54,7 @@ const PendingPayments      = lazy(() => import("../pages/PendingPayments"));
 
 import MainLayout     from "../layouts/MainLayout/MainLayout";
 import ProtectedRoute from "../components/ProtectedRoute";
+import RequireModule from "../components/RequireModule";
 import { useAuth }    from "../context/AuthContext";
 import { getDefaultPath } from "../layouts/Sidebar/Sidebar";
 
@@ -121,13 +122,26 @@ function AdminRoutes() {
             <Route path="/pending-work-orders" element={<PendingWorkOrders />} />
             <Route path="/pending-payments" element={<PendingPayments />} />
             <Route path="/projects-overview" element={<ProjectsList />} />
-            <Route path="/masters"          element={<MastersOverview />} />
-            <Route path="/projects"         element={<Projects />} />
+            {/* Masters and its sub-pages previously rendered for ANYONE who
+                navigated straight to the URL — the sidebar hid the link,
+                but nothing stopped a direct visit. RequireModule enforces
+                the same per-module permission the sidebar itself already
+                checks, at the route level. */}
+            <Route element={<RequireModule moduleId="masters" />}>
+              <Route path="/masters"          element={<MastersOverview />} />
+            </Route>
+            <Route element={<RequireModule moduleId="projects" />}>
+              <Route path="/projects"         element={<Projects />} />
+            </Route>
             <Route path="/contractors"      element={<Contractors />} />
             <Route path="/consultants"      element={<Consultants />} />
             <Route path="/vendor-groups"    element={<VendorGroups />} />
-            <Route path="/companies"        element={<Companies />} />
-            <Route path="/categories"       element={<Categories />} />
+            <Route element={<RequireModule moduleId="companies" />}>
+              <Route path="/companies"        element={<Companies />} />
+            </Route>
+            <Route element={<RequireModule moduleId="categories" />}>
+              <Route path="/categories"       element={<Categories />} />
+            </Route>
             <Route path="/work-items"         element={<WorkItems />} />
             <Route path="/work-items/:id"   element={<WorkOrderDashboard />} />
             <Route path="/quotation-comparison" element={<QuotationComparison />} />
@@ -140,19 +154,29 @@ function AdminRoutes() {
             <Route path="/md-approvals"     element={<MdApprovals />} />
             <Route path="/advance-payments" element={<AdvancePayments />} />
             <Route path="/ledger"           element={<Ledger />} />
-            <Route path="/users"            element={<UserManagement />} />
-            <Route path="/users/roles/:id"  element={<RolePermissions />} />
-            <Route path="/users/new"        element={<EditUser />} />
-            <Route path="/users/:id/edit"   element={<EditUser />} />
+            <Route element={<RequireModule moduleId="user-management" />}>
+              <Route path="/users"            element={<UserManagement />} />
+              <Route path="/users/roles/:id"  element={<RolePermissions />} />
+              <Route path="/users/new"        element={<EditUser />} />
+              <Route path="/users/:id/edit"   element={<EditUser />} />
+            </Route>
             <Route path="/dri-dashboard"   element={<DRIDashboard />} />
-            <Route path="/public-forms"    element={<PublicForms />} />
-            <Route path="/sla-settings"    element={<SlaSettings />} />
-            <Route path="/sla-settings/:id" element={<SlaSettingsDetail />} />
+            <Route element={<RequireModule moduleId="public-forms" />}>
+              <Route path="/public-forms"    element={<PublicForms />} />
+            </Route>
+            <Route element={<RequireModule moduleId="sla-settings" />}>
+              <Route path="/sla-settings"    element={<SlaSettings />} />
+              <Route path="/sla-settings/:id" element={<SlaSettingsDetail />} />
+            </Route>
             <Route path="/sla-dashboard"   element={<SlaDashboard />} />
             <Route path="/audit-logs"      element={<AuditLogs />} />
             <Route path="/audit-logs/:module" element={<AuditLogModule />} />
-            <Route path="/backup"          element={<Backup />} />
-            <Route path="/recurring-billing" element={<RecurringBilling />} />
+            <Route element={<RequireModule moduleId="backup" />}>
+              <Route path="/backup"          element={<Backup />} />
+            </Route>
+            <Route element={<RequireModule moduleId="recurring-billing" />}>
+              <Route path="/recurring-billing" element={<RecurringBilling />} />
+            </Route>
             <Route path="/nexora-preview"  element={<NexoraPreview />} />
             <Route path="/daily-progress-report" element={<DailyProgressReport />} />
             <Route path="/drawing-requests" element={<DrawingRequests />} />

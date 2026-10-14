@@ -102,7 +102,13 @@ const DRI_OWN_ITEMS: NavItem[] = [
 // ── Permission helpers ─────────────────────────────────────────────────────────
 const VENDORS_MODULE_IDS = ["contractors", "consultants", "vendor-groups"];
 
-function canView(moduleId: string, perms: PermEntry[] | undefined, role?: string): boolean {
+// Exported so route-level guards (see components/RequireModule.tsx) can
+// enforce the exact same rule the sidebar itself already uses to decide
+// what's shown — one source of truth, instead of the two silently drifting
+// apart (a page that renders regardless of a direct URL visit, even though
+// its own nav link was correctly hidden, is exactly the gap that let
+// Masters be reachable by anyone who just typed the URL).
+export function canView(moduleId: string, perms: PermEntry[] | undefined, role?: string): boolean {
   // Whole-database export/wipe-and-replace — never leak this to a role that
   // simply hasn't been assigned granular permissions yet (canView's own
   // fallback below treats an empty perms array as "can see everything").
