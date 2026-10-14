@@ -60,6 +60,37 @@ function hasAnyMdApprovalsAccess(user: ReturnType<typeof useAuth>["user"]): bool
   );
 }
 
+// Mirrors the backend's authorizeOrAlt approve-side grants exactly (see
+// */final-approve, */gm-approve, */l3-approve, */l4-approve, */agm-approve,
+// */l2-director-approve routes) — a user who can open this page via "view"
+// alone, with none of these, should see the Approve action hidden rather
+// than get a 403 toast after clicking it.
+function hasMdApprovalsApprovePermission(user: ReturnType<typeof useAuth>["user"]): boolean {
+  if (!user) return false;
+  if (user.role === "owner") return true;
+  const perms = user.permissions ?? [];
+  return perms.some((p) =>
+    (p.module === "md-approvals" && p.actions.includes("approve")) ||
+    (p.module === "work-orders" && p.actions.includes("ceo-approve")) ||
+    (p.module === "bill-requests" && (p.actions.includes("agm-approve") || p.actions.includes("gm-approve") || p.actions.includes("l3-approve") || p.actions.includes("l4-approve"))) ||
+    (p.module === "accounts-payment" && p.actions.includes("l2-director-approve"))
+  );
+}
+
+// Mirrors the backend's authorizeAnyOrAlt reject-side grants exactly (see
+// */send-back, */reject routes across all 3 systems).
+function hasMdApprovalsRejectPermission(user: ReturnType<typeof useAuth>["user"]): boolean {
+  if (!user) return false;
+  if (user.role === "owner") return true;
+  const perms = user.permissions ?? [];
+  return perms.some((p) =>
+    (p.module === "md-approvals" && p.actions.includes("reject")) ||
+    (p.module === "work-orders" && (p.actions.includes("checker") || p.actions.includes("approver") || p.actions.includes("ceo-approve"))) ||
+    (p.module === "bill-requests" && (p.actions.includes("agm-approve") || p.actions.includes("gm-approve") || p.actions.includes("l3-approve") || p.actions.includes("l4-approve"))) ||
+    (p.module === "accounts-payment" && (p.actions.includes("verify") || p.actions.includes("l1-agm-approve") || p.actions.includes("l2-director-approve") || p.actions.includes("reject")))
+  );
+}
+
 // Endpoint map per row.system — every action from this screen goes through
 // the real, unmodified per-system route, never a new aggregator-side one.
 // BillRequest/RunningBill-Manual resolve their approve path per-row (see
@@ -207,6 +238,8 @@ export default function MdApprovals() {
   }, [openKey, items]);
 
   const hasAccess = hasAnyMdApprovalsAccess(user);
+  const canApprove = hasMdApprovalsApprovePermission(user);
+  const canReject = hasMdApprovalsRejectPermission(user);
 
   // Per system-group counts for the pill row below — counted off the
   // currently active tab's own items (before the other filters/search
@@ -400,9 +433,9 @@ export default function MdApprovals() {
       <NxBtn color="icon-blue" title="Review" icon={Eye} onClick={() => setReviewRow(row)} />
       {!isDecidedTab && (
         <>
-          <NxBtn color="icon-green" title="Approve" icon={Check} onClick={() => setApproveTarget(row)} />
-          <NxBtn color="icon-red" title="Reject" icon={X} onClick={() => setRejectTarget(row)} />
-          {row.system === "WorkOrder" && (
+          {canApprove && <NxBtn color="icon-green" title="Approve" icon={Check} onClick={() => setApproveTarget(row)} />}
+          {canReject && <NxBtn color="icon-red" title="Reject" icon={X} onClick={() => setRejectTarget(row)} />}
+          {canReject && row.system === "WorkOrder" && (
             <NxBtn color="icon-gray" title="Send Back" icon={Undo2} onClick={() => setSendBackTarget(row)} />
           )}
         </>
@@ -524,8 +557,8 @@ export default function MdApprovals() {
             </span>
             <div className="flex items-center gap-2">
               <Btn small outline label="Clear" onClick={() => setSelected(new Set())} />
-              <Btn small color="green" icon={Check} label={`Approve (${selected.size})`} onClick={() => setBulkApproveOpen(true)} />
-              <Btn small color="red" icon={X} label={`Reject (${selected.size})`} onClick={() => setBulkRejectOpen(true)} />
+              {canApprove && <Btn small color="green" icon={Check} label={`Approve (${selected.size})`} onClick={() => setBulkApproveOpen(true)} />}
+              {canReject && <Btn small color="red" icon={X} label={`Reject (${selected.size})`} onClick={() => setBulkRejectOpen(true)} />}
             </div>
           </div>
         )}
@@ -631,11 +664,11 @@ export default function MdApprovals() {
           footer={
             !isDecidedTab ? (
               <div className="flex justify-end gap-2">
-                {reviewRow.system === "WorkOrder" && (
+                {canReject && reviewRow.system === "WorkOrder" && (
                   <Btn outline icon={Undo2} label="Send Back" onClick={() => { setSendBackTarget(reviewRow); setReviewRow(null); }} />
                 )}
-                <Btn color="red" icon={X} label="Reject" onClick={() => { setRejectTarget(reviewRow); setReviewRow(null); }} />
-                <Btn color="green" icon={Check} label="Approve" onClick={() => { setApproveTarget(reviewRow); setReviewRow(null); }} />
+                {canReject && <Btn color="red" icon={X} label="Reject" onClick={() => { setRejectTarget(reviewRow); setReviewRow(null); }} />}
+                {canApprove && <Btn color="green" icon={Check} label="Approve" onClick={() => { setApproveTarget(reviewRow); setReviewRow(null); }} />}
               </div>
             ) : undefined
           }
