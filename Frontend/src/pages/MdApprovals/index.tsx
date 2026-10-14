@@ -522,8 +522,8 @@ export default function MdApprovals() {
             </span>
             <div className="flex items-center gap-2">
               <Btn small outline label="Clear" onClick={() => setSelected(new Set())} />
-              <Btn small color="red" icon={X} label={`Reject Selected (${selected.size})`} onClick={() => setBulkRejectOpen(true)} />
-              <Btn small color="green" icon={Check} label={`Approve Selected (${selected.size})`} onClick={() => setBulkApproveOpen(true)} />
+              <Btn small color="red" icon={X} label={`Reject (${selected.size})`} onClick={() => setBulkRejectOpen(true)} />
+              <Btn small color="green" icon={Check} label={`Approve (${selected.size})`} onClick={() => setBulkApproveOpen(true)} />
             </div>
           </div>
         )}
