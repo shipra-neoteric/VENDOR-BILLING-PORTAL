@@ -77,31 +77,7 @@ function finalStageFor(status, statusPrefix, config) {
   return null;
 }
 
-// 'agm' only ever surfaces here for Rahul Gupta (see isRahulGupta/agmStageFor
-// above) — nobody else's L1 items reach this page, so labeling it "CEO
-// Approval" instead of "AGM Approval" is accurate for every case that can
-// actually hit it, not a mislabel for some other approver.
 const STAGE_LABEL = { agm: 'CEO Approval', gm: 'GM Approval', l3: 'L3 Approval', l4: 'L4 Approval' };
-
-// Rahul Gupta (CEO) is a one-off exception: he holds explicit agm-approve AND
-// gm-approve permission on bill-requests, so unlike every other approver he's
-// allowed to act on BOTH the L1 (agm) and L2 (gm)/L3/L4 stages of a
-// BillRequest/RunningBill-manual chain — but this page otherwise deliberately
-// only surfaces a document's genuinely FINAL stage (see finalStageFor above),
-// so his own L1 items would never show up here even though he's allowed to
-// act on them. This flag widens the page for him ONLY: a non-final L1 (agm)
-// stage he's allowed to act on is included too, alongside the normal final-
-// stage-only behavior every other user still gets.
-function isRahulGupta(user) {
-  return user?.email === 'rahul@neotericgrp.in';
-}
-
-// Mirrors finalStageFor's status parsing, but for the L1 (agm) stage —
-// which is NEVER final (a department's requiredApprovals is always >= 2,
-// see DepartmentApprovalConfig), so finalStageFor() itself never returns it.
-function agmStageFor(status, statusPrefix) {
-  return status === statusPrefix.slice(0, -1) ? 'agm' : null;
-}
 
 // The history entries already snapshot byName/byRole at the moment the
 // decision was made (see each model's approvalHistory schema comment) — no
@@ -174,8 +150,7 @@ async function buildPendingItems(user) {
   for (const br of billRequests) {
     if (!canActOnDepartment(user, br)) continue;
     const config = await getApprovalConfig(br);
-    const stage = finalStageFor(br.status, 'pending-', config)
-      || (isRahulGupta(user) ? agmStageFor(br.status, 'pending-') : null);
+    const stage = finalStageFor(br.status, 'pending-', config);
     if (!stage) continue; // genuinely mid-chain for this department, not final yet
     if (!approverAllowed(user, config, stage)) continue;
     const pendingSince = stage === 'l4' ? (br.l3ApprovedAt || br.createdAt)
@@ -207,8 +182,7 @@ async function buildPendingItems(user) {
   for (const bill of manualBills) {
     if (!canActOnDepartment(user, bill)) continue;
     const config = await getApprovalConfig(bill);
-    const stage = finalStageFor(bill.manualApprovalStatus, 'pending-', config)
-      || (isRahulGupta(user) ? agmStageFor(bill.manualApprovalStatus, 'pending-') : null);
+    const stage = finalStageFor(bill.manualApprovalStatus, 'pending-', config);
     if (!stage) continue;
     if (!approverAllowed(user, config, stage)) continue;
     seenBillIds.add(String(bill._id));
