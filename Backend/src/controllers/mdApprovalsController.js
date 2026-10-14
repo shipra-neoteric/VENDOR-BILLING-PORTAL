@@ -121,7 +121,20 @@ function findFinalHistoryEntry(history, stagePrefix, action) {
   return null;
 }
 
+// A pure "view" grant (Permission Matrix → Final Approval → View, no real
+// approve permission anywhere) sees exactly what Rahul/Owner sees — this
+// page is, in practice, Rahul's own approval queue; a view-only holder is
+// there purely to track his process, not to act as an independent approver
+// for their own department. So it bypasses each item's own
+// approverAllowed/woApproverAllowed/can() check below, the same way an
+// Owner/CEO role already does inside those functions — never the real
+// approve/reject endpoints, which stay independently gated regardless.
+function hasViewOnlyGrant(user) {
+  return can(user, 'md-approvals', 'view');
+}
+
 async function buildPendingItems(user) {
+  const viewOnly = hasViewOnlyGrant(user);
   const [workOrders, billRequests, manualBills, accountsBills] = await Promise.all([
     WorkOrder.find({ approvalStatus: 'pending-final' }).populate('createdBy', 'name').lean(),
     BillRequest.find({ status: { $in: ['pending', 'pending-gm', 'pending-l3', 'pending-l4'] } }).populate('requestedBy', 'name').lean(),
@@ -135,7 +148,7 @@ async function buildPendingItems(user) {
   for (const wo of workOrders) {
     if (!canActOnDepartment(user, wo)) continue;
     const config = await getWoApprovalConfig(wo);
-    if (!woApproverAllowed(user, config, 'final')) continue;
+    if (!woApproverAllowed(user, config, 'final') && !viewOnly) continue;
     const pendingSince = wo.approverAt || wo.checkerAt || wo.createdAt;
     items.push({
       id: String(wo._id),
@@ -168,7 +181,7 @@ async function buildPendingItems(user) {
     const config = await getApprovalConfig(br);
     const stage = finalStageFor(br.status, 'pending-', config);
     if (!stage) continue; // genuinely mid-chain for this department, not final yet
-    if (!approverAllowed(user, config, stage)) continue;
+    if (!approverAllowed(user, config, stage) && !viewOnly) continue;
     const pendingSince = stage === 'l4' ? (br.l3ApprovedAt || br.createdAt)
       : stage === 'l3' ? (br.gmApprovedAt || br.createdAt)
       : stage === 'gm' ? (br.agmApprovedAt || br.createdAt)
@@ -200,7 +213,7 @@ async function buildPendingItems(user) {
     const config = await getApprovalConfig(bill);
     const stage = finalStageFor(bill.manualApprovalStatus, 'pending-', config) || assignedStageFor(bill, user);
     if (!stage) continue;
-    if (!approverAllowed(user, config, stage)) continue;
+    if (!approverAllowed(user, config, stage) && !viewOnly) continue;
     seenBillIds.add(String(bill._id));
     const pendingSince = stage === 'l4' ? (bill.manualL3ApprovedAt || bill.createdAt)
       : stage === 'l3' ? (bill.manualGmApprovedAt || bill.createdAt)
@@ -227,7 +240,7 @@ async function buildPendingItems(user) {
     });
   }
 
-  const hasL2DirectorAccess = can(user, 'accounts-payment', 'l2-director-approve');
+  const hasL2DirectorAccess = can(user, 'accounts-payment', 'l2-director-approve') || viewOnly;
   if (hasL2DirectorAccess) {
     for (const bill of accountsBills) {
       if (seenBillIds.has(String(bill._id))) continue;
@@ -266,8 +279,9 @@ async function buildPendingItems(user) {
 async function buildDecidedItems(user, decision) {
   const items = [];
   const now = Date.now();
+  const viewOnly = hasViewOnlyGrant(user);
 
-  if (can(user, 'work-orders', 'ceo-approve')) {
+  if (can(user, 'work-orders', 'ceo-approve') || viewOnly) {
     const marker = decision === 'approved' ? { stage: 'final', action: 'approved' } : { stage: 'final', action: 'sent-back' };
     const rows = await WorkOrder.find({ approvalHistory: { $elemMatch: marker } })
       .populate('createdBy', 'name').lean();
@@ -300,7 +314,7 @@ async function buildDecidedItems(user, decision) {
     }
   }
 
-  if (can(user, 'bill-requests', 'l4-approve') || can(user, 'bill-requests', 'l3-approve') || can(user, 'bill-requests', 'gm-approve')) {
+  if (can(user, 'bill-requests', 'l4-approve') || can(user, 'bill-requests', 'l3-approve') || can(user, 'bill-requests', 'gm-approve') || viewOnly) {
     const action = decision === 'approved' ? 'approved' : 'rejected';
     const rows = await BillRequest.find({
       approvalHistory: { $elemMatch: { stage: { $in: ['gm', 'l3', 'l4'] }, action } },
@@ -338,7 +352,7 @@ async function buildDecidedItems(user, decision) {
   }
 
   const hasBillsAccess = can(user, 'bill-requests', 'l4-approve') || can(user, 'bill-requests', 'l3-approve') || can(user, 'bill-requests', 'gm-approve')
-    || can(user, 'accounts-payment', 'l2-director-approve');
+    || can(user, 'accounts-payment', 'l2-director-approve') || viewOnly;
   if (hasBillsAccess) {
     const action = decision === 'approved' ? 'approved' : 'rejected';
     const accountsMarker = decision === 'approved' ? { stage: 'l2-director', action: 'approved' } : { stage: 'l1-agm-approve', action: 'sent-back' };
@@ -352,9 +366,9 @@ async function buildDecidedItems(user, decision) {
     const seen = new Set();
     for (const bill of rows) {
       if (!canActOnDepartment(user, bill)) continue;
-      const manualFound = (can(user, 'bill-requests', 'l4-approve') || can(user, 'bill-requests', 'l3-approve') || can(user, 'bill-requests', 'gm-approve'))
+      const manualFound = (can(user, 'bill-requests', 'l4-approve') || can(user, 'bill-requests', 'l3-approve') || can(user, 'bill-requests', 'gm-approve') || viewOnly)
         ? findFinalHistoryEntry(bill.approvalHistory, 'manual-', action) : null;
-      const accountsEntry = can(user, 'accounts-payment', 'l2-director-approve')
+      const accountsEntry = (can(user, 'accounts-payment', 'l2-director-approve') || viewOnly)
         ? lastMatchingHistoryEntry(bill.approvalHistory, accountsMarker.stage, accountsMarker.action) : null;
 
       if (manualFound) {
@@ -484,37 +498,42 @@ exports.getMdApprovalDetail = asyncHandler(async (req, res) => {
   // an already-decided item, department scoping (above) is sufficient —
   // re-checking the CURRENT stage state would be meaningless since the item
   // has moved past it.
-  let authorized = false;
+  // A pure view-only grant (see hasViewOnlyGrant above) can open any
+  // item's detail too, read-only — same reasoning as the list endpoint:
+  // this page is Rahul's own queue, and a view-only holder is just
+  // tracking it, not acting as their own independent approver.
+  const viewOnly = hasViewOnlyGrant(user);
+  let authorized = viewOnly;
   let isPending = false;
   if (system === 'WorkOrder') {
     isPending = doc.approvalStatus === 'pending-final';
-    if (isPending) {
+    if (!authorized && isPending) {
       const config = await getWoApprovalConfig(doc);
       authorized = woApproverAllowed(user, config, 'final');
-    } else {
+    } else if (!authorized) {
       authorized = can(user, 'work-orders', 'ceo-approve');
     }
   } else if (system === 'BillRequest') {
     const config = await getApprovalConfig(doc);
     const stage = finalStageFor(doc.status, 'pending-', config);
     isPending = !!stage;
-    if (isPending) {
+    if (!authorized && isPending) {
       authorized = approverAllowed(user, config, stage);
-    } else {
+    } else if (!authorized) {
       authorized = can(user, 'bill-requests', 'l4-approve') || can(user, 'bill-requests', 'l3-approve') || can(user, 'bill-requests', 'gm-approve');
     }
   } else if (system === 'RunningBill-Manual') {
     const config = await getApprovalConfig(doc);
     const stage = finalStageFor(doc.manualApprovalStatus, 'pending-', config);
     isPending = !!stage;
-    if (isPending) {
+    if (!authorized && isPending) {
       authorized = approverAllowed(user, config, stage);
-    } else {
+    } else if (!authorized) {
       authorized = can(user, 'bill-requests', 'l4-approve') || can(user, 'bill-requests', 'l3-approve') || can(user, 'bill-requests', 'gm-approve');
     }
   } else if (system === 'RunningBill-Accounts') {
     isPending = doc.status === 'l1-approved';
-    authorized = can(user, 'accounts-payment', 'l2-director-approve');
+    if (!authorized) authorized = can(user, 'accounts-payment', 'l2-director-approve');
   }
   if (!authorized) return forbidden(res, "You're not authorized to view this item.");
 
