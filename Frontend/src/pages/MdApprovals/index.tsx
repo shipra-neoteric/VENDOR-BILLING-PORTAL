@@ -172,6 +172,8 @@ export default function MdApprovals() {
   // no approve action at all, but the set should still start empty there).
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkApproveOpen, setBulkApproveOpen] = useState(false);
+  const [bulkRejectOpen, setBulkRejectOpen] = useState(false);
+  const [bulkReason, setBulkReason] = useState("");
   const [bulkSaving, setBulkSaving] = useState(false);
   useEffect(() => { setSelected(new Set()); }, [tab]);
 
@@ -325,6 +327,35 @@ export default function MdApprovals() {
       else if (okCount === 0) toast.error(`Failed to approve ${failCount} item${failCount === 1 ? "" : "s"}`);
       else toast(`Approved ${okCount}, failed ${failCount} — check the remaining rows`, { icon: "⚠️" });
       setBulkApproveOpen(false);
+      setSelected(new Set());
+      load();
+      loadTileStats();
+    } finally {
+      setBulkSaving(false);
+    }
+  };
+
+  // Same per-system reject endpoint handleReject already uses, just fired
+  // across every selected row with one shared reason — matches the single
+  // reject flow's own requirement that a reason is never optional.
+  const handleBulkReject = async () => {
+    const rows = filtered.filter((r) => selected.has(`${r.system}-${r.id}`));
+    if (rows.length === 0 || !bulkReason.trim()) return;
+    setBulkSaving(true);
+    try {
+      const results = await Promise.allSettled(
+        rows.map((row) => {
+          const { method, path, bodyKey } = ACTION_ENDPOINTS[row.system].reject;
+          return apiClient[method](path(row.id), { [bodyKey]: bulkReason });
+        })
+      );
+      const failCount = results.filter((r) => r.status === "rejected").length;
+      const okCount = results.length - failCount;
+      if (failCount === 0) toast.success(`Rejected ${okCount} item${okCount === 1 ? "" : "s"}`);
+      else if (okCount === 0) toast.error(`Failed to reject ${failCount} item${failCount === 1 ? "" : "s"}`);
+      else toast(`Rejected ${okCount}, failed ${failCount} — check the remaining rows`, { icon: "⚠️" });
+      setBulkRejectOpen(false);
+      setBulkReason("");
       setSelected(new Set());
       load();
       loadTileStats();
@@ -491,6 +522,7 @@ export default function MdApprovals() {
             </span>
             <div className="flex items-center gap-2">
               <Btn small outline label="Clear" onClick={() => setSelected(new Set())} />
+              <Btn small color="red" icon={X} label={`Reject Selected (${selected.size})`} onClick={() => setBulkRejectOpen(true)} />
               <Btn small color="green" icon={Check} label={`Approve Selected (${selected.size})`} onClick={() => setBulkApproveOpen(true)} />
             </div>
           </div>
@@ -628,6 +660,21 @@ export default function MdApprovals() {
           onConfirm={handleBulkApprove}
           onCancel={() => setBulkApproveOpen(false)}
         />
+      )}
+
+      {bulkRejectOpen && (
+        <Modal onClose={() => { setBulkRejectOpen(false); setBulkReason(""); }} title="Reject Selected">
+          <div className="p-4 space-y-3">
+            <div className="text-[13px] text-gray-500">
+              Rejecting {selected.size} selected item{selected.size === 1 ? "" : "s"} — same reason applies to all of them.
+            </div>
+            <Field textarea rows={3} placeholder="Reason for rejection…" value={bulkReason} onChange={(e) => setBulkReason(e.target.value)} />
+            <div className="flex justify-end gap-2">
+              <Btn label="Cancel" outline onClick={() => { setBulkRejectOpen(false); setBulkReason(""); }} disabled={bulkSaving} />
+              <Btn label="Confirm Reject" color="red" loading={bulkSaving} disabled={!bulkReason.trim()} onClick={handleBulkReject} />
+            </div>
+          </div>
+        </Modal>
       )}
 
       {rejectTarget && (
