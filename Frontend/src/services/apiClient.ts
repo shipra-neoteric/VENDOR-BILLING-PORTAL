@@ -1,6 +1,15 @@
 import axios from "axios";
 import toast from "react-hot-toast";
 
+// Lets specific optional/background calls opt out of the response
+// interceptor's auto-toast below, without silencing the interceptor
+// for every other call.
+declare module "axios" {
+  export interface AxiosRequestConfig {
+    suppressErrorToast?: boolean;
+  }
+}
+
 // Strip BOM (﻿) that PowerShell can inject into env vars
 const rawApiUrl = (import.meta.env.VITE_API_URL || "http://localhost:5000/api").replace(/^﻿/, "");
 
