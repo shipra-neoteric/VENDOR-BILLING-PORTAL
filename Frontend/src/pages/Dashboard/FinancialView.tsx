@@ -253,7 +253,10 @@ function RecentFinancialActivitiesPanel({ projectId }: { projectId: string }) {
     setLoading(true);
     const params: Record<string, string | number> = { types: "PAYMENT_RELEASED,RUNNING_BILL_APPROVED", limit: showMore ? 30 : 8 };
     if (projectId !== "all") params.projectId = projectId;
-    apiClient.get("/projects/activity", { params })
+    // Optional widget — a role without bill-review:view (e.g. Accounts, who
+    // still has every other Dashboard tile) must never see a 403 toast the
+    // moment they land on their own Dashboard for a call they never asked for.
+    apiClient.get("/projects/activity", { params, suppressErrorToast: true })
       .then(r => setEvents(r.data.events ?? []))
       .catch(() => {})
       .finally(() => setLoading(false));
