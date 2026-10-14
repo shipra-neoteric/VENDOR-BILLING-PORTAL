@@ -6,6 +6,19 @@ const { nextDrawingRequestTicketNo } = require('../utils/codeGen');
 const { logAudit } = require('../utils/auditLog');
 const { notifyByPermission, notifyUser } = require('../utils/notificationService');
 const { syncDrawingRequestToQc } = require('../utils/syncToQc');
+const { can } = require('../middleware/auth');
+
+// A user who holds ONLY l2-draw (the Architect/Designer stage) — not l1-review
+// — shouldn't see a request sitting at l1-gm (not yet screened) or returned
+// (sent back to the DRI, L1's business again): "designer ko L1 GM screening
+// ke baad hi dikhegi, agar woh forward karenge toh". Anyone who also holds
+// l1-review (a GM wearing both hats) or is owner still sees everything, same
+// as before — this only narrows visibility for an L2-only grant.
+function isL2OnlyDesigner(user) {
+  if (user.role === 'owner' || user.role === 'site-dri') return false;
+  return can(user, 'drawing-requests', 'l2-draw') && !can(user, 'drawing-requests', 'l1-review');
+}
+const PRE_L1_FORWARD_STATUSES = ['l1-gm', 'returned'];
 
 // No pre-existing Slack STAGES entry for this chain (see approvalStages.js's
 // own comment — it's Slack-notified separately/not at all today), so this
@@ -105,6 +118,14 @@ exports.listRequests = asyncHandler(async (req, res) => {
   if (status)       filter.status = status;
   if (reviewStatus) filter.reviewStatus = reviewStatus;
   if (priority)     filter.priority = priority;
+  if (isL2OnlyDesigner(req.user)) {
+    // Combine with any explicit reviewStatus query rather than clobbering it —
+    // if they asked for a pre-L1 status directly, force a no-match instead of
+    // silently ignoring their own restriction.
+    filter.reviewStatus = reviewStatus
+      ? (PRE_L1_FORWARD_STATUSES.includes(reviewStatus) ? '__none__' : reviewStatus)
+      : { $nin: PRE_L1_FORWARD_STATUSES };
+  }
   if (drawingType)  filter.drawingType = drawingType;
   if (dateFrom || dateTo) {
     filter.createdAt = {};
@@ -135,6 +156,9 @@ exports.getRequest = asyncHandler(async (req, res) => {
   const request = await populatedRequest(req.params.id);
   if (!request) return notFound(res, 'Drawing request not found');
   if (req.user.role === 'site-dri' && String(request.submittedBy?._id || request.submittedBy) !== String(req.user._id)) {
+    return notFound(res, 'Drawing request not found');
+  }
+  if (isL2OnlyDesigner(req.user) && PRE_L1_FORWARD_STATUSES.includes(request.reviewStatus)) {
     return notFound(res, 'Drawing request not found');
   }
   success(res, { request });
