@@ -79,6 +79,22 @@ function finalStageFor(status, statusPrefix, config) {
 
 const STAGE_LABEL = { agm: 'CEO Approval', gm: 'GM Approval', l3: 'L3 Approval', l4: 'L4 Approval' };
 
+// A manually-created bill's maker picks a specific person for its L1 (agm)
+// and L2 (gm) sign-off at creation time (sentForApprovalTo/
+// sentForL2ApprovalTo) — unlike a progress-driven BillRequest, which has no
+// such per-bill assignment and is open to any department-configured
+// approver. So unlike finalStageFor (department-final-stage-only), this
+// widens visibility ONLY for whoever was actually, individually named on
+// THIS bill, at its current (non-final) stage — not for anyone else, and
+// not just because they happen to also hold the department's final-stage
+// permission (e.g. CEO). Someone who was never put on the bill still only
+// ever sees it once it reaches its genuinely final stage.
+function assignedStageFor(bill, user) {
+  if (bill.manualApprovalStatus === 'pending' && bill.sentForApprovalTo && String(bill.sentForApprovalTo) === String(user._id)) return 'agm';
+  if (bill.manualApprovalStatus === 'pending-gm' && bill.sentForL2ApprovalTo && String(bill.sentForL2ApprovalTo) === String(user._id)) return 'gm';
+  return null;
+}
+
 // The history entries already snapshot byName/byRole at the moment the
 // decision was made (see each model's approvalHistory schema comment) — no
 // separate User lookup/populate is needed to resolve "decided by" to a name.
@@ -182,7 +198,7 @@ async function buildPendingItems(user) {
   for (const bill of manualBills) {
     if (!canActOnDepartment(user, bill)) continue;
     const config = await getApprovalConfig(bill);
-    const stage = finalStageFor(bill.manualApprovalStatus, 'pending-', config);
+    const stage = finalStageFor(bill.manualApprovalStatus, 'pending-', config) || assignedStageFor(bill, user);
     if (!stage) continue;
     if (!approverAllowed(user, config, stage)) continue;
     seenBillIds.add(String(bill._id));
