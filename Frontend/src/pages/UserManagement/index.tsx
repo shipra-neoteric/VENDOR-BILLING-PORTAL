@@ -131,12 +131,23 @@ export const ACTION_CFG: Record<PermAction, { label: string; bg: string }> = {
   "send-back":   { label: "Send Back",         bg: "#dc2626" },
   // Labels are stage-based, not role-based — this permission works for
   // anyone it's granted to, not just users literally named/roled "AGM"/"GM".
+  // gm-approve/l3-approve (not just l4-approve) also carry "Final Approval"
+  // wording: which stage actually finalizes a Bill Request is set per
+  // department (Users → Departments → requiredApprovals), e.g. a 2-level
+  // department finalizes at L2 (gm-approve), a 3-level one at L3
+  // (l3-approve) — so whichever is the right one for that department is
+  // just as much a "Final Approval" grant, and must be findable by that
+  // search term too, not only L4 (which today no department even uses).
   "agm-approve": { label: "L1 Approval",     bg: "#0891b2" },
-  "gm-approve":  { label: "L2 Approval",      bg: "#2563eb" },
-  "l3-approve":  { label: "L3 Approval",      bg: "#7c3aed" },
+  "gm-approve":  { label: "L2 Approval (Final Approval for 2-level departments)",      bg: "#2563eb" },
+  "l3-approve":  { label: "L3 Approval (Final Approval for 3-level departments)",      bg: "#7c3aed" },
   verify:   { label: "Verify",      bg: "#0891b2" },
   "l1-agm-approve":      { label: "L1 Approve",      bg: "#0d9488" },
-  "l2-director-approve": { label: "L2 Approve", bg: "#7c3aed" },
+  // Matches the "Final Approval" wording ceo-approve/l4-approve already use
+  // (above) — this is Accounts Payment's own last step before TMS, so it's
+  // just as much a "Final Approval" grant and needs to be findable by the
+  // same search term in the Permission Matrix, not only by "L2".
+  "l2-director-approve": { label: "L2 Final Approval", bg: "#7c3aed" },
   hold:          { label: "Hold",          bg: "#d97706" },
   "release-hold":{ label: "Release Hold",  bg: "#16a34a" },
   "retry-tms":   { label: "Send/Retry TMS",bg: "#1d4ed8" },
