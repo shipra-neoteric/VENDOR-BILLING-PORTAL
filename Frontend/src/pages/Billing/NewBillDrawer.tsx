@@ -229,7 +229,9 @@ export default function NewBillDrawer({
   // instead of forcing "Custom Team" + re-typing the exact name every time.
   const [registeredCustomDepts, setRegisteredCustomDepts] = useState<string[]>([]);
   useEffect(() => {
-    apiClient.get<{ rules: { department: string; isCustom: boolean }[] }>("/approval-rules")
+    // Optional lookup — a role without user-management:view access to this
+    // endpoint must never see a 403 toast for it, just fall back silently.
+    apiClient.get<{ rules: { department: string; isCustom: boolean }[] }>("/approval-rules", { suppressErrorToast: true })
       .then(r => setRegisteredCustomDepts((r.data.rules || []).filter(x => x.isCustom).map(x => x.department)))
       .catch(() => {});
   }, []);

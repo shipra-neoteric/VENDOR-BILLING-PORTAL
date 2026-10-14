@@ -277,7 +277,9 @@ export default function WorkOrderApprovalWorkflow<T extends ApprovalWorkOrder>({
   // instead of a permanently-blank "Approver" for every such WO.
   const [woLevelsByDept, setWoLevelsByDept] = useState<Record<string, number>>({});
   useEffect(() => {
-    apiClient.get<{ rules: { department: string; woRequiredApprovals: number }[] }>("/approval-rules")
+    // Optional lookup — a role without user-management:view access to this
+    // endpoint must never see a 403 toast for it, just fall back silently.
+    apiClient.get<{ rules: { department: string; woRequiredApprovals: number }[] }>("/approval-rules", { suppressErrorToast: true })
       .then(r => setWoLevelsByDept(Object.fromEntries((r.data.rules || []).map(x => [x.department, x.woRequiredApprovals]))))
       .catch(() => {});
   }, []);

@@ -111,7 +111,12 @@ apiClient.interceptors.response.use(
         return Promise.reject(error);
       }
 
-      toast.error(msg);
+      // Lets a caller mark a request as "optional, fails silently" (e.g. a
+      // background fetch feeding a nice-to-have display tweak) — the caller
+      // still gets the rejection to handle however it likes, it just never
+      // surfaces this interceptor's own generic toast for it. Opt-in only;
+      // every other call keeps today's always-toast behavior unchanged.
+      if (!config.suppressErrorToast) toast.error(msg);
     }
     return Promise.reject(error);
   }

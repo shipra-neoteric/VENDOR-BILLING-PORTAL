@@ -1193,7 +1193,11 @@ function WOFormFields({
   // silently create a second, disconnected department.
   const [registeredCustomDepts, setRegisteredCustomDepts] = useState<string[]>([]);
   useEffect(() => {
-    apiClient.get<{ rules: { department: string; isCustom: boolean }[] }>("/approval-rules")
+    // Optional, supplementary lookup (only used to avoid silently creating a
+    // duplicate custom department) — a role without user-management:view
+    // access to this endpoint (e.g. Accounts) must never see a scary 403
+    // toast for it; just fall back to an empty list and carry on.
+    apiClient.get<{ rules: { department: string; isCustom: boolean }[] }>("/approval-rules", { suppressErrorToast: true })
       .then(r => setRegisteredCustomDepts((r.data.rules || []).filter(x => x.isCustom).map(x => x.department)))
       .catch(() => {});
   }, []);
@@ -1561,7 +1565,10 @@ export default function WorkItems() {
   // instead of lumping them all under one generic "Custom Team" bucket.
   const [registeredCustomDepts, setRegisteredCustomDepts] = useState<string[]>([]);
   useEffect(() => {
-    apiClient.get<{ rules: { department: string; isCustom: boolean }[] }>("/approval-rules")
+    // See the identical comment on WOFormFields' own copy of this fetch —
+    // optional lookup, must never toast a 403 for a role without
+    // user-management:view access.
+    apiClient.get<{ rules: { department: string; isCustom: boolean }[] }>("/approval-rules", { suppressErrorToast: true })
       .then(r => setRegisteredCustomDepts((r.data.rules || []).filter(x => x.isCustom).map(x => x.department)))
       .catch(() => {});
   }, []);
