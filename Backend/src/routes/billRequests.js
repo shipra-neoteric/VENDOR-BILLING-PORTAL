@@ -1,5 +1,5 @@
 const router     = require('express').Router();
-const { authenticate, authorizeOr, authorizeAnyOr } = require('../middleware/auth');
+const { authenticate, authorizeOr, authorizeAnyOr, authorizeOrAlt, authorizeAnyOrAlt } = require('../middleware/auth');
 const {
   listBillRequests,
   createBillRequest,
@@ -29,20 +29,20 @@ router.get('/',                listBillRequests);
 router.post('/batch',          authorizeOr('bill-requests', 'create'), createBatchBillRequest);
 router.post('/',               authorizeOr('bill-requests', 'create'), createBillRequest);
 // Stage 1 (AGM sets hold/advance, forwards to GM) — AGM/owner only.
-router.put('/:id/agm-approve', authorizeOr('bill-requests', 'agm-approve'), agmApprove);
+router.put('/:id/agm-approve', authorizeOrAlt('bill-requests', 'agm-approve', 'md-approvals', 'approve'), agmApprove);
 // Stage 2 (GM signs off) — finalizes the bill for the default 2-level
 // department, or moves on to L3 for a department configured for 3/4.
-router.put('/:id/gm-approve',  authorizeOr('bill-requests', 'gm-approve'), gmApprove);
+router.put('/:id/gm-approve',  authorizeOrAlt('bill-requests', 'gm-approve', 'md-approvals', 'approve'), gmApprove);
 // Stages 3/4 — only ever reachable when a department's Approval Rule (Users
 // → Departments) is configured for 3/4 levels; no hardcoded role bypass
 // beyond owner, since no role in this org is inherently "the L3/L4 approver"
 // (approverAllowed's per-department config is what actually decides who
 // qualifies once the request is genuinely at that stage).
-router.put('/:id/l3-approve',  authorizeOr('bill-requests', 'l3-approve'), l3Approve);
-router.put('/:id/l4-approve',  authorizeOr('bill-requests', 'l4-approve'), l4Approve);
+router.put('/:id/l3-approve',  authorizeOrAlt('bill-requests', 'l3-approve', 'md-approvals', 'approve'), l3Approve);
+router.put('/:id/l4-approve',  authorizeOrAlt('bill-requests', 'l4-approve', 'md-approvals', 'approve'), l4Approve);
 // Reject's target status depends on which stage it's at —
 // authorizeAnyOr since any stage's action-holder can reject at their stage.
-router.put('/:id/reject',    authorizeAnyOr('bill-requests', ['agm-approve', 'gm-approve', 'l3-approve', 'l4-approve']), rejectBillRequest);
+router.put('/:id/reject',    authorizeAnyOrAlt('bill-requests', ['agm-approve', 'gm-approve', 'l3-approve', 'l4-approve'], 'md-approvals', 'reject'), rejectBillRequest);
 // Payment release lives entirely in the Accounts Payment module now (see
 // billController.releasePayment) — no milestone route here anymore.
 router.patch('/archive-bulk',   authorizeOr('bill-requests', 'edit', 'CEO'), archiveBillRequestsBulk);

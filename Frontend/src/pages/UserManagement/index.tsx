@@ -165,15 +165,15 @@ export const ACTION_CFG: Record<PermAction, { label: string; bg: string }> = {
 // is laid out, not an arbitrary permissions-only grouping.
 export const MODULE_DEFS: ModuleDef[] = [
   { id: "dashboard",        name: "Dashboard",         icon: "▦",  group: "Overview",      actions: ["view"] },
-  // Page-access gate only — a pure "view" toggle for the Final Approval
-  // screen, same shape as Dashboard/SLA Report above. Whether anything
-  // actually shows up there (and whether this person can act on it) still
-  // depends entirely on the real per-system permissions below (Work
-  // Orders' ceo-approve, Bill Approval's gm/l3/l4-approve, Accounts
-  // Payment's l2-director-approve) — this just controls whether they can
-  // open the page at all, e.g. to view others' final-approval items
-  // read-only without being an approver themselves anywhere.
-  { id: "md-approvals",     name: "Final Approval",    icon: "✅", group: "Overview",      actions: ["view"] },
+  // "View" opens the page read-only, showing the exact same cross-
+  // department queue Rahul/Owner sees (see mdApprovalsController.js's
+  // hasViewOnlyGrant). "Approve"/"Reject" additionally unlock every real
+  // per-system action route itself (Work Orders' final-approve, Bill
+  // Approval's gm/l3/l4-approve + reject, Accounts Payment's
+  // l2-director-approve + reject — see authorizeOrAlt/authorizeAnyOrAlt in
+  // those routes) — granting either here is an alternative to separately
+  // picking through those 3 modules' own action lists one by one.
+  { id: "md-approvals",     name: "Final Approval",    icon: "✅", group: "Overview",      actions: ["view", "approve", "reject"] },
   { id: "sla-dashboard",    name: "SLA Report",        icon: "⏱️", group: "Overview",      actions: ["view"] },
   { id: "projects",         name: "Projects",           icon: "🏗️", group: "Overview",      actions: ["view","create","edit","delete"] },
   { id: "contractors",      name: "Contractors",        icon: "👷", group: "Execution",     actions: ["view","create","edit","delete"] },

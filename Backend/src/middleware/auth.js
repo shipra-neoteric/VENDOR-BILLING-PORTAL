@@ -110,4 +110,31 @@ const authorizeAnyOr = (module, actions, ...roles) => (req, res, next) => {
   });
 };
 
-module.exports = { authenticate, authorize, authorizeOr, authorizeAnyOr, can, mergeRolePermissions };
+// Final Approval's own dedicated Approve/Reject grant (Permission Matrix →
+// Final Approval → Approve / Reject) is a cross-cutting alternative way to
+// unlock the real per-system action routes below — same idea as
+// authorizeOr's own ...roles bypass, just spanning a second independent
+// [module, action] pair instead of one extra role name. Lets an admin grant
+// someone "can act on Final Approval's queue" without separately picking
+// through work-orders/bill-requests/accounts-payment's own action lists.
+const authorizeOrAlt = (module, action, altModule, altAction, ...roles) => (req, res, next) => {
+  if (can(req.user, module, action, ...roles) || can(req.user, altModule, altAction)) return next();
+  return res.status(403).json({
+    message: `Role '${req.user.role}' does not have access to this action`,
+  });
+};
+
+// Same as authorizeOrAlt, but for the authorizeAnyOr shape (several
+// possible actions on the primary module) — used by the reject/send-back
+// routes, where whoever's turn it currently is should be allowed, plus
+// anyone holding the Final Approval Reject grant.
+const authorizeAnyOrAlt = (module, actions, altModule, altAction, ...roles) => (req, res, next) => {
+  if (roles.includes(req.user.role) || can(req.user, altModule, altAction)) return next();
+  const perm = (req.user.permissions || []).find(p => p.module === module);
+  if (perm && actions.some(a => perm.actions.includes(a))) return next();
+  return res.status(403).json({
+    message: `Role '${req.user.role}' does not have access to this action`,
+  });
+};
+
+module.exports = { authenticate, authorize, authorizeOr, authorizeAnyOr, authorizeOrAlt, authorizeAnyOrAlt, can, mergeRolePermissions };

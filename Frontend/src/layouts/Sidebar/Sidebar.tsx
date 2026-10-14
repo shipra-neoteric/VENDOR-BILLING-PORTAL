@@ -132,7 +132,9 @@ function canView(moduleId: string, perms: PermEntry[] | undefined, role?: string
       // Dedicated page-access grant (Permission Matrix's own "Final
       // Approval" module/view action) — lets someone open the page without
       // separately holding an approve permission anywhere.
-      (p.module === "md-approvals" && p.actions.includes("view")) ||
+      // approve/reject imply view too — granting either without separately
+      // ticking "view" shouldn't hide the nav item from someone who can act.
+      (p.module === "md-approvals" && (p.actions.includes("view") || p.actions.includes("approve") || p.actions.includes("reject"))) ||
       (p.module === "work-orders" && p.actions.includes("ceo-approve")) ||
       // gm-approve/l3-approve too, not just l4-approve — which stage is
       // "final" for Bill Approval depends on the department's own

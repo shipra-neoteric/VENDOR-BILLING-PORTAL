@@ -1,5 +1,5 @@
 const router = require('express').Router();
-const { authenticate, authorize, authorizeOr, authorizeAnyOr } = require('../middleware/auth');
+const { authenticate, authorize, authorizeOr, authorizeAnyOr, authorizeOrAlt, authorizeAnyOrAlt } = require('../middleware/auth');
 const { createWorkOrderRules } = require('../validators/workOrder.validator');
 const {
   listWorkOrders, getWorkOrder, getWorkOrdersBulkDetail, getWorkOrderRetentionHeld, createWorkOrder, updateWorkOrder, deleteWorkOrder, cancelWorkOrder,
@@ -37,8 +37,8 @@ router.patch('/:id/submit',          authorizeOr('work-orders', 'maker'), submit
 // order that hasn't reached 'pending-final' yet.
 router.patch('/:id/checker-approve', authorizeOr('work-orders', 'checker', 'CEO'), checkerApprove);
 router.patch('/:id/approver-approve', authorizeOr('work-orders', 'approver', 'CEO'), approverApprove);
-router.patch('/:id/final-approve',   authorizeOr('work-orders', 'ceo-approve', 'CEO'), finalApprove);
-router.patch('/:id/send-back',       authorizeAnyOr('work-orders', ['checker', 'approver', 'ceo-approve'], 'CEO'), sendBack);
+router.patch('/:id/final-approve',   authorizeOrAlt('work-orders', 'ceo-approve', 'md-approvals', 'approve', 'CEO'), finalApprove);
+router.patch('/:id/send-back',       authorizeAnyOrAlt('work-orders', ['checker', 'approver', 'ceo-approve'], 'md-approvals', 'reject', 'CEO'), sendBack);
 // site-dri is hardcoded here (unlike most other modules) because logging
 // progress is that role's actual job — none of today's real DRI accounts have
 // 'work-progress' ticked in their checklist, so gating this on the checklist

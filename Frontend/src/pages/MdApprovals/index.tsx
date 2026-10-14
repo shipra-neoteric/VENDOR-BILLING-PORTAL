@@ -48,7 +48,9 @@ function hasAnyMdApprovalsAccess(user: ReturnType<typeof useAuth>["user"]): bool
     // for a user who should be able to open this page without necessarily
     // being an approver anywhere themselves. Matches the backend's own
     // hasAnyBaseAccess guard (mdApprovalsController.js).
-    (p.module === "md-approvals" && p.actions.includes("view")) ||
+    // approve/reject imply view too — granting either without separately
+    // ticking "view" shouldn't leave someone unable to even open the page.
+    (p.module === "md-approvals" && (p.actions.includes("view") || p.actions.includes("approve") || p.actions.includes("reject"))) ||
     (p.module === "work-orders" && p.actions.includes("ceo-approve")) ||
     // gm-approve/l3-approve, not just l4-approve — which Bill Approval
     // stage is actually "final" is set per department (requiredApprovals),

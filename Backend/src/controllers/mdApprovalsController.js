@@ -134,6 +134,8 @@ function findFinalHistoryEntry(history, stagePrefix, action) {
 function hasViewOnlyGrant(user) {
   return (
     can(user, 'md-approvals', 'view') ||
+    can(user, 'md-approvals', 'approve') ||
+    can(user, 'md-approvals', 'reject') ||
     can(user, 'work-orders', 'ceo-approve') ||
     can(user, 'bill-requests', 'l4-approve') ||
     can(user, 'bill-requests', 'l3-approve') ||
@@ -456,6 +458,8 @@ exports.listMdApprovals = asyncHandler(async (req, res) => {
   // be the REAL final stage for a given department (see finalStageFor above).
   const hasAnyBaseAccess =
     can(user, 'md-approvals', 'view') ||
+    can(user, 'md-approvals', 'approve') ||
+    can(user, 'md-approvals', 'reject') ||
     can(user, 'work-orders', 'ceo-approve') ||
     can(user, 'bill-requests', 'l4-approve') ||
     can(user, 'bill-requests', 'l3-approve') ||
