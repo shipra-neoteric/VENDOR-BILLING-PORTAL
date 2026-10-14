@@ -129,8 +129,16 @@ function canView(moduleId: string, perms: PermEntry[] | undefined, role?: string
   if (moduleId === "md-approvals") {
     if (role === "owner") return true;
     return !!perms?.some((p) =>
+      // Dedicated page-access grant (Permission Matrix's own "Final
+      // Approval" module/view action) — lets someone open the page without
+      // separately holding an approve permission anywhere.
+      (p.module === "md-approvals" && p.actions.includes("view")) ||
       (p.module === "work-orders" && p.actions.includes("ceo-approve")) ||
-      (p.module === "bill-requests" && p.actions.includes("l4-approve")) ||
+      // gm-approve/l3-approve too, not just l4-approve — which stage is
+      // "final" for Bill Approval depends on the department's own
+      // requiredApprovals, so l4-approve alone missed anyone whose
+      // final stage is L2 or L3 (matches MdApprovals/index.tsx's own check).
+      (p.module === "bill-requests" && (p.actions.includes("gm-approve") || p.actions.includes("l3-approve") || p.actions.includes("l4-approve"))) ||
       (p.module === "accounts-payment" && p.actions.includes("l2-director-approve"))
     );
   }

@@ -43,8 +43,17 @@ function hasAnyMdApprovalsAccess(user: ReturnType<typeof useAuth>["user"]): bool
   if (user.role === "owner") return true;
   const perms = user.permissions ?? [];
   return perms.some((p) =>
+    // Page-access-only grant (User Management → Permission Matrix → Final
+    // Approval → View) — same as every other module's own generic "view",
+    // for a user who should be able to open this page without necessarily
+    // being an approver anywhere themselves. Matches the backend's own
+    // hasAnyBaseAccess guard (mdApprovalsController.js).
+    (p.module === "md-approvals" && p.actions.includes("view")) ||
     (p.module === "work-orders" && p.actions.includes("ceo-approve")) ||
-    (p.module === "bill-requests" && p.actions.includes("l4-approve")) ||
+    // gm-approve/l3-approve, not just l4-approve — which Bill Approval
+    // stage is actually "final" is set per department (requiredApprovals),
+    // and l4-approve alone excluded anyone whose final stage is L2/L3.
+    (p.module === "bill-requests" && (p.actions.includes("gm-approve") || p.actions.includes("l3-approve") || p.actions.includes("l4-approve"))) ||
     (p.module === "accounts-payment" && p.actions.includes("l2-director-approve"))
   );
 }

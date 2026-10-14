@@ -432,6 +432,7 @@ exports.listMdApprovals = asyncHandler(async (req, res) => {
   // gm-approve/l3-approve are included alongside l4-approve since either can
   // be the REAL final stage for a given department (see finalStageFor above).
   const hasAnyBaseAccess =
+    can(user, 'md-approvals', 'view') ||
     can(user, 'work-orders', 'ceo-approve') ||
     can(user, 'bill-requests', 'l4-approve') ||
     can(user, 'bill-requests', 'l3-approve') ||
