@@ -516,14 +516,14 @@ export default function MdApprovals() {
             Back stay single-row-only via the existing modals, since those
             need a reason per item. */}
         {!isDecidedTab && selected.size > 0 && (
-          <div className="flex items-center justify-between gap-3 bg-primary/10 border border-primary/30 rounded-lg px-4 py-2.5 mb-3">
-            <span className="text-[13px] font-semibold" style={{ color: "var(--theme-primary)" }}>
+          <div className="flex items-center justify-between gap-3 bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700/40 rounded-lg px-4 py-2.5 mb-3">
+            <span className="text-[13px] font-semibold text-gray-600 dark:text-gray-300">
               {selected.size} selected
             </span>
             <div className="flex items-center gap-2">
               <Btn small outline label="Clear" onClick={() => setSelected(new Set())} />
-              <Btn small color="red" icon={X} label={`Reject (${selected.size})`} onClick={() => setBulkRejectOpen(true)} />
               <Btn small color="green" icon={Check} label={`Approve (${selected.size})`} onClick={() => setBulkApproveOpen(true)} />
+              <Btn small color="red" icon={X} label={`Reject (${selected.size})`} onClick={() => setBulkRejectOpen(true)} />
             </div>
           </div>
         )}
