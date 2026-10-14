@@ -121,16 +121,25 @@ function findFinalHistoryEntry(history, stagePrefix, action) {
   return null;
 }
 
-// A pure "view" grant (Permission Matrix → Final Approval → View, no real
-// approve permission anywhere) sees exactly what Rahul/Owner sees — this
-// page is, in practice, Rahul's own approval queue; a view-only holder is
-// there purely to track his process, not to act as an independent approver
-// for their own department. So it bypasses each item's own
-// approverAllowed/woApproverAllowed/can() check below, the same way an
-// Owner/CEO role already does inside those functions — never the real
-// approve/reject endpoints, which stay independently gated regardless.
+// Anyone who can open this page at all — Owner, Rahul (via his real
+// approve permissions), or a pure "Final Approval: View" grant — sees the
+// EXACT same queue: this page is, in practice, Rahul's own approval
+// process, not a personalized "your department's final items" view per
+// viewer. So this mirrors hasAnyBaseAccess's own condition (the page-level
+// gate in listMdApprovals below) and, when true, bypasses both
+// canActOnDepartment (department scoping) and each item's own
+// approverAllowed/woApproverAllowed/can() check in the builders below —
+// never the real approve/reject endpoints, which stay independently gated
+// by the genuine per-system permission regardless of any of this.
 function hasViewOnlyGrant(user) {
-  return can(user, 'md-approvals', 'view');
+  return (
+    can(user, 'md-approvals', 'view') ||
+    can(user, 'work-orders', 'ceo-approve') ||
+    can(user, 'bill-requests', 'l4-approve') ||
+    can(user, 'bill-requests', 'l3-approve') ||
+    can(user, 'bill-requests', 'gm-approve') ||
+    can(user, 'accounts-payment', 'l2-director-approve')
+  );
 }
 
 async function buildPendingItems(user) {
@@ -146,7 +155,7 @@ async function buildPendingItems(user) {
   const now = Date.now();
 
   for (const wo of workOrders) {
-    if (!canActOnDepartment(user, wo)) continue;
+    if (!viewOnly && !canActOnDepartment(user, wo)) continue;
     const config = await getWoApprovalConfig(wo);
     if (!woApproverAllowed(user, config, 'final') && !viewOnly) continue;
     const pendingSince = wo.approverAt || wo.checkerAt || wo.createdAt;
@@ -177,7 +186,7 @@ async function buildPendingItems(user) {
   }
 
   for (const br of billRequests) {
-    if (!canActOnDepartment(user, br)) continue;
+    if (!viewOnly && !canActOnDepartment(user, br)) continue;
     const config = await getApprovalConfig(br);
     const stage = finalStageFor(br.status, 'pending-', config);
     if (!stage) continue; // genuinely mid-chain for this department, not final yet
@@ -209,7 +218,7 @@ async function buildPendingItems(user) {
 
   const seenBillIds = new Set();
   for (const bill of manualBills) {
-    if (!canActOnDepartment(user, bill)) continue;
+    if (!viewOnly && !canActOnDepartment(user, bill)) continue;
     const config = await getApprovalConfig(bill);
     const stage = finalStageFor(bill.manualApprovalStatus, 'pending-', config) || assignedStageFor(bill, user);
     if (!stage) continue;
@@ -286,7 +295,7 @@ async function buildDecidedItems(user, decision) {
     const rows = await WorkOrder.find({ approvalHistory: { $elemMatch: marker } })
       .populate('createdBy', 'name').lean();
     for (const wo of rows) {
-      if (!canActOnDepartment(user, wo)) continue;
+      if (!viewOnly && !canActOnDepartment(user, wo)) continue;
       const entry = lastMatchingHistoryEntry(wo.approvalHistory, marker.stage, marker.action);
       if (!entry) continue;
       const pendingSince = wo.approverAt || wo.checkerAt || wo.createdAt;
@@ -320,7 +329,7 @@ async function buildDecidedItems(user, decision) {
       approvalHistory: { $elemMatch: { stage: { $in: ['gm', 'l3', 'l4'] }, action } },
     }).populate('requestedBy', 'name').lean();
     for (const br of rows) {
-      if (!canActOnDepartment(user, br)) continue;
+      if (!viewOnly && !canActOnDepartment(user, br)) continue;
       const found = findFinalHistoryEntry(br.approvalHistory, '', action);
       if (!found) continue;
       const { stage, entry } = found;
@@ -365,7 +374,7 @@ async function buildDecidedItems(user, decision) {
 
     const seen = new Set();
     for (const bill of rows) {
-      if (!canActOnDepartment(user, bill)) continue;
+      if (!viewOnly && !canActOnDepartment(user, bill)) continue;
       const manualFound = (can(user, 'bill-requests', 'l4-approve') || can(user, 'bill-requests', 'l3-approve') || can(user, 'bill-requests', 'gm-approve') || viewOnly)
         ? findFinalHistoryEntry(bill.approvalHistory, 'manual-', action) : null;
       const accountsEntry = (can(user, 'accounts-payment', 'l2-director-approve') || viewOnly)
@@ -490,7 +499,8 @@ exports.getMdApprovalDetail = asyncHandler(async (req, res) => {
   }
   const doc = await query.lean();
   if (!doc) return notFound(res, 'Not found');
-  if (!canActOnDepartment(user, doc)) return forbidden(res, 'This item belongs to a different department.');
+  const viewOnly = hasViewOnlyGrant(user);
+  if (!viewOnly && !canActOnDepartment(user, doc)) return forbidden(res, 'This item belongs to a different department.');
 
   // Re-run the same authorization the list endpoint uses: for an item still
   // sitting at the relevant stage, the real "am I the configured approver"
@@ -498,11 +508,8 @@ exports.getMdApprovalDetail = asyncHandler(async (req, res) => {
   // an already-decided item, department scoping (above) is sufficient —
   // re-checking the CURRENT stage state would be meaningless since the item
   // has moved past it.
-  // A pure view-only grant (see hasViewOnlyGrant above) can open any
-  // item's detail too, read-only — same reasoning as the list endpoint:
-  // this page is Rahul's own queue, and a view-only holder is just
-  // tracking it, not acting as their own independent approver.
-  const viewOnly = hasViewOnlyGrant(user);
+  // Anyone who sees Rahul's full queue (see hasViewOnlyGrant above) can
+  // open any item's detail too, same reasoning as the list endpoint.
   let authorized = viewOnly;
   let isPending = false;
   if (system === 'WorkOrder') {
