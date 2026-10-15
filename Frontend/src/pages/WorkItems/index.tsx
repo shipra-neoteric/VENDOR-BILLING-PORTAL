@@ -2679,19 +2679,22 @@ export default function WorkItems() {
                   fit a phone's width, wrapping/overlapping text into an
                   unreadable mess instead of just scrolling sideways. sm:min-w-0
                   restores today's exact "no horizontal scroll" desktop fit. */}
-              <Table containerClassName="h-[650px] overflow-y-auto" className="min-w-[1050px]">
+              <Table containerClassName="h-[650px] overflow-y-auto" className="min-w-[1100px]">
                 <Thead>
                   <Tr>
                     <Th className="w-[8%]">WO No</Th>
                     <Th className="w-[7%]">Date</Th>
                     <Th className="w-[8%]">Project</Th>
-                    <Th className="w-[9%]">Category</Th>
-                    <Th className="w-[9%]">Vendor Code</Th>
+                    <Th className="w-[8%]">Category</Th>
+                    <Th className="w-[8%]">Vendor Code</Th>
                     <Th className="w-[10%]">Company Name</Th>
-                    <Th className="text-right w-[9%]">Contract Value</Th>
+                    {/* Widened from 9% — a large contract value (e.g.
+                        ₹1,04,91,430.00) overflowed this column's old width
+                        and visually overlapped the Status badge next to it. */}
+                    <Th className="text-right w-[13%]">Contract Value</Th>
                     <Th className="w-[12%]">Status</Th>
-                    <Th className="w-[10%]">Step</Th>
-                    <Th className="w-[7%]">Created</Th>
+                    <Th className="w-[9%]">Step</Th>
+                    <Th className="w-[6%]">Created</Th>
                     <Th className="w-[11%]">Actions</Th>
                   </Tr>
                 </Thead>
@@ -2725,7 +2728,7 @@ export default function WorkItems() {
                         <Td className="truncate text-xs" title={record.category || undefined}>{record.category || <span className="text-gray-300">—</span>}</Td>
                         <Td className="truncate text-xs" title={record.vendorCode || undefined}>{record.vendorCode || <span className="text-gray-300">—</span>}</Td>
                         <Td className="truncate text-xs" title={record.vendorName || undefined}>{record.vendorName}</Td>
-                        <Td className="text-right font-bold">
+                        <Td className="text-right font-bold whitespace-nowrap">
                           {record.contractValue ? fmt(record.contractValue) : <span className="text-gray-300">—</span>}
                         </Td>
                         <Td>
