@@ -159,6 +159,8 @@ interface WOData {
     approver?: { name?: string; at?: string; position?: string } | null;
     final?: { name?: string; at?: string; position?: string } | null;
   };
+  // Same 2-level-department flag as WorkOrderPDF.tsx — see its own comment.
+  skipApprover?: boolean;
 }
 
 interface CompanyData {
@@ -471,11 +473,17 @@ export function WorkOrderDocumentHindi({ wo, company, contractor }: Props) {
             <View style={S.sigLine} />
             <Text style={S.sigName}>नाम: {primaryContractorName || contractor?.companyName || ""}</Text>
           </View>
-          {([
-            ["L1 स्वीकृति", wo.approvals?.maker, "स्वीकृत"],
-            ["L2 स्वीकृति", wo.approvals?.checker, "स्वीकृत"],
-            ["L3 स्वीकृति", wo.approvals?.approver, "स्वीकृत"],
-          ] as const).map(([role, approval, doneLabel], i, arr) => (
+          {(wo.skipApprover
+            ? ([
+                ["L1 स्वीकृति", wo.approvals?.maker, "स्वीकृत"],
+                ["L2 स्वीकृति", wo.approvals?.checker, "स्वीकृत"],
+              ] as const)
+            : ([
+                ["L1 स्वीकृति", wo.approvals?.maker, "स्वीकृत"],
+                ["L2 स्वीकृति", wo.approvals?.checker, "स्वीकृत"],
+                ["L3 स्वीकृति", wo.approvals?.approver, "स्वीकृत"],
+              ] as const)
+          ).map(([role, approval, doneLabel], i, arr) => (
             <View key={role} style={i === arr.length - 1 ? S.sigCellL : S.sigCell}>
               <Text style={S.sigRole}>{role}</Text>
               <View style={S.sigSlot}>
@@ -488,10 +496,11 @@ export function WorkOrderDocumentHindi({ wo, company, contractor }: Props) {
           ))}
         </View>
 
-        {/* ── Final Approval (L4) — last signature, on its own line below ── */}
+        {/* ── Final Approval — last signature, on its own line below.
+            Labeled L3 for a 2-level department (Approver stage doesn't exist), L4 otherwise. ── */}
         <View style={[S.sigBlock, { marginTop: 8, width: "33%" }]} wrap={false}>
           <View style={S.sigCellL}>
-            <Text style={S.sigRole}>L4 स्वीकृति</Text>
+            <Text style={S.sigRole}>{wo.skipApprover ? "L3 स्वीकृति" : "L4 स्वीकृति"}</Text>
             <View style={S.sigSlot}>
               {wo.approvals?.final?.name ? <Text style={S.sigApprovedText}>स्वीकृत</Text> : null}
             </View>

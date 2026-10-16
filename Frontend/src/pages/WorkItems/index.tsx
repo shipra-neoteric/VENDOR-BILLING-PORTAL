@@ -1564,14 +1564,28 @@ export default function WorkItems() {
   // entirely), needed here so the filter bar can list each one by name
   // instead of lumping them all under one generic "Custom Team" bucket.
   const [registeredCustomDepts, setRegisteredCustomDepts] = useState<string[]>([]);
+  // This department's Work Order approval-level count (2 = Checker → Final,
+  // Approver skipped entirely — see workOrderController.js's checkerApprove)
+  // — same lookup WorkOrderApprovalWorkflow.tsx's own modal already uses to
+  // show the right number of stages; needed here too so the PDF signature
+  // block matches instead of always printing a fixed, permanently-blank L3.
+  const [woLevelsByDept, setWoLevelsByDept] = useState<Record<string, number>>({});
   useEffect(() => {
     // See the identical comment on WOFormFields' own copy of this fetch —
     // optional lookup, must never toast a 403 for a role without
     // user-management:view access.
-    apiClient.get<{ rules: { department: string; isCustom: boolean }[] }>("/approval-rules", { suppressErrorToast: true })
-      .then(r => setRegisteredCustomDepts((r.data.rules || []).filter(x => x.isCustom).map(x => x.department)))
+    apiClient.get<{ rules: { department: string; isCustom: boolean; woRequiredApprovals?: number }[] }>("/approval-rules", { suppressErrorToast: true })
+      .then(r => {
+        const rules = r.data.rules || [];
+        setRegisteredCustomDepts(rules.filter(x => x.isCustom).map(x => x.department));
+        setWoLevelsByDept(Object.fromEntries(rules.map(x => [x.department, x.woRequiredApprovals ?? 3])));
+      })
       .catch(() => {});
   }, []);
+  function skipApproverFor(wo: WorkOrder): boolean {
+    const effectiveDept = (wo as any).department === "custom" ? ((wo as any).customDepartment || "") : ((wo as any).department || "");
+    return (woLevelsByDept[effectiveDept] ?? 3) <= 2;
+  }
   const [progressFilter,      setProgressFilter]      = useState<string>("all");
   // Cancelled work orders are archived — hidden from the normal list unless
   // this is on, in which case the list flips to showing ONLY cancelled ones.
@@ -2337,7 +2351,7 @@ export default function WorkItems() {
       const contractor = contractors.find(c => c.vendorCode === wo.vendorCode) ?? null;
       const { names, positions } = await fetchUserMap();
       const { downloadWorkOrderPDF } = await import("../../components/WorkOrderPDF");
-      await downloadWorkOrderPDF({ ...wo, approvals: buildApprovals(wo, names, positions) } as any, company, contractor as any);
+      await downloadWorkOrderPDF({ ...wo, approvals: buildApprovals(wo, names, positions), skipApprover: skipApproverFor(wo) } as any, company, contractor as any);
     } catch {
       toast.error("Failed to generate PDF");
     } finally {
@@ -2353,7 +2367,7 @@ export default function WorkItems() {
       const contractor = contractors.find(c => c.vendorCode === wo.vendorCode) ?? null;
       const { names, positions } = await fetchUserMap();
       const { downloadWorkOrderPDFHindi } = await import("../../components/WorkOrderPDFHindi");
-      await downloadWorkOrderPDFHindi({ ...wo, approvals: buildApprovals(wo, names, positions) } as any, company, contractor as any);
+      await downloadWorkOrderPDFHindi({ ...wo, approvals: buildApprovals(wo, names, positions), skipApprover: skipApproverFor(wo) } as any, company, contractor as any);
     } catch {
       toast.error("Failed to generate Hindi PDF");
     } finally {

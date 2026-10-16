@@ -184,6 +184,13 @@ interface WOData {
     approver?: { name?: string; at?: string; position?: string } | null;
     final?: { name?: string; at?: string; position?: string } | null;
   };
+  // This department's Work Order approval chain is 2-level (Checker →
+  // Final, Approver stage skipped entirely — see workOrderController.js's
+  // checkerApprove) — same condition the in-app approval modal already uses
+  // to show only 3 stages instead of a permanently-blank L3 (Approver) box.
+  // When true, the signature block below renders L1/L2/L3(Final) instead of
+  // the fixed L1-L4.
+  skipApprover?: boolean;
 }
 
 interface CompanyData {
@@ -568,11 +575,17 @@ export function WorkOrderDocument({ wo, company, contractor }: Props) {
             <View style={S.sigLine} />
             <Text style={S.sigName}>Name: {primaryContractorName || contractor?.companyName || ""}</Text>
           </View>
-          {([
-            ["L1 Approval", wo.approvals?.maker, "Approved"],
-            ["L2 Approval", wo.approvals?.checker, "Approved"],
-            ["L3 Approval", wo.approvals?.approver, "Approved"],
-          ] as const).map(([role, approval, doneLabel], i, arr) => (
+          {(wo.skipApprover
+            ? ([
+                ["L1 Approval", wo.approvals?.maker, "Approved"],
+                ["L2 Approval", wo.approvals?.checker, "Approved"],
+              ] as const)
+            : ([
+                ["L1 Approval", wo.approvals?.maker, "Approved"],
+                ["L2 Approval", wo.approvals?.checker, "Approved"],
+                ["L3 Approval", wo.approvals?.approver, "Approved"],
+              ] as const)
+          ).map(([role, approval, doneLabel], i, arr) => (
             <View key={role} style={i === arr.length - 1 ? S.sigCellL : S.sigCell}>
               <Text style={S.sigRole}>{role}</Text>
               <View style={S.sigSlot}>
@@ -585,10 +598,11 @@ export function WorkOrderDocument({ wo, company, contractor }: Props) {
           ))}
         </View>
 
-        {/* ── Final Approval (L4) — last signature, on its own line below, same width as one column ── */}
+        {/* ── Final Approval — last signature, on its own line below, same width as one column.
+            Labeled L3 for a 2-level department (Approver stage doesn't exist), L4 otherwise. ── */}
         <View style={[S.sigBlock, { marginTop: 8, width: "33%" }]} wrap={false}>
           <View style={S.sigCellL}>
-            <Text style={S.sigRole}>L4 Approval</Text>
+            <Text style={S.sigRole}>{wo.skipApprover ? "L3 Approval" : "L4 Approval"}</Text>
             <View style={S.sigSlot}>
               {wo.approvals?.final?.name ? <Text style={S.sigApprovedText}>Approved</Text> : null}
             </View>
