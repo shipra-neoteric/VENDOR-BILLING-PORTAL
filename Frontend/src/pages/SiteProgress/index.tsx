@@ -7,7 +7,7 @@ import dayjs from "dayjs";
 import type { Dayjs } from "dayjs";
 import apiClient from "../../services/apiClient";
 import { useAuth } from "../../context/AuthContext";
-import { DropdownSelectFilter, FilterRow } from "../../ui/Filters";
+import { DropdownSelectFilter, FilterRow, SearchFilter } from "../../ui/Filters";
 import DateRangeFilter, { inDateRange } from "../../components/DateRangeFilter";
 import WorkflowInstanceStepper from "../../components/WorkflowInstanceStepper";
 import type { WorkflowInstance } from "../../types/Workflow";
@@ -201,6 +201,7 @@ export default function SiteProgress() {
 
   const [selProjectId, setSelProjectId] = useState<string | undefined>(undefined);
   const [selDriId, setSelDriId] = useState<string | undefined>(undefined);
+  const [activitySearch, setActivitySearch] = useState("");
   const [dateFrom, setDateFrom] = useState<Dayjs | null>(null);
   const [dateTo, setDateTo] = useState<Dayjs | null>(null);
   const [woDetails, setWoDetails] = useState<Map<string, WODetail>>(new Map());
@@ -385,16 +386,25 @@ export default function SiteProgress() {
     openWO(ev.workOrderId, projId);
   };
 
-  const filteredActivity = useMemo(() => activity.filter(ev => {
-    const evProjId = typeof ev.projectId === "object" ? ev.projectId?._id : ev.projectId;
-    if (selProjectId && evProjId !== selProjectId) return false;
-    if (selDriId) {
-      const dri = driList.find(d => d._id === selDriId);
-      if (!dri || ev.performedByName !== dri.name) return false;
-    }
-    if (!inDateRange(ev.createdAt, dateFrom, dateTo)) return false;
-    return true;
-  }), [activity, selProjectId, selDriId, driList, dateFrom, dateTo]);
+  const filteredActivity = useMemo(() => {
+    const q = activitySearch.trim().toLowerCase();
+    return activity.filter(ev => {
+      const evProjId = typeof ev.projectId === "object" ? ev.projectId?._id : ev.projectId;
+      if (selProjectId && evProjId !== selProjectId) return false;
+      if (selDriId) {
+        const dri = driList.find(d => d._id === selDriId);
+        if (!dri || ev.performedByName !== dri.name) return false;
+      }
+      if (!inDateRange(ev.createdAt, dateFrom, dateTo)) return false;
+      if (q) {
+        const projName = typeof ev.projectId === "object" ? ev.projectId?.name : "";
+        const haystack = [ev.workOrderNo, projName, ev.performedByName, ev.remarks, ev.metadata?.scopeItem]
+          .filter(Boolean).join(" ").toLowerCase();
+        if (!haystack.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [activity, selProjectId, selDriId, driList, dateFrom, dateTo, activitySearch]);
 
   const activityPager = usePagination(filteredActivity, 8);
 
@@ -420,6 +430,10 @@ export default function SiteProgress() {
       <>
           {/* ── Filters ── */}
           <FilterRow>
+            <SearchFilter
+              value={activitySearch} onChange={setActivitySearch}
+              placeholder="Search by WO no, project, DRI, scope item, remarks…"
+            />
             <DropdownSelectFilter
               value={selProjectId ?? ""} onChange={v => setSelProjectId(v || undefined)}
               placeholder="All projects" resetValue=""
