@@ -206,11 +206,17 @@ exports.listWorkOrders = asyncHandler(async (req, res) => {
   // to no one else. Owner keeps its usual app-wide bypass. $and (not a
   // second top-level $or, which would silently overwrite the search $or
   // above) collects this alongside it so both conditions apply together.
+  // makerBy must be checked too, not just createdBy — a WO re-opened for
+  // edits after approval (see reopenWorkOrder) goes back to 'draft' with
+  // makerBy reset to whoever re-opened it, who is often NOT the original
+  // creator; without this, that person couldn't see the very draft they
+  // just created by re-opening it.
   if (req.user.role !== 'owner') {
     filter.$and = (filter.$and || []).concat([{
       $or: [
         { approvalStatus: { $ne: 'draft' } },
         { createdBy: req.user._id },
+        { makerBy: req.user._id },
       ],
     }]);
   }
@@ -548,6 +554,13 @@ exports.updateWorkOrder = asyncHandler(async (req, res) => {
   const reopening = (before.approvalStatus === 'approved' || wasMidCycle) && approvalCriticalChanged;
   if (reopening) {
     updateData.approvalStatus = 'draft';
+    // Whoever reopens it becomes the new maker who owns resubmitting it —
+    // without this, makerBy stays whatever it was from the LAST real
+    // submission, which is often someone else entirely. listWorkOrders'
+    // own draft-visibility filter (createdBy OR makerBy) relies on this
+    // being current, or the person who just reopened it can't even see
+    // their own draft.
+    updateData.makerBy = req.user._id;
     // Clear the PRIOR cycle's sign-offs — otherwise a stale checkerBy/
     // approverBy/finalApprovedBy from before this reopen keeps making the
     // print/PDF (WorkOrderPDF.tsx, which just checks `wo.approvals?.X?.name`)
