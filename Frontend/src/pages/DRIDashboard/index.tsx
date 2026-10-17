@@ -660,16 +660,25 @@ export default function DRIDashboard() {
   };
 
   // ── Shared header ─────────────────────────────────────────────────────────────
-  // Single back control (PageHeader's own icon button) — goes to whichever
-  // page the user actually came from (browser history), not a hardcoded
-  // route. The old breadcrumb buttons ("← All DRIs" / "← X's Projects") were
-  // redundant with it and are gone.
+  // Single back control (PageHeader's own icon button). The 3 internal views
+  // (overview → dri-projects → dri-detail) are plain useState, not separate
+  // history entries, so browser back from "dri-detail" would skip straight
+  // past this whole page to wherever the user was before opening DRI
+  // Dashboard at all — not to "dri-projects" as the UI implies. Step back
+  // through the internal views first; only fall back to real browser history
+  // (whichever page the user actually came from) once already at "overview".
+  const goBack = () => {
+    if (view === "dri-detail") { setView("dri-projects"); return; }
+    if (view === "dri-projects") { setView("overview"); setSelectedDRI(null); return; }
+    navigate(-1);
+  };
+
   const Header = () => (
     <>
       <PageHeader
         icon={HardHat}
         title="DRI Dashboard"
-        onBack={() => navigate(-1)}
+        onBack={goBack}
         subtitle={selectedDRI && view !== "overview" ? (
           <>
             Viewing as <span className="text-primary font-bold">{selectedDRI.name}</span>
