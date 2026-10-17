@@ -18,6 +18,7 @@ import Segmented from "../../ui/Segmented";
 import StatusBadge from "../../ui/StatusBadge";
 import Badge from "../../ui/Badge";
 import { Table, Thead, Tbody, Tr, Th, Td } from "../../ui/Table";
+import Checkbox from "../../ui/Checkbox";
 import type { Contractor, Consultant } from "../../types/VendorBilling";
 import { BILL_TYPE_CFG, RELATIONSHIP_OPTIONS } from "../../shared/constants/billOptions";
 import { billFinancials, holdAmountFromPercent } from "../../shared/utils/billMath";
@@ -181,15 +182,39 @@ function BillUnitCell({
   );
 }
 
+// Minimal shape read off a BillRequestRow (BillRequests/index.tsx) for the
+// "Edit" case below — just enough to pre-fill this exact same drawer instead
+// of a second hand-built one, per the Work Order Edit precedent (WOFormFields
+// shared between create/edit).
+interface EditBillRequestInput {
+  _id: string; workOrderId?: string; projectName: string; vendorName: string; vendorCode?: string;
+  companyName?: string; department?: string; customDepartment?: string; remarks?: string;
+  items: { scopeItemId?: string; subItemId?: string; billedQty: number; rate?: number }[];
+}
+
 export default function NewBillDrawer({
   open,
   onClose,
   onCreated,
+  editBillRequest,
+  onUpdated,
 }: {
   open: boolean;
   onClose: () => void;
   onCreated: (bill: Record<string, unknown>) => void;
+  // When set, this drawer edits that pending (L1) Bill Request instead of
+  // creating a new manual bill — see handleSubmit's early branch and the
+  // isEditingBR-gated sections below. A Bill Request's quantity is always
+  // server-derived from live progress (never hand-typed, unlike a manual
+  // bill's own Work Items), so Quantity/Rate/% cells render read-only here
+  // and a leftmost checkbox picks which rows are actually included —
+  // everything GST/Hold/Milestone/Relationship-related doesn't exist at
+  // this pre-approval stage and is hidden rather than shown-but-ignored.
+  editBillRequest?: EditBillRequestInput | null;
+  onUpdated?: () => void;
 }) {
+  const isEditingBR = !!editBillRequest;
+  const [editIncludedKeys, setEditIncludedKeys] = useState<Set<number>>(new Set());
   const [saving, setSaving] = useState(false);
   const formErrors = useFormErrors<"contractorId" | "billDate" | "generatedBy" | "companyId" | "department" | "retentionReleaseRemark">();
 
@@ -359,6 +384,59 @@ export default function NewBillDrawer({
       .catch(() => { });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+
+  // Pre-fills this drawer from the Bill Request being edited — runs after the
+  // reset effect above (same [open] trigger, declared after it). Department/
+  // Company/vendor display come straight off the BillRequestRow (no need to
+  // resolve them against the contractors/companies lists, since those fields
+  // are shown read-only here, never actually re-submitted); only the line
+  // items need the linked Work Order's live scope items (for each one's
+  // current completedQty/lastBilledQty, same "how much is left to bill"
+  // logic Site Progress's own Generate Bill Request modal uses).
+  useEffect(() => {
+    if (!open || !editBillRequest?.workOrderId) return;
+    setRemarksInput(editBillRequest.remarks || "");
+    apiClient.get(`/work-orders/${editBillRequest.workOrderId}`)
+      .then((r) => {
+        const wo = r.data.workOrder as { scopeItems?: Record<string, unknown>[] } | undefined;
+        const scopeItems = (wo?.scopeItems || []) as any[];
+        const rows: LineItem[] = [];
+        const included = new Set<number>();
+        for (const si of scopeItems) {
+          const leaves = si.subItems && si.subItems.length > 0
+            ? si.subItems.map((sub: any) => ({ parent: si, leaf: sub, subItemId: sub._id }))
+            : [{ parent: si, leaf: si, subItemId: undefined }];
+          for (const { parent, leaf, subItemId } of leaves) {
+            const oldLine = editBillRequest.items.find((it) =>
+              subItemId ? it.subItemId === subItemId : (!it.subItemId && it.scopeItemId === si._id)
+            );
+            const ownOldQty = oldLine?.billedQty || 0;
+            const unbilled = Math.max(0, (leaf.completedQty || 0) - (leaf.lastBilledQty || 0)) + ownOldQty;
+            if (unbilled <= 0) continue;
+            const key = nextKey();
+            if (ownOldQty > 0) included.add(key);
+            rows.push({
+              key,
+              scopeItemId: si._id,
+              subItemId,
+              groupLabel: subItemId ? parent.description : undefined,
+              description: subItemId ? leaf.description : leaf.description,
+              unit: leaf.unit || "",
+              plannedQty: leaf.plannedQty || 0,
+              lastBilledQty: leaf.lastBilledQty || 0,
+              billedQty: unbilled,
+              rate: oldLine?.rate ?? leaf.rate ?? 0,
+              amount: Math.round(unbilled * (oldLine?.rate ?? leaf.rate ?? 0) * 100) / 100,
+            });
+          }
+        }
+        setLineItems(rows.length > 0 ? rows : [blankRow()]);
+        setEditIncludedKeys(included);
+        setExpandedGroups(new Set(rows.filter(r => r.subItemId && included.has(r.key)).map(r => r.scopeItemId!)));
+      })
+      .catch(() => toast.error("Failed to load work order"));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, editBillRequest?._id]);
 
   // Every user is a candidate L1 approver — this is purely informational
   // routing (whoever actually has L1 authority can still approve it
@@ -803,6 +881,35 @@ export default function NewBillDrawer({
   // to its own creator (and Owner) until explicitly submitted later from the
   // Billing list. saveAsDraft=false (the existing/default path, unchanged):
   // submits straight into that chain, exactly as this form always has.
+  // Edit mode's own save path — a Bill Request has no GST/Hold/Milestone/Bill
+  // Date concept at this pre-approval stage, so this skips every validation/
+  // payload field above that doesn't apply and just resubmits the checked
+  // rows' scopeItemIds + remarks, mirroring Site Progress's own Generate Bill
+  // Request submit exactly (same endpoint, same shape).
+  async function handleSaveEditedBillRequest() {
+    if (!editBillRequest) return;
+    if (editIncludedKeys.size === 0) {
+      toast.error("Select at least one work item to bill");
+      return;
+    }
+    setSaving(true);
+    try {
+      const scopeItemIds = lineItems
+        .filter((li) => editIncludedKeys.has(li.key))
+        .map((li) => li.subItemId || li.scopeItemId)
+        .filter((id): id is string => !!id);
+      await apiClient.put(`/bill-requests/${editBillRequest._id}`, { scopeItemIds, remarks: remarksInput });
+      toast.success("Bill request updated");
+      onUpdated?.();
+      onClose();
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { message?: string } } };
+      toast.error(e?.response?.data?.message || "Failed to update bill request");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function handleSubmit(saveAsDraft: boolean) {
     const validItems = lineItems.filter((li) => li.description.trim() && li.billedQty > 0);
     if (validItems.length === 0) {
@@ -936,22 +1043,44 @@ export default function NewBillDrawer({
     <>
       <Modal
         icon={FileText}
-        title="New Bill"
-        subtitle="Select project → contractor or consultant → add work items → submit — lands in Draft, awaiting maker confirmation"
+        title={isEditingBR ? "Edit Bill Request" : "New Bill"}
+        subtitle={isEditingBR
+          ? "Select which work items to bill this cycle — quantity is whatever's currently unbilled, same as Site Progress's own Generate Bill Request"
+          : "Select project → contractor or consultant → add work items → submit — lands in Draft, awaiting maker confirmation"}
         extraWide
         onClose={onClose}
         footer={
           <div className="flex justify-end gap-2">
             <Btn outline label="Cancel" onClick={onClose} />
-            <Btn outline label="Save as Draft" loading={saving} onClick={() => handleSubmit(true)} />
-            <Btn color="primary" label="Submit" loading={saving} onClick={() => handleSubmit(false)} />
+            {isEditingBR ? (
+              <Btn color="primary" label="Save Changes" loading={saving} onClick={handleSaveEditedBillRequest} />
+            ) : (
+              <>
+                <Btn outline label="Save as Draft" loading={saving} onClick={() => handleSubmit(true)} />
+                <Btn color="primary" label="Submit" loading={saving} onClick={() => handleSubmit(false)} />
+              </>
+            )}
           </div>
         }
       >
         {/* Step 1 — Project, Contractor, Date */}
         <div className="bg-gray-50 dark:bg-gray-800/40 rounded-lg p-4 mb-5">
+          {isEditingBR && (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+              <Field label="Site / Project" value={editBillRequest?.projectName || ""} disabled />
+              <Field label="Contractor" value={editBillRequest?.vendorName || ""} disabled />
+              <Field label="Vendor Code" value={editBillRequest?.vendorCode || ""} disabled className="text-primary font-bold font-mono" />
+              <Field label="Company" value={editBillRequest?.companyName || ""} disabled placeholder="—" />
+              <Field
+                label="Department" disabled placeholder="—"
+                value={editBillRequest?.department === "custom" ? (editBillRequest?.customDepartment || "") : (editBillRequest?.department || "")}
+              />
+            </div>
+          )}
           <div className="font-bold text-[13px] text-[#1A1A2E] dark:text-[#F1F5F9] mb-3">Bill Information</div>
 
+          {!isEditingBR && (
+          <>
           <div className="mb-4">
             <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">Bill For</div>
             <Segmented
@@ -1338,6 +1467,8 @@ export default function NewBillDrawer({
               })()}
             </div>
           )}
+          </>
+          )}
         </div>
 
         {/* Step 2 — Work Items table */}
@@ -1353,6 +1484,7 @@ export default function NewBillDrawer({
             <Table>
               <Thead>
                 <Tr>
+                  {isEditingBR && <Th className="w-[4%]"></Th>}
                   <Th className="w-[28%]">Description of Work *</Th>
                   <Th className="text-center w-[8%]">Unit</Th>
                   <Th className="text-right w-[12%]">Master Qty</Th>
@@ -1360,7 +1492,7 @@ export default function NewBillDrawer({
                   <Th className="text-right w-[12%]">Quantity *</Th>
                   <Th className="text-right w-[13%]">Rate (₹) *</Th>
                   <Th className="text-right w-[13%]">Amount (₹)</Th>
-                  <Th className="w-[2%]"></Th>
+                  {!isEditingBR && <Th className="w-[2%]"></Th>}
                 </Tr>
               </Thead>
               <Tbody>
@@ -1385,6 +1517,7 @@ export default function NewBillDrawer({
                           })}
                           className="cursor-pointer bg-blue-50 dark:bg-blue-500/10"
                         >
+                          {isEditingBR && <Td></Td>}
                           <Td colSpan={6} className="font-bold text-blue-700 dark:text-blue-300">
                             <span className={`inline-block mr-2 transition-transform ${isExpanded ? "rotate-90" : ""}`}>▶</span>
                             {item.groupLabel}
@@ -1395,7 +1528,7 @@ export default function NewBillDrawer({
                           <Td className={`text-right font-mono font-bold ${groupAmount > 0 ? "text-emerald-600" : "text-gray-300"}`}>
                             {groupAmount > 0 ? fmt(groupAmount) : "—"}
                           </Td>
-                          <Td></Td>
+                          {!isEditingBR && <Td></Td>}
                         </Tr>
                       );
                     }
@@ -1403,31 +1536,54 @@ export default function NewBillDrawer({
                     if (groupKey && !expandedGroups.has(groupKey)) return;
 
                     const cap = remainingPercent(item);
+                    const isIncluded = editIncludedKeys.has(item.key);
                     rows.push(
                       <Tr key={item.key} className={groupKey ? "bg-gray-50/60 dark:bg-gray-800/20" : ""}>
+                        {isEditingBR && (
+                          <Td className="text-center">
+                            <Checkbox
+                              checked={isIncluded}
+                              onChange={() => setEditIncludedKeys((prev) => {
+                                const next = new Set(prev);
+                                if (next.has(item.key)) next.delete(item.key); else next.add(item.key);
+                                return next;
+                              })}
+                            />
+                          </Td>
+                        )}
                         <Td
                           className="min-w-[300px] w-[36%]"
                           style={groupKey ? { paddingLeft: 26 } : undefined}
                         >
-                          <input
-                            value={item.description}
-                            placeholder="e.g. RCC work, Plastering, Tile fixing…"
-                            onChange={(e) => updateLineItem(item.key, "description", e.target.value)}
-                            className={`${cellInputClass} min-w-0`}
-                          />
+                          {isEditingBR ? (
+                            <span className="text-[13px]">{item.description}</span>
+                          ) : (
+                            <input
+                              value={item.description}
+                              placeholder="e.g. RCC work, Plastering, Tile fixing…"
+                              onChange={(e) => updateLineItem(item.key, "description", e.target.value)}
+                              className={`${cellInputClass} min-w-0`}
+                            />
+                          )}
                         </Td>
                         <Td className="text-center">
-                          <BillUnitCell
-                            value={item.unit}
-                            onChange={(v) => updateLineItem(item.key, "unit", v)}
-                            className={cellInputClass}
-                          />
+                          {isEditingBR ? (
+                            <span className="text-[13px]">{item.unit}</span>
+                          ) : (
+                            <BillUnitCell
+                              value={item.unit}
+                              onChange={(v) => updateLineItem(item.key, "unit", v)}
+                              className={cellInputClass}
+                            />
+                          )}
                         </Td>
                         <Td className="text-right font-mono text-gray-500 dark:text-gray-400">
                           {item.scopeItemId ? item.plannedQty : "—"}
                         </Td>
                         <Td>
-                          {item.scopeItemId ? (
+                          {isEditingBR ? (
+                            <span className="text-gray-300 text-[11px] block text-right">—</span>
+                          ) : item.scopeItemId ? (
                             <div>
                               <input
                                 value={formatPercent(item.percentComplete)}
@@ -1442,40 +1598,52 @@ export default function NewBillDrawer({
                           )}
                         </Td>
                         <Td>
-                          <input
-                            type="number" min="0"
-                            value={item.billedQty || ""}
-                            placeholder="0"
-                            onChange={(e) => updateLineItem(item.key, "billedQty", Number(e.target.value) || 0)}
-                            className={`${cellInputClass} text-right ${isOverbilled(item, supersedeQtyFor(item)) ? "ring-1 ring-red-500 rounded bg-red-50 dark:bg-red-500/10" : ""}`}
-                          />
-                          {isOverbilled(item, supersedeQtyFor(item)) && (
-                            <div className="text-[10px] text-red-600 dark:text-red-400 text-right font-semibold">
-                              only {remainingQty(item, supersedeQtyFor(item))} {item.unit || ""} remaining — will be rejected
-                            </div>
+                          {isEditingBR ? (
+                            <span className="text-[13px] font-mono block text-right">{item.billedQty}</span>
+                          ) : (
+                            <>
+                              <input
+                                type="number" min="0"
+                                value={item.billedQty || ""}
+                                placeholder="0"
+                                onChange={(e) => updateLineItem(item.key, "billedQty", Number(e.target.value) || 0)}
+                                className={`${cellInputClass} text-right ${isOverbilled(item, supersedeQtyFor(item)) ? "ring-1 ring-red-500 rounded bg-red-50 dark:bg-red-500/10" : ""}`}
+                              />
+                              {isOverbilled(item, supersedeQtyFor(item)) && (
+                                <div className="text-[10px] text-red-600 dark:text-red-400 text-right font-semibold">
+                                  only {remainingQty(item, supersedeQtyFor(item))} {item.unit || ""} remaining — will be rejected
+                                </div>
+                              )}
+                            </>
                           )}
                         </Td>
                         <Td>
-                          <input
-                            value={item.rateInput !== undefined ? formatThousands(item.rateInput) : formatThousands(item.rate || "")}
-                            placeholder="0.00"
-                            onChange={(e) => handleRateChange(item.key, e.target.value)}
-                            className={`${cellInputClass} text-right`}
-                          />
+                          {isEditingBR ? (
+                            <span className="text-[13px] font-mono block text-right">{formatThousands(item.rate || "")}</span>
+                          ) : (
+                            <input
+                              value={item.rateInput !== undefined ? formatThousands(item.rateInput) : formatThousands(item.rate || "")}
+                              placeholder="0.00"
+                              onChange={(e) => handleRateChange(item.key, e.target.value)}
+                              className={`${cellInputClass} text-right`}
+                            />
+                          )}
                         </Td>
                         <Td className={`text-right font-mono font-bold whitespace-nowrap ${item.amount > 0 ? "text-emerald-600" : "text-gray-300"}`}>
                           {item.amount > 0 ? fmt(item.amount) : "—"}
                         </Td>
-                        <Td className="text-center">
-                          <button
-                            type="button"
-                            disabled={lineItems.length === 1}
-                            onClick={() => setConfirmRemoveKey(item.key)}
-                            className="text-red-500 hover:text-red-700 disabled:opacity-30 disabled:pointer-events-none p-1"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </Td>
+                        {!isEditingBR && (
+                          <Td className="text-center">
+                            <button
+                              type="button"
+                              disabled={lineItems.length === 1}
+                              onClick={() => setConfirmRemoveKey(item.key)}
+                              className="text-red-500 hover:text-red-700 disabled:opacity-30 disabled:pointer-events-none p-1"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </Td>
+                        )}
                       </Tr>
                     );
                   });
@@ -1484,13 +1652,16 @@ export default function NewBillDrawer({
               </Tbody>
             </Table>
           </div>
+          {!isEditingBR && (
           <div className="mt-2">
             <Btn outline icon={Plus} label="Add Work Item" className="w-full" onClick={() => setLineItems((prev) => [...prev, blankRow()])} />
           </div>
+          )}
 
           {/* Financial Summary — Gross/GST, then Hold and Advance Recovery both
               decided right here at creation time, both live-reducing what's shown
-              as actually payable. */}
+              as actually payable. Doesn't apply pre-approval, see isEditingBR. */}
+          {!isEditingBR && (
           <div className="border border-gray-200 dark:border-gray-700/40 rounded-lg overflow-hidden mt-3">
             <div className="bg-primary/5 border-b border-primary/20 px-3.5 py-2">
               <span className="font-bold text-xs text-primary uppercase tracking-wide">Financial Summary</span>
@@ -1631,6 +1802,7 @@ export default function NewBillDrawer({
               TDS deduction is recorded at payment initiation time
             </div>
           </div>
+          )}
         </div>
 
         <Field
@@ -1638,6 +1810,7 @@ export default function NewBillDrawer({
           value={remarksInput} onChange={(e) => setRemarksInput(e.target.value)}
         />
 
+        {!isEditingBR && (
         <div className="mt-4">
           <SField
             label="Send for L1 Approval to (optional)"
@@ -1651,6 +1824,7 @@ export default function NewBillDrawer({
               : "People with L1 authority — anyone among them can still approve it, this just flags who it's meant for."}
           />
         </div>
+        )}
       </Modal>
 
       {confirmRemoveKey != null && (

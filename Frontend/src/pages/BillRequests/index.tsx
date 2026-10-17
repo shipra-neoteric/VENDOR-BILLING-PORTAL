@@ -37,7 +37,7 @@ import PageHeader from "../../ui/PageHeader";
 import Modal from "../../ui/Modal";
 import Field from "../../ui/Field";
 import { Table, Thead, Tbody, Tfoot, Tr, Th, Td } from "../../ui/Table";
-import Checkbox from "../../ui/Checkbox";
+import NewBillDrawer from "../Billing/NewBillDrawer";
 import { usePagination } from "../../ui/usePagination";
 import Pagination from "../../ui/Pagination";
 import NxBadge from "../../ui/nexora/Badge";
@@ -48,21 +48,6 @@ import NxStatCard from "../../ui/nexora/StatCard";
 interface BillItem {
   scopeItemId?: string; subItemId?: string; description: string; unit: string; billedQty: number;
   rate?: number; amount?: number; progressRemarks?: string; location?: string;
-}
-// Minimal shape read off GET /work-orders/:id for the Edit Bill Request
-// modal — just enough to rebuild the same scope-item/particular checklist
-// Site Progress's own "Generate Bill Request" shows.
-interface EditSubItemDetail {
-  _id: string; description: string; unit: string; plannedQty: number;
-  completedQty: number; lastBilledQty?: number; varianceApproved?: boolean; rate?: number;
-}
-interface EditScopeItemDetail {
-  _id: string; description: string; unit: string; plannedQty: number;
-  completedQty: number; lastBilledQty?: number; varianceApproved?: boolean; rate?: number;
-  subItems?: EditSubItemDetail[];
-}
-interface EditWorkOrderDetail {
-  _id: string; workOrderNo: string; scopeItems: EditScopeItemDetail[];
 }
 interface ApprovalHistoryEntry {
   stage: string; action: "approved" | "rejected";
@@ -550,62 +535,11 @@ export default function BillApproval() {
   const [printingReqId, setPrintingReqId] = useState<string | null>(null);
 
   // ── Edit (only while status === "pending", i.e. still at L1) ────────────────
-  // Re-opens the same scope-item selection Site Progress's own "Generate Bill
-  // Request" uses — items/particulars pre-checked from what this request
-  // already has — so the DRI/AGM can add, drop or swap what's billed before
-  // anyone's actually approved anything, instead of having to reject and
-  // start a fresh request for a simple correction.
+  // Reuses the real NewBillDrawer itself (its editBillRequest prop), same
+  // precedent as Work Order's own shared create/edit form — instead of a
+  // second, separately-maintained modal mimicking its look.
   const [editTarget, setEditTarget] = useState<BillRequestRow | null>(null);
-  const [editWO, setEditWO] = useState<EditWorkOrderDetail | null>(null);
-  const [editLoading, setEditLoading] = useState(false);
-  const [editChecked, setEditChecked] = useState<Set<string>>(new Set());
-  const [editRemarks, setEditRemarks] = useState("");
-  const [editSaving, setEditSaving] = useState(false);
-
-  const openEditBillRequest = async (br: BillRequestRow) => {
-    setEditTarget(br);
-    setEditRemarks(br.remarks || "");
-    setEditLoading(true);
-    // Pre-check whatever this request already bills — a particular's own id
-    // when it bills one, otherwise the plain scope item's id.
-    setEditChecked(new Set(br.items.map(it => it.subItemId || it.scopeItemId).filter((x): x is string => !!x)));
-    try {
-      const res = await apiClient.get(`/work-orders/${br.workOrderId}`);
-      setEditWO(res.data.workOrder);
-    } catch {
-      toast.error("Failed to load work order");
-      setEditTarget(null);
-    } finally {
-      setEditLoading(false);
-    }
-  };
-
-  const toggleEditCheck = (id: string) => {
-    setEditChecked(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  };
-
-  const handleSaveEdit = async () => {
-    if (!editTarget || editChecked.size === 0) return;
-    setEditSaving(true);
-    try {
-      await apiClient.put(`/bill-requests/${editTarget._id}`, {
-        scopeItemIds: Array.from(editChecked),
-        remarks: editRemarks,
-      });
-      toast.success("Bill request updated");
-      setEditTarget(null);
-      setEditWO(null);
-      load();
-    } catch (e: any) {
-      toast.error(e?.response?.data?.message || "Failed to update bill request");
-    } finally {
-      setEditSaving(false);
-    }
-  };
+  const openEditBillRequest = (br: BillRequestRow) => setEditTarget(br);
 
   // Deep link from other pages (e.g. the SLA Report's Ongoing Workflows
   // table) — ?open=<billRequestId> opens that request's view modal once the
@@ -1517,135 +1451,24 @@ export default function BillApproval() {
         />
       )}
 
-      {editTarget && (
-        <Modal
-          icon={Pencil}
-          title={`Edit ${editTarget.reqNo}`}
-          extraWide
-          onClose={() => { setEditTarget(null); setEditWO(null); }}
-          footer={
-            <div className="flex justify-end gap-2">
-              <Btn outline label="Cancel" onClick={() => { setEditTarget(null); setEditWO(null); }} />
-              <Btn color="primary" label="Save Changes" loading={editSaving} disabled={editChecked.size === 0} onClick={handleSaveEdit} />
-            </div>
-          }
-        >
-          {editLoading || !editWO ? (
-            <div className="flex justify-center py-10"><Spinner /></div>
-          ) : (
-            <div className="flex flex-col gap-5">
-              {/* ── Bill Information — same card style as New Bill, read-only
-                  here since an existing request stays tied to the one work
-                  order/vendor it was raised against; nothing here is
-                  something editBillRequest can actually change. ── */}
-              <div className="bg-gray-50 dark:bg-gray-800/40 rounded-lg p-4">
-                <div className="font-bold text-[13px] text-[#1A1A2E] dark:text-[#F1F5F9] mb-3">Bill Information</div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <Field label="Site / Project" value={editTarget.projectName} disabled />
-                  <Field label="Contractor" value={editTarget.vendorName} disabled />
-                  <Field label="Vendor Code" value={editTarget.vendorCode || ""} disabled placeholder="—" className="text-primary font-bold font-mono" />
-                  <Field label="Company" value={editTarget.companyName || ""} disabled placeholder="—" />
-                  <Field
-                    label="Department" disabled placeholder="—"
-                    value={editTarget.department === "custom" ? (editTarget.customDepartment || "") : (editTarget.department || "")}
-                  />
-                  <Field label="Work Order" value={editTarget.workOrderNo} disabled />
-                </div>
-              </div>
-
-              {/* ── Work Items — same table shape as New Bill's own (Rate/Amount
-                  shown for reference only: a bill request bills at the work
-                  order's current rate, never a rate typed here). ── */}
-              <div>
-                <div className="font-bold text-[13px] text-[#1A1A2E] dark:text-[#F1F5F9] mb-2.5">
-                  Work Items
-                  <span className="font-normal text-[11px] text-gray-400 ml-2">Select which particulars to bill this cycle</span>
-                </div>
-                <Table>
-                  <Thead>
-                    <Tr>
-                      <Th dense></Th>
-                      <Th dense>Description of Work</Th>
-                      <Th dense className="text-center">Unit</Th>
-                      <Th dense className="text-right">Planned</Th>
-                      <Th dense className="text-right">Executed</Th>
-                      <Th dense className="text-right">Unbilled</Th>
-                      <Th dense className="text-right">Rate (₹)</Th>
-                      <Th dense className="text-right">Amount (₹)</Th>
-                    </Tr>
-                  </Thead>
-                  <Tbody>
-                    {editWO.scopeItems.map(si => {
-                      const hasSubItems = (si.subItems?.length ?? 0) > 0;
-                      if (hasSubItems) {
-                        return si.subItems!.map(sub => {
-                          const oldLine = editTarget.items.find(it => it.subItemId === sub._id);
-                          const ownOldQty = oldLine?.billedQty || 0;
-                          const rate = oldLine?.rate ?? sub.rate ?? 0;
-                          const unbilled = Math.max(0, (sub.completedQty || 0) - (sub.lastBilledQty || 0)) + ownOldQty;
-                          const overPlan = sub.plannedQty > 0 && sub.completedQty > sub.plannedQty;
-                          const blocked = overPlan && !sub.varianceApproved;
-                          const canBill = unbilled > 0 && !blocked;
-                          const checkedNow = editChecked.has(sub._id);
-                          return (
-                            <Tr key={sub._id}>
-                              <Td dense>
-                                {unbilled > 0 && (
-                                  <span title={blocked ? "Approve/reject the variance on Site Progress first" : undefined}>
-                                    <Checkbox checked={checkedNow} disabled={!canBill} onChange={() => toggleEditCheck(sub._id)} />
-                                  </span>
-                                )}
-                              </Td>
-                              <Td dense className="text-xs">{si.description} — {sub.description}</Td>
-                              <Td dense className="text-xs text-center">{sub.unit}</Td>
-                              <Td dense className="font-mono text-xs text-right">{sub.plannedQty}</Td>
-                              <Td dense className="font-mono text-xs text-right">{sub.completedQty}</Td>
-                              <Td dense className={`font-mono text-xs text-right ${unbilled > 0 ? "text-primary font-bold" : "text-gray-400"}`}>{unbilled}{blocked && " ⚠️"}</Td>
-                              <Td dense className="font-mono text-xs text-right">{rate ? fmt(rate) : "—"}</Td>
-                              <Td dense className="font-mono text-xs text-right font-semibold">{checkedNow ? fmt(rate * unbilled) : "—"}</Td>
-                            </Tr>
-                          );
-                        });
-                      }
-                      const oldLine = editTarget.items.find(it => !it.subItemId && it.scopeItemId === si._id);
-                      const ownOldQty = oldLine?.billedQty || 0;
-                      const rate = oldLine?.rate ?? si.rate ?? 0;
-                      const unbilled = Math.max(0, (si.completedQty || 0) - (si.lastBilledQty || 0)) + ownOldQty;
-                      const overPlan = si.plannedQty > 0 && si.completedQty > si.plannedQty;
-                      const blocked = overPlan && !si.varianceApproved;
-                      const canBill = unbilled > 0 && !blocked;
-                      const checkedNow = editChecked.has(si._id);
-                      return (
-                        <Tr key={si._id}>
-                          <Td dense>
-                            {unbilled > 0 && (
-                              <span title={blocked ? "Approve/reject the variance on Site Progress first" : undefined}>
-                                <Checkbox checked={checkedNow} disabled={!canBill} onChange={() => toggleEditCheck(si._id)} />
-                              </span>
-                            )}
-                          </Td>
-                          <Td dense className="font-semibold">{si.description}</Td>
-                          <Td dense className="text-center">{si.unit}</Td>
-                          <Td dense className="font-mono text-right">{si.plannedQty}</Td>
-                          <Td dense className="font-mono text-right">{si.completedQty}</Td>
-                          <Td dense className={`font-mono text-right ${unbilled > 0 ? "text-primary font-bold" : "text-gray-400"}`}>{unbilled}{blocked && " ⚠️"}</Td>
-                          <Td dense className="font-mono text-right">{rate ? fmt(rate) : "—"}</Td>
-                          <Td dense className="font-mono text-right font-semibold">{checkedNow ? fmt(rate * unbilled) : "—"}</Td>
-                        </Tr>
-                      );
-                    })}
-                  </Tbody>
-                </Table>
-              </div>
-
-              <Field
-                textarea label="Remarks for this bill request (optional)" placeholder="Notes for whoever approves this…"
-                value={editRemarks} onChange={e => setEditRemarks(e.target.value)}
-              />
-            </div>
-          )}
-        </Modal>
-      )}
+      <NewBillDrawer
+        open={!!editTarget}
+        onClose={() => setEditTarget(null)}
+        onCreated={() => {}}
+        editBillRequest={editTarget ? {
+          _id: editTarget._id,
+          workOrderId: editTarget.workOrderId,
+          projectName: editTarget.projectName,
+          vendorName: editTarget.vendorName,
+          vendorCode: editTarget.vendorCode,
+          companyName: editTarget.companyName,
+          department: editTarget.department,
+          customDepartment: editTarget.customDepartment,
+          remarks: editTarget.remarks,
+          items: editTarget.items,
+        } : null}
+        onUpdated={() => { setEditTarget(null); load(); }}
+      />
 
       {/* ── Bill request view modal ── */}
       {viewReq && (
