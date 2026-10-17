@@ -17,7 +17,6 @@ import EmptyState from "../../ui/EmptyState";
 import Spinner from "../../ui/Spinner";
 import PageHeader from "../../ui/PageHeader";
 import Modal from "../../ui/Modal";
-import ConfirmModal from "../../ui/ConfirmModal";
 import Field from "../../ui/Field";
 import Checkbox from "../../ui/Checkbox";
 import { Descriptions, DescItem } from "../../ui/Descriptions";
@@ -35,7 +34,6 @@ interface ProgressEntryDetail {
   tower?: string; floor?: string; flatNo?: string; plotNo?: string; locationNote?: string;
   enteredBy?: { _id: string; name: string } | string | null;
   invalidated?: { done?: boolean; reason?: string; at?: string };
-  billedInRequestId?: string | null;
 }
 interface SubItemDetail {
   _id: string; description: string; remarks?: string; unit: string;
@@ -144,26 +142,10 @@ function getProjId(row: WORow): string | undefined {
   return typeof row.projectId === "string" ? row.projectId : row.projectId._id;
 }
 
-// Same "does this user hold this work-progress action" check the backend's
-// own authorizeOr('work-progress', ...) route guards use.
-function hasWorkProgressPermission(user: { role?: string; permissions?: { module: string; actions: string[] }[] } | null | undefined, action: string): boolean {
-  if (!user) return false;
-  if (user.role === "owner") return true;
-  return (user.permissions ?? []).some(p => p.module === "work-progress" && p.actions.includes(action));
-}
-
-// Log of every raw dated progress entry behind a scope item/particular — the
-// aggregated planned/done/unbilled row above can't show this. Edit/Delete
-// (gated on work-progress:edit/:delete) let whoever holds that permission
-// fix a bad measurement directly, instead of it sitting there wrong forever
-// — previously this log was read-only even for Owner.
-function ProgressEntryLog({
-  entries, completedQty, lastBilledQty, canEdit, canDelete, onEdit, onDelete, onInvalidate,
-}: {
-  entries?: ProgressEntryDetail[]; completedQty: number; lastBilledQty: number;
-  canEdit: boolean; canDelete: boolean;
-  onEdit: (e: ProgressEntryDetail) => void; onDelete: (e: ProgressEntryDetail) => void; onInvalidate: (e: ProgressEntryDetail) => void;
-}) {
+// Compact, read-only log of every raw dated progress entry behind a scope
+// item — the aggregated planned/done/unbilled row above can't show this;
+// the data already exists on the WorkOrder document, this just surfaces it.
+function ProgressEntryLog({ entries }: { entries?: ProgressEntryDetail[] }) {
   if (!entries || entries.length === 0) {
     return <div className="px-2.5 py-2 text-xs text-gray-400">No individual entries recorded.</div>;
   }
@@ -184,11 +166,6 @@ function ProgressEntryLog({
           // "Floor " prefix, unlike Tower/Flat/Plot which need their label to
           // stay unambiguous next to a bare number/code.
           const loc = [e.tower && `Tower ${e.tower}`, e.floor, e.flatNo && `Flat ${e.flatNo}`, e.plotNo && `Plot ${e.plotNo}`, e.locationNote].filter(Boolean).join(" · ");
-          // Deleting must never drop completedQty below what's already
-          // billed — same guard editProgressEntry's own qty-floor enforces
-          // server-side, checked here too so Delete simply isn't offered
-          // when it would always fail.
-          const deletable = completedQty - e.qtyAdded >= (lastBilledQty || 0);
           return (
             <tr
               key={e._id}
@@ -200,22 +177,7 @@ function ProgressEntryLog({
               <td className="px-2 py-1 text-gray-500 dark:text-gray-400">{loc || "—"}</td>
               <td className="px-2 py-1 text-gray-500 dark:text-gray-400">{e.remarks || "—"}</td>
               <td className="px-2 py-1">
-                {e.invalidated?.done ? (
-                  <UIBadge color="red" small>Invalidated{e.invalidated.reason ? `: ${e.invalidated.reason}` : ""}</UIBadge>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    {canEdit && !e.billedInRequestId && (
-                      <button type="button" className="text-blue-600 dark:text-blue-400 font-semibold hover:underline" onClick={() => onEdit(e)}>Edit</button>
-                    )}
-                    {e.billedInRequestId ? (
-                      canDelete && <button type="button" className="text-purple-600 dark:text-purple-400 font-semibold hover:underline" onClick={() => onInvalidate(e)}>Invalidate</button>
-                    ) : canDelete && (
-                      deletable
-                        ? <button type="button" className="text-red-600 dark:text-red-400 font-semibold hover:underline" onClick={() => onDelete(e)}>Delete</button>
-                        : <span className="text-gray-300 dark:text-gray-600" title="Entry is billed and cannot be deleted.">Delete</span>
-                    )}
-                  </div>
-                )}
+                {e.invalidated?.done && <UIBadge color="red" small>Invalidated{e.invalidated.reason ? `: ${e.invalidated.reason}` : ""}</UIBadge>}
               </td>
             </tr>
           );
@@ -228,8 +190,6 @@ function ProgressEntryLog({
 // ── Main component ─────────────────────────────────────────────────────────────
 export default function SiteProgress() {
   const { user } = useAuth();
-  const canEditProgress = hasWorkProgressPermission(user, "edit");
-  const canDeleteProgress = hasWorkProgressPermission(user, "delete");
 
   const [loading, setLoading] = useState(true);
   const [activity, setActivity] = useState<ActivityEvent[]>([]);
@@ -320,86 +280,6 @@ export default function SiteProgress() {
   const [rejectVarianceTarget, setRejectVarianceTarget] = useState<{ item: ScopeItemDetail; subItem?: SubItemDetail } | null>(null);
   const [rejectVarianceReason, setRejectVarianceReason] = useState("");
   const [rejectingVariance, setRejectingVariance] = useState(false);
-
-  // ── Progress entry Edit/Delete/Invalidate (work-progress:edit/:delete) ──────
-  type EntryTarget = { item: ScopeItemDetail; subItem?: SubItemDetail; entry: ProgressEntryDetail };
-  const [editEntryTarget, setEditEntryTarget] = useState<EntryTarget | null>(null);
-  const [editEntryForm, setEditEntryForm] = useState({ qtyAdded: "", date: "", remarks: "", tower: "", floor: "", flatNo: "", plotNo: "", locationNote: "" });
-  const [editEntrySaving, setEditEntrySaving] = useState(false);
-  const [deleteEntryTarget, setDeleteEntryTarget] = useState<EntryTarget | null>(null);
-  const [deletingEntry, setDeletingEntry] = useState(false);
-  const [invalidateEntryTarget, setInvalidateEntryTarget] = useState<EntryTarget | null>(null);
-  const [invalidateReason, setInvalidateReason] = useState("");
-  const [invalidatingEntry, setInvalidatingEntry] = useState(false);
-
-  const entryPath = (woId: string, item: ScopeItemDetail, subItem: SubItemDetail | undefined, entryId: string, suffix = "") =>
-    subItem
-      ? `/work-orders/${woId}/scope-items/${item._id}/sub-items/${subItem._id}/progress/${entryId}${suffix}`
-      : `/work-orders/${woId}/scope-items/${item._id}/progress/${entryId}${suffix}`;
-
-  const openEditEntry = (item: ScopeItemDetail, subItem: SubItemDetail | undefined, entry: ProgressEntryDetail) => {
-    setEditEntryTarget({ item, subItem, entry });
-    setEditEntryForm({
-      qtyAdded: String(entry.qtyAdded), date: entry.date ? entry.date.slice(0, 10) : "",
-      remarks: entry.remarks || "", tower: entry.tower || "", floor: entry.floor || "",
-      flatNo: entry.flatNo || "", plotNo: entry.plotNo || "", locationNote: entry.locationNote || "",
-    });
-  };
-
-  const handleSaveEditEntry = async () => {
-    if (!viewWO || !editEntryTarget) return;
-    const qty = Number(editEntryForm.qtyAdded);
-    if (!qty || qty <= 0) { toast.error("Quantity must be greater than 0"); return; }
-    setEditEntrySaving(true);
-    try {
-      const { item, subItem, entry } = editEntryTarget;
-      await apiClient.patch(entryPath(viewWO._id, item, subItem, entry._id), {
-        qtyAdded: qty, date: editEntryForm.date || undefined, remarks: editEntryForm.remarks,
-        tower: editEntryForm.tower, floor: editEntryForm.floor, flatNo: editEntryForm.flatNo,
-        plotNo: editEntryForm.plotNo, locationNote: editEntryForm.locationNote,
-      });
-      toast.success("Progress entry updated");
-      setEditEntryTarget(null);
-      await reloadWODetail(viewWO._id);
-    } catch (e: any) {
-      toast.error(e?.response?.data?.message || "Failed to update entry");
-    } finally {
-      setEditEntrySaving(false);
-    }
-  };
-
-  const handleDeleteEntryConfirm = async () => {
-    if (!viewWO || !deleteEntryTarget) return;
-    setDeletingEntry(true);
-    try {
-      const { item, subItem, entry } = deleteEntryTarget;
-      await apiClient.delete(entryPath(viewWO._id, item, subItem, entry._id));
-      toast.success("Progress entry deleted");
-      setDeleteEntryTarget(null);
-      await reloadWODetail(viewWO._id);
-    } catch (e: any) {
-      toast.error(e?.response?.data?.message || "Failed to delete entry");
-    } finally {
-      setDeletingEntry(false);
-    }
-  };
-
-  const handleInvalidateEntryConfirm = async () => {
-    if (!viewWO || !invalidateEntryTarget || !invalidateReason.trim()) return;
-    setInvalidatingEntry(true);
-    try {
-      const { item, subItem, entry } = invalidateEntryTarget;
-      await apiClient.patch(entryPath(viewWO._id, item, subItem, entry._id, "/invalidate"), { reason: invalidateReason.trim() });
-      toast.success("Progress entry invalidated");
-      setInvalidateEntryTarget(null);
-      setInvalidateReason("");
-      await reloadWODetail(viewWO._id);
-    } catch (e: any) {
-      toast.error(e?.response?.data?.message || "Failed to invalidate entry");
-    } finally {
-      setInvalidatingEntry(false);
-    }
-  };
 
   const viewWO = viewWOId ? woDetails.get(viewWOId) ?? null : null;
 
@@ -806,13 +686,7 @@ export default function SiteProgress() {
                             <Tr>
                               <Td dense></Td>
                               <Td dense colSpan={8} className="!py-0 pb-2.5">
-                                <ProgressEntryLog
-                                  entries={si.progressEntries} completedQty={si.completedQty} lastBilledQty={si.lastBilledQty}
-                                  canEdit={canEditProgress} canDelete={canDeleteProgress}
-                                  onEdit={e => openEditEntry(si, undefined, e)}
-                                  onDelete={e => setDeleteEntryTarget({ item: si, entry: e })}
-                                  onInvalidate={e => setInvalidateEntryTarget({ item: si, entry: e })}
-                                />
+                                <ProgressEntryLog entries={si.progressEntries} />
                               </Td>
                             </Tr>
                           )}
@@ -875,13 +749,7 @@ export default function SiteProgress() {
                                   <Tr className="bg-gray-50/60 dark:bg-gray-800/20">
                                     <Td dense></Td><Td dense></Td>
                                     <Td dense colSpan={7} className="pl-6">
-                                      <ProgressEntryLog
-                                        entries={sub.progressEntries} completedQty={sub.completedQty} lastBilledQty={sub.lastBilledQty}
-                                        canEdit={canEditProgress} canDelete={canDeleteProgress}
-                                        onEdit={e => openEditEntry(si, sub, e)}
-                                        onDelete={e => setDeleteEntryTarget({ item: si, subItem: sub, entry: e })}
-                                        onInvalidate={e => setInvalidateEntryTarget({ item: si, subItem: sub, entry: e })}
-                                      />
+                                      <ProgressEntryLog entries={sub.progressEntries} />
                                     </Td>
                                   </Tr>
                                 )}
@@ -922,71 +790,6 @@ export default function SiteProgress() {
           <Field
             textarea label="Reason for rejection" placeholder="Why is this progress being rejected?"
             value={rejectVarianceReason} onChange={(e) => setRejectVarianceReason(e.target.value)}
-          />
-        </Modal>
-      )}
-
-      {editEntryTarget && (
-        <Modal
-          icon={Pin}
-          title="Edit Progress Entry"
-          onClose={() => setEditEntryTarget(null)}
-          footer={
-            <div className="flex justify-end gap-2">
-              <Btn outline label="Cancel" onClick={() => setEditEntryTarget(null)} />
-              <Btn color="primary" label="Save" loading={editEntrySaving} onClick={handleSaveEditEntry} />
-            </div>
-          }
-        >
-          <div className="flex flex-col gap-3">
-            <div className="grid grid-cols-2 gap-3">
-              <Field type="number" label="Qty Added" value={editEntryForm.qtyAdded} onChange={e => setEditEntryForm(f => ({ ...f, qtyAdded: e.target.value }))} />
-              <Field type="date" label="Date" value={editEntryForm.date} onChange={e => setEditEntryForm(f => ({ ...f, date: e.target.value }))} />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Tower" value={editEntryForm.tower} onChange={e => setEditEntryForm(f => ({ ...f, tower: e.target.value }))} />
-              <Field label="Floor" value={editEntryForm.floor} onChange={e => setEditEntryForm(f => ({ ...f, floor: e.target.value }))} />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Flat No" value={editEntryForm.flatNo} onChange={e => setEditEntryForm(f => ({ ...f, flatNo: e.target.value }))} />
-              <Field label="Plot No" value={editEntryForm.plotNo} onChange={e => setEditEntryForm(f => ({ ...f, plotNo: e.target.value }))} />
-            </div>
-            <Field label="Location Note" value={editEntryForm.locationNote} onChange={e => setEditEntryForm(f => ({ ...f, locationNote: e.target.value }))} />
-            <Field textarea label="Remarks" value={editEntryForm.remarks} onChange={e => setEditEntryForm(f => ({ ...f, remarks: e.target.value }))} />
-          </div>
-        </Modal>
-      )}
-
-      {deleteEntryTarget && (
-        <ConfirmModal
-          title="Delete progress entry?"
-          message="This will be deleted permanently and cannot be undone."
-          confirmLabel="Delete"
-          danger
-          loading={deletingEntry}
-          onConfirm={handleDeleteEntryConfirm}
-          onCancel={() => setDeleteEntryTarget(null)}
-        />
-      )}
-
-      {invalidateEntryTarget && (
-        <Modal
-          icon={XCircle}
-          title="Invalidate Progress Entry"
-          onClose={() => { setInvalidateEntryTarget(null); setInvalidateReason(""); }}
-          footer={
-            <div className="flex justify-end gap-2">
-              <Btn outline label="Cancel" onClick={() => { setInvalidateEntryTarget(null); setInvalidateReason(""); }} />
-              <Btn color="red" label="Confirm Invalidation" loading={invalidatingEntry} disabled={!invalidateReason.trim()} onClick={handleInvalidateEntryConfirm} />
-            </div>
-          }
-        >
-          <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
-            This entry is attached to a bill, so it can't be edited or deleted directly — invalidating it keeps it in the log (struck through) without counting toward progress anymore.
-          </p>
-          <Field
-            textarea label="Reason" placeholder="Why is this entry being invalidated?"
-            value={invalidateReason} onChange={(e) => setInvalidateReason(e.target.value)}
           />
         </Modal>
       )}
