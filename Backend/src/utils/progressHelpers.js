@@ -84,9 +84,15 @@ function recomputeAfterInvalidate(si) {
 function expandBillableCandidates(scopeItems, selectedIds) {
   const out = [];
   for (const si of scopeItems) {
-    if (selectedIds && !selectedIds.has(String(si._id))) continue;
+    const parentSelected = !selectedIds || selectedIds.has(String(si._id));
     if (si.subItems && si.subItems.length > 0) {
+      // Checking the parent (its own _id in selectedIds) still means "every
+      // particular" — unchanged. A particular's own _id in selectedIds, with
+      // the parent's own _id absent, bills just that one — lets the DRI pick
+      // specific particulars instead of only ever all-or-nothing per item.
+      if (!parentSelected && !si.subItems.some(sub => selectedIds.has(String(sub._id)))) continue;
       for (const sub of si.subItems) {
+        if (!parentSelected && !selectedIds.has(String(sub._id))) continue;
         out.push({
           scopeItemId:   si._id,
           subItemId:     sub._id,
@@ -98,6 +104,7 @@ function expandBillableCandidates(scopeItems, selectedIds) {
         });
       }
     } else {
+      if (!parentSelected) continue;
       out.push({
         scopeItemId:   si._id,
         subItemId:     null,

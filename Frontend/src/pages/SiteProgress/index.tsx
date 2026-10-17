@@ -605,7 +605,7 @@ export default function SiteProgress() {
                           <Tr>
                             <Td dense>
                               {unbilled > 0 && (
-                                <span title={blocked ? `Approve the variance${hasSubItems ? " on every particular" : ""} below first` : undefined}>
+                                <span title={blocked ? `Approve the variance${hasSubItems ? " on every particular" : ""} below first` : hasSubItems ? "Selects every particular below — uncheck this to pick specific particulars instead" : undefined}>
                                   <Checkbox checked={checked.has(si._id)} disabled={!canBill} onChange={() => toggleCheck(si._id)} />
                                 </span>
                               )}
@@ -651,12 +651,29 @@ export default function SiteProgress() {
                           {hasSubItems && si.subItems!.map(sub => {
                             const subUnbilled = Math.max(0, (sub.completedQty || 0) - (sub.lastBilledQty || 0));
                             const subLevel = varianceLevel(sub.plannedQty, sub.completedQty);
+                            const subBlocked = subLevel !== "none" && !sub.varianceApproved;
+                            // "Select all" (the parent checkbox) already covers every
+                            // particular — this one lets the DRI pick just THIS
+                            // particular instead, independent of whether some OTHER
+                            // particular under the same item is still variance-blocked.
+                            const parentSelected = checked.has(si._id);
+                            const subCanBill = subUnbilled > 0 && !subBlocked;
                             const subEntryCount = sub.progressEntries?.length ?? 0;
                             const subExpanded = expandedEntries.has(sub._id);
                             return (
                               <Fragment key={sub._id}>
                                 <Tr className="bg-gray-50/60 dark:bg-gray-800/20">
-                                  <Td dense></Td>
+                                  <Td dense>
+                                    {subUnbilled > 0 && (
+                                      <span title={subBlocked ? "Approve the variance below first" : parentSelected ? "Already included via \"select all\" above" : undefined}>
+                                        <Checkbox
+                                          checked={parentSelected || checked.has(sub._id)}
+                                          disabled={parentSelected || !subCanBill}
+                                          onChange={() => toggleCheck(sub._id)}
+                                        />
+                                      </span>
+                                    )}
+                                  </Td>
                                   <Td dense className="pl-6 text-xs text-gray-500 dark:text-gray-400">
                                     {subEntryCount > 0 && (
                                       <button type="button" onClick={() => toggleEntries(sub._id)} className="mr-1.5 text-gray-400 align-middle">
