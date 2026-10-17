@@ -413,15 +413,8 @@ export default function NewBillDrawer({
                 : (!it.subItemId && String(it.scopeItemId) === String(si._id))
             );
             const ownOldQty = oldLine?.billedQty || 0;
-            // Every scope item/particular shows up here, not just ones with
-            // unbilled progress right now — everything is editable, so the
-            // DRI/AGM can type a quantity for anything on the work order, not
-            // only what already happened to be included. Quantity/Rate start
-            // at whatever this request already has (0 if not yet included).
-            // lastBilledQty is lowered by this request's own already-locked
-            // qty so remainingQty/isOverbilled's existing cap logic (used
-            // unchanged below) correctly allows re-typing up to "still
-            // genuinely unbilled + what this request already claims".
+            const unbilled = Math.max(0, (leaf.completedQty || 0) - (leaf.lastBilledQty || 0)) + ownOldQty;
+            if (unbilled <= 0) continue;
             const key = nextKey();
             if (ownOldQty > 0) included.add(key);
             rows.push({
@@ -429,13 +422,13 @@ export default function NewBillDrawer({
               scopeItemId: si._id,
               subItemId,
               groupLabel: subItemId ? parent.description : undefined,
-              description: leaf.description,
+              description: subItemId ? leaf.description : leaf.description,
               unit: leaf.unit || "",
               plannedQty: leaf.plannedQty || 0,
-              lastBilledQty: Math.max(0, (leaf.lastBilledQty || 0) - ownOldQty),
-              billedQty: ownOldQty,
+              lastBilledQty: leaf.lastBilledQty || 0,
+              billedQty: unbilled,
               rate: oldLine?.rate ?? leaf.rate ?? 0,
-              amount: Math.round(ownOldQty * (oldLine?.rate ?? leaf.rate ?? 0) * 100) / 100,
+              amount: Math.round(unbilled * (oldLine?.rate ?? leaf.rate ?? 0) * 100) / 100,
             });
           }
         }
@@ -892,29 +885,22 @@ export default function NewBillDrawer({
   // submits straight into that chain, exactly as this form always has.
   // Edit mode's own save path — a Bill Request has no GST/Hold/Milestone/Bill
   // Date concept at this pre-approval stage, so this skips every validation/
-  // payload field above that doesn't apply. Sends the checked rows' own
-  // typed qty/rate (not just their ids) — editBillRequest now accepts an
-  // explicit `items` override on top of the plain scopeItemIds shape Site
-  // Progress's own Generate Bill Request still uses.
+  // payload field above that doesn't apply and just resubmits the checked
+  // rows' scopeItemIds + remarks, mirroring Site Progress's own Generate Bill
+  // Request submit exactly (same endpoint, same shape).
   async function handleSaveEditedBillRequest() {
     if (!editBillRequest) return;
-    const includedItems = lineItems.filter((li) => editIncludedKeys.has(li.key) && li.billedQty > 0);
-    if (includedItems.length === 0) {
-      toast.error("Select at least one work item with a quantity > 0");
-      return;
-    }
-    const overbilledItem = includedItems.find((li) => isOverbilled(li));
-    if (overbilledItem) {
-      toast.error(`"${overbilledItem.description}" — only ${remainingQty(overbilledItem)} ${overbilledItem.unit || ""} remaining. Fix the highlighted quantity before saving.`, { duration: 6000 });
+    if (editIncludedKeys.size === 0) {
+      toast.error("Select at least one work item to bill");
       return;
     }
     setSaving(true);
     try {
-      const items = includedItems.map((li) => ({
-        scopeItemId: li.scopeItemId, subItemId: li.subItemId || null,
-        billedQty: li.billedQty, rate: li.rate,
-      }));
-      await apiClient.put(`/bill-requests/${editBillRequest._id}`, { items, remarks: remarksInput });
+      const scopeItemIds = lineItems
+        .filter((li) => editIncludedKeys.has(li.key))
+        .map((li) => li.subItemId || li.scopeItemId)
+        .filter((id): id is string => !!id);
+      await apiClient.put(`/bill-requests/${editBillRequest._id}`, { scopeItemIds, remarks: remarksInput });
       toast.success("Bill request updated");
       onUpdated?.();
       onClose();
@@ -1614,36 +1600,36 @@ export default function NewBillDrawer({
                           )}
                         </Td>
                         <Td>
-                          <input
-                            type="number" min="0"
-                            value={item.billedQty || ""}
-                            placeholder="0"
-                            onChange={(e) => {
-                              const val = Number(e.target.value) || 0;
-                              updateLineItem(item.key, "billedQty", val);
-                              if (isEditingBR) {
-                                setEditIncludedKeys((prev) => {
-                                  const next = new Set(prev);
-                                  if (val > 0) next.add(item.key); else next.delete(item.key);
-                                  return next;
-                                });
-                              }
-                            }}
-                            className={`${cellInputClass} text-right ${isOverbilled(item, supersedeQtyFor(item)) ? "ring-1 ring-red-500 rounded bg-red-50 dark:bg-red-500/10" : ""}`}
-                          />
-                          {isOverbilled(item, supersedeQtyFor(item)) && (
-                            <div className="text-[10px] text-red-600 dark:text-red-400 text-right font-semibold">
-                              only {remainingQty(item, supersedeQtyFor(item))} {item.unit || ""} remaining{isEditingBR ? "" : " — will be rejected"}
-                            </div>
+                          {isEditingBR ? (
+                            <span className="text-[13px] font-mono block text-right">{item.billedQty}</span>
+                          ) : (
+                            <>
+                              <input
+                                type="number" min="0"
+                                value={item.billedQty || ""}
+                                placeholder="0"
+                                onChange={(e) => updateLineItem(item.key, "billedQty", Number(e.target.value) || 0)}
+                                className={`${cellInputClass} text-right ${isOverbilled(item, supersedeQtyFor(item)) ? "ring-1 ring-red-500 rounded bg-red-50 dark:bg-red-500/10" : ""}`}
+                              />
+                              {isOverbilled(item, supersedeQtyFor(item)) && (
+                                <div className="text-[10px] text-red-600 dark:text-red-400 text-right font-semibold">
+                                  only {remainingQty(item, supersedeQtyFor(item))} {item.unit || ""} remaining — will be rejected
+                                </div>
+                              )}
+                            </>
                           )}
                         </Td>
                         <Td>
-                          <input
-                            value={item.rateInput !== undefined ? formatThousands(item.rateInput) : formatThousands(item.rate || "")}
-                            placeholder="0.00"
-                            onChange={(e) => handleRateChange(item.key, e.target.value)}
-                            className={`${cellInputClass} text-right`}
-                          />
+                          {isEditingBR ? (
+                            <span className="text-[13px] font-mono block text-right">{formatThousands(item.rate || "")}</span>
+                          ) : (
+                            <input
+                              value={item.rateInput !== undefined ? formatThousands(item.rateInput) : formatThousands(item.rate || "")}
+                              placeholder="0.00"
+                              onChange={(e) => handleRateChange(item.key, e.target.value)}
+                              className={`${cellInputClass} text-right`}
+                            />
+                          )}
                         </Td>
                         <Td className={`text-right font-mono font-bold whitespace-nowrap ${item.amount > 0 ? "text-emerald-600" : "text-gray-300"}`}>
                           {item.amount > 0 ? fmt(item.amount) : "—"}

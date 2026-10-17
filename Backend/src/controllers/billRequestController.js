@@ -340,7 +340,7 @@ exports.createBillRequest = asyncHandler(async (req, res) => {
 // selection could double-count a particular or leave one permanently
 // orphaned as "billed" with no bill to show for it.
 exports.editBillRequest = asyncHandler(async (req, res) => {
-  const { scopeItemIds, items: itemOverrides, remarks } = req.body;
+  const { scopeItemIds, remarks } = req.body;
 
   const br = await BillRequest.findById(req.params.id);
   if (!br) return notFound(res, 'Bill request not found');
@@ -370,42 +370,16 @@ exports.editBillRequest = asyncHandler(async (req, res) => {
     if (oldItem.subItemId) touchedParents.add(String(oldItem.scopeItemId));
   }
 
-  let pendingItems;
-  if (Array.isArray(itemOverrides) && itemOverrides.length > 0) {
-    // ── Explicit items (with the DRI/AGM's own typed qty/rate) — the Edit
-    // drawer's own "everything editable" mode. Still capped at what's
-    // actually left to bill (same ceiling isOverbilled enforces client-side
-    // in NewBillDrawer) so a typo can't bill more than genuinely remains.
-    pendingItems = [];
-    for (const ov of itemOverrides) {
-      const si = wo.scopeItems.id(ov.scopeItemId);
-      if (!si) return badRequest(res, 'One of the selected scope items no longer exists on this work order.');
-      const target = resolveBillableItem(si, ov.subItemId || null);
-      if (!target) return badRequest(res, 'One of the selected particulars no longer exists on this work order.');
-      const billedQty = Number(ov.billedQty) || 0;
-      if (billedQty <= 0) continue;
-      const maxAllowed = target.plannedQty > 0 ? (target.plannedQty - (target.lastBilledQty || 0)) : Infinity;
-      if (billedQty > maxAllowed + 0.001) {
-        return badRequest(res, `"${target.description}" — only ${Math.round(maxAllowed * 100) / 100} ${target.unit || ''} remaining to bill.`);
-      }
-      pendingItems.push({
-        scopeItemId: si._id, subItemId: ov.subItemId || null,
-        description: ov.subItemId ? `${si.description} — ${target.description}` : target.description,
-        unit: target.unit || '', completedQty: target.completedQty, lastBilledQty: target.lastBilledQty,
-        rate: Number(ov.rate) || target.rate || 0, billedQty,
-      });
-    }
-    if (!pendingItems.length) return badRequest(res, 'Add at least one work item with a quantity > 0.');
-  } else {
-    // ── Legacy path — plain scopeItemIds selection, qty always the full
-    // currently-unbilled amount (same as createBillRequest's own default).
-    const selectedIds = Array.isArray(scopeItemIds) && scopeItemIds.length > 0
-      ? new Set(scopeItemIds.map(String))
-      : null;
-    pendingItems = expandBillableCandidates(wo.scopeItems, selectedIds)
-      .map(c => ({ ...c, billedQty: Math.max(0, c.completedQty - c.lastBilledQty) }))
-      .filter(it => it.billedQty > 0);
-    if (!pendingItems.length) return badRequest(res, 'No progress to bill with this selection.');
+  // ── Rebuild fresh from the new selection ─────────────────────────────────
+  const selectedIds = Array.isArray(scopeItemIds) && scopeItemIds.length > 0
+    ? new Set(scopeItemIds.map(String))
+    : null;
+  const pendingItems = expandBillableCandidates(wo.scopeItems, selectedIds)
+    .map(c => ({ ...c, billedQty: Math.max(0, c.completedQty - c.lastBilledQty) }))
+    .filter(it => it.billedQty > 0);
+
+  if (!pendingItems.length) {
+    return badRequest(res, 'No progress to bill with this selection.');
   }
 
   for (const pi of pendingItems) {
@@ -420,7 +394,7 @@ exports.editBillRequest = asyncHandler(async (req, res) => {
     const si = wo.scopeItems.id(pi.scopeItemId);
     const target = resolveBillableItem(si, pi.subItemId);
     progressRemarksByItem.set(String(pi.subItemId || pi.scopeItemId), collectAndMarkProgressRemarks(target, br._id));
-    target.lastBilledQty = (target.lastBilledQty || 0) + pi.billedQty;
+    target.lastBilledQty = pi.completedQty;
     if (pi.subItemId) touchedParents.add(String(pi.scopeItemId));
   }
   for (const scopeItemId of touchedParents) {
