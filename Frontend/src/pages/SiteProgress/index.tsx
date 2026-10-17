@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import {
-  FileText, Users, Building2, AlertTriangle, Pin, ChevronDown, ChevronRight, TrendingUp, XCircle,
+  FileText, Users, Building2, AlertTriangle, Pin, ChevronDown, ChevronRight, TrendingUp,
 } from "lucide-react";
 import dayjs from "dayjs";
 import type { Dayjs } from "dayjs";
@@ -274,11 +274,6 @@ export default function SiteProgress() {
   const [billRemarks, setBillRemarks] = useState("");
   const [generating, setGenerating] = useState(false);
   const [approvingVariance, setApprovingVariance] = useState<string | null>(null);
-  // Reject variance — needs a reason, so it's a small modal rather than an
-  // instant action like Approve.
-  const [rejectVarianceTarget, setRejectVarianceTarget] = useState<{ item: ScopeItemDetail; subItem?: SubItemDetail } | null>(null);
-  const [rejectVarianceReason, setRejectVarianceReason] = useState("");
-  const [rejectingVariance, setRejectingVariance] = useState(false);
 
   const viewWO = viewWOId ? woDetails.get(viewWOId) ?? null : null;
 
@@ -333,26 +328,6 @@ export default function SiteProgress() {
       toast.error(e?.response?.data?.message || "Failed to approve variance");
     } finally {
       setApprovingVariance(null);
-    }
-  };
-
-  const handleRejectVariance = async () => {
-    if (!viewWO || !rejectVarianceTarget || !rejectVarianceReason.trim()) return;
-    const { item, subItem } = rejectVarianceTarget;
-    setRejectingVariance(true);
-    try {
-      const path = subItem
-        ? `/work-orders/${viewWO._id}/scope-items/${item._id}/sub-items/${subItem._id}/reject-variance`
-        : `/work-orders/${viewWO._id}/scope-items/${item._id}/reject-variance`;
-      await apiClient.patch(path, { reason: rejectVarianceReason.trim() });
-      toast.success("Variance rejected");
-      setRejectVarianceTarget(null);
-      setRejectVarianceReason("");
-      await reloadWODetail(viewWO._id);
-    } catch (e: any) {
-      toast.error(e?.response?.data?.message || "Failed to reject variance");
-    } finally {
-      setRejectingVariance(false);
     }
   };
 
@@ -657,10 +632,7 @@ export default function SiteProgress() {
                                 <div className="flex items-center gap-1.5">
                                   <VarianceTag level={level} />
                                   {!si.varianceApproved && (
-                                    <>
-                                      <Btn small outline loading={approvingVariance === si._id} label="Approve" onClick={() => handleApproveVariance(si)} />
-                                      <Btn small outline color="red" label="Reject" onClick={() => setRejectVarianceTarget({ item: si })} />
-                                    </>
+                                    <Btn small outline loading={approvingVariance === si._id} label="Approve" onClick={() => handleApproveVariance(si)} />
                                   )}
                                 </div>
                               )}
@@ -721,10 +693,7 @@ export default function SiteProgress() {
                                       <div className="flex items-center gap-1.5">
                                         <VarianceTag level={subLevel} />
                                         {!sub.varianceApproved && (
-                                          <>
-                                            <Btn small outline loading={approvingVariance === sub._id} label="Approve" onClick={() => handleApproveVariance(si, sub)} />
-                                            <Btn small outline color="red" label="Reject" onClick={() => setRejectVarianceTarget({ item: si, subItem: sub })} />
-                                          </>
+                                          <Btn small outline loading={approvingVariance === sub._id} label="Approve" onClick={() => handleApproveVariance(si, sub)} />
                                         )}
                                       </div>
                                     )}
@@ -755,28 +724,6 @@ export default function SiteProgress() {
               />
             </div>
           )}
-        </Modal>
-      )}
-
-      {rejectVarianceTarget && (
-        <Modal
-          icon={XCircle}
-          title="Reject Progress Variance"
-          onClose={() => { setRejectVarianceTarget(null); setRejectVarianceReason(""); }}
-          footer={
-            <div className="flex justify-end gap-2">
-              <Btn outline label="Cancel" onClick={() => { setRejectVarianceTarget(null); setRejectVarianceReason(""); }} />
-              <Btn color="red" label="Confirm Rejection" loading={rejectingVariance} disabled={!rejectVarianceReason.trim()} onClick={handleRejectVariance} />
-            </div>
-          }
-        >
-          <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
-            Rejecting invalidates the unbilled over-plan progress on "{rejectVarianceTarget.subItem?.description || rejectVarianceTarget.item.description}" — the DRI will need to re-check and re-log it.
-          </p>
-          <Field
-            textarea label="Reason for rejection" placeholder="Why is this progress being rejected?"
-            value={rejectVarianceReason} onChange={(e) => setRejectVarianceReason(e.target.value)}
-          />
         </Modal>
       )}
     </div>

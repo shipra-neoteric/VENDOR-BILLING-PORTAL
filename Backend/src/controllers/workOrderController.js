@@ -35,7 +35,7 @@ const { startInstance, advanceInstance, cancelInstance } = require('../utils/sla
 const { milestonesExceedContract } = require('../utils/validateMilestones');
 const { documentsExceedLimit } = require('../utils/validateDocuments');
 const { logAudit, diffFields } = require('../utils/auditLog');
-const { sumActiveQty, applyVarianceGate, recomputeParentFromSubItems, deriveStatus } = require('../utils/progressHelpers');
+const { sumActiveQty, applyVarianceGate, recomputeParentFromSubItems } = require('../utils/progressHelpers');
 const { getRetentionHeldForWorkOrder } = require('../utils/retentionHeld');
 const { notifyStagePending, settleAllPendingForEntity } = require('../utils/slackApprovals');
 const { notifyStageInApp, notifyUser, notifyByPermission } = require('../utils/notificationService');
@@ -1386,54 +1386,6 @@ exports.approveScopeItemVariance = asyncHandler(async (req, res) => {
   success(res, { workOrder }, 'Variance approved');
 });
 
-// Reject — the over-plan progress shouldn't count as-is. Invalidates every
-// still-unbilled entry (same scope Approve would otherwise sign off on) so
-// completedQty drops back and the DRI has to re-check/re-log it, instead of
-// silently sitting there forever as neither approved nor fixed.
-exports.rejectScopeItemVariance = asyncHandler(async (req, res) => {
-  const { reason } = req.body;
-  if (!reason || !reason.trim()) return badRequest(res, 'A reason is required to reject progress variance');
-
-  const workOrder = await WorkOrder.findById(req.params.id);
-  if (!workOrder) return notFound(res, 'Work order not found');
-
-  const item = workOrder.scopeItems.id(req.params.itemId);
-  if (!item) return notFound(res, 'Scope item not found');
-
-  if (!(item.plannedQty > 0 && item.completedQty > item.plannedQty && !item.varianceApproved)) {
-    return badRequest(res, 'This item has no unapproved variance');
-  }
-
-  const rejectedQty = item.completedQty;
-  const trimmedReason = reason.trim();
-  for (const entry of item.progressEntries) {
-    if (!entry.invalidated?.done && !entry.billedInRequestId) {
-      entry.invalidated = { done: true, by: req.user._id, at: new Date(), reason: trimmedReason };
-    }
-  }
-  item.completedQty = sumActiveQty(item.progressEntries);
-  item.status = deriveStatus(item);
-  applyVarianceGate(item);
-  await workOrder.save();
-
-  await logAudit({
-    action: 'REJECT', module: 'work-orders', user: req.user,
-    description: `Rejected progress variance on ${item.description} for ${workOrder.workOrderNo} (was ${rejectedQty}/${item.plannedQty} ${item.unit}) — ${trimmedReason}`,
-    entityType: 'WorkOrder', entityId: workOrder._id, entityLabel: workOrder.workOrderNo,
-  });
-
-  for (const driId of workOrder.assignedDRI || []) {
-    notifyUser(driId, {
-      type: 'SITE_PROGRESS_VARIANCE_REJECTED', category: 'site-progress',
-      title: `${workOrder.workOrderNo} — progress variance rejected`,
-      message: `"${item.description}" over-plan progress was rejected — ${trimmedReason}. Re-check and re-log.`,
-      entityType: 'WorkOrder', entityId: workOrder._id, link: `/work-items/${workOrder._id}`,
-    }).catch((err) => console.error('[notifications] SITE_PROGRESS_VARIANCE_REJECTED notify failed', err.message));
-  }
-
-  success(res, { workOrder }, 'Variance rejected');
-});
-
 exports.approveSubItemVariance = asyncHandler(async (req, res) => {
   const workOrder = await WorkOrder.findById(req.params.id);
   if (!workOrder) return notFound(res, 'Work order not found');
@@ -1460,54 +1412,4 @@ exports.approveSubItemVariance = asyncHandler(async (req, res) => {
   });
 
   success(res, { workOrder }, 'Variance approved');
-});
-
-// Same as rejectScopeItemVariance, but for a particular — recomputes the
-// parent item's own rolled-up completedQty/status afterward since a
-// particular-bearing parent is always derived, never tracked directly.
-exports.rejectSubItemVariance = asyncHandler(async (req, res) => {
-  const { reason } = req.body;
-  if (!reason || !reason.trim()) return badRequest(res, 'A reason is required to reject progress variance');
-
-  const workOrder = await WorkOrder.findById(req.params.id);
-  if (!workOrder) return notFound(res, 'Work order not found');
-
-  const item = workOrder.scopeItems.id(req.params.itemId);
-  if (!item) return notFound(res, 'Scope item not found');
-  const subItem = item.subItems.id(req.params.subItemId);
-  if (!subItem) return notFound(res, 'Particular not found');
-
-  if (!(subItem.plannedQty > 0 && subItem.completedQty > subItem.plannedQty && !subItem.varianceApproved)) {
-    return badRequest(res, 'This particular has no unapproved variance');
-  }
-
-  const rejectedQty = subItem.completedQty;
-  const trimmedReason = reason.trim();
-  for (const entry of subItem.progressEntries) {
-    if (!entry.invalidated?.done && !entry.billedInRequestId) {
-      entry.invalidated = { done: true, by: req.user._id, at: new Date(), reason: trimmedReason };
-    }
-  }
-  subItem.completedQty = sumActiveQty(subItem.progressEntries);
-  subItem.status = deriveStatus(subItem);
-  applyVarianceGate(subItem);
-  recomputeParentFromSubItems(item);
-  await workOrder.save();
-
-  await logAudit({
-    action: 'REJECT', module: 'work-orders', user: req.user,
-    description: `Rejected progress variance on ${item.description} — ${subItem.description} for ${workOrder.workOrderNo} (was ${rejectedQty}/${subItem.plannedQty} ${subItem.unit}) — ${trimmedReason}`,
-    entityType: 'WorkOrder', entityId: workOrder._id, entityLabel: workOrder.workOrderNo,
-  });
-
-  for (const driId of workOrder.assignedDRI || []) {
-    notifyUser(driId, {
-      type: 'SITE_PROGRESS_VARIANCE_REJECTED', category: 'site-progress',
-      title: `${workOrder.workOrderNo} — progress variance rejected`,
-      message: `"${item.description} — ${subItem.description}" over-plan progress was rejected — ${trimmedReason}. Re-check and re-log.`,
-      entityType: 'WorkOrder', entityId: workOrder._id, link: `/work-items/${workOrder._id}`,
-    }).catch((err) => console.error('[notifications] SITE_PROGRESS_VARIANCE_REJECTED notify failed', err.message));
-  }
-
-  success(res, { workOrder }, 'Variance rejected');
 });

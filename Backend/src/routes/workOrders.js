@@ -8,7 +8,6 @@ const {
   addScopeProgress, editProgressEntry, deleteProgressEntry, invalidateProgressEntry,
   addSubItemProgress, editSubItemProgressEntry, deleteSubItemProgressEntry, invalidateSubItemProgressEntry,
   approveScopeItemVariance, approveSubItemVariance,
-  rejectScopeItemVariance, rejectSubItemVariance,
 } = require('../controllers/workOrderController');
 
 router.use(authenticate);
@@ -62,7 +61,5 @@ router.patch('/:id/scope-items/:itemId/sub-items/:subItemId/progress/:progressId
   authorizeOr('work-progress', 'edit'), invalidateSubItemProgressEntry);
 router.patch('/:id/scope-items/:itemId/approve-variance', authorizeOr('bill-review', 'approve'), approveScopeItemVariance);
 router.patch('/:id/scope-items/:itemId/sub-items/:subItemId/approve-variance', authorizeOr('bill-review', 'approve'), approveSubItemVariance);
-router.patch('/:id/scope-items/:itemId/reject-variance', authorizeOr('bill-review', 'approve'), rejectScopeItemVariance);
-router.patch('/:id/scope-items/:itemId/sub-items/:subItemId/reject-variance', authorizeOr('bill-review', 'approve'), rejectSubItemVariance);
 
 module.exports = router;
