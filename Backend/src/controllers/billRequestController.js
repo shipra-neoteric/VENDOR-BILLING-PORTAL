@@ -332,6 +332,100 @@ exports.createBillRequest = asyncHandler(async (req, res) => {
   created(res, { billRequest }, `Stage ${stageNo} bill request ${reqNo} submitted successfully`);
 });
 
+// PUT /api/bill-requests/:id — only while still at L1 (status 'pending',
+// nobody has approved anything yet). Rebuilds the item selection/remarks
+// from scratch, same logic createBillRequest itself uses, after first
+// rolling back exactly what THIS request had already consumed (lastBilledQty
+// + progress-entry billedInRequestId marks) — otherwise switching the
+// selection could double-count a particular or leave one permanently
+// orphaned as "billed" with no bill to show for it.
+exports.editBillRequest = asyncHandler(async (req, res) => {
+  const { scopeItemIds, remarks } = req.body;
+
+  const br = await BillRequest.findById(req.params.id);
+  if (!br) return notFound(res, 'Bill request not found');
+  if (br.status !== 'pending') {
+    return badRequest(res, `Only an L1-pending request can be edited (this one is ${br.status}).`);
+  }
+  if (!canActOnDepartment(req.user, br)) return forbidden(res, 'This bill request belongs to a different department.');
+
+  const wo = await WorkOrder.findById(br.workOrderId);
+  if (!wo) return notFound(res, 'Work order not found');
+
+  const touchedParents = new Set();
+
+  // ── Roll back what this request currently consumes ──────────────────────
+  for (const oldItem of br.items) {
+    const si = wo.scopeItems.id(oldItem.scopeItemId);
+    if (!si) continue;
+    const target = resolveBillableItem(si, oldItem.subItemId);
+    if (target) {
+      target.lastBilledQty = Math.max(0, (target.lastBilledQty || 0) - oldItem.billedQty);
+      for (const entry of target.progressEntries) {
+        if (entry.billedInRequestId && String(entry.billedInRequestId) === String(br._id)) {
+          entry.billedInRequestId = null;
+        }
+      }
+    }
+    if (oldItem.subItemId) touchedParents.add(String(oldItem.scopeItemId));
+  }
+
+  // ── Rebuild fresh from the new selection ─────────────────────────────────
+  const selectedIds = Array.isArray(scopeItemIds) && scopeItemIds.length > 0
+    ? new Set(scopeItemIds.map(String))
+    : null;
+  const pendingItems = expandBillableCandidates(wo.scopeItems, selectedIds)
+    .map(c => ({ ...c, billedQty: Math.max(0, c.completedQty - c.lastBilledQty) }))
+    .filter(it => it.billedQty > 0);
+
+  if (!pendingItems.length) {
+    return badRequest(res, 'No progress to bill with this selection.');
+  }
+
+  for (const pi of pendingItems) {
+    const si = wo.scopeItems.id(pi.scopeItemId);
+    if (hasUnapprovedVarianceForLineItem(si, pi.subItemId)) {
+      return badRequest(res, `"${pi.description}" has unapproved progress variance — approve it before billing.`);
+    }
+  }
+
+  const progressRemarksByItem = new Map();
+  for (const pi of pendingItems) {
+    const si = wo.scopeItems.id(pi.scopeItemId);
+    const target = resolveBillableItem(si, pi.subItemId);
+    progressRemarksByItem.set(String(pi.subItemId || pi.scopeItemId), collectAndMarkProgressRemarks(target, br._id));
+    target.lastBilledQty = pi.completedQty;
+    if (pi.subItemId) touchedParents.add(String(pi.scopeItemId));
+  }
+  for (const scopeItemId of touchedParents) {
+    const si = wo.scopeItems.id(scopeItemId);
+    if (si) recomputeParentFromSubItems(si);
+  }
+  await wo.save();
+
+  br.items = pendingItems.map(it => ({
+    scopeItemId: it.scopeItemId,
+    subItemId:   it.subItemId,
+    description: it.description,
+    unit:        it.unit,
+    billedQty:   it.billedQty,
+    rate:        it.rate,
+    amount:      it.rate * it.billedQty,
+    progressRemarks: progressRemarksByItem.get(String(it.subItemId || it.scopeItemId))?.remarks || '',
+    location:        progressRemarksByItem.get(String(it.subItemId || it.scopeItemId))?.location || '',
+  }));
+  if (remarks !== undefined) br.remarks = remarks;
+  await br.save();
+
+  await logAudit({
+    action: 'UPDATE', module: 'bill-requests', user: req.user,
+    description: `Edited bill request ${br.reqNo} (still pending L1)`,
+    entityType: 'BillRequest', entityId: br._id, entityLabel: br.reqNo,
+  });
+
+  success(res, { billRequest: br }, 'Bill request updated');
+});
+
 // PUT /api/bill-requests/:id/agm-approve — Stage 1 (L1). Decides the actual
 // hold/advance figures, but doesn't create the RunningBill yet — that only
 // happens once GM signs off too (see gmApprove below).

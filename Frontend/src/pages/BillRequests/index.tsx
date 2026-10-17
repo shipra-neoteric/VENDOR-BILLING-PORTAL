@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import {
   FileText, Eye, Printer, CheckCircle2, XCircle, Check, X, Clock,
-  Trophy, Download,
+  Trophy, Download, Pencil,
 } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import dayjs from "dayjs";
@@ -37,6 +37,7 @@ import PageHeader from "../../ui/PageHeader";
 import Modal from "../../ui/Modal";
 import Field from "../../ui/Field";
 import { Table, Thead, Tbody, Tfoot, Tr, Th, Td } from "../../ui/Table";
+import Checkbox from "../../ui/Checkbox";
 import { usePagination } from "../../ui/usePagination";
 import Pagination from "../../ui/Pagination";
 import NxBadge from "../../ui/nexora/Badge";
@@ -45,8 +46,23 @@ import NxStatCard from "../../ui/nexora/StatCard";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface BillItem {
-  scopeItemId?: string; description: string; unit: string; billedQty: number;
+  scopeItemId?: string; subItemId?: string; description: string; unit: string; billedQty: number;
   rate?: number; amount?: number; progressRemarks?: string; location?: string;
+}
+// Minimal shape read off GET /work-orders/:id for the Edit Bill Request
+// modal — just enough to rebuild the same scope-item/particular checklist
+// Site Progress's own "Generate Bill Request" shows.
+interface EditSubItemDetail {
+  _id: string; description: string; unit: string; plannedQty: number;
+  completedQty: number; lastBilledQty?: number; varianceApproved?: boolean; rate?: number;
+}
+interface EditScopeItemDetail {
+  _id: string; description: string; unit: string; plannedQty: number;
+  completedQty: number; lastBilledQty?: number; varianceApproved?: boolean; rate?: number;
+  subItems?: EditSubItemDetail[];
+}
+interface EditWorkOrderDetail {
+  _id: string; workOrderNo: string; scopeItems: EditScopeItemDetail[];
 }
 interface ApprovalHistoryEntry {
   stage: string; action: "approved" | "rejected";
@@ -532,6 +548,64 @@ export default function BillApproval() {
   // ── Bill request view / approve / reject ────────────────────────────────────
   const [viewReq, setViewReq] = useState<BillRequestRow | null>(null);
   const [printingReqId, setPrintingReqId] = useState<string | null>(null);
+
+  // ── Edit (only while status === "pending", i.e. still at L1) ────────────────
+  // Re-opens the same scope-item selection Site Progress's own "Generate Bill
+  // Request" uses — items/particulars pre-checked from what this request
+  // already has — so the DRI/AGM can add, drop or swap what's billed before
+  // anyone's actually approved anything, instead of having to reject and
+  // start a fresh request for a simple correction.
+  const [editTarget, setEditTarget] = useState<BillRequestRow | null>(null);
+  const [editWO, setEditWO] = useState<EditWorkOrderDetail | null>(null);
+  const [editLoading, setEditLoading] = useState(false);
+  const [editChecked, setEditChecked] = useState<Set<string>>(new Set());
+  const [editRemarks, setEditRemarks] = useState("");
+  const [editSaving, setEditSaving] = useState(false);
+
+  const openEditBillRequest = async (br: BillRequestRow) => {
+    setEditTarget(br);
+    setEditRemarks(br.remarks || "");
+    setEditLoading(true);
+    // Pre-check whatever this request already bills — a particular's own id
+    // when it bills one, otherwise the plain scope item's id.
+    setEditChecked(new Set(br.items.map(it => it.subItemId || it.scopeItemId).filter((x): x is string => !!x)));
+    try {
+      const res = await apiClient.get(`/work-orders/${br.workOrderId}`);
+      setEditWO(res.data.workOrder);
+    } catch {
+      toast.error("Failed to load work order");
+      setEditTarget(null);
+    } finally {
+      setEditLoading(false);
+    }
+  };
+
+  const toggleEditCheck = (id: string) => {
+    setEditChecked(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editTarget || editChecked.size === 0) return;
+    setEditSaving(true);
+    try {
+      await apiClient.put(`/bill-requests/${editTarget._id}`, {
+        scopeItemIds: Array.from(editChecked),
+        remarks: editRemarks,
+      });
+      toast.success("Bill request updated");
+      setEditTarget(null);
+      setEditWO(null);
+      load();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || "Failed to update bill request");
+    } finally {
+      setEditSaving(false);
+    }
+  };
 
   // Deep link from other pages (e.g. the SLA Report's Ongoing Workflows
   // table) — ?open=<billRequestId> opens that request's view modal once the
@@ -1401,6 +1475,9 @@ export default function BillApproval() {
                       <div onClick={e => e.stopPropagation()} className="flex items-center gap-1">
                         <NxBtn color="icon-blue" title="View" icon={Eye} onClick={() => openViewReq(r)} />
                         <NxBtn color="icon" title="Print" icon={Printer} loading={printingReqId === r._id} onClick={() => handlePrintReq(r)} />
+                        {r.status === "pending" && (
+                          <NxBtn color="icon-gray" title="Edit" icon={Pencil} onClick={() => openEditBillRequest(r)} />
+                        )}
                         {r.status === "pending" && canAgmApprove && (
                           <NxBtn color="icon-green" title="L1 Approve" icon={Check} onClick={() => openApprove(r._id)} />
                         )}
@@ -1440,6 +1517,100 @@ export default function BillApproval() {
         />
       )}
 
+      {editTarget && (
+        <Modal
+          icon={Pencil}
+          title={`Edit ${editTarget.reqNo}`}
+          extraWide
+          onClose={() => { setEditTarget(null); setEditWO(null); }}
+          footer={
+            <div className="flex justify-end gap-2">
+              <Btn outline label="Cancel" onClick={() => { setEditTarget(null); setEditWO(null); }} />
+              <Btn color="primary" label="Save Changes" loading={editSaving} disabled={editChecked.size === 0} onClick={handleSaveEdit} />
+            </div>
+          }
+        >
+          {editLoading || !editWO ? (
+            <div className="flex justify-center py-10"><Spinner /></div>
+          ) : (
+            <div className="flex flex-col gap-4">
+              <div>
+                <div className="font-bold text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wide mb-1.5">
+                  Scope Items — select which ones to bill this cycle
+                </div>
+                <Table>
+                  <Thead>
+                    <Tr>
+                      <Th dense></Th>
+                      <Th dense>Description</Th>
+                      <Th dense>Unit</Th>
+                      <Th dense>Planned</Th>
+                      <Th dense>Executed</Th>
+                      <Th dense>Unbilled</Th>
+                    </Tr>
+                  </Thead>
+                  <Tbody>
+                    {editWO.scopeItems.map(si => {
+                      const hasSubItems = (si.subItems?.length ?? 0) > 0;
+                      if (hasSubItems) {
+                        return si.subItems!.map(sub => {
+                          const ownOldQty = editTarget.items.find(it => it.subItemId === sub._id)?.billedQty || 0;
+                          const unbilled = Math.max(0, (sub.completedQty || 0) - (sub.lastBilledQty || 0)) + ownOldQty;
+                          const overPlan = sub.plannedQty > 0 && sub.completedQty > sub.plannedQty;
+                          const blocked = overPlan && !sub.varianceApproved;
+                          const canBill = unbilled > 0 && !blocked;
+                          return (
+                            <Tr key={sub._id}>
+                              <Td dense>
+                                {unbilled > 0 && (
+                                  <span title={blocked ? "Approve/reject the variance on Site Progress first" : undefined}>
+                                    <Checkbox checked={editChecked.has(sub._id)} disabled={!canBill} onChange={() => toggleEditCheck(sub._id)} />
+                                  </span>
+                                )}
+                              </Td>
+                              <Td dense className="text-xs">{si.description} — {sub.description}</Td>
+                              <Td dense className="text-xs">{sub.unit}</Td>
+                              <Td dense className="font-mono text-xs">{sub.plannedQty}</Td>
+                              <Td dense className="font-mono text-xs">{sub.completedQty}</Td>
+                              <Td dense className={`font-mono text-xs ${unbilled > 0 ? "text-primary font-bold" : "text-gray-400"}`}>{unbilled}{blocked && " ⚠️"}</Td>
+                            </Tr>
+                          );
+                        });
+                      }
+                      const ownOldQty = editTarget.items.find(it => !it.subItemId && it.scopeItemId === si._id)?.billedQty || 0;
+                      const unbilled = Math.max(0, (si.completedQty || 0) - (si.lastBilledQty || 0)) + ownOldQty;
+                      const overPlan = si.plannedQty > 0 && si.completedQty > si.plannedQty;
+                      const blocked = overPlan && !si.varianceApproved;
+                      const canBill = unbilled > 0 && !blocked;
+                      return (
+                        <Tr key={si._id}>
+                          <Td dense>
+                            {unbilled > 0 && (
+                              <span title={blocked ? "Approve/reject the variance on Site Progress first" : undefined}>
+                                <Checkbox checked={editChecked.has(si._id)} disabled={!canBill} onChange={() => toggleEditCheck(si._id)} />
+                              </span>
+                            )}
+                          </Td>
+                          <Td dense className="font-semibold">{si.description}</Td>
+                          <Td dense>{si.unit}</Td>
+                          <Td dense className="font-mono">{si.plannedQty}</Td>
+                          <Td dense className="font-mono">{si.completedQty}</Td>
+                          <Td dense className={`font-mono ${unbilled > 0 ? "text-primary font-bold" : "text-gray-400"}`}>{unbilled}{blocked && " ⚠️"}</Td>
+                        </Tr>
+                      );
+                    })}
+                  </Tbody>
+                </Table>
+              </div>
+              <Field
+                textarea label="Remarks for this bill request (optional)" placeholder="Notes for whoever approves this…"
+                value={editRemarks} onChange={e => setEditRemarks(e.target.value)}
+              />
+            </div>
+          )}
+        </Modal>
+      )}
+
       {/* ── Bill request view modal ── */}
       {viewReq && (
         <Modal
@@ -1460,6 +1631,7 @@ export default function BillApproval() {
               <Btn outline icon={Printer} label="Print" loading={printingReqId === viewReq._id} onClick={() => handlePrintReq(viewReq)} />
               {viewReq.status === "pending" && (
                 <>
+                  <Btn outline icon={Pencil} label="Edit" onClick={() => { const r = viewReq; setViewReq(null); openEditBillRequest(r); }} />
                   {canRejectThisStage(viewReq.status) && <Btn color="red" label="Reject" onClick={() => { setRejectTarget(viewReq._id); setRejectModal(true); setViewReq(null); }} />}
                   {canAgmApprove && <Btn color="primary" label="L1 Approve →" onClick={() => { openApprove(viewReq._id); setViewReq(null); }} />}
                 </>
