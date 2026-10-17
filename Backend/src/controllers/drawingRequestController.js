@@ -260,7 +260,7 @@ exports.l1Review = asyncHandler(async (req, res) => {
 // L2 — the Architect produces the drawing(s) and submits them. No reject path
 // here — the architect produces; only a GM (L3/L4) sends work back.
 exports.l2Drawing = asyncHandler(async (req, res) => {
-  const { drawingFiles } = req.body;
+  const { drawingFiles, remarks } = req.body;
   if (!Array.isArray(drawingFiles) || drawingFiles.length === 0) {
     return badRequest(res, 'Attach at least one drawing file');
   }
@@ -276,7 +276,7 @@ exports.l2Drawing = asyncHandler(async (req, res) => {
 
   request.drawingFiles = drawingFiles.map((f) => ({ name: f.name || '', url: f.url }));
   request.reviewStatus = 'l3-gm';
-  request.reviewHistory.push({ stage: 'l2-architect', action: 'submitted', by: req.user._id, remarks: '' });
+  request.reviewHistory.push({ stage: 'l2-architect', action: 'submitted', by: req.user._id, remarks: (remarks || '').trim() });
   await request.save();
   syncDrawingRequestToQc(request).catch(() => {});
 
