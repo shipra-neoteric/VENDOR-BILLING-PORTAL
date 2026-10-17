@@ -408,7 +408,9 @@ export default function NewBillDrawer({
             : [{ parent: si, leaf: si, subItemId: undefined }];
           for (const { parent, leaf, subItemId } of leaves) {
             const oldLine = editBillRequest.items.find((it) =>
-              subItemId ? it.subItemId === subItemId : (!it.subItemId && it.scopeItemId === si._id)
+              subItemId
+                ? String(it.subItemId) === String(subItemId)
+                : (!it.subItemId && String(it.scopeItemId) === String(si._id))
             );
             const ownOldQty = oldLine?.billedQty || 0;
             const unbilled = Math.max(0, (leaf.completedQty || 0) - (leaf.lastBilledQty || 0)) + ownOldQty;
