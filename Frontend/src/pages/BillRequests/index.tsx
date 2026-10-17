@@ -1533,45 +1533,20 @@ export default function BillApproval() {
           {editLoading || !editWO ? (
             <div className="flex justify-center py-10"><Spinner /></div>
           ) : (
-            <div className="flex flex-col gap-5">
-              {/* ── Bill Information — same card style as New Bill, read-only
-                  here since an existing request stays tied to the one work
-                  order/vendor it was raised against; nothing here is
-                  something editBillRequest can actually change. ── */}
-              <div className="bg-gray-50 dark:bg-gray-800/40 rounded-lg p-4">
-                <div className="font-bold text-[13px] text-[#1A1A2E] dark:text-[#F1F5F9] mb-3">Bill Information</div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <Field label="Site / Project" value={editTarget.projectName} disabled />
-                  <Field label="Contractor" value={editTarget.vendorName} disabled />
-                  <Field label="Vendor Code" value={editTarget.vendorCode || ""} disabled placeholder="—" className="text-primary font-bold font-mono" />
-                  <Field label="Company" value={editTarget.companyName || ""} disabled placeholder="—" />
-                  <Field
-                    label="Department" disabled placeholder="—"
-                    value={editTarget.department === "custom" ? (editTarget.customDepartment || "") : (editTarget.department || "")}
-                  />
-                  <Field label="Work Order" value={editTarget.workOrderNo} disabled />
-                </div>
-              </div>
-
-              {/* ── Work Items — same table shape as New Bill's own (Rate/Amount
-                  shown for reference only: a bill request bills at the work
-                  order's current rate, never a rate typed here). ── */}
+            <div className="flex flex-col gap-4">
               <div>
-                <div className="font-bold text-[13px] text-[#1A1A2E] dark:text-[#F1F5F9] mb-2.5">
-                  Work Items
-                  <span className="font-normal text-[11px] text-gray-400 ml-2">Select which particulars to bill this cycle</span>
+                <div className="font-bold text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wide mb-1.5">
+                  Scope Items — select which ones to bill this cycle
                 </div>
                 <Table>
                   <Thead>
                     <Tr>
                       <Th dense></Th>
-                      <Th dense>Description of Work</Th>
-                      <Th dense className="text-center">Unit</Th>
-                      <Th dense className="text-right">Planned</Th>
-                      <Th dense className="text-right">Executed</Th>
-                      <Th dense className="text-right">Unbilled</Th>
-                      <Th dense className="text-right">Rate (₹)</Th>
-                      <Th dense className="text-right">Amount (₹)</Th>
+                      <Th dense>Description</Th>
+                      <Th dense>Unit</Th>
+                      <Th dense>Planned</Th>
+                      <Th dense>Executed</Th>
+                      <Th dense>Unbilled</Th>
                     </Tr>
                   </Thead>
                   <Tbody>
@@ -1579,65 +1554,54 @@ export default function BillApproval() {
                       const hasSubItems = (si.subItems?.length ?? 0) > 0;
                       if (hasSubItems) {
                         return si.subItems!.map(sub => {
-                          const oldLine = editTarget.items.find(it => it.subItemId === sub._id);
-                          const ownOldQty = oldLine?.billedQty || 0;
-                          const rate = oldLine?.rate ?? sub.rate ?? 0;
+                          const ownOldQty = editTarget.items.find(it => it.subItemId === sub._id)?.billedQty || 0;
                           const unbilled = Math.max(0, (sub.completedQty || 0) - (sub.lastBilledQty || 0)) + ownOldQty;
                           const overPlan = sub.plannedQty > 0 && sub.completedQty > sub.plannedQty;
                           const blocked = overPlan && !sub.varianceApproved;
                           const canBill = unbilled > 0 && !blocked;
-                          const checkedNow = editChecked.has(sub._id);
                           return (
                             <Tr key={sub._id}>
                               <Td dense>
                                 {unbilled > 0 && (
                                   <span title={blocked ? "Approve/reject the variance on Site Progress first" : undefined}>
-                                    <Checkbox checked={checkedNow} disabled={!canBill} onChange={() => toggleEditCheck(sub._id)} />
+                                    <Checkbox checked={editChecked.has(sub._id)} disabled={!canBill} onChange={() => toggleEditCheck(sub._id)} />
                                   </span>
                                 )}
                               </Td>
                               <Td dense className="text-xs">{si.description} — {sub.description}</Td>
-                              <Td dense className="text-xs text-center">{sub.unit}</Td>
-                              <Td dense className="font-mono text-xs text-right">{sub.plannedQty}</Td>
-                              <Td dense className="font-mono text-xs text-right">{sub.completedQty}</Td>
-                              <Td dense className={`font-mono text-xs text-right ${unbilled > 0 ? "text-primary font-bold" : "text-gray-400"}`}>{unbilled}{blocked && " ⚠️"}</Td>
-                              <Td dense className="font-mono text-xs text-right">{rate ? fmt(rate) : "—"}</Td>
-                              <Td dense className="font-mono text-xs text-right font-semibold">{checkedNow ? fmt(rate * unbilled) : "—"}</Td>
+                              <Td dense className="text-xs">{sub.unit}</Td>
+                              <Td dense className="font-mono text-xs">{sub.plannedQty}</Td>
+                              <Td dense className="font-mono text-xs">{sub.completedQty}</Td>
+                              <Td dense className={`font-mono text-xs ${unbilled > 0 ? "text-primary font-bold" : "text-gray-400"}`}>{unbilled}{blocked && " ⚠️"}</Td>
                             </Tr>
                           );
                         });
                       }
-                      const oldLine = editTarget.items.find(it => !it.subItemId && it.scopeItemId === si._id);
-                      const ownOldQty = oldLine?.billedQty || 0;
-                      const rate = oldLine?.rate ?? si.rate ?? 0;
+                      const ownOldQty = editTarget.items.find(it => !it.subItemId && it.scopeItemId === si._id)?.billedQty || 0;
                       const unbilled = Math.max(0, (si.completedQty || 0) - (si.lastBilledQty || 0)) + ownOldQty;
                       const overPlan = si.plannedQty > 0 && si.completedQty > si.plannedQty;
                       const blocked = overPlan && !si.varianceApproved;
                       const canBill = unbilled > 0 && !blocked;
-                      const checkedNow = editChecked.has(si._id);
                       return (
                         <Tr key={si._id}>
                           <Td dense>
                             {unbilled > 0 && (
                               <span title={blocked ? "Approve/reject the variance on Site Progress first" : undefined}>
-                                <Checkbox checked={checkedNow} disabled={!canBill} onChange={() => toggleEditCheck(si._id)} />
+                                <Checkbox checked={editChecked.has(si._id)} disabled={!canBill} onChange={() => toggleEditCheck(si._id)} />
                               </span>
                             )}
                           </Td>
                           <Td dense className="font-semibold">{si.description}</Td>
-                          <Td dense className="text-center">{si.unit}</Td>
-                          <Td dense className="font-mono text-right">{si.plannedQty}</Td>
-                          <Td dense className="font-mono text-right">{si.completedQty}</Td>
-                          <Td dense className={`font-mono text-right ${unbilled > 0 ? "text-primary font-bold" : "text-gray-400"}`}>{unbilled}{blocked && " ⚠️"}</Td>
-                          <Td dense className="font-mono text-right">{rate ? fmt(rate) : "—"}</Td>
-                          <Td dense className="font-mono text-right font-semibold">{checkedNow ? fmt(rate * unbilled) : "—"}</Td>
+                          <Td dense>{si.unit}</Td>
+                          <Td dense className="font-mono">{si.plannedQty}</Td>
+                          <Td dense className="font-mono">{si.completedQty}</Td>
+                          <Td dense className={`font-mono ${unbilled > 0 ? "text-primary font-bold" : "text-gray-400"}`}>{unbilled}{blocked && " ⚠️"}</Td>
                         </Tr>
                       );
                     })}
                   </Tbody>
                 </Table>
               </div>
-
               <Field
                 textarea label="Remarks for this bill request (optional)" placeholder="Notes for whoever approves this…"
                 value={editRemarks} onChange={e => setEditRemarks(e.target.value)}
