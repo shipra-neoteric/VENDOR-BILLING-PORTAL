@@ -155,7 +155,6 @@ export default function DrawingRequestReviewWorkflow({
   const [l1Saving, setL1Saving]       = useState(false);
 
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
-  const [l2Remarks, setL2Remarks]     = useState("");
   const [l2Saving, setL2Saving]       = useState(false);
 
   const [l3Remarks, setL3Remarks]     = useState("");
@@ -277,10 +276,9 @@ export default function DrawingRequestReviewWorkflow({
         const url = await uploadToCloudinary(apiClient, file, "drawing-requests", file.name);
         drawingFiles.push({ name: file.name, url });
       }
-      const res = await apiClient.patch(`/drawing-requests/${dr._id}/l2-drawing`, { drawingFiles, remarks: l2Remarks });
+      const res = await apiClient.patch(`/drawing-requests/${dr._id}/l2-drawing`, { drawingFiles });
       onUpdated(res.data.request as DrawingRequest);
       setSelectedFiles([]);
-      setL2Remarks("");
       toast.success("Drawing submitted for GM cross-check");
     } catch (err: unknown) {
       const e = err as { response?: { data?: { message?: string } } };
@@ -397,9 +395,6 @@ export default function DrawingRequestReviewWorkflow({
                 {selectedFiles.map((f, i) => <li key={i}>{f.name}</li>)}
               </ul>
             )}
-            <div className="mt-2.5">
-              <Field textarea rows={2} placeholder="Remarks (optional)" value={l2Remarks} onChange={(e) => setL2Remarks(e.target.value)} />
-            </div>
             <div className="flex gap-2 mt-2.5">
               <Btn color="primary" loading={l2Saving} disabled={selectedFiles.length === 0} onClick={handleL2Submit} label="Submit Drawing" />
             </div>
