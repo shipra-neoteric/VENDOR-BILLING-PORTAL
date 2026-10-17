@@ -144,18 +144,12 @@ function getProjId(row: WORow): string | undefined {
   return typeof row.projectId === "string" ? row.projectId : row.projectId._id;
 }
 
-// Mirrors the backend's authorizeOrAlt('work-progress', action, 'bill-review',
-// action) exactly — either grant unlocks this, since Site Progress's own
-// Permission Matrix module (bill-review) consolidates edit/delete/invalidate
-// alongside its variance approve/reject, instead of needing a separate
-// Work Progress grant too.
+// Same "does this user hold this work-progress action" check the backend's
+// own authorizeOr('work-progress', ...) route guards use.
 function hasWorkProgressPermission(user: { role?: string; permissions?: { module: string; actions: string[] }[] } | null | undefined, action: string): boolean {
   if (!user) return false;
   if (user.role === "owner") return true;
-  return (user.permissions ?? []).some(p =>
-    (p.module === "work-progress" && p.actions.includes(action)) ||
-    (p.module === "bill-review" && p.actions.includes(action))
-  );
+  return (user.permissions ?? []).some(p => p.module === "work-progress" && p.actions.includes(action));
 }
 
 // Log of every raw dated progress entry behind a scope item/particular — the
@@ -164,10 +158,10 @@ function hasWorkProgressPermission(user: { role?: string; permissions?: { module
 // fix a bad measurement directly, instead of it sitting there wrong forever
 // — previously this log was read-only even for Owner.
 function ProgressEntryLog({
-  entries, completedQty, lastBilledQty, canEdit, canDelete, canInvalidate, onEdit, onDelete, onInvalidate,
+  entries, completedQty, lastBilledQty, canEdit, canDelete, onEdit, onDelete, onInvalidate,
 }: {
   entries?: ProgressEntryDetail[]; completedQty: number; lastBilledQty: number;
-  canEdit: boolean; canDelete: boolean; canInvalidate: boolean;
+  canEdit: boolean; canDelete: boolean;
   onEdit: (e: ProgressEntryDetail) => void; onDelete: (e: ProgressEntryDetail) => void; onInvalidate: (e: ProgressEntryDetail) => void;
 }) {
   if (!entries || entries.length === 0) {
@@ -214,7 +208,7 @@ function ProgressEntryLog({
                       <button type="button" className="text-blue-600 dark:text-blue-400 font-semibold hover:underline" onClick={() => onEdit(e)}>Edit</button>
                     )}
                     {e.billedInRequestId ? (
-                      canInvalidate && <button type="button" className="text-purple-600 dark:text-purple-400 font-semibold hover:underline" onClick={() => onInvalidate(e)}>Invalidate</button>
+                      canDelete && <button type="button" className="text-purple-600 dark:text-purple-400 font-semibold hover:underline" onClick={() => onInvalidate(e)}>Invalidate</button>
                     ) : canDelete && (
                       deletable
                         ? <button type="button" className="text-red-600 dark:text-red-400 font-semibold hover:underline" onClick={() => onDelete(e)}>Delete</button>
@@ -236,15 +230,6 @@ export default function SiteProgress() {
   const { user } = useAuth();
   const canEditProgress = hasWorkProgressPermission(user, "edit");
   const canDeleteProgress = hasWorkProgressPermission(user, "delete");
-  // Mirrors the backend's invalidate routes exactly: work-progress:edit OR
-  // bill-review:invalidate — not :delete, since invalidating a billed entry
-  // is a correction (like Edit), not an outright removal.
-  const canInvalidateProgress = canEditProgress || hasWorkProgressPermission(user, "invalidate");
-  // Mirrors approve-variance/reject-variance's own authorizeOr/authorizeAnyOr
-  // exactly — these buttons were previously shown unconditionally, so anyone
-  // without the grant saw them but got a 403 toast after clicking.
-  const canApproveVariance = hasWorkProgressPermission(user, "approve");
-  const canRejectVariance = canApproveVariance || hasWorkProgressPermission(user, "reject");
 
   const [loading, setLoading] = useState(true);
   const [activity, setActivity] = useState<ActivityEvent[]>([]);
@@ -807,8 +792,8 @@ export default function SiteProgress() {
                                   <VarianceTag level={level} />
                                   {!si.varianceApproved && (
                                     <>
-                                      {canApproveVariance && <Btn small outline loading={approvingVariance === si._id} label="Approve" onClick={() => handleApproveVariance(si)} />}
-                                      {canRejectVariance && <Btn small outline color="red" label="Reject" onClick={() => setRejectVarianceTarget({ item: si })} />}
+                                      <Btn small outline loading={approvingVariance === si._id} label="Approve" onClick={() => handleApproveVariance(si)} />
+                                      <Btn small outline color="red" label="Reject" onClick={() => setRejectVarianceTarget({ item: si })} />
                                     </>
                                   )}
                                 </div>
@@ -823,7 +808,7 @@ export default function SiteProgress() {
                               <Td dense colSpan={8} className="!py-0 pb-2.5">
                                 <ProgressEntryLog
                                   entries={si.progressEntries} completedQty={si.completedQty} lastBilledQty={si.lastBilledQty}
-                                  canEdit={canEditProgress} canDelete={canDeleteProgress} canInvalidate={canInvalidateProgress}
+                                  canEdit={canEditProgress} canDelete={canDeleteProgress}
                                   onEdit={e => openEditEntry(si, undefined, e)}
                                   onDelete={e => setDeleteEntryTarget({ item: si, entry: e })}
                                   onInvalidate={e => setInvalidateEntryTarget({ item: si, entry: e })}
@@ -877,8 +862,8 @@ export default function SiteProgress() {
                                         <VarianceTag level={subLevel} />
                                         {!sub.varianceApproved && (
                                           <>
-                                            {canApproveVariance && <Btn small outline loading={approvingVariance === sub._id} label="Approve" onClick={() => handleApproveVariance(si, sub)} />}
-                                            {canRejectVariance && <Btn small outline color="red" label="Reject" onClick={() => setRejectVarianceTarget({ item: si, subItem: sub })} />}
+                                            <Btn small outline loading={approvingVariance === sub._id} label="Approve" onClick={() => handleApproveVariance(si, sub)} />
+                                            <Btn small outline color="red" label="Reject" onClick={() => setRejectVarianceTarget({ item: si, subItem: sub })} />
                                           </>
                                         )}
                                       </div>
@@ -892,7 +877,7 @@ export default function SiteProgress() {
                                     <Td dense colSpan={7} className="pl-6">
                                       <ProgressEntryLog
                                         entries={sub.progressEntries} completedQty={sub.completedQty} lastBilledQty={sub.lastBilledQty}
-                                        canEdit={canEditProgress} canDelete={canDeleteProgress} canInvalidate={canInvalidateProgress}
+                                        canEdit={canEditProgress} canDelete={canDeleteProgress}
                                         onEdit={e => openEditEntry(si, sub, e)}
                                         onDelete={e => setDeleteEntryTarget({ item: si, subItem: sub, entry: e })}
                                         onInvalidate={e => setInvalidateEntryTarget({ item: si, subItem: sub, entry: e })}

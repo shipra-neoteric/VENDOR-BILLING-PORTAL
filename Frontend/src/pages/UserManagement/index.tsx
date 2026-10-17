@@ -106,7 +106,7 @@ const APPROVAL_LEVEL_STAGES: {
   { stage: "l4",  short: "L4",       rolesKey: "l4Roles",  usersKey: "l4Users" },
 ];
 
-export type PermAction = "view" | "create" | "edit" | "delete" | "approve" | "request" | "maker" | "checker" | "approver" | "reject" | "ceo-approve" | "send-back" | "agm-approve" | "gm-approve" | "l3-approve" | "verify" | "l1-agm-approve" | "l2-director-approve" | "hold" | "release-hold" | "retry-tms" | "l1-review" | "l2-draw" | "l3-review" | "l4-approve" | "co-l1-approve" | "co-l2-approve" | "invalidate";
+export type PermAction = "view" | "create" | "edit" | "delete" | "approve" | "request" | "maker" | "checker" | "approver" | "reject" | "ceo-approve" | "send-back" | "agm-approve" | "gm-approve" | "l3-approve" | "verify" | "l1-agm-approve" | "l2-director-approve" | "hold" | "release-hold" | "retry-tms" | "l1-review" | "l2-draw" | "l3-review" | "l4-approve" | "co-l1-approve" | "co-l2-approve";
 
 interface ModuleDef {
   id: string;
@@ -127,7 +127,6 @@ export const ACTION_CFG: Record<PermAction, { label: string; bg: string }> = {
   checker:  { label: "L2 Checker",  bg: "#2563eb" },
   approver: { label: "L3 Approver", bg: "#d97706" },
   reject:   { label: "Reject",      bg: "#dc2626" },
-  invalidate: { label: "Invalidate", bg: "#7c3aed" },
   "ceo-approve": { label: "L4 Final Approval", bg: "#7c3aed" },
   "send-back":   { label: "Send Back",         bg: "#dc2626" },
   // Labels are stage-based, not role-based — this permission works for
@@ -186,12 +185,7 @@ export const MODULE_DEFS: ModuleDef[] = [
   { id: "drawing-requests", name: "Drawing Requests",   icon: "✏️", group: "Execution",     actions: ["view","create","edit","delete","l1-review","l2-draw","l3-review","l4-approve"] },
   { id: "consultants",      name: "Consultants",        icon: "📐", group: "Professional Services", actions: ["view","create","edit","delete"] },
   { id: "consultancy-orders", name: "Consultancy Orders", icon: "📝", group: "Professional Services", actions: ["view","edit","co-l1-approve","co-l2-approve","reject"] },
-  // reject/edit/delete/invalidate manage the same variance sign-off + raw
-  // measurement entries as 'approve' (see approve-variance/reject-variance
-  // and the progress-entry edit/delete/invalidate routes in workOrders.js) —
-  // consolidated here so Site Progress's own permissions can all be managed
-  // from one module instead of needing a separate Work Progress grant too.
-  { id: "bill-review",      name: "Site Progress",      icon: "🧾", group: "Billing",       actions: ["view","approve","reject","edit","delete","invalidate"] },
+  { id: "bill-review",      name: "Site Progress",      icon: "🧾", group: "Billing",       actions: ["view","approve"] },
   { id: "bill-requests",    name: "Bill Approval",      icon: "📨", group: "Billing",       actions: ["view","create","agm-approve","gm-approve","l3-approve","l4-approve","reject"] },
   { id: "billing",          name: "Billing",            icon: "🧮", group: "Billing",       actions: ["view","create"] },
   { id: "accounts-payment", name: "Accounts Payment",   icon: "💰", group: "Billing",       actions: ["view","edit","verify","l1-agm-approve","l2-director-approve","hold","release-hold","retry-tms","reject"] },
