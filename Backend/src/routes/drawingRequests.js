@@ -2,7 +2,7 @@ const router = require('express').Router();
 const { authenticate, authorizeOr } = require('../middleware/auth');
 const {
   createRequest, listRequests, getRequest, updateRequest, deleteRequest,
-  l1Review, l2Drawing, l3Review, l4Review, resubmitRequest,
+  l1Review, l2Drawing, l3Review, l4Review, resubmitRequest, closeRequest,
 } = require('../controllers/drawingRequestController');
 
 router.use(authenticate);
@@ -32,5 +32,8 @@ router.patch('/:id/l2-drawing', authorizeOr('drawing-requests', 'l2-draw'), l2Dr
 router.patch('/:id/l3-review',  authorizeOr('drawing-requests', 'l3-review'), l3Review);
 router.patch('/:id/l4-review',  authorizeOr('drawing-requests', 'l4-approve'), l4Review);
 router.patch('/:id/resubmit',   authorizeOr('drawing-requests', 'create'), resubmitRequest);
+// Closing out a fully-approved request is the same DRI-facing capability as
+// raising/resubmitting one — same 'create' grant.
+router.patch('/:id/close',      authorizeOr('drawing-requests', 'create'), closeRequest);
 
 module.exports = router;

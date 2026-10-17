@@ -404,6 +404,34 @@ exports.resubmitRequest = asyncHandler(async (req, res) => {
   success(res, { request: await populatedRequest(request._id) }, 'Resubmitted for review');
 });
 
+// PATCH /api/drawing-requests/:id/close — marks the drawing physically
+// dispatched/done once the whole L1-L4 chain has cleared. Same 'create'
+// grant resubmit already reuses (raising/closing out your own ticket is the
+// same DRI-facing capability), with a remarks note recorded in the same
+// reviewHistory timeline every other stage already uses.
+exports.closeRequest = asyncHandler(async (req, res) => {
+  const request = await DrawingRequest.findById(req.params.id);
+  if (!request) return notFound(res, 'Drawing request not found');
+  if (request.reviewStatus !== 'approved') {
+    return badRequest(res, `Cannot close a request with review status '${request.reviewStatus}' — it must clear the full approval chain first.`);
+  }
+  if (request.status === 'completed') return badRequest(res, 'This request is already closed.');
+
+  request.status = 'completed';
+  request.actualCompletionDate = new Date();
+  request.reviewHistory.push({ stage: 'dri', action: 'closed', by: req.user._id, remarks: (req.body.remarks || '').trim() });
+  await request.save();
+  syncDrawingRequestToQc(request).catch(() => {});
+
+  await logAudit({
+    action: 'UPDATE', module: 'drawing-requests', user: req.user,
+    description: `Closed drawing request ${request.ticketNo}`,
+    entityType: 'DrawingRequest', entityId: request._id, entityLabel: request.ticketNo,
+  });
+
+  success(res, { request: await populatedRequest(request._id) }, 'Request closed');
+});
+
 // DELETE /api/drawing-requests/:id
 exports.deleteRequest = asyncHandler(async (req, res) => {
   const request = await DrawingRequest.findByIdAndDelete(req.params.id);
