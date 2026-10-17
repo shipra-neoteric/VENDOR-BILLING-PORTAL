@@ -43,7 +43,7 @@ const drawingRequestSchema = new Schema(
     reviewStatus: { type: String, enum: ['l1-gm', 'l2-architect', 'l3-gm', 'l4-gm', 'approved', 'returned'], default: 'l1-gm' },
     reviewHistory: [{
       stage:   { type: String, enum: ['l1-gm', 'l2-architect', 'l3-gm', 'l4-gm', 'dri'], required: true },
-      action:  { type: String, enum: ['forwarded', 'submitted', 'approved', 'returned', 'resubmitted', 'closed'], required: true },
+      action:  { type: String, enum: ['forwarded', 'submitted', 'approved', 'returned', 'resubmitted'], required: true },
       by:      { type: Schema.Types.ObjectId, ref: 'User' },
       at:      { type: Date, default: Date.now },
       remarks: { type: String, default: '' },

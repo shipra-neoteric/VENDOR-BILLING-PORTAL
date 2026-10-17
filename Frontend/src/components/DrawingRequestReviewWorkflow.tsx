@@ -161,13 +161,6 @@ export default function DrawingRequestReviewWorkflow({
   const [l3Remarks, setL3Remarks]     = useState("");
   const [l3Saving, setL3Saving]       = useState(false);
 
-  const [closeRemarks, setCloseRemarks] = useState("");
-  const [closeSaving, setCloseSaving]   = useState(false);
-  // Same 'create' grant resubmit already reuses — closing out a fully-
-  // approved ticket is the same DRI-facing capability as raising one, not a
-  // reviewer-only action gated behind l1/l2/l3/l4 like the stages above.
-  const canClose = user?.role === "owner" || user?.role === "site-dri" || hasPerm(user, "create");
-
   const [priority, setPriority]       = useState(dr.priority || "");
   const [l4Remarks, setL4Remarks]     = useState("");
   const [l4Saving, setL4Saving]       = useState(false);
@@ -341,20 +334,6 @@ export default function DrawingRequestReviewWorkflow({
     }
   }
 
-  async function handleClose() {
-    setCloseSaving(true);
-    try {
-      const res = await apiClient.patch(`/drawing-requests/${dr._id}/close`, { remarks: closeRemarks });
-      onUpdated(res.data.request as DrawingRequest);
-      toast.success("Request closed");
-    } catch (err: unknown) {
-      const e = err as { response?: { data?: { message?: string } } };
-      toast.error(e?.response?.data?.message || "Failed to close request");
-    } finally {
-      setCloseSaving(false);
-    }
-  }
-
   async function handleResubmit() {
     setResubmitSaving(true);
     try {
@@ -486,19 +465,6 @@ export default function DrawingRequestReviewWorkflow({
             <span className="inline-flex items-center gap-1.5 text-[12.5px] font-bold rounded-full" style={{ color: "#16A34A", background: "#F0FDF4", border: "1px solid #86EFAC", padding: "5px 14px" }}>
               <Check className="w-3.5 h-3.5" /> Approved — ready for physical dispatch to site
             </span>
-            {dr.status === "completed" ? (
-              <div className="mt-2.5 text-[12.5px] text-gray-500 dark:text-gray-400">
-                Closed{dr.actualCompletionDate ? ` on ${dayjs(dr.actualCompletionDate).format("DD MMM YYYY")}` : ""}.
-              </div>
-            ) : canClose ? (
-              <ActionPanel>
-                <div className="font-bold text-[13px] mb-2" style={{ color: "#16A34A" }}>Close Case</div>
-                <Field textarea rows={2} placeholder="Remarks (optional)" value={closeRemarks} onChange={(e) => setCloseRemarks(e.target.value)} />
-                <div className="flex gap-2 mt-2.5">
-                  <Btn color="green" loading={closeSaving} onClick={handleClose} label="Close Case" />
-                </div>
-              </ActionPanel>
-            ) : null}
           </div>
         );
 
