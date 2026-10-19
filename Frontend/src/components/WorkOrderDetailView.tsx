@@ -572,31 +572,47 @@ export default function WorkOrderDetailView({
                   })}
                   {scopeHierarchy.ungrouped.map((si, idx) => {
                     const hasSubItems = (si.subItems?.length ?? 0) > 0;
+                    // An item with particulars gets the same bold,
+                    // collapsible group-header treatment as a real Floor
+                    // group (e.g. "Basement Slab" next to "Ground Floor") —
+                    // both are structured the same way (one item + N
+                    // particulars), so they render the same way too.
+                    if (hasSubItems) {
+                      const itemExpanded = expandedNodes.has(si._id);
+                      return (
+                        <Fragment key={si._id}>
+                          <Tr className="bg-gray-100/70 dark:bg-gray-800/40">
+                            <Td colSpan={5}>
+                              <div className="flex items-center justify-between gap-2.5">
+                                <button
+                                  type="button"
+                                  onClick={() => toggleNode(si._id)}
+                                  className="flex items-center gap-1.5 font-extrabold text-[#1A1A2E] dark:text-[#F1F5F9]"
+                                >
+                                  <span className="inline-block w-6 text-gray-500 dark:text-gray-400 font-normal">{idx + 1}</span>
+                                  {si.description}
+                                </button>
+                              </div>
+                            </Td>
+                            <Td><span className="font-mono font-extrabold text-primary">{fmt(si.amount || 0)}</span></Td>
+                          </Tr>
+                          {itemExpanded && renderWorkItemRows(si, 1)}
+                        </Fragment>
+                      );
+                    }
                     return (
-                    <Fragment key={si._id}>
-                      <Tr>
+                      <Tr key={si._id}>
                         <Td><TdText>{idx + 1}</TdText></Td>
                         <Td>
                           <span className="font-semibold text-[#1A1A2E] dark:text-[#F1F5F9]">{si.description}</span>
-                          {hasSubItems && <span className="ml-1.5 text-[11px] text-gray-400">({si.subItems!.length} particulars)</span>}
                         </Td>
                         <Td><TdText>{si.unit}</TdText></Td>
                         <Td><span className="font-mono"><TdText>{si.plannedQty.toLocaleString("en-IN")}</TdText></span></Td>
                         <Td><span className="font-mono"><TdText>{fmtRate(si.rate || 0)}</TdText></span></Td>
                         <Td><span className="font-mono font-bold text-primary">{fmt(si.amount || 0)}</span></Td>
                       </Tr>
-                      {hasSubItems && si.subItems!.map(sub => (
-                        <Tr key={sub.id} className="bg-gray-50 dark:bg-gray-800/30">
-                          <Td />
-                          <Td><span className="pl-4 text-[13px] text-gray-600 dark:text-gray-400">↳ {sub.description}</span></Td>
-                          <Td><TdText>{sub.unit}</TdText></Td>
-                          <Td><span className="font-mono"><TdText>{sub.plannedQty.toLocaleString("en-IN")}</TdText></span></Td>
-                          <Td><span className="font-mono"><TdText>{fmtRate(sub.rate || 0)}</TdText></span></Td>
-                          <Td><span className="font-mono font-semibold text-gray-600 dark:text-gray-400">{fmt(sub.amount || 0)}</span></Td>
-                        </Tr>
-                      ))}
-                    </Fragment>
-                  );})}
+                    );
+                  })}
                 </>
               )}
             </Tbody>
