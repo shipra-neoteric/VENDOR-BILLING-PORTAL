@@ -592,6 +592,10 @@ export default function WorkOrderDetailView({
                                   <span className="inline-block w-6 text-gray-500 dark:text-gray-400 font-normal">{idx + 1}</span>
                                   {si.description}
                                 </button>
+                                <div className="flex items-center gap-1.5">
+                                  <MassExpandButton mode="expand" title="Expand" onClick={(e) => { e.stopPropagation(); setExpandedNodes(prev => new Set(prev).add(si._id)); }} />
+                                  <MassExpandButton mode="collapse" title="Collapse" onClick={(e) => { e.stopPropagation(); setExpandedNodes(prev => { const next = new Set(prev); next.delete(si._id); return next; }); }} />
+                                </div>
                               </div>
                             </Td>
                             <Td><span className="font-mono font-extrabold text-primary">{fmt(si.amount || 0)}</span></Td>

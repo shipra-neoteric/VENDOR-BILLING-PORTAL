@@ -654,7 +654,41 @@ export default function WorkOrderDashboard() {
                           </Fragment>
                         );
                       })}
-                      {scopeHierarchy.ungrouped.map(si => renderWorkItemRows(si, 0))}
+                      {scopeHierarchy.ungrouped.map((si, idx) => {
+                        const hasSubItems = (si.subItems?.length ?? 0) > 0;
+                        // Same bold, collapsible group-header treatment as a
+                        // real Floor group — "Basement Slab" (one item + N
+                        // particulars) is structurally identical to
+                        // "Ground Floor" (one item, old-combined format), so
+                        // it renders the same way here too.
+                        if (!hasSubItems) return renderWorkItemRows(si, 0);
+                        const itemExpanded = expandedNodes.has(si._id);
+                        return (
+                          <Fragment key={si._id}>
+                            <Tr className="bg-gray-100/70 dark:bg-gray-800/40">
+                              <Td colSpan={4}>
+                                <div className="flex items-center justify-between gap-2.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleNode(si._id)}
+                                    className="flex items-center gap-1.5 font-extrabold text-[#1A1A2E] dark:text-[#F1F5F9]"
+                                  >
+                                    <span className="inline-block w-6 text-gray-500 dark:text-gray-400 font-normal">{idx + 1}</span>
+                                    {si.description}
+                                  </button>
+                                  <div className="flex items-center gap-1.5">
+                                    <MassExpandButton mode="expand" title="Expand" onClick={(e) => { e.stopPropagation(); setExpandedNodes(prev => new Set(prev).add(si._id)); }} />
+                                    <MassExpandButton mode="collapse" title="Collapse" onClick={(e) => { e.stopPropagation(); setExpandedNodes(prev => { const next = new Set(prev); next.delete(si._id); return next; }); }} />
+                                  </div>
+                                </div>
+                              </Td>
+                              <Td><span className="font-mono font-extrabold text-primary">{fmtMoney(si.amount || 0)}</span></Td>
+                              <Td></Td>
+                            </Tr>
+                            {itemExpanded && renderWorkItemRows(si, 1)}
+                          </Fragment>
+                        );
+                      })}
                     </Tbody>
                   </Table>
                 </div>
