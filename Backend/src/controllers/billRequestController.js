@@ -51,11 +51,12 @@ function notifySlack(approvalType, entityDoc) {
 // haven't been carried into a bill yet — marks them as consumed on the way
 // out, so they ride along into the BillRequest/RunningBill line item instead
 // of staying trapped on the WorkOrder document.
-function collectAndMarkProgressRemarks(target, billRequestId) {
+function collectAndMarkProgressRemarks(target, billRequestId, onlyEntryIds = null) {
   const notes = [];
   const locations = [];
   for (const entry of target.progressEntries) {
     if (entry.billedInRequestId || entry.invalidated?.done) continue;
+    if (onlyEntryIds && !onlyEntryIds.has(String(entry._id))) continue;
     // Each part labelled with its own field name — kept as its own field
     // (not embedded in the remark text), separate from the work order's own
     // overall projectLocation.
@@ -164,9 +165,49 @@ exports.listBillRequests = asyncHandler(async (req, res) => {
   success(res, { billRequests: requests });
 });
 
+// Works out which scope items / particulars / progress entries go into a bill
+// request from the picker selections — shared by create and edit.
+function computePendingBillItems(wo, { scopeItemIds, entryIds, subItemIds }) {
+  // AGM/GM can hand-pick which completed items go into this cycle (checklist
+  // on the Bill Review page); omitting scopeItemIds bills every pending item,
+  // preserving Owner's existing one-click bypass behavior.
+  const selectedIds = Array.isArray(scopeItemIds) && scopeItemIds.length > 0
+    ? new Set(scopeItemIds.map(String))
+    : null;
+
+  // Billing operates per particular when an item has them — never against
+  // the parent's own rolled-up completedQty, which is a display average, not
+  // a billable quantity (see recomputeParentFromSubItems). Rate is
+  // snapshotted here too (not just at gmApprove) purely so it's visible to
+  // whoever reviews the request at L1/L2 — gmApprove still re-reads the WO's
+  // current rate fresh when it actually builds the RunningBill, so a rate
+  // edited on the WO in between never goes stale in what's actually billed.
+  // entryIds = hand-picked individual progress entries. A target (item or
+  // particular) with at least one picked entry bills ONLY those entries' qty;
+  // a target with none picked keeps the whole-item behaviour.
+  const pickedSubIds = Array.isArray(subItemIds) && subItemIds.length > 0 ? new Set(subItemIds.map(String)) : null;
+  const pickedEntryIds = Array.isArray(entryIds) && entryIds.length > 0 ? new Set(entryIds.map(String)) : null;
+  return expandBillableCandidates(wo.scopeItems, selectedIds, pickedSubIds)
+    .map(c => {
+      const unbilled = Math.max(0, c.completedQty - c.lastBilledQty);
+      if (pickedEntryIds) {
+        const target = resolveBillableItem(wo.scopeItems.id(c.scopeItemId), c.subItemId);
+        const picked = (target?.progressEntries || []).filter(e => pickedEntryIds.has(String(e._id)));
+        if (picked.length) {
+          const pickedQty = picked
+            .filter(e => !e.billedInRequestId && !e.invalidated?.done)
+            .reduce((sum, e) => sum + (e.qtyAdded || 0), 0);
+          return { ...c, billedQty: Math.min(unbilled, pickedQty), entryIds: new Set(picked.map(e => String(e._id))) };
+        }
+      }
+      return { ...c, billedQty: unbilled };
+    })
+    .filter(it => it.billedQty > 0);
+}
+
 // POST /api/bill-requests  — qty is auto-calculated, only remarks accepted from client
 exports.createBillRequest = asyncHandler(async (req, res) => {
-  const { workOrderId, remarks, scopeItemIds } = req.body;
+  const { workOrderId, remarks, scopeItemIds, entryIds, subItemIds } = req.body;
 
   const wo = await WorkOrder.findById(workOrderId);
   if (!wo) return notFound(res, 'Work order not found');
@@ -188,26 +229,7 @@ exports.createBillRequest = asyncHandler(async (req, res) => {
     return badRequest(res, `Stage ${existing.stageNo} (${existing.reqNo}) is already pending approval. Wait for admin review before submitting a new request.`);
   }
 
-  // AGM/GM can hand-pick which completed items go into this cycle (checklist
-  // on the Bill Review page); omitting scopeItemIds bills every pending item,
-  // preserving Owner's existing one-click bypass behavior.
-  const selectedIds = Array.isArray(scopeItemIds) && scopeItemIds.length > 0
-    ? new Set(scopeItemIds.map(String))
-    : null;
-
-  // Billing operates per particular when an item has them — never against
-  // the parent's own rolled-up completedQty, which is a display average, not
-  // a billable quantity (see recomputeParentFromSubItems). Rate is
-  // snapshotted here too (not just at gmApprove) purely so it's visible to
-  // whoever reviews the request at L1/L2 — gmApprove still re-reads the WO's
-  // current rate fresh when it actually builds the RunningBill, so a rate
-  // edited on the WO in between never goes stale in what's actually billed.
-  const pendingItems = expandBillableCandidates(wo.scopeItems, selectedIds)
-    .map(c => ({
-      ...c,
-      billedQty: Math.max(0, c.completedQty - c.lastBilledQty),
-    }))
-    .filter(it => it.billedQty > 0);
+  const pendingItems = computePendingBillItems(wo, { scopeItemIds, entryIds, subItemIds });
 
   if (!pendingItems.length) {
     return badRequest(res, 'No new progress to bill. Record daily progress first before generating a bill request.');
@@ -237,7 +259,7 @@ exports.createBillRequest = asyncHandler(async (req, res) => {
   for (const pi of pendingItems) {
     const si = wo.scopeItems.id(pi.scopeItemId);
     const target = resolveBillableItem(si, pi.subItemId);
-    progressRemarksByItem.set(String(pi.subItemId || pi.scopeItemId), collectAndMarkProgressRemarks(target, billRequestId));
+    progressRemarksByItem.set(String(pi.subItemId || pi.scopeItemId), collectAndMarkProgressRemarks(target, billRequestId, pi.entryIds || null));
   }
 
   // The findOne check above isn't atomic — two near-simultaneous requests
@@ -293,7 +315,7 @@ exports.createBillRequest = asyncHandler(async (req, res) => {
   for (const pi of pendingItems) {
     const si = wo.scopeItems.id(pi.scopeItemId);
     const target = resolveBillableItem(si, pi.subItemId);
-    if (target) target.lastBilledQty = pi.completedQty;
+    if (target) target.lastBilledQty = pi.entryIds ? pi.lastBilledQty + pi.billedQty : pi.completedQty;
     if (pi.subItemId) touchedParents.add(String(pi.scopeItemId));
   }
   for (const scopeItemId of touchedParents) {
@@ -1186,4 +1208,98 @@ exports.unarchiveBillRequestsBulk = asyncHandler(async (req, res) => {
   });
 
   success(res, {}, `${ids.length} bill request(s) unarchived`);
+});
+
+// PUT /api/bill-requests/:id  — re-pick what a request bills, while it is still
+// at L1 (status 'pending', nobody has approved yet). Same picker inputs as
+// create. Releases what the request currently holds (lastBilledQty + the
+// entries it marked) and re-bills from the new selection in one save, so the
+// request keeps its reqNo, stage number and SLA tracker.
+exports.editBillRequest = asyncHandler(async (req, res) => {
+  const { remarks, scopeItemIds, entryIds, subItemIds } = req.body;
+
+  const br = await BillRequest.findById(req.params.id);
+  if (!br) return notFound(res, 'Bill request not found');
+  if (br.status !== 'pending') {
+    return badRequest(res, 'A bill request can only be edited while it is still pending L1 approval.');
+  }
+
+  const wo = await WorkOrder.findById(br.workOrderId);
+  if (!wo) return notFound(res, 'Work order not found');
+
+  // 1) Release what this request currently holds (in memory until the final save).
+  const releasedParents = new Set();
+  for (const item of br.items) {
+    if (!item.scopeItemId) continue;
+    if (item.subItemId) releasedParents.add(String(item.scopeItemId));
+    const si = wo.scopeItems.id(item.scopeItemId);
+    if (!si) continue;
+    const target = resolveBillableItem(si, item.subItemId);
+    if (!target) continue;
+    target.lastBilledQty = Math.max(0, (target.lastBilledQty || 0) - item.billedQty);
+    const sources = item.subItemId
+      ? [target]
+      : (si.subItems && si.subItems.length > 0 ? si.subItems : [target]);
+    for (const src of sources) {
+      for (const entry of src.progressEntries) {
+        if (entry.billedInRequestId && String(entry.billedInRequestId) === String(br._id)) entry.billedInRequestId = null;
+      }
+    }
+  }
+
+  // 2) Re-pick from the new selection.
+  const pendingItems = computePendingBillItems(wo, { scopeItemIds, entryIds, subItemIds });
+  if (!pendingItems.length) {
+    return badRequest(res, 'Nothing selected to bill. Pick at least one item with unbilled progress.');
+  }
+  for (const pi of pendingItems) {
+    const si = wo.scopeItems.id(pi.scopeItemId);
+    if (hasUnapprovedVarianceForLineItem(si, pi.subItemId)) {
+      return badRequest(res, `"${pi.description}" has unapproved progress variance — approve it before billing.`);
+    }
+  }
+
+  const progressRemarksByItem = new Map();
+  for (const pi of pendingItems) {
+    const si = wo.scopeItems.id(pi.scopeItemId);
+    const target = resolveBillableItem(si, pi.subItemId);
+    progressRemarksByItem.set(String(pi.subItemId || pi.scopeItemId), collectAndMarkProgressRemarks(target, br._id, pi.entryIds || null));
+  }
+
+  br.items = pendingItems.map(it => ({
+    scopeItemId: it.scopeItemId,
+    subItemId:   it.subItemId,
+    description: it.description,
+    unit:        it.unit,
+    billedQty:   it.billedQty,
+    rate:        it.rate,
+    amount:      it.rate * it.billedQty,
+    progressRemarks: progressRemarksByItem.get(String(it.subItemId || it.scopeItemId))?.remarks || '',
+    location:        progressRemarksByItem.get(String(it.subItemId || it.scopeItemId))?.location || '',
+  }));
+  if (remarks !== undefined) br.remarks = remarks || '';
+
+  const touchedParents = new Set();
+  for (const pi of pendingItems) {
+    const si = wo.scopeItems.id(pi.scopeItemId);
+    const target = resolveBillableItem(si, pi.subItemId);
+    if (target) target.lastBilledQty = pi.entryIds ? pi.lastBilledQty + pi.billedQty : pi.completedQty;
+    if (pi.subItemId) touchedParents.add(String(pi.scopeItemId));
+  }
+  // Parents of particulars released in step 1 (even if not re-picked) need their rollup refreshed too.
+  for (const scopeItemId of new Set([...touchedParents, ...releasedParents])) {
+    const si = wo.scopeItems.id(scopeItemId);
+    if (si) recomputeParentFromSubItems(si);
+  }
+
+  await wo.save();
+  await br.save();
+
+  await logAudit({
+    action: 'UPDATE', module: 'bill-requests', user: req.user,
+    description: `Bill request ${br.reqNo} edited`,
+    entityType: 'BillRequest', entityId: br._id, entityLabel: br.reqNo,
+  });
+
+  success(res, { billRequest: br }, 'Bill request updated');
 });

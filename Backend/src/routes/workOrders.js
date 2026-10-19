@@ -46,19 +46,19 @@ router.patch('/:id/send-back',       authorizeAnyOrAlt('work-orders', ['checker'
 router.post('/:id/scope-items/:itemId/progress',
   authorizeOr('work-progress', 'create'), addScopeProgress);
 router.patch('/:id/scope-items/:itemId/progress/:progressId',
-  authorizeOr('work-progress', 'edit'), editProgressEntry);
+  authorizeOrAlt('work-progress', 'edit', 'dri-dashboard', 'edit', 'owner', 'gm', 'agm', 'admin', 'CEO', 'ceo'), editProgressEntry);
 router.delete('/:id/scope-items/:itemId/progress/:progressId',
-  authorizeOr('work-progress', 'delete'), deleteProgressEntry);
+  authorizeOrAlt('work-progress', 'delete', 'dri-dashboard', 'delete', 'owner', 'gm', 'agm', 'admin', 'CEO', 'ceo'), deleteProgressEntry);
 router.patch('/:id/scope-items/:itemId/progress/:progressId/invalidate',
-  authorizeOr('work-progress', 'edit'), invalidateProgressEntry);
+  authorizeOrAlt('work-progress', 'edit', 'dri-dashboard', 'invalidate', 'owner', 'gm', 'agm', 'admin', 'CEO', 'ceo'), invalidateProgressEntry);
 router.post('/:id/scope-items/:itemId/sub-items/:subItemId/progress',
   authorizeOr('work-progress', 'create'), addSubItemProgress);
 router.patch('/:id/scope-items/:itemId/sub-items/:subItemId/progress/:progressId',
-  authorizeOr('work-progress', 'edit'), editSubItemProgressEntry);
+  authorizeOrAlt('work-progress', 'edit', 'dri-dashboard', 'edit', 'owner', 'gm', 'agm', 'admin', 'CEO', 'ceo'), editSubItemProgressEntry);
 router.delete('/:id/scope-items/:itemId/sub-items/:subItemId/progress/:progressId',
-  authorizeOr('work-progress', 'delete'), deleteSubItemProgressEntry);
+  authorizeOrAlt('work-progress', 'delete', 'dri-dashboard', 'delete', 'owner', 'gm', 'agm', 'admin', 'CEO', 'ceo'), deleteSubItemProgressEntry);
 router.patch('/:id/scope-items/:itemId/sub-items/:subItemId/progress/:progressId/invalidate',
-  authorizeOr('work-progress', 'edit'), invalidateSubItemProgressEntry);
+  authorizeOrAlt('work-progress', 'edit', 'dri-dashboard', 'invalidate', 'owner', 'gm', 'agm', 'admin', 'CEO', 'ceo'), invalidateSubItemProgressEntry);
 router.patch('/:id/scope-items/:itemId/approve-variance', authorizeOr('bill-review', 'approve'), approveScopeItemVariance);
 router.patch('/:id/scope-items/:itemId/sub-items/:subItemId/approve-variance', authorizeOr('bill-review', 'approve'), approveSubItemVariance);
 

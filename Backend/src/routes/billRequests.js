@@ -3,6 +3,7 @@ const { authenticate, authorizeOr, authorizeAnyOr, authorizeOrAlt, authorizeAnyO
 const {
   listBillRequests,
   createBillRequest,
+  editBillRequest,
   createBatchBillRequest,
   agmApprove,
   gmApprove,
@@ -28,6 +29,8 @@ router.get('/',                listBillRequests);
 // permission grant works too, not just the hardcoded role list.
 router.post('/batch',          authorizeOr('bill-requests', 'create'), createBatchBillRequest);
 router.post('/',               authorizeOr('bill-requests', 'create'), createBillRequest);
+// Re-pick items/entries while the request is still pending L1 — see editBillRequest.
+router.put('/:id',             authorizeOr('bill-requests', 'create'), editBillRequest);
 // Stage 1 (AGM sets hold/advance, forwards to GM) — AGM/owner only.
 router.put('/:id/agm-approve', authorizeOrAlt('bill-requests', 'agm-approve', 'md-approvals', 'approve'), agmApprove);
 // Stage 2 (GM signs off) — finalizes the bill for the default 2-level

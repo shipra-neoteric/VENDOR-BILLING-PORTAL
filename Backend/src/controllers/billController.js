@@ -834,6 +834,163 @@ exports.updateBill = asyncHandler(async (req, res) => {
   success(res, { bill }, 'Bill updated successfully');
 });
 
+// PUT /api/bills/:id/manual-edit — re-submit the whole New Bill form for a
+// manually-created bill that is still at L1 (nobody has signed off yet), or a
+// saved draft. Releases what the bill currently holds (WO lastBilledQty,
+// advance recovery) and re-applies the new form the way createBill does, in
+// place — same bill number, history and approval position.
+exports.editManualBill = asyncHandler(async (req, res) => {
+  const bill = await RunningBill.findById(req.params.id);
+  if (!bill) return notFound(res, 'Bill not found');
+  const atL1 = bill.status === 'draft' && (bill.manualApprovalStatus === 'pending' || bill.isUnsubmittedDraft);
+  if (!atL1) return badRequest(res, 'A bill can only be edited with the full form while it is still pending L1 approval (or saved as a draft).');
+  if (!bill.isUnsubmittedDraft && !canActOnDepartment(req.user, bill)) return forbidden(res, 'This bill belongs to a different department.');
+
+  const lineItems = Array.isArray(req.body.lineItems) ? req.body.lineItems : [];
+  if (lineItems.length === 0) return badRequest(res, 'At least one work item is required');
+
+  // 1) Release the old quantity lock on the bill's current work order (in memory until saved).
+  const oldWO = bill.workOrderId ? await WorkOrder.findById(bill.workOrderId) : null;
+  if (oldWO) {
+    const parents = new Set();
+    for (const li of bill.lineItems) {
+      if (!li.scopeItemId || !li.billedQty) continue;
+      const si = oldWO.scopeItems.id(li.scopeItemId);
+      const target = si && resolveBillableItem(si, li.subItemId);
+      if (!target) continue;
+      target.lastBilledQty = Math.max(0, (target.lastBilledQty || 0) - Number(li.billedQty));
+      target.status = deriveStatus(target);
+      if (li.subItemId) parents.add(String(li.scopeItemId));
+    }
+    for (const id of parents) { const si = oldWO.scopeItems.id(id); if (si) recomputeParentFromSubItems(si); }
+  }
+
+  // 2) Validate the new form exactly like createBill. Reuse the in-memory
+  // (already released) document when the work order did not change.
+  const newWOId = req.body.workOrderId || null;
+  const workOrder = newWOId
+    ? (oldWO && String(oldWO._id) === String(newWOId) ? oldWO : await WorkOrder.findById(newWOId))
+    : null;
+  if (newWOId && !workOrder) return notFound(res, 'Work order not found');
+  if (workOrder && !isWorkOrderApproved(workOrder)) {
+    return badRequest(res, `"${workOrder.workOrderNo}" has not completed its own approval chain yet (currently ${workOrder.approvalStatus}) — no bill can be raised against it until Final Approval is given.`);
+  }
+  let company = null;
+  if (!workOrder) {
+    if (!req.body.companyId) return badRequest(res, 'Company is required for a bill that is not linked to a work order.');
+    company = await Company.findById(req.body.companyId);
+    if (!company) return notFound(res, 'Company not found');
+  }
+  if (workOrder) {
+    for (const li of lineItems) {
+      if (!li.scopeItemId) continue;
+      const si = workOrder.scopeItems.id(li.scopeItemId);
+      if (si && hasUnapprovedVarianceForLineItem(si, li.subItemId)) {
+        return badRequest(res, `"${si.description}" has unapproved progress variance — approve it on the Bill Review page before billing.`);
+      }
+    }
+    let supersedeQtyMap = null;
+    if (req.body.relationshipType === 'SUPERSEDES' && Array.isArray(req.body.linkedBills) && req.body.linkedBills.length) {
+      const supersededBills = await RunningBill.find({ _id: { $in: req.body.linkedBills.map((l) => l.billId).filter(Boolean) } }).select('lineItems').lean();
+      supersedeQtyMap = {};
+      for (const sb of supersededBills) {
+        for (const sli of sb.lineItems || []) {
+          if (!sli.scopeItemId) continue;
+          const key = sli.scopeItemId.toString() + (sli.subItemId ? '|' + sli.subItemId.toString() : '');
+          supersedeQtyMap[key] = (supersedeQtyMap[key] || 0) + (Number(sli.billedQty) || 0);
+        }
+      }
+    }
+    const overbilled = findOverbilledLineItem(workOrder, lineItems, supersedeQtyMap);
+    if (overbilled) {
+      const { si, remaining } = overbilled;
+      return badRequest(res, `"${si.description}" — only ${remaining} ${si.unit || ''} remaining to bill.`);
+    }
+  }
+  const recoveries = Array.isArray(req.body.advanceRecoveries) ? req.body.advanceRecoveries : [];
+  const recoveryVendorCode = workOrder ? workOrder.vendorCode : req.body.vendorCode;
+  if (recoveries.length) {
+    const slips = await AdvanceSlip.find({ _id: { $in: recoveries.map(r => r.slipId).filter(Boolean) } }).select('contractorCode');
+    const mismatch = slips.find(sl => sl.contractorCode !== recoveryVendorCode);
+    if (mismatch) return badRequest(res, `Advance slip ${mismatch._id} does not belong to this bill's contractor.`);
+  }
+  const retentionReleaseAmount = req.body.retentionReleaseAmount != null ? Number(req.body.retentionReleaseAmount) : 0;
+  if (retentionReleaseAmount > 0) {
+    if (!String(req.body.retentionReleaseRemark || '').trim()) return badRequest(res, 'A remark is required when releasing held retention');
+    const held = await getRetentionHeldForWorkOrder(newWOId);
+    if (retentionReleaseAmount > held) return badRequest(res, `Cannot release ₹${retentionReleaseAmount} — only ₹${held} is currently held on this work order`);
+  }
+
+  const payee = workOrder
+    ? await resolvePayee(workOrder.vendorCode, workOrder.vendorName, req.body.vendorCode)
+    : { vendorCode: req.body.vendorCode, vendorName: req.body.vendorName };
+  const requestedMilestoneIds = Array.isArray(req.body.milestoneIds) && req.body.milestoneIds.length
+    ? req.body.milestoneIds : (req.body.milestoneId ? [req.body.milestoneId] : []);
+  const milestones = workOrder ? requestedMilestoneIds.map((id) => workOrder.paymentMilestones.id(id)).filter(Boolean) : [];
+  const milestone = milestones[0] || null;
+
+  // 3) All checks passed — undo the old advance recovery, then write.
+  if (bill.advanceRecovery) { await reverseAdvanceRecoveries(bill.billNo); bill.advanceRecovery = 0; }
+
+  const before = bill.toObject();
+  const EDITABLE = ['billDate', 'projectId', 'projectName', 'generatedBy', 'contractorRefNo', 'remarks', 'gstPercent', 'tdsPercent',
+    'billType', 'department', 'customDepartment', 'sentForApprovalTo', 'relationshipType', 'retentionPercent', 'retentionAmount',
+    'supersedeDeduction', 'retentionReleaseRemark'];
+  for (const k of EDITABLE) if (req.body[k] !== undefined) bill[k] = req.body[k];
+  bill.workOrderId = newWOId || undefined;
+  bill.lineItems = lineItems;
+  bill.amount = lineItems.reduce((sum, li) => sum + (Number(li.amount) || 0), 0);
+  bill.linkedBills = Array.isArray(req.body.linkedBills) ? req.body.linkedBills : [];
+  bill.retentionReleased = Number(req.body.retentionReleaseAmount) || 0;
+  bill.milestoneId = milestone ? milestone._id : null;
+  bill.milestoneStage = milestone ? (milestone.stage || milestone.type || '') : '';
+  bill.milestoneIds = milestones.map((m) => m._id);
+  bill.milestoneStages = milestones.map((m) => m.stage || m.type || '');
+  bill.vendorCode = payee.vendorCode;
+  bill.vendorName = payee.vendorName;
+  if (workOrder) {
+    bill.workOrderNo = workOrder.workOrderNo; bill.projectId = workOrder.projectId; bill.projectName = workOrder.projectName;
+    bill.projectLocation = workOrder.projectLocation; bill.companyName = workOrder.companyName;
+  } else {
+    bill.workOrderNo = undefined; bill.companyId = company._id; bill.companyName = company.name;
+  }
+
+  // Lock the new quantities onto the work order(s).
+  if (workOrder) {
+    const parents = new Set();
+    for (const li of lineItems) {
+      if (!li.scopeItemId || !li.billedQty) continue;
+      const si = workOrder.scopeItems.id(li.scopeItemId);
+      const target = si && resolveBillableItem(si, li.subItemId);
+      if (!target) continue;
+      target.lastBilledQty = (target.lastBilledQty || 0) + Number(li.billedQty);
+      target.completedQty = Math.max(target.completedQty || 0, target.lastBilledQty);
+      target.status = deriveStatus(target);
+      if (li.subItemId) parents.add(String(li.scopeItemId));
+    }
+    for (const id of parents) { const si = workOrder.scopeItems.id(id); if (si) recomputeParentFromSubItems(si); }
+  }
+  if (oldWO && workOrder !== oldWO) await oldWO.save();
+  if (workOrder) await workOrder.save();
+
+  await bill.save();
+  if (recoveries.length) {
+    const applied = await applyAdvanceRecoveries(recoveries, { billNo: bill.billNo, releasedBy: req.user.name });
+    bill.advanceRecovery = applied.reduce((sum, a) => sum + a.amount, 0);
+    if (applied.length) await bill.save();
+  }
+
+  const changes = diffFields(before, bill.toObject(), [...EDITABLE, 'amount', 'lineItems', 'workOrderId', 'vendorCode']);
+  await logAudit({
+    action: 'UPDATE', module: MODULE, user: req.user,
+    description: `Bill ${bill.billNo} edited at L1`,
+    entityType: 'RunningBill', entityId: bill._id, entityLabel: bill.billNo,
+    ...(changes ? { changes } : {}),
+  });
+
+  success(res, { bill }, 'Bill updated');
+});
+
 // Verification — the single merged step (replaces the old separate Maker +
 // Checker) that checks the bill against its work order and vendor details,
 // and sets the one financial figure that stays in Accounts: TDS. Retention/

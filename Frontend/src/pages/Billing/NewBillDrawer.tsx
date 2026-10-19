@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import toast from "react-hot-toast";
 import { FileText, Plus, Trash2 } from "lucide-react";
@@ -185,10 +185,14 @@ export default function NewBillDrawer({
   open,
   onClose,
   onCreated,
+  editBill,
 }: {
   open: boolean;
   onClose: () => void;
   onCreated: (bill: Record<string, unknown>) => void;
+  // Set to re-open this same form prefilled with an existing bill that is
+  // still pending L1 — saving updates that bill in place instead of creating one.
+  editBill?: Record<string, any> | null;
 }) {
   const [saving, setSaving] = useState(false);
   const formErrors = useFormErrors<"contractorId" | "billDate" | "generatedBy" | "companyId" | "department" | "retentionReleaseRemark">();
@@ -476,6 +480,123 @@ export default function NewBillDrawer({
       .catch(() => { setPendingAdvances([]); setAdvancesUnavailable(true); })
       .finally(() => setAdvancesLoading(false));
   }, [partyType, projectId, selectedContractor?.vendorCode]);
+
+  // ── Edit mode: prefill the whole form from an existing (pending L1) bill ────
+  // Done in stages because the form's own effects (payee follows contractor,
+  // WO list follows project/party, department follows linked WO) each need
+  // the previous step to have landed first.
+  const [prefillStage, setPrefillStage] = useState(0);
+  const advanceAdjusted = useRef(false);
+  const idOf = (v: unknown): string => {
+    if (!v) return "";
+    if (typeof v === "object") { const o = v as { _id?: unknown; id?: unknown }; return String(o._id || o.id || ""); }
+    return String(v);
+  };
+  useEffect(() => {
+    if (open && editBill) { setPrefillStage(0); advanceAdjusted.current = false; }
+  }, [open, editBill]);
+
+  // Stage 0 → 1: project, party (contractor/consultant) and company.
+  useEffect(() => {
+    if (!open || !editBill || prefillStage !== 0) return;
+    if (contractors.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      const woId = idOf(editBill.workOrderId);
+      let wo: { vendorCode?: string; contractType?: string } | null = null;
+      if (woId) {
+        try { wo = (await apiClient.get<{ workOrder: { vendorCode?: string; contractType?: string } }>(`/work-orders/${woId}`)).data.workOrder; } catch { /* falls back to the bill's own vendor */ }
+      }
+      if (cancelled) return;
+      const vendorCode = wo?.vendorCode || editBill.vendorCode;
+      const consultant = consultants.find((c) => c.consultantCode === vendorCode);
+      const isConsultant = wo ? wo.contractType === "professional-services" : !!consultant;
+      setPartyType(isConsultant ? "consultant" : "contractor");
+      if (isConsultant) setConsultantId(consultant?.id || "");
+      else setContractorId(contractors.find((c) => c.vendorCode === vendorCode)?.id || "");
+      setProjectId(idOf(editBill.projectId));
+      setCompanyId(idOf(editBill.companyId));
+      setPrefillStage(1);
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, editBill, prefillStage, contractors, consultants]);
+
+  // Stage 1 → 2: everything else, once the party and the project's WO list are in.
+  useEffect(() => {
+    if (!open || !editBill || prefillStage !== 1) return;
+    if (partyType === "consultant" ? !selectedConsultant : !selectedContractor) return;
+    const woId = idOf(editBill.workOrderId);
+    const wo = woId ? woList.find((w) => w.id === woId) : undefined;
+    if (woId && !wo) return;
+
+    const items: LineItem[] = ((editBill.lineItems || []) as Record<string, unknown>[]).map((li) => {
+      const sid = idOf(li.scopeItemId);
+      const sub = idOf(li.subItemId);
+      const si = wo?.scopeItems.find((s) => s.id === sid);
+      const sb = sub ? si?.subItems?.find((x) => x.id === sub) : undefined;
+      const t = sb || si;
+      const planned = Number(t?.plannedQty ?? li.plannedQty ?? 0);
+      const billed = Number(li.billedQty) || 0;
+      return {
+        key: nextKey(),
+        scopeItemId: sid || undefined,
+        subItemId: sub || undefined,
+        groupLabel: sb ? si?.description : undefined,
+        description: String(li.description || ""),
+        unit: String(li.unit || ""),
+        plannedQty: planned,
+        // The WO's counter already includes THIS bill's qty — take it back out
+        // so the remaining-quantity cap behaves as if this bill didn't exist yet.
+        lastBilledQty: Math.max(0, Number(t?.lastBilledQty || 0) - billed),
+        percentComplete: planned > 0 ? Math.round((billed / planned) * 10000) / 100 : 0,
+        billedQty: billed,
+        rate: Number(li.rate) || 0,
+        amount: Number(li.amount) || 0,
+      };
+    });
+    setLineItems(items.length ? items : [blankRow()]);
+    setExpandedGroups(new Set(items.filter((i) => i.groupLabel && i.scopeItemId).map((i) => i.scopeItemId as string)));
+    if (partyType === "contractor") setPayeeVendorCode(editBill.vendorCode || "");
+    if (woId) {
+      setSelectedWOId(woId);
+      if (items.some((i) => i.scopeItemId)) setImportedFromWOId(woId);
+      apiClient.get<{ bills: Record<string, unknown>[] }>(`/bills/chain/${woId}`)
+        .then((r) => setWoExistingBills((r.data.bills || []).map((b) => normalizeId(b) as unknown as ExistingBill).filter((b) => b.status !== "rejected" && b.id !== idOf(editBill._id))))
+        .catch(() => setWoExistingBills([]));
+    }
+    const g = Number(editBill.gstPercent ?? 18);
+    setGstPercent(g);
+    setIsCustomGst(![0, 5, 12, 18, 28].includes(g));
+    setBillType(editBill.billType || "running");
+    setDepartment(editBill.department || "");
+    setCustomDepartment(editBill.customDepartment || "");
+    setSentForApprovalTo(idOf(editBill.sentForApprovalTo));
+    setRelType(editBill.relationshipType || "NONE");
+    setLinkedBillIds(((editBill.linkedBills || []) as { billId?: unknown }[]).map((l) => idOf(l.billId)).filter(Boolean));
+    setSelectedMilestoneIds(((editBill.milestoneIds || []) as unknown[]).map(idOf).filter(Boolean));
+    setBillDate(editBill.billDate ? dayjs(editBill.billDate).format("YYYY-MM-DD") : dayjs().format("YYYY-MM-DD"));
+    setGeneratedBy(editBill.generatedBy || "");
+    setContractorRefNo(editBill.contractorRefNo || "");
+    setRemarksInput(editBill.remarks || "");
+    if (Number(editBill.retentionPercent) > 0) { setHoldMode("percent"); setHoldPercent(Number(editBill.retentionPercent)); }
+    else if (Number(editBill.retentionAmount) > 0) { setHoldMode("amount"); setHoldAmountInput(Number(editBill.retentionAmount)); }
+    setRecoveryAmount(Number(editBill.advanceRecovery) > 0 ? Number(editBill.advanceRecovery) : null);
+    setRetentionReleaseAmount(Number(editBill.retentionReleased) || 0);
+    setRetentionReleaseRemark(editBill.retentionReleaseRemark || "");
+    setPrefillStage(2);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, editBill, prefillStage, partyType, selectedContractor, selectedConsultant, woList]);
+
+  // This bill's own advance recovery was already debited from its slip's
+  // balance when it was created — add it back so the cap allows keeping it.
+  useEffect(() => {
+    if (!editBill || prefillStage < 2 || advanceAdjusted.current || advancesLoading) return;
+    const prior = Number(editBill.advanceRecovery) || 0;
+    if (prior <= 0 || pendingAdvances.length === 0) return;
+    advanceAdjusted.current = true;
+    setPendingAdvances((prev) => prev.map((sl, i) => (i === 0 ? { ...sl, balance: sl.balance + prior } : sl)));
+  }, [editBill, prefillStage, advancesLoading, pendingAdvances]);
 
   function updateLineItem(key: number, field: keyof LineItem, val: unknown) {
     setLineItems((prev) =>
@@ -901,6 +1022,13 @@ export default function NewBillDrawer({
 
     setSaving(true);
     try {
+      if (editBill) {
+        const upd = await apiClient.put<{ bill?: Record<string, unknown> }>(`/bills/${idOf(editBill._id)}/manual-edit`, payload);
+        toast.success(`Bill ${editBill.billNo} updated`);
+        if (upd.data.bill) onCreated(upd.data.bill);
+        onClose();
+        return;
+      }
       const res = await apiClient.post<{ bill?: Record<string, unknown>; advanceSlip?: Record<string, unknown> }>("/bills", payload);
       // Mob. Advance + ADVANCE_FOR never creates a RunningBill at all anymore
       // — the backend creates an AdvanceSlip directly and returns it instead
@@ -919,7 +1047,7 @@ export default function NewBillDrawer({
       }
     } catch (err: unknown) {
       const e = err as { response?: { data?: { message?: string } } };
-      toast.error(e?.response?.data?.message || "Failed to create bill");
+      toast.error(e?.response?.data?.message || (editBill ? "Failed to update bill" : "Failed to create bill"));
     } finally {
       setSaving(false);
     }
@@ -936,15 +1064,15 @@ export default function NewBillDrawer({
     <>
       <Modal
         icon={FileText}
-        title="New Bill"
-        subtitle="Select project → contractor or consultant → add work items → submit — lands in Draft, awaiting maker confirmation"
+        title={editBill ? `Edit Bill — ${editBill.billNo}` : "New Bill"}
+        subtitle={editBill ? "Change anything below and save — the bill stays at L1 approval" : "Select project → contractor or consultant → add work items → submit — lands in Draft, awaiting maker confirmation"}
         extraWide
         onClose={onClose}
         footer={
           <div className="flex justify-end gap-2">
             <Btn outline label="Cancel" onClick={onClose} />
-            <Btn outline label="Save as Draft" loading={saving} onClick={() => handleSubmit(true)} />
-            <Btn color="primary" label="Submit" loading={saving} onClick={() => handleSubmit(false)} />
+            {!editBill && <Btn outline label="Save as Draft" loading={saving} onClick={() => handleSubmit(true)} />}
+            <Btn color="primary" label={editBill ? "Save Changes" : "Submit"} loading={saving} onClick={() => handleSubmit(false)} />
           </div>
         }
       >

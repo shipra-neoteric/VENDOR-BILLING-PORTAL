@@ -2,7 +2,7 @@ const router = require('express').Router();
 const { authenticate, authorizeOr, authorizeAnyOr, authorizeOrAlt, authorizeAnyOrAlt } = require('../middleware/auth');
 const { createBillRules } = require('../validators/bill.validator');
 const {
-  listBills, getBill, createBill, updateBill,
+  listBills, getBill, createBill, updateBill, editManualBill,
   verifyBill, l1AgmApprove, l2DirectorApprove, holdBill, releaseHold, sendToTms,
   rejectBill, patchDeductions,
   manualAgmApprove, manualGmApprove, manualL3Approve, manualL4Approve, manualReject,
@@ -22,6 +22,7 @@ router.post('/',             authorizeOr('billing', 'create'), createBillRules, 
 // (who actually created THIS bill), not a role/permission one.
 router.patch('/:id/submit-draft', submitDraft);
 router.put('/:id',           authorizeOr('accounts-payment', 'edit', 'CEO'), updateBill);
+router.put('/:id/manual-edit', authorizeOr('bill-requests', 'create', 'CEO'), editManualBill);
 // Verification (merged Maker+Checker) — checks the bill against its WO/
 // vendor details, sets TDS. Retention/advance are decided upstream now.
 // Pre-Accounts AGM/GM sign-off — only ever applies to a manually-created bill

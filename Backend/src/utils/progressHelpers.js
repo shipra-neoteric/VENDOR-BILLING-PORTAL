@@ -81,12 +81,16 @@ function recomputeAfterInvalidate(si) {
 // ever a display rollup of its particulars (see recomputeParentFromSubItems
 // above), never something to bill against directly — and each particular has
 // its own rate/description that the resulting bill line needs to show.
-function expandBillableCandidates(scopeItems, selectedIds) {
+function expandBillableCandidates(scopeItems, selectedIds, selectedSubIds) {
   const out = [];
   for (const si of scopeItems) {
     if (selectedIds && !selectedIds.has(String(si._id))) continue;
     if (si.subItems && si.subItems.length > 0) {
+      // selectedSubIds = hand-picked particulars; when any of THIS item's are
+      // picked, only those are billed (otherwise every particular, as before).
+      const pickedHere = selectedSubIds && si.subItems.some(sub => selectedSubIds.has(String(sub._id)));
       for (const sub of si.subItems) {
+        if (pickedHere && !selectedSubIds.has(String(sub._id))) continue;
         out.push({
           scopeItemId:   si._id,
           subItemId:     sub._id,

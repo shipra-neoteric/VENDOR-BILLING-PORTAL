@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import {
   FileText, Eye, Printer, CheckCircle2, XCircle, Check, X, Clock,
-  Trophy, Download,
+  Trophy, Download, Pencil,
 } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import dayjs from "dayjs";
@@ -42,6 +42,8 @@ import Pagination from "../../ui/Pagination";
 import NxBadge from "../../ui/nexora/Badge";
 import NxBtn from "../../ui/nexora/Btn";
 import NxStatCard from "../../ui/nexora/StatCard";
+import NewBillDrawer from "../Billing/NewBillDrawer";
+import SiteProgress from "../SiteProgress";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface BillItem {
@@ -559,6 +561,24 @@ export default function BillApproval() {
   // scope items, financial breakdown) — not a print/download action.
   const [viewManualBill, setViewManualBill] = useState<ManualBillDetail | null>(null);
   const [viewManualBillLoadingId, setViewManualBillLoadingId] = useState<string | null>(null);
+  // Edit icon on a manual bill still at L1 — re-opens the New Bill form,
+  // prefilled with this bill, and saves back onto the same bill.
+  const [editManualBill, setEditManualBill] = useState<Record<string, any> | null>(null);
+  // Progress-driven request being re-picked — opens its drawer right here.
+  const [editProgressBRId, setEditProgressBRId] = useState<string | null>(null);
+  const [editManualBillLoadingId, setEditManualBillLoadingId] = useState<string | null>(null);
+  async function openManualBillEdit(b: ManualBillRow) {
+    setEditManualBillLoadingId(b._id);
+    try {
+      const res = await apiClient.get<{ bill: Record<string, any> }>(`/bills/${b._id}`);
+      setEditManualBill(res.data.bill);
+    } catch {
+      toast.error("Could not load the bill to edit");
+    } finally {
+      setEditManualBillLoadingId(null);
+    }
+  }
+
   async function openManualBillView(b: ManualBillRow) {
     setViewManualBillLoadingId(b._id);
     try {
@@ -1341,6 +1361,9 @@ export default function BillApproval() {
                       <div className="flex items-center gap-1">
                         <NxBtn color="icon-blue" title="View" icon={Eye} loading={viewManualBillLoadingId === b._id} onClick={() => openManualBillView(b)} />
                         <NxBtn color="icon" title="Print" icon={Printer} loading={printingReqId === b._id} onClick={() => handlePrintManualBill(b)} />
+                        {b.manualApprovalStatus === "pending" && hasPerm(user, "create") && (
+                          <NxBtn color="icon" title="Edit" icon={Pencil} loading={editManualBillLoadingId === b._id} onClick={() => openManualBillEdit(b)} />
+                        )}
                         {b.manualApprovalStatus === "pending" && canAgmApprove && (
                           <NxBtn color="icon-green" title="L1 Approve" icon={Check} onClick={() => setManualApproveTarget(b)} />
                         )}
@@ -1401,6 +1424,9 @@ export default function BillApproval() {
                       <div onClick={e => e.stopPropagation()} className="flex items-center gap-1">
                         <NxBtn color="icon-blue" title="View" icon={Eye} onClick={() => openViewReq(r)} />
                         <NxBtn color="icon" title="Print" icon={Printer} loading={printingReqId === r._id} onClick={() => handlePrintReq(r)} />
+                        {r.status === "pending" && hasPerm(user, "create") && (
+                          <NxBtn color="icon" title="Edit" icon={Pencil} onClick={() => setEditProgressBRId(r._id)} />
+                        )}
                         {r.status === "pending" && canAgmApprove && (
                           <NxBtn color="icon-green" title="L1 Approve" icon={Check} onClick={() => openApprove(r._id)} />
                         )}
@@ -2265,6 +2291,20 @@ export default function BillApproval() {
           })()}
         </Modal>
       )}
+
+      {editProgressBRId && (
+        <SiteProgress
+          embeddedEditBRId={editProgressBRId}
+          onEmbeddedClose={(saved) => { setEditProgressBRId(null); if (saved) load(); }}
+        />
+      )}
+
+      <NewBillDrawer
+        open={!!editManualBill}
+        editBill={editManualBill}
+        onClose={() => setEditManualBill(null)}
+        onCreated={() => load()}
+      />
     </div>
   );
 }

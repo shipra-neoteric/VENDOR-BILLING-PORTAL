@@ -1,5 +1,6 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   FileText, Users, Building2, AlertTriangle, Pin, ChevronDown, ChevronRight, TrendingUp,
 } from "lucide-react";
@@ -7,7 +8,7 @@ import dayjs from "dayjs";
 import type { Dayjs } from "dayjs";
 import apiClient from "../../services/apiClient";
 import { useAuth } from "../../context/AuthContext";
-import { DropdownSelectFilter, FilterRow } from "../../ui/Filters";
+import { DropdownSelectFilter, FilterRow, SearchFilter } from "../../ui/Filters";
 import DateRangeFilter, { inDateRange } from "../../components/DateRangeFilter";
 import WorkflowInstanceStepper from "../../components/WorkflowInstanceStepper";
 import type { WorkflowInstance } from "../../types/Workflow";
@@ -34,6 +35,7 @@ interface ProgressEntryDetail {
   tower?: string; floor?: string; flatNo?: string; plotNo?: string; locationNote?: string;
   enteredBy?: { _id: string; name: string } | string | null;
   invalidated?: { done?: boolean; reason?: string; at?: string };
+  billedInRequestId?: string | null;
 }
 interface SubItemDetail {
   _id: string; description: string; remarks?: string; unit: string;
@@ -68,7 +70,7 @@ interface ActivityEvent {
   createdAt: string;
 }
 interface BillItem {
-  scopeItemId?: string; description: string; unit: string; billedQty: number;
+  scopeItemId?: string; subItemId?: string; description: string; unit: string; billedQty: number;
   rate?: number; amount?: number; progressRemarks?: string;
 }
 interface ApprovalHistoryEntry {
@@ -145,7 +147,11 @@ function getProjId(row: WORow): string | undefined {
 // Compact, read-only log of every raw dated progress entry behind a scope
 // item — the aggregated planned/done/unbilled row above can't show this;
 // the data already exists on the WorkOrder document, this just surfaces it.
-function ProgressEntryLog({ entries }: { entries?: ProgressEntryDetail[] }) {
+function ProgressEntryLog({ entries, picker }: {
+  entries?: ProgressEntryDetail[];
+  // When given, each still-unbilled entry gets a checkbox so just those can be billed.
+  picker?: { picked: Set<string>; disabled: boolean; onToggle: (entryId: string) => void };
+}) {
   if (!entries || entries.length === 0) {
     return <div className="px-2.5 py-2 text-xs text-gray-400">No individual entries recorded.</div>;
   }
@@ -154,8 +160,8 @@ function ProgressEntryLog({ entries }: { entries?: ProgressEntryDetail[] }) {
     <table className="w-full border-collapse text-xs">
       <thead>
         <tr className="bg-gray-100 dark:bg-gray-800/40">
-          {["Date", "Qty Added", "Location", "Remarks", ""].map(h => (
-            <th key={h} className="px-2 py-1 text-left text-[10px] text-gray-500 dark:text-gray-400 uppercase">{h}</th>
+          {[...(picker ? [""] : []), "Date", "Qty Added", "Location", "Remarks", ""].map((h, i) => (
+            <th key={i} className="px-2 py-1 text-left text-[10px] text-gray-500 dark:text-gray-400 uppercase">{h}</th>
           ))}
         </tr>
       </thead>
@@ -172,6 +178,13 @@ function ProgressEntryLog({ entries }: { entries?: ProgressEntryDetail[] }) {
               className="border-b border-gray-200 dark:border-gray-700/40"
               style={{ textDecoration: e.invalidated?.done ? "line-through" : undefined, opacity: e.invalidated?.done ? 0.55 : 1 }}
             >
+              {picker && (
+                <td className="px-2 py-1 w-6">
+                  {!e.invalidated?.done && !e.billedInRequestId && (
+                    <Checkbox checked={picker.picked.has(e._id)} disabled={picker.disabled} onChange={() => picker.onToggle(e._id)} />
+                  )}
+                </td>
+              )}
               <td className="px-2 py-1">{dayjs(e.date).format("DD MMM YYYY")}</td>
               <td className="px-2 py-1 font-mono text-emerald-600 font-semibold">+{fmtN(e.qtyAdded)}</td>
               <td className="px-2 py-1 text-gray-500 dark:text-gray-400">{loc || "—"}</td>
@@ -188,7 +201,14 @@ function ProgressEntryLog({ entries }: { entries?: ProgressEntryDetail[] }) {
 }
 
 // ── Main component ─────────────────────────────────────────────────────────────
-export default function SiteProgress() {
+// embeddedEditBRId: render only the "Edit Bill Request" drawer for that
+// request (used by the Bill Requests page, so Edit opens right where it was
+// clicked instead of navigating here). onEmbeddedClose(true) = it was saved.
+export default function SiteProgress({ embeddedEditBRId, onEmbeddedClose }: {
+  embeddedEditBRId?: string;
+  onEmbeddedClose?: (saved: boolean) => void;
+} = {}) {
+  const embedded = !!embeddedEditBRId;
   const { user } = useAuth();
 
   const [loading, setLoading] = useState(true);
@@ -201,6 +221,7 @@ export default function SiteProgress() {
 
   const [selProjectId, setSelProjectId] = useState<string | undefined>(undefined);
   const [selDriId, setSelDriId] = useState<string | undefined>(undefined);
+  const [search, setSearch] = useState("");
   const [dateFrom, setDateFrom] = useState<Dayjs | null>(null);
   const [dateTo, setDateTo] = useState<Dayjs | null>(null);
   const [woDetails, setWoDetails] = useState<Map<string, WODetail>>(new Map());
@@ -214,6 +235,13 @@ export default function SiteProgress() {
   // one pending.
   const load = () => {
     setLoading(true);
+    if (embedded) {
+      apiClient.get("/bill-requests")
+        .then((r) => setBillReqs(r.data.billRequests ?? []))
+        .catch(() => toast.error("Failed to load the bill request"))
+        .finally(() => setLoading(false));
+      return;
+    }
     Promise.all([
       apiClient.get("/projects/activity", { params: { limit: 100 } }),
       apiClient.get("/projects"),
@@ -269,18 +297,90 @@ export default function SiteProgress() {
   // ── Work order detail + bill-generation modal ───────────────────────────────
   const [viewWOId, setViewWOId] = useState<string | null>(null);
   const [checked, setChecked] = useState<Set<string>>(new Set());
+  // Individually picked progress entries (entry-wise billing) — an item with
+  // any picked entry bills only those; otherwise its whole unbilled qty.
+  const [pickedEntries, setPickedEntries] = useState<Set<string>>(new Set());
+  // Hand-picked particulars (sub items) — an item with any picked bills only those.
+  const [pickedSubs, setPickedSubs] = useState<Set<string>>(new Set());
   const [expandedEntries, setExpandedEntries] = useState<Set<string>>(new Set());
   const [slaInstance, setSlaInstance] = useState<WorkflowInstance | null>(null);
   const [billRemarks, setBillRemarks] = useState("");
   const [generating, setGenerating] = useState(false);
   const [approvingVariance, setApprovingVariance] = useState<string | null>(null);
 
-  const viewWO = viewWOId ? woDetails.get(viewWOId) ?? null : null;
+  // Edit mode (opened from the Bill Requests list's Edit icon): the request
+  // being re-picked. Its own billed qty / marked entries are shown as
+  // unbilled again so the same picker works exactly like at create time.
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [editBR, setEditBR] = useState<BillRequestRow | null>(null);
+  const baseWO = viewWOId ? woDetails.get(viewWOId) ?? null : null;
+  const viewWO = useMemo(() => {
+    if (!baseWO || !editBR || editBR.workOrderId !== baseWO._id) return baseWO;
+    const wo: WODetail = JSON.parse(JSON.stringify(baseWO));
+    const release = (t: { lastBilledQty: number; progressEntries?: ProgressEntryDetail[] }, qty: number) => {
+      t.lastBilledQty = Math.max(0, (t.lastBilledQty || 0) - qty);
+    };
+    for (const it of editBR.items) {
+      const si = wo.scopeItems.find(x => x._id === it.scopeItemId);
+      if (!si) continue;
+      const t = it.subItemId ? si.subItems?.find(x => x._id === it.subItemId) : si;
+      if (t) release(t, it.billedQty);
+    }
+    const unmark = (arr?: ProgressEntryDetail[]) => (arr || []).forEach(e => { if (e.billedInRequestId === editBR._id) e.billedInRequestId = null; });
+    for (const si of wo.scopeItems) { unmark(si.progressEntries); (si.subItems || []).forEach(sub => unmark(sub.progressEntries)); }
+    // Parent rollup of lastBilledQty for items with particulars.
+    for (const si of wo.scopeItems) if (si.subItems?.length) si.lastBilledQty = si.subItems.reduce((a, x) => a + (x.lastBilledQty || 0), 0);
+    return wo;
+  }, [baseWO, editBR]);
+
+  // ?editBR=<id> — open that pending request's work order in edit mode.
+  const editBRId = embeddedEditBRId ?? searchParams.get("editBR");
+  useEffect(() => {
+    if (!editBRId || editBR || !billReqs.length) return;
+    const br = billReqs.find(b => b._id === editBRId);
+    if (!br || br.status !== "pending" || !br.workOrderId) { toast.error("This bill request can no longer be edited"); if (embedded) onEmbeddedClose?.(false); else setSearchParams({}); return; }
+    setEditBR(br);
+    openWO(br.workOrderId, br.projectId);
+    setBillRemarks(br.remarks || "");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editBRId, billReqs]);
+  // Once the (adjusted) work order is ready, tick what the request currently bills.
+  const prefilledFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!editBR || !viewWO || viewWO._id !== editBR.workOrderId || prefilledFor.current === editBR._id) return;
+    prefilledFor.current = editBR._id;
+    const nextChecked = new Set<string>(); const nextEntries = new Set<string>(); const nextSubs = new Set<string>();
+    const unbilledOf = (t: { completedQty: number; lastBilledQty: number }) => Math.max(0, (t.completedQty || 0) - (t.lastBilledQty || 0));
+    for (const si of viewWO.scopeItems) {
+      const mine = editBR.items.filter(i => i.scopeItemId === si._id);
+      if (!mine.length) continue;
+      nextChecked.add(si._id);
+      const targets = si.subItems?.length ? si.subItems : [si];
+      const inBR = (t: { _id: string }) => mine.some(i => (i.subItemId || "") === (t === si ? "" : t._id));
+      const allCovered = targets.filter(t => unbilledOf(t) > 0).every(inBR);
+      if (si.subItems?.length && !allCovered) targets.filter(inBR).forEach(t => nextSubs.add(t._id));
+      for (const t of targets.filter(inBR)) {
+        const live = (t.progressEntries || []).filter(e => !e.invalidated?.done && !e.billedInRequestId);
+        const markedIds = new Set<string>(
+          (t === si ? baseWO?.scopeItems.find(x => x._id === si._id)?.progressEntries
+            : baseWO?.scopeItems.find(x => x._id === si._id)?.subItems?.find(x => x._id === t._id)?.progressEntries || [])
+            ?.filter(e => e.billedInRequestId === editBR._id).map(e => e._id) ?? []);
+        if (markedIds.size > 0 && live.some(e => !markedIds.has(e._id))) markedIds.forEach(id => nextEntries.add(id));
+      }
+    }
+    setChecked(nextChecked); setPickedEntries(nextEntries); setPickedSubs(nextSubs);
+  }, [editBR, viewWO, baseWO]);
+  const closeEdit = (saved = false) => {
+    setEditBR(null); prefilledFor.current = null;
+    if (embedded) onEmbeddedClose?.(saved); else setSearchParams({});
+  };
 
   const openWO = async (woId: string, projectIdHint?: string) => {
     if (projectIdHint && projectIdHint !== selProjectId) setSelProjectId(projectIdHint);
     setViewWOId(woId);
     setChecked(new Set());
+    setPickedEntries(new Set()); setPickedSubs(new Set());
     setExpandedEntries(new Set());
     setBillRemarks("");
     if (!woDetails.has(woId)) {
@@ -298,7 +398,45 @@ export default function SiteProgress() {
       .catch(() => setSlaInstance(null));
   }, [viewWOId]);
 
-  const toggleCheck = (itemId: string) => {
+  const entryIdsOf = (si: ScopeItemDetail) => [
+    ...(si.progressEntries || []).map(e => e._id),
+    ...(si.subItems || []).flatMap(sub => (sub.progressEntries || []).map(e => e._id)),
+  ];
+  const toggleEntry = (si: ScopeItemDetail, entryId: string, subId?: string) => {
+    const next = new Set(pickedEntries);
+    if (next.has(entryId)) next.delete(entryId); else next.add(entryId);
+    setPickedEntries(next);
+    if (subId) {
+      const sub = si.subItems?.find(x => x._id === subId);
+      const subStill = (sub?.progressEntries || []).some(e => next.has(e._id));
+      setPickedSubs(prev => { const n = new Set(prev); if (subStill) n.add(subId); else n.delete(subId); return n; });
+    }
+    const stillPicked = entryIdsOf(si).some(id => next.has(id)) || (!!subId && next.has(entryId)) || (si.subItems || []).some(x => pickedSubs.has(x._id) && x._id !== subId);
+    setChecked(prev => {
+      const c = new Set(prev);
+      if (stillPicked) c.add(si._id); else c.delete(si._id);
+      return c;
+    });
+  };
+  const toggleSub = (si: ScopeItemDetail, sub: SubItemDetail) => {
+    const subs = new Set(pickedSubs);
+    if (subs.has(sub._id)) subs.delete(sub._id); else subs.add(sub._id);
+    setPickedSubs(subs);
+    // Picking the whole particular supersedes any entry-level picks inside it.
+    const own = new Set((sub.progressEntries || []).map(e => e._id));
+    setPickedEntries(prev => new Set([...prev].filter(id => !own.has(id))));
+    const any = (si.subItems || []).some(x => subs.has(x._id));
+    setChecked(prev => { const c = new Set(prev); if (any) c.add(si._id); else c.delete(si._id); return c; });
+  };
+  const toggleCheck = (itemId: string, si?: ScopeItemDetail) => {
+    // Ticking the item itself = bill all of it, so drop any hand-picked particulars/entries.
+    if (si && (entryIdsOf(si).some(id => pickedEntries.has(id)) || (si.subItems || []).some(x => pickedSubs.has(x._id)))) {
+      const ids = new Set(entryIdsOf(si));
+      setPickedEntries(prev => new Set([...prev].filter(id => !ids.has(id))));
+      const subIds = new Set((si.subItems || []).map(x => x._id));
+      setPickedSubs(prev => new Set([...prev].filter(id => !subIds.has(id))));
+      return;
+    }
     setChecked(prev => {
       const next = new Set(prev);
       if (next.has(itemId)) next.delete(itemId); else next.add(itemId);
@@ -335,18 +473,26 @@ export default function SiteProgress() {
     if (!viewWO || checked.size === 0) return;
     setGenerating(true);
     try {
-      const res = await apiClient.post("/bill-requests", {
-        workOrderId: viewWO._id,
+      const body = {
         scopeItemIds: Array.from(checked),
+        entryIds: Array.from(pickedEntries),
+        subItemIds: Array.from(pickedSubs),
         remarks: billRemarks,
-      });
+      };
+      const res = editBR
+        ? await apiClient.put(`/bill-requests/${editBR._id}`, body)
+        : await apiClient.post("/bill-requests", { workOrderId: viewWO._id, ...body });
       toast.success(res.data?.message || "Bill request submitted");
+      const wasEdit = !!editBR;
+      const woId = viewWO._id;
       setViewWOId(null);
       setChecked(new Set());
+      setPickedEntries(new Set()); setPickedSubs(new Set());
       setBillRemarks("");
+      if (wasEdit) { closeEdit(true); if (!embedded) { reloadWODetail(woId).catch(() => {}); navigate("/bill-requests"); } }
       load();
     } catch (e: any) {
-      toast.error(e?.response?.data?.message || "Failed to generate bill request");
+      toast.error(e?.response?.data?.message || (editBR ? "Failed to update bill request" : "Failed to generate bill request"));
     } finally {
       setGenerating(false);
     }
@@ -368,17 +514,25 @@ export default function SiteProgress() {
       if (!dri || ev.performedByName !== dri.name) return false;
     }
     if (!inDateRange(ev.createdAt, dateFrom, dateTo)) return false;
+    const q = search.trim().toLowerCase();
+    if (q) {
+      const m = ev.metadata || {};
+      const hay = [typeof ev.projectId === "object" ? ev.projectId?.name : "", ev.workOrderNo, ev.performedByName, m.scopeItem, ev.remarks]
+        .filter(Boolean).join(" ").toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
     return true;
-  }), [activity, selProjectId, selDriId, driList, dateFrom, dateTo]);
+  }), [activity, selProjectId, selDriId, driList, dateFrom, dateTo, search]);
 
   const activityPager = usePagination(filteredActivity, 8);
 
   if (loading) {
-    return <div className="flex justify-center py-20"><Spinner size="large" /></div>;
+    return embedded ? null : <div className="flex justify-center py-20"><Spinner size="large" /></div>;
   }
 
   return (
     <div>
+      {!embedded && <>
       <PageHeader
         icon={TrendingUp}
         title="Site Progress"
@@ -395,6 +549,7 @@ export default function SiteProgress() {
       <>
           {/* ── Filters ── */}
           <FilterRow>
+            <SearchFilter value={search} onChange={setSearch} placeholder="Search by project, work order, DRI, progress…" />
             <DropdownSelectFilter
               value={selProjectId ?? ""} onChange={v => setSelProjectId(v || undefined)}
               placeholder="All projects" resetValue=""
@@ -509,22 +664,23 @@ export default function SiteProgress() {
             )}
           </div>
       </>
+      </>}
 
       {/* ── Work order detail + bill-generation modal ── */}
       {viewWOId && (
         <Modal
           icon={FileText}
-          title={`Work Order — ${viewWO?.workOrderNo ?? ""}`}
+          title={editBR ? `Edit Bill Request ${editBR.reqNo} — ${viewWO?.workOrderNo ?? ""}` : `Work Order — ${viewWO?.workOrderNo ?? ""}`}
           extraWide
-          onClose={() => { setViewWOId(null); setChecked(new Set()); }}
+          onClose={() => { setViewWOId(null); setChecked(new Set()); setPickedEntries(new Set()); setPickedSubs(new Set()); if (editBR) closeEdit(false); }}
           footer={
             <div className="flex justify-between items-center w-full">
               <span className="text-xs text-gray-500 dark:text-gray-400">
                 {checked.size > 0 ? `${checked.size} item${checked.size !== 1 ? "s" : ""} selected` : "Select items below to bill"}
               </span>
               <div className="flex gap-2">
-                <Btn outline label="Close" onClick={() => setViewWOId(null)} />
-                <NxBtn color="primary" label="Generate Bill Request" disabled={checked.size === 0} loading={generating} onClick={handleGenerateBill} />
+                <Btn outline label="Close" onClick={() => { setViewWOId(null); if (editBR) closeEdit(false); }} />
+                <NxBtn color="primary" label={editBR ? "Save Changes" : "Generate Bill Request"} disabled={checked.size === 0} loading={generating} onClick={handleGenerateBill} />
               </div>
             </div>
           }
@@ -606,7 +762,7 @@ export default function SiteProgress() {
                             <Td dense>
                               {unbilled > 0 && (
                                 <span title={blocked ? `Approve the variance${hasSubItems ? " on every particular" : ""} below first` : undefined}>
-                                  <Checkbox checked={checked.has(si._id)} disabled={!canBill} onChange={() => toggleCheck(si._id)} />
+                                  <Checkbox checked={checked.has(si._id) && !entryIdsOf(si).some(id => pickedEntries.has(id)) && !(si.subItems || []).some(x => pickedSubs.has(x._id))} disabled={!canBill} onChange={() => toggleCheck(si._id, si)} />
                                 </span>
                               )}
                             </Td>
@@ -644,7 +800,7 @@ export default function SiteProgress() {
                             <Tr>
                               <Td dense></Td>
                               <Td dense colSpan={8} className="!py-0 pb-2.5">
-                                <ProgressEntryLog entries={si.progressEntries} />
+                                <ProgressEntryLog entries={si.progressEntries} picker={unbilled > 0 ? { picked: pickedEntries, disabled: blocked, onToggle: id => toggleEntry(si, id) } : undefined} />
                               </Td>
                             </Tr>
                           )}
@@ -656,7 +812,15 @@ export default function SiteProgress() {
                             return (
                               <Fragment key={sub._id}>
                                 <Tr className="bg-gray-50/60 dark:bg-gray-800/20">
-                                  <Td dense></Td>
+                                  <Td dense>
+                                    {subUnbilled > 0 && (
+                                      <Checkbox
+                                        checked={pickedSubs.has(sub._id) && !(sub.progressEntries || []).some(e => pickedEntries.has(e._id))}
+                                        disabled={varianceLevel(sub.plannedQty, sub.completedQty) !== "none" && !sub.varianceApproved}
+                                        onChange={() => toggleSub(si, sub)}
+                                      />
+                                    )}
+                                  </Td>
                                   <Td dense className="pl-6 text-xs text-gray-500 dark:text-gray-400">
                                     {subEntryCount > 0 && (
                                       <button type="button" onClick={() => toggleEntries(sub._id)} className="mr-1.5 text-gray-400 align-middle">
@@ -687,7 +851,7 @@ export default function SiteProgress() {
                                   <Tr className="bg-gray-50/60 dark:bg-gray-800/20">
                                     <Td dense></Td><Td dense></Td>
                                     <Td dense colSpan={7} className="pl-6">
-                                      <ProgressEntryLog entries={sub.progressEntries} />
+                                      <ProgressEntryLog entries={sub.progressEntries} picker={subUnbilled > 0 ? { picked: pickedEntries, disabled: blocked, onToggle: id => toggleEntry(si, id, sub._id) } : undefined} />
                                     </Td>
                                   </Tr>
                                 )}

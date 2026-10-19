@@ -186,9 +186,10 @@ function formatLocation(e: EntryRow, pt: string): string {
 // old "Popconfirm with a hidden OK button" trick for that case, the delete
 // affordance simply isn't rendered when it isn't allowed.
 function EntryActions({
-  e, deleting, onEdit, onDelete, onInvalidate,
+  e, deleting, onEdit, onDelete, onInvalidate, canEdit, canDelete, canInvalidate,
 }: {
   e: EntryRow; deleting: boolean;
+  canEdit: boolean; canDelete: boolean; canInvalidate: boolean;
   onEdit: () => void; onDelete: () => void; onInvalidate: () => void;
 }) {
   const [confirming, setConfirming] = useState(false);
@@ -207,6 +208,7 @@ function EntryActions({
     );
   }
   if (e.billedInRequestId) {
+    if (!canInvalidate) return null;
     return (
       <button type="button" className={`${linkCls} text-purple-600 dark:text-purple-400`} onClick={(ev) => { ev.stopPropagation(); onInvalidate(); }}>
         Invalidate
@@ -217,8 +219,8 @@ function EntryActions({
   const deletable = e.scopeCompleted - e.qtyAdded >= e.scopeLastBilled;
   return (
     <div className="flex items-center gap-2" onClick={(ev) => ev.stopPropagation()}>
-      <button type="button" className={`${linkCls} text-blue-600 dark:text-blue-400`} onClick={onEdit}>Edit</button>
-      {deletable ? (
+      {canEdit && <button type="button" className={`${linkCls} text-blue-600 dark:text-blue-400`} onClick={onEdit}>Edit</button>}
+      {!canDelete ? null : deletable ? (
         <button
           type="button" disabled={deleting}
           className={`${linkCls} text-red-600 dark:text-red-400`}
@@ -297,7 +299,13 @@ const emptyProgForm: ProgFormValues = {
 export default function DRIDashboard() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const canEdit = !!user?.permissions?.find(p => p.module === "dri-dashboard")?.actions.includes("edit");
+  const driActions = user?.permissions?.find(p => p.module === "dri-dashboard")?.actions ?? [];
+  const fullAccessRole = ["owner", "gm", "agm", "admin", "ceo"].includes((user?.role || "").toLowerCase());
+  const canEdit = fullAccessRole || driActions.includes("edit");
+  // Entry-level Delete / Invalidate have their own Permission Matrix actions
+  // (DRI Work Dashboard → Delete / Invalidate); Owner/GM/AGM/Admin/CEO keep full access.
+  const canDelete = fullAccessRole || driActions.includes("delete");
+  const canInvalidate = fullAccessRole || driActions.includes("invalidate");
 
   const [allDRIs, setAllDRIs] = useState<DRIUser[]>([]);
   const [allWOs, setAllWOs] = useState<WORow[]>([]);
@@ -660,16 +668,21 @@ export default function DRIDashboard() {
   };
 
   // ── Shared header ─────────────────────────────────────────────────────────────
-  // Single back control (PageHeader's own icon button) — goes to whichever
-  // page the user actually came from (browser history), not a hardcoded
-  // route. The old breadcrumb buttons ("← All DRIs" / "← X's Projects") were
-  // redundant with it and are gone.
+  // Single back control (PageHeader's own icon button). Inside this page the
+  // screens (all DRIs → a DRI's projects → a project) share one URL, so back
+  // steps up one screen; only from the first screen does it leave the page,
+  // to whichever page the user actually came from (browser history).
+  const handleBack = () => {
+    if (view === "dri-detail") { setView("dri-projects"); setSelProjectId(null); }
+    else if (view === "dri-projects") { setView("overview"); setSelectedDRI(null); }
+    else navigate(-1);
+  };
   const Header = () => (
     <>
       <PageHeader
         icon={HardHat}
         title="DRI Dashboard"
-        onBack={() => navigate(-1)}
+        onBack={handleBack}
         subtitle={selectedDRI && view !== "overview" ? (
           <>
             Viewing as <span className="text-primary font-bold">{selectedDRI.name}</span>
@@ -1057,8 +1070,9 @@ export default function DRIDashboard() {
                                   </span>
                                   <span className="text-gray-500 dark:text-gray-400 min-w-[80px]">{formatLocation(e, wpt)}</span>
                                   <span className="text-emerald-600 font-bold font-mono min-w-[60px]">+{fmtN(e.qtyAdded)} {e.unit}</span>
-                                  {canEdit && (
+                                  {(canEdit || canDelete || canInvalidate) && (
                                     <EntryActions
+                                      canEdit={canEdit} canDelete={canDelete} canInvalidate={canInvalidate}
                                       e={e} deleting={deleting === e._id}
                                       onEdit={openEdit}
                                       onDelete={() => handleDeleteEntry(e, detail._id)}
@@ -1373,8 +1387,9 @@ export default function DRIDashboard() {
                         </span>
                         <span className="text-gray-500 dark:text-gray-400 min-w-[80px]">{formatLocation(e, wpt)}</span>
                         <span className="text-emerald-600 font-bold font-mono min-w-[60px]">+{fmtN(e.qtyAdded)} {e.unit}</span>
-                        {canEdit && (
+                        {(canEdit || canDelete || canInvalidate) && (
                           <EntryActions
+                            canEdit={canEdit} canDelete={canDelete} canInvalidate={canInvalidate}
                             e={e} deleting={deleting === e._id}
                             onEdit={openEdit}
                             onDelete={() => handleDeleteEntry(e, detail._id)}

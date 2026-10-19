@@ -106,7 +106,7 @@ const APPROVAL_LEVEL_STAGES: {
   { stage: "l4",  short: "L4",       rolesKey: "l4Roles",  usersKey: "l4Users" },
 ];
 
-export type PermAction = "view" | "create" | "edit" | "delete" | "approve" | "request" | "maker" | "checker" | "approver" | "reject" | "ceo-approve" | "send-back" | "agm-approve" | "gm-approve" | "l3-approve" | "verify" | "l1-agm-approve" | "l2-director-approve" | "hold" | "release-hold" | "retry-tms" | "l1-review" | "l2-draw" | "l3-review" | "l4-approve" | "co-l1-approve" | "co-l2-approve";
+export type PermAction = "view" | "create" | "edit" | "delete" | "invalidate" | "approve" | "request" | "maker" | "checker" | "approver" | "reject" | "ceo-approve" | "send-back" | "agm-approve" | "gm-approve" | "l3-approve" | "verify" | "l1-agm-approve" | "l2-director-approve" | "hold" | "release-hold" | "retry-tms" | "l1-review" | "l2-draw" | "l3-review" | "l4-approve" | "co-l1-approve" | "co-l2-approve";
 
 interface ModuleDef {
   id: string;
@@ -121,6 +121,7 @@ export const ACTION_CFG: Record<PermAction, { label: string; bg: string }> = {
   create:   { label: "Create",   bg: "#16a34a" },
   edit:     { label: "Edit",     bg: "#2563eb" },
   delete:   { label: "Delete",   bg: "#dc2626" },
+  invalidate: { label: "Invalidate", bg: "#b91c1c" },
   approve:  { label: "Approve",  bg: "#d97706" },
   request:  { label: "Request",  bg: "#7c3aed" },
   maker:    { label: "L1 Maker",    bg: "#0891b2" },
@@ -195,7 +196,7 @@ export const MODULE_DEFS: ModuleDef[] = [
   { id: "recurring-billing", name: "Recurring Billing", icon: "🔁", group: "Billing",       actions: ["view","create","edit","delete"] },
   { id: "companies",        name: "Companies",          icon: "🏢", group: "Admin",         actions: ["view","create","edit","delete"] },
   { id: "categories",       name: "Categories",         icon: "🏷️", group: "Admin",         actions: ["view","create","edit","delete"] },
-  { id: "dri-dashboard",    name: "DRI Work Dashboard", icon: "🏗️", group: "Admin",         actions: ["view","create","edit"] },
+  { id: "dri-dashboard",    name: "DRI Work Dashboard", icon: "🏗️", group: "Admin",         actions: ["view","create","edit","delete","invalidate"] },
   { id: "public-forms",     name: "Public Forms",       icon: "🔗", group: "Admin",         actions: ["view"] },
   { id: "audit-logs",       name: "Audit Logs",         icon: "🕘", group: "Admin",         actions: ["view"] },
   { id: "user-management",  name: "User Management",    icon: "👥", group: "Admin",         actions: ["view","create","edit","delete"] },
