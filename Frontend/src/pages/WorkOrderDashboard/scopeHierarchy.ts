@@ -76,16 +76,7 @@ export function buildScopeHierarchy(scopeItems: ScopeItemLike[]): ScopeHierarchy
 
   for (const si of scopeItems) {
     const floorMatch = si.description.match(FLOOR_RE);
-    // "{Floor} Floor ..." only becomes a floor GROUP when the rest of the
-    // description actually names a Flat/Room breakdown underneath it — a
-    // plain per-floor BOQ item like "Ground Floor Slab" (no "Flat ...") is
-    // structurally identical to "Basement Slab"/"Ramp" and must render the
-    // same way (ungrouped, with its own particulars), not get promoted to a
-    // bold floor header just because its name happens to start with "Floor".
-    const rest = floorMatch ? si.description.slice(floorMatch[0].length).trim() : "";
-    const granular = floorMatch ? rest.match(GRANULAR_RE) : null;
-    const isCombined = floorMatch ? COMBINED_RE.test(rest) : false;
-    if (!floorMatch || !(granular || isCombined)) {
+    if (!floorMatch) {
       ungrouped.push(si);
       continue;
     }
@@ -97,6 +88,10 @@ export function buildScopeHierarchy(scopeItems: ScopeItemLike[]): ScopeHierarchy
       floorMap.set(floorKey, floor);
     }
     floor.amount += si.amount || 0;
+
+    const rest = si.description.slice(floorMatch[0].length).trim();
+    const granular = rest.match(GRANULAR_RE);
+    const isCombined = COMBINED_RE.test(rest);
 
     if (granular && !isCombined) {
       const flatNo = parseInt(granular[1], 10);
