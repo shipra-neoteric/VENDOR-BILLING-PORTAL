@@ -19,6 +19,7 @@ const { createPublicReport: createProgressReport, getReportImage } = require('..
 const { createPublicRequest: createDrawingRequest } = require('../controllers/drawingRequestController');
 const { getWorkOrderQuotationContext, submitQuotation } = require('../controllers/contractorQuotationController');
 const { signUpload } = require('../utils/cloudinary');
+const { extractIdDocument } = require('../utils/ocrIdDocument');
 
 // No authentication exists anywhere on this router (by design — these serve
 // external contractors/vendors with no login) — same proportionate IP-based
@@ -163,6 +164,27 @@ router.post('/legacy-daily-labour-reports', createLegacyLabourReport);
 // unscoped creation endpoint — the link itself is the access control.
 router.get('/quotations/work-order/:workOrderId/context', getWorkOrderQuotationContext);
 router.post('/quotations/work-order/:workOrderId', submitQuotation);
+
+// ── PAN / Aadhaar auto-fill (no auth) — each call costs a Gemini request, so
+// it gets its own much tighter cap on top of the router-wide one, and only
+// reads files already uploaded to our Cloudinary account (no arbitrary URLs). ──
+const ocrLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 15,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Too many auto-fill attempts, please fill the details manually.' },
+});
+router.post('/ocr/id-document', ocrLimiter, asyncHandler(async (req, res) => {
+  const { type, documentUrl } = req.body;
+  if (type !== 'pan' && type !== 'aadhaar') return badRequest(res, 'type must be pan or aadhaar');
+  let host = '';
+  try { host = new URL(documentUrl).hostname; } catch { /* handled below */ }
+  if (host !== 'res.cloudinary.com') return badRequest(res, 'Invalid document URL');
+  const out = await extractIdDocument(type, documentUrl);
+  if (out.error) return badRequest(res, out.error);
+  success(res, out);
+}));
 
 // ── Submit new contractor (no auth) ─────────────────────────────
 router.post('/contractors', asyncHandler(async (req, res) => {

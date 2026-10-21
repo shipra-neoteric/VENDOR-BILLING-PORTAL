@@ -59,6 +59,7 @@ export default function PublicContractorForm() {
   const [submitted, setSubmitted]   = useState<{ vendorCode: string; companyName: string } | null>(null);
   const [documents, setDocuments]   = useState<Record<string, { fileName: string; dataUrl: string } | undefined>>({});
   const [uploadingKey, setUploadingKey] = useState<string | null>(null);
+  const [readingId, setReadingId]       = useState<"pan" | "aadhaar" | null>(null);
 
   const patch = (p: Partial<FormValues>) => setValues(prev => ({ ...prev, ...p }));
 
@@ -71,10 +72,34 @@ export default function PublicContractorForm() {
     try {
       const url = await uploadToCloudinary(pub, file, "public-submissions", file.name);
       setDocuments(prev => ({ ...prev, [key]: { fileName: file.name, dataUrl: url } }));
+      if (key === "panCard" || key === "aadhaarCard") autoFillFromId(key === "panCard" ? "pan" : "aadhaar", url);
     } catch {
       toast.error(`Couldn't upload ${file.name}`);
     } finally {
       setUploadingKey(null);
+    }
+  }
+
+  // Best-effort: reads the uploaded PAN / Aadhaar image and pre-fills the
+  // number (and the owner name if still empty). Everything stays editable and
+  // still goes through validate(), so a failed or wrong read costs nothing.
+  async function autoFillFromId(type: "pan" | "aadhaar", documentUrl: string) {
+    setReadingId(type);
+    try {
+      const { data } = await pub.post("/ocr/id-document", { type, documentUrl }, { timeout: 60000 });
+      const number: string = type === "pan" ? data.panNumber : data.aadhaarNumber;
+      const field = type === "pan" ? "panNumber" : "aadhaarNumber";
+      if (number) {
+        errors.setError(field, null);
+        setValues(prev => ({ ...prev, [field]: number, ownerName: prev.ownerName.trim() || data.name || "" }));
+        toast.success(`${type === "pan" ? "PAN" : "Aadhaar"} number filled from the photo — please verify`);
+      } else {
+        toast("Couldn't read the number clearly — please enter it manually");
+      }
+    } catch (e: any) {
+      toast(e?.response?.data?.message || "Auto-fill unavailable — please enter it manually");
+    } finally {
+      setReadingId(null);
     }
   }
 
@@ -243,7 +268,7 @@ export default function PublicContractorForm() {
                     />
                     <span className="w-full inline-flex items-center gap-2 h-10 px-3.5 rounded-lg border border-gray-200 bg-white text-sm text-gray-700 cursor-pointer hover:bg-gray-50">
                       {uploadingKey === key ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-                      <span className="truncate">{uploadingKey === key ? "Uploading…" : (documents[key]?.fileName || label)}</span>
+                      <span className="truncate">{uploadingKey === key ? "Uploading…" : (readingId === "pan" && key === "panCard") || (readingId === "aadhaar" && key === "aadhaarCard") ? "Reading details…" : (documents[key]?.fileName || label)}</span>
                     </span>
                   </label>
                   {documents[key] && <div className="text-[11px] text-emerald-600 mt-1">✓ Attached</div>}
