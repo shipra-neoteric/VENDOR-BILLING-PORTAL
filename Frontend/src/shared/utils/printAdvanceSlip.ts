@@ -36,6 +36,15 @@ export function printAdvanceSlip(slip: PrintableAdvanceSlip, contractor: Contrac
   const recovered = slip.amountRecovered ?? 0;
   const balance = (slip.amount || 0) - recovered;
 
+  // Slips auto-created from a Mobilisation Advance bill carry a system note
+  // ("Auto-generated from … bill BR-xxxx"); that isn't a description of the
+  // advance, so the item row names the advance itself and the note is not
+  // repeated under Remarks. Hand-written notes are shown as before.
+  const isAutoNote = /^Auto-generated from/i.test(slip.notes || "");
+  const itemTitle = isAutoNote ? "Mobilisation Advance" : (slip.notes || "Advance Payment");
+  const itemSub = [slip.projectName, slip.reference ? `Ref: ${slip.reference}` : ""].filter(Boolean).join(" · ");
+  const remarks = isAutoNote ? "" : (slip.notes || "");
+
   const bankSection =
     contractor?.bankName
       ? `<div style="border:1px solid #e8e8e8;border-radius:6px;padding:14px;margin-bottom:24px">
@@ -109,7 +118,7 @@ body{font-family:Arial,sans-serif;padding:30px;color:#333;font-size:13px;-webkit
   <tbody>
     <tr>
       <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:center">1</td>
-      <td style="padding:8px 12px;border-bottom:1px solid #eee">${slip.notes || "Advance Payment"}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #eee">${itemTitle}${itemSub ? `<div style="font-size:11px;color:#777;margin-top:2px">${itemSub}</div>` : ""}</td>
       <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:center">-</td>
       <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:right">1.00</td>
       <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:right">${(slip.amount || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
@@ -136,7 +145,7 @@ body{font-family:Arial,sans-serif;padding:30px;color:#333;font-size:13px;-webkit
 
 ${bankSection}
 
-${slip.notes ? `<div style="border:1px solid #e8e8e8;border-radius:6px;padding:12px;margin-bottom:24px"><strong>Remarks:</strong> ${slip.notes}</div>` : ""}
+${remarks ? `<div style="border:1px solid #e8e8e8;border-radius:6px;padding:12px;margin-bottom:24px"><strong>Remarks:</strong> ${remarks}</div>` : ""}
 
 <div style="text-align:center;margin-top:14px">
   <button onclick="window.print()" style="background:#f47b20;color:#fff;border:none;padding:8px 24px;border-radius:4px;cursor:pointer;font-size:13px">
