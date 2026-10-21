@@ -169,7 +169,7 @@ router.post('/contractors', asyncHandler(async (req, res) => {
   const {
     companyName, shortCode, ownerName, address, mobile, alternateMobile, email,
     accountHolderName, bankName, accountNumber, ifscCode, branchName,
-    gstNumber, panNumber, workTypes, reference1, reference2, averageTurnover,
+    gstNumber, panNumber, aadhaarNumber, workTypes, reference1, reference2, averageTurnover,
     documents,
   } = req.body;
 
@@ -180,11 +180,24 @@ router.post('/contractors', asyncHandler(async (req, res) => {
   if (!/^\S+@\S+\.\S+$/.test(email)) return badRequest(res, 'Enter a valid email');
 
   const vendorCode = await nextVendorCode();
+  if (!accountHolderName || !bankName || !accountNumber || !ifscCode || !branchName) {
+    return badRequest(res, 'Complete bank details are required');
+  }
+  if (!panNumber) return badRequest(res, 'PAN number is required');
+  if (!/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(String(panNumber).trim().toUpperCase())) {
+    return badRequest(res, 'Invalid PAN — format ABCDE1234F (5 letters, 4 digits, 1 letter)');
+  }
+  if (!aadhaarNumber) return badRequest(res, 'Aadhaar number is required');
+  if (!/^\d{12}$/.test(String(aadhaarNumber).replace(/\s/g, ''))) {
+    return badRequest(res, 'Aadhaar must be exactly 12 digits');
+  }
 
   const contractor = await Contractor.create({
     vendorCode, companyName, shortCode, ownerName, address, mobile, alternateMobile, email,
     accountHolderName, bankName, accountNumber, ifscCode, branchName,
-    gstNumber, panNumber, workTypes, reference1, reference2, averageTurnover,
+    gstNumber, panNumber: String(panNumber).trim().toUpperCase(),
+    aadhaarNumber: String(aadhaarNumber).replace(/\s/g, ''),
+    workTypes, reference1, reference2, averageTurnover,
     documents,
   });
 

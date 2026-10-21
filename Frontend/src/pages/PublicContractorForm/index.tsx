@@ -89,6 +89,16 @@ export default function PublicContractorForm() {
       errors.setError("email", "Enter a valid email");
       ok = false;
     }
+    const pan = values.panNumber.trim();
+    if (pan && !/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(pan)) {
+      errors.setError("panNumber", "Invalid PAN — format ABCDE1234F (5 letters, 4 digits, 1 letter)");
+      ok = false;
+    }
+    const aadhaar = values.aadhaarNumber.replace(/\s/g, "");
+    if (aadhaar && !/^\d{12}$/.test(aadhaar)) {
+      errors.setError("aadhaarNumber", "Aadhaar must be exactly 12 digits");
+      ok = false;
+    }
     return ok;
   }
 
@@ -194,8 +204,8 @@ export default function PublicContractorForm() {
             <div className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Tax & Work Details</div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Field label="GST Number" placeholder="15-char GST" value={values.gstNumber} onChange={e => patch({ gstNumber: e.target.value })} error={errors.errors.gstNumber} />
-              <Field label="PAN Number" required placeholder="10-char PAN" value={values.panNumber} onChange={e => patch({ panNumber: e.target.value })} error={errors.errors.panNumber} />
-              <Field label="Aadhaar Number" required placeholder="12-digit Aadhaar" value={values.aadhaarNumber} onChange={e => patch({ aadhaarNumber: e.target.value })} error={errors.errors.aadhaarNumber} />
+              <Field label="PAN Number" required placeholder="e.g. ABCDE1234F" maxLength={10} value={values.panNumber} onChange={e => patch({ panNumber: e.target.value.toUpperCase() })} error={errors.errors.panNumber} />
+              <Field label="Aadhaar Number" required placeholder="12-digit Aadhaar" maxLength={12} value={values.aadhaarNumber} onChange={e => patch({ aadhaarNumber: e.target.value.replace(/\D/g, "") })} error={errors.errors.aadhaarNumber} />
               <Field label="Reference Company 1" placeholder="Optional" value={values.reference1} onChange={e => patch({ reference1: e.target.value })} />
               <Field label="Reference Company 2" placeholder="Optional" value={values.reference2} onChange={e => patch({ reference2: e.target.value })} />
               <Field
