@@ -26,10 +26,10 @@ const WORK_OPTIONS = [
 
 const DOCUMENT_FIELDS: { key: string; label: string; required?: boolean }[] = [
   { key: "gstCertificate",  label: "GST Certificate" },
-  { key: "panCard",         label: "PAN Card" },
+  { key: "panCard",         label: "PAN Card", required: true },
   { key: "cancelledCheque", label: "Cancelled Cheque" },
   { key: "businessCard",    label: "Business Card" },
-  { key: "aadhaarCard",     label: "Aadhaar Card" },
+  { key: "aadhaarCard",     label: "Aadhaar Card", required: true },
 ];
 
 const MAX_FILE_MB = 5;

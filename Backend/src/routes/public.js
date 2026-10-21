@@ -213,6 +213,8 @@ router.post('/contractors', asyncHandler(async (req, res) => {
   if (!/^\d{12}$/.test(String(aadhaarNumber).replace(/\s/g, ''))) {
     return badRequest(res, 'Aadhaar must be exactly 12 digits');
   }
+  if (!documents?.panCard?.dataUrl)     return badRequest(res, 'PAN card document is required');
+  if (!documents?.aadhaarCard?.dataUrl) return badRequest(res, 'Aadhaar card document is required');
 
   const contractor = await Contractor.create({
     vendorCode, companyName, shortCode, ownerName, address, mobile, alternateMobile, email,
