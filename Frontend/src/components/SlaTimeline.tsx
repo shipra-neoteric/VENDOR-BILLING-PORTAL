@@ -117,6 +117,21 @@ export default function SlaTimeline({ entityType, entityId, genericLabels }: { e
   const visibleStages = instance.stages.filter((s) => !(s.status === "completed" && !s.completedBy));
   if (visibleStages.length === 0) return null;
 
+  // A cancelled instance is a CLOSED cycle (work order reopened for editing, sent back, cancelled, or
+  // the bill request rejected) — its stages are frozen wherever it stopped, so listing them would show
+  // a stage as "Awaiting Approval (current)" that nobody is actually waiting on and contradict the
+  // Approval History. Say so plainly instead; a fresh SLA clock starts when it is submitted again.
+  if (instance.status === "cancelled") {
+    return (
+      <div className="mt-1">
+        <div className="text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">SLA Timeline</div>
+        <div className="text-[12.5px] text-gray-500 dark:text-gray-400 border border-dashed border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2.5">
+          The previous SLA cycle was closed (reopened, sent back or cancelled). A new SLA clock starts when this is submitted again.
+        </div>
+      </div>
+    );
+  }
+
   const currentIndex = visibleStages.findIndex((s) => s.status !== "completed");
 
   return (

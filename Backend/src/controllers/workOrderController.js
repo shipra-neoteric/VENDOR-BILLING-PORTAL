@@ -664,6 +664,13 @@ exports.updateWorkOrder = asyncHandler(async (req, res) => {
     // now stale — close it out so the next submitWorkOrder starts a clean
     // one at L1 instead of resuming/advancing the wrong stage.
     await cancelInstance('WorkOrder', workOrder._id, 'Reopened for editing — approval chain reset to L1');
+    // …and open a fresh one right away, exactly as createWorkOrder does for a new draft, so the SLA
+    // timeline shows L1 (Maker) as the current stage while the WO sits in draft — it matches the
+    // Approval History instead of freezing on the old cycle's L2/L3. Resubmitting advances it to L2.
+    await startInstance('WorkOrder', workOrder._id, workOrder.workOrderNo, req.user._id, {
+      projectId: workOrder.projectId, projectName: workOrder.projectName,
+      vendorName: workOrder.vendorName, amount: workOrder.contractValue,
+    });
 
     await logAudit({
       action: 'UPDATE', module: 'work-orders', user: req.user,
@@ -891,6 +898,12 @@ exports.sendBack = asyncHandler(async (req, res) => {
   await workOrder.save();
 
   await cancelInstance('WorkOrder', workOrder._id, `Sent back to maker: ${reason.trim()}`);
+  // A sent-back WO is back with the maker (L1) — open a fresh SLA at L1 so the timeline matches the
+  // Approval History rather than showing the cancelled cycle's last stage as still awaiting approval.
+  await startInstance('WorkOrder', workOrder._id, workOrder.workOrderNo, req.user._id, {
+    projectId: workOrder.projectId, projectName: workOrder.projectName,
+    vendorName: workOrder.vendorName, amount: workOrder.contractValue,
+  });
 
   await logAudit({
     action: 'REJECT', module: 'work-orders', user: req.user,
