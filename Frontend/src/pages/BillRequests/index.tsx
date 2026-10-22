@@ -1086,7 +1086,7 @@ export default function BillApproval() {
     let list = billReqs.filter(r => showArchived ? r.isArchived : !r.isArchived);
     list = reqTab === "all" ? list : list.filter(r => r.status === reqTab);
     if (exportScope !== "all") list = list.filter(r => scopeMatches(r.status, stageEnteredAt(r)));
-    if (reqProjectFilters.length > 0) list = list.filter(r => reqProjectFilters.includes(r.projectId));
+    if (reqProjectFilters.length > 0) list = list.filter(r => !!r.projectId && reqProjectFilters.includes(r.projectId));
     if (reqDeptFilter) list = list.filter(r => matchesDept(r));
     const q = reqSearch.trim().toLowerCase();
     if (q) {
