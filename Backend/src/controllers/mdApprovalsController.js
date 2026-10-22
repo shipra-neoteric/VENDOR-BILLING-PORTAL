@@ -121,11 +121,15 @@ function findFinalHistoryEntry(history, stagePrefix, action) {
   return null;
 }
 
-// Anyone who can open this page at all — Owner, Rahul (via his real
-// approve permissions), or a pure "Final Approval: View" grant — sees the
-// EXACT same queue: this page is, in practice, Rahul's own approval
-// process, not a personalized "your department's final items" view per
-// viewer. So this mirrors hasAnyBaseAccess's own condition (the page-level
+// Anyone who can open this page at all — Owner, or a dedicated "Final
+// Approval" Permission Matrix grant — sees the EXACT same queue: this page
+// is, in practice, Rahul's own approval process, not a personalized "your
+// department's final items" view per viewer. Holding an approve permission
+// on some OTHER module (work-orders' ceo-approve, bill-requests' gm/l3/l4-
+// approve, accounts-payment's l2-director-approve) no longer implies access
+// here — explicit confirmation: only the dedicated md-approvals grant
+// unlocks this aggregator, never a side-effect of a real per-system
+// permission. This mirrors hasAnyBaseAccess's own condition (the page-level
 // gate in listMdApprovals below) and, when true, bypasses both
 // canActOnDepartment (department scoping) and each item's own
 // approverAllowed/woApproverAllowed/can() check in the builders below —
@@ -133,14 +137,9 @@ function findFinalHistoryEntry(history, stagePrefix, action) {
 // by the genuine per-system permission regardless of any of this.
 function hasViewOnlyGrant(user) {
   return (
-    can(user, 'md-approvals', 'view') ||
-    can(user, 'md-approvals', 'approve') ||
-    can(user, 'md-approvals', 'reject') ||
-    can(user, 'work-orders', 'ceo-approve') ||
-    can(user, 'bill-requests', 'l4-approve') ||
-    can(user, 'bill-requests', 'l3-approve') ||
-    can(user, 'bill-requests', 'gm-approve') ||
-    can(user, 'accounts-payment', 'l2-director-approve')
+    can(user, 'md-approvals', 'view', 'owner') ||
+    can(user, 'md-approvals', 'approve', 'owner') ||
+    can(user, 'md-approvals', 'reject', 'owner')
   );
 }
 
@@ -451,21 +450,18 @@ exports.listMdApprovals = asyncHandler(async (req, res) => {
   const user = req.user;
   const tab = ['pending', 'approved', 'rejected'].includes(req.query.tab) ? req.query.tab : 'pending';
 
-  // Base-access guard — a user holding NONE of the final-stage permissions
-  // (including via role bypass, e.g. Owner) has no legitimate reason to even
-  // probe this endpoint, so short-circuit before running any of the queries.
-  // gm-approve/l3-approve are included alongside l4-approve since either can
-  // be the REAL final stage for a given department (see finalStageFor above).
+  // Base-access guard — a user holding NONE of the dedicated "Final
+  // Approval" Permission Matrix actions (including via role bypass, e.g.
+  // Owner) has no legitimate reason to even probe this endpoint, so
+  // short-circuit before running any of the queries. A real per-system
+  // approve permission (work-orders' ceo-approve, bill-requests' gm/l3/l4-
+  // approve, accounts-payment's l2-director-approve) does NOT unlock this
+  // aggregator on its own — only the dedicated grant does.
   const hasAnyBaseAccess =
-    can(user, 'md-approvals', 'view') ||
-    can(user, 'md-approvals', 'approve') ||
-    can(user, 'md-approvals', 'reject') ||
-    can(user, 'work-orders', 'ceo-approve') ||
-    can(user, 'bill-requests', 'l4-approve') ||
-    can(user, 'bill-requests', 'l3-approve') ||
-    can(user, 'bill-requests', 'gm-approve') ||
-    can(user, 'accounts-payment', 'l2-director-approve');
-  if (!hasAnyBaseAccess) return forbidden(res, 'You are not configured as a final-stage approver anywhere in this system.');
+    can(user, 'md-approvals', 'view', 'owner') ||
+    can(user, 'md-approvals', 'approve', 'owner') ||
+    can(user, 'md-approvals', 'reject', 'owner');
+  if (!hasAnyBaseAccess) return forbidden(res, 'You are not configured for Final Approval access — ask an admin to grant it in the Permission Matrix.');
 
   const items = tab === 'pending' ? await buildPendingItems(user) : await buildDecidedItems(user, tab);
 

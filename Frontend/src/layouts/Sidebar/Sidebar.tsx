@@ -126,28 +126,18 @@ export function canView(moduleId: string, perms: PermEntry[] | undefined, role?:
     if (!perms || perms.length === 0) return true;
     return VENDORS_MODULE_IDS.some(m => perms.some(p => p.module === m && p.actions.includes("view")));
   }
-  // MD Approvals is a cross-cutting aggregator over 3 unrelated modules'
-  // final-approval stages (work-orders ceo-approve, bill-requests l4-approve,
-  // accounts-payment l2-director-approve) — no single module's own "view"
-  // permission fits it, so gate it on the same "holds ANY of those 3" check
-  // the backend's own base-access guard uses, instead of canView's generic
-  // module+view lookup below.
+  // MD Approvals is a cross-cutting aggregator over 3 unrelated systems, but
+  // access is strictly the dedicated "Final Approval" Permission Matrix
+  // grant — holding an approve permission on some OTHER module (work-orders'
+  // ceo-approve, bill-requests' gm/l3/l4-approve, accounts-payment's
+  // l2-director-approve) no longer implies access here; that grant lets
+  // someone act on their own system's own page, not open this aggregator
+  // too. Explicit confirmation: access must come from the Permission
+  // Matrix's own "Final Approval" card, nothing else.
   if (moduleId === "md-approvals") {
     if (role === "owner") return true;
     return !!perms?.some((p) =>
-      // Dedicated page-access grant (Permission Matrix's own "Final
-      // Approval" module/view action) — lets someone open the page without
-      // separately holding an approve permission anywhere.
-      // approve/reject imply view too — granting either without separately
-      // ticking "view" shouldn't hide the nav item from someone who can act.
-      (p.module === "md-approvals" && (p.actions.includes("view") || p.actions.includes("approve") || p.actions.includes("reject"))) ||
-      (p.module === "work-orders" && p.actions.includes("ceo-approve")) ||
-      // gm-approve/l3-approve too, not just l4-approve — which stage is
-      // "final" for Bill Approval depends on the department's own
-      // requiredApprovals, so l4-approve alone missed anyone whose
-      // final stage is L2 or L3 (matches MdApprovals/index.tsx's own check).
-      (p.module === "bill-requests" && (p.actions.includes("gm-approve") || p.actions.includes("l3-approve") || p.actions.includes("l4-approve"))) ||
-      (p.module === "accounts-payment" && p.actions.includes("l2-director-approve"))
+      p.module === "md-approvals" && (p.actions.includes("view") || p.actions.includes("approve") || p.actions.includes("reject"))
     );
   }
   if (!perms || perms.length === 0) return true;

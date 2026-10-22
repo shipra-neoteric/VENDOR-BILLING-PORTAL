@@ -42,52 +42,35 @@ function hasAnyMdApprovalsAccess(user: ReturnType<typeof useAuth>["user"]): bool
   if (!user) return false;
   if (user.role === "owner") return true;
   const perms = user.permissions ?? [];
+  // Strictly the dedicated "Final Approval" Permission Matrix module —
+  // holding an approve permission on some OTHER module (work-orders'
+  // ceo-approve, bill-requests' gm/l3/l4-approve, accounts-payment's
+  // l2-director-approve) no longer implies access here; that grant lets
+  // someone act on their own system's own page, not open this cross-system
+  // aggregator too. Explicit confirmation: access must come from the
+  // Permission Matrix's own "Final Approval" card, nothing else.
   return perms.some((p) =>
-    // Page-access-only grant (User Management → Permission Matrix → Final
-    // Approval → View) — same as every other module's own generic "view",
-    // for a user who should be able to open this page without necessarily
-    // being an approver anywhere themselves. Matches the backend's own
-    // hasAnyBaseAccess guard (mdApprovalsController.js).
-    // approve/reject imply view too — granting either without separately
-    // ticking "view" shouldn't leave someone unable to even open the page.
-    (p.module === "md-approvals" && (p.actions.includes("view") || p.actions.includes("approve") || p.actions.includes("reject"))) ||
-    (p.module === "work-orders" && p.actions.includes("ceo-approve")) ||
-    // gm-approve/l3-approve, not just l4-approve — which Bill Approval
-    // stage is actually "final" is set per department (requiredApprovals),
-    // and l4-approve alone excluded anyone whose final stage is L2/L3.
-    (p.module === "bill-requests" && (p.actions.includes("gm-approve") || p.actions.includes("l3-approve") || p.actions.includes("l4-approve"))) ||
-    (p.module === "accounts-payment" && p.actions.includes("l2-director-approve"))
+    p.module === "md-approvals" && (p.actions.includes("view") || p.actions.includes("approve") || p.actions.includes("reject"))
   );
 }
 
-// Mirrors the backend's authorizeOrAlt approve-side grants exactly (see
-// */final-approve, */gm-approve, */l3-approve, */l4-approve, */agm-approve,
-// */l2-director-approve routes) — a user who can open this page via "view"
-// alone, with none of these, should see the Approve action hidden rather
-// than get a 403 toast after clicking it.
+// Strictly the dedicated "Final Approval" Permission Matrix grant — same
+// scope restriction as hasAnyMdApprovalsAccess above. Someone who can act on
+// the real per-system route (bill-requests' gm-approve, etc.) still can,
+// just from that system's own page, not from here.
 function hasMdApprovalsApprovePermission(user: ReturnType<typeof useAuth>["user"]): boolean {
   if (!user) return false;
   if (user.role === "owner") return true;
   const perms = user.permissions ?? [];
-  return perms.some((p) =>
-    (p.module === "md-approvals" && p.actions.includes("approve")) ||
-    (p.module === "work-orders" && p.actions.includes("ceo-approve")) ||
-    (p.module === "bill-requests" && (p.actions.includes("agm-approve") || p.actions.includes("gm-approve") || p.actions.includes("l3-approve") || p.actions.includes("l4-approve"))) ||
-    (p.module === "accounts-payment" && p.actions.includes("l2-director-approve"))
-  );
+  return perms.some((p) => p.module === "md-approvals" && p.actions.includes("approve"));
 }
 
-// Mirrors the backend's authorizeAnyOrAlt reject-side grants exactly (see
-// */send-back, */reject routes across all 3 systems).
 function hasMdApprovalsRejectPermission(user: ReturnType<typeof useAuth>["user"]): boolean {
   if (!user) return false;
   if (user.role === "owner") return true;
   const perms = user.permissions ?? [];
   return perms.some((p) =>
-    (p.module === "md-approvals" && p.actions.includes("reject")) ||
-    (p.module === "work-orders" && (p.actions.includes("checker") || p.actions.includes("approver") || p.actions.includes("ceo-approve"))) ||
-    (p.module === "bill-requests" && (p.actions.includes("agm-approve") || p.actions.includes("gm-approve") || p.actions.includes("l3-approve") || p.actions.includes("l4-approve"))) ||
-    (p.module === "accounts-payment" && (p.actions.includes("verify") || p.actions.includes("l1-agm-approve") || p.actions.includes("l2-director-approve") || p.actions.includes("reject")))
+    (p.module === "md-approvals" && p.actions.includes("reject"))
   );
 }
 
