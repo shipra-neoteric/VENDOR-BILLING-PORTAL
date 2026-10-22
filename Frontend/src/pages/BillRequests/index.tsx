@@ -8,6 +8,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import dayjs from "dayjs";
 import apiClient from "../../services/apiClient";
 import { SearchFilter, DropdownSelectFilter } from "../../ui/Filters";
+import MultiSelect from "../../ui/MultiSelect";
 import { useAuth } from "../../context/AuthContext";
 import type { AuthUser } from "../../context/AuthContext";
 import { selectableProjects } from "../../utils/projectOptions";
@@ -997,7 +998,7 @@ export default function BillApproval() {
   // ── Requests list (filters + pagination) ────────────────────────────────────
   const [reqTab, setReqTab] = useState("all");
   const [reqSearch, setReqSearch] = useState("");
-  const [reqProjectFilter, setReqProjectFilter] = useState<string | undefined>(undefined);
+  const [reqProjectFilters, setReqProjectFilters] = useState<string[]>([]);
   const [reqDeptFilter, setReqDeptFilter] = useState<string | undefined>(undefined);
   const [showArchived, setShowArchived] = useState(false);
   // Scopes the PDF export — same 6-bucket Progress-filter convention the
@@ -1077,15 +1078,15 @@ export default function BillApproval() {
   // this same filter, so bills from other projects leaked through whenever a
   // project filter was active.
   const matchesProject = (row: { projectId?: string }) => {
-    if (!reqProjectFilter) return true;
-    return row.projectId === reqProjectFilter;
+    if (reqProjectFilters.length === 0) return true;
+    return !!row.projectId && reqProjectFilters.includes(row.projectId);
   };
 
   const filteredReqs = useMemo(() => {
     let list = billReqs.filter(r => showArchived ? r.isArchived : !r.isArchived);
     list = reqTab === "all" ? list : list.filter(r => r.status === reqTab);
     if (exportScope !== "all") list = list.filter(r => scopeMatches(r.status, stageEnteredAt(r)));
-    if (reqProjectFilter) list = list.filter(r => r.projectId === reqProjectFilter);
+    if (reqProjectFilters.length > 0) list = list.filter(r => reqProjectFilters.includes(r.projectId));
     if (reqDeptFilter) list = list.filter(r => matchesDept(r));
     const q = reqSearch.trim().toLowerCase();
     if (q) {
@@ -1105,7 +1106,7 @@ export default function BillApproval() {
     list = list.filter(r => inDateRange(r.createdAt, reqDateFrom, reqDateTo));
     return [...list].sort((a, b) => parseInt(b.reqNo.replace(/\D/g, ""), 10) - parseInt(a.reqNo.replace(/\D/g, ""), 10));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [billReqs, reqTab, exportScope, reqProjectFilter, reqDeptFilter, reqSearch, showArchived, woDeptMap, reqDateFrom, reqDateTo]);
+  }, [billReqs, reqTab, exportScope, reqProjectFilters, reqDeptFilter, reqSearch, showArchived, woDeptMap, reqDateFrom, reqDateTo]);
 
   // One merged, number-sorted list of manual bills + bill requests — same
   // data each already-existing table showed separately, just interleaved by
@@ -1122,7 +1123,7 @@ export default function BillApproval() {
       .map(r => ({ kind: "request" as const, key: r._id, sortNo: parseInt((r.billId?.billNo || r.reqNo).replace(/\D/g, ""), 10) || 0, data: r }));
     return [...manual, ...requests].sort((a, b) => b.sortNo - a.sortNo);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [manualBills, reqTab, exportScope, reqDeptFilter, reqProjectFilter, reqSearch, reqDateFrom, reqDateTo, filteredReqs, woDeptMap]);
+  }, [manualBills, reqTab, exportScope, reqDeptFilter, reqProjectFilters, reqSearch, reqDateFrom, reqDateTo, filteredReqs, woDeptMap]);
   const combinedPager = usePagination(combinedRows, 20);
 
   // Stage labels matching the Daily Progress Report's own Pending Bills
@@ -1162,6 +1163,7 @@ export default function BillApproval() {
       days: daysPending(r.status, stageEnteredAt(r)),
       amount: r.items.reduce((s, it) => s + (it.amount ?? (it.rate ?? 0) * it.billedQty), 0),
       rejected: r.status === "rejected",
+      ts: new Date(r.createdAt).getTime(),
     }));
     const manualRows: BillApprovalExportRow[] = manualBillsForTab(reqTab).filter(b => matchesDept(b) && matchesProject(b)).map(b => ({
       billNo: b.billNo,
@@ -1173,8 +1175,10 @@ export default function BillApproval() {
       days: daysPending(b.manualApprovalStatus, stageEnteredAt(b)),
       amount: b.amount || 0,
       rejected: b.manualApprovalStatus === "rejected",
+      ts: new Date(b.billDate || b.createdAt).getTime(),
     }));
-    const rows = [...reqRows, ...manualRows];
+    // One date-wise list (newest first) instead of requests followed by manual bills.
+    const rows = [...reqRows, ...manualRows].sort((a, b) => b.ts - a.ts);
     const rangePart = reqDateFrom && reqDateTo
       ? `${reqDateFrom.format("DD MMM YYYY")} - ${reqDateTo.format("DD MMM YYYY")}`
       : reqDateFrom
@@ -1283,11 +1287,13 @@ export default function BillApproval() {
             placeholder="Search by request no, work order, contractor, or project…"
             value={reqSearch} onChange={setReqSearch}
           />
-          <DropdownSelectFilter
-            value={reqProjectFilter ?? ""} onChange={v => setReqProjectFilter(v || undefined)}
-            placeholder="All projects" resetValue=""
-            options={projectOptions}
-          />
+          <div className="w-60">
+            <MultiSelect
+              placeholder="All projects"
+              values={reqProjectFilters} onChange={setReqProjectFilters}
+              options={projectOptions}
+            />
+          </div>
           <DropdownSelectFilter
             value={reqDeptFilter ?? ""} onChange={v => setReqDeptFilter(v || undefined)}
             placeholder="All departments" resetValue=""

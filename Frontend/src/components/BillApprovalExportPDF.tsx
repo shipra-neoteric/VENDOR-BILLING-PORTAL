@@ -76,6 +76,8 @@ export interface BillApprovalExportRow {
   // Gross amount as shown on screen; rejected bills are still listed but left out of the total.
   amount: number;
   rejected: boolean;
+  // Raw request date (ms) — what the report is ordered by; requestedOn is only its display text.
+  ts: number;
 }
 
 function BillApprovalExportDocument({ rows, dateRangeLabel }: { rows: BillApprovalExportRow[]; dateRangeLabel: string }) {

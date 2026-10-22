@@ -1989,7 +1989,9 @@ export default function WorkItems() {
   // search/status/category/dept/project/date-range — whatever's applied),
   // same visual style as the Daily Progress Report PDF.
   function downloadWorkOrdersPDFExport() {
-    const rows: WorkOrderExportRow[] = filtered.map(wo => {
+    // Date-wise, newest created first.
+    const byDateDesc = [...filtered].sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+    const rows: WorkOrderExportRow[] = byDateDesc.map(wo => {
       // Pending Days = time since the WO entered its CURRENT step — the last
       // approvalHistory entry's timestamp (append-only log; its most recent
       // entry is exactly the action that pushed the WO into whatever step
