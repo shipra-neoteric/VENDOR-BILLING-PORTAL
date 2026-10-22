@@ -79,17 +79,39 @@ function DriRoutes() {
             <Route path="/work-progress"    element={<WorkProgress />} />
             <Route path="/daily-progress-report" element={<DailyProgressReport />} />
             {/* Admin module routes — visible when admin grants DRI explicit view permission */}
-            <Route path="/projects"         element={<Projects />} />
-            <Route path="/companies"        element={<Companies />} />
-            <Route path="/contractors"      element={<Contractors />} />
-            <Route path="/consultants"      element={<Consultants />} />
-            <Route path="/categories"       element={<Categories />} />
-            <Route path="/work-items"       element={<WorkItems />} />
-            <Route path="/work-items/:id"   element={<WorkOrderDashboard />} />
-            <Route path="/accounts-payment"  element={<AccountsPayment />} />
-            <Route path="/bill-requests"    element={<BillRequests />} />
-            <Route path="/ledger"           element={<Ledger />} />
-            <Route path="/drawing-requests" element={<DrawingRequests />} />
+            <Route element={<RequireModule moduleId="projects" />}>
+              <Route path="/projects"         element={<Projects />} />
+            </Route>
+            <Route element={<RequireModule moduleId="companies" />}>
+              <Route path="/companies"        element={<Companies />} />
+            </Route>
+            <Route element={<RequireModule moduleId="contractors" />}>
+              <Route path="/contractors"      element={<Contractors />} />
+            </Route>
+            <Route element={<RequireModule moduleId="consultants" />}>
+              <Route path="/consultants"      element={<Consultants />} />
+            </Route>
+            <Route element={<RequireModule moduleId="categories" />}>
+              <Route path="/categories"       element={<Categories />} />
+            </Route>
+            <Route element={<RequireModule moduleId="work-orders" />}>
+              <Route path="/work-items"       element={<WorkItems />} />
+            </Route>
+            <Route element={<RequireModule moduleId="work-orders" />}>
+              <Route path="/work-items/:id"   element={<WorkOrderDashboard />} />
+            </Route>
+            <Route element={<RequireModule moduleId="accounts-payment" />}>
+              <Route path="/accounts-payment"  element={<AccountsPayment />} />
+            </Route>
+            <Route element={<RequireModule moduleId="bill-requests" />}>
+              <Route path="/bill-requests"    element={<BillRequests />} />
+            </Route>
+            <Route element={<RequireModule moduleId="ledger" />}>
+              <Route path="/ledger"           element={<Ledger />} />
+            </Route>
+            <Route element={<RequireModule moduleId="drawing-requests" />}>
+              <Route path="/drawing-requests" element={<DrawingRequests />} />
+            </Route>
             <Route path="*"                 element={<Navigate to="/work-progress" replace />} />
           </Route>
         </Route>
@@ -117,11 +139,21 @@ function AdminRoutes() {
         <Route element={<ProtectedRoute />}>
           <Route element={<MainLayout />}>
             <Route index                    element={<Navigate to={defaultPath} replace />} />
-            <Route path="/dashboard"        element={isAccounts ? <AccountsPayment /> : showTaskQueue ? <MyTasksDashboard /> : <Dashboard />} />
-            <Route path="/contractor-matrix" element={<ContractorMatrix />} />
-            <Route path="/pending-work-orders" element={<PendingWorkOrders />} />
-            <Route path="/pending-payments" element={<PendingPayments />} />
-            <Route path="/projects-overview" element={<ProjectsList />} />
+            <Route element={<RequireModule moduleId="dashboard" />}>
+              <Route path="/dashboard"        element={isAccounts ? <AccountsPayment /> : showTaskQueue ? <MyTasksDashboard /> : <Dashboard />} />
+            </Route>
+            <Route element={<RequireModule moduleId="dashboard" />}>
+              <Route path="/contractor-matrix" element={<ContractorMatrix />} />
+            </Route>
+            <Route element={<RequireModule moduleId="dashboard" />}>
+              <Route path="/pending-work-orders" element={<PendingWorkOrders />} />
+            </Route>
+            <Route element={<RequireModule moduleId="dashboard" />}>
+              <Route path="/pending-payments" element={<PendingPayments />} />
+            </Route>
+            <Route element={<RequireModule moduleId="projects" />}>
+              <Route path="/projects-overview" element={<ProjectsList />} />
+            </Route>
             {/* Masters and its sub-pages previously rendered for ANYONE who
                 navigated straight to the URL — the sidebar hid the link,
                 but nothing stopped a direct visit. RequireModule enforces
@@ -133,34 +165,66 @@ function AdminRoutes() {
             <Route element={<RequireModule moduleId="projects" />}>
               <Route path="/projects"         element={<Projects />} />
             </Route>
-            <Route path="/contractors"      element={<Contractors />} />
-            <Route path="/consultants"      element={<Consultants />} />
-            <Route path="/vendor-groups"    element={<VendorGroups />} />
+            <Route element={<RequireModule moduleId="contractors" />}>
+              <Route path="/contractors"      element={<Contractors />} />
+            </Route>
+            <Route element={<RequireModule moduleId="consultants" />}>
+              <Route path="/consultants"      element={<Consultants />} />
+            </Route>
+            <Route element={<RequireModule moduleId="vendor-groups" />}>
+              <Route path="/vendor-groups"    element={<VendorGroups />} />
+            </Route>
             <Route element={<RequireModule moduleId="companies" />}>
               <Route path="/companies"        element={<Companies />} />
             </Route>
             <Route element={<RequireModule moduleId="categories" />}>
               <Route path="/categories"       element={<Categories />} />
             </Route>
-            <Route path="/work-items"         element={<WorkItems />} />
-            <Route path="/work-items/:id"   element={<WorkOrderDashboard />} />
-            <Route path="/quotation-comparison" element={<QuotationComparison />} />
-            <Route path="/work-progress"    element={<WorkProgress />} />
-            <Route path="/accounts-payment"  element={<AccountsPayment />} />
-            <Route path="/billing"          element={<Billing />} />
-            <Route path="/procurement-tracker" element={<ProcurementTracker />} />
-            <Route path="/site-progress"    element={<SiteProgress />} />
-            <Route path="/bill-requests"    element={<BillRequests />} />
-            <Route path="/md-approvals"     element={<MdApprovals />} />
-            <Route path="/advance-payments" element={<AdvancePayments />} />
-            <Route path="/ledger"           element={<Ledger />} />
+            <Route element={<RequireModule moduleId="work-orders" />}>
+              <Route path="/work-items"         element={<WorkItems />} />
+            </Route>
+            <Route element={<RequireModule moduleId="work-orders" />}>
+              <Route path="/work-items/:id"   element={<WorkOrderDashboard />} />
+            </Route>
+            <Route element={<RequireModule moduleId="quotation-comparison" />}>
+              <Route path="/quotation-comparison" element={<QuotationComparison />} />
+            </Route>
+            <Route element={<RequireModule moduleId="work-progress" />}>
+              <Route path="/work-progress"    element={<WorkProgress />} />
+            </Route>
+            <Route element={<RequireModule moduleId="accounts-payment" />}>
+              <Route path="/accounts-payment"  element={<AccountsPayment />} />
+            </Route>
+            <Route element={<RequireModule moduleId="billing" />}>
+              <Route path="/billing"          element={<Billing />} />
+            </Route>
+            <Route element={<RequireModule moduleId="procurement-tracker" />}>
+              <Route path="/procurement-tracker" element={<ProcurementTracker />} />
+            </Route>
+            <Route element={<RequireModule moduleId="bill-review" />}>
+              <Route path="/site-progress"    element={<SiteProgress />} />
+            </Route>
+            <Route element={<RequireModule moduleId="bill-requests" />}>
+              <Route path="/bill-requests"    element={<BillRequests />} />
+            </Route>
+            <Route element={<RequireModule moduleId="md-approvals" />}>
+              <Route path="/md-approvals"     element={<MdApprovals />} />
+            </Route>
+            <Route element={<RequireModule moduleId="advance-payments" />}>
+              <Route path="/advance-payments" element={<AdvancePayments />} />
+            </Route>
+            <Route element={<RequireModule moduleId="ledger" />}>
+              <Route path="/ledger"           element={<Ledger />} />
+            </Route>
             <Route element={<RequireModule moduleId="user-management" />}>
               <Route path="/users"            element={<UserManagement />} />
               <Route path="/users/roles/:id"  element={<RolePermissions />} />
               <Route path="/users/new"        element={<EditUser />} />
               <Route path="/users/:id/edit"   element={<EditUser />} />
             </Route>
-            <Route path="/dri-dashboard"   element={<DRIDashboard />} />
+            <Route element={<RequireModule moduleId="dri-dashboard" />}>
+              <Route path="/dri-dashboard"   element={<DRIDashboard />} />
+            </Route>
             <Route element={<RequireModule moduleId="public-forms" />}>
               <Route path="/public-forms"    element={<PublicForms />} />
             </Route>
@@ -168,18 +232,30 @@ function AdminRoutes() {
               <Route path="/sla-settings"    element={<SlaSettings />} />
               <Route path="/sla-settings/:id" element={<SlaSettingsDetail />} />
             </Route>
-            <Route path="/sla-dashboard"   element={<SlaDashboard />} />
-            <Route path="/audit-logs"      element={<AuditLogs />} />
-            <Route path="/audit-logs/:module" element={<AuditLogModule />} />
+            <Route element={<RequireModule moduleId="sla-dashboard" />}>
+              <Route path="/sla-dashboard"   element={<SlaDashboard />} />
+            </Route>
+            <Route element={<RequireModule moduleId="audit-logs" />}>
+              <Route path="/audit-logs"      element={<AuditLogs />} />
+            </Route>
+            <Route element={<RequireModule moduleId="audit-logs" />}>
+              <Route path="/audit-logs/:module" element={<AuditLogModule />} />
+            </Route>
             <Route element={<RequireModule moduleId="backup" />}>
               <Route path="/backup"          element={<Backup />} />
             </Route>
             <Route element={<RequireModule moduleId="recurring-billing" />}>
               <Route path="/recurring-billing" element={<RecurringBilling />} />
             </Route>
-            <Route path="/nexora-preview"  element={<NexoraPreview />} />
-            <Route path="/daily-progress-report" element={<DailyProgressReport />} />
-            <Route path="/drawing-requests" element={<DrawingRequests />} />
+            <Route element={<RequireModule moduleId="masters" />}>
+              <Route path="/nexora-preview"  element={<NexoraPreview />} />
+            </Route>
+            <Route element={<RequireModule moduleId="daily-progress-report" />}>
+              <Route path="/daily-progress-report" element={<DailyProgressReport />} />
+            </Route>
+            <Route element={<RequireModule moduleId="drawing-requests" />}>
+              <Route path="/drawing-requests" element={<DrawingRequests />} />
+            </Route>
             <Route path="*"                element={<Navigate to={defaultPath} replace />} />
           </Route>
         </Route>

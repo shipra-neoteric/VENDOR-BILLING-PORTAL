@@ -128,7 +128,7 @@ export function canView(moduleId: string, perms: PermEntry[] | undefined, role?:
   // ANY of them, same per-module permission checks those pages themselves
   // already enforce; this entry is pure navigation, not a new permission.
   if (moduleId === "vendors") {
-    if (!perms || perms.length === 0) return true;
+    if (!perms || perms.length === 0) return false;
     return VENDORS_MODULE_IDS.some(m => perms.some(p => p.module === m && p.actions.includes("view")));
   }
   // MD Approvals is a cross-cutting aggregator over 3 unrelated systems, but
@@ -145,7 +145,9 @@ export function canView(moduleId: string, perms: PermEntry[] | undefined, role?:
       p.module === "md-approvals" && (p.actions.includes("view") || p.actions.includes("approve") || p.actions.includes("reject"))
     );
   }
-  if (!perms || perms.length === 0) return true;
+  // No permission-matrix entry for this module (including a user with no permissions at all)
+  // means NO access — nothing is visible by default. Only the owner-only pages (handled above) bypass.
+  if (!perms || perms.length === 0) return false;
   const entry = perms.find(p => p.module === moduleId);
   return entry ? entry.actions.includes("view") : false;
 }
