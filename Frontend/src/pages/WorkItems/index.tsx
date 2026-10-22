@@ -2015,6 +2015,8 @@ export default function WorkItems() {
           return "Approved";
         })(),
         pendingDays,
+        amount: wo.contractValue || 0,
+        cancelled: wo.status === "cancelled",
       };
     });
     const dateRangeLabel = dateFrom && dateTo

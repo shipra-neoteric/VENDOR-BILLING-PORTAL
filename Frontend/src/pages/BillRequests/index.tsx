@@ -1160,6 +1160,8 @@ export default function BillApproval() {
       stage: pendingStageLabel(r.status),
       requestedOn: dayjs(r.createdAt).format("DD MMM YYYY"),
       days: daysPending(r.status, stageEnteredAt(r)),
+      amount: r.items.reduce((s, it) => s + (it.amount ?? (it.rate ?? 0) * it.billedQty), 0),
+      rejected: r.status === "rejected",
     }));
     const manualRows: BillApprovalExportRow[] = manualBillsForTab(reqTab).filter(b => matchesDept(b) && matchesProject(b)).map(b => ({
       billNo: b.billNo,
@@ -1169,6 +1171,8 @@ export default function BillApproval() {
       stage: pendingStageLabel(b.manualApprovalStatus),
       requestedOn: dayjs(b.billDate || b.createdAt).format("DD MMM YYYY"),
       days: daysPending(b.manualApprovalStatus, stageEnteredAt(b)),
+      amount: b.amount || 0,
+      rejected: b.manualApprovalStatus === "rejected",
     }));
     const rows = [...reqRows, ...manualRows];
     const rangePart = reqDateFrom && reqDateTo
