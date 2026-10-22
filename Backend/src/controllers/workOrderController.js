@@ -35,6 +35,7 @@ const { startInstance, advanceInstance, cancelInstance } = require('../utils/sla
 const { milestonesExceedContract } = require('../utils/validateMilestones');
 const { documentsExceedLimit } = require('../utils/validateDocuments');
 const { logAudit, diffFields } = require('../utils/auditLog');
+const { archiveDeleted } = require('../utils/recycleBin');
 const { sumActiveQty, applyVarianceGate, recomputeParentFromSubItems } = require('../utils/progressHelpers');
 const { getRetentionHeldForWorkOrder } = require('../utils/retentionHeld');
 const { notifyStagePending, settleAllPendingForEntity } = require('../utils/slackApprovals');
@@ -183,6 +184,19 @@ function paymentMilestonesSignature(milestones) {
   })));
 }
 
+// A draft work order is hidden from everyone except its creator and Owner —
+// but a WO that was already approved/submitted and then reopened (a Scope /
+// Payment Milestones edit resets it to 'draft') must stay visible to whoever
+// took part in that cycle (appears in approvalHistory), or the person who just
+// edited it loses sight of it. A brand-new never-submitted draft has an empty
+// approvalHistory, so it still stays private to its creator.
+function canSeeDraftWorkOrder(wo, user) {
+  if (user.role === 'owner') return true;
+  const uid = String(user._id);
+  if (String(wo.createdBy?._id || wo.createdBy) === uid) return true;
+  return (wo.approvalHistory || []).some(h => String(h.by) === uid);
+}
+
 exports.listWorkOrders = asyncHandler(async (req, res) => {
   const { projectId, vendorCode, status, search, assignedToMe } = req.query;
   const filter = {};
@@ -211,6 +225,7 @@ exports.listWorkOrders = asyncHandler(async (req, res) => {
       $or: [
         { approvalStatus: { $ne: 'draft' } },
         { createdBy: req.user._id },
+        { 'approvalHistory.by': req.user._id },
       ],
     }]);
   }
@@ -271,8 +286,7 @@ exports.getWorkOrder = asyncHandler(async (req, res) => {
   // Same draft-visibility rule as listWorkOrders — a still-draft WO is only
   // visible to its own creator (or Owner) via direct link/id too, not just
   // hidden from the list.
-  if (workOrder.approvalStatus === 'draft' && req.user.role !== 'owner'
-    && String(workOrder.createdBy?._id || workOrder.createdBy) !== String(req.user._id)) {
+  if (workOrder.approvalStatus === 'draft' && !canSeeDraftWorkOrder(workOrder, req.user)) {
     return notFound(res, 'Work order not found');
   }
 
@@ -317,10 +331,7 @@ exports.getWorkOrdersBulkDetail = asyncHandler(async (req, res) => {
     .lean();
 
   // Same draft-visibility rule as getWorkOrder/listWorkOrders.
-  const visible = workOrders.filter(wo =>
-    wo.approvalStatus !== 'draft' || req.user.role === 'owner'
-    || String(wo.createdBy?._id || wo.createdBy) === String(req.user._id)
-  );
+  const visible = workOrders.filter(wo => wo.approvalStatus !== 'draft' || canSeeDraftWorkOrder(wo, req.user));
 
   // Same batched live-party overlay listWorkOrders already does — one query
   // per party type across the whole batch, not one per WO.
@@ -969,6 +980,21 @@ exports.unlockWorkOrder = asyncHandler(async (req, res) => {
 exports.deleteWorkOrder = asyncHandler(async (req, res) => {
   const workOrder = await WorkOrder.findById(req.params.id);
   if (!workOrder) return notFound(res, 'Work order not found');
+
+  // Bills / requests keep pointing at this work order by id — deleting it out
+  // from under them leaves them orphaned (that is how WO-0181's bills got
+  // stranded). Same stance as deleteProject: refuse while live ones exist.
+  const [liveBills, liveRequests] = await Promise.all([
+    RunningBill.countDocuments({ workOrderId: workOrder._id, status: { $ne: 'rejected' } }),
+    BillRequest.countDocuments({ workOrderId: workOrder._id, status: { $ne: 'rejected' } }),
+  ]);
+  if (liveBills || liveRequests) {
+    return conflict(res, `Cannot delete ${workOrder.workOrderNo} — it still has ${liveBills} bill(s) and ${liveRequests} bill request(s) against it. Reject or archive those first.`);
+  }
+
+  // Keep a full copy in Masters → Recycle Bin first; if that copy can't be
+  // saved we stop here rather than delete something we can't bring back.
+  await archiveDeleted('WorkOrder', workOrder, req.user, req.body?.reason);
   await workOrder.deleteOne();
   await logAudit({
     action: 'DELETE', module: 'work-orders', user: req.user,
