@@ -76,6 +76,12 @@ const ADMIN_GROUPS: NavGroup[] = [
     ],
   },
   {
+    label: "DRI",
+    items: [
+      { name: "DRI Dashboard", path: "/dri-dashboard", icon: <Monitor className="w-4 h-4" />, moduleId: "dri-dashboard" },
+    ],
+  },
+  {
     label: "Admin",
     items: [
       // Links straight into the Masters section's first page — the
@@ -85,7 +91,6 @@ const ADMIN_GROUPS: NavGroup[] = [
       // this single entry just gets an admin into that area. Kept as its
       // own moduleId ("masters") so canView can gate it independently of
       // the underlying pages' own per-module permissions below.
-      { name: "DRI Dashboard", path: "/dri-dashboard", icon: <Monitor className="w-4 h-4" />, moduleId: "dri-dashboard" },
       { name: "Masters", path: MASTERS_OVERVIEW_ITEM.path, icon: <ShieldCheck className="w-4 h-4" />, moduleId: "masters" },
 
       { name: "Audit Logs", path: "/audit-logs", icon: <History className="w-4 h-4" />, moduleId: "audit-logs" },
