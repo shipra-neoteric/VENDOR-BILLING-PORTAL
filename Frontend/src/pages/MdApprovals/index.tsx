@@ -23,6 +23,13 @@ import ReviewDrawer from "./ReviewDrawer";
 import { SYSTEM_LABEL } from "./types";
 import type { MdApprovalRow, MdSystem, MdTab } from "./types";
 
+// Timestamp a row is ordered by (newest first): decision time on the Approved/Rejected tabs, otherwise the
+// moment it reached the current approval stage, falling back to when it was submitted.
+function newestFirstTime(r: MdApprovalRow): number {
+  const t = new Date(r.decidedAt || r.pendingSince || r.submittedAt || 0).getTime();
+  return Number.isFinite(t) ? t : 0;
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const fmt = (n: number) => "₹" + (n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -277,6 +284,9 @@ export default function MdApprovals() {
     }
     list = list.filter((r) => inDateRange(r.submittedAt, dateFrom, dateTo));
     if (tab === "aging") list = [...list].sort((a, b) => (b.daysPending ?? 0) - (a.daysPending ?? 0));
+    // Every other tab: newest first, then older — by when it reached this approval stage (pending) or
+    // was decided (approved / rejected). Ties fall back to the reference number, highest first.
+    else list = [...list].sort((a, b) => newestFirstTime(b) - newestFirstTime(a) || (b.referenceNumber || "").localeCompare(a.referenceNumber || "", undefined, { numeric: true }));
     return list;
   }, [items, tab, systemGroupKey, deptFilter, projectFilter, showArchived, search, dateFrom, dateTo]);
 

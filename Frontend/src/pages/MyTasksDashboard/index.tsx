@@ -136,7 +136,10 @@ export default function MyTasksDashboard() {
   const openWO = (id: string) => navigate(`/work-items/${id}`);
 
   // ── AGM: bill requests at 'pending' (L1), waiting on AGM approval ──
-  const agmReqRows = billReqs.map(r => ({
+  // /bill-requests comes back oldest-first (by stage, then creation); every list on this page is newest first.
+  const newestFirst = <T extends { createdAt?: string }>(list: T[]) =>
+    [...list].sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+  const agmReqRows = newestFirst(billReqs).map(r => ({
     key: r._id, label: r.reqNo,
     sub: [r.vendorName, r.projectName, r.workOrderNo].filter(Boolean).join(" · "),
     amount: r.items.reduce((s, it) => s + (it.amount || 0), 0) || undefined,
@@ -144,7 +147,7 @@ export default function MyTasksDashboard() {
   }));
 
   // ── GM: bill requests at 'pending-gm' (L2), waiting on GM approval ──
-  const gmReqRows = billReqsGm.map(r => ({
+  const gmReqRows = newestFirst(billReqsGm).map(r => ({
     key: r._id, label: r.reqNo,
     sub: [r.vendorName, r.projectName, r.workOrderNo].filter(Boolean).join(" · "),
     amount: r.items.reduce((s, it) => s + (it.amount || 0), 0) || undefined,
