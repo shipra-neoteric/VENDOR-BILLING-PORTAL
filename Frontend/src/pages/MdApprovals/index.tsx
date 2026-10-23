@@ -565,14 +565,14 @@ export default function MdApprovals() {
             message={tab === "pending" ? "You're all caught up — nothing across any approval chain needs you right now." : "Nothing matches this view right now."}
           />
         ) : (
-        // min-w-[900px] below sm only — table-fixed otherwise force-shrinks
-        // every column to fit a phone's width, overlapping text instead of
-        // just scrolling sideways; sm:min-w-0 keeps desktop unchanged.
-        <Table containerClassName="h-[650px] overflow-y-auto" className="min-w-[1150px] sm:min-w-0">
+        // min-w-[1100px] at every width — table-fixed splits the width equally, so on anything narrower
+        // (a laptop with the sidebar open, a phone) the Reference/Project/Vendor/Amount columns got
+        // force-shrunk and their text overlapped; below that width the table now scrolls sideways instead.
+        <Table containerClassName="h-[650px] overflow-y-auto" className="min-w-[1100px]">
           <Thead>
             <Tr>
               {!isDecidedTab && (
-                <Th className="w-32 whitespace-nowrap">
+                <Th className="w-28 whitespace-nowrap">
                   <label className="flex items-center gap-2 cursor-pointer select-none">
                     <input
                       type="checkbox"
@@ -587,15 +587,15 @@ export default function MdApprovals() {
                   </label>
                 </Th>
               )}
-              <Th className="w-40 whitespace-nowrap">System</Th>
+              <Th className="w-36 whitespace-nowrap">System</Th>
               <Th>Reference</Th>
               <Th>Work Order</Th>
               <Th>Project</Th>
               <Th>Vendor</Th>
               <Th>Department</Th>
-              <Th>Amount</Th>
-              <Th>{isDecidedTab ? "Decided / Days to Decide" : "Pending Since"}</Th>
-              <Th>Action</Th>
+              <Th className="w-40 whitespace-nowrap">Amount</Th>
+              <Th className="w-36">{isDecidedTab ? "Decided / Days to Decide" : "Pending Since"}</Th>
+              <Th className="w-28">Action</Th>
             </Tr>
           </Thead>
           <Tbody>
@@ -623,12 +623,12 @@ export default function MdApprovals() {
                   </Td>
                 )}
                 <Td className="whitespace-nowrap"><NxBadge color="indigo">{SYSTEM_LABEL[row.system]}</NxBadge></Td>
-                <Td className="font-bold">{row.referenceNumber || "—"}</Td>
-                <Td>{row.workOrderNo || "—"}</Td>
-                <Td>{row.projectName || "—"}</Td>
-                <Td>{row.vendorName || "—"}</Td>
-                <Td>{row.department || "—"}</Td>
-                <Td className="font-mono">{fmt(row.amount)}</Td>
+                <Td className="font-bold break-words">{row.referenceNumber || "—"}</Td>
+                <Td className="break-words">{row.workOrderNo || "—"}</Td>
+                <Td className="break-words">{row.projectName || "—"}</Td>
+                <Td className="break-words">{row.vendorName || "—"}</Td>
+                <Td className="break-words">{row.department || "—"}</Td>
+                <Td className="font-mono whitespace-nowrap">{fmt(row.amount)}</Td>
                 <Td>
                   {isDecidedTab ? (
                     <div>
@@ -636,8 +636,8 @@ export default function MdApprovals() {
                       <div className="text-xs text-gray-400">{row.daysToDecide ?? 0}d to decide · {row.decidedBy || "—"}</div>
                     </div>
                   ) : (
-                    <div className="flex items-center gap-2">
-                      <span>{row.daysPending === null ? "—" : `${row.daysPending ?? 0} days`}</span>
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <span className="whitespace-nowrap">{row.daysPending === null ? "—" : `${row.daysPending ?? 0} days`}</span>
                       {isOverdue(row) && <NxBadge color="red">Overdue</NxBadge>}
                     </div>
                   )}
