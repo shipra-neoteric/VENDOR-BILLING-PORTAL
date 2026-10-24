@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import type { ReactNode, HTMLAttributes, ThHTMLAttributes, TdHTMLAttributes } from "react";
 
 interface TableProps extends HTMLAttributes<HTMLTableElement> {
@@ -12,10 +13,53 @@ interface TableProps extends HTMLAttributes<HTMLTableElement> {
   containerClassName?: string;
 }
 
+// Phone card view (see the `table[data-cards="on"]` rules in index.css): each
+// body/footer cell gets its column's header text as `data-label`, which the CSS
+// shows as a small caption so a row can render as a stacked card instead of a
+// 10-column strip. Only tables with ONE plain header row qualify — anything
+// with multi-row headers or rowSpan keeps the normal (horizontally scrolling)
+// table, since a card can't represent those. Desktop is never affected.
+function applyCardLabels(table: HTMLTableElement) {
+  const headRows = table.tHead?.rows;
+  const hasRowSpan = table.querySelector("th[rowspan], td[rowspan]") !== null;
+  if (!headRows || headRows.length !== 1 || hasRowSpan) { table.dataset.cards = "off"; return; }
+  const labels: string[] = [];
+  Array.from(headRows[0].cells).forEach((c) => {
+    for (let i = 0; i < (c.colSpan || 1); i++) labels.push((c.textContent || "").trim());
+  });
+  const rows = [...Array.from(table.tBodies).flatMap((b) => Array.from(b.rows)), ...(table.tFoot ? Array.from(table.tFoot.rows) : [])];
+  rows.forEach((row) => {
+    let col = 0;
+    Array.from(row.cells).forEach((cell) => {
+      // A header like "Select all" belongs to the header checkbox, not to each row's.
+      cell.dataset.label = cell.querySelector("input[type=checkbox]") ? "Select" : (labels[col] || "");
+      col += cell.colSpan || 1;
+    });
+  });
+  table.dataset.cards = "on";
+}
+
 export function Table({ children, className = "", containerClassName = "", ...rest }: TableProps) {
+  // table-fixed + w-full splits the width equally, so on a phone every column
+  // gets squeezed into a sliver. Unless the caller already set its own min-w-*,
+  // give the table a floor below the sm breakpoint — the wrapper's
+  // overflow-x-auto then scrolls sideways instead of crushing the columns.
+  // (Tables that qualify for the phone card view ignore this floor.)
+  const phoneFloor = /\bmin-w-/.test(className) ? "" : "min-w-[640px] sm:min-w-0";
+  const tableRef = useRef<HTMLTableElement>(null);
+  useEffect(() => {
+    const table = tableRef.current;
+    if (!table) return;
+    applyCardLabels(table);
+    // Rows come and go (filters, pagination, loaded data) — relabel on change.
+    // childList only (not attributes), so labelling itself can't retrigger this.
+    const observer = new MutationObserver(() => applyCardLabels(table));
+    observer.observe(table, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, []);
   return (
     <div className={["w-full overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700/40", containerClassName].join(" ")}>
-      <table className={["w-full table-fixed border-collapse text-sm", className].join(" ")} {...rest}>
+      <table ref={tableRef} className={["w-full table-fixed border-collapse text-sm", phoneFloor, className].join(" ")} {...rest}>
         {children}
       </table>
     </div>

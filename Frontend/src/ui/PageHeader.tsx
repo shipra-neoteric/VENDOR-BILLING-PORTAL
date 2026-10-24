@@ -16,7 +16,7 @@ interface PageHeaderProps {
 
 export default function PageHeader({ title, subtitle, icon: Icon, actions, onBack }: PageHeaderProps) {
   return (
-    <div className="flex items-center justify-between gap-3 mb-6 w-full">
+    <div className="flex flex-wrap sm:flex-nowrap items-center justify-between gap-3 mb-6 w-full">
       <div className="flex items-center gap-3 min-w-0">
         {onBack && (
           <button
@@ -38,7 +38,7 @@ export default function PageHeader({ title, subtitle, icon: Icon, actions, onBac
           {subtitle && <p className="text-sm text-gray-500 dark:text-gray-400 line-clamp-2">{subtitle}</p>}
         </div>
       </div>
-      {actions && <div className="flex items-center gap-2 shrink-0">{actions}</div>}
+      {actions && <div className="flex flex-wrap items-center gap-2 sm:shrink-0">{actions}</div>}
     </div>
   );
 }

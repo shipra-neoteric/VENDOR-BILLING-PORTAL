@@ -75,7 +75,7 @@ export default function MainLayout({ children }: Props) {
               <MastersSidebar />
             </div>
           )}
-          <div className="flex-1 overflow-y-auto p-4 md:p-7" style={{ minWidth: 0 }}>
+          <div className="flex-1 overflow-y-auto p-2 sm:p-4 md:p-7" style={{ minWidth: 0 }}>
             {/* Every page opened from either sidebar sits inside this one big
                 card — same bordered/shadowed look as the Header and main
                 Sidebar — instead of floating directly on the page
@@ -88,7 +88,7 @@ export default function MainLayout({ children }: Props) {
                 the real viewport, which silently broke every modal/drawer
                 opened from a page inside it (the backdrop stopped covering
                 the sidebar). */}
-            <div className="-mx-1 md:-mx-4 -mt-2 md:-mt-5 min-h-[calc(100%+0.5rem)] bg-white/95 dark:bg-gray-800/95 border border-gray-100 dark:border-gray-700/50 shadow-sm rounded-xl p-4 md:p-6">
+            <div className="-mx-1 md:-mx-4 -mt-2 md:-mt-5 min-h-[calc(100%+0.5rem)] bg-white/95 dark:bg-gray-800/95 border border-gray-100 dark:border-gray-700/50 shadow-sm rounded-xl p-3 sm:p-4 md:p-6">
               {showVendorsTabs && (
                 <div className="mb-4">
                   <Segmented

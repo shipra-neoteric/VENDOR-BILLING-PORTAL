@@ -485,12 +485,13 @@ export default function MdApprovals() {
       {/* Entire list surface — system pills, filters and the table itself —
           in one glass-panel shell, matching the app's own convention (see
           WorkItems/index.tsx's identical wrapper). */}
-      <div className="bg-white/90 dark:bg-gray-800/95 backdrop-blur-xl border border-gray-100 dark:border-gray-700/50 rounded-xl shadow-sm p-5">
+      <div className="bg-white/90 dark:bg-gray-800/95 backdrop-blur-xl border border-gray-100 dark:border-gray-700/50 rounded-xl shadow-sm p-3 sm:p-5">
         {/* 3 system quick-filter buttons (+ All Systems) — the main ask.
             Replaces the old module dropdown so there's a single control for
             "which system", not two doing the same job. */}
         <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-          <div className="flex flex-wrap items-center gap-2.5">
+          {/* One swipeable row on phones instead of wrapping into a tall stack. */}
+          <div className="flex flex-nowrap sm:flex-wrap items-center gap-2.5 max-w-full overflow-x-auto sm:overflow-visible pb-1 sm:pb-0 [&>*]:shrink-0">
             {/* Light-orange filled pill when active, plain gray outline
                 otherwise — same theme as the Archive button below. */}
             {SYSTEM_GROUPS.map((g) => {

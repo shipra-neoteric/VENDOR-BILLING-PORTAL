@@ -521,7 +521,7 @@ export default function Ledger() {
             options={contractors.map(c => ({ value: c.vendorCode, label: `${c.vendorCode} — ${vendorLabel(c.companyName || "", c.shortCode)}` }))}
           />
           <DateRangeFilter onChange={(from, to) => { setDateFrom(from); setDateTo(to); }} />
-          <div className="w-64">
+          <div className="w-full sm:w-64">
             <SField
               value={null} placeholder="Jump to Work Order…"
               onChange={id => { if (id) setSelectedWOId(id); }}

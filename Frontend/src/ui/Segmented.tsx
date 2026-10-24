@@ -21,7 +21,7 @@ interface SegmentedProps<T extends string> {
 
 export default function Segmented<T extends string>({ value, onChange, options, variant = "pill", divided = false }: SegmentedProps<T>) {
   return (
-    <div className={variant === "pill" ? "inline-flex items-center gap-0.5 p-1 rounded-lg bg-gray-100 dark:bg-gray-800/60" : "inline-flex items-center gap-4"}>
+    <div className={`max-w-full overflow-x-auto ${variant === "pill" ? "inline-flex items-center gap-0.5 p-1 rounded-lg bg-gray-100 dark:bg-gray-800/60" : "inline-flex items-center gap-4"}`}>
       {options.map((o, i) => {
         const isActive = o.value === value;
         // Never show a divider touching the active pill (its own background

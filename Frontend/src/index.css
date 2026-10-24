@@ -161,6 +161,70 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* iOS Safari zooms the whole page in when a focused field's font is under
+   16px (most of this app's inputs are 13px) and doesn't zoom back out.
+   16px on phones only stops that; desktop sizing is untouched. */
+@media (max-width: 767px) {
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* ── Phone card view for <Table> ──────────────────────────────────────────
+   Below the sm breakpoint a table with a single plain header row (flagged
+   data-cards="on" by ui/Table.tsx, which also stamps each cell's data-label)
+   renders as a stack of cards: header row hidden, one card per row, each cell
+   a "COLUMN NAME … value" line. Desktop/tablet layout is untouched. */
+@media (max-width: 639px) {
+  table[data-cards="on"] { display: block; min-width: 0 !important; width: 100% !important; }
+  table[data-cards="on"] > thead { display: none; }
+  table[data-cards="on"] > tbody,
+  table[data-cards="on"] > tfoot { display: block; border: 0; }
+  table[data-cards="on"] > tbody > tr,
+  table[data-cards="on"] > tfoot > tr {
+    display: block;
+    margin: 8px;
+    padding: 4px 12px;
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    border-radius: 10px;
+  }
+  table[data-cards="on"] > tbody > tr > td,
+  table[data-cards="on"] > tfoot > tr > td {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    width: auto !important;
+    padding: 7px 0 !important;
+    text-align: right !important;
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+    border: 0;
+    position: static !important;
+  }
+  table[data-cards="on"] > tbody > tr > td + td,
+  table[data-cards="on"] > tfoot > tr > td + td { border-top: 1px dashed rgba(148, 163, 184, 0.25); }
+  table[data-cards="on"] > tbody > tr > td::before,
+  table[data-cards="on"] > tfoot > tr > td::before {
+    content: attr(data-label);
+    flex-shrink: 0;
+    max-width: 45%;
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    text-align: left;
+    color: #6b7280;
+  }
+  table[data-cards="on"] > tbody > tr > td[data-label=""]::before,
+  table[data-cards="on"] > tfoot > tr > td[data-label=""]::before { display: none; }
+  /* empty-label cells are usually the row's action buttons — keep them tidy */
+  table[data-cards="on"] > tbody > tr > td[data-label=""] { justify-content: flex-end; }
+}
+
 /* ── Global scrollbar ─────────────────────────────────────────────────────
    One consistent, always-visible scrollbar app-wide (matching the Filters
    dropdown's own look) — not the OS's hover-only overlay one, which reads
