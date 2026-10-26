@@ -925,7 +925,14 @@ export default function NewBillDrawer({
   // Billing list. saveAsDraft=false (the existing/default path, unchanged):
   // submits straight into that chain, exactly as this form always has.
   async function handleSubmit(saveAsDraft: boolean) {
-    const validItems = lineItems.filter((li) => li.description.trim() && li.billedQty > 0);
+    const enteredItems = lineItems.filter((li) => li.description.trim() && li.billedQty > 0);
+    // Only a bill whose Bill Type is "Retention Release" (or whose Relationship Type is
+    // RETENTION_RELEASE_OF) can skip the work items (it just
+    // pays back held retention) — the server and the print sheet treat this one placeholder line
+    // as "release of held retention". Every other bill still needs a real work item.
+    const validItems = enteredItems.length === 0 && (billType === "retention_release" || relType === "RETENTION_RELEASE_OF") && retentionReleaseAmount > 0
+      ? [{ ...blankRow(), description: "Release of held retention", unit: "nos", billedQty: 1, rate: 0, amount: 0 }]
+      : enteredItems;
     if (validItems.length === 0) {
       toast.error("Add at least one work item with a description and quantity > 0");
       return;
@@ -956,6 +963,10 @@ export default function NewBillDrawer({
     }
     if (retentionReleaseAmount > 0 && !retentionReleaseRemark.trim()) {
       formErrors.setError("retentionReleaseRemark", "Required when releasing held retention");
+      hasError = true;
+    }
+    if (retentionReleaseAmount > retentionHeldForWO) {
+      toast.error(`Release amount cannot be more than the ${fmt(retentionHeldForWO)} held on this work order`);
       hasError = true;
     }
     if (hasError) return;
@@ -1002,7 +1013,7 @@ export default function NewBillDrawer({
       // an advance) — so it must pass through even with linkedBills empty.
       // Every other relationship type genuinely references another bill and
       // is meaningless without one, so those still fall back to NONE.
-      relationshipType: (relType === "ADVANCE_FOR" || linkedBills.length > 0) ? relType : "NONE",
+      relationshipType: (relType === "ADVANCE_FOR" || relType === "RETENTION_RELEASE_OF" || linkedBills.length > 0) ? relType : "NONE",
       linkedBills: linkedBills.length > 0 ? linkedBills : [],
       workOrderId: linkedToScopeItems ? (importedFromWOId || selectedWOId || undefined) : (selectedWOId || undefined),
       ...(selectedMilestoneIds.length ? { milestoneIds: selectedMilestoneIds } : {}),
@@ -1703,8 +1714,9 @@ export default function NewBillDrawer({
                     label="Release Held Retention (₹)"
                     type="number" min="0" placeholder="0 — leave blank to skip"
                     value={retentionReleaseAmount || ""}
-                    onChange={(e) => setRetentionReleaseAmount(Number(e.target.value) || 0)}
-                    hint={retentionReleaseAmount > retentionHeldForWO ? `Only ${fmt(retentionHeldForWO)} is currently held on this work order` : undefined}
+                    onChange={(e) => setRetentionReleaseAmount(Math.min(Number(e.target.value) || 0, retentionHeldForWO))}
+                    max={retentionHeldForWO}
+                    hint={`Cannot be more than the ${fmt(retentionHeldForWO)} currently held on this work order`}
                   />
                   <Field
                     label={`Release Remark${retentionReleaseAmount > 0 ? " *" : ""}`}

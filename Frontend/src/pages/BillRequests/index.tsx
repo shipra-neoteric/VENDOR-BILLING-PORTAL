@@ -1757,7 +1757,7 @@ export default function BillApproval() {
               type="number" min="0" max={approveRetentionHeld || undefined}
               placeholder="0"
               value={approveRetentionReleaseAmount ?? ""}
-              onChange={(e) => setApproveRetentionReleaseAmount(e.target.value ? Number(e.target.value) : null)}
+              onChange={(e) => setApproveRetentionReleaseAmount(e.target.value ? Math.min(Number(e.target.value), approveRetentionHeld) : null)}
               hint={`Retention currently held on this WO: ${fmt(approveRetentionHeld)}`}
             />
           </div>
@@ -1851,7 +1851,7 @@ export default function BillApproval() {
               type="number" min="0" max={gmRetentionHeld || undefined}
               placeholder="0"
               value={gmRetentionReleaseAmount ?? ""}
-              onChange={(e) => setGmRetentionReleaseAmount(e.target.value ? Number(e.target.value) : null)}
+              onChange={(e) => setGmRetentionReleaseAmount(e.target.value ? Math.min(Number(e.target.value), gmRetentionHeld) : null)}
               hint={`Retention currently held on this WO: ${fmt(gmRetentionHeld)}`}
             />
           </div>
@@ -1919,7 +1919,7 @@ export default function BillApproval() {
               type="number" min="0" max={l3RetentionHeld || undefined}
               placeholder="0"
               value={l3RetentionReleaseAmount ?? ""}
-              onChange={(e) => setL3RetentionReleaseAmount(e.target.value ? Number(e.target.value) : null)}
+              onChange={(e) => setL3RetentionReleaseAmount(e.target.value ? Math.min(Number(e.target.value), l3RetentionHeld) : null)}
               hint={`Retention currently held on this WO: ${fmt(l3RetentionHeld)}`}
             />
           </div>
@@ -1986,7 +1986,7 @@ export default function BillApproval() {
               type="number" min="0" max={l4RetentionHeld || undefined}
               placeholder="0"
               value={l4RetentionReleaseAmount ?? ""}
-              onChange={(e) => setL4RetentionReleaseAmount(e.target.value ? Number(e.target.value) : null)}
+              onChange={(e) => setL4RetentionReleaseAmount(e.target.value ? Math.min(Number(e.target.value), l4RetentionHeld) : null)}
               hint={`Retention currently held on this WO: ${fmt(l4RetentionHeld)}`}
             />
           </div>

@@ -193,7 +193,21 @@ export function printBill(
   // Contractor names often come in as ALL CAPS from older records — Title Case
   // reads better for the masthead than shouting the whole thing.
   const contractorNameTitleCase = contractorName.replace(/\w\S*/g, w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
-  const rows = (bill.lineItems || [])
+  // A bill that only pays back held retention (no new work, nothing billed) is not a
+  // running bill — the sheet should say so.
+  const isHoldRelease = (bill.retentionReleased ?? 0) > 0 && (bill.amount ?? 0) === 0;
+  const pageTitle = isHoldRelease ? 'HOLD RELEASE BILL' : 'RUNNING BILL';
+
+  // Release-only bill: one plain line carrying the released amount, instead of a dummy 0-rate work row.
+  const rows = isHoldRelease ? `
+      <tr>
+        <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:center">1</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #eee">Release of held retention${bill.retentionReleaseRemark ? `<div style="font-size:10px;color:#555;margin-top:3px">${bill.retentionReleaseRemark}</div>` : ""}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:center">-</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:right">-</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:right">-</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:right;font-weight:600">${(bill.retentionReleased ?? 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+      </tr>` : (bill.lineItems || [])
     .map(
       (li, i) => `
       <tr>
@@ -261,7 +275,7 @@ body{font-family:Arial,sans-serif;padding:30px;color:#333;font-size:13px;-webkit
     <div style="font-size:20px;font-weight:bold;color:#f47b20">${contractorNameTitleCase}</div>
   </div>
   <div style="text-align:right">
-    <div style="font-size:22px;font-weight:bold;letter-spacing:2px;color:#333">${mode === 'pre' ? 'RUNNING BILL' : 'PAYMENT RECEIPT'}</div>
+    <div style="font-size:22px;font-weight:bold;letter-spacing:2px;color:#333">${mode === 'pre' ? pageTitle : 'PAYMENT RECEIPT'}</div>
     ${bill.billRequestNo ? `<div style="margin-top:6px;font-size:13px"><strong>Bill Request No:</strong> ${bill.billRequestNo}</div>` : ""}
     <div style="${bill.billRequestNo ? "" : "margin-top:6px;"}font-size:13px"><strong>Bill No:</strong> ${bill.billNo}</div>
     <div style="font-size:13px"><strong>Date:</strong> ${bill.billDate ? dayjs(bill.billDate).format("DD/MM/YYYY") : "-"}</div>
@@ -326,9 +340,9 @@ body{font-family:Arial,sans-serif;padding:30px;color:#333;font-size:13px;-webkit
 
 <div style="display:flex;justify-content:flex-end;margin-bottom:24px">
   <div style="min-width:${(bill.linkedBills ?? []).some(l => l.relationshipType === 'SUPERSEDES' && l.description) ? 480 : 320}px;border:1px solid #e8e8e8;border-radius:6px;overflow:hidden;font-family:monospace">
-    <div style="display:flex;justify-content:space-between;padding:9px 14px;border-bottom:1px solid #eee">
+    ${isHoldRelease ? "" : `<div style="display:flex;justify-content:space-between;padding:9px 14px;border-bottom:1px solid #eee">
       <span>Gross Amount</span><span>₹${(bill.amount || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-    </div>
+    </div>`}
     ${(bill.retentionAmount ?? 0) > 0 ? `
     <div style="display:flex;justify-content:space-between;padding:9px 14px;border-bottom:1px solid #eee;color:#dc2626">
       <span>Hold / Retention${(bill.retentionPercent ?? 0) > 0 ? ` @ ${bill.retentionPercent}%` : ""}</span>

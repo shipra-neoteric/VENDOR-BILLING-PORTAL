@@ -409,6 +409,17 @@ exports.getBill = asyncHandler(async (req, res) => {
 // entering the checker/approver chain — a manually-typed bill has no BillRequest/
 // AGM sign-off upstream, so it's the case that most needs that first checkpoint,
 // not least.
+// A bill whose Bill Type is 'retention_release' (or Relationship Type RETENTION_RELEASE_OF) only pays back held retention and has no
+// new work to list, so the maker is not forced to invent a work item: an empty list plus a release
+// amount becomes one plain placeholder line (zero amount — the released money is added to net
+// payable, not billed). Every other bill still needs at least one real work item.
+function withReleaseOnlyLine(lineItems, body) {
+  if (lineItems.length === 0 && (body.billType === 'retention_release' || body.relationshipType === 'RETENTION_RELEASE_OF') && Number(body.retentionReleaseAmount) > 0) {
+    return [{ description: 'Release of held retention', unit: 'nos', billedQty: 1, rate: 0, amount: 0 }];
+  }
+  return lineItems;
+}
+
 exports.createBill = asyncHandler(async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
@@ -496,7 +507,7 @@ exports.createBill = asyncHandler(async (req, res) => {
     if (!company) return notFound(res, 'Company not found');
   }
 
-  const lineItems = Array.isArray(req.body.lineItems) ? req.body.lineItems : [];
+  const lineItems = withReleaseOnlyLine(Array.isArray(req.body.lineItems) ? req.body.lineItems : [], req.body);
   if (lineItems.length === 0) {
     return badRequest(res, 'At least one work item is required');
   }
@@ -846,7 +857,7 @@ exports.editManualBill = asyncHandler(async (req, res) => {
   if (!atL1) return badRequest(res, 'A bill can only be edited with the full form while it is still pending L1 approval (or saved as a draft).');
   if (!bill.isUnsubmittedDraft && !canActOnDepartment(req.user, bill)) return forbidden(res, 'This bill belongs to a different department.');
 
-  const lineItems = Array.isArray(req.body.lineItems) ? req.body.lineItems : [];
+  const lineItems = withReleaseOnlyLine(Array.isArray(req.body.lineItems) ? req.body.lineItems : [], req.body);
   if (lineItems.length === 0) return badRequest(res, 'At least one work item is required');
 
   // 1) Release the old quantity lock on the bill's current work order (in memory until saved).
