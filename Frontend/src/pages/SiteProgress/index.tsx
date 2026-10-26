@@ -11,6 +11,7 @@ import { useAuth } from "../../context/AuthContext";
 import { DropdownSelectFilter, FilterRow, SearchFilter } from "../../ui/Filters";
 import DateRangeFilter, { inDateRange } from "../../components/DateRangeFilter";
 import WorkflowInstanceStepper from "../../components/WorkflowInstanceStepper";
+import PlannedQtyCell from "../../components/PlannedQtyCell";
 import type { WorkflowInstance } from "../../types/Workflow";
 import UIBadge from "../../ui/Badge";
 import Btn from "../../ui/Btn";
@@ -39,13 +40,13 @@ interface ProgressEntryDetail {
 }
 interface SubItemDetail {
   _id: string; description: string; remarks?: string; unit: string;
-  plannedQty: number; completedQty: number; lastBilledQty: number;
+  plannedQty: number; originalPlannedQty?: number | null; completedQty: number; lastBilledQty: number;
   status?: string; varianceApproved?: boolean;
   progressEntries?: ProgressEntryDetail[];
 }
 interface ScopeItemDetail {
   _id: string; description: string; remarks?: string; unit: string;
-  plannedQty: number; completedQty: number; lastBilledQty: number;
+  plannedQty: number; originalPlannedQty?: number | null; completedQty: number; lastBilledQty: number;
   status?: string; varianceApproved?: boolean;
   subItems?: SubItemDetail[];
   progressEntries?: ProgressEntryDetail[];
@@ -779,7 +780,7 @@ export default function SiteProgress({ embeddedEditBRId, onEmbeddedClose }: {
                               {si.remarks && <div className="text-[11px] text-amber-600 font-normal">📌 {si.remarks}</div>}
                             </Td>
                             <Td dense>{si.unit}</Td>
-                            <Td dense className="font-mono">{fmtN(si.plannedQty)}</Td>
+                            <Td dense className="font-mono"><PlannedQtyCell planned={si.plannedQty} original={si.originalPlannedQty} format={fmtN} /></Td>
                             <Td dense className="font-mono">{fmtN(si.completedQty)}</Td>
                             <Td dense className="font-mono">{fmtN(billed)}</Td>
                             <Td dense className={`font-mono ${unbilled > 0 ? "text-primary font-bold" : "text-gray-400"}`}>{fmtN(unbilled)}</Td>
@@ -831,7 +832,7 @@ export default function SiteProgress({ embeddedEditBRId, onEmbeddedClose }: {
                                     {subEntryCount > 0 && <span className="text-[10px] text-gray-400 ml-1.5">({subEntryCount})</span>}
                                   </Td>
                                   <Td dense className="text-xs">{sub.unit}</Td>
-                                  <Td dense className="font-mono text-xs">{fmtN(sub.plannedQty)}</Td>
+                                  <Td dense className="font-mono text-xs"><PlannedQtyCell planned={sub.plannedQty} original={sub.originalPlannedQty} format={fmtN} /></Td>
                                   <Td dense className="font-mono text-xs">{fmtN(sub.completedQty)}</Td>
                                   <Td dense className="font-mono text-xs">{fmtN(sub.lastBilledQty || 0)}</Td>
                                   <Td dense className={`font-mono text-xs ${subUnbilled > 0 ? "text-primary font-bold" : "text-gray-400"}`}>{fmtN(subUnbilled)}</Td>

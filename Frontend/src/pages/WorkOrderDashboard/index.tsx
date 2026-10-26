@@ -27,13 +27,13 @@ interface ProgressEntry { _id: string; date: string; qtyAdded: number; remarks?:
 
 interface ScopeSubItem {
   _id?: string; id?: string; description: string; unit: string;
-  plannedQty: number; rate: number; amount: number;
+  plannedQty: number; originalPlannedQty?: number | null; rate: number; amount: number;
   completedQty?: number; lastBilledQty?: number; status?: string;
 }
 
 interface ScopeItem {
   _id: string; description: string; unit: string;
-  plannedQty: number; rate: number; amount: number;
+  plannedQty: number; originalPlannedQty?: number | null; rate: number; amount: number;
   completedQty: number; lastBilledQty: number;
   status: string; progressEntries: ProgressEntry[];
   // Only meaningful for a professional-services deliverable.
@@ -51,6 +51,7 @@ interface WODetail {
   cancelReason?: string; cancelledAt?: string;
   isLocked?: boolean;
   scopeItems: ScopeItem[];
+  planRevisions?: { at: string; byName?: string; itemLabel: string; unit?: string; oldQty: number; newQty: number; oldAmount: number; newAmount: number; oldContract: number; newContract: number; contractUpdated?: boolean; note?: string }[];
   // 4-level approval workflow
   approvalStatus?: ApprovalStatus;
   makerBy?: ActorRef; makerAt?: string;
@@ -827,6 +828,25 @@ export default function WorkOrderDashboard() {
               <div className="px-6 py-4 font-bold text-[15px] text-[#1A1A2E] dark:text-[#F1F5F9]">
                 Scope Items Progress
               </div>
+              {(wo.planRevisions?.length ?? 0) > 0 && (
+                <details className="mx-6 mb-4 rounded-lg border border-amber-200 dark:border-amber-500/30 bg-amber-50/60 dark:bg-amber-500/5">
+                  <summary className="cursor-pointer px-4 py-2.5 text-[13px] font-bold text-amber-700 dark:text-amber-400">
+                    Plan revisions ({wo.planRevisions!.length}) — quantity raised after an approved variance
+                  </summary>
+                  <div className="px-4 pb-3 divide-y divide-amber-100 dark:divide-amber-500/20">
+                    {[...wo.planRevisions!].reverse().map((r, i) => (
+                      <div key={i} className="py-2 text-[12.5px]">
+                        <div className="font-semibold text-[#1A1A2E] dark:text-[#F1F5F9]">{r.itemLabel}</div>
+                        <div className="text-gray-600 dark:text-gray-300">
+                          Planned {fmtQty(r.oldQty)} → <b>{fmtQty(r.newQty)}</b> {r.unit} · Item amount {fmtMoney(r.oldAmount)} → <b>{fmtMoney(r.newAmount)}</b>
+                          {r.contractUpdated ? <> · Contract value {fmtMoney(r.oldContract)} → <b>{fmtMoney(r.newContract)}</b></> : <> · Contract value unchanged</>}
+                        </div>
+                        <div className="text-[11px] text-gray-400">{dayjs(r.at).format("DD MMM YYYY, h:mm A")}{r.byName ? ` · by ${r.byName}` : ""}{r.note ? ` · ${r.note}` : ""}</div>
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              )}
               {wo.scopeItems.length === 0 ? (
                 <EmptyState title="No scope items defined" />
               ) : (
@@ -857,7 +877,7 @@ export default function WorkOrderDashboard() {
                         {/* Numbers row */}
                         <div className="flex gap-6 flex-wrap">
                           {[
-                            { label: "Planned",   value: `${fmtQty(si.plannedQty)} ${si.unit}`,                        cls: "text-gray-700 dark:text-gray-300" },
+                            { label: "Planned",   value: `${fmtQty(si.plannedQty)} ${si.unit}${si.originalPlannedQty != null && si.originalPlannedQty !== si.plannedQty ? ` (revised from ${fmtQty(si.originalPlannedQty)})` : ""}`,                        cls: "text-gray-700 dark:text-gray-300" },
                             { label: "Done",      value: `${fmtQty(si.completedQty)} ${si.unit}`,                       cls: pct >= 100 ? "text-emerald-600 dark:text-emerald-400" : "text-gray-700 dark:text-gray-300" },
                             { label: "Billed",    value: `${fmtQty(si.lastBilledQty || 0)} ${si.unit}`,                 cls: "text-emerald-600 dark:text-emerald-400" },
                             { label: "Unbilled",  value: pending > 0 ? `${fmtQty(pending)} ${si.unit}` : "—",           cls: pending > 0 ? "text-primary" : "text-gray-400 dark:text-gray-500" },

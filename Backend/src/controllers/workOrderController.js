@@ -1399,6 +1399,42 @@ exports.invalidateSubItemProgressEntry = asyncHandler(async (req, res) => {
 // AGM/GM sign off on a scope item's (or particular's) progress currently
 // exceeding its planned quantity — required before that item can be selected
 // into a bill request. See applyVarianceGate() for when this gets reset.
+// An approved variance means the extra quantity is accepted, so the work order itself is brought in
+// line: the item's planned quantity becomes what was actually done and its amount follows at the
+// same rate. The contract value moves by the same difference — but only when it was derived from the
+// scope items in the first place (equals their total); a contract value that was typed in separately
+// is left alone and the response says so. The original plan is kept (originalPlannedQty/Amount) so
+// the screens can show Planned → Revised.
+const money2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+function scopeTotal(workOrder) {
+  return workOrder.scopeItems.reduce((sum, si) => sum + (si.subItems && si.subItems.length
+    ? si.subItems.reduce((s, sub) => s + (Number(sub.amount) || 0), 0)
+    : (Number(si.amount) || 0)), 0);
+}
+function reviseWorkOrderPlan(workOrder, target, user, itemLabel) {
+  const oldQty = target.plannedQty || 0;
+  const oldAmount = Number(target.amount) || 0;
+  const newQty = target.completedQty || 0;
+  const newAmount = (target.rate || 0) > 0 ? money2(newQty * target.rate) : oldAmount;
+  const contractFollowsScope = Math.abs((Number(workOrder.contractValue) || 0) - scopeTotal(workOrder)) < 1;
+  const oldContract = Number(workOrder.contractValue) || 0;
+
+  if (target.originalPlannedQty == null) {
+    target.originalPlannedQty = oldQty;
+    target.originalAmount = oldAmount;
+  }
+  target.plannedQty = newQty;
+  target.amount = newAmount;
+  target.revisedAt = new Date();
+  target.revisedBy = user._id;
+  if (contractFollowsScope) workOrder.contractValue = money2(oldContract + (newAmount - oldAmount));
+  workOrder.planRevisions.push({
+    at: new Date(), by: user._id, byName: user.name || '', itemLabel, unit: target.unit || '',
+    oldQty, newQty, oldAmount, newAmount, oldContract, newContract: Number(workOrder.contractValue) || 0, contractUpdated: contractFollowsScope,
+  });
+  return { oldQty, newQty, oldAmount, newAmount, oldContract, newContract: Number(workOrder.contractValue) || 0, contractUpdated: contractFollowsScope };
+}
+
 exports.approveScopeItemVariance = asyncHandler(async (req, res) => {
   const workOrder = await WorkOrder.findById(req.params.id);
   if (!workOrder) return notFound(res, 'Work order not found');
@@ -1414,15 +1450,16 @@ exports.approveScopeItemVariance = asyncHandler(async (req, res) => {
   item.varianceApprovedBy = req.user._id;
   item.varianceApprovedAt = new Date();
   item.varianceApprovedAtQty = item.completedQty;
+  const rev = reviseWorkOrderPlan(workOrder, item, req.user, item.description);
   await workOrder.save();
 
   await logAudit({
     action: 'APPROVE', module: 'work-orders', user: req.user,
-    description: `Approved progress variance on ${item.description} for ${workOrder.workOrderNo} (${item.completedQty}/${item.plannedQty} ${item.unit})`,
+    description: `Approved progress variance on ${item.description} for ${workOrder.workOrderNo} — plan raised ${rev.oldQty} → ${rev.newQty} ${item.unit}, item amount ₹${rev.oldAmount} → ₹${rev.newAmount}${rev.contractUpdated ? `, contract value ₹${rev.oldContract} → ₹${rev.newContract}` : ' (contract value left unchanged)'}`,
     entityType: 'WorkOrder', entityId: workOrder._id, entityLabel: workOrder.workOrderNo,
   });
 
-  success(res, { workOrder }, 'Variance approved');
+  success(res, { workOrder }, rev.contractUpdated ? 'Variance approved — work order plan and value updated' : 'Variance approved — work order plan updated (contract value was entered separately, left unchanged)');
 });
 
 exports.approveSubItemVariance = asyncHandler(async (req, res) => {
@@ -1442,11 +1479,13 @@ exports.approveSubItemVariance = asyncHandler(async (req, res) => {
   subItem.varianceApprovedBy = req.user._id;
   subItem.varianceApprovedAt = new Date();
   subItem.varianceApprovedAtQty = subItem.completedQty;
+  const rev = reviseWorkOrderPlan(workOrder, subItem, req.user, `${item.description} — ${subItem.description}`);
+  recomputeParentFromSubItems(item);
   await workOrder.save();
 
   await logAudit({
     action: 'APPROVE', module: 'work-orders', user: req.user,
-    description: `Approved progress variance on ${item.description} — ${subItem.description} for ${workOrder.workOrderNo} (${subItem.completedQty}/${subItem.plannedQty} ${subItem.unit})`,
+    description: `Approved progress variance on ${item.description} — ${subItem.description} for ${workOrder.workOrderNo} — plan raised ${rev.oldQty} → ${rev.newQty} ${subItem.unit}, amount ₹${rev.oldAmount} → ₹${rev.newAmount}${rev.contractUpdated ? `, contract value ₹${rev.oldContract} → ₹${rev.newContract}` : ' (contract value left unchanged)'}`,
     entityType: 'WorkOrder', entityId: workOrder._id, entityLabel: workOrder.workOrderNo,
   });
 

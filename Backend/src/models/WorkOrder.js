@@ -61,6 +61,12 @@ const subItemSchema = new mongoose.Schema(
     varianceApprovedBy:   { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     varianceApprovedAt:   { type: Date },
     varianceApprovedAtQty:{ type: Number },
+    // Set once, the first time an approved variance raises the plan — keeps the quantity/amount the
+    // work order was originally signed off at, so screens can show "Planned X → Revised Y".
+    originalPlannedQty:   { type: Number },
+    originalAmount:       { type: Number },
+    revisedAt:            { type: Date },
+    revisedBy:            { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },
   { _id: true }
 );
@@ -90,6 +96,12 @@ const scopeItemSchema = new mongoose.Schema(
     varianceApprovedBy:   { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     varianceApprovedAt:   { type: Date },
     varianceApprovedAtQty:{ type: Number },
+    // Set once, the first time an approved variance raises the plan — keeps the quantity/amount the
+    // work order was originally signed off at, so screens can show "Planned X → Revised Y".
+    originalPlannedQty:   { type: Number },
+    originalAmount:       { type: Number },
+    revisedAt:            { type: Date },
+    revisedBy:            { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },
   { _id: true }
 );
@@ -197,6 +209,23 @@ const workOrderSchema = new mongoose.Schema(
     // other WO field.
     internalRemark: { type: String, default: '' },
     scopeItems:    [scopeItemSchema],
+    // Every time an approved variance raised a scope item's plan (see reviseWorkOrderPlan in
+    // workOrderController.js) — the "Plan revisions" list on the work order screen.
+    planRevisions: [{
+      at:           { type: Date, default: Date.now },
+      by:           { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      byName:       { type: String, default: '' },
+      itemLabel:    { type: String, default: '' },
+      unit:         { type: String, default: '' },
+      oldQty:       { type: Number },
+      newQty:       { type: Number },
+      oldAmount:    { type: Number },
+      newAmount:    { type: Number },
+      oldContract:  { type: Number },
+      newContract:  { type: Number },
+      contractUpdated: { type: Boolean, default: false },
+      note:         { type: String, default: '' },
+    }],
     contractValue: { type: Number, default: 0 },
     // Flat rupee discount off the overall contract value — entered once payment
     // milestones are set up, not per-milestone.

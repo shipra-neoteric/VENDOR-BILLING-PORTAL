@@ -25,6 +25,7 @@ import Alert from "../../ui/Alert";
 import { Descriptions, DescItem } from "../../ui/Descriptions";
 import { Table, Thead, Tbody, Tr, Th, Td } from "../../ui/Table";
 import RemarksListInput from "../../components/RemarksListInput";
+import PlannedQtyCell from "../../components/PlannedQtyCell";
 import dayjs from "dayjs";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -58,6 +59,7 @@ interface SubItemDetail {
   remarks?: string;
   unit: string;
   plannedQty: number;
+  originalPlannedQty?: number | null;
   completedQty: number;
   lastBilledQty: number;
   status: string;
@@ -70,6 +72,7 @@ interface ScopeItemDetail {
   remarks?: string;
   unit: string;
   plannedQty: number;
+  originalPlannedQty?: number | null;
   completedQty: number;
   lastBilledQty: number;
   status?: string;
@@ -951,7 +954,7 @@ export default function DRIDashboard() {
                                     {si.remarks && <div className="text-[11px] font-normal text-amber-600 mt-0.5">📌 {si.remarks}</div>}
                                   </Td>
                                   <Td dense className="text-gray-500 dark:text-gray-400 whitespace-nowrap">{si.unit}</Td>
-                                  <Td dense className="font-mono whitespace-nowrap">{fmtN(si.plannedQty)}</Td>
+                                  <Td dense className="font-mono whitespace-nowrap"><PlannedQtyCell planned={si.plannedQty} original={si.originalPlannedQty} format={fmtN} /></Td>
                                   <Td dense className={`font-mono whitespace-nowrap ${si.completedQty > 0 ? "text-emerald-600" : "text-gray-400"}`}>{fmtN(si.completedQty)}</Td>
                                   <Td dense className="font-mono text-blue-600 whitespace-nowrap">{fmtN(billed)}</Td>
                                   <Td dense className="font-mono whitespace-nowrap">

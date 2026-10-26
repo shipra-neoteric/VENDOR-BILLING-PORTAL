@@ -25,6 +25,7 @@ import NxBadge from "../../ui/nexora/Badge";
 import NxBtn from "../../ui/nexora/Btn";
 import NxStatCard from "../../ui/nexora/StatCard";
 import RemarksListInput from "../../components/RemarksListInput";
+import PlannedQtyCell from "../../components/PlannedQtyCell";
 
 dayjs.extend(isoWeek);
 
@@ -41,12 +42,12 @@ interface ProgressEntry {
 }
 interface SubItemR {
   _id: string; description: string; remarks?: string; unit: string;
-  plannedQty: number; completedQty: number; lastBilledQty: number;
+  plannedQty: number; originalPlannedQty?: number | null; completedQty: number; lastBilledQty: number;
   status?: string; progressEntries?: ProgressEntry[];
 }
 interface ScopeItemR {
   _id: string; description: string; remarks?: string; unit: string;
-  plannedQty: number; completedQty: number; lastBilledQty: number;
+  plannedQty: number; originalPlannedQty?: number | null; completedQty: number; lastBilledQty: number;
   rate: number; status?: string; progressEntries?: ProgressEntry[];
   subItems?: SubItemR[];
 }
@@ -462,7 +463,7 @@ function WorkProgressAdmin() {
                           )}
                         </Td>
                         <Td><TdText>{si.unit}</TdText></Td>
-                        <Td><span className="font-mono"><TdText>{fmtN(si.plannedQty)}</TdText></span></Td>
+                        <Td><span className="font-mono"><TdText><PlannedQtyCell planned={si.plannedQty} original={si.originalPlannedQty} format={fmtN} /></TdText></span></Td>
                         <Td><span className={`font-mono ${si.completedQty > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-gray-400 dark:text-gray-500"}`}>{fmtN(si.completedQty)}</span></Td>
                         <Td><span className="font-mono text-blue-600 dark:text-blue-400">{fmtN(si.lastBilledQty || 0)}</span></Td>
                         <Td>
@@ -1051,7 +1052,7 @@ function DRIDashboard() {
                                     {si.remarks && <div className="text-[11px] font-normal text-amber-600 mt-0.5">📌 {si.remarks}</div>}
                                   </Td>
                                   <Td className="text-gray-500 dark:text-gray-400 text-xs">{si.unit}</Td>
-                                  <Td className="font-mono text-xs">{fmtN(si.plannedQty)}</Td>
+                                  <Td className="font-mono text-xs"><PlannedQtyCell planned={si.plannedQty} original={si.originalPlannedQty} format={fmtN} /></Td>
                                   <Td className={`font-mono text-xs ${si.completedQty > 0 ? "text-emerald-600" : "text-gray-400"}`}>{fmtN(si.completedQty)}</Td>
                                   <Td className="font-mono text-xs">
                                     {unbilled > 0 ? <span className="text-primary font-bold">{fmtN(unbilled)}</span> : <span className="text-gray-400">—</span>}
