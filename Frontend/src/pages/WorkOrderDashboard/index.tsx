@@ -594,6 +594,11 @@ export default function WorkOrderDashboard() {
                               // Old-combined format: no Room level, degrades to Floor → item → subItems.
                               if (!flat.rooms) {
                                 const si = flat.scopeItem!;
+                                // A work item named just after its floor ("Ground Floor") is the floor itself —
+                                // show its particulars straight under the floor row instead of repeating the name.
+                                if (flat.label.trim().toLowerCase() === floor.label.trim().toLowerCase()) {
+                                  return <Fragment key={flat.key}>{renderWorkItemRows(si, 1)}</Fragment>;
+                                }
                                 return (
                                   <Fragment key={flat.key}>
                                     <Tr className="bg-gray-50/70 dark:bg-gray-800/25">
