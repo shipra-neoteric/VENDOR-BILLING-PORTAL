@@ -587,15 +587,17 @@ export default function WorkOrderDetailView({
                       return (
                         <Fragment key={si._id}>
                           <Tr className="bg-gray-100/70 dark:bg-gray-800/40">
-                            <Td colSpan={5}>
+                            {/* S.No in its own cell, like every other row, so the numbers line up. */}
+                            <Td><TdText>{idx + 1}</TdText></Td>
+                            <Td colSpan={4}>
                               <div className="flex items-center justify-between gap-2.5">
                                 <button
                                   type="button"
                                   onClick={() => toggleNode(si._id)}
-                                  className="flex items-center gap-1.5 font-extrabold text-[#1A1A2E] dark:text-[#F1F5F9]"
+                                  className="text-left font-semibold text-[#1A1A2E] dark:text-[#F1F5F9]"
                                 >
-                                  <span className="inline-block w-6 text-gray-500 dark:text-gray-400 font-normal">{idx + 1}</span>
                                   {si.description}
+                                  <span className="ml-1.5 text-[11px] font-normal text-gray-400">({si.subItems!.length} particulars)</span>
                                 </button>
                                 <div className="flex items-center gap-1.5">
                                   <MassExpandButton mode="expand" title="Expand" onClick={(e) => { e.stopPropagation(); setExpandedNodes(prev => new Set(prev).add(si._id)); }} />

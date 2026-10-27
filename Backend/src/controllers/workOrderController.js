@@ -1406,18 +1406,22 @@ exports.invalidateSubItemProgressEntry = asyncHandler(async (req, res) => {
 // is left alone and the response says so. The original plan is kept (originalPlannedQty/Amount) so
 // the screens can show Planned → Revised.
 const money2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+// A scope item's stored amount is its own qty × rate when filled in, otherwise the total of its
+// particulars (the New/Edit Work Order form applies that rule) — so the scope total is just the sum.
 function scopeTotal(workOrder) {
-  return workOrder.scopeItems.reduce((sum, si) => sum + (si.subItems && si.subItems.length
-    ? si.subItems.reduce((s, sub) => s + (Number(sub.amount) || 0), 0)
-    : (Number(si.amount) || 0)), 0);
+  return workOrder.scopeItems.reduce((sum, si) => sum + (Number(si.amount) || 0), 0);
 }
-function reviseWorkOrderPlan(workOrder, target, user, itemLabel) {
+function reviseWorkOrderPlan(workOrder, target, user, itemLabel, parent = null) {
   const oldQty = target.plannedQty || 0;
   const oldAmount = Number(target.amount) || 0;
   const newQty = target.completedQty || 0;
   const newAmount = (target.rate || 0) > 0 ? money2(newQty * target.rate) : oldAmount;
   const contractFollowsScope = Math.abs((Number(workOrder.contractValue) || 0) - scopeTotal(workOrder)) < 1;
   const oldContract = Number(workOrder.contractValue) || 0;
+  // A particular only moves the item amount (and the contract) when the item's amount is derived
+  // from its particulars; if the item has its own qty × rate, particulars are reference only.
+  const parentDerived = !!parent && !((parent.plannedQty || 0) * (parent.rate || 0) > 0);
+  const contractDelta = parent ? (parentDerived ? newAmount - oldAmount : 0) : newAmount - oldAmount;
 
   if (target.originalPlannedQty == null) {
     target.originalPlannedQty = oldQty;
@@ -1427,7 +1431,8 @@ function reviseWorkOrderPlan(workOrder, target, user, itemLabel) {
   target.amount = newAmount;
   target.revisedAt = new Date();
   target.revisedBy = user._id;
-  if (contractFollowsScope) workOrder.contractValue = money2(oldContract + (newAmount - oldAmount));
+  if (parentDerived) parent.amount = money2((Number(parent.amount) || 0) + (newAmount - oldAmount));
+  if (contractFollowsScope && contractDelta) workOrder.contractValue = money2(oldContract + contractDelta);
   workOrder.planRevisions.push({
     at: new Date(), by: user._id, byName: user.name || '', itemLabel, unit: target.unit || '',
     oldQty, newQty, oldAmount, newAmount, oldContract, newContract: Number(workOrder.contractValue) || 0, contractUpdated: contractFollowsScope,
@@ -1479,7 +1484,7 @@ exports.approveSubItemVariance = asyncHandler(async (req, res) => {
   subItem.varianceApprovedBy = req.user._id;
   subItem.varianceApprovedAt = new Date();
   subItem.varianceApprovedAtQty = subItem.completedQty;
-  const rev = reviseWorkOrderPlan(workOrder, subItem, req.user, `${item.description} — ${subItem.description}`);
+  const rev = reviseWorkOrderPlan(workOrder, subItem, req.user, `${item.description} — ${subItem.description}`, item);
   recomputeParentFromSubItems(item);
   await workOrder.save();
 

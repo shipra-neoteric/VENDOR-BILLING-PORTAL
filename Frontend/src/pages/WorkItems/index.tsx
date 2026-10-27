@@ -220,14 +220,26 @@ const resolveUnit = (unit: string, customUnit: string) =>
 const isKnownUnit = (unit: string) =>
   UNIT_OPTIONS.some(u => u.value === unit && u.value !== "custom");
 
-// Sub-items ("Particulars") are a read-only breakdown for reference only — the
-// main work item's own qty/rate is always what drives the contract value, so
-// the two don't get added together or shown as if both count.
+// A work item's amount comes from its OWN qty × rate when that is filled in. Only when it is
+// not (qty or rate left empty) does it fall back to the total of its Particulars (each
+// particular's own qty × rate) — never both, so the two are not added together.
 const calcSubItemAmt = (si: ScopeSubItemDraft) =>
   (si.plannedQty || 0) * (si.rate || 0);
 
-const calcDraftItemAmt = (item: ScopeItemDraft): number =>
+const calcOwnItemAmt = (item: ScopeItemDraft): number =>
   (item.plannedQty || 0) * (item.rate || 0);
+
+const calcParticularsTotal = (item: ScopeItemDraft): number =>
+  (item.subItems || []).reduce((s, si) => s + calcSubItemAmt(si), 0);
+
+const calcDraftItemAmt = (item: ScopeItemDraft): number => {
+  const own = calcOwnItemAmt(item);
+  return own > 0 ? own : calcParticularsTotal(item);
+};
+
+// True when the amount shown for this item is the sum of its particulars, not its own qty × rate.
+const isAmtFromParticulars = (item: ScopeItemDraft): boolean =>
+  calcOwnItemAmt(item) <= 0 && calcParticularsTotal(item) > 0;
 
 const calcTotalAmt = (items: ScopeItemDraft[]) =>
   items.reduce((s, it) => s + calcDraftItemAmt(it), 0);
@@ -734,8 +746,9 @@ function ScopeItemsBuilder({ items, onChange, allCategories = [], topCatId = nul
                 getSubSubCatOptions(item.subCategoryId).length > 0;
 
               const amtBox = () => (
-                <div className="bg-primary/5 border border-primary/20 rounded-md px-2.5 py-1.5 font-mono font-bold text-primary text-xs min-h-[36px] flex items-center">
+                <div className="bg-primary/5 border border-primary/20 rounded-md px-2.5 py-1.5 font-mono font-bold text-primary text-xs min-h-[36px] flex flex-col justify-center">
                   {calcDraftItemAmt(item) > 0 ? fmt(calcDraftItemAmt(item)) : "—"}
+                  {isAmtFromParticulars(item) && <span className="font-sans font-normal text-[10px] text-gray-500">from particulars</span>}
                 </div>
               );
 
