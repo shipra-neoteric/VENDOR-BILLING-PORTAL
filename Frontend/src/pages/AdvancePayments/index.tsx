@@ -1,10 +1,9 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
-import { Plus, Printer, Trash2, Wallet, Archive } from "lucide-react";
+import { Printer, Trash2, Wallet, Archive } from "lucide-react";
 import dayjs from "dayjs";
 import apiClient from "../../services/apiClient";
-import { selectableProjects } from "../../utils/projectOptions";
 import { vendorLabel } from "../../utils/vendorLabel";
 import { printAdvanceSlip } from "../../shared/utils/printAdvanceSlip";
 import type { Contractor } from "../../types/VendorBilling";
@@ -13,9 +12,6 @@ import Btn from "../../ui/Btn";
 import NxBtn from "../../ui/nexora/Btn";
 import NxBadge from "../../ui/nexora/Badge";
 import type { NxBadgeColor } from "../../ui/nexora/Badge";
-import Field from "../../ui/Field";
-import SField from "../../ui/SField";
-import { DatePicker } from "../../ui/DatePicker";
 import Modal from "../../ui/Modal";
 import ConfirmModal from "../../ui/ConfirmModal";
 import EmptyState from "../../ui/EmptyState";
@@ -54,10 +50,6 @@ interface AdvanceSlip {
   createdBy?: { name?: string } | string | null;
 }
 
-interface CompanyOpt { _id: string; name: string; shortCode: string; isActive?: boolean; }
-
-const emptyForm = { projectId: "", contractorCode: "", companyId: "", amount: "", date: dayjs().format("YYYY-MM-DD"), reference: "", notes: "" };
-
 export default function AdvancePayments() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -67,17 +59,12 @@ export default function AdvancePayments() {
   const cameFromBilling = searchParams.get("from") === "billing";
   const [slips,    setSlips]    = useState<AdvanceSlip[]>([]);
   const [loading,  setLoading]  = useState(false);
-  const [modal,    setModal]    = useState(false);
-  const [saving,   setSaving]   = useState(false);
-  const [form, setForm] = useState(emptyForm);
-  const [projects,     setProjects]     = useState<{ _id: string; name: string; parentId?: string | null }[]>([]);
   // Widened to the full Contractor shape (minus `documents`, which /contractors
   // already omits from the list) — GET /contractors returns bank/GST/PAN
   // fields too, same response resolvePrintParty (printBill.ts) reads for a
   // real bill's contractor lookup; this page already fetches the whole list,
   // so no extra request is needed to get bank details for the detail modal/print.
   const [contractors,  setContractors]  = useState<Contractor[]>([]);
-  const [companies,    setCompanies]    = useState<CompanyOpt[]>([]);
   const [showArchived, setShowArchived] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<AdvanceSlip | null>(null);
   const [detailTarget, setDetailTarget] = useState<AdvanceSlip | null>(null);
@@ -96,41 +83,8 @@ export default function AdvancePayments() {
   }, [showArchived]);
 
   useEffect(() => {
-    apiClient.get("/projects").then(r  => setProjects(r.data.projects ?? []));
     apiClient.get("/contractors").then(r => setContractors(r.data.contractors ?? []));
-    apiClient.get("/companies").then(r => setCompanies((r.data.companies ?? []).filter((c: CompanyOpt) => c.isActive !== false)));
   }, []);
-
-  const handleCreate = async () => {
-    if (!form.projectId) return toast.error("Select a project");
-    if (!form.contractorCode) return toast.error("Select a contractor");
-    if (!form.companyId) return toast.error("Select a company");
-    if (!form.amount || Number(form.amount) <= 0) return toast.error("Enter a valid advance amount");
-    if (!form.date) return toast.error("Select a date");
-    setSaving(true);
-    try {
-      const project    = projects.find(p => p._id === form.projectId);
-      const contractor = contractors.find(c => c.vendorCode === form.contractorCode);
-      await apiClient.post("/advance-slips", {
-        projectId:       form.projectId,
-        contractorCode:  form.contractorCode,
-        companyId:       form.companyId,
-        amount:          Number(form.amount),
-        date:            form.date,
-        reference:       form.reference,
-        notes:           form.notes,
-        projectName:     project?.name     ?? "",
-        contractorName:  contractor?.companyName ?? "",
-      });
-      toast.success("Advance slip created");
-      setForm(emptyForm);
-      setModal(false);
-      load(showArchived);
-    } catch (e: unknown) {
-      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message || "Failed to create";
-      toast.error(msg);
-    } finally { setSaving(false); }
-  };
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
@@ -152,10 +106,9 @@ export default function AdvancePayments() {
     <div>
       <PageHeader
         title="Advance Payments"
-        subtitle="Track advance amounts given to contractors against projects. Recoveries are auto-deducted at bill release."
+        subtitle="Advances given to contractors against projects. A new advance is raised from Billing → New Bill (Mobilisation Advance → Advance For) and appears here once approved. Recoveries are auto-deducted at bill release."
         icon={Wallet}
         onBack={cameFromBilling ? () => navigate("/billing") : undefined}
-        actions={<NxBtn color="primary" icon={Plus} label="New Advance Slip" onClick={() => { setForm(emptyForm); setModal(true); }} />}
       />
 
       <div className="flex items-center gap-3 flex-wrap mb-4">
@@ -252,55 +205,6 @@ export default function AdvancePayments() {
       )}
       {slips.length > 0 && pager.totalPages > 1 && (
         <div className="mt-4"><Pagination page={pager.page} totalPages={pager.totalPages} onChange={pager.setPage} /></div>
-      )}
-
-      {modal && (
-        <Modal title="New Advance Slip" onClose={() => setModal(false)} footer={
-          <div className="flex justify-end gap-2">
-            <Btn label="Cancel" outline onClick={() => setModal(false)} disabled={saving} />
-            <Btn label="Create Advance Slip" color="primary" loading={saving} onClick={handleCreate} />
-          </div>
-        }>
-          <div className="flex flex-col gap-4">
-            <SField
-              label="Project" required placeholder="Select project"
-              value={form.projectId || null}
-              onChange={v => setForm(f => ({ ...f, projectId: v }))}
-              options={selectableProjects(projects).map(p => ({ label: p.name, value: p._id }))}
-            />
-            <SField
-              label="Contractor" required placeholder="Select contractor"
-              value={form.contractorCode || null}
-              onChange={v => setForm(f => ({ ...f, contractorCode: v }))}
-              options={contractors.map(c => ({ label: `${c.vendorCode} — ${vendorLabel(c.companyName, c.shortCode)}`, value: c.vendorCode }))}
-            />
-            <SField
-              label="Company" required placeholder="Select billing company"
-              value={form.companyId || null}
-              onChange={v => setForm(f => ({ ...f, companyId: v }))}
-              options={companies.map(c => ({ label: `${c.name} (${c.shortCode})`, value: c._id }))}
-            />
-            <Field
-              label="Advance Amount (₹)" required type="number" min={1} step={1}
-              placeholder="e.g. 50000"
-              value={form.amount}
-              onChange={e => setForm(f => ({ ...f, amount: e.target.value }))}
-            />
-            <DatePicker label="Date" value={form.date} onChange={v => setForm(f => ({ ...f, date: v }))} />
-            <Field
-              label="Reference / Cheque No. (optional)"
-              placeholder="e.g. UTR123456 or CHQ-0042"
-              value={form.reference}
-              onChange={e => setForm(f => ({ ...f, reference: e.target.value }))}
-            />
-            <Field
-              textarea label="Notes (optional)" rows={2}
-              placeholder="e.g. Advance for mobilisation, Phase 1..."
-              value={form.notes}
-              onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
-            />
-          </div>
-        </Modal>
       )}
 
       {detailTarget && (() => {
