@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Plus, Receipt, FileText, Ban, CheckCircle2, Eye, Download, Printer, FileStack, Pencil, Trash2 } from "lucide-react";
 import toast from "react-hot-toast";
 import dayjs from "dayjs";
@@ -368,6 +368,19 @@ export default function Billing() {
   }, []);
 
   useEffect(() => { loadBills(); }, [loadBills]);
+
+  // Deep link from Advance Payments (and anywhere else): /billing?billNo=RA-0123
+  // opens that bill's view drawer once the list has loaded.
+  const [searchParams, setSearchParams] = useSearchParams();
+  useEffect(() => {
+    const wanted = searchParams.get("billNo");
+    if (!wanted || loading) return;
+    const found = bills.find((b) => b.billNo === wanted && !isAdvanceSlipRow(b));
+    if (found) setViewBillId(found.id);
+    else toast.error(`Bill ${wanted} was not found — it may have been renumbered after approval`);
+    setSearchParams({}, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, bills, searchParams]);
 
   useEffect(() => {
     apiClient.get<{ projects: Record<string, unknown>[] }>("/projects")
