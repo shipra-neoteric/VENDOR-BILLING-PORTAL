@@ -11,8 +11,12 @@ export const MAX_DOCUMENT_FILES = 5;
 const MAX_FILE_MB = 5;
 
 export default function DocumentsUpload({
-  value = [], onChange, uploadClient = apiClient, onUploadingChange,
+  value = [], onChange, uploadClient = apiClient, onUploadingChange, folder = "work-orders",
 }: {
+  // Cloudinary folder the files go to — must be one of the server's allowed
+  // folders (Backend/src/routes/uploads.js). Work Orders keep the default;
+  // bills and bill requests pass "bills".
+  folder?: string;
   value?: WODocument[];
   onChange?: (docs: WODocument[]) => void;
   // Defaults to the authenticated apiClient — the public (no-login) Work
@@ -44,7 +48,7 @@ export default function DocumentsUpload({
     }
     setUploading(true);
     try {
-      const url = await uploadToCloudinary(uploadClient, file, "work-orders", file.name);
+      const url = await uploadToCloudinary(uploadClient, file, folder, file.name);
       if (!url) {
         toast.error(`Upload of ${file.name} didn't return a file link — please try again`);
         return;

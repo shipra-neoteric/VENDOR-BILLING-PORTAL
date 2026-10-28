@@ -1793,7 +1793,7 @@ export default function NewBillDrawer({
 
         <div className="mt-4">
           <span className="block text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wide mb-1.5">Upload Bill Documents</span>
-          <DocumentsUpload value={documents} onChange={setDocuments} onUploadingChange={setDocsUploading} />
+          <DocumentsUpload folder="bills" value={documents} onChange={setDocuments} onUploadingChange={setDocsUploading} />
         </div>
 
         <div className="mt-4">

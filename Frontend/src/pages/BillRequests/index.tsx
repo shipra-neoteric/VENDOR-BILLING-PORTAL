@@ -592,7 +592,7 @@ export default function BillApproval() {
   const [editProgressBRId, setEditProgressBRId] = useState<string | null>(null);
   const [editManualBillLoadingId, setEditManualBillLoadingId] = useState<string | null>(null);
   // A progress-driven Bill Request being deleted (manual bills use deleteManualBill below).
-  const [deleteBR, setDeleteBR] = useState<BillRequest | null>(null);
+  const [deleteBR, setDeleteBR] = useState<BillRequestRow | null>(null);
   const [deletingBR, setDeletingBR] = useState(false);
   async function confirmDeleteBR() {
     if (!deleteBR) return;

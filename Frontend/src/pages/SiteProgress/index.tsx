@@ -883,7 +883,7 @@ export default function SiteProgress({ embeddedEditBRId, onEmbeddedClose }: {
 
               <div>
                 <span className="block text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wide mb-1.5">Upload Bill Documents</span>
-                <DocumentsUpload value={billDocs} onChange={setBillDocs} onUploadingChange={setDocsUploading} />
+                <DocumentsUpload folder="bills" value={billDocs} onChange={setBillDocs} onUploadingChange={setDocsUploading} />
               </div>
             </div>
           )}
