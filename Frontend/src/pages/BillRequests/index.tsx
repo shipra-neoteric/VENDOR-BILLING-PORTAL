@@ -445,8 +445,8 @@ export default function BillApproval() {
   const [woDeptMap, setWoDeptMap] = useState<Map<string, WorkOrderDeptRow>>(new Map());
   const [allUsers, setAllUsers] = useState<{ _id: string; name: string; role: string; department?: string; customDepartment?: string; permissions?: { module: string; actions: string[] }[] }[]>([]);
 
-  const load = () => {
-    setLoading(true);
+  const load = (silent = false) => {
+    if (!silent) setLoading(true);
     Promise.all([
       apiClient.get("/projects"),
       apiClient.get("/bill-requests", { params: { scope: "approval" } }),
@@ -462,10 +462,23 @@ export default function BillApproval() {
         setWoDeptMap(new Map(wos.map(wo => [wo._id, wo])));
         setAllUsers((usersR.data.users ?? []) as any);
       })
-      .catch(() => toast.error("Failed to load bill approvals"))
+      .catch(() => { if (!silent) toast.error("Failed to load bill approvals"); })
       .finally(() => setLoading(false));
   };
-  useEffect(load, []);
+  useEffect(() => { load(); }, []);
+
+  // The queue loads once on open, so a request raised by someone else while this
+  // page sat open never showed up until a manual refresh. Re-fetch quietly
+  // whenever the user returns to the tab/window.
+  useEffect(() => {
+    const onVisible = () => { if (document.visibilityState === "visible") load(true); };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+    };
+  }, []);
 
   // Every user is a candidate L2 approver — this is purely informational
   // routing (whoever actually has L2 authority can still approve it
