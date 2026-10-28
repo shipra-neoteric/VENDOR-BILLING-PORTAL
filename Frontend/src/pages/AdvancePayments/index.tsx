@@ -28,6 +28,23 @@ const STATUS_CFG: Record<string, { color: NxBadgeColor; label: string }> = {
   recovered:   { color: "green",  label: "Recovered"   },
 };
 
+// A Mobilisation Advance bill still going through its approval chain — shown
+// here already, but its slip (and so any recovery) only exists once approved.
+interface PendingAdvanceBill {
+  _id: string;
+  billNo: string;
+  vendorCode: string;
+  vendorName: string;
+  projectName: string;
+  amount: number;
+  billDate: string;
+  contractorRefNo?: string;
+  manualApprovalStatus: "pending" | "pending-gm" | "pending-l3" | "pending-l4";
+}
+const PENDING_LEVEL: Record<PendingAdvanceBill["manualApprovalStatus"], string> = {
+  pending: "L1", "pending-gm": "L2", "pending-l3": "L3", "pending-l4": "L4",
+};
+
 interface AdvanceSlip {
   _id: string;
   slipNo: string;
@@ -58,6 +75,7 @@ export default function AdvancePayments() {
   // sidebar entry of its own to return to otherwise.
   const cameFromBilling = searchParams.get("from") === "billing";
   const [slips,    setSlips]    = useState<AdvanceSlip[]>([]);
+  const [pendingApprovals, setPendingApprovals] = useState<PendingAdvanceBill[]>([]);
   const [loading,  setLoading]  = useState(false);
   // Widened to the full Contractor shape (minus `documents`, which /contractors
   // already omits from the list) — GET /contractors returns bank/GST/PAN
@@ -74,6 +92,7 @@ export default function AdvancePayments() {
     try {
       const res = await apiClient.get(`/advance-slips${archived ? "?archived=true" : ""}`);
       setSlips(res.data.advanceSlips ?? []);
+      setPendingApprovals(res.data.pendingApprovals ?? []);
     } catch { toast.error("Failed to load advance slips"); }
     finally { setLoading(false); }
   };
@@ -126,7 +145,7 @@ export default function AdvancePayments() {
 
       {loading ? (
         <Spinner label="Loading advance slips…" />
-      ) : slips.length === 0 ? (
+      ) : slips.length === 0 && pendingApprovals.length === 0 ? (
         <EmptyState icon={Wallet} title={showArchived ? "No archived advance slips" : "No advance slips yet"} />
       ) : (
         <Table className="min-w-[1200px]">
@@ -145,6 +164,23 @@ export default function AdvancePayments() {
             </Tr>
           </Thead>
           <Tbody>
+            {pendingApprovals.map(b => (
+              <Tr key={b._id}>
+                <Td className="whitespace-nowrap truncate font-bold text-gray-500 dark:text-gray-400">{b.billNo}</Td>
+                <Td className="whitespace-nowrap truncate"><TdText>{dayjs(b.billDate).format("DD MMM YYYY")}</TdText></Td>
+                <Td className="whitespace-nowrap truncate"><TdText>{b.projectName}</TdText></Td>
+                <Td className="whitespace-nowrap truncate">
+                  <div className="text-sm text-[#1A1A2E] dark:text-[#F1F5F9] truncate">{b.vendorName}</div>
+                  <div className="text-[11px] text-gray-400 truncate">{b.vendorCode}</div>
+                </Td>
+                <Td className="text-right whitespace-nowrap"><span className="font-mono font-semibold"><TdText>{fmt(b.amount)}</TdText></span></Td>
+                <Td className="text-right whitespace-nowrap"><span className="text-gray-300 dark:text-gray-600">—</span></Td>
+                <Td className="text-right whitespace-nowrap"><span className="text-gray-300 dark:text-gray-600">—</span></Td>
+                <Td className="whitespace-nowrap truncate">{b.contractorRefNo || <span className="text-gray-300 dark:text-gray-600">—</span>}</Td>
+                <Td className="whitespace-nowrap"><NxBadge color="amber">Pending {PENDING_LEVEL[b.manualApprovalStatus]}</NxBadge></Td>
+                <Td className="text-center"><span className="text-gray-300 dark:text-gray-600">—</span></Td>
+              </Tr>
+            ))}
             {pager.pageItems.map(s => {
               const live = contractors.find(c => c.vendorCode === s.contractorCode);
               const cfg = STATUS_CFG[s.status] ?? { color: "orange" as const, label: s.status };

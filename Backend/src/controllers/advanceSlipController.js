@@ -1,6 +1,7 @@
 const AdvanceSlip   = require('../models/AdvanceSlip');
 const Contractor    = require('../models/Contractor');
 const Company       = require('../models/Company');
+const RunningBill   = require('../models/RunningBill');
 const asyncHandler  = require('../utils/asyncHandler');
 const { success, notFound, badRequest } = require('../utils/responseFormatter');
 const { nextCode } = require('../utils/sequence');
@@ -55,7 +56,25 @@ exports.listAdvanceSlips = asyncHandler(async (req, res) => {
   const slips = await AdvanceSlip.find(filter).populate('createdBy', 'name').sort({ createdAt: -1 }).lean();
   await overlayLiveContractorNames(slips);
   attachBalance(slips);
-  success(res, { advanceSlips: slips });
+
+  // Mobilisation Advance ("Advance For") bills still in their approval chain —
+  // their slip is only raised once the chain completes (see billController's
+  // createAdvanceSlipForApprovedBill), but the advance should already be
+  // visible here meanwhile. Not recoverable yet, so kept out of `advanceSlips`.
+  let pendingApprovals = [];
+  if (req.query.archived !== 'true' && !req.query.status) {
+    const billFilter = {
+      billType: 'advance_mobilization', relationshipType: 'ADVANCE_FOR', status: 'draft',
+      manualApprovalStatus: { $in: ['pending', 'pending-gm', 'pending-l3', 'pending-l4'] },
+      isUnsubmittedDraft: { $ne: true }, isArchived: { $ne: true }, advanceSlipId: null,
+    };
+    if (req.query.projectId)      billFilter.projectId  = req.query.projectId;
+    if (req.query.contractorCode) billFilter.vendorCode = req.query.contractorCode;
+    pendingApprovals = await RunningBill.find(billFilter)
+      .select('billNo amount projectName vendorCode vendorName companyName billDate manualApprovalStatus contractorRefNo remarks createdBy createdAt')
+      .populate('createdBy', 'name').sort({ createdAt: -1 }).lean();
+  }
+  success(res, { advanceSlips: slips, pendingApprovals });
 });
 
 // GET /api/advance-slips/pending?projectId=X&vendorCode=Y
