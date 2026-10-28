@@ -76,6 +76,8 @@ interface Bill {
   // Only on a merged-in Bill Request row (billType === "bill_request"): its raw
   // status, since `status` there is just a display label.
   requestStatus?: "pending" | "pending-gm" | "pending-l3" | "pending-l4";
+  // How many approval levels this request's department needs (1-4).
+  approvalLevels?: number;
   documents?: { name: string; url: string }[];
   status: string;
   manualApprovalStatus?: "pending" | "pending-gm" | "pending-l3" | "pending-l4" | "approved" | "rejected";
@@ -680,15 +682,12 @@ export default function Billing() {
               <Table>
                 <Thead>
                   <Tr>
-                    <Th>L1</Th>
-                    <Th>L2</Th>
-                    <Th>L3</Th>
-                    <Th>L4</Th>
+                    {(["L1", "L2", "L3", "L4"] as const).slice(0, viewBill.approvalLevels ?? 4).map((l) => <Th key={l}>{l}</Th>)}
                   </Tr>
                 </Thead>
                 <Tbody>
                   <Tr>
-                    {(["agm", "gm", "l3", "l4"] as const).map((stage) => {
+                    {(["agm", "gm", "l3", "l4"] as const).slice(0, viewBill.approvalLevels ?? 4).map((stage) => {
                       const entry = (viewBill.approvalHistory ?? []).find((h) => h.stage === stage && h.action === "approved");
                       return <Td key={stage} className="align-top"><BillStageCell by={entry?.byName} at={entry?.at} /></Td>;
                     })}
