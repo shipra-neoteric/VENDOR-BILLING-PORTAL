@@ -91,6 +91,10 @@ const runningBillSchema = new mongoose.Schema(
     // calculation this feeds. Zero/absent for every non-SUPERSEDES bill,
     // which keeps their math provably unchanged.
     supersedeDeduction: { type: Number, default: 0 },
+    // Set once a Mobilisation Advance ("Advance For") bill is fully approved
+    // and its AdvanceSlip has been raised — also stops a second slip being
+    // created if an approval handler ever runs twice.
+    advanceSlipId: { type: mongoose.Schema.Types.ObjectId, ref: 'AdvanceSlip', default: null },
     paidAmount:        { type: Number },
     gstPercent:  { type: Number, default: 18 },
     tdsPercent:  { type: Number, default: 1 },

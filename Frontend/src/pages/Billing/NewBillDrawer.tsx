@@ -385,13 +385,12 @@ export default function NewBillDrawer({
   // chosen under it (e.g. a standalone Mobilisation Advance) — that still
   // needs a Company, so this can't just check "is a project picked".
   const isStandalone = !selectedWOId && !importedFromWOId;
-  // A Mobilisation Advance raised as ADVANCE_FOR (see billController.js's own
-  // "bypass the whole RunningBill/approval chain" comment) always becomes a
-  // standalone AdvanceSlip server-side, regardless of whether a Work Order
-  // happens to be picked in the Bill Relationship section below — that WO
-  // selection is simply ignored by that code path. So this specific
-  // combination needs a Company exactly like a true standalone bill does,
-  // even while a WO is selected (which would otherwise hide the field).
+  // A Mobilisation Advance raised as ADVANCE_FOR is a bill like any other
+  // (it goes through the approval chain), but its AdvanceSlip needs a Company
+  // even when a Work Order happens to be picked in the Bill Relationship
+  // section below — so this combination asks for one just like a true
+  // standalone bill does, even while a WO is selected (which would otherwise
+  // hide the field).
   const isMobAdvanceFor = billType === "advance_mobilization" && relType === "ADVANCE_FOR";
   const needsCompany = isStandalone || isMobAdvanceFor;
 
@@ -1055,18 +1054,18 @@ export default function NewBillDrawer({
         return;
       }
       const res = await apiClient.post<{ bill?: Record<string, unknown>; advanceSlip?: Record<string, unknown> }>("/bills", payload);
-      // Mob. Advance + ADVANCE_FOR never creates a RunningBill at all anymore
-      // — the backend creates an AdvanceSlip directly and returns it instead
-      // of `bill` (see billController.createBill). Handle that shape here
-      // rather than assuming res.data.bill always exists. Save-as-draft never
-      // applies to this path (an advance slip has no approval chain to defer).
+      // Mob. Advance + ADVANCE_FOR now goes through the normal approval chain
+      // like any other bill; its AdvanceSlip is raised by the backend only once
+      // that chain completes, so this always comes back as a `bill`.
       if (res.data.advanceSlip) {
         toast.success(`Advance slip ${res.data.advanceSlip.slipNo} created — visible in Advance Payments`);
         onClose();
       } else if (res.data.bill) {
         toast.success(saveAsDraft
           ? `Bill ${res.data.bill.billNo} saved as draft — visible only to you until you submit it`
-          : `Bill ${res.data.bill.billNo} created — awaiting maker confirmation`);
+          : isMobAdvanceFor
+            ? `Advance bill ${res.data.bill.billNo} sent for approval — the advance slip is raised once it is fully approved`
+            : `Bill ${res.data.bill.billNo} created — awaiting maker confirmation`);
         onCreated(res.data.bill);
         onClose();
       }

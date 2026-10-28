@@ -430,66 +430,14 @@ exports.createBill = asyncHandler(async (req, res) => {
     return badRequest(res, `A bill can have at most ${MAX_BILL_DOCUMENTS} attached documents`);
   }
 
-  //A Mobilisation Advance raised as ADVANCE_FOR future billing is, by
-  // definition, money paid out ahead of any work — there is no bill to
-  // approve/verify/pay here at all, only an AdvanceSlip's own
-  // outstanding/partial/recovered lifecycle (tracked entirely in Advance
-  // Payments). Bypass the whole RunningBill/approval chain and create the
-  // AdvanceSlip directly, exactly as the New Advance Slip form on the
-  // Advance Payments page would (see advanceSlipController.createAdvanceSlip)
-  // — every other billType/relationshipType combination, including
-  // advance_mobilization WITHOUT ADVANCE_FOR, falls through to the normal
-  // RunningBill path below untouched.
+  // A Mobilisation Advance raised as ADVANCE_FOR is money paid out ahead of any
+  // work, so it goes through the same L1..L4 approval chain as every other
+  // manual bill. The AdvanceSlip is only raised once that chain completes (see
+  // createAdvanceSlipForApprovedBill) — nothing is recoverable before then.
   if (req.body.billType === 'advance_mobilization' && req.body.relationshipType === 'ADVANCE_FOR') {
-    if (!req.body.projectId) {
-      return badRequest(res, 'Project is required for a mobilisation advance.');
-    }
-    if (!req.body.vendorCode) {
-      return badRequest(res, 'Contractor/consultant is required.');
-    }
-    const advLineItems = Array.isArray(req.body.lineItems) ? req.body.lineItems : [];
-    const advAmount = advLineItems.length
-      ? advLineItems.reduce((sum, li) => sum + (Number(li.amount) || 0), 0)
-      : Number(req.body.amount) || 0;
-    if (!(advAmount > 0)) {
-      return badRequest(res, 'Advance amount must be a valid number greater than 0');
-    }
-
-    // This path has no work order (same "no company to inherit" case as the
-    // standalone RunningBill path below) — the New Bill drawer's own Company
-    // field (isStandalone) already collects and sends this; it was
-    // previously silently dropped here, leaving every advance slip raised
-    // this way with no company at all and print falling back to a
-    // hardcoded default name.
-    if (!req.body.companyId) {
-      return badRequest(res, 'Company is required for a mobilisation advance.');
-    }
-    const advCompany = await Company.findById(req.body.companyId);
-    if (!advCompany) return notFound(res, 'Company not found');
-
-    const slipNo = await nextCode('advanceSlipNo', 'ADV-', 4);
-    const slip = await AdvanceSlip.create({
-      slipNo,
-      contractorCode: req.body.vendorCode,
-      contractorName: req.body.vendorName,
-      projectId:      req.body.projectId,
-      projectName:    req.body.projectName,
-      amount:         advAmount,
-      date:           req.body.billDate || new Date(),
-      reference:      req.body.contractorRefNo || undefined,
-      notes:          req.body.remarks || 'Mobilisation advance raised via Billing → New Bill',
-      createdBy:      req.user._id,
-      companyId:      advCompany._id,
-      companyName:    advCompany.name,
-    });
-
-    await logAudit({
-      action: 'CREATE', module: 'advance-slips', user: req.user,
-      description: `Advance slip ${slipNo} created for ${slip.contractorName || slip.contractorCode} (₹${Number(advAmount).toLocaleString('en-IN')}) via Billing → New Bill`,
-      entityType: 'AdvanceSlip', entityId: slip._id, entityLabel: slip.slipNo,
-    });
-
-    return created(res, { advanceSlip: slip }, `Advance slip ${slipNo} created`);
+    if (!req.body.projectId) return badRequest(res, 'Project is required for a mobilisation advance.');
+    if (!req.body.vendorCode) return badRequest(res, 'Contractor/consultant is required.');
+    if (!req.body.companyId) return badRequest(res, 'Company is required for a mobilisation advance.');
   }
 
   const workOrder = req.body.workOrderId
@@ -748,39 +696,6 @@ exports.createBill = asyncHandler(async (req, res) => {
     if (applied.length) await bill.save();
   }
 
-  // A Mobilisation Advance bill raised as ADVANCE_FOR future billing is, by
-  // definition, money paid out ahead of work done — the same thing an
-  // Advance Slip already exists to track (outstanding balance, recoveries
-  // against later bills). Auto-create one here instead of relying on
-  // someone to remember to raise it separately from Advance Payments.
-  // Non-fatal: a slip needs a projectId, which a standalone (no work order)
-  // bill never has — skip silently rather than fail the bill itself over it.
-  if (bill.billType === 'advance_mobilization' && bill.relationshipType === 'ADVANCE_FOR' && bill.projectId) {
-    try {
-      const slipNo = await nextCode('advanceSlipNo', 'ADV-', 4);
-      const slip = await AdvanceSlip.create({
-        slipNo,
-        contractorCode: bill.vendorCode,
-        contractorName: bill.vendorName,
-        projectId:      bill.projectId,
-        projectName:    bill.projectName,
-        amount:         bill.amount,
-        date:           bill.billDate,
-        reference:      bill.billNo,
-        notes:          `Auto-generated from Mobilisation Advance bill ${bill.billNo}`,
-        createdBy:      req.user._id,
-      });
-
-      await logAudit({
-        action: 'CREATE', module: 'advance-slips', user: req.user,
-        description: `Advance slip ${slipNo} auto-created from bill ${bill.billNo} (₹${Number(bill.amount).toLocaleString('en-IN')})`,
-        entityType: 'AdvanceSlip', entityId: slip._id, entityLabel: slip.slipNo,
-      });
-    } catch (advErr) {
-      console.error('Warning: could not auto-create advance slip for bill', bill.billNo, advErr.message);
-    }
-  }
-
   await logAudit({
     action: 'CREATE', module: MODULE, user: req.user,
     description: `Bill ${bill.billNo} created`,
@@ -856,6 +771,37 @@ exports.updateBill = asyncHandler(async (req, res) => {
 // saved draft. Releases what the bill currently holds (WO lastBilledQty,
 // advance recovery) and re-applies the new form the way createBill does, in
 // place — same bill number, history and approval position.
+// A Mobilisation Advance ("Advance For") bill is money paid out ahead of work —
+// the AdvanceSlip that later bills recover it against is only raised once the
+// bill's manual approval chain has fully completed. No-op for every other bill,
+// and for one that already has its slip.
+async function createAdvanceSlipForApprovedBill(bill, user) {
+  if (bill.billType !== 'advance_mobilization' || bill.relationshipType !== 'ADVANCE_FOR') return;
+  if (bill.advanceSlipId || !bill.projectId) return;
+  const slipNo = await nextCode('advanceSlipNo', 'ADV-', 4);
+  const slip = await AdvanceSlip.create({
+    slipNo,
+    contractorCode: bill.vendorCode,
+    contractorName: bill.vendorName,
+    projectId:      bill.projectId,
+    projectName:    bill.projectName,
+    companyId:      bill.companyId || undefined,
+    companyName:    bill.companyName || '',
+    amount:         bill.amount,
+    date:           bill.billDate,
+    reference:      bill.billNo,
+    notes:          `Raised on approval of Mobilisation Advance bill ${bill.billNo}`,
+    createdBy:      bill.createdBy || user._id,
+  });
+  bill.advanceSlipId = slip._id;
+  await bill.save();
+  await logAudit({
+    action: 'CREATE', module: 'advance-slips', user,
+    description: `Advance slip ${slipNo} raised on approval of bill ${bill.billNo} (₹${Number(bill.amount).toLocaleString('en-IN')})`,
+    entityType: 'AdvanceSlip', entityId: slip._id, entityLabel: slip.slipNo,
+  });
+}
+
 // Where a manual bill sits for edit/delete purposes: 'l1' = a draft or still
 // pending L1, 'later' = waiting at L2/L3/L4, null = not editable any more.
 function editableBillStage(bill) {
@@ -1250,6 +1196,7 @@ async function manualGmApproveHandler(req, res) {
   // department's (2-level) chain is genuinely complete.
   bill.billNo = await nextBillNo();
   await bill.save();
+  await createAdvanceSlipForApprovedBill(bill, req.user).catch((err) => console.error('[advance] slip for', bill.billNo, 'failed:', err.message));
   await bill.populate('manualGmApprovedBy', 'name role');
 
   await logAudit({
@@ -1310,6 +1257,7 @@ async function manualL3ApproveHandler(req, res) {
   // department's (3-level) chain is genuinely complete.
   bill.billNo = await nextBillNo();
   await bill.save();
+  await createAdvanceSlipForApprovedBill(bill, req.user).catch((err) => console.error('[advance] slip for', bill.billNo, 'failed:', err.message));
   await bill.populate('manualL3ApprovedBy', 'name role');
 
   await logAudit({
@@ -1356,6 +1304,7 @@ exports.manualL4Approve = asyncHandler(async (req, res) => {
   bill.billNo = await nextBillNo();
   pushHistory(bill, 'manual-l4', 'approved', req.user._id, req.body.remarks || '');
   await bill.save();
+  await createAdvanceSlipForApprovedBill(bill, req.user).catch((err) => console.error('[advance] slip for', bill.billNo, 'failed:', err.message));
   await bill.populate('manualL4ApprovedBy', 'name role');
 
   await logAudit({
