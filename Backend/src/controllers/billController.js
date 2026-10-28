@@ -856,14 +856,26 @@ exports.updateBill = asyncHandler(async (req, res) => {
 // saved draft. Releases what the bill currently holds (WO lastBilledQty,
 // advance recovery) and re-applies the new form the way createBill does, in
 // place — same bill number, history and approval position.
+// Where a manual bill sits for edit/delete purposes: 'l1' = a draft or still
+// pending L1, 'later' = waiting at L2/L3/L4, null = not editable any more.
+function editableBillStage(bill) {
+  if (bill.status !== 'draft') return null;
+  if (bill.isUnsubmittedDraft || bill.manualApprovalStatus === 'pending') return 'l1';
+  if (['pending-gm', 'pending-l3', 'pending-l4'].includes(bill.manualApprovalStatus)) return 'later';
+  return null;
+}
+
 exports.editManualBill = asyncHandler(async (req, res) => {
   if (Array.isArray(req.body.documents) && req.body.documents.length > MAX_BILL_DOCUMENTS) {
     return badRequest(res, `A bill can have at most ${MAX_BILL_DOCUMENTS} attached documents`);
   }
   const bill = await RunningBill.findById(req.params.id);
   if (!bill) return notFound(res, 'Bill not found');
-  const atL1 =bill.status === 'draft' && (bill.manualApprovalStatus === 'pending' || bill.isUnsubmittedDraft);
-  if (!atL1) return badRequest(res, 'A bill can only be edited with the full form while it is still pending L1 approval (or saved as a draft).');
+  const stage = editableBillStage(bill);
+  if (!stage) return badRequest(res, 'A bill can only be edited with the full form while it is still waiting for approval (or saved as a draft).');
+  // L1 (or a draft) is open to anyone holding the Edit Bill permission; once
+  // it has moved past L1 only the Owner (admin) may still change it.
+  if (stage === 'later' && req.user.role !== 'owner') return forbidden(res, 'Only an admin can edit a bill once it is past L1 approval.');
   if (!bill.isUnsubmittedDraft && !canActOnDepartment(req.user, bill)) return forbidden(res, 'This bill belongs to a different department.');
 
   const lineItems = withReleaseOnlyLine(Array.isArray(req.body.lineItems) ? req.body.lineItems : [], req.body);
@@ -1003,7 +1015,7 @@ exports.editManualBill = asyncHandler(async (req, res) => {
   const changes = diffFields(before, bill.toObject(), [...EDITABLE, 'amount', 'lineItems', 'workOrderId', 'vendorCode']);
   await logAudit({
     action: 'UPDATE', module: MODULE, user: req.user,
-    description: `Bill ${bill.billNo} edited at L1`,
+    description: `Bill ${bill.billNo} edited ${stage === 'later' ? `by admin at ${bill.manualApprovalStatus}` : 'at L1'}`,
     entityType: 'RunningBill', entityId: bill._id, entityLabel: bill.billNo,
     ...(changes ? { changes } : {}),
   });
@@ -1017,6 +1029,49 @@ exports.editManualBill = asyncHandler(async (req, res) => {
 // Advance Recovery are NOT accepted here anymore — they're already set
 // either at bill-creation time (createBill) or by AGM/GM during their own
 // Site Progress approval (billRequestController.agmApprove/gmApprove).
+// DELETE /api/bills/:id — removes a manually raised bill that nobody has
+// approved yet (pending L1, or still an unsubmitted draft), same eligibility as
+// editManualBill above. Gives back what the bill was holding: the work order's
+// billed quantity and any advance it recovered.
+exports.deleteBill = asyncHandler(async (req, res) => {
+  const bill = await RunningBill.findById(req.params.id);
+  if (!bill) return notFound(res, 'Bill not found');
+  const stage = editableBillStage(bill);
+  if (!stage) return badRequest(res, 'A bill can only be deleted while it is still waiting for approval (or saved as a draft).');
+  if (stage === 'later' && req.user.role !== 'owner') return forbidden(res, 'Only an admin can delete a bill once it is past L1 approval.');
+  if (!bill.isUnsubmittedDraft && !canActOnDepartment(req.user, bill)) return forbidden(res, 'This bill belongs to a different department.');
+
+  const wo = bill.workOrderId ? await WorkOrder.findById(bill.workOrderId) : null;
+  if (wo) {
+    const parents = new Set();
+    for (const li of bill.lineItems) {
+      if (!li.scopeItemId || !li.billedQty) continue;
+      const si = wo.scopeItems.id(li.scopeItemId);
+      const target = si && resolveBillableItem(si, li.subItemId);
+      if (!target) continue;
+      target.lastBilledQty = Math.max(0, (target.lastBilledQty || 0) - Number(li.billedQty));
+      target.status = deriveStatus(target);
+      if (li.subItemId) parents.add(String(li.scopeItemId));
+    }
+    for (const id of parents) { const si = wo.scopeItems.id(id); if (si) recomputeParentFromSubItems(si); }
+    await wo.save();
+  }
+  if (bill.advanceRecovery) await reverseAdvanceRecoveries(bill.billNo);
+
+  const snapshot = bill.toObject();
+  await bill.deleteOne();
+  settleAllPendingForEntity(bill._id, { verb: 'Deleted', decidedByName: req.user.name })
+    .catch((err) => console.error('[slack] settle on delete failed', err.message));
+
+  await logAudit({
+    action: 'DELETE', module: MODULE, user: req.user,
+    description: `Bill ${snapshot.billNo} deleted ${stage === 'later' ? `by admin at ${snapshot.manualApprovalStatus}` : 'at L1'} (₹${Math.round(snapshot.amount || 0)})`,
+    entityType: 'RunningBill', entityId: snapshot._id, entityLabel: snapshot.billNo,
+  });
+
+  success(res, {}, `Bill ${snapshot.billNo} deleted`);
+});
+
 exports.verifyBill = asyncHandler(async (req, res) => {
   const bill = await RunningBill.findById(req.params.id);
   if (!bill) return notFound(res, 'Bill not found');

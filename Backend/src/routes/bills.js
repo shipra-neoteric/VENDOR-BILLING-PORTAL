@@ -1,5 +1,5 @@
 const router = require('express').Router();
-const { authenticate, authorizeOr, authorizeAnyOr, authorizeOrAlt, authorizeAnyOrAlt } = require('../middleware/auth');
+const { authenticate, can, authorizeOr, authorizeAnyOr, authorizeOrAlt, authorizeAnyOrAlt } = require('../middleware/auth');
 const { createBillRules } = require('../validators/bill.validator');
 const {
   listBills, getBill, createBill, updateBill, editManualBill,
@@ -7,7 +7,7 @@ const {
   rejectBill, patchDeductions,
   manualAgmApprove, manualGmApprove, manualL3Approve, manualL4Approve, manualReject,
   getBillingChain, archiveBill, unarchiveBill, archiveBillsBulk, unarchiveBillsBulk,
-  submitDraft,
+  submitDraft, deleteBill,
 } = require('../controllers/billController');
 
 router.use(authenticate);
@@ -22,7 +22,15 @@ router.post('/',             authorizeOr('billing', 'create'), createBillRules, 
 // (who actually created THIS bill), not a role/permission one.
 router.patch('/:id/submit-draft', submitDraft);
 router.put('/:id',           authorizeOr('accounts-payment', 'edit', 'CEO'), updateBill);
-router.put('/:id/manual-edit', authorizeOr('bill-requests', 'create', 'CEO'), editManualBill);
+// Edit/Delete a manual bill — granted per user in the Permission Matrix as
+// "Edit Bill" / "Delete Bill" on either Billing or Bill Approval. That only
+// covers a bill still at L1; the controller restricts later levels to Owner.
+const authorizeBillAction = (action) => (req, res, next) => {
+  if (can(req.user, 'billing', action, 'owner') || can(req.user, 'bill-requests', action)) return next();
+  return res.status(403).json({ message: `You do not have permission to ${action === 'edit-bill' ? 'edit' : 'delete'} bills` });
+};
+router.put('/:id/manual-edit', authorizeBillAction('edit-bill'), editManualBill);
+router.delete('/:id',          authorizeBillAction('delete-bill'), deleteBill);
 // Verification (merged Maker+Checker) — checks the bill against its WO/
 // vendor details, sets TDS. Retention/advance are decided upstream now.
 // Pre-Accounts AGM/GM sign-off — only ever applies to a manually-created bill

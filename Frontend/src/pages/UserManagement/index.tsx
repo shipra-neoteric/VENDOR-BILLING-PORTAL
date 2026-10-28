@@ -106,7 +106,7 @@ const APPROVAL_LEVEL_STAGES: {
   { stage: "l4",  short: "L4",       rolesKey: "l4Roles",  usersKey: "l4Users" },
 ];
 
-export type PermAction = "view" | "create" | "edit" | "delete" | "invalidate" | "approve" | "request" | "maker" | "checker" | "approver" | "reject" | "ceo-approve" | "send-back" | "agm-approve" | "gm-approve" | "l3-approve" | "verify" | "l1-agm-approve" | "l2-director-approve" | "hold" | "release-hold" | "retry-tms" | "l1-review" | "l2-draw" | "l3-review" | "l4-approve" | "co-l1-approve" | "co-l2-approve";
+export type PermAction = "view" | "create" | "edit" | "delete" | "invalidate" | "approve" | "request" | "maker" | "checker" | "approver" | "reject" | "ceo-approve" | "send-back" | "agm-approve" | "gm-approve" | "l3-approve" | "verify" | "l1-agm-approve" | "l2-director-approve" | "hold" | "release-hold" | "retry-tms" | "l1-review" | "l2-draw" | "l3-review" | "l4-approve" | "co-l1-approve" | "co-l2-approve" | "edit-bill" | "delete-bill";
 
 interface ModuleDef {
   id: string;
@@ -158,6 +158,10 @@ export const ACTION_CFG: Record<PermAction, { label: string; bg: string }> = {
   "l4-approve": { label: "L4 GM Final Approval",bg: "#0d9488" },
   "co-l1-approve": { label: "L1 Approval", bg: "#0891b2" },
   "co-l2-approve": { label: "L2 Approval", bg: "#2563eb" },
+  // Manual bills only: holders can edit/delete a bill while it is at L1 (or a
+  // draft); once it is past L1 only an admin (Owner) can, regardless of this.
+  "edit-bill":   { label: "Edit Bill",   bg: "#2563eb" },
+  "delete-bill": { label: "Delete Bill", bg: "#dc2626" },
 };
 
 // Grouped and ordered to match the left Sidebar's own section layout
@@ -187,8 +191,8 @@ export const MODULE_DEFS: ModuleDef[] = [
   { id: "consultants",      name: "Consultants",        icon: "📐", group: "Professional Services", actions: ["view","create","edit","delete"] },
   { id: "consultancy-orders", name: "Consultancy Orders", icon: "📝", group: "Professional Services", actions: ["view","edit","co-l1-approve","co-l2-approve","reject"] },
   { id: "bill-review",      name: "Site Progress",      icon: "🧾", group: "Billing",       actions: ["view","approve"] },
-  { id: "bill-requests",    name: "Bill Approval",      icon: "📨", group: "Billing",       actions: ["view","create","agm-approve","gm-approve","l3-approve","l4-approve","reject"] },
-  { id: "billing",          name: "Billing",            icon: "🧮", group: "Billing",       actions: ["view","create"] },
+  { id: "bill-requests",    name: "Bill Approval",      icon: "📨", group: "Billing",       actions: ["view","create","edit-bill","delete-bill","agm-approve","gm-approve","l3-approve","l4-approve","reject"] },
+  { id: "billing",          name: "Billing",            icon: "🧮", group: "Billing",       actions: ["view","create","edit-bill","delete-bill"] },
   { id: "accounts-payment", name: "Accounts Payment",   icon: "💰", group: "Billing",       actions: ["view","edit","verify","l1-agm-approve","l2-director-approve","hold","release-hold","retry-tms","reject"] },
   { id: "procurement-tracker", name: "Procurement Tracker", icon: "🔗", group: "Billing",   actions: ["view"] },
   { id: "ledger",           name: "Ledger",             icon: "📒", group: "Billing",       actions: ["view"] },

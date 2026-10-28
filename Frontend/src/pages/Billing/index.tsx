@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, Receipt, FileText, Ban, CheckCircle2, Eye, Download, Printer, FileStack } from "lucide-react";
+import { Plus, Receipt, FileText, Ban, CheckCircle2, Eye, Download, Printer, FileStack, Pencil, Trash2 } from "lucide-react";
 import toast from "react-hot-toast";
 import dayjs from "dayjs";
 import type { Dayjs } from "dayjs";
@@ -13,6 +13,7 @@ import NxBadge from "../../ui/nexora/Badge";
 import type { NxBadgeColor } from "../../ui/nexora/Badge";
 import NxStatCard from "../../ui/nexora/StatCard";
 import Modal from "../../ui/Modal";
+import ConfirmModal from "../../ui/ConfirmModal";
 import { Descriptions, DescItem } from "../../ui/Descriptions";
 import { Table, Thead, Tbody, Tfoot, Tr, Th, Td } from "../../ui/Table";
 import { usePagination } from "../../ui/usePagination";
@@ -73,7 +74,7 @@ interface Bill {
   remarks?: string;
   documents?: { name: string; url: string }[];
   status: string;
-  manualApprovalStatus?: "pending" | "pending-gm" | "approved" | "rejected";
+  manualApprovalStatus?: "pending" | "pending-gm" | "pending-l3" | "pending-l4" | "approved" | "rejected";
   billType?: string;
   createdAt?: string;
   // Only set on a merged-in BillRequest row (billType === 'bill_request') —
@@ -216,6 +217,10 @@ export default function Billing() {
   const [viewBillId, setViewBillId] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [submittingId, setSubmittingId] = useState<string | null>(null);
+  // Edit re-opens the New Bill drawer prefilled; Delete asks first.
+  const [editBill, setEditBill] = useState<Bill | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Bill | null>(null);
+  const [deleting, setDeleting] = useState(false);
   // The originating BillRequest's own _id — only resolvable when this bill
   // came from the normal request flow (matched below) — used to look up its
   // SLA timeline, since a manually created bill has no BillRequest and thus
@@ -322,6 +327,35 @@ export default function Billing() {
       toast.error(e?.response?.data?.message || "Failed to submit draft");
     } finally {
       setSubmittingId(null);
+    }
+  }
+
+  // Same eligibility the backend enforces for editing/deleting a manual bill:
+  // nobody has approved it yet (pending L1) or it is still an unsubmitted draft.
+  // At L1 (or a draft) anyone granted "Edit Bill"/"Delete Bill" (on Billing or
+  // Bill Approval) may; once the bill is past L1 only an admin (Owner) can.
+  const canChangeBill = (b: Bill, action: "edit-bill" | "delete-bill") => {
+    if (!user || isAdvanceSlipRow(b) || b.status !== "draft") return false;
+    const status = b.isUnsubmittedDraft ? "pending" : (b.manualApprovalStatus as string | undefined);
+    if (!status || !["pending", "pending-gm", "pending-l3", "pending-l4"].includes(status)) return false;
+    if (user.role === "owner") return true;
+    if (status !== "pending") return false;
+    return !!user.permissions?.some((p) => (p.module === "billing" || p.module === "bill-requests") && p.actions.includes(action));
+  };
+
+  async function handleDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await apiClient.delete(`/bills/${deleteTarget.id}`);
+      toast.success(`Bill ${deleteTarget.billNo} deleted`);
+      setBills((prev) => prev.filter((b) => b.id !== deleteTarget.id));
+      setDeleteTarget(null);
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { message?: string } } };
+      toast.error(e?.response?.data?.message || "Failed to delete bill");
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -488,26 +522,26 @@ export default function Billing() {
           <EmptyState icon={FileText} title="No bills found" message="Try adjusting your search or filters." />
         ) : (
           <>
-            <Table className="min-w-[1300px]">
+            <Table>
               <Thead>
                 <Tr>
-                  <Th className="w-[100px]">Bill No.</Th>
-                  <Th className="w-[140px]">Bill Type</Th>
-                  <Th className="w-[110px]">Work Order</Th>
-                  <Th className="w-[160px]">Vendor</Th>
-                  <Th className="w-[150px]">Project</Th>
-                  <Th className="text-right w-[120px]">Amount</Th>
-                  <Th className="w-[150px]">Approval</Th>
-                  <Th className="w-[170px]">Accounts</Th>
-                  <Th className="w-[110px] whitespace-nowrap">Date</Th>
-                  <Th>Actions</Th>
+                  <Th className="w-[105px]">Bill No.</Th>
+                  <Th className="w-[125px]">Bill Type</Th>
+                  <Th className="w-[100px]">Work Order</Th>
+                  <Th className="w-[120px]">Vendor</Th>
+                  <Th className="w-[110px]">Project</Th>
+                  <Th className="text-right w-[105px]">Amount</Th>
+                  <Th className="w-[105px]">Approval</Th>
+                  <Th className="w-[135px]">Accounts</Th>
+                  <Th className="w-[90px] whitespace-nowrap">Date</Th>
+                  <Th className="w-[140px]">Actions</Th>
                 </Tr>
               </Thead>
               <Tbody>
                 {pagedBills.map((r) => (
                   <Tr key={r.id} className="cursor-pointer" onClick={() => handleRowClick(r)}>
                     <Td className="font-bold text-primary">
-                      <div className="whitespace-nowrap truncate max-w-[90px]" title={r.billNo}>{r.billNo}</div>
+                      <div className="whitespace-nowrap truncate" title={r.billNo}>{r.billNo}</div>
                       {supersededByMap[r.billNo]?.length ? (
                         <div
                           className="mt-0.5 inline-block text-[10px] font-semibold text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-500/20 px-1.5 py-0.5 rounded-full whitespace-nowrap"
@@ -552,7 +586,7 @@ export default function Billing() {
                     </Td>
                     <Td>{r.billDate ? dayjs(r.billDate).format("DD MMM YYYY") : "—"}</Td>
                     <Td onClick={(e) => e.stopPropagation()}>
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center gap-0">
                         {r.isUnsubmittedDraft && (
                           <NxBtn
                             color="primary"
@@ -562,8 +596,14 @@ export default function Billing() {
                             onClick={() => handleSubmitDraft(r)}
                           />
                         )}
-                        <NxBtn color="icon-blue" title="View" icon={Eye} onClick={() => handleRowClick(r)} />
-                        <NxBtn color="icon-pink" title="Print / Download" icon={Download} loading={downloadingId === r.id} onClick={() => handleDownload(r)} />
+                        <NxBtn color="icon" title="View" icon={Eye} className="shrink-0 !w-7" onClick={() => handleRowClick(r)} />
+                        <NxBtn color="icon" title="Print / Download" icon={Download} className="shrink-0 !w-7" loading={downloadingId === r.id} onClick={() => handleDownload(r)} />
+                        {canChangeBill(r, "edit-bill") && (
+                          <NxBtn color="icon" title="Edit" icon={Pencil} className="shrink-0 !w-7" onClick={() => setEditBill(r)} />
+                        )}
+                        {canChangeBill(r, "delete-bill") && (
+                          <NxBtn color="icon" title="Delete" icon={Trash2} className="shrink-0 !w-7" onClick={() => setDeleteTarget(r)} />
+                        )}
                       </div>
                     </Td>
                   </Tr>
@@ -799,12 +839,28 @@ export default function Billing() {
       )}
 
       <NewBillDrawer
-        open={newOpen}
-        onClose={() => setNewOpen(false)}
+        open={newOpen || !!editBill}
+        editBill={editBill as Record<string, any> | null}
+        onClose={() => { setNewOpen(false); setEditBill(null); }}
         onCreated={(bill) => {
-          setBills((prev) => [normalizeId(bill) as unknown as Bill, ...prev]);
+          const saved = normalizeId(bill) as unknown as Bill;
+          setBills((prev) => prev.some((b) => b.id === saved.id)
+            ? prev.map((b) => (b.id === saved.id ? { ...b, ...saved } : b))
+            : [saved, ...prev]);
         }}
       />
+
+      {deleteTarget && (
+        <ConfirmModal
+          title={`Delete ${deleteTarget.billNo}?`}
+          message="This removes the bill and gives its billed quantity back to the work order. It cannot be undone."
+          confirmLabel="Delete"
+          danger
+          loading={deleting}
+          onConfirm={handleDelete}
+          onCancel={() => setDeleteTarget(null)}
+        />
+      )}
     </div>
   );
 }

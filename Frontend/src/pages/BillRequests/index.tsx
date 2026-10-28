@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import {
   FileText, Eye, Printer, CheckCircle2, XCircle, Check, X, Clock,
-  Trophy, Download, Pencil,
+  Trophy, Download, Pencil, Trash2,
 } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import dayjs from "dayjs";
@@ -236,6 +236,16 @@ function hasPerm(user: AuthUser | null, action: string): boolean {
   if (!user) return false;
   if (user.role === "owner") return true;
   return !!user.permissions?.find(p => p.module === "bill-requests")?.actions.includes(action);
+}
+
+// Edit/Delete on a manual bill: anyone granted "Edit Bill"/"Delete Bill" (on
+// Billing or Bill Approval) while it is at L1; once it is past L1 only Owner.
+function canChangeManualBill(user: AuthUser | null, action: "edit-bill" | "delete-bill", status: string): boolean {
+  if (!user) return false;
+  if (!["pending", "pending-gm", "pending-l3", "pending-l4"].includes(status)) return false;
+  if (user.role === "owner") return true;
+  if (status !== "pending") return false;
+  return !!user.permissions?.some(p => (p.module === "billing" || p.module === "bill-requests") && p.actions.includes(action));
 }
 
 // Append-only approvalHistory timeline — mirrors the pattern already used for
@@ -581,6 +591,23 @@ export default function BillApproval() {
   // Progress-driven request being re-picked — opens its drawer right here.
   const [editProgressBRId, setEditProgressBRId] = useState<string | null>(null);
   const [editManualBillLoadingId, setEditManualBillLoadingId] = useState<string | null>(null);
+  const [deleteManualBill, setDeleteManualBill] = useState<ManualBillRow | null>(null);
+  const [deletingManualBill, setDeletingManualBill] = useState(false);
+  async function confirmDeleteManualBill() {
+    if (!deleteManualBill) return;
+    setDeletingManualBill(true);
+    try {
+      await apiClient.delete(`/bills/${deleteManualBill._id}`);
+      toast.success(`Bill ${deleteManualBill.billNo} deleted`);
+      setManualBills(prev => prev.filter(x => x._id !== deleteManualBill._id));
+      setDeleteManualBill(null);
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { message?: string } } };
+      toast.error(e?.response?.data?.message || "Failed to delete bill");
+    } finally {
+      setDeletingManualBill(false);
+    }
+  }
   async function openManualBillEdit(b: ManualBillRow) {
     setEditManualBillLoadingId(b._id);
     try {
@@ -1384,8 +1411,11 @@ export default function BillApproval() {
                       <div className="flex items-center gap-1">
                         <NxBtn color="icon-blue" title="View" icon={Eye} loading={viewManualBillLoadingId === b._id} onClick={() => openManualBillView(b)} />
                         <NxBtn color="icon" title="Print" icon={Printer} loading={printingReqId === b._id} onClick={() => handlePrintManualBill(b)} />
-                        {b.manualApprovalStatus === "pending" && hasPerm(user, "create") && (
+                        {canChangeManualBill(user, "edit-bill", b.manualApprovalStatus) && (
                           <NxBtn color="icon" title="Edit" icon={Pencil} loading={editManualBillLoadingId === b._id} onClick={() => openManualBillEdit(b)} />
+                        )}
+                        {canChangeManualBill(user, "delete-bill", b.manualApprovalStatus) && (
+                          <NxBtn color="icon" title="Delete" icon={Trash2} onClick={() => setDeleteManualBill(b)} />
                         )}
                         {b.manualApprovalStatus === "pending" && canAgmApprove && (
                           <NxBtn color="icon-green" title="L1 Approve" icon={Check} onClick={() => setManualApproveTarget(b)} />
@@ -2328,6 +2358,18 @@ export default function BillApproval() {
         onClose={() => setEditManualBill(null)}
         onCreated={() => load()}
       />
+
+      {deleteManualBill && (
+        <ConfirmModal
+          title={`Delete ${deleteManualBill.billNo}?`}
+          message="This removes the bill and gives its billed quantity back to the work order. It cannot be undone."
+          confirmLabel="Delete"
+          danger
+          loading={deletingManualBill}
+          onConfirm={confirmDeleteManualBill}
+          onCancel={() => setDeleteManualBill(null)}
+        />
+      )}
     </div>
   );
 }
