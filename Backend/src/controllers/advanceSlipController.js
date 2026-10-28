@@ -71,8 +71,8 @@ exports.listAdvanceSlips = asyncHandler(async (req, res) => {
     if (req.query.projectId)      billFilter.projectId  = req.query.projectId;
     if (req.query.contractorCode) billFilter.vendorCode = req.query.contractorCode;
     pendingApprovals = await RunningBill.find(billFilter)
-      .select('billNo amount projectName vendorCode vendorName companyName billDate manualApprovalStatus contractorRefNo remarks createdBy createdAt')
-      .populate('createdBy', 'name').sort({ createdAt: -1 }).lean();
+      .select('billNo amount projectName vendorCode vendorName companyName billDate manualApprovalStatus contractorRefNo remarks lineItems gstPercent documents approvalHistory createdBy createdAt')
+      .populate('createdBy', 'name').populate('approvalHistory.by', 'name').sort({ createdAt: -1 }).lean();
   }
   success(res, { advanceSlips: slips, pendingApprovals });
 });
