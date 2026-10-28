@@ -790,6 +790,7 @@ async function createAdvanceSlipForApprovedBill(bill, user) {
     amount:         bill.amount,
     date:           bill.billDate,
     reference:      bill.billNo,
+    billId:         bill._id,
     notes:          `Raised on approval of Mobilisation Advance bill ${bill.billNo}`,
     createdBy:      bill.createdBy || user._id,
   });

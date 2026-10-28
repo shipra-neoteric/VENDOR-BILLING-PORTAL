@@ -57,6 +57,16 @@ exports.listAdvanceSlips = asyncHandler(async (req, res) => {
   await overlayLiveContractorNames(slips);
   attachBalance(slips);
 
+  // A slip raised from a bill shows that bill's current number — the bill was
+  // renumbered (BR→RA) when its approval completed, so the stored reference
+  // can be stale.
+  const linkedIds = slips.filter((s) => s.billId).map((s) => s.billId);
+  if (linkedIds.length) {
+    const bills = await RunningBill.find({ _id: { $in: linkedIds } }).select('billNo').lean();
+    const noById = new Map(bills.map((b) => [String(b._id), b.billNo]));
+    slips.forEach((s) => { const no = s.billId && noById.get(String(s.billId)); if (no) s.reference = no; });
+  }
+
   // Mobilisation Advance ("Advance For") bills still in their approval chain —
   // their slip is only raised once the chain completes (see billController's
   // createAdvanceSlipForApprovedBill), but the advance should already be

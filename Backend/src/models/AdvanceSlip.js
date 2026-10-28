@@ -25,6 +25,8 @@ const advanceSlipSchema = new Schema(
     amountRecovered: { type: Number, default: 0 },
     date:            { type: Date, required: true },
     reference:       { type: String },
+    // The Mobilisation Advance bill this slip was raised from — lets the slip show that bill's CURRENT number (a bill is renumbered BR→RA when its approval completes).
+    billId:          { type: Schema.Types.ObjectId, ref: 'RunningBill', default: null },
     notes:           { type: String },
     status: {
       type: String,
