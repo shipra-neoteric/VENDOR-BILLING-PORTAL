@@ -22,6 +22,8 @@ import type { Contractor, Consultant } from "../../types/VendorBilling";
 import { BILL_TYPE_CFG, RELATIONSHIP_OPTIONS } from "../../shared/constants/billOptions";
 import { billFinancials, holdAmountFromPercent } from "../../shared/utils/billMath";
 import { UNIT_OPTIONS } from "../../shared/constants/unitOptions";
+import DocumentsUpload from "../../components/DocumentsUpload";
+import type { WODocument } from "../../components/DocumentsUpload";
 
 // ── Types — a self-contained slice of what AccountsPayment's own Bill/LineItem
 // types look like, since this drawer fetches and posts independently ────────
@@ -284,6 +286,10 @@ export default function NewBillDrawer({
   const [generatedBy, setGeneratedBy] = useState("");
   const [contractorRefNo, setContractorRefNo] = useState("");
   const [remarksInput, setRemarksInput] = useState("");
+  // Supporting files attached to this bill; `docsUploading` blocks Save while
+  // one is still in flight (see DocumentsUpload's onUploadingChange).
+  const [documents, setDocuments] = useState<WODocument[]>([]);
+  const [docsUploading, setDocsUploading] = useState(false);
 
   // Hold (retention) decided at creation time — either a % or a flat amount.
   const [holdMode, setHoldMode] = useState<"percent" | "amount">("percent");
@@ -336,6 +342,8 @@ export default function NewBillDrawer({
     setGeneratedBy("");
     setContractorRefNo("");
     setRemarksInput("");
+    setDocuments([]);
+    setDocsUploading(false);
     setHoldMode("percent");
     setHoldPercent(0);
     setHoldAmountInput(0);
@@ -579,6 +587,7 @@ export default function NewBillDrawer({
     setGeneratedBy(editBill.generatedBy || "");
     setContractorRefNo(editBill.contractorRefNo || "");
     setRemarksInput(editBill.remarks || "");
+    setDocuments(Array.isArray(editBill.documents) ? editBill.documents : []);
     if (Number(editBill.retentionPercent) > 0) { setHoldMode("percent"); setHoldPercent(Number(editBill.retentionPercent)); }
     else if (Number(editBill.retentionAmount) > 0) { setHoldMode("amount"); setHoldAmountInput(Number(editBill.retentionAmount)); }
     setRecoveryAmount(Number(editBill.advanceRecovery) > 0 ? Number(editBill.advanceRecovery) : null);
@@ -925,6 +934,10 @@ export default function NewBillDrawer({
   // Billing list. saveAsDraft=false (the existing/default path, unchanged):
   // submits straight into that chain, exactly as this form always has.
   async function handleSubmit(saveAsDraft: boolean) {
+    if (docsUploading) {
+      toast.error("A document is still uploading — wait for it to finish before saving");
+      return;
+    }
     const enteredItems = lineItems.filter((li) => li.description.trim() && li.billedQty > 0);
     // Only a bill whose Bill Type is "Retention Release" (or whose Relationship Type is
     // RETENTION_RELEASE_OF) can skip the work items (it just
@@ -1002,6 +1015,7 @@ export default function NewBillDrawer({
       generatedBy: generatedBy ?? "",
       contractorRefNo: contractorRefNo ?? "",
       remarks: remarksInput ?? "",
+      documents,
       gstPercent,
       tdsPercent: 0,
       billType,
@@ -1777,6 +1791,11 @@ export default function NewBillDrawer({
           textarea label="Remarks" placeholder="Describe the scope of work covered in this bill…"
           value={remarksInput} onChange={(e) => setRemarksInput(e.target.value)}
         />
+
+        <div className="mt-4">
+          <span className="block text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wide mb-1.5">Upload Bill Documents</span>
+          <DocumentsUpload value={documents} onChange={setDocuments} onUploadingChange={setDocsUploading} />
+        </div>
 
         <div className="mt-4">
           <SField

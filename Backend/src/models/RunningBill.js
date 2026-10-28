@@ -95,6 +95,9 @@ const runningBillSchema = new mongoose.Schema(
     gstPercent:  { type: Number, default: 18 },
     tdsPercent:  { type: Number, default: 1 },
     remarks:     { type: String },
+    // Supporting files (invoice copy, measurement sheet, ...) attached at
+    // bill creation — Cloudinary URLs, same shape as WorkOrder.documents.
+    documents:   [{ name: { type: String, required: true }, url: { type: String, required: true }, _id: false }],
 
     // L1 maker's confirmation that the bill was actually keyed into Tally —
     // both required server-side before makerConfirm succeeds.

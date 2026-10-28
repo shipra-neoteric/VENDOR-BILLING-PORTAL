@@ -71,6 +71,7 @@ interface Bill {
   tdsPercent?: number;
   tdsAmount?: number;
   remarks?: string;
+  documents?: { name: string; url: string }[];
   status: string;
   manualApprovalStatus?: "pending" | "pending-gm" | "approved" | "rejected";
   billType?: string;
@@ -776,6 +777,21 @@ export default function Billing() {
 
           {viewBill.remarks && (
             <div className="mb-4 text-gray-500 dark:text-gray-400 text-[13px]"><strong>Remarks:</strong> {viewBill.remarks}</div>
+          )}
+
+          {viewBill.documents && viewBill.documents.length > 0 && (
+            <div className="mb-4 text-[13px]">
+              <strong className="text-gray-500 dark:text-gray-400">Documents:</strong>
+              <div className="mt-1.5 flex flex-col gap-1.5">
+                {viewBill.documents.map((d, i) => (
+                  <a key={i} href={d.url} target="_blank" rel="noreferrer" download={d.name}
+                    className="inline-flex items-center gap-2 text-primary hover:underline">
+                    <FileText className="w-3.5 h-3.5 shrink-0" />
+                    <span className="truncate">{d.name}</span>
+                  </a>
+                ))}
+              </div>
+            </div>
           )}
 
           {viewApprovalBillRequestId && <SlaTimeline entityType="BillRequest" entityId={viewApprovalBillRequestId} />}

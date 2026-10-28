@@ -24,6 +24,9 @@ const { getApprovalConfig, approverAllowed, DEFAULT_AGM_ROLES, DEFAULT_GM_ROLES,
 const { notifyStageInApp, notifyByPermission } = require('../utils/notificationService');
 const User = require('../models/User');
 
+// Same cap as a Work Order's attached documents (see utils/validateDocuments.js).
+const MAX_BILL_DOCUMENTS = 5;
+
 const MODULE = 'accounts-payment';
 
 // Kill switch — TMS's payment-confirmed webhook isn't firing reliably, so
@@ -423,8 +426,11 @@ function withReleaseOnlyLine(lineItems, body) {
 exports.createBill = asyncHandler(async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+  if (Array.isArray(req.body.documents) && req.body.documents.length > MAX_BILL_DOCUMENTS) {
+    return badRequest(res, `A bill can have at most ${MAX_BILL_DOCUMENTS} attached documents`);
+  }
 
-  // A Mobilisation Advance raised as ADVANCE_FOR future billing is, by
+  //A Mobilisation Advance raised as ADVANCE_FOR future billing is, by
   // definition, money paid out ahead of any work — there is no bill to
   // approve/verify/pay here at all, only an AdvanceSlip's own
   // outstanding/partial/recovered lifecycle (tracked entirely in Advance
@@ -851,9 +857,12 @@ exports.updateBill = asyncHandler(async (req, res) => {
 // advance recovery) and re-applies the new form the way createBill does, in
 // place — same bill number, history and approval position.
 exports.editManualBill = asyncHandler(async (req, res) => {
+  if (Array.isArray(req.body.documents) && req.body.documents.length > MAX_BILL_DOCUMENTS) {
+    return badRequest(res, `A bill can have at most ${MAX_BILL_DOCUMENTS} attached documents`);
+  }
   const bill = await RunningBill.findById(req.params.id);
   if (!bill) return notFound(res, 'Bill not found');
-  const atL1 = bill.status === 'draft' && (bill.manualApprovalStatus === 'pending' || bill.isUnsubmittedDraft);
+  const atL1 =bill.status === 'draft' && (bill.manualApprovalStatus === 'pending' || bill.isUnsubmittedDraft);
   if (!atL1) return badRequest(res, 'A bill can only be edited with the full form while it is still pending L1 approval (or saved as a draft).');
   if (!bill.isUnsubmittedDraft && !canActOnDepartment(req.user, bill)) return forbidden(res, 'This bill belongs to a different department.');
 
@@ -946,7 +955,7 @@ exports.editManualBill = asyncHandler(async (req, res) => {
   const before = bill.toObject();
   const EDITABLE = ['billDate', 'projectId', 'projectName', 'generatedBy', 'contractorRefNo', 'remarks', 'gstPercent', 'tdsPercent',
     'billType', 'department', 'customDepartment', 'sentForApprovalTo', 'relationshipType', 'retentionPercent', 'retentionAmount',
-    'supersedeDeduction', 'retentionReleaseRemark'];
+    'supersedeDeduction', 'retentionReleaseRemark', 'documents'];
   for (const k of EDITABLE) if (req.body[k] !== undefined) bill[k] = req.body[k];
   bill.workOrderId = newWOId || undefined;
   bill.lineItems = lineItems;
