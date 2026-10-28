@@ -384,6 +384,11 @@ exports.listBills = asyncHandler(async (req, res) => {
     // this via billType === 'bill_request' and shows the approval stage
     // label instead of a RunningBill payment-stage status.
     status: STAGE_LABEL[r.status] || r.status,
+    // Raw BillRequest status (pending / pending-gm / pending-l3 / pending-l4) —
+    // `status` above is just a display label, the frontend needs this to decide
+    // who may still edit/delete the request.
+    requestStatus: r.status,
+    documents: r.documents || [],
     billDate: r.createdAt,
     createdAt: r.createdAt,
     // BillRequest's own AGM/GM/L3/L4 chain (byName already snapshotted on

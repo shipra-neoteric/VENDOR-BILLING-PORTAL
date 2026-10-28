@@ -1,9 +1,10 @@
 const router     = require('express').Router();
-const { authenticate, authorizeOr, authorizeAnyOr, authorizeOrAlt, authorizeAnyOrAlt } = require('../middleware/auth');
+const { authenticate, can, authorizeOr, authorizeAnyOr, authorizeOrAlt, authorizeAnyOrAlt } = require('../middleware/auth');
 const {
   listBillRequests,
   createBillRequest,
   editBillRequest,
+  deleteBillRequest,
   createBatchBillRequest,
   agmApprove,
   gmApprove,
@@ -30,7 +31,14 @@ router.get('/',                listBillRequests);
 router.post('/batch',          authorizeOr('bill-requests', 'create'), createBatchBillRequest);
 router.post('/',               authorizeOr('bill-requests', 'create'), createBillRequest);
 // Re-pick items/entries while the request is still pending L1 — see editBillRequest.
-router.put('/:id',             authorizeOr('bill-requests', 'create'), editBillRequest);
+// Edit/Delete — granted per user as "Edit Bill" / "Delete Bill" on Billing or
+// Bill Approval (same as manual bills); the controller limits anything past L1 to Owner.
+const authorizeBillAction = (action) => (req, res, next) => {
+  if (can(req.user, 'billing', action, 'owner') || can(req.user, 'bill-requests', action)) return next();
+  return res.status(403).json({ message: `You do not have permission to ${action === 'edit-bill' ? 'edit' : 'delete'} bill requests` });
+};
+router.put('/:id',             authorizeBillAction('edit-bill'), editBillRequest);
+router.delete('/:id',          authorizeBillAction('delete-bill'), deleteBillRequest);
 // Stage 1 (AGM sets hold/advance, forwards to GM) — AGM/owner only.
 router.put('/:id/agm-approve', authorizeOrAlt('bill-requests', 'agm-approve', 'md-approvals', 'approve'), agmApprove);
 // Stage 2 (GM signs off) — finalizes the bill for the default 2-level

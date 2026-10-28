@@ -208,6 +208,9 @@ function computePendingBillItems(wo, { scopeItemIds, entryIds, subItemIds }) {
 // POST /api/bill-requests  — qty is auto-calculated, only remarks accepted from client
 exports.createBillRequest = asyncHandler(async (req, res) => {
   const { workOrderId, remarks, scopeItemIds, entryIds, subItemIds } = req.body;
+  if (Array.isArray(req.body.documents) && req.body.documents.length > MAX_BR_DOCUMENTS) {
+    return badRequest(res, `A bill request can have at most ${MAX_BR_DOCUMENTS} attached documents`);
+  }
 
   const wo = await WorkOrder.findById(workOrderId);
   if (!wo) return notFound(res, 'Work order not found');
@@ -300,6 +303,7 @@ exports.createBillRequest = asyncHandler(async (req, res) => {
       location:        progressRemarksByItem.get(String(it.subItemId || it.scopeItemId))?.location || '',
     })),
     remarks:     remarks || '',
+    documents:   Array.isArray(req.body.documents) ? req.body.documents : [],
     requestedBy: req.user._id,
     });
   } catch (err) {
@@ -565,6 +569,7 @@ async function finalizeBillRequest(br, wo, req, res, finalStage) {
   const runningBill = await RunningBill.create({
     billNo,
     billRequestNo: br.reqNo,
+    documents: br.documents || [],
     workOrderId: wo._id,
     workOrderNo: wo.workOrderNo,
     projectId:   wo.projectId,
@@ -1215,13 +1220,80 @@ exports.unarchiveBillRequestsBulk = asyncHandler(async (req, res) => {
 // create. Releases what the request currently holds (lastBilledQty + the
 // entries it marked) and re-bills from the new selection in one save, so the
 // request keeps its reqNo, stage number and SLA tracker.
+// Same cap as a Work Order's / manual bill's attached documents.
+const MAX_BR_DOCUMENTS = 5;
+
+// Stages a bill request can still be edited/deleted in (not yet approved/rejected).
+const BR_OPEN_STAGES = ['pending', 'pending-gm', 'pending-l3', 'pending-l4'];
+
+// DELETE /api/bill-requests/:id — removes a request that is still waiting for
+// approval and gives back what it was holding (the work order's billed
+// quantity and the progress entries it had marked), so that work can be billed
+// again. Anyone granted Delete Bill may at L1; past L1 only the Owner (admin).
+exports.deleteBillRequest = asyncHandler(async (req, res) => {
+  const br = await BillRequest.findById(req.params.id);
+  if (!br) return notFound(res, 'Bill request not found');
+  if (!BR_OPEN_STAGES.includes(br.status)) {
+    return badRequest(res, 'A bill request can only be deleted while it is still waiting for approval.');
+  }
+  if (br.status !== 'pending' && req.user.role !== 'owner') {
+    return forbidden(res, 'Only an admin can delete a bill request once it is past L1 approval.');
+  }
+
+  const wo = await WorkOrder.findById(br.workOrderId);
+  if (wo) {
+    const parents = new Set();
+    for (const item of br.items) {
+      if (!item.scopeItemId) continue;
+      const si = wo.scopeItems.id(item.scopeItemId);
+      if (!si) continue;
+      const target = resolveBillableItem(si, item.subItemId);
+      if (!target) continue;
+      target.lastBilledQty = Math.max(0, (target.lastBilledQty || 0) - item.billedQty);
+      if (item.subItemId) parents.add(String(item.scopeItemId));
+      const sources = item.subItemId
+        ? [target]
+        : (si.subItems && si.subItems.length > 0 ? si.subItems : [target]);
+      for (const src of sources) {
+        for (const entry of src.progressEntries) {
+          if (entry.billedInRequestId && String(entry.billedInRequestId) === String(br._id)) entry.billedInRequestId = null;
+        }
+      }
+    }
+    for (const id of parents) { const si = wo.scopeItems.id(id); if (si) recomputeParentFromSubItems(si); }
+    await wo.save();
+  }
+
+  const snapshot = br.toObject();
+  await br.deleteOne();
+  await cancelInstance('BillRequest', snapshot._id, 'Deleted').catch(() => {});
+  settleAllPendingForEntity(snapshot._id, { verb: 'Deleted', decidedByName: req.user.name })
+    .catch((err) => console.error('[slack] settle on delete failed', err.message));
+  await require('../models/Notification').deleteMany({ entityId: snapshot._id }).catch(() => {});
+
+  await logAudit({
+    action: 'DELETE', module: 'bill-requests', user: req.user,
+    description: `Bill request ${snapshot.reqNo} deleted${snapshot.status !== 'pending' ? ` by admin at ${snapshot.status}` : ' at L1'} (WO ${snapshot.workOrderNo})`,
+    entityType: 'BillRequest', entityId: snapshot._id, entityLabel: snapshot.reqNo,
+  });
+
+  success(res, {}, `Bill request ${snapshot.reqNo} deleted`);
+});
+
 exports.editBillRequest = asyncHandler(async (req, res) => {
   const { remarks, scopeItemIds, entryIds, subItemIds } = req.body;
+  if (Array.isArray(req.body.documents) && req.body.documents.length > MAX_BR_DOCUMENTS) {
+    return badRequest(res, `A bill request can have at most ${MAX_BR_DOCUMENTS} attached documents`);
+  }
 
   const br = await BillRequest.findById(req.params.id);
   if (!br) return notFound(res, 'Bill request not found');
-  if (br.status !== 'pending') {
-    return badRequest(res, 'A bill request can only be edited while it is still pending L1 approval.');
+  if (!BR_OPEN_STAGES.includes(br.status)) {
+    return badRequest(res, 'A bill request can only be edited while it is still waiting for approval.');
+  }
+  // L1 is open to anyone holding Edit Bill; once it is past L1 only the Owner (admin) may change it.
+  if (br.status !== 'pending' && req.user.role !== 'owner') {
+    return forbidden(res, 'Only an admin can edit a bill request once it is past L1 approval.');
   }
 
   const wo = await WorkOrder.findById(br.workOrderId);
@@ -1278,6 +1350,7 @@ exports.editBillRequest = asyncHandler(async (req, res) => {
     location:        progressRemarksByItem.get(String(it.subItemId || it.scopeItemId))?.location || '',
   }));
   if (remarks !== undefined) br.remarks = remarks || '';
+  if (Array.isArray(req.body.documents)) br.documents = req.body.documents;
 
   const touchedParents = new Set();
   for (const pi of pendingItems) {

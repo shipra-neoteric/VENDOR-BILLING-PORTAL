@@ -20,6 +20,8 @@ import Spinner from "../../ui/Spinner";
 import PageHeader from "../../ui/PageHeader";
 import Modal from "../../ui/Modal";
 import Field from "../../ui/Field";
+import DocumentsUpload from "../../components/DocumentsUpload";
+import type { WODocument } from "../../components/DocumentsUpload";
 import Checkbox from "../../ui/Checkbox";
 import { Descriptions, DescItem } from "../../ui/Descriptions";
 import { Table, Thead, Tbody, Tr, Th, Td } from "../../ui/Table";
@@ -84,7 +86,7 @@ interface BillRequestRow {
   workOrderId?: string; workOrderNo: string;
   projectId?: string; projectName: string; projectLocation?: string;
   vendorCode?: string; vendorName: string; companyName?: string; category?: string; subCategory?: string;
-  items: BillItem[]; remarks?: string;
+  items: BillItem[]; remarks?: string; documents?: WODocument[];
   periodFrom?: string; periodTo?: string;
   status: "pending" | "pending-gm" | "approved" | "rejected";
   requestedBy?: { name: string; email: string };
@@ -306,6 +308,9 @@ export default function SiteProgress({ embeddedEditBRId, onEmbeddedClose }: {
   const [expandedEntries, setExpandedEntries] = useState<Set<string>>(new Set());
   const [slaInstance, setSlaInstance] = useState<WorkflowInstance | null>(null);
   const [billRemarks, setBillRemarks] = useState("");
+  // Files attached to the bill request; `docsUploading` blocks submit mid-upload.
+  const [billDocs, setBillDocs] = useState<WODocument[]>([]);
+  const [docsUploading, setDocsUploading] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [approvingVariance, setApprovingVariance] = useState<string | null>(null);
 
@@ -340,10 +345,11 @@ export default function SiteProgress({ embeddedEditBRId, onEmbeddedClose }: {
   useEffect(() => {
     if (!editBRId || editBR || !billReqs.length) return;
     const br = billReqs.find(b => b._id === editBRId);
-    if (!br || br.status !== "pending" || !br.workOrderId) { toast.error("This bill request can no longer be edited"); if (embedded) onEmbeddedClose?.(false); else setSearchParams({}); return; }
+    if (!br || !["pending", "pending-gm", "pending-l3", "pending-l4"].includes(br.status) || !br.workOrderId) { toast.error("This bill request can no longer be edited"); if (embedded) onEmbeddedClose?.(false); else setSearchParams({}); return; }
     setEditBR(br);
     openWO(br.workOrderId, br.projectId);
     setBillRemarks(br.remarks || "");
+    setBillDocs(br.documents || []);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editBRId, billReqs]);
   // Once the (adjusted) work order is ready, tick what the request currently bills.
@@ -384,6 +390,8 @@ export default function SiteProgress({ embeddedEditBRId, onEmbeddedClose }: {
     setPickedEntries(new Set()); setPickedSubs(new Set());
     setExpandedEntries(new Set());
     setBillRemarks("");
+    setBillDocs([]);
+    setDocsUploading(false);
     if (!woDetails.has(woId)) {
       try {
         const r = await apiClient.get(`/work-orders/${woId}`);
@@ -479,6 +487,7 @@ export default function SiteProgress({ embeddedEditBRId, onEmbeddedClose }: {
         entryIds: Array.from(pickedEntries),
         subItemIds: Array.from(pickedSubs),
         remarks: billRemarks,
+        documents: billDocs,
       };
       const res = editBR
         ? await apiClient.put(`/bill-requests/${editBR._id}`, body)
@@ -490,6 +499,7 @@ export default function SiteProgress({ embeddedEditBRId, onEmbeddedClose }: {
       setChecked(new Set());
       setPickedEntries(new Set()); setPickedSubs(new Set());
       setBillRemarks("");
+      setBillDocs([]);
       if (wasEdit) { closeEdit(true); if (!embedded) { reloadWODetail(woId).catch(() => {}); navigate("/bill-requests"); } }
       load();
     } catch (e: any) {
@@ -681,7 +691,7 @@ export default function SiteProgress({ embeddedEditBRId, onEmbeddedClose }: {
               </span>
               <div className="flex gap-2">
                 <Btn outline label="Close" onClick={() => { setViewWOId(null); if (editBR) closeEdit(false); }} />
-                <NxBtn color="primary" label={editBR ? "Save Changes" : "Generate Bill Request"} disabled={checked.size === 0} loading={generating} onClick={handleGenerateBill} />
+                <NxBtn color="primary" label={editBR ? "Save Changes" : "Generate Bill Request"} disabled={checked.size === 0 || docsUploading} loading={generating} onClick={handleGenerateBill} />
               </div>
             </div>
           }
@@ -870,6 +880,11 @@ export default function SiteProgress({ embeddedEditBRId, onEmbeddedClose }: {
                 textarea label="Remarks for this bill request (optional)" placeholder="Notes for whoever approves this…"
                 value={billRemarks} onChange={e => setBillRemarks(e.target.value)}
               />
+
+              <div>
+                <span className="block text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wide mb-1.5">Upload Bill Documents</span>
+                <DocumentsUpload value={billDocs} onChange={setBillDocs} onUploadingChange={setDocsUploading} />
+              </div>
             </div>
           )}
         </Modal>

@@ -29,6 +29,7 @@ import { BILL_TYPE_CFG } from "../../shared/constants/billOptions";
 import { BILL_STATUS, BILL_STATUS_LABEL } from "../../shared/constants/billStatus";
 import { billFinancials } from "../../shared/utils/billMath";
 import NewBillDrawer from "./NewBillDrawer";
+import SiteProgress from "../SiteProgress";
 import { BillStageCell } from "../../components/BillDetailModal";
 import SlaTimeline from "../../components/SlaTimeline";
 
@@ -72,6 +73,9 @@ interface Bill {
   tdsPercent?: number;
   tdsAmount?: number;
   remarks?: string;
+  // Only on a merged-in Bill Request row (billType === "bill_request"): its raw
+  // status, since `status` there is just a display label.
+  requestStatus?: "pending" | "pending-gm" | "pending-l3" | "pending-l4";
   documents?: { name: string; url: string }[];
   status: string;
   manualApprovalStatus?: "pending" | "pending-gm" | "pending-l3" | "pending-l4" | "approved" | "rejected";
@@ -220,6 +224,8 @@ export default function Billing() {
   // Edit re-opens the New Bill drawer prefilled; Delete asks first.
   const [editBill, setEditBill] = useState<Bill | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Bill | null>(null);
+  // A Bill Request (not a manual bill) being re-picked — opens Site Progress's edit drawer right here.
+  const [editBRId, setEditBRId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   // The originating BillRequest's own _id — only resolvable when this bill
   // came from the normal request flow (matched below) — used to look up its
@@ -335,8 +341,10 @@ export default function Billing() {
   // At L1 (or a draft) anyone granted "Edit Bill"/"Delete Bill" (on Billing or
   // Bill Approval) may; once the bill is past L1 only an admin (Owner) can.
   const canChangeBill = (b: Bill, action: "edit-bill" | "delete-bill") => {
-    if (!user || isAdvanceSlipRow(b) || b.status !== "draft") return false;
-    const status = b.isUnsubmittedDraft ? "pending" : (b.manualApprovalStatus as string | undefined);
+    if (!user || isAdvanceSlipRow(b)) return false;
+    const isRequest = b.billType === "bill_request";
+    if (!isRequest && b.status !== "draft") return false;
+    const status = isRequest ? b.requestStatus : (b.isUnsubmittedDraft ? "pending" : (b.manualApprovalStatus as string | undefined));
     if (!status || !["pending", "pending-gm", "pending-l3", "pending-l4"].includes(status)) return false;
     if (user.role === "owner") return true;
     if (status !== "pending") return false;
@@ -347,8 +355,8 @@ export default function Billing() {
     if (!deleteTarget) return;
     setDeleting(true);
     try {
-      await apiClient.delete(`/bills/${deleteTarget.id}`);
-      toast.success(`Bill ${deleteTarget.billNo} deleted`);
+      await apiClient.delete(deleteTarget.billType === "bill_request" ? `/bill-requests/${deleteTarget.id}` : `/bills/${deleteTarget.id}`);
+      toast.success(`${deleteTarget.billType === "bill_request" ? "Bill request" : "Bill"} ${deleteTarget.billNo} deleted`);
       setBills((prev) => prev.filter((b) => b.id !== deleteTarget.id));
       setDeleteTarget(null);
     } catch (err: unknown) {
@@ -612,7 +620,7 @@ export default function Billing() {
                         <NxBtn color="icon" title="View" icon={Eye} className="shrink-0 !w-7" onClick={() => handleRowClick(r)} />
                         <NxBtn color="icon" title="Print / Download" icon={Download} className="shrink-0 !w-7" loading={downloadingId === r.id} onClick={() => handleDownload(r)} />
                         {canChangeBill(r, "edit-bill") && (
-                          <NxBtn color="icon" title="Edit" icon={Pencil} className="shrink-0 !w-7" onClick={() => setEditBill(r)} />
+                          <NxBtn color="icon" title="Edit" icon={Pencil} className="shrink-0 !w-7" onClick={() => (r.billType === "bill_request" ? setEditBRId(r.id) : setEditBill(r))} />
                         )}
                         {canChangeBill(r, "delete-bill") && (
                           <NxBtn color="icon" title="Delete" icon={Trash2} className="shrink-0 !w-7" onClick={() => setDeleteTarget(r)} />
@@ -863,10 +871,19 @@ export default function Billing() {
         }}
       />
 
+      {editBRId && (
+        <SiteProgress
+          embeddedEditBRId={editBRId}
+          onEmbeddedClose={(saved) => { setEditBRId(null); if (saved) loadBills(); }}
+        />
+      )}
+
       {deleteTarget && (
         <ConfirmModal
           title={`Delete ${deleteTarget.billNo}?`}
-          message="This removes the bill and gives its billed quantity back to the work order. It cannot be undone."
+          message={deleteTarget.billType === "bill_request"
+            ? "This removes the bill request and gives its billed quantity and progress back to the work order. It cannot be undone."
+            : "This removes the bill and gives its billed quantity back to the work order. It cannot be undone."}
           confirmLabel="Delete"
           danger
           loading={deleting}

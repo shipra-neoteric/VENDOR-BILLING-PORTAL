@@ -50,6 +50,10 @@ const billRequestSchema = new Schema(
     sentForL2ApprovalTo: { type: Schema.Types.ObjectId, ref: 'User', default: null },
     items:       { type: [itemSchema], default: [] },
     remarks:     { type: String, default: '' },
+    // Supporting files attached when the request is raised from Site Progress —
+    // Cloudinary URLs, same shape as WorkOrder.documents; carried onto the bill
+    // when the request is finally approved.
+    documents:   [{ name: { type: String, required: true }, url: { type: String, required: true }, _id: false }],
     periodFrom:  { type: Date },
     periodTo:    { type: Date },
     // pending = awaiting L1 (AGM) · pending-gm = AGM approved, awaiting L2 (GM)

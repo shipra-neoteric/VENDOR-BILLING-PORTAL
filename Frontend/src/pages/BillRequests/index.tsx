@@ -62,7 +62,7 @@ interface BillRequestRow {
   projectId?: string; projectName: string; projectLocation?: string;
   vendorCode?: string; vendorName: string; companyName?: string; category?: string; subCategory?: string;
   department?: string; customDepartment?: string;
-  items: BillItem[]; remarks?: string;
+  items: BillItem[]; remarks?: string; documents?: { name: string; url: string }[];
   periodFrom?: string; periodTo?: string;
   status: "pending" | "pending-gm" | "pending-l3" | "pending-l4" | "approved" | "rejected";
   requestedBy?: { name: string; email: string };
@@ -591,6 +591,24 @@ export default function BillApproval() {
   // Progress-driven request being re-picked — opens its drawer right here.
   const [editProgressBRId, setEditProgressBRId] = useState<string | null>(null);
   const [editManualBillLoadingId, setEditManualBillLoadingId] = useState<string | null>(null);
+  // A progress-driven Bill Request being deleted (manual bills use deleteManualBill below).
+  const [deleteBR, setDeleteBR] = useState<BillRequest | null>(null);
+  const [deletingBR, setDeletingBR] = useState(false);
+  async function confirmDeleteBR() {
+    if (!deleteBR) return;
+    setDeletingBR(true);
+    try {
+      await apiClient.delete(`/bill-requests/${deleteBR._id}`);
+      toast.success(`Bill request ${deleteBR.reqNo} deleted`);
+      setDeleteBR(null);
+      load();
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { message?: string } } };
+      toast.error(e?.response?.data?.message || "Failed to delete bill request");
+    } finally {
+      setDeletingBR(false);
+    }
+  }
   const [deleteManualBill, setDeleteManualBill] = useState<ManualBillRow | null>(null);
   const [deletingManualBill, setDeletingManualBill] = useState(false);
   async function confirmDeleteManualBill() {
@@ -1477,8 +1495,11 @@ export default function BillApproval() {
                       <div onClick={e => e.stopPropagation()} className="flex items-center gap-1">
                         <NxBtn color="icon-blue" title="View" icon={Eye} onClick={() => openViewReq(r)} />
                         <NxBtn color="icon" title="Print" icon={Printer} loading={printingReqId === r._id} onClick={() => handlePrintReq(r)} />
-                        {r.status === "pending" && hasPerm(user, "create") && (
+                        {canChangeManualBill(user, "edit-bill", r.status) && (
                           <NxBtn color="icon" title="Edit" icon={Pencil} onClick={() => setEditProgressBRId(r._id)} />
+                        )}
+                        {canChangeManualBill(user, "delete-bill", r.status) && (
+                          <NxBtn color="icon" title="Delete" icon={Trash2} onClick={() => setDeleteBR(r)} />
                         )}
                         {r.status === "pending" && canAgmApprove && (
                           <NxBtn color="icon-green" title="L1 Approve" icon={Check} onClick={() => openApprove(r._id)} />
@@ -1725,6 +1746,19 @@ export default function BillApproval() {
             {viewReq.remarks && (
               <div className="rounded-md border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 p-2.5 text-[13px]">
                 <strong>Remarks:</strong> {viewReq.remarks}
+              </div>
+            )}
+
+            {viewReq.documents && viewReq.documents.length > 0 && (
+              <div className="text-[13px]">
+                <strong className="text-gray-500 dark:text-gray-400">Documents:</strong>
+                <div className="mt-1.5 flex flex-col gap-1.5">
+                  {viewReq.documents.map((d, i) => (
+                    <a key={i} href={d.url} target="_blank" rel="noreferrer" download={d.name} className="inline-flex items-center gap-2 text-primary hover:underline">
+                      <span className="truncate">{d.name}</span>
+                    </a>
+                  ))}
+                </div>
               </div>
             )}
 
@@ -2358,6 +2392,18 @@ export default function BillApproval() {
         onClose={() => setEditManualBill(null)}
         onCreated={() => load()}
       />
+
+      {deleteBR && (
+        <ConfirmModal
+          title={`Delete ${deleteBR.reqNo}?`}
+          message="This removes the bill request and gives its billed quantity and progress back to the work order. It cannot be undone."
+          confirmLabel="Delete"
+          danger
+          loading={deletingBR}
+          onConfirm={confirmDeleteBR}
+          onCancel={() => setDeleteBR(null)}
+        />
+      )}
 
       {deleteManualBill && (
         <ConfirmModal
