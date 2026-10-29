@@ -8,7 +8,8 @@ const asyncHandler = require('../utils/asyncHandler');
 const { success, created, notFound, badRequest, conflict } = require('../utils/responseFormatter');
 const { nextProjectCode } = require('../utils/codeGen');
 const { logAudit, diffFields } = require('../utils/auditLog');
-const { billFinancialsForBill } = require('../utils/billFinancials');
+const { computeProjectRollup } = require('../utils/projectRollup');
+const { scopeProgress } = require('../utils/projectStageRules');
 
 // Every GET below strips the real slackWebhookUrl before it ever leaves the
 // server — GET /projects and GET /projects/:id have no role restriction (any
@@ -130,8 +131,8 @@ exports.getProjectStats = asyncHandler(async (req, res) => {
 
   const [project, wos, runningBills] = await Promise.all([
     Project.findById(id).lean(),
-    WorkOrder.find({ projectId: id }),
-    RunningBill.find({ projectId: id }),
+    WorkOrder.find({ projectId: id }).select('-documents').lean(),
+    RunningBill.find({ projectId: id }).lean(),
   ]);
 
   if (!project) return notFound(res, 'Project not found');
@@ -141,74 +142,36 @@ exports.getProjectStats = asyncHandler(async (req, res) => {
     ? await BillRequest.find({ workOrderId: { $in: woIds } })
     : [];
 
-  const awardedContractValue = wos.reduce((s, w) => s + (w.contractValue || 0), 0);
+  // Same rollup the Dashboard / Projects Overview uses (utils/projectRollup.js) so
+  // the two screens can't disagree: only approved, non-cancelled work orders count
+  // towards contract/executed/progress; billed excludes rejected, unsubmitted and
+  // advance bills; outstanding is bills still 'approved', not certified - paid.
+  const roll = computeProjectRollup(wos, runningBills);
+  const { awardedContractValue, workExecutedValue, billedGross, certifiedNet, paidAmount, progress } = roll;
 
-  let workExecutedValue = 0;
-  let totalPlannedQty   = 0;
-  let totalCompletedQty = 0;
   const categoryMap = {};
-
-  wos.forEach(wo => {
+  roll.countedWos.forEach(wo => {
     const cat = wo.category || 'General';
     if (!categoryMap[cat]) {
-      categoryMap[cat] = { contractValue: 0, workExecuted: 0, plannedQty: 0, completedQty: 0, woCount: 0, vendorCodes: new Set() };
+      categoryMap[cat] = { contractValue: 0, woCount: 0, vendorCodes: new Set(), wos: [] };
     }
     categoryMap[cat].contractValue += (wo.contractValue || 0);
     categoryMap[cat].woCount++;
+    categoryMap[cat].wos.push(wo);
     if (wo.vendorCode) categoryMap[cat].vendorCodes.add(wo.vendorCode);
-
-    (wo.scopeItems || []).forEach(si => {
-      const planned   = si.plannedQty   || 0;
-      const completed = si.completedQty || 0;
-      const rate      = si.rate         || 0;
-      const executed  = completed * rate;
-      workExecutedValue += executed;
-      totalPlannedQty   += planned;
-      totalCompletedQty += completed;
-      categoryMap[cat].plannedQty   += planned;
-      categoryMap[cat].completedQty += completed;
-      categoryMap[cat].workExecuted  += executed;
-    });
   });
-
-  // Both figures now delegate to the shared billFinancials formula (Backend/
-  // src/utils/billFinancials.js — the Node port of Frontend's billMath.ts)
-  // instead of two hand-rolled variants that computed GST on the full base
-  // and disagreed with each other on whether retention/TDS came off first.
-  //
-  // Certified value = what's been billed and approved, net of Hold/Retention
-  // and Advance Recovery (those reduce the GST-able base itself, same as
-  // everywhere else in the app) but BEFORE TDS — TDS is a withholding
-  // deducted at actual disbursal, not something that reduces what was
-  // certified as owed. This is billFinancials' `netAfterHold`.
-  const netCertified = b => billFinancialsForBill(b).netAfterHold;
-  // Paid value is the true final net payable — after TDS and any manual
-  // adjustment too — since this money genuinely has left the building.
-  // This is billFinancials' `netPayable`.
-  const netPaidOut = b => billFinancialsForBill(b).netPayable;
-
-  const billedGross    = runningBills.reduce((s, b) => s + (b.amount || 0), 0);
-  const certifiedBills = runningBills.filter(b => ['approved', 'paid'].includes(b.status));
-  const certifiedNet   = certifiedBills.reduce((s, b) => s + netCertified(b), 0);
-  const paidBills      = runningBills.filter(b => b.status === 'paid');
-  const paidAmount     = paidBills.reduce((s, b) => s + netPaidOut(b), 0);
 
   const pendingBillReqs = billReqs.filter(b => ['pending', 'pending-gm', 'pending-l3', 'pending-l4'].includes(b.status)).length;
   const openBills       = runningBills.filter(b => !['approved', 'paid', 'rejected'].includes(b.status)).length;
-  const activeVendors   = new Set(wos.map(w => w.vendorCode).filter(Boolean)).size;
-  const progress        = totalPlannedQty > 0
-    ? Math.min(100, Math.round((totalCompletedQty / totalPlannedQty) * 100))
-    : 0;
+  const activeVendors   = new Set(roll.countedWos.map(w => w.vendorCode).filter(Boolean)).size;
 
   const categoryBreakdown = Object.entries(categoryMap).map(([category, s]) => ({
     category,
     contractValue: s.contractValue,
     woCount:       s.woCount,
     vendorCount:   s.vendorCodes.size,
-    progress:      s.plannedQty > 0
-      ? Math.min(100, Math.round((s.completedQty / s.plannedQty) * 100))
-      : 0,
-    workExecuted: s.workExecuted,
+    progress:      scopeProgress(s.wos).percent,
+    workExecuted:  scopeProgress(s.wos).executedValue,
   })).sort((a, b) => b.contractValue - a.contractValue);
 
   success(res, {
@@ -220,12 +183,13 @@ exports.getProjectStats = asyncHandler(async (req, res) => {
       billedGross,
       certifiedNet,
       paidAmount,
-      remainingContract:   Math.max(0, awardedContractValue - paidAmount),
+      remainingContract:   roll.remainingContract,
+      certifiedUnpaid:     roll.certifiedUnpaid,
       costVariance:        (project.budget || 0) > 0 ? (project.budget - awardedContractValue) : null,
       pendingBillReqs,
       openBills,
       activeVendors,
-      woCount:  wos.length,
+      woCount:  roll.countedWos.length,
       progress,
       categoryBreakdown,
     },

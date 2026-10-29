@@ -70,6 +70,11 @@ export interface ExecutiveDashboardProjectRow {
   certifiedNet: number;
   paidAmount: number;
   remainingContract: number;
+  // Certified but not yet paid (bills still 'approved'), the part of that aged past
+  // the attention threshold, and advances given (excluded from billedGross).
+  certifiedUnpaid: number;
+  overdueAmount: number;
+  advanceAmount: number;
   progress: number;
   pendingBillReqs: number;
   openBills: number;

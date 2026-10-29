@@ -7,6 +7,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import apiClient from "../../services/apiClient";
 import { useExecutiveDashboard } from "../../features/dashboard/hooks/useExecutiveDashboard";
+import type { ExecutiveDashboardKPIs, ExecutiveDashboardProjectRow } from "../../types/ExecutiveDashboard";
 import { useCategories } from "../../hooks/useCategories";
 import { selectableProjects } from "../../utils/projectOptions";
 import { fmtCr } from "../../features/dashboard/utils";
@@ -23,6 +24,11 @@ import SpendByCategory from "../../features/dashboard/components/SpendByCategory
 import ContractorsByCategory from "../../features/dashboard/components/ContractorsByCategory";
 import ApprovalBottleneckByLevel from "../../features/dashboard/components/ApprovalBottleneckByLevel";
 import BillingVsPaymentTrend from "../../features/dashboard/components/BillingVsPaymentTrend";
+
+const EMPTY_KPIS: ExecutiveDashboardKPIs = {
+  activeProjects: 0, totalContractValue: 0, workExecuted: 0, totalBilled: 0, totalCertified: 0,
+  totalPaid: 0, pendingApprovals: 0, outstandingAmount: 0, overdueAmount: 0,
+};
 
 interface ProjectOption { _id: string; name: string; parentId?: string | null; }
 interface ContractorOption { vendorCode: string; companyName: string; }
@@ -89,7 +95,9 @@ export default function Dashboard() {
     setSearchParams(new URLSearchParams(), { replace: true });
   }
 
-  const iso = (d: Date) => d.toISOString().slice(0, 10);
+  // Local calendar date — toISOString() converts to UTC first, which in IST turns a
+  // local midnight into the previous day and shifted every quarter/week range.
+  const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
   // Specific choices for the second dropdown, newest first — 5 years, last 8
   // quarters, last 12 weeks. Each carries the from/to it resolves to, so
@@ -207,8 +215,28 @@ export default function Dashboard() {
   if (to) filterChips.push({ key: "to", label: `To: ${to}` });
   if (stage) filterChips.push({ key: "stage", label: `Stage: ${stage}` });
 
-  const kpis = data?.kpis;
-  const kpiCards: { label: string; value: string | number; icon: LucideIcon; tone: "neutral" | "green" | "red" | "amber" | "blue" }[] = kpis ? [
+  // The backend ignores `stage`, so when a stage is picked the KPI cards are re-summed
+  // from that stage's project rows — otherwise the cards would keep showing totals for
+  // every project while the lifecycle strip says a stage is selected.
+  const kpis = useMemo<ExecutiveDashboardKPIs>(() => {
+    if (!data) return EMPTY_KPIS;
+    if (!stage) return data.kpis;
+    const rows = data.projects.filter(p => p.overallStage === stage);
+    const sum = (f: (p: ExecutiveDashboardProjectRow) => number) => rows.reduce((s, p) => s + f(p), 0);
+    return {
+      ...data.kpis,
+      activeProjects: rows.filter(p => p.status === "active").length,
+      totalContractValue: sum(p => p.awardedContractValue),
+      workExecuted: sum(p => p.workExecutedValue),
+      totalBilled: sum(p => p.billedGross),
+      totalCertified: sum(p => p.certifiedNet),
+      totalPaid: sum(p => p.paidAmount),
+      pendingApprovals: sum(p => p.pendingBillReqs),
+      outstandingAmount: Math.round(sum(p => p.certifiedUnpaid)),
+      overdueAmount: Math.round(sum(p => p.overdueAmount)),
+    };
+  }, [data, stage]);
+  const kpiCards: { label: string; value: string | number; icon: LucideIcon; tone: "neutral" | "green" | "red" | "amber" | "blue" }[] = data ? [
     { label: "Active Projects", value: kpis.activeProjects, icon: Building2, tone: "blue" },
     { label: "Total Contract Value", value: fmtCr(kpis.totalContractValue), icon: LayoutDashboard, tone: "neutral" },
     { label: "Total Executed", value: fmtCr(kpis.workExecuted), icon: HardHat, tone: "neutral" },
@@ -306,10 +334,10 @@ export default function Dashboard() {
                 <BillingVsPaymentTrend trend={data.billingVsPaymentTrend} />
               </div>
               <div className="xl:col-span-1 flex flex-col gap-3">
-                <KpiCard label="Overdue Amount" value={fmtCr(data.kpis.overdueAmount)} icon={AlertCircle} tone="red" />
-                <KpiCard label="Pending Approvals" value={data.kpis.pendingApprovals} icon={Hourglass} tone="amber" />
-                <KpiCard label="Outstanding Amount" value={fmtCr(data.kpis.outstandingAmount)} icon={Receipt} tone="blue" />
-                <KpiCard label="Total Certified" value={fmtCr(data.kpis.totalCertified)} icon={Banknote} tone="green" />
+                <KpiCard label="Overdue Amount" value={fmtCr(kpis.overdueAmount)} icon={AlertCircle} tone="red" />
+                <KpiCard label="Pending Approvals" value={kpis.pendingApprovals} icon={Hourglass} tone="amber" />
+                <KpiCard label="Outstanding Amount" value={fmtCr(kpis.outstandingAmount)} icon={Receipt} tone="blue" />
+                <KpiCard label="Total Certified" value={fmtCr(kpis.totalCertified)} icon={Banknote} tone="green" />
               </div>
             </div>
           )}
@@ -328,7 +356,7 @@ export default function Dashboard() {
                 <ProjectLifecycle
                   className="flex-1"
                   stageSummary={data.stageSummary}
-                  kpis={data.kpis}
+                  kpis={kpis}
                   activity={data.activity}
                   activeStage={stage || null}
                   onSelectStage={toggleStageFilter}

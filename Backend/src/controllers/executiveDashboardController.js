@@ -13,8 +13,9 @@ const { billFinancialsForBill } = require('../utils/billFinancials');
 const { isStageBreached } = require('../utils/slaEngine');
 const {
   computeProjectStageInfo, buildProjectAlerts, stableAlertId, computeBudgetRiskForecast,
-  daysSince, lastStatusChangeAt, HEALTH_THRESHOLDS, isWoApproved,
+  daysSince, lastStatusChangeAt, HEALTH_THRESHOLDS, isWoApproved, isCountableWo,
 } = require('../utils/projectStageRules');
+const { computeProjectRollup, isWorkBill } = require('../utils/projectRollup');
 
 // Phase 1 (backend half) of the Projects Overview executive dashboard
 // rebuild — bulk version of projectController.getProjectStats, generalized
@@ -174,7 +175,7 @@ async function buildContractorCategoryRows(workOrders, runningBills, projects) {
     const paid = paidBills.reduce((s, b) => s + billFinancialsForBill(b).netPayable, 0);
     const certifiedNet = certifiedBills.reduce((s, b) => s + billFinancialsForBill(b).netAfterHold, 0);
     const contractValue = wo.contractValue || 0;
-    const pending = Math.max(0, certifiedNet - paid);
+    const pending = bills.filter(b => b.status === 'approved').reduce((s, b) => s + billFinancialsForBill(b).netAfterHold, 0);
 
     // No bills raised yet, or bills raised but nothing certified/paid so far
     // (e.g. still sitting in draft/verify-done) — nothing to judge health on
@@ -366,38 +367,21 @@ async function buildExecutiveDashboardData(query) {
     const bills = rbByProject.get(key) || [];
     const billReqs = brByProject.get(key) || [];
 
-    const awardedContractValue = wos.reduce((s, w) => s + (w.contractValue || 0), 0);
-
-    let workExecutedValue = 0;
-    let totalPlannedQty = 0;
-    let totalCompletedQty = 0;
-    for (const wo of wos) {
-      for (const si of wo.scopeItems || []) {
-        const planned = si.plannedQty || 0;
-        const completed = si.completedQty || 0;
-        const rate = si.rate || 0;
-        workExecutedValue += completed * rate;
-        totalPlannedQty += planned;
-        totalCompletedQty += completed;
-      }
-    }
-
-    const billedGross = bills.reduce((s, b) => s + (b.amount || 0), 0);
-    const certifiedBills = bills.filter(b => CERTIFIED_BILL_STATUSES.includes(b.status));
-    const certifiedNet = certifiedBills.reduce((s, b) => s + billFinancialsForBill(b).netAfterHold, 0);
-    const paidBills = bills.filter(b => b.status === 'paid');
-    const paidAmount = paidBills.reduce((s, b) => s + billFinancialsForBill(b).netPayable, 0);
+    // Shared with projectController.getProjectStats (utils/projectRollup.js) — see
+    // there for exactly what each figure counts.
+    const roll = computeProjectRollup(wos, bills);
+    const {
+      awardedContractValue, workExecutedValue, progress, billedGross, advanceAmount,
+      certifiedNet, paidAmount, certifiedUnpaid, overdueAmount, remainingContract,
+    } = roll;
 
     const pendingBillReqs = billReqs.filter(b => PENDING_BILL_REQ_STATUSES.includes(b.status)).length;
     const openBills = bills.filter(b => !CLOSED_BILL_STATUSES.includes(b.status)).length;
-    const activeVendors = new Set(wos.map(w => w.vendorCode).filter(Boolean)).size;
-    const progress = totalPlannedQty > 0
-      ? Math.min(100, Math.round((totalCompletedQty / totalPlannedQty) * 100))
-      : 0;
+    const activeVendors = new Set(roll.countedWos.map(w => w.vendorCode).filter(Boolean)).size;
 
-    const financials = { workExecutedValue, billedGross, certifiedNet, paidAmount };
+    const financials = { workExecutedValue, billedGross, certifiedNet, paidAmount, certifiedUnpaid };
     const { overallStage, bottleneck, health, healthReasons } = computeProjectStageInfo({
-      project, wos, bills, billReqs, financials,
+      project, wos: roll.countedWos, bills, billReqs, financials,
     });
 
     return {
@@ -410,7 +394,12 @@ async function buildExecutiveDashboardData(query) {
       billedGross,
       certifiedNet,
       paidAmount,
-      remainingContract: Math.max(0, awardedContractValue - paidAmount),
+      remainingContract,
+      // Certified but not yet paid / of which aged past the attention threshold /
+      // advances given (excluded from billedGross) — see utils/projectRollup.js.
+      certifiedUnpaid,
+      overdueAmount,
+      advanceAmount,
       progress,
       pendingBillReqs,
       openBills,
@@ -444,21 +433,13 @@ async function buildExecutiveDashboardData(query) {
     // same basis as forecasts.cashRequirement.totalCertifiedUnpaid (kept as
     // its own top-level KPI so the summary cards don't need to reach into
     // forecasts for it).
-    outstandingAmount: Math.round(projectRows.reduce((s, p) => s + Math.max(0, p.certifiedNet - p.paidAmount), 0)),
+    outstandingAmount: Math.round(projectRows.reduce((s, p) => s + p.certifiedUnpaid, 0)),
   };
   // Overdue = certified (status 'approved') but unpaid AND aged past the
   // same certifiedUnpaidAttentionDays threshold projectStageRules.js already
   // uses for health/bottleneck ("Attention" territory) — not a new policy,
   // just applied here as a KPI total instead of a per-project reason string.
-  kpis.overdueAmount = Math.round(
-    runningBills
-      .filter(b => b.status === 'approved')
-      .filter(b => {
-        const days = daysSince(lastStatusChangeAt(b));
-        return days !== null && days >= HEALTH_THRESHOLDS.certifiedUnpaidAttentionDays;
-      })
-      .reduce((s, b) => s + billFinancialsForBill(b).netAfterHold, 0)
-  );
+  kpis.overdueAmount = Math.round(projectRows.reduce((s, p) => s + p.overdueAmount, 0));
 
   // ── Project Stage Summary — counts actual WORK ORDERS (the real,
   // filterable records users create/track — matches what shows up e.g. on
@@ -489,32 +470,19 @@ async function buildExecutiveDashboardData(query) {
     if (!brByWorkOrder.has(key)) brByWorkOrder.set(key, []);
     brByWorkOrder.get(key).push(br);
   }
-  for (const wo of workOrders) {
+  for (const wo of workOrders.filter(w => w.status !== 'cancelled')) {
     const woKey = String(wo._id);
     const woBills = rbByWorkOrder.get(woKey) || [];
     const woBillReqs = brByWorkOrder.get(woKey) || [];
 
-    let woWorkExecutedValue = 0;
-    for (const si of wo.scopeItems || []) {
-      woWorkExecutedValue += (si.completedQty || 0) * (si.rate || 0);
-    }
-    const woBilledGross = woBills.reduce((s, b) => s + (b.amount || 0), 0);
-    const woCertifiedBills = woBills.filter(b => CERTIFIED_BILL_STATUSES.includes(b.status));
-    const woCertifiedNet = woCertifiedBills.reduce((s, b) => s + billFinancialsForBill(b).netAfterHold, 0);
-    const woPaidBills = woBills.filter(b => b.status === 'paid');
-    const woPaidAmount = woPaidBills.reduce((s, b) => s + billFinancialsForBill(b).netPayable, 0);
+    const woRoll = computeProjectRollup([wo], woBills);
 
     const { overallStage: woStage } = computeProjectStageInfo({
       project: projectById.get(String(wo.projectId)),
       wos: [wo],
       bills: woBills,
       billReqs: woBillReqs,
-      financials: {
-        workExecutedValue: woWorkExecutedValue,
-        billedGross: woBilledGross,
-        certifiedNet: woCertifiedNet,
-        paidAmount: woPaidAmount,
-      },
+      financials: woRoll,
     });
     stageCounts.set(woStage, (stageCounts.get(woStage) || 0) + 1);
   }
@@ -557,7 +525,7 @@ async function buildExecutiveDashboardData(query) {
   // so categorySpend's total always reconciles with kpis.totalBilled.
   const woById = new Map(workOrders.map(w => [String(w._id), w]));
   const categoryTotals = new Map();
-  for (const b of runningBills) {
+  for (const b of runningBills.filter(x => x.projectId && isWorkBill(x))) {
     const wo = b.workOrderId ? woById.get(String(b.workOrderId)) : null;
     const cat = (wo && wo.category) ? wo.category : 'Uncategorized';
     categoryTotals.set(cat, (categoryTotals.get(cat) || 0) + (b.amount || 0));
@@ -578,7 +546,7 @@ async function buildExecutiveDashboardData(query) {
   // plannedQty/completedQty/rate fields the per-project workExecutedValue
   // rollup above already uses — just grouped by category instead of project.
   const categoryExecTotals = new Map();
-  for (const wo of workOrders) {
+  for (const wo of workOrders.filter(isCountableWo)) {
     const cat = wo.category || 'Uncategorized';
     if (!categoryExecTotals.has(cat)) {
       categoryExecTotals.set(cat, { totalWorkOrders: 0, awardedValue: 0, executedValue: 0, plannedQty: 0, completedQty: 0 });
@@ -736,7 +704,7 @@ async function buildExecutiveDashboardData(query) {
   }
   const trendByKey = new Map(trendMonths.map(m => [m.key, m]));
   for (const b of runningBills) {
-    if (b.billDate) {
+    if (b.billDate && isWorkBill(b)) {
       const bucket = trendByKey.get(monthKey(new Date(b.billDate)));
       if (bucket) bucket.billed += b.amount || 0;
     }
@@ -761,7 +729,7 @@ async function buildExecutiveDashboardData(query) {
   // it anyway (progress entries require an approved WO), so "no approvals"
   // is the more honest signal for this bucket of stuck work orders.
   const noApprovalWorkOrders = workOrders
-    .filter(wo => !isWoApproved(wo))
+    .filter(wo => !isWoApproved(wo) && wo.status !== 'cancelled')
     .map(wo => ({ wo, days: daysSince(lastStatusChangeAt(wo)) }))
     .filter(({ days }) => days !== null && days >= HEALTH_THRESHOLDS.pendingApprovalAlertDays)
     .map(({ wo, days }) => ({
@@ -782,7 +750,7 @@ async function buildExecutiveDashboardData(query) {
   // logic. Uncapped — the frontend card renders this in its own scrollable
   // container rather than a fixed top-N preview, so trimming it here would
   // just hide real rows instead of the earlier top-10 cap.
-  const perWorkOrderRows = await buildContractorCategoryRows(workOrders, runningBills, projects);
+  const perWorkOrderRows = await buildContractorCategoryRows(workOrders.filter(isCountableWo), runningBills, projects);
   const contractorsByCategory = perWorkOrderRows
     .map(({ contractorCode, ...rest }) => rest) // contractorCode is internal-only, not part of this row's documented shape
     .sort((a, b) => b.contractValue - a.contractValue);
@@ -873,9 +841,9 @@ async function buildExecutiveDashboardData(query) {
   }));
   const cashRequirement = {
     type: 'cash-requirement',
-    totalCertifiedUnpaid: Math.round(projectRows.reduce((s, p) => s + Math.max(0, p.certifiedNet - p.paidAmount), 0)),
-    projectCount: projectRows.filter(p => p.certifiedNet > p.paidAmount).length,
-    basis: 'Sum of (certifiedNet - paidAmount) across every project in the current filter, as of meta.generatedAt.',
+    totalCertifiedUnpaid: Math.round(projectRows.reduce((s, p) => s + p.certifiedUnpaid, 0)),
+    projectCount: projectRows.filter(p => p.certifiedUnpaid >= 0.5).length,
+    basis: 'Sum of certified-but-unpaid bills (status approved) across every project in the current filter, as of meta.generatedAt.',
   };
   const forecasts = { budgetRisk: budgetForecasts, cashRequirement };
 
@@ -914,7 +882,7 @@ async function buildExecutiveDashboardData(query) {
   const workOrdersActive = workOrders.filter(w => ['issued', 'in-progress'].includes(w.status)).length;
   const billsAwaitingVerification = runningBills.filter(b => b.status === 'draft').length;
   const siteProgressPending = workOrders.filter(w =>
-    w.approvalStatus === 'approved' &&
+    isCountableWo(w) &&
     (w.scopeItems || []).some(si => (si.plannedQty || 0) > 0 && (si.completedQty || 0) < (si.plannedQty || 0))
   ).length;
   const drawingRequestsOpen = await DrawingRequest.countDocuments({ projectId: { $in: projectIds }, status: { $ne: 'completed' } });
@@ -1118,7 +1086,7 @@ async function buildContractorMatrixData(query) {
   // which otherwise makes this query take 90+ seconds for no reason this
   // matrix ever needs.
   const workOrders = await WorkOrder.find(woFilter)
-    .select('projectId contractValue vendorCode vendorName contractType category workOrderNo')
+    .select('projectId contractValue vendorCode vendorName contractType category workOrderNo approvalStatus status')
     .lean();
   const woIds = workOrders.map(w => w._id);
 
@@ -1136,7 +1104,7 @@ async function buildContractorMatrixData(query) {
   }
   const runningBills = await RunningBill.find(rbFilter).lean();
 
-  const perWorkOrderRows = await buildContractorCategoryRows(workOrders, runningBills, projects);
+  const perWorkOrderRows = await buildContractorCategoryRows(workOrders.filter(isCountableWo), runningBills, projects);
 
   // ── Group per-WorkOrder rows into the (contractorCode, category) cross-tab
   // — a contractor can have multiple WorkOrders in the same category across

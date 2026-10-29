@@ -26,7 +26,9 @@
 // sync by hand if the controller's own lists ever change. ───────────────────
 const PENDING_BILL_REQ_STATUSES = ['pending', 'pending-gm', 'pending-l3', 'pending-l4'];
 const CLOSED_BILL_STATUSES      = ['approved', 'paid', 'rejected'];
-const OPEN_BILL_STATUSES        = ['draft', 'verify-done', 'l1-approved', 'sent-to-tms', 'hold'];
+// 'submitted' / 'verified' / 'payment-initiated' are legacy statuses (no longer in
+// RunningBill's enum) that still sit on old bills — they are in-flight, not closed.
+const OPEN_BILL_STATUSES        = ['draft', 'verify-done', 'l1-approved', 'sent-to-tms', 'hold', 'submitted', 'verified', 'payment-initiated'];
 
 // Explicit thresholds — every "aged N+ days" rule below reads from here, not
 // a magic number buried in a conditional, so the actual policy is visible
@@ -73,6 +75,31 @@ function lastStatusChangeAt(doc) {
 
 function isWoApproved(wo) {
   return wo.approvalStatus === 'approved';
+}
+
+// A work order counts as awarded work (contract value, executed value, progress)
+// only once approved and not cancelled.
+function isCountableWo(wo) {
+  return isWoApproved(wo) && wo.status !== 'cancelled';
+}
+
+// Progress across work orders. Quantities in different units (sq.ft, nos, rmt...)
+// can't be added, so progress is weighted by rate: executed value / planned value.
+// Falls back to plain quantity only when no item carries a rate.
+function scopeProgress(wos) {
+  let plannedQty = 0, completedQty = 0, plannedValue = 0, executedValue = 0;
+  for (const wo of wos) {
+    for (const si of wo.scopeItems || []) {
+      const planned = si.plannedQty || 0, completed = si.completedQty || 0, rate = si.rate || 0;
+      plannedQty += planned; completedQty += completed;
+      plannedValue += planned * rate; executedValue += completed * rate;
+    }
+  }
+  let percent = 0;
+  if (plannedValue > 0) percent = Math.min(100, Math.round((executedValue / plannedValue) * 100));
+  else if (plannedQty > 0) percent = Math.min(100, Math.round((completedQty / plannedQty) * 100));
+  const stillExecuting = plannedValue > 0 ? executedValue < plannedValue : (plannedQty > 0 && completedQty < plannedQty);
+  return { plannedQty, completedQty, plannedValue, executedValue, percent, stillExecuting };
 }
 
 function woCompletedQty(wo) {
@@ -139,7 +166,7 @@ function woLastProgressDate(wo) {
 //                        requests and no other activity still counts here,
 //                        not Planning — it has a real approved WorkOrder.
 //   6. Planning        — fallback: no approved WorkOrder at all.
-function computeOverallStage({ project, wos, bills, billReqs, certifiedNet, paidAmount }) {
+function computeOverallStage({ project, wos, bills, billReqs, certifiedUnpaid }) {
   const approvedWos = wos.filter(isWoApproved);
   const hasApprovedWo = approvedWos.length > 0;
   const hasOpenBill = bills.some(b => OPEN_BILL_STATUSES.includes(b.status));
@@ -158,17 +185,11 @@ function computeOverallStage({ project, wos, bills, billReqs, certifiedNet, paid
   // progress can never read as "Work in Progress" (anyProgress requires
   // totalCompletedQty > 0) and 100% progress can never read as "Work in
   // Progress" either (stillExecuting requires completed < planned).
-  let totalPlannedQty = 0, totalCompletedQty = 0;
-  for (const wo of wos) {
-    for (const si of wo.scopeItems || []) {
-      totalPlannedQty   += si.plannedQty   || 0;
-      totalCompletedQty += si.completedQty || 0;
-    }
-  }
-  const anyProgress = totalCompletedQty > 0;
-  const stillExecuting = totalPlannedQty > 0 && totalCompletedQty < totalPlannedQty;
+  const prog = scopeProgress(wos);
+  const anyProgress = prog.completedQty > 0;
+  const stillExecuting = prog.stillExecuting;
 
-  if (hasApprovedWo && anyProgress && fullyBilled && certifiedNet === paidAmount && !hasOpenBillReq && !hasOpenBill) {
+  if (hasApprovedWo && anyProgress && fullyBilled && certifiedUnpaid < 0.5 && !hasOpenBillReq && !hasOpenBill) {
     return 'Completed';
   }
   if (hasApprovedWo && anyProgress && stillExecuting) {
@@ -177,7 +198,7 @@ function computeOverallStage({ project, wos, bills, billReqs, certifiedNet, paid
   if (hasOpenBill || hasOpenBillReq) {
     return 'Billing';
   }
-  if (certifiedNet > paidAmount) {
+  if (certifiedUnpaid >= 0.5) {
     return 'Payment Pending';
   }
   if (hasApprovedWo) {
@@ -195,7 +216,7 @@ function computeOverallStage({ project, wos, bills, billReqs, certifiedNet, paid
 //      window (issued but nothing has started).
 //   4. An approved WorkOrder with no progress logged in the "no progress"
 //      window even though some work IS recorded (stalled mid-way).
-function computeBottleneck({ wos, bills, billReqs, certifiedNet, paidAmount }) {
+function computeBottleneck({ wos, bills, billReqs, certifiedUnpaid }) {
   const stuckBillReqs = billReqs
     .filter(b => PENDING_BILL_REQ_STATUSES.includes(b.status))
     .map(b => ({ doc: b, days: daysSince(lastStatusChangeAt(b)) }))
@@ -215,13 +236,13 @@ function computeBottleneck({ wos, bills, billReqs, certifiedNet, paidAmount }) {
     return `${allStuck.length} bills/requests awaiting approval, oldest ${oldest.days} days (${label})`;
   }
 
-  if (certifiedNet > paidAmount) {
-    const unpaidBills = bills.filter(b => CLOSED_BILL_STATUSES.includes(b.status) && b.status !== 'paid' && b.status === 'approved');
+  if (certifiedUnpaid >= 0.5) {
+    const unpaidBills = bills.filter(b => b.status === 'approved');
     const oldestUnpaidDays = unpaidBills.length
       ? Math.max(...unpaidBills.map(b => daysSince(lastStatusChangeAt(b)) ?? 0))
       : null;
     if (oldestUnpaidDays !== null && oldestUnpaidDays >= HEALTH_THRESHOLDS.certifiedUnpaidAttentionDays) {
-      return `₹${Math.round(certifiedNet - paidAmount).toLocaleString('en-IN')} certified but unpaid, oldest bill ${oldestUnpaidDays} days`;
+      return `₹${Math.round(certifiedUnpaid).toLocaleString('en-IN')} certified but unpaid, oldest bill ${oldestUnpaidDays} days`;
     }
   }
 
@@ -255,7 +276,7 @@ function computeBottleneck({ wos, bills, billReqs, certifiedNet, paidAmount }) {
 // lastStatusChangeAt (approvalHistory's last entry, or createdAt) — the best
 // available proxy, not a guaranteed exact "entered this status at" stamp for
 // every possible transition path.
-function computeHealth({ workExecutedValue, billedGross, certifiedNet, paidAmount, bills, billReqs }) {
+function computeHealth({ workExecutedValue, billedGross, certifiedUnpaid, bills, billReqs }) {
   let worst = 'Healthy';
   const reasons = [];
   const escalate = (level, reason) => {
@@ -265,7 +286,7 @@ function computeHealth({ workExecutedValue, billedGross, certifiedNet, paidAmoun
   };
 
   // Certified-unpaid age
-  if (certifiedNet > paidAmount) {
+  if (certifiedUnpaid >= 0.5) {
     const unpaidBills = bills.filter(b => b.status === 'approved');
     const oldestDays = unpaidBills.length
       ? Math.max(...unpaidBills.map(b => daysSince(lastStatusChangeAt(b)) ?? 0))
@@ -313,11 +334,14 @@ function computeHealth({ workExecutedValue, billedGross, certifiedNet, paidAmoun
 // this project (workExecutedValue, billedGross, certifiedNet, paidAmount) —
 // reused, never recomputed here.
 function computeProjectStageInfo({ project, wos, bills, billReqs, financials }) {
-  const { workExecutedValue, billedGross, certifiedNet, paidAmount } = financials;
+  const { workExecutedValue, billedGross } = financials;
+  // Real outstanding = bills still 'approved'. Falls back to certified - paid only
+  // for a caller that doesn't supply it.
+  const certifiedUnpaid = financials.certifiedUnpaid ?? Math.max(0, (financials.certifiedNet || 0) - (financials.paidAmount || 0));
 
-  const overallStage = computeOverallStage({ project, wos, bills, billReqs, certifiedNet, paidAmount });
-  const bottleneck = computeBottleneck({ wos, bills, billReqs, certifiedNet, paidAmount });
-  const { health, healthReasons } = computeHealth({ workExecutedValue, billedGross, certifiedNet, paidAmount, bills, billReqs });
+  const overallStage = computeOverallStage({ project, wos, bills, billReqs, certifiedUnpaid });
+  const bottleneck = computeBottleneck({ wos, bills, billReqs, certifiedUnpaid });
+  const { health, healthReasons } = computeHealth({ workExecutedValue, billedGross, certifiedUnpaid, bills, billReqs });
 
   return { overallStage, bottleneck, health, healthReasons };
 }
@@ -326,7 +350,8 @@ function computeProjectStageInfo({ project, wos, bills, billReqs, financials }) 
 // Builds every qualifying alert for ONE project. The caller (controller)
 // concatenates across projects, sorts, and caps the list.
 function buildProjectAlerts({ project, wos, bills, billReqs, financials, slaBreachedIds }) {
-  const { workExecutedValue, billedGross, certifiedNet, paidAmount } = financials;
+  const { workExecutedValue, billedGross } = financials;
+  const certifiedUnpaid = financials.certifiedUnpaid ?? Math.max(0, (financials.certifiedNet || 0) - (financials.paidAmount || 0));
   const alerts = [];
   const projectId = String(project._id);
   const projectName = project.name;
@@ -407,14 +432,14 @@ function buildProjectAlerts({ project, wos, bills, billReqs, financials, slaBrea
   }
 
   // 3. Certified payment overdue
-  if (certifiedNet > paidAmount) {
+  if (certifiedUnpaid >= 0.5) {
     const unpaidBills = bills.filter(b => b.status === 'approved');
     const oldest = unpaidBills.reduce((worst, b) => {
       const d = daysSince(lastStatusChangeAt(b));
       return (d !== null && (!worst || d > worst.days)) ? { bill: b, days: d } : worst;
     }, null);
     if (oldest && oldest.days >= HEALTH_THRESHOLDS.certifiedUnpaidAttentionDays) {
-      const overdueAmount = Math.round(certifiedNet - paidAmount);
+      const overdueAmount = Math.round(certifiedUnpaid);
       alerts.push({
         type: 'certified-payment-overdue',
         severity: oldest.days >= HEALTH_THRESHOLDS.certifiedUnpaidCriticalDays ? 'critical' : 'attention',
@@ -491,6 +516,8 @@ module.exports = {
   stableAlertId,
   computeBudgetRiskForecast,
   isWoApproved,
+  isCountableWo,
+  scopeProgress,
   woHasAnyProgress,
   woHasPlannedScope,
   OPEN_BILL_STATUSES,
