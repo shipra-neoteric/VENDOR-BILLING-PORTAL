@@ -77,9 +77,10 @@ async function attachBalanceAmounts(workOrders) {
 // must sit on a real scope item/particular of the work order, bill no
 // quantity, and not claim more than the balance that's actually left.
 // Returns an error message, or null when fine.
-async function checkBalanceLines(workOrder, lineItems, excludeBillId) {
+async function checkBalanceLines(workOrder, lineItems, excludeBillId, billType) {
   const balanceLines = lineItems.filter((li) => li.isBalance);
   if (balanceLines.length === 0) return null;
+  if (billType !== 'final') return 'A balance can only be billed in a Final Bill.';
   if (!workOrder || workOrder.contractType === 'professional-services') {
     return 'A balance line can only be billed against a contractor work order.';
   }

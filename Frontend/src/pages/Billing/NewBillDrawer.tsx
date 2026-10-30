@@ -713,59 +713,37 @@ export default function NewBillDrawer({
     // particulars carry a real plannedQty/rate — so import ITS particulars
     // as individual rows, grouped under a collapsible header, instead of one
     // row for the parent.
-    // An item whose quantity is all billed but still has money owed (balanceAmount)
-    // comes in as a balance row — pre-filled with that amount — instead of an
-    // empty quantity row it could never bill.
-    const balanceRow = (si: ScopeItemOpt, t: { description: string; balanceAmount?: number }, subId?: string): LineItem => ({
-      key: nextKey(), scopeItemId: si.id, balanceSubItemId: subId,
-      description: `${t.description} — balance amount`, unit: "lump-sum",
-      plannedQty: 0, billedQty: 0, rate: 0, amount: t.balanceAmount || 0,
-      isBalance: true, balanceCap: t.balanceAmount || 0,
-    });
-    const qtyLeft = (t: { plannedQty: number; lastBilledQty: number }) => (t.plannedQty || 0) - (t.lastBilledQty || 0);
     const imported: LineItem[] = scopeItems.flatMap((si) => {
       if (si.subItems && si.subItems.length > 0) {
-        return si.subItems.flatMap((sub) => {
-          const rows: LineItem[] = [];
-          if (!((sub.balanceAmount || 0) > 0 && qtyLeft(sub) <= 0)) {
-            rows.push({
-              key: nextKey(),
-              scopeItemId: si.id,
-              subItemId: sub.id,
-              groupLabel: si.description,
-              description: sub.description,
-              unit: sub.unit || "",
-              plannedQty: sub.plannedQty || 0,
-              lastBilledQty: sub.lastBilledQty || 0,
-              percentComplete: 0,
-              billedQty: 0,
-              rate: sub.rate || 0,
-              woRate: sub.rate || 0,
-              amount: 0,
-            });
-          }
-          if ((sub.balanceAmount || 0) > 0) rows.push(balanceRow(si, { description: `${si.description} — ${sub.description}`, balanceAmount: sub.balanceAmount }, sub.id));
-          return rows;
-        });
-      }
-      const rows: LineItem[] = [];
-      if (!((si.balanceAmount || 0) > 0 && qtyLeft(si) <= 0)) {
-        rows.push({
+        return si.subItems.map((sub) => ({
           key: nextKey(),
           scopeItemId: si.id,
-          description: si.description,
-          unit: si.unit || "",
-          plannedQty: si.plannedQty || 0,
-          lastBilledQty: si.lastBilledQty || 0,
+          subItemId: sub.id,
+          groupLabel: si.description,
+          description: sub.description,
+          unit: sub.unit || "",
+          plannedQty: sub.plannedQty || 0,
+          lastBilledQty: sub.lastBilledQty || 0,
           percentComplete: 0,
           billedQty: 0,
-          rate: si.rate || 0,
-          woRate: si.rate || 0,
+          rate: sub.rate || 0,
+          woRate: sub.rate || 0,
           amount: 0,
-        });
+        }));
       }
-      if ((si.balanceAmount || 0) > 0) rows.push(balanceRow(si, si));
-      return rows;
+      return [{
+        key: nextKey(),
+        scopeItemId: si.id,
+        description: si.description,
+        unit: si.unit || "",
+        plannedQty: si.plannedQty || 0,
+        lastBilledQty: si.lastBilledQty || 0,
+        percentComplete: 0,
+        billedQty: 0,
+        rate: si.rate || 0,
+        woRate: si.rate || 0,
+        amount: 0,
+      }];
     });
     setLineItems((prev) => [...prev.filter((li) => li.description.trim()), ...imported]);
     setImportedFromWOId(woId);
@@ -773,6 +751,61 @@ export default function NewBillDrawer({
     setCheckedScopeItemIds(null);
     toast.success(`${imported.length} item${imported.length === 1 ? "" : "s"} imported — enter % complete or quantity`);
   }
+
+  // Work-order hisaab shown in Bill Relationship: contract value, what's been billed
+  // across its live bills, what's left — split into quantity still to bill and the
+  // balance (money owed on items whose quantity is all billed, e.g. a rate difference).
+  function woSummary(woId: string) {
+    const wo = woList.find((w) => w.id === woId);
+    if (!wo) return null;
+    let contract = 0; let qtyPart = 0; let balancePart = 0;
+    const balanceTargets: { si: ScopeItemOpt; description: string; balanceAmount: number; subId?: string }[] = [];
+    for (const si of wo.scopeItems) {
+      const targets = si.subItems && si.subItems.length > 0
+        ? si.subItems.map((sub) => ({ t: sub, description: `${si.description} — ${sub.description}`, subId: sub.id }))
+        : [{ t: si, description: si.description, subId: undefined as string | undefined }];
+      for (const { t, description, subId } of targets) {
+        const rate = t.rate || 0;
+        contract += (t.plannedQty || 0) * rate;
+        qtyPart += Math.max(0, (t.plannedQty || 0) - (t.lastBilledQty || 0)) * rate;
+        if ((t.balanceAmount || 0) > 0) {
+          balancePart += t.balanceAmount || 0;
+          balanceTargets.push({ si, description, balanceAmount: t.balanceAmount || 0, subId });
+        }
+      }
+    }
+    const billed = woExistingBills.filter((b) => b.isActive !== false).reduce((s, b) => s + (b.amount || 0), 0);
+    return { wo, contract, billed, remaining: Math.max(0, contract - billed), qtyPart, balancePart, balanceTargets };
+  }
+
+  // Final Bill only: adds the balance rows (one per item that has a balance) —
+  // amount pre-filled, can be lowered but never raised past what's owed.
+  function addBalanceRows(woId: string) {
+    const sum = woSummary(woId);
+    if (!sum) return;
+    const have = new Set(lineItems.filter((li) => li.isBalance).map((li) => `${li.scopeItemId}|${li.balanceSubItemId || ""}`));
+    const rows: LineItem[] = sum.balanceTargets
+      .filter((b) => !have.has(`${b.si.id}|${b.subId || ""}`))
+      .map((b) => ({
+        key: nextKey(), scopeItemId: b.si.id, balanceSubItemId: b.subId,
+        description: `${b.description} — balance amount`, unit: "lump-sum",
+        plannedQty: 0, billedQty: 0, rate: 0, amount: b.balanceAmount,
+        isBalance: true, balanceCap: b.balanceAmount,
+      }));
+    if (rows.length === 0) { toast("Balance is already added to this bill"); return; }
+    setLineItems((prev) => [...prev.filter((li) => li.description.trim()), ...rows]);
+    setImportedFromWOId(woId);
+    toast.success(`${rows.length} balance line${rows.length === 1 ? "" : "s"} added`);
+  }
+
+  // A balance is settled in the Final Bill only — switching the bill to any other
+  // type drops balance rows instead of leaving ones the server would refuse.
+  useEffect(() => {
+    if (billType !== "final" && lineItems.some((li) => li.isBalance)) {
+      setLineItems((prev) => prev.filter((li) => !li.isBalance));
+      toast("Balance lines removed — they can only be billed in a Final Bill");
+    }
+  }, [billType, lineItems]);
 
   // Returns false only when the user was asked and declined — callers must
   // bail out in that case instead of proceeding to import/replace rows on
@@ -1419,6 +1452,37 @@ export default function NewBillDrawer({
                 </div>
               </div>
             )}
+
+            {/* Work order hisaab — contract, billed so far, what's left. The balance
+                (money owed on items whose quantity is all billed) can be added to a Final Bill only. */}
+            {selectedWOId && (() => {
+              const s = woSummary(selectedWOId);
+              if (!s || s.contract <= 0) return null;
+              const hasBalanceRows = lineItems.some((li) => li.isBalance);
+              return (
+                <div className="mt-3 rounded-md border border-blue-200 dark:border-blue-500/30 bg-white dark:bg-gray-800/40 p-2.5 text-xs">
+                  <div className="font-semibold text-gray-600 dark:text-gray-300 mb-1.5">{s.wo.workOrderNo} — work order balance</div>
+                  <div className="font-mono flex flex-col gap-0.5">
+                    <div className="flex justify-between"><span>Contract value</span><span>{fmt(s.contract)}</span></div>
+                    <div className="flex justify-between"><span>Billed so far ({woExistingBills.filter((b) => b.isActive !== false).length} bills)</span><span>{fmt(s.billed)}</span></div>
+                    <div className="flex justify-between font-bold border-t border-gray-100 dark:border-gray-700/40 pt-0.5 mt-0.5 text-primary"><span>Remaining</span><span>{fmt(s.remaining)}</span></div>
+                    {s.qtyPart > 0 && <div className="flex justify-between text-gray-500 pl-3"><span>├ quantity still to bill</span><span>{fmt(s.qtyPart)}</span></div>}
+                    {s.balancePart > 0 && <div className="flex justify-between text-amber-600 pl-3"><span>└ balance (rate difference)</span><span>{fmt(s.balancePart)}</span></div>}
+                  </div>
+                  {s.balancePart > 0 && (
+                    billType === "final" ? (
+                      <Btn
+                        small outline className="w-full mt-2" disabled={hasBalanceRows && s.balanceTargets.every((b) => lineItems.some((li) => li.isBalance && li.scopeItemId === b.si.id && (li.balanceSubItemId || "") === (b.subId || "")))}
+                        label={`+ Add balance ${fmt(s.balancePart)} to this bill`}
+                        onClick={() => addBalanceRows(selectedWOId)}
+                      />
+                    ) : (
+                      <div className="mt-2 text-[11px] text-gray-400">The balance can be billed in a Final Bill only.</div>
+                    )
+                  )}
+                </div>
+              );
+            })()}
           </div>
 
           {/* Payment Milestone — its own standalone box (same visual
@@ -1546,12 +1610,6 @@ export default function NewBillDrawer({
                           {si.subItems && si.subItems.length > 0 && (
                             <span className="text-[11px] text-gray-400">({si.subItems.length} particulars)</span>
                           )}
-                          {(() => {
-                            const bal = si.subItems && si.subItems.length > 0
-                              ? si.subItems.reduce((s, x) => s + (x.balanceAmount || 0), 0)
-                              : si.balanceAmount || 0;
-                            return bal > 0 ? <span className="text-[11px] font-semibold text-amber-600">· balance {fmt(bal)}</span> : null;
-                          })()}
                         </label>
                       ))}
                     </div>

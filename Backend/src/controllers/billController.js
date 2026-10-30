@@ -519,7 +519,7 @@ exports.createBill = asyncHandler(async (req, res) => {
       return badRequest(res, `"${si.description}" — only ${remaining} ${si.unit || ''} remaining to bill (already billed ${si.lastBilledQty || 0} of ${si.plannedQty}).`);
     }
   }
-  const balanceErr = await checkBalanceLines(workOrder, lineItems, null);
+  const balanceErr = await checkBalanceLines(workOrder, lineItems, null, req.body.billType);
   if (balanceErr) return badRequest(res, balanceErr);
   if (workOrder) {
     const rateChange = checkRateChanges(workOrder, lineItems);
@@ -906,7 +906,7 @@ exports.editManualBill = asyncHandler(async (req, res) => {
       return badRequest(res, `"${si.description}" — only ${remaining} ${si.unit || ''} remaining to bill.`);
     }
   }
-  const balanceErr = await checkBalanceLines(workOrder, lineItems, bill._id);
+  const balanceErr = await checkBalanceLines(workOrder, lineItems, bill._id, req.body.billType || bill.billType);
   if (balanceErr) return badRequest(res, balanceErr);
   if (workOrder) {
     const rateChange = checkRateChanges(workOrder, lineItems);
