@@ -27,6 +27,10 @@ import { Table, Thead, Tbody, Tr, Th, Td } from "../../ui/Table";
 import RemarksListInput from "../../components/RemarksListInput";
 import PlannedQtyCell from "../../components/PlannedQtyCell";
 import dayjs from "dayjs";
+import MeasurementInput, {
+  blankDimRow, dimModeForUnit, dimPayload, dimRowsFromSaved, dimRowsValid, dimSummary, dimTotal, savedRowText,
+  type DimRowForm, type SavedDimRow,
+} from "./MeasurementRows";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 interface DRIUser { _id: string; name: string; email: string; }
@@ -48,6 +52,7 @@ interface WORow {
 interface ProgressEntry {
   _id: string; date: string; qtyAdded: number; remarks?: string;
   tower?: string; floor?: string; flatNo?: string; plotNo?: string; locationNote?: string;
+  dimensions?: { rows?: SavedDimRow[] };
   billedInRequestId?: string | null;
   enteredBy?: { _id: string; name: string } | string | null;
   invalidated?: { done: boolean; by?: { _id: string; name: string } | string; at?: string; reason?: string };
@@ -64,6 +69,8 @@ interface SubItemDetail {
   lastBilledQty: number;
   status: string;
   progressEntries?: ProgressEntry[];
+  rate?: number; amount?: number; plannedStart?: string; plannedEnd?: string;
+  varianceApproved?: boolean; originalAmount?: number;
 }
 
 interface ScopeItemDetail {
@@ -78,6 +85,9 @@ interface ScopeItemDetail {
   status?: string;
   subItems?: SubItemDetail[];
   progressEntries?: ProgressEntry[];
+  rate?: number; amount?: number; gstPercent?: number; stage?: string;
+  plannedStart?: string; plannedEnd?: string;
+  varianceApproved?: boolean; originalAmount?: number;
 }
 
 // Entries flattened across an item's (or its particulars') progressEntries,
@@ -294,9 +304,27 @@ type PageView = "overview" | "dri-projects" | "dri-detail";
 interface ProgFormValues {
   date: string; tower: string; floor: string; flatNo: string; plotNo: string;
   locationNote: string; qtyAdded: string; remarks: string; plannedQty: string;
+  // Measured (L × W × H rows) vs typed-in quantity — see MeasurementRows.tsx.
+  useDims: boolean; dimRows: DimRowForm[];
 }
 const emptyProgForm: ProgFormValues = {
   date: "", tower: "", floor: "", flatNo: "", plotNo: "", locationNote: "", qtyAdded: "", remarks: "", plannedQty: "",
+  useDims: false, dimRows: [],
+};
+
+// Form state for editing an existing entry: opens in measure mode when it was measured.
+const editFormFor = (e: ProgressEntry & { unit: string }): ProgFormValues => {
+  const saved = dimRowsFromSaved(e.dimensions?.rows);
+  const canDims = dimModeForUnit(e.unit) !== "none";
+  return {
+    date: e.date ? dayjs(e.date).format("YYYY-MM-DD") : "",
+    qtyAdded: String(e.qtyAdded ?? ""),
+    remarks: e.remarks || "",
+    tower: e.tower || "", floor: e.floor || "", flatNo: e.flatNo || "",
+    plotNo: e.plotNo || "", locationNote: e.locationNote || "", plannedQty: "",
+    useDims: canDims && saved.length > 0,
+    dimRows: saved.length > 0 ? saved : canDims ? [blankDimRow()] : [],
+  };
 };
 
 export default function DRIDashboard() {
@@ -365,6 +393,8 @@ export default function DRIDashboard() {
 
   // View all entries modal
   const [allEntriesWOId, setAllEntriesWOId] = useState<string | null>(null);
+  // Row clicked in the scope-items table — opens its full detail (item or one particular).
+  const [itemView, setItemView] = useState<{ woId: string; itemId: string; subId?: string } | null>(null);
 
   // Generate-bill modal (owner/edit-permission only)
   const [billModal, setBillModal] = useState(false);
@@ -504,7 +534,8 @@ export default function DRIDashboard() {
   const openAddProgress = (woId: string, item: ScopeItemDetail, subItem?: SubItemDetail) => {
     setProgTarget({ woId, item, subItem });
     progErrors.clearAll();
-    setProgFormValues({ ...emptyProgForm, date: dayjs().format("YYYY-MM-DD") });
+    const canDims = dimModeForUnit((subItem ?? item).unit) !== "none";
+    setProgFormValues({ ...emptyProgForm, date: dayjs().format("YYYY-MM-DD"), useDims: canDims, dimRows: canDims ? [blankDimRow()] : [] });
     setProgModal(true);
   };
 
@@ -513,10 +544,21 @@ export default function DRIDashboard() {
     progErrors.clearAll();
     let hasError = false;
     if (!progFormValues.date) { progErrors.setError("date", "Select date"); hasError = true; }
-    const qty = Number(progFormValues.qtyAdded);
-    if (!progFormValues.qtyAdded || !(qty >= 0.01)) {
-      progErrors.setError("qtyAdded", "Enter a valid quantity (e.g. 13.67)");
-      hasError = true;
+    const dMode = dimModeForUnit((progTarget.subItem ?? progTarget.item).unit);
+    const useDims = progFormValues.useDims && dMode !== "none";
+    let qty: number;
+    if (useDims) {
+      qty = dimTotal(progFormValues.dimRows, dMode);
+      if (!dimRowsValid(progFormValues.dimRows, dMode)) {
+        progErrors.setError("qtyAdded", "Enter valid dimensions — every filled row needs positive numbers and the total must be above 0");
+        hasError = true;
+      }
+    } else {
+      qty = Number(progFormValues.qtyAdded);
+      if (!progFormValues.qtyAdded || !(qty >= 0.01)) {
+        progErrors.setError("qtyAdded", "Enter a valid quantity (e.g. 13.67)");
+        hasError = true;
+      }
     }
     let plannedQty: number | undefined;
     if (progFormValues.plannedQty) {
@@ -534,6 +576,7 @@ export default function DRIDashboard() {
       await apiClient.post(path, {
         date: progFormValues.date || dayjs().format("YYYY-MM-DD"),
         qtyAdded: qty,
+        ...(useDims ? { dimensions: { rows: dimPayload(progFormValues.dimRows, dMode) } } : {}),
         remarks: progFormValues.remarks || "",
         tower: progFormValues.tower || "",
         floor: progFormValues.floor || "",
@@ -556,8 +599,16 @@ export default function DRIDashboard() {
   const handleEditEntry = async () => {
     if (!editEntry) return;
     editErrors.clearAll();
-    const qty = Number(editFormValues.qtyAdded);
-    if (!editFormValues.qtyAdded || !(qty >= 0.01)) { editErrors.setError("qtyAdded", "Required"); return; }
+    const dMode = dimModeForUnit(editEntry.unit);
+    const useDims = editFormValues.useDims && dMode !== "none";
+    let qty: number;
+    if (useDims) {
+      qty = dimTotal(editFormValues.dimRows, dMode);
+      if (!dimRowsValid(editFormValues.dimRows, dMode)) { editErrors.setError("qtyAdded", "Enter valid dimensions — total must be above 0"); return; }
+    } else {
+      qty = Number(editFormValues.qtyAdded);
+      if (!editFormValues.qtyAdded || !(qty >= 0.01)) { editErrors.setError("qtyAdded", "Required"); return; }
+    }
     const woId = parseEntryScopeId(editEntry.scopeId).workOrderId;
     setProgSaving(true);
     try {
@@ -565,6 +616,7 @@ export default function DRIDashboard() {
         `${entryProgressUrlBase(editEntry.scopeId)}/${editEntry._id}`,
         {
           qtyAdded: qty,
+          ...(useDims ? { dimensions: { rows: dimPayload(editFormValues.dimRows, dMode) } } : {}),
           date: editFormValues.date || undefined,
           remarks: editFormValues.remarks || "",
           tower: editFormValues.tower || "",
@@ -942,7 +994,7 @@ export default function DRIDashboard() {
                             const hasSubItems = (si.subItems?.length ?? 0) > 0;
                             return (
                               <Fragment key={si._id}>
-                                <Tr>
+                                <Tr className="cursor-pointer" onClick={() => setItemView({ woId: wo._id, itemId: si._id })}>
                                   <Td dense className="text-gray-400 whitespace-nowrap">{idx + 1}</Td>
                                   <Td dense className="font-semibold text-[#1A1A2E] dark:text-[#F1F5F9]">
                                     {si.description}
@@ -971,7 +1023,7 @@ export default function DRIDashboard() {
                                     </div>
                                   </Td>
                                   {canEdit && (
-                                    <Td dense>
+                                    <Td dense onClick={(ev) => ev.stopPropagation()}>
                                       {!hasSubItems && (
                                         <NxBtn color="secondary" className="text-[11px]! px-2.5! py-1!" label="+ Measurement" onClick={() => openAddProgress(wo._id, si)} />
                                       )}
@@ -981,7 +1033,7 @@ export default function DRIDashboard() {
                                 {hasSubItems && si.subItems!.map((sub, subIdx) => {
                                   const sp = pctOf(sub.completedQty, sub.plannedQty);
                                   return (
-                                    <Tr key={sub._id} className="bg-gray-50/60 dark:bg-gray-800/20">
+                                    <Tr key={sub._id} className="bg-gray-50/60 dark:bg-gray-800/20 cursor-pointer" onClick={() => setItemView({ woId: wo._id, itemId: si._id, subId: sub._id })}>
                                       <Td dense className="pl-7 text-gray-400 text-[11px]">{idx + 1}.{subIdx + 1}</Td>
                                       <Td dense className="font-medium text-gray-600 dark:text-gray-300">
                                         {sub.description}
@@ -1004,7 +1056,7 @@ export default function DRIDashboard() {
                                         </div>
                                       </Td>
                                       {canEdit && (
-                                        <Td dense>
+                                        <Td dense onClick={(ev) => ev.stopPropagation()}>
                                           <NxBtn color="secondary" className="text-[11px]! px-2.5! py-1!" label="+ Measurement" onClick={() => openAddProgress(wo._id, si, sub)} />
                                         </Td>
                                       )}
@@ -1044,13 +1096,7 @@ export default function DRIDashboard() {
                                 setEditEntry(e);
                                 setEditProjectType(wpt);
                                 editErrors.clearAll();
-                                setEditFormValues({
-                                  date: e.date ? dayjs(e.date).format("YYYY-MM-DD") : "",
-                                  qtyAdded: String(e.qtyAdded ?? ""),
-                                  remarks: e.remarks || "",
-                                  tower: e.tower || "", floor: e.floor || "", flatNo: e.flatNo || "",
-                                  plotNo: e.plotNo || "", locationNote: e.locationNote || "", plannedQty: "",
-                                });
+                                setEditFormValues(editFormFor(e));
                                 setEditModal(true);
                               };
                               const canEditRow = canEdit && !e.invalidated?.done && !e.billedInRequestId;
@@ -1069,6 +1115,9 @@ export default function DRIDashboard() {
                                     {e.description}
                                     {personName(e.enteredBy) && (
                                       <span className="font-normal text-gray-400 text-[11px]"> · {personName(e.enteredBy)}</span>
+                                    )}
+                                    {dimSummary(e.dimensions?.rows) && (
+                                      <span className="block font-mono font-normal text-gray-400 text-[10px]">{dimSummary(e.dimensions?.rows)}</span>
                                     )}
                                   </span>
                                   <span className="text-gray-500 dark:text-gray-400 min-w-[80px]">{formatLocation(e, wpt)}</span>
@@ -1128,9 +1177,173 @@ export default function DRIDashboard() {
         </>
       )}
 
+      {/* ── Item / particular detail (click a row in the scope-items table) ──────── */}
+      {itemView && (() => {
+        const detail = woDetails.get(itemView.woId);
+        const item = detail?.scopeItems.find(s => s._id === itemView.itemId);
+        const sub = itemView.subId ? item?.subItems?.find(s => s._id === itemView.subId) : undefined;
+        const target = sub ?? item;
+        if (!detail || !item || !target) return null;
+        const wpt = detail.projectId?.projectType === "plot" ? "plot" : "apartment";
+        const hasSubs = !sub && (item.subItems?.length ?? 0) > 0;
+        const entries = buildEntryRows(detail).filter(e => {
+          const p = parseEntryScopeId(e.scopeId);
+          return p.scopeItemId === item._id && (sub ? p.subItemId === sub._id : true);
+        });
+        const active = entries.filter(e => !e.invalidated?.done);
+        const planned = target.plannedQty || 0;
+        const executed = target.completedQty || 0;
+        const billed = sub ? null : (item.lastBilledQty || 0);
+        const pct = pctOf(executed, planned);
+        const close = () => setItemView(null);
+        return (
+          <Modal
+            icon={Ruler}
+            title={sub ? `${item.description} › ${sub.description}` : item.description}
+            extraWide
+            onClose={close}
+            footer={
+              <div className="flex justify-end gap-2">
+                <NxBtn color="secondary" label="Close" onClick={close} />
+                {canEdit && !hasSubs && (
+                  <NxBtn color="primary" label="+ Measurement" onClick={() => { close(); openAddProgress(detail._id, item, sub); }} />
+                )}
+              </div>
+            }
+          >
+            <div className="text-[11px] font-semibold text-gray-400 dark:text-gray-500 -mt-1 mb-3.5">
+              WO {detail.workOrderNo} · {detail.vendorName ?? ""} · {target.unit}
+            </div>
+
+            {target.remarks && (
+              <div className="flex items-start gap-2.5 bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700/40 rounded-lg p-3 mb-3.5">
+                <ClipboardList className="w-4 h-4 shrink-0 mt-0.5 text-gray-400 dark:text-gray-500" />
+                <div>
+                  <div className="text-xs font-semibold text-gray-600 dark:text-gray-300">Instruction</div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{target.remarks}</div>
+                </div>
+              </div>
+            )}
+
+            <div className="bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700/40 rounded-lg p-3.5 mb-4">
+              <div className="flex items-center gap-1.5 mb-2.5">
+                <div className="flex-1 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                  <div className={`h-full rounded-full ${pct >= 100 ? "bg-emerald-500" : "bg-primary"}`} style={{ width: `${pct}%` }} />
+                </div>
+                <span className={`text-[10px] font-bold min-w-[26px] ${pct >= 100 ? "text-emerald-600" : "text-primary"}`}>{pct}%</span>
+              </div>
+              <Descriptions columns={4}>
+                <DescItem label="Planned">{planned > 0 ? `${fmtN(planned)} ${target.unit}` : "Not set"}</DescItem>
+                <DescItem label="Executed"><span className="text-emerald-600 font-semibold">{fmtN(executed)} {target.unit}</span></DescItem>
+                <DescItem label="Remaining">{planned > 0 ? `${fmtN(Math.max(0, planned - executed))} ${target.unit}` : "—"}</DescItem>
+                <DescItem label="Status">{STATUS_LABEL[target.status ?? ""] ?? target.status ?? "—"}</DescItem>
+                {billed !== null && <DescItem label="Billed"><span className="text-blue-600 font-semibold">{fmtN(billed)} {target.unit}</span></DescItem>}
+                {billed !== null && (
+                  <DescItem label="Unbilled">
+                    {hasBill(detail._id) ? "—" : <span className="text-primary font-semibold">{fmtN(Math.max(0, executed - billed))} {target.unit}</span>}
+                  </DescItem>
+                )}
+                <DescItem label="Entries">{active.length}{entries.length !== active.length ? ` (+${entries.length - active.length} invalidated)` : ""}</DescItem>
+                {target.rate != null && <DescItem label="Rate">₹{fmtN(target.rate)} / {target.unit}</DescItem>}
+                {target.amount != null && <DescItem label="Amount">₹{fmtN(target.amount)}</DescItem>}
+                {!sub && item.gstPercent != null && <DescItem label="GST">{item.gstPercent}%</DescItem>}
+                {!sub && item.stage && <DescItem label="Stage">{item.stage}</DescItem>}
+                {target.plannedStart && <DescItem label="Planned start">{dayjs(target.plannedStart).format("DD MMM YYYY")}</DescItem>}
+                {target.plannedEnd && <DescItem label="Planned end">{dayjs(target.plannedEnd).format("DD MMM YYYY")}</DescItem>}
+                {target.originalPlannedQty != null && <DescItem label="Original planned">{fmtN(target.originalPlannedQty)} {target.unit}</DescItem>}
+                {target.originalAmount != null && <DescItem label="Original amount">₹{fmtN(target.originalAmount)}</DescItem>}
+                {planned > 0 && executed > planned && <DescItem label="Over plan">{target.varianceApproved ? "Over-run approved" : "Over-run awaiting approval"}</DescItem>}
+              </Descriptions>
+            </div>
+
+            {hasSubs && (
+              <div className="mb-4">
+                <div className="text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">Particulars</div>
+                <div className="flex flex-col">
+                  {item.subItems!.map(s => (
+                    <button
+                      key={s._id} type="button" onClick={() => setItemView({ woId: detail._id, itemId: item._id, subId: s._id })}
+                      className="flex items-center gap-3 text-xs py-1.5 border-b border-gray-100 dark:border-gray-700/40 text-left hover:bg-gray-50 dark:hover:bg-gray-700/40"
+                    >
+                      <span className="flex-1 font-medium text-gray-700 dark:text-gray-200">{s.description}</span>
+                      <span className="font-mono text-gray-400">{fmtN(s.completedQty)} / {fmtN(s.plannedQty)} {s.unit}</span>
+                      <span className="font-bold text-primary min-w-[32px] text-right">{pctOf(s.completedQty, s.plannedQty)}%</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">Measurement entries</div>
+            {entries.length === 0 ? (
+              <div className="text-center text-gray-400 py-6 text-sm">No measurement logged yet.</div>
+            ) : (
+              <div className="max-h-[45vh] overflow-y-auto pr-2 flex flex-col">
+                {entries.map((e, i) => {
+                  // Every field that was actually filled in, labelled — empty ones are skipped.
+                  const fields = ([
+                    ["Date", dayjs(e.date).format("DD MMM YYYY")],
+                    hasSubs ? ["Particular", e.description.split(" — ").slice(1).join(" — ")] : null,
+                    ...(wpt === "apartment" ? [["Tower", e.tower], ["Floor", e.floor], ["Flat No", e.flatNo]] : [["Plot No", e.plotNo]]),
+                    ["Location note", e.locationNote],
+                    ["Entered by", personName(e.enteredBy)],
+                  ] as ([string, string | undefined] | null)[]).filter((f): f is [string, string] => !!f && !!f[1]);
+                  const billReq = e.billedInRequestId ? projectBills.find(b => b._id === String(e.billedInRequestId)) : undefined;
+                  return (
+                    <div
+                      key={e._id + i}
+                      className="py-2.5 border-b border-gray-100 dark:border-gray-700/40 text-xs"
+                      style={{ opacity: e.invalidated?.done ? 0.6 : 1 }}
+                    >
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <span className="font-semibold text-gray-500">Entry {entries.length - i}</span>
+                        {e.billedInRequestId && <NxBadge color="blue">{`Billed${billReq ? ` · ${billReq.reqNo}` : ""}`}</NxBadge>}
+                        {e.invalidated?.done && <NxBadge color="red">Invalidated</NxBadge>}
+                        <span className={`ml-auto text-emerald-600 font-bold font-mono ${e.invalidated?.done ? "line-through" : ""}`}>+{fmtN(e.qtyAdded)} {e.unit}</span>
+                      </div>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-1.5">
+                        {fields.map(([k, v]) => (
+                          <div key={k}>
+                            <div className="text-[10px] font-bold text-gray-400 uppercase">{k}</div>
+                            <div className="text-gray-700 dark:text-gray-200">{v}</div>
+                          </div>
+                        ))}
+                      </div>
+                      {(e.dimensions?.rows?.length ?? 0) > 0 && (
+                        <div className="mt-2">
+                          <div className="text-[10px] font-bold text-gray-400 uppercase">Measurement working</div>
+                          <div className="flex flex-col gap-0.5 font-mono text-[11px] text-gray-600 dark:text-gray-300">
+                            {e.dimensions!.rows!.map((r, ri) => <span key={ri}>{savedRowText(r)}</span>)}
+                          </div>
+                        </div>
+                      )}
+                      {e.remarks && (
+                        <div className="mt-2">
+                          <div className="text-[10px] font-bold text-gray-400 uppercase">Remarks</div>
+                          <div className="text-gray-600 dark:text-gray-300 whitespace-pre-line">{e.remarks}</div>
+                        </div>
+                      )}
+                      {e.invalidated?.done && (
+                        <div className="mt-2 text-[11px] text-red-500">
+                          Invalidated{personName(e.invalidated.by) ? ` by ${personName(e.invalidated.by)}` : ""}
+                          {e.invalidated.at ? ` on ${dayjs(e.invalidated.at).format("DD MMM YYYY, hh:mm A")}` : ""}
+                          {e.invalidated.reason ? ` — ${e.invalidated.reason}` : ""}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </Modal>
+        );
+      })()}
+
       {/* ── Add Measurement Modal (owner/edit-permission only) ──────────────────── */}
       {progModal && (() => {
-        const addedQty = parseFloat(progFormValues.qtyAdded) || 0;
+        const addedQty = progFormValues.useDims && progModalTarget
+          ? dimTotal(progFormValues.dimRows, dimModeForUnit(progModalTarget.unit))
+          : parseFloat(progFormValues.qtyAdded) || 0;
         const prevExecuted = progModalTarget?.completedQty ?? 0;
         const newExecuted = prevExecuted + addedQty;
         const plannedQty = progModalTarget?.plannedQty ?? 0;
@@ -1206,15 +1419,24 @@ export default function DRIDashboard() {
               </div>
             )}
 
-            <Field
-              label={`Quantity Added (${progModalTarget?.unit ?? ""})`}
-              type="number" min="0.00001" step="0.00001"
-              hint={progModalTarget?.unit === "per-hr" ? "Tip: enter decimals for minutes — e.g. 13.67 = 13 hr 40 min" : undefined}
-              placeholder={progModalTarget?.unit === "per-hr" ? "e.g. 13.6667" : "e.g. 500"}
-              value={progFormValues.qtyAdded}
-              onChange={(e) => setProgFormValues(prev => ({ ...prev, qtyAdded: e.target.value }))}
+            <MeasurementInput
+              unit={progModalTarget?.unit ?? ""}
+              useDims={progFormValues.useDims}
+              onToggle={(useDims) => setProgFormValues(prev => ({ ...prev, useDims }))}
+              rows={progFormValues.dimRows}
+              onRows={(dimRows) => setProgFormValues(prev => ({ ...prev, dimRows }))}
               error={progErrors.errors.qtyAdded}
-            />
+            >
+              <Field
+                label={`Quantity Added (${progModalTarget?.unit ?? ""})`}
+                type="number" min="0.00001" step="0.00001"
+                hint={progModalTarget?.unit === "per-hr" ? "Tip: enter decimals for minutes — e.g. 13.67 = 13 hr 40 min" : undefined}
+                placeholder={progModalTarget?.unit === "per-hr" ? "e.g. 13.6667" : "e.g. 500"}
+                value={progFormValues.qtyAdded}
+                onChange={(e) => setProgFormValues(prev => ({ ...prev, qtyAdded: e.target.value }))}
+                error={progErrors.errors.qtyAdded}
+              />
+            </MeasurementInput>
 
             {progModalTarget && (
               <div className="mt-3.5 bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700/40 rounded-lg p-3.5">
@@ -1294,12 +1516,21 @@ export default function DRIDashboard() {
               onChange={(field, value) => setEditFormValues(prev => ({ ...prev, [field]: value }))}
             />
           </div>
-          <Field
-            label="Quantity Added" type="number" min="0.00001" step="0.00001" placeholder="e.g. 13.6667"
-            value={editFormValues.qtyAdded}
-            onChange={(e) => setEditFormValues(prev => ({ ...prev, qtyAdded: e.target.value }))}
+          <MeasurementInput
+            unit={editEntry?.unit ?? ""}
+            useDims={editFormValues.useDims}
+            onToggle={(useDims) => setEditFormValues(prev => ({ ...prev, useDims }))}
+            rows={editFormValues.dimRows}
+            onRows={(dimRows) => setEditFormValues(prev => ({ ...prev, dimRows }))}
             error={editErrors.errors.qtyAdded}
-          />
+          >
+            <Field
+              label="Quantity Added" type="number" min="0.00001" step="0.00001" placeholder="e.g. 13.6667"
+              value={editFormValues.qtyAdded}
+              onChange={(e) => setEditFormValues(prev => ({ ...prev, qtyAdded: e.target.value }))}
+              error={editErrors.errors.qtyAdded}
+            />
+          </MeasurementInput>
           <div className="mt-3.5">
             <Field
               textarea label="Remarks (optional)"
@@ -1361,13 +1592,7 @@ export default function DRIDashboard() {
                       setEditEntry(e);
                       setEditProjectType(wpt);
                       editErrors.clearAll();
-                      setEditFormValues({
-                        date: e.date ? dayjs(e.date).format("YYYY-MM-DD") : "",
-                        qtyAdded: String(e.qtyAdded ?? ""),
-                        remarks: e.remarks || "",
-                        tower: e.tower || "", floor: e.floor || "", flatNo: e.flatNo || "",
-                        plotNo: e.plotNo || "", locationNote: e.locationNote || "", plannedQty: "",
-                      });
+                      setEditFormValues(editFormFor(e));
                       setEditModal(true);
                     };
                     const canEditRow = canEdit && !e.invalidated?.done && !e.billedInRequestId;
@@ -1386,6 +1611,9 @@ export default function DRIDashboard() {
                           {e.description}
                           {personName(e.enteredBy) && (
                             <span className="font-normal text-gray-400 text-[11px]"> · {personName(e.enteredBy)}</span>
+                          )}
+                          {dimSummary(e.dimensions?.rows) && (
+                            <span className="block font-mono font-normal text-gray-400 text-[10px]">{dimSummary(e.dimensions?.rows)}</span>
                           )}
                         </span>
                         <span className="text-gray-500 dark:text-gray-400 min-w-[80px]">{formatLocation(e, wpt)}</span>

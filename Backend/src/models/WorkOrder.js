@@ -10,6 +10,20 @@ const progressEntrySchema = new mongoose.Schema(
     flatNo:       { type: String, default: '' },
     plotNo:       { type: String, default: '' },
     locationNote: { type: String, default: '' },
+    // The working behind qtyAdded when it was measured rather than typed
+    // (length × width × height × nos per row, deduct rows subtract). Absent on
+    // direct-quantity entries; qtyAdded stays the only figure anything sums.
+    dimensions: {
+      rows: [{
+        label:  { type: String, default: '' },
+        length: { type: Number },
+        width:  { type: Number },
+        height: { type: Number },
+        nos:    { type: Number },
+        deduct: { type: Boolean, default: false },
+        _id: false,
+      }],
+    },
     // Set once this entry's remarks have been carried into a BillRequest, so a
     // later (possibly partial) billing cycle knows exactly which entries are
     // still "new" — cumulative qty alone can't tell that apart once billing

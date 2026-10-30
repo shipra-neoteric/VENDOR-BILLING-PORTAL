@@ -9,6 +9,40 @@ function sumActiveQty(entries) {
   return entries.filter(e => !e.invalidated?.done).reduce((s, e) => s + e.qtyAdded, 0);
 }
 
+// A measurement entry can carry its working instead of a typed-in number:
+// dimensions.rows = [{ label, length, width, height, nos, deduct }]. Each row is
+// the product of whichever of length/width/height/nos were filled; deduct rows
+// (door/window cut-outs) subtract. The server is the source of truth for the
+// resulting qty — a client-sent qtyAdded is ignored when rows are present.
+// Without rows the entry is a plain direct quantity, exactly as before.
+function resolveEntryQty(qtyAdded, dimensions) {
+  const rawRows = dimensions && Array.isArray(dimensions.rows) ? dimensions.rows : [];
+  if (rawRows.length === 0) return { qty: Number(qtyAdded), dimensions: undefined };
+  if (rawRows.length > 50) return { error: 'Too many measurement rows (max 50)' };
+  const rows = [];
+  let total = 0;
+  for (let i = 0; i < rawRows.length; i++) {
+    const r = rawRows[i] || {};
+    const row = { label: String(r.label || '').trim().slice(0, 80), deduct: !!r.deduct };
+    let product = 1;
+    let factors = 0;
+    for (const k of ['length', 'width', 'height', 'nos']) {
+      if (r[k] === undefined || r[k] === null || r[k] === '') continue;
+      const v = Number(r[k]);
+      if (!Number.isFinite(v) || v <= 0) return { error: `Row ${i + 1}: ${k} must be greater than 0` };
+      row[k] = v;
+      product *= v;
+      factors++;
+    }
+    if (factors === 0) return { error: `Row ${i + 1}: enter at least one of length / width / height / nos` };
+    total += row.deduct ? -product : product;
+    rows.push(row);
+  }
+  total = Math.round(total * 1e5) / 1e5;
+  if (!(total > 0)) return { error: 'Total measured quantity must be greater than 0 after deductions' };
+  return { qty: total, dimensions: { rows } };
+}
+
 // Progress is never hard-blocked at plannedQty — AGM/GM see an over-logged item
 // flagged (yellow ≤10% over, red beyond that, computed client-side) and must
 // explicitly sign off before it can be billed. A prior sign-off only gets
@@ -116,4 +150,4 @@ function expandBillableCandidates(scopeItems, selectedIds, selectedSubIds) {
   return out;
 }
 
-module.exports = { sumActiveQty, applyVarianceGate, recomputeParentFromSubItems, deriveStatus, recomputeAfterInvalidate, expandBillableCandidates };
+module.exports = { resolveEntryQty, sumActiveQty, applyVarianceGate, recomputeParentFromSubItems, deriveStatus, recomputeAfterInvalidate, expandBillableCandidates };

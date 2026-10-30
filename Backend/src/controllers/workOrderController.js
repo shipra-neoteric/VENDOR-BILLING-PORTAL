@@ -36,7 +36,7 @@ const { milestonesExceedContract } = require('../utils/validateMilestones');
 const { documentsExceedLimit } = require('../utils/validateDocuments');
 const { logAudit, diffFields } = require('../utils/auditLog');
 const { archiveDeleted } = require('../utils/recycleBin');
-const { sumActiveQty, applyVarianceGate, recomputeParentFromSubItems } = require('../utils/progressHelpers');
+const { resolveEntryQty, sumActiveQty, applyVarianceGate, recomputeParentFromSubItems } = require('../utils/progressHelpers');
 const { getRetentionHeldForWorkOrder } = require('../utils/retentionHeld');
 const { notifyStagePending, settleAllPendingForEntity } = require('../utils/slackApprovals');
 const { notifyStageInApp, notifyUser, notifyByPermission } = require('../utils/notificationService');
@@ -1028,7 +1028,10 @@ exports.addScopeProgress = asyncHandler(async (req, res) => {
     return badRequest(res, 'This item has particulars — add progress against the individual particular instead.');
   }
 
-  const { date, qtyAdded, remarks, tower, floor, flatNo, plotNo, locationNote, plannedQty } = req.body;
+  const { date, remarks, tower, floor, flatNo, plotNo, locationNote, plannedQty } = req.body;
+  const resolved = resolveEntryQty(req.body.qtyAdded, req.body.dimensions);
+  if (resolved.error) return badRequest(res, resolved.error);
+  const qtyAdded = resolved.qty;
   if (!qtyAdded || qtyAdded <= 0) {
     return badRequest(res, 'qtyAdded must be greater than 0');
   }
@@ -1041,7 +1044,7 @@ exports.addScopeProgress = asyncHandler(async (req, res) => {
   // Progress is allowed to exceed plannedQty — never hard-blocked here. AGM/GM
   // see the overage flagged (yellow/red) on the Bill Review page and must sign
   // off on it before that item is billable.
-  item.progressEntries.push({ date: date || new Date(), qtyAdded, remarks, tower, floor, flatNo, plotNo, locationNote, enteredBy: req.user._id });
+  item.progressEntries.push({ date: date || new Date(), qtyAdded, dimensions: resolved.dimensions, remarks, tower, floor, flatNo, plotNo, locationNote, enteredBy: req.user._id });
   item.completedQty = sumActiveQty(item.progressEntries);
   item.status =
     item.plannedQty > 0 && item.completedQty >= item.plannedQty ? 'completed'
@@ -1078,7 +1081,10 @@ exports.addScopeProgress = asyncHandler(async (req, res) => {
 
 exports.editProgressEntry = asyncHandler(async (req, res) => {
   const { id, itemId, progressId } = req.params;
-  const { qtyAdded, date, remarks, tower, floor, flatNo, plotNo, locationNote } = req.body;
+  const { date, remarks, tower, floor, flatNo, plotNo, locationNote } = req.body;
+  const resolved = resolveEntryQty(req.body.qtyAdded, req.body.dimensions);
+  if (resolved.error) return badRequest(res, resolved.error);
+  const qtyAdded = resolved.qty;
 
   const workOrder = await WorkOrder.findById(id);
   if (!workOrder) return notFound(res, 'Work order not found');
@@ -1105,6 +1111,10 @@ exports.editProgressEntry = asyncHandler(async (req, res) => {
     return badRequest(res, `Cannot reduce below billed quantity. Min allowed: ${minAllowed.toLocaleString()} ${item.unit}`);
   }
 
+  // A direct-quantity edit that changes the number drops the old working, which
+  // no longer explains it; an unchanged number keeps it.
+  if (resolved.dimensions) entry.dimensions = resolved.dimensions;
+  else if (qtyAdded !== entry.qtyAdded) entry.dimensions = undefined;
   entry.qtyAdded = qtyAdded;
   if (date) entry.date = new Date(date);
   if (remarks !== undefined) entry.remarks = remarks;
@@ -1220,14 +1230,17 @@ exports.addSubItemProgress = asyncHandler(async (req, res) => {
   const subItem = item.subItems.id(req.params.subItemId);
   if (!subItem) return notFound(res, 'Particular not found');
 
-  const { date, qtyAdded, remarks, tower, floor, flatNo, plotNo, locationNote, plannedQty } = req.body;
+  const { date, remarks, tower, floor, flatNo, plotNo, locationNote, plannedQty } = req.body;
+  const resolved = resolveEntryQty(req.body.qtyAdded, req.body.dimensions);
+  if (resolved.error) return badRequest(res, resolved.error);
+  const qtyAdded = resolved.qty;
   if (!qtyAdded || qtyAdded <= 0) return badRequest(res, 'qtyAdded must be greater than 0');
 
   if (plannedQty !== undefined && Number(plannedQty) > 0) {
     subItem.plannedQty = Number(plannedQty);
   }
 
-  subItem.progressEntries.push({ date: date || new Date(), qtyAdded, remarks, tower, floor, flatNo, plotNo, locationNote, enteredBy: req.user._id });
+  subItem.progressEntries.push({ date: date || new Date(), qtyAdded, dimensions: resolved.dimensions, remarks, tower, floor, flatNo, plotNo, locationNote, enteredBy: req.user._id });
   subItem.completedQty = sumActiveQty(subItem.progressEntries);
   subItem.status =
     subItem.plannedQty > 0 && subItem.completedQty >= subItem.plannedQty ? 'completed'
@@ -1265,7 +1278,10 @@ exports.addSubItemProgress = asyncHandler(async (req, res) => {
 
 exports.editSubItemProgressEntry = asyncHandler(async (req, res) => {
   const { id, itemId, subItemId, progressId } = req.params;
-  const { qtyAdded, date, remarks, tower, floor, flatNo, plotNo, locationNote } = req.body;
+  const { date, remarks, tower, floor, flatNo, plotNo, locationNote } = req.body;
+  const resolved = resolveEntryQty(req.body.qtyAdded, req.body.dimensions);
+  if (resolved.error) return badRequest(res, resolved.error);
+  const qtyAdded = resolved.qty;
 
   const workOrder = await WorkOrder.findById(id);
   if (!workOrder) return notFound(res, 'Work order not found');
@@ -1291,6 +1307,8 @@ exports.editSubItemProgressEntry = asyncHandler(async (req, res) => {
     return badRequest(res, `Cannot reduce below billed quantity. Min allowed: ${minAllowed.toLocaleString()} ${subItem.unit}`);
   }
 
+  if (resolved.dimensions) entry.dimensions = resolved.dimensions;
+  else if (qtyAdded !== entry.qtyAdded) entry.dimensions = undefined;
   entry.qtyAdded = qtyAdded;
   if (date) entry.date = new Date(date);
   if (remarks !== undefined) entry.remarks = remarks;
