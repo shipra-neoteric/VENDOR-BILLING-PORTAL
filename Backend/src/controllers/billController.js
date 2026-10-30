@@ -521,7 +521,9 @@ exports.createBill = asyncHandler(async (req, res) => {
   }
   const balanceErr = await checkBalanceLines(workOrder, lineItems, null, req.body.billType);
   if (balanceErr) return badRequest(res, balanceErr);
-  if (workOrder) {
+  // Milestone bills derive each row's rate from the milestone amount, so it never equals the WO rate — not guarded.
+  const isMilestoneBill = (Array.isArray(req.body.milestoneIds) && req.body.milestoneIds.length > 0) || !!req.body.milestoneId;
+  if (workOrder && !isMilestoneBill && workOrder.contractType !== 'professional-services') {
     const rateChange = checkRateChanges(workOrder, lineItems);
     if (rateChange) {
       return badRequest(res, `"${rateChange.li.description}" — rate ₹${rateChange.li.rate} differs from the work order rate ₹${rateChange.li.woRate}. Write the reason for the change.`);
@@ -908,7 +910,9 @@ exports.editManualBill = asyncHandler(async (req, res) => {
   }
   const balanceErr = await checkBalanceLines(workOrder, lineItems, bill._id, req.body.billType || bill.billType);
   if (balanceErr) return badRequest(res, balanceErr);
-  if (workOrder) {
+  const isMilestoneBill = (Array.isArray(req.body.milestoneIds) && req.body.milestoneIds.length > 0) || !!req.body.milestoneId
+    || (bill.milestoneIds || []).length > 0 || !!bill.milestoneId;
+  if (workOrder && !isMilestoneBill && workOrder.contractType !== 'professional-services') {
     const rateChange = checkRateChanges(workOrder, lineItems);
     if (rateChange) {
       return badRequest(res, `"${rateChange.li.description}" — rate ₹${rateChange.li.rate} differs from the work order rate ₹${rateChange.li.woRate}. Write the reason for the change.`);

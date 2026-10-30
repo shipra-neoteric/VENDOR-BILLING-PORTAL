@@ -587,7 +587,8 @@ export default function NewBillDrawer({
         percentComplete: planned > 0 ? Math.round((billed / planned) * 10000) / 100 : 0,
         billedQty: billed,
         rate: Number(li.rate) || 0,
-        woRate: Number(t?.rate) || undefined,
+        // Milestone bills carry a derived rate, not the WO's — no rate guard on them.
+        woRate: (editBill.milestoneId || ((editBill.milestoneIds as unknown[] | undefined)?.length ?? 0) > 0) ? undefined : (Number(t?.rate) || undefined),
         rateReason: String(li.rateReason || ""),
         amount: Number(li.amount) || 0,
       };
