@@ -36,6 +36,7 @@ const { milestonesExceedContract } = require('../utils/validateMilestones');
 const { documentsExceedLimit } = require('../utils/validateDocuments');
 const { logAudit, diffFields } = require('../utils/auditLog');
 const { archiveDeleted } = require('../utils/recycleBin');
+const { attachBalanceAmounts } = require('../utils/balanceAmounts');
 const { resolveEntryQty, sumActiveQty, applyVarianceGate, recomputeParentFromSubItems } = require('../utils/progressHelpers');
 const { getRetentionHeldForWorkOrder } = require('../utils/retentionHeld');
 const { notifyStagePending, settleAllPendingForEntity } = require('../utils/slackApprovals');
@@ -269,10 +270,13 @@ exports.listWorkOrders = asyncHandler(async (req, res) => {
     overlayLiveContractorFields(w, party, isProfessionalServices);
   });
 
+  // New Bill asks for this: each scope item's amount still owed once its quantity is billed.
+  if (req.query.withBalance === 'true') await attachBalanceAmounts(workOrders);
+
   success(res, { workOrders });
 });
 
-exports.getWorkOrder = asyncHandler(async (req, res) => {
+exports.getWorkOrder =asyncHandler(async (req, res) => {
   const workOrder = await WorkOrder.findById(req.params.id)
     .populate('projectId', 'code name projectType')
     .populate('createdBy', 'name email')

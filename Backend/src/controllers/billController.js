@@ -12,7 +12,8 @@ const { nextBillNo, nextBillRequestReqNo } = require('../utils/codeGen');
 const emitEvent    = require('../utils/emitEvent');
 const { advanceInstance, cancelInstance } = require('../utils/slaEngine');
 const { logAudit, diffFields } = require('../utils/auditLog');
-const { hasUnapprovedVarianceForLineItem, resolveBillableItem, findOverbilledLineItem, isWorkOrderApproved } = require('../utils/varianceCheck');
+const { checkBalanceLines } = require('../utils/balanceAmounts');
+const { checkRateChanges, hasUnapprovedVarianceForLineItem, resolveBillableItem, findOverbilledLineItem, isWorkOrderApproved } = require('../utils/varianceCheck');
 const { recomputeAfterInvalidate, recomputeParentFromSubItems, deriveStatus } = require('../utils/progressHelpers');
 const { applyAdvanceRecoveries, reverseAdvanceRecoveries } = require('../utils/advanceRecovery');
 const { getRetentionHeldForWorkOrder } = require('../utils/retentionHeld');
@@ -518,6 +519,14 @@ exports.createBill = asyncHandler(async (req, res) => {
       return badRequest(res, `"${si.description}" — only ${remaining} ${si.unit || ''} remaining to bill (already billed ${si.lastBilledQty || 0} of ${si.plannedQty}).`);
     }
   }
+  const balanceErr = await checkBalanceLines(workOrder, lineItems, null);
+  if (balanceErr) return badRequest(res, balanceErr);
+  if (workOrder) {
+    const rateChange = checkRateChanges(workOrder, lineItems);
+    if (rateChange) {
+      return badRequest(res, `"${rateChange.li.description}" — rate ₹${rateChange.li.rate} differs from the work order rate ₹${rateChange.li.woRate}. Write the reason for the change.`);
+    }
+  }
 
   // Advance recovery decided at creation time — validate slip ownership up
   // front (before creating anything) so a mismatch fails cleanly with no
@@ -897,7 +906,15 @@ exports.editManualBill = asyncHandler(async (req, res) => {
       return badRequest(res, `"${si.description}" — only ${remaining} ${si.unit || ''} remaining to bill.`);
     }
   }
-  const recoveries = Array.isArray(req.body.advanceRecoveries) ? req.body.advanceRecoveries : [];
+  const balanceErr = await checkBalanceLines(workOrder, lineItems, bill._id);
+  if (balanceErr) return badRequest(res, balanceErr);
+  if (workOrder) {
+    const rateChange = checkRateChanges(workOrder, lineItems);
+    if (rateChange) {
+      return badRequest(res, `"${rateChange.li.description}" — rate ₹${rateChange.li.rate} differs from the work order rate ₹${rateChange.li.woRate}. Write the reason for the change.`);
+    }
+  }
+  const recoveries =Array.isArray(req.body.advanceRecoveries) ? req.body.advanceRecoveries : [];
   const recoveryVendorCode = workOrder ? workOrder.vendorCode : req.body.vendorCode;
   if (recoveries.length) {
     const slips = await AdvanceSlip.find({ _id: { $in: recoveries.map(r => r.slipId).filter(Boolean) } }).select('contractorCode');

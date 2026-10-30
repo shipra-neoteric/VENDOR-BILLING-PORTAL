@@ -535,7 +535,7 @@ export default function DRIDashboard() {
     setProgTarget({ woId, item, subItem });
     progErrors.clearAll();
     const canDims = dimModeForUnit((subItem ?? item).unit) !== "none";
-    setProgFormValues({ ...emptyProgForm, date: dayjs().format("YYYY-MM-DD"), useDims: canDims, dimRows: canDims ? [blankDimRow()] : [] });
+    setProgFormValues({ ...emptyProgForm, date: dayjs().format("YYYY-MM-DD"), useDims: false, dimRows: canDims ? [blankDimRow()] : [] });
     setProgModal(true);
   };
 

@@ -37,6 +37,11 @@ export interface RunningBillLineItem {
   billedQty?: number;
   rate?: number;
   amount?: number;
+  // Balance still owed on a work order item (amount only, no qty/rate).
+  isBalance?: boolean;
+  // The work order's rate for this item, and why the bill line differs from it.
+  woRate?: number;
+  rateReason?: string;
 }
 
 export interface RunningBillDetail {
@@ -498,10 +503,15 @@ export default function RunningBillDetailView({
                   {li.description}
                   {li.remarks && <div className="text-[11px] font-normal text-amber-600 mt-0.5">📌 {li.remarks}</div>}
                   {li.progressRemarks && <div className="text-[11px] font-normal text-blue-600 mt-0.5">👷 {li.progressRemarks}</div>}
+                  {!li.isBalance && (li.woRate || 0) > 0 && (li.rate || 0) > 0 && Math.abs((li.rate || 0) - (li.woRate || 0)) > 0.005 && (
+                    <div className="text-[11px] font-normal text-red-600 mt-0.5">
+                      ⚠ Rate ₹{(li.rate || 0).toLocaleString("en-IN")} differs from WO rate ₹{(li.woRate || 0).toLocaleString("en-IN")}{li.rateReason ? ` — ${li.rateReason}` : ""}
+                    </div>
+                  )}
                 </Td>
                 <Td className="text-right text-gray-400">{li.unit || "—"}</Td>
-                <Td className="text-right font-mono font-bold text-[#ff7a00]">{(li.billedQty || 0).toLocaleString("en-IN")}</Td>
-                <Td className="text-right font-mono">{(li.rate || 0).toLocaleString("en-IN")}</Td>
+                <Td className="text-right font-mono font-bold text-[#ff7a00]">{li.isBalance ? "—" : (li.billedQty || 0).toLocaleString("en-IN")}</Td>
+                <Td className="text-right font-mono">{li.isBalance ? "—" : (li.rate || 0).toLocaleString("en-IN")}</Td>
                 <Td className="text-right font-mono font-bold text-emerald-600">{fmt(li.amount ?? 0)}</Td>
               </Tr>
             ))}

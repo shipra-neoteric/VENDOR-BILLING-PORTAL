@@ -60,6 +60,29 @@ function findOverbilledLineItem(workOrder, lineItems, supersedeQtyMap) {
   return null;
 }
 
+// Rate guard for manually-entered bill lines: a line linked to a work order
+// item is expected to carry that item's rate. When the rate was changed, the
+// line must say why (rateReason) — otherwise a silent rate change (e.g. 300 ->
+// 250) leaves money unaccounted for that nobody can later explain. Also stamps
+// the work order's own rate onto each linked line (woRate), so approvers and
+// the print can show the difference. Returns the first line missing a reason,
+// or null.
+function checkRateChanges(workOrder, lineItems) {
+  let missing = null;
+  for (const li of lineItems) {
+    if (!li.scopeItemId || li.isBalance) continue;
+    const si = workOrder.scopeItems.id(li.scopeItemId);
+    const target = si ? resolveBillableItem(si, li.subItemId) : null;
+    if (!target || !(Number(target.rate) > 0)) continue;
+    li.woRate = Number(target.rate);
+    if (!missing && li.billedQty && Number(li.rate) > 0
+      && Math.abs(Number(li.rate) - li.woRate) > 0.005 && !String(li.rateReason || '').trim()) {
+      missing = { li, target };
+    }
+  }
+  return missing;
+}
+
 // A Work Order must have cleared its own L1(checker)->L2(approver)->L4(final)
 // approval chain before anything can be billed against it — otherwise a bill
 // could be raised (and paid) for a WO whose scope/value was never actually
@@ -70,4 +93,4 @@ function isWorkOrderApproved(wo) {
   return !wo.approvalStatus || wo.approvalStatus === 'approved';
 }
 
-module.exports = { hasUnapprovedVariance, hasUnapprovedVarianceForLineItem, resolveBillableItem, findOverbilledLineItem, isWorkOrderApproved };
+module.exports = { hasUnapprovedVariance, hasUnapprovedVarianceForLineItem, resolveBillableItem, findOverbilledLineItem, checkRateChanges, isWorkOrderApproved };

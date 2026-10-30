@@ -57,6 +57,18 @@ interface LineItem {
   // yet (e.g. imported from a work order), so display falls back to `rate`.
   rateInput?: string;
   amount: number;
+  // Bills the money still owed on a work order item whose quantity is fully
+  // billed (e.g. a rate difference) — amount only, no quantity/rate. The amount
+  // can be lowered but never raised above balanceCap; the backend re-checks it.
+  isBalance?: boolean;
+  // The work order's own rate for this item. Billing at any other rate needs a
+  // written reason (rateReason) — the backend enforces it too.
+  woRate?: number;
+  rateReason?: string;
+  balanceCap?: number;
+  // A balance row stays out of the particulars grouping, so its particular (if
+  // any) is carried here and sent as subItemId.
+  balanceSubItemId?: string;
 }
 
 interface ExistingBill {
@@ -66,8 +78,9 @@ interface ExistingBill {
 
 interface ProjectOpt { id: string; name: string; code: string; parentId?: string | null; }
 interface CompanyOpt { id: string; name: string; shortCode: string; isActive?: boolean; }
-interface SubItemOpt { id: string; description: string; unit: string; plannedQty: number; lastBilledQty: number; rate?: number; }
-interface ScopeItemOpt { id: string; description: string; unit: string; plannedQty: number; lastBilledQty: number; rate?: number; subItems?: SubItemOpt[]; }
+// balanceAmount: what's still owed on the item once its quantity is fully billed (see Backend utils/balanceAmounts.js).
+interface SubItemOpt { id: string; description: string; unit: string; plannedQty: number; lastBilledQty: number; rate?: number; balanceAmount?: number; }
+interface ScopeItemOpt { id: string; description: string; unit: string; plannedQty: number; lastBilledQty: number; rate?: number; balanceAmount?: number; subItems?: SubItemOpt[]; }
 // `amount` is the milestone's pre-GST base figure (for a percent-mode
 // milestone, already resolved against the contract value — see WorkItems'
 // milestoneDraftToPayload/calcPayable). This bill's own GST Slab
@@ -121,6 +134,12 @@ function remainingQty(li: LineItem, supersededQty = 0): number | null {
 function isOverbilled(li: LineItem, supersededQty = 0): boolean {
   const remaining = remainingQty(li, supersededQty);
   return remaining != null && Number(li.billedQty) > remaining + 0.001;
+}
+
+// True when a work-order-linked row is being billed at a rate other than the work order's own.
+function rateDiffers(li: LineItem): boolean {
+  return !!li.scopeItemId && !li.isBalance && (li.woRate || 0) > 0 && Number(li.rate) > 0
+    && Math.abs(Number(li.rate) - (li.woRate || 0)) > 0.005;
 }
 
 const GST_SLABS = [
@@ -465,7 +484,7 @@ export default function NewBillDrawer({
     // (matching before); until then it shows every WO on the project.
     if (!projectId) { setWoList([]); return; }
     const code = partyType === "consultant" ? selectedConsultant?.consultantCode : selectedContractor?.vendorCode;
-    apiClient.get<{ workOrders: Record<string, unknown>[] }>(`/work-orders?projectId=${projectId}`)
+    apiClient.get<{ workOrders: Record<string, unknown>[] }>(`/work-orders?projectId=${projectId}&withBalance=true`)
       .then((r) => {
         const all = (r.data.workOrders || []).map(normalizeWO);
         setWoList(all.filter((wo) => (!code || wo.vendorCode === code) && (wo.contractType === "professional-services") === (partyType === "consultant")));
@@ -545,6 +564,15 @@ export default function NewBillDrawer({
       const t = sb || si;
       const planned = Number(t?.plannedQty ?? li.plannedQty ?? 0);
       const billed = Number(li.billedQty) || 0;
+      if (li.isBalance) {
+        const amount = Number(li.amount) || 0;
+        // The WO's balance already has THIS bill's own amount taken out — add it back to keep it.
+        return {
+          key: nextKey(), scopeItemId: sid || undefined, balanceSubItemId: sub || undefined,
+          description: String(li.description || ""), unit: "lump-sum", plannedQty: 0, billedQty: 0, rate: 0,
+          amount, isBalance: true, balanceCap: (Number(t?.balanceAmount) || 0) + amount,
+        };
+      }
       return {
         key: nextKey(),
         scopeItemId: sid || undefined,
@@ -559,6 +587,8 @@ export default function NewBillDrawer({
         percentComplete: planned > 0 ? Math.round((billed / planned) * 10000) / 100 : 0,
         billedQty: billed,
         rate: Number(li.rate) || 0,
+        woRate: Number(t?.rate) || undefined,
+        rateReason: String(li.rateReason || ""),
         amount: Number(li.amount) || 0,
       };
     });
@@ -645,6 +675,14 @@ export default function NewBillDrawer({
     );
   }
 
+  // A balance row's amount can be lowered (part-bill it) but never raised past what's owed.
+  function handleBalanceAmountChange(key: number, raw: string) {
+    const v = Number(raw.replace(/,/g, "")) || 0;
+    setLineItems((prev) => prev.map((li) => (li.key === key
+      ? { ...li, amount: Math.round(Math.min(Math.max(0, v), li.balanceCap ?? v) * 100) / 100 }
+      : li)));
+  }
+
   function removeLineItem(key: number) {
     setLineItems((prev) => prev.filter((li) => li.key !== key));
   }
@@ -675,35 +713,59 @@ export default function NewBillDrawer({
     // particulars carry a real plannedQty/rate — so import ITS particulars
     // as individual rows, grouped under a collapsible header, instead of one
     // row for the parent.
+    // An item whose quantity is all billed but still has money owed (balanceAmount)
+    // comes in as a balance row — pre-filled with that amount — instead of an
+    // empty quantity row it could never bill.
+    const balanceRow = (si: ScopeItemOpt, t: { description: string; balanceAmount?: number }, subId?: string): LineItem => ({
+      key: nextKey(), scopeItemId: si.id, balanceSubItemId: subId,
+      description: `${t.description} — balance amount`, unit: "lump-sum",
+      plannedQty: 0, billedQty: 0, rate: 0, amount: t.balanceAmount || 0,
+      isBalance: true, balanceCap: t.balanceAmount || 0,
+    });
+    const qtyLeft = (t: { plannedQty: number; lastBilledQty: number }) => (t.plannedQty || 0) - (t.lastBilledQty || 0);
     const imported: LineItem[] = scopeItems.flatMap((si) => {
       if (si.subItems && si.subItems.length > 0) {
-        return si.subItems.map((sub) => ({
+        return si.subItems.flatMap((sub) => {
+          const rows: LineItem[] = [];
+          if (!((sub.balanceAmount || 0) > 0 && qtyLeft(sub) <= 0)) {
+            rows.push({
+              key: nextKey(),
+              scopeItemId: si.id,
+              subItemId: sub.id,
+              groupLabel: si.description,
+              description: sub.description,
+              unit: sub.unit || "",
+              plannedQty: sub.plannedQty || 0,
+              lastBilledQty: sub.lastBilledQty || 0,
+              percentComplete: 0,
+              billedQty: 0,
+              rate: sub.rate || 0,
+              woRate: sub.rate || 0,
+              amount: 0,
+            });
+          }
+          if ((sub.balanceAmount || 0) > 0) rows.push(balanceRow(si, { description: `${si.description} — ${sub.description}`, balanceAmount: sub.balanceAmount }, sub.id));
+          return rows;
+        });
+      }
+      const rows: LineItem[] = [];
+      if (!((si.balanceAmount || 0) > 0 && qtyLeft(si) <= 0)) {
+        rows.push({
           key: nextKey(),
           scopeItemId: si.id,
-          subItemId: sub.id,
-          groupLabel: si.description,
-          description: sub.description,
-          unit: sub.unit || "",
-          plannedQty: sub.plannedQty || 0,
-          lastBilledQty: sub.lastBilledQty || 0,
+          description: si.description,
+          unit: si.unit || "",
+          plannedQty: si.plannedQty || 0,
+          lastBilledQty: si.lastBilledQty || 0,
           percentComplete: 0,
           billedQty: 0,
-          rate: sub.rate || 0,
+          rate: si.rate || 0,
+          woRate: si.rate || 0,
           amount: 0,
-        }));
+        });
       }
-      return [{
-        key: nextKey(),
-        scopeItemId: si.id,
-        description: si.description,
-        unit: si.unit || "",
-        plannedQty: si.plannedQty || 0,
-        lastBilledQty: si.lastBilledQty || 0,
-        percentComplete: 0,
-        billedQty: 0,
-        rate: si.rate || 0,
-        amount: 0,
-      }];
+      if ((si.balanceAmount || 0) > 0) rows.push(balanceRow(si, si));
+      return rows;
     });
     setLineItems((prev) => [...prev.filter((li) => li.description.trim()), ...imported]);
     setImportedFromWOId(woId);
@@ -937,7 +999,7 @@ export default function NewBillDrawer({
       toast.error("A document is still uploading — wait for it to finish before saving");
       return;
     }
-    const enteredItems = lineItems.filter((li) => li.description.trim() && li.billedQty > 0);
+    const enteredItems = lineItems.filter((li) => li.description.trim() && (li.isBalance ? li.amount > 0 : li.billedQty > 0));
     // Only a bill whose Bill Type is "Retention Release" (or whose Relationship Type is
     // RETENTION_RELEASE_OF) can skip the work items (it just
     // pays back held retention) — the server and the print sheet treat this one placeholder line
@@ -955,6 +1017,13 @@ export default function NewBillDrawer({
     const overbilledItem = validItems.find((li) => isOverbilled(li, supersedeQtyFor(li)));
     if (overbilledItem) {
       toast.error(`"${overbilledItem.description}" — only ${remainingQty(overbilledItem, supersedeQtyFor(overbilledItem))} ${overbilledItem.unit || ""} remaining to bill. Fix the highlighted quantity before saving.`, { duration: 6000 });
+      return;
+    }
+    // Billing a work-order item at a different rate than the work order's own
+    // needs a written reason (the backend rejects it otherwise).
+    const unexplainedRate = validItems.find((li) => rateDiffers(li) && !(li.rateReason || "").trim());
+    if (unexplainedRate) {
+      toast.error(`"${unexplainedRate.description}" — rate ₹${unexplainedRate.rate} differs from the work order rate ₹${unexplainedRate.woRate}. Write the reason in the highlighted box under the rate.`, { duration: 6000 });
       return;
     }
     formErrors.clearAll();
@@ -1037,9 +1106,10 @@ export default function NewBillDrawer({
       retentionReleaseRemark: retentionReleaseRemark ?? "",
       supersedeDeduction: supersedeDeductionAmount,
       ...(recoveries.length ? { advanceRecoveries: recoveries } : {}),
-      lineItems: validItems.map(({ key: _k, lastBilledQty: _l, percentComplete: _p, groupLabel: _g, ...rest }) => ({
+      lineItems: validItems.map(({ key: _k, lastBilledQty: _l, percentComplete: _p, groupLabel: _g, balanceCap: _c, balanceSubItemId, ...rest }) => ({
         ...rest,
-        amount: rest.billedQty * rest.rate,
+        ...(rest.isBalance && balanceSubItemId ? { subItemId: balanceSubItemId } : {}),
+        amount: rest.isBalance ? rest.amount : rest.billedQty * rest.rate,
       })),
       ...(saveAsDraft ? { saveAsDraft: true } : {}),
     };
@@ -1476,6 +1546,12 @@ export default function NewBillDrawer({
                           {si.subItems && si.subItems.length > 0 && (
                             <span className="text-[11px] text-gray-400">({si.subItems.length} particulars)</span>
                           )}
+                          {(() => {
+                            const bal = si.subItems && si.subItems.length > 0
+                              ? si.subItems.reduce((s, x) => s + (x.balanceAmount || 0), 0)
+                              : si.balanceAmount || 0;
+                            return bal > 0 ? <span className="text-[11px] font-semibold text-amber-600">· balance {fmt(bal)}</span> : null;
+                          })()}
                         </label>
                       ))}
                     </div>
@@ -1554,6 +1630,38 @@ export default function NewBillDrawer({
 
                     if (groupKey && !expandedGroups.has(groupKey)) return;
 
+                    if (item.isBalance) {
+                      rows.push(
+                        <Tr key={item.key} className="bg-amber-50/60 dark:bg-amber-500/10">
+                          <Td className="min-w-[300px] w-[36%]">
+                            <div className="text-[13px] font-medium text-[#1A1A2E] dark:text-[#F1F5F9]">{item.description}</div>
+                            <div className="text-[10px] text-amber-700 dark:text-amber-400">
+                              Balance still owed on this work order item — up to {fmt(item.balanceCap ?? item.amount)}
+                            </div>
+                          </Td>
+                          <Td className="text-center text-[11px] text-gray-500">Lump sum</Td>
+                          <Td className="text-right text-gray-300">—</Td>
+                          <Td className="text-right text-gray-300">—</Td>
+                          <Td className="text-right text-gray-300">—</Td>
+                          <Td className="text-right text-gray-300">—</Td>
+                          <Td>
+                            <input
+                              value={item.amount ? String(item.amount) : ""}
+                              placeholder="0.00"
+                              onChange={(e) => handleBalanceAmountChange(item.key, e.target.value)}
+                              className={`${cellInputClass} text-right font-mono font-bold text-emerald-600`}
+                            />
+                          </Td>
+                          <Td className="text-center">
+                            <button type="button" onClick={() => setConfirmRemoveKey(item.key)} className="text-red-500 hover:text-red-700 p-1">
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </Td>
+                        </Tr>
+                      );
+                      return;
+                    }
+
                     const cap = remainingPercent(item);
                     rows.push(
                       <Tr key={item.key} className={groupKey ? "bg-gray-50/60 dark:bg-gray-800/20" : ""}>
@@ -1612,8 +1720,21 @@ export default function NewBillDrawer({
                             value={item.rateInput !== undefined ? formatThousands(item.rateInput) : formatThousands(item.rate || "")}
                             placeholder="0.00"
                             onChange={(e) => handleRateChange(item.key, e.target.value)}
-                            className={`${cellInputClass} text-right`}
+                            className={`${cellInputClass} text-right ${rateDiffers(item) ? "ring-1 ring-amber-500 rounded bg-amber-50 dark:bg-amber-500/10" : ""}`}
                           />
+                          {rateDiffers(item) && (
+                            <div className="mt-1">
+                              <div className="text-[10px] text-amber-700 dark:text-amber-400 text-right font-semibold">
+                                WO rate is ₹{(item.woRate || 0).toLocaleString("en-IN")} — give a reason
+                              </div>
+                              <input
+                                value={item.rateReason || ""}
+                                placeholder="Why is the rate different?"
+                                onChange={(e) => updateLineItem(item.key, "rateReason", e.target.value)}
+                                className={`${cellInputClass} mt-0.5 text-[11px] ${(item.rateReason || "").trim() ? "" : "ring-1 ring-red-400 rounded"}`}
+                              />
+                            </div>
+                          )}
                         </Td>
                         <Td className={`text-right font-mono font-bold whitespace-nowrap ${item.amount > 0 ? "text-emerald-600" : "text-gray-300"}`}>
                           {item.amount > 0 ? fmt(item.amount) : "—"}

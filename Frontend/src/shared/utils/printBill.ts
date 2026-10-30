@@ -71,6 +71,11 @@ interface PrintableLineItem {
   billedQty: number;
   rate: number;
   amount: number;
+  // Balance still owed on a work order item (amount only, no qty/rate).
+  isBalance?: boolean;
+  // The work order's rate for this item, and why the bill line differs from it.
+  woRate?: number;
+  rateReason?: string;
 }
 
 // The subset of RunningBill fields the print template actually reads — a real
@@ -212,10 +217,10 @@ export function printBill(
       (li, i) => `
       <tr>
         <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:center">${i + 1}</td>
-        <td style="padding:8px 12px;border-bottom:1px solid #eee">${li.description}${li.remarks ? `<div style="font-size:10px;color:#d97706;margin-top:3px">📌 ${li.remarks}</div>` : ""}${li.location ? `<div style="font-size:10px;color:#555;margin-top:3px"><strong>Location:</strong> ${li.location.replace(/\n/g, "<br>")}</div>` : ""}${li.progressRemarks ? `<ul style="font-size:10px;color:#2563eb;margin:3px 0 0;padding-left:14px">${li.progressRemarks.split("\n").filter(Boolean).map(note => `<li>${note}</li>`).join("")}</ul>` : ""}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #eee">${li.description}${li.remarks ? `<div style="font-size:10px;color:#d97706;margin-top:3px">📌 ${li.remarks}</div>` : ""}${!li.isBalance && (li.woRate || 0) > 0 && (li.rate || 0) > 0 && Math.abs((li.rate || 0) - (li.woRate || 0)) > 0.005 ? `<div style="font-size:10px;color:#dc2626;margin-top:3px">Rate ${(li.rate || 0).toLocaleString("en-IN")} differs from WO rate ${(li.woRate || 0).toLocaleString("en-IN")}${li.rateReason ? ` - ${li.rateReason}` : ""}</div>` : ""}${li.location ? `<div style="font-size:10px;color:#555;margin-top:3px"><strong>Location:</strong> ${li.location.replace(/\n/g, "<br>")}</div>` : ""}${li.progressRemarks ? `<ul style="font-size:10px;color:#2563eb;margin:3px 0 0;padding-left:14px">${li.progressRemarks.split("\n").filter(Boolean).map(note => `<li>${note}</li>`).join("")}</ul>` : ""}</td>
         <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:center">${li.unit || "-"}</td>
-        <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:right">${(li.billedQty || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-        <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:right">${(li.rate || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:right">${li.isBalance ? "-" : (li.billedQty || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:right">${li.isBalance ? "-" : (li.rate || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
         <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:right;font-weight:600">${(li.amount || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
       </tr>`
     )

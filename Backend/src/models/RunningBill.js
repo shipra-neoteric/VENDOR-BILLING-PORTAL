@@ -20,6 +20,14 @@ const lineItemSchema = new mongoose.Schema({
   billedQty:   { type: Number, required: true },
   rate:        { type: Number, required: true },
   amount:      { type: Number, required: true },
+  // A line that bills the money still owed on a work order item once its quantity
+  // is fully billed (e.g. rate difference) — amount only, billedQty/rate are 0.
+  // See utils/balanceAmounts.js.
+  isBalance:   { type: Boolean, default: false },
+  // The work order's own rate for this item at billing time, and — when the bill
+  // line's rate differs from it — the maker's reason (required by the server).
+  woRate:      { type: Number },
+  rateReason:  { type: String, default: '' },
 
   // ── Quantity-variance evidence (snapshotted at bill creation) ──────────
   // Only the progress-driven flow (BillRequest -> gmApprove) can ever
