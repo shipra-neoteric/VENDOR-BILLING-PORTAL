@@ -50,6 +50,7 @@ const { getWoApprovalConfig, woApproverAllowed } = require('../utils/woApprovalR
 const WorkOrder = require('../models/WorkOrder');
 const BillRequest = require('../models/BillRequest');
 const RunningBill = require('../models/RunningBill');
+const User = require('../models/User');
 
 const DAY_MS = 86400000;
 const dayFloor = (from, to) => Math.max(0, Math.floor((new Date(to).getTime() - new Date(from).getTime()) / DAY_MS));
@@ -295,6 +296,14 @@ async function buildDecidedItems(user, decision) {
   const now = Date.now();
   const viewOnly = hasViewOnlyGrant(user);
 
+  // The Rejected tab is the final approver's (CEO's) own rejections — one made by anyone else (an AGM/GM at
+  // an earlier level, or Admin) was not made from this page. Matched on the role snapshotted into the history
+  // entry, or on the rejecting user's current role when the entry carries no snapshot (older records).
+  const ceoIds = decision === 'rejected'
+    ? new Set((await User.find({ role: 'CEO' }).select('_id').lean()).map((u) => String(u._id)))
+    : null;
+  const byCeo = (entry) => !!entry && (entry.byRole === 'CEO' || (!!entry.by && ceoIds.has(String(entry.by))));
+
   if (can(user, 'work-orders', 'ceo-approve') || viewOnly) {
     const marker = decision === 'approved' ? { stage: 'final', action: 'approved' } : { stage: 'final', action: 'sent-back' };
     const rows = await WorkOrder.find({ approvalHistory: { $elemMatch: marker } })
@@ -303,6 +312,7 @@ async function buildDecidedItems(user, decision) {
       if (!viewOnly && !canActOnDepartment(user, wo)) continue;
       const entry = lastMatchingHistoryEntry(wo.approvalHistory, marker.stage, marker.action);
       if (!entry) continue;
+      if (decision === 'rejected' && !byCeo(entry)) continue;
       const pendingSince = wo.approverAt || wo.checkerAt || wo.createdAt;
       items.push({
         id: String(wo._id),
@@ -342,6 +352,7 @@ async function buildDecidedItems(user, decision) {
       if (decision === 'rejected') {
         const levels = br.requiredApprovalsOverride ?? (await getApprovalConfig(br))?.requiredApprovals ?? 2;
         if (found.stage !== finalStageName(levels)) continue;
+        if (!byCeo(found.entry)) continue;
       }
       const { stage, entry } = found;
       const pendingSince = stage === 'l4' ? (br.l3ApprovedAt || br.createdAt)
@@ -390,7 +401,7 @@ async function buildDecidedItems(user, decision) {
         ? findFinalHistoryEntry(bill.approvalHistory, 'manual-', action) : null;
       if (manualFound && decision === 'rejected') {
         const levels = bill.requiredApprovalsOverride ?? (await getApprovalConfig(bill))?.requiredApprovals ?? 2;
-        if (manualFound.stage !== finalStageName(levels)) manualFound = null;
+        if (manualFound.stage !== finalStageName(levels) || !byCeo(manualFound.entry)) manualFound = null;
       }
       const accountsEntry = (can(user, 'accounts-payment', 'l2-director-approve') || viewOnly)
         ? lastMatchingHistoryEntry(bill.approvalHistory, accountsMarker.stage, accountsMarker.action) : null;
