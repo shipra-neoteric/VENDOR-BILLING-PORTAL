@@ -480,7 +480,7 @@ exports.agmApprove = asyncHandler(async (req, res) => {
   // (not gmApproveHandler) — routing through the GM handler used to also
   // stamp a phantom br.gmApprovedBy/'gm' history entry onto this same AGM's
   // action, which is wrong for a department with no real L2 stage at all.
-  if (approvalConfig?.requiredApprovals === 1) {
+  if ((br.requiredApprovalsOverride ?? approvalConfig?.requiredApprovals) === 1) {
     const result = await finalizeBillRequest(br, wo, req, res, 'agm');
     if (!result) return;
     return success(res, result, result.message);
@@ -738,7 +738,7 @@ async function gmApproveHandler(req, res) {
   br.gmApprovedAt = new Date();
   br.approvalHistory.push({ stage: 'gm', action: 'approved', by: req.user._id, byName: req.user.name, byRole: req.user.role, remarks: req.body.remarks || '' });
 
-  const totalLevels = approvalConfig?.requiredApprovals ?? 2;
+  const totalLevels = br.requiredApprovalsOverride ?? approvalConfig?.requiredApprovals ?? 2;
   if (totalLevels >= 3) {
     br.status = 'pending-l3';
     await br.save();
@@ -817,7 +817,7 @@ async function l3ApproveHandler(req, res) {
   br.l3ApprovedAt = new Date();
   br.approvalHistory.push({ stage: 'l3', action: 'approved', by: req.user._id, byName: req.user.name, byRole: req.user.role, remarks: req.body.remarks || '' });
 
-  const totalLevels = approvalConfig?.requiredApprovals ?? 2;
+  const totalLevels = br.requiredApprovalsOverride ?? approvalConfig?.requiredApprovals ?? 2;
   if (totalLevels >= 4) {
     br.status = 'pending-l4';
     await br.save();

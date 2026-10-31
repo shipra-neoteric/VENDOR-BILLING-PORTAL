@@ -48,6 +48,9 @@ const billRequestSchema = new Schema(
     // they approved — informational (anyone in the department with L2
     // authority can still act on it), not an exclusivity lock.
     sentForL2ApprovalTo: { type: Schema.Types.ObjectId, ref: 'User', default: null },
+    // One-off exception to this request's department's usual number of approval levels (e.g. a Civil
+    // request that only needs L1 + L2) — same field RunningBill already has. Null = follow the department.
+    requiredApprovalsOverride: { type: Number, enum: [1, 2, 3, 4], default: null },
     items:       { type: [itemSchema], default: [] },
     remarks:     { type: String, default: '' },
     // Supporting files attached when the request is raised from Site Progress —

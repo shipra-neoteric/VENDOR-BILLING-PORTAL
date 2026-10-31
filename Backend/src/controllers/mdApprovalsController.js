@@ -67,8 +67,9 @@ function departmentOf(doc) {
 // genuinely non-final intermediate stage (e.g. pending-gm for a 4-level
 // department, which will advance to pending-l3 next, not finalize) — such
 // items are correctly NOT final-approval-pending yet and are left out.
-function finalStageFor(status, statusPrefix, config) {
-  const totalLevels = config?.requiredApprovals ?? 2;
+function finalStageFor(status, statusPrefix, config, override) {
+  // A document's own one-off override (requiredApprovalsOverride) wins over its department's level count.
+  const totalLevels = override ?? config?.requiredApprovals ?? 2;
   const stage = status === `${statusPrefix}gm` ? 'gm' : status === `${statusPrefix}l3` ? 'l3' : status === `${statusPrefix}l4` ? 'l4' : null;
   if (!stage) return null;
   if (stage === 'gm' && totalLevels < 3) return 'gm';
@@ -189,7 +190,7 @@ async function buildPendingItems(user) {
   for (const br of billRequests) {
     if (!viewOnly && !canActOnDepartment(user, br)) continue;
     const config = await getApprovalConfig(br);
-    const stage = finalStageFor(br.status, 'pending-', config);
+    const stage = finalStageFor(br.status, 'pending-', config, br.requiredApprovalsOverride);
     if (!stage) continue; // genuinely mid-chain for this department, not final yet
     if (!approverAllowed(user, config, stage) && !viewOnly) continue;
     const pendingSince = stage === 'l4' ? (br.l3ApprovedAt || br.createdAt)
@@ -221,7 +222,7 @@ async function buildPendingItems(user) {
   for (const bill of manualBills) {
     if (!viewOnly && !canActOnDepartment(user, bill)) continue;
     const config = await getApprovalConfig(bill);
-    const stage = finalStageFor(bill.manualApprovalStatus, 'pending-', config) || assignedStageFor(bill, user);
+    const stage = finalStageFor(bill.manualApprovalStatus, 'pending-', config, bill.requiredApprovalsOverride) || assignedStageFor(bill, user);
     if (!stage) continue;
     if (!approverAllowed(user, config, stage) && !viewOnly) continue;
     seenBillIds.add(String(bill._id));
@@ -522,7 +523,7 @@ exports.getMdApprovalDetail = asyncHandler(async (req, res) => {
     }
   } else if (system === 'BillRequest') {
     const config = await getApprovalConfig(doc);
-    const stage = finalStageFor(doc.status, 'pending-', config);
+    const stage = finalStageFor(doc.status, 'pending-', config, doc.requiredApprovalsOverride);
     isPending = !!stage;
     if (!authorized && isPending) {
       authorized = approverAllowed(user, config, stage);
@@ -531,7 +532,7 @@ exports.getMdApprovalDetail = asyncHandler(async (req, res) => {
     }
   } else if (system === 'RunningBill-Manual') {
     const config = await getApprovalConfig(doc);
-    const stage = finalStageFor(doc.manualApprovalStatus, 'pending-', config);
+    const stage = finalStageFor(doc.manualApprovalStatus, 'pending-', config, doc.requiredApprovalsOverride);
     isPending = !!stage;
     if (!authorized && isPending) {
       authorized = approverAllowed(user, config, stage);

@@ -352,7 +352,7 @@ exports.listBills = asyncHandler(async (req, res) => {
   // How many approval levels each request's department needs (Users → Departments;
   // 2 when nothing is configured) — the view drawer only shows that many L-columns.
   const levelsByReq = new Map(await Promise.all(pendingRequests.map(
-    async (r) => [String(r._id), (await getApprovalConfig(r))?.requiredApprovals ?? 2]
+    async (r) => [String(r._id), r.requiredApprovalsOverride ?? (await getApprovalConfig(r))?.requiredApprovals ?? 2]
   )));
   const STAGE_LABEL = { pending: 'Pending L1', 'pending-gm': 'Pending L2', 'pending-l3': 'Pending L3', 'pending-l4': 'Pending L4' };
   const requestRows = pendingRequests.map((r) => ({
