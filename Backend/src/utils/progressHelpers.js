@@ -24,23 +24,52 @@ function resolveEntryQty(qtyAdded, dimensions) {
   for (let i = 0; i < rawRows.length; i++) {
     const r = rawRows[i] || {};
     const row = { label: String(r.label || '').trim().slice(0, 80), deduct: !!r.deduct };
+    for (const k of ['tower', 'floor', 'flatNo', 'plotNo']) row[k] = String(r[k] || '').trim().slice(0, 40);
+    row.note = String(r.note || '').trim().slice(0, 300);
     let product = 1;
     let factors = 0;
-    for (const k of ['length', 'width', 'height', 'nos']) {
-      if (r[k] === undefined || r[k] === null || r[k] === '') continue;
-      const v = Number(r[k]);
-      if (!Number.isFinite(v) || v <= 0) return { error: `Row ${i + 1}: ${k} must be greater than 0` };
-      row[k] = v;
-      product *= v;
-      factors++;
+    const hasQty = r.qty !== undefined && r.qty !== null && r.qty !== '';
+    if (hasQty && ['length', 'width', 'height', 'nos'].some(k => r[k] !== undefined && r[k] !== null && r[k] !== '')) {
+      return { error: `Row ${i + 1}: enter either a quantity or length / width / height / nos, not both` };
     }
-    if (factors === 0) return { error: `Row ${i + 1}: enter at least one of length / width / height / nos` };
+    if (hasQty) {
+      // A direct-quantity row: the number itself, no length/width/height.
+      const v = Number(r.qty);
+      if (!Number.isFinite(v) || v <= 0) return { error: `Row ${i + 1}: quantity must be greater than 0` };
+      row.qty = v;
+      product = v;
+      factors = 1;
+    } else {
+      for (const k of ['length', 'width', 'height', 'nos']) {
+        if (r[k] === undefined || r[k] === null || r[k] === '') continue;
+        const v = Number(r[k]);
+        if (!Number.isFinite(v) || v <= 0) return { error: `Row ${i + 1}: ${k} must be greater than 0` };
+        row[k] = v;
+        product *= v;
+        factors++;
+      }
+    }
+    if (factors === 0) return { error: `Row ${i + 1}: enter a quantity, or at least one of length / width / height / nos` };
     total += row.deduct ? -product : product;
     rows.push(row);
   }
   total = Math.round(total * 1e5) / 1e5;
   if (!(total > 0)) return { error: 'Total measured quantity must be greater than 0 after deductions' };
   return { qty: total, dimensions: { rows } };
+}
+
+// Uploaded supporting files on a measurement entry: [{ name, url }], max 5. Only https links on
+// Cloudinary (where the app uploads them) are kept — same host rule as the public OCR endpoint.
+function isCloudinaryUrl(u) {
+  try { const x = new URL(u); return x.protocol === 'https:' && x.hostname === 'res.cloudinary.com'; } catch { return false; }
+}
+
+function cleanDocuments(docs) {
+  if (!Array.isArray(docs)) return [];
+  return docs
+    .filter(d => d && typeof d.url === 'string' && isCloudinaryUrl(d.url))
+    .slice(0, 5)
+    .map(d => ({ name: String(d.name || 'Document').slice(0, 200), url: d.url }));
 }
 
 // Progress is never hard-blocked at plannedQty — AGM/GM see an over-logged item
@@ -150,4 +179,4 @@ function expandBillableCandidates(scopeItems, selectedIds, selectedSubIds) {
   return out;
 }
 
-module.exports = { resolveEntryQty, sumActiveQty, applyVarianceGate, recomputeParentFromSubItems, deriveStatus, recomputeAfterInvalidate, expandBillableCandidates };
+module.exports = { resolveEntryQty, cleanDocuments, sumActiveQty, applyVarianceGate, recomputeParentFromSubItems, deriveStatus, recomputeAfterInvalidate, expandBillableCandidates };

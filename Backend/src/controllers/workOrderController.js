@@ -37,7 +37,7 @@ const { documentsExceedLimit } = require('../utils/validateDocuments');
 const { logAudit, diffFields } = require('../utils/auditLog');
 const { archiveDeleted } = require('../utils/recycleBin');
 const { attachBalanceAmounts } = require('../utils/balanceAmounts');
-const { resolveEntryQty, sumActiveQty, applyVarianceGate, recomputeParentFromSubItems } = require('../utils/progressHelpers');
+const { resolveEntryQty, cleanDocuments, sumActiveQty, applyVarianceGate, recomputeParentFromSubItems } = require('../utils/progressHelpers');
 const { getRetentionHeldForWorkOrder } = require('../utils/retentionHeld');
 const { notifyStagePending, settleAllPendingForEntity } = require('../utils/slackApprovals');
 const { notifyStageInApp, notifyUser, notifyByPermission } = require('../utils/notificationService');
@@ -1048,7 +1048,7 @@ exports.addScopeProgress = asyncHandler(async (req, res) => {
   // Progress is allowed to exceed plannedQty — never hard-blocked here. AGM/GM
   // see the overage flagged (yellow/red) on the Bill Review page and must sign
   // off on it before that item is billable.
-  item.progressEntries.push({ date: date || new Date(), qtyAdded, dimensions: resolved.dimensions, remarks, tower, floor, flatNo, plotNo, locationNote, enteredBy: req.user._id });
+  item.progressEntries.push({ date: date || new Date(), qtyAdded, dimensions: resolved.dimensions, documents: cleanDocuments(req.body.documents), remarks, tower, floor, flatNo, plotNo, locationNote, enteredBy: req.user._id });
   item.completedQty = sumActiveQty(item.progressEntries);
   item.status =
     item.plannedQty > 0 && item.completedQty >= item.plannedQty ? 'completed'
@@ -1127,6 +1127,7 @@ exports.editProgressEntry = asyncHandler(async (req, res) => {
   if (flatNo       !== undefined) entry.flatNo       = flatNo;
   if (plotNo       !== undefined) entry.plotNo       = plotNo;
   if (locationNote !== undefined) entry.locationNote = locationNote;
+  if (req.body.documents !== undefined) entry.documents = cleanDocuments(req.body.documents);
 
   item.completedQty = sumActiveQty(item.progressEntries);
   item.status = item.plannedQty > 0 && item.completedQty >= item.plannedQty ? 'completed'
@@ -1244,7 +1245,7 @@ exports.addSubItemProgress = asyncHandler(async (req, res) => {
     subItem.plannedQty = Number(plannedQty);
   }
 
-  subItem.progressEntries.push({ date: date || new Date(), qtyAdded, dimensions: resolved.dimensions, remarks, tower, floor, flatNo, plotNo, locationNote, enteredBy: req.user._id });
+  subItem.progressEntries.push({ date: date || new Date(), qtyAdded, dimensions: resolved.dimensions, documents: cleanDocuments(req.body.documents), remarks, tower, floor, flatNo, plotNo, locationNote, enteredBy: req.user._id });
   subItem.completedQty = sumActiveQty(subItem.progressEntries);
   subItem.status =
     subItem.plannedQty > 0 && subItem.completedQty >= subItem.plannedQty ? 'completed'
@@ -1321,6 +1322,7 @@ exports.editSubItemProgressEntry = asyncHandler(async (req, res) => {
   if (flatNo       !== undefined) entry.flatNo       = flatNo;
   if (plotNo       !== undefined) entry.plotNo       = plotNo;
   if (locationNote !== undefined) entry.locationNote = locationNote;
+  if (req.body.documents !== undefined) entry.documents = cleanDocuments(req.body.documents);
 
   subItem.completedQty = sumActiveQty(subItem.progressEntries);
   subItem.status = subItem.plannedQty > 0 && subItem.completedQty >= subItem.plannedQty ? 'completed'

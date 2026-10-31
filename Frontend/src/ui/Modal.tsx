@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import type { ReactNode } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { X } from "lucide-react";
@@ -31,6 +32,9 @@ interface ModalProps {
 export default function Modal({
   title, subtitle, icon: Icon, onClose, extraWide, footer, children, zIndex,
 }: ModalProps) {
+  // A drag that starts inside the drawer (e.g. selecting text in a search box) and ends on the
+  // backdrop is reported as a click on the backdrop — only close when the press began there too.
+  const pressStartedOnBackdrop = useRef(false);
   const widthClass = extraWide ? "max-w-4xl" : "max-w-lg";
   return (
     <AnimatePresence>
@@ -40,7 +44,12 @@ export default function Modal({
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        onClick={onClose}
+        onMouseDown={(e) => { pressStartedOnBackdrop.current = e.target === e.currentTarget; }}
+        onClick={(e) => {
+          const startedHere = pressStartedOnBackdrop.current;
+          pressStartedOnBackdrop.current = false;
+          if (startedHere && e.target === e.currentTarget) onClose();
+        }}
       >
         <motion.div
           className={`relative w-full ${widthClass} h-full bg-white dark:bg-[#0F172A] shadow-xl flex flex-col`}

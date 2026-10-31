@@ -16,6 +16,15 @@ const progressEntrySchema = new mongoose.Schema(
     dimensions: {
       rows: [{
         label:  { type: String, default: '' },
+        // Where this row was measured, and a note for it — a single entry can span
+        // several flats, so location lives per row as well as on the entry itself.
+        tower:  { type: String, default: '' },
+        floor:  { type: String, default: '' },
+        flatNo: { type: String, default: '' },
+        plotNo: { type: String, default: '' },
+        note:   { type: String, default: '' },
+        // Direct quantity for this row (no length/width/height) — used instead of them.
+        qty:    { type: Number },
         length: { type: Number },
         width:  { type: Number },
         height: { type: Number },
@@ -24,6 +33,8 @@ const progressEntrySchema = new mongoose.Schema(
         _id: false,
       }],
     },
+    // Supporting files for the measurement (sheets, drawings, photos) — name + uploaded link.
+    documents: [{ name: { type: String, required: true }, url: { type: String, required: true }, _id: false }],
     // Set once this entry's remarks have been carried into a BillRequest, so a
     // later (possibly partial) billing cycle knows exactly which entries are
     // still "new" — cumulative qty alone can't tell that apart once billing

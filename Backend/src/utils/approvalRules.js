@@ -68,11 +68,18 @@ function invalidateApprovalConfigCache() {
 // Looks up this department's approval config, if any — returns null (not a
 // default object) when nothing's configured, so callers can cheaply tell
 // "no override, use hardcoded defaults" apart from "1-approval override".
+// A bill/request with no department isn't unconfigured — it uses the rule saved under
+// NO_DEPARTMENT_KEY (Users → Departments row "none" — any capitalisation); with no such doc it still gets the
+// plain 2-level default, exactly as before.
+const NO_DEPARTMENT_KEY = 'none';
+
 async function getApprovalConfig(doc) {
   const dept = effectiveDepartment(doc);
-  if (!dept) return null;
+  if (!dept && !doc) return null;
   const map = await getAllApprovalConfigs();
-  return map.get(dept) || null;
+  if (dept) return map.get(dept) || null;
+  for (const [name, cfg] of map) if (name.trim().toLowerCase() === NO_DEPARTMENT_KEY) return cfg;
+  return null;
 }
 
 // Named approvers are a stronger, more specific choice than a role list —
