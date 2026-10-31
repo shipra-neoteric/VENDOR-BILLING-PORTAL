@@ -57,6 +57,15 @@ interface WORow {
   category?: string;
   status: string;
   contractValue?: number;
+  // Present on the full work-order list the page loads — used by the vendor drill-down drawer.
+  createdAt?: string;
+  issueDate?: string;
+  approvalStatus?: string;
+  scopeItems?: WOScopeItem[];
+}
+interface WOScopeItem {
+  _id: string; description: string; unit?: string; plannedQty?: number; completedQty?: number; lastBilledQty?: number; rate?: number;
+  subItems?: { _id: string; description: string; unit?: string; plannedQty?: number; completedQty?: number; lastBilledQty?: number; rate?: number }[];
 }
 
 interface ContractorRow {
@@ -193,9 +202,21 @@ function ProjectDetail({
   const [contractors, setContractors] = useState<ContractorRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedWONo, setSelectedWONo] = useState<string>("");
-  const [activeTab, setActiveTab] = useState<"vendors" | "workorders" | "category" | "bills" | "activity">("workorders");
+  const [activeTab, setActiveTab] = useState<"vendors" | "workorders" | "category" | "bills" | "activity">("vendors");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [viewBill, setViewBill] = useState<BillDetailRequest | null>(null);
+  // Drill-down drawer: a whole vendor's work orders, or just one work order (woId).
+  const [searchParams] = useSearchParams();
+  // /projects?id=…&vendor=CODE (from the dashboard's Contractors by Category) opens that vendor's drawer.
+  const deepVendor = searchParams.get("vendor");
+  const [vendorView, setVendorView] = useState<{ vendorCode: string; woId?: string } | null>(deepVendor ? { vendorCode: deepVendor } : null);
+  const navigate = useNavigate();
+  const tabsRef = useRef<HTMLDivElement>(null);
+  // Stat cards / pills jump to the tab that explains them.
+  function goTab(tab: "vendors" | "workorders" | "category" | "bills" | "activity") {
+    setActiveTab(tab);
+    setTimeout(() => tabsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
+  }
 
   useEffect(() => {
     setLoading(true);
@@ -280,28 +301,28 @@ function ProjectDetail({
           {stats && (
             <>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-                <NxStatCard label="Total Contract Value" value={fmt(stats.awardedContractValue)} icon={Landmark} />
-                <NxStatCard label="Work Executed" value={fmt(stats.workExecutedValue)} icon={HardHat} />
-                <NxStatCard label="Total Billed" value={fmt(stats.billedGross)} icon={Receipt} />
-                <NxStatCard label="Total Certified (Net)" value={fmt(stats.certifiedNet)} icon={CheckCircle2} />
-                <NxStatCard label="Paid" value={fmt(stats.paidAmount)} icon={Banknote} />
-                <NxStatCard label="Remaining" value={fmt(stats.remainingContract)} icon={Clock} />
-                <NxStatCard label="Overall Progress" value={`${stats.progress}%`} icon={TrendingUp} />
+                <NxStatCard label="Total Contract Value" value={fmt(stats.awardedContractValue)} icon={Landmark} onClick={() => goTab("workorders")} />
+                <NxStatCard label="Work Executed" value={fmt(stats.workExecutedValue)} icon={HardHat} onClick={() => goTab("category")} />
+                <NxStatCard label="Total Billed" value={fmt(stats.billedGross)} icon={Receipt} onClick={() => goTab("bills")} />
+                <NxStatCard label="Total Certified (Net)" value={fmt(stats.certifiedNet)} icon={CheckCircle2} onClick={() => goTab("bills")} />
+                <NxStatCard label="Paid" value={fmt(stats.paidAmount)} icon={Banknote} onClick={() => goTab("bills")} />
+                <NxStatCard label="Remaining" value={fmt(stats.remainingContract)} icon={Clock} onClick={() => goTab("workorders")} />
+                <NxStatCard label="Overall Progress" value={`${stats.progress}%`} icon={TrendingUp} onClick={() => goTab("category")} />
               </div>
 
               {/* Quick indicators */}
               <div className="flex gap-2.5 flex-wrap mb-5">
-                <NxBadge size="md" color="teal">{stats.activeVendors} Active Contractor{stats.activeVendors !== 1 ? "s" : ""}</NxBadge>
+                <button type="button" onClick={() => goTab("vendors")} className="cursor-pointer"><NxBadge size="md" color="teal">{stats.activeVendors} Active Contractor{stats.activeVendors !== 1 ? "s" : ""}</NxBadge></button>
                 <NxBadge size="md" color="blue">{stats.woCount} Work Order{stats.woCount !== 1 ? "s" : ""}</NxBadge>
-                <NxBadge size="md" color="green">{completedCount} Completed WOs</NxBadge>
-                <NxBadge size="md" color={stats.pendingBillReqs > 0 ? "amber" : "gray"}>{stats.pendingBillReqs} Pending Bill Req{stats.pendingBillReqs !== 1 ? "s" : ""}</NxBadge>
-                <NxBadge size="md" color={stats.openBills > 0 ? "indigo" : "gray"}>{stats.openBills} Open Bill{stats.openBills !== 1 ? "s" : ""}</NxBadge>
+                <button type="button" onClick={() => goTab("workorders")} className="cursor-pointer"><NxBadge size="md" color="green">{completedCount} Completed WOs</NxBadge></button>
+                <button type="button" onClick={() => goTab("bills")} className="cursor-pointer"><NxBadge size="md" color={stats.pendingBillReqs > 0 ? "amber" : "gray"}>{stats.pendingBillReqs} Pending Bill Req{stats.pendingBillReqs !== 1 ? "s" : ""}</NxBadge></button>
+                <button type="button" onClick={() => goTab("bills")} className="cursor-pointer"><NxBadge size="md" color={stats.openBills > 0 ? "indigo" : "gray"}>{stats.openBills} Open Bill{stats.openBills !== 1 ? "s" : ""}</NxBadge></button>
               </div>
             </>
           )}
 
           {/* Tab switcher */}
-          <div className="mb-5">
+          <div className="mb-5 scroll-mt-4" ref={tabsRef}>
             <Segmented
               value={activeTab}
               // ✅ Correct (type-safe wrapper)
@@ -332,8 +353,8 @@ function ProjectDetail({
                   </Thead>
                   <Tbody>
                     {projectVendors.map(v => (
-                      <Tr key={v.contractor._id}>
-                        <Td>{vendorLabel(v.contractor.companyName, v.contractor.shortCode)}</Td>
+                      <Tr key={v.contractor._id} className="cursor-pointer" onClick={() => setVendorView({ vendorCode: v.contractor.vendorCode })} title="Click to see this vendor's work orders in detail">
+                        <Td className="text-primary font-semibold">{vendorLabel(v.contractor.companyName, v.contractor.shortCode)}</Td>
                         <Td>{v.contractor.vendorCode}</Td>
                         <Td>{v.contractor.ownerName || "—"}</Td>
                         <Td>{v.woCount}</Td>
@@ -345,6 +366,74 @@ function ProjectDetail({
               )}
             </div>
           )}
+
+          {vendorView && (() => {
+            const contractor = contractors.find(c => c.vendorCode === vendorView.vendorCode);
+            const vendorWOs = wos.filter(w => w.vendorCode === vendorView.vendorCode && (!vendorView.woId || w._id === vendorView.woId));
+            const singleWO = vendorView.woId ? vendorWOs[0] : undefined;
+            const rowsOf = (wo: WORow) => (wo.scopeItems ?? []).flatMap(si =>
+              si.subItems && si.subItems.length > 0
+                ? si.subItems.map(sub => ({ key: sub._id, description: `${si.description} — ${sub.description}`, unit: sub.unit || si.unit, planned: sub.plannedQty || 0, done: sub.completedQty || 0, billed: sub.lastBilledQty || 0, rate: sub.rate || 0 }))
+                : [{ key: si._id, description: si.description, unit: si.unit, planned: si.plannedQty || 0, done: si.completedQty || 0, billed: si.lastBilledQty || 0, rate: si.rate || 0 }]
+            );
+            const progressOf = (rows: ReturnType<typeof rowsOf>) => {
+              const plan = rows.reduce((t, r) => t + r.planned * r.rate, 0);
+              const done = rows.reduce((t, r) => t + Math.min(r.done, r.planned || r.done) * r.rate, 0);
+              return plan > 0 ? Math.round((done / plan) * 100) : 0;
+            };
+            const nf = (n: number) => n.toLocaleString("en-IN", { maximumFractionDigits: 2 });
+            return (
+              <Modal
+                icon={Users}
+                title={singleWO ? singleWO.workOrderNo : contractor ? vendorLabel(contractor.companyName, contractor.shortCode) : vendorView.vendorCode}
+                extraWide
+                onClose={() => setVendorView(null)}
+                footer={<div className="flex justify-end"><Btn outline label="Close" onClick={() => setVendorView(null)} /></div>}
+              >
+                <div className="text-[11px] font-semibold text-gray-400 dark:text-gray-500 -mt-1 mb-3.5">
+                  {singleWO ? `${singleWO.vendorName || vendorView.vendorCode} · ` : ""}{vendorView.vendorCode}{contractor?.ownerName ? ` · ${contractor.ownerName}` : ""} · {vendorWOs.length} work order{vendorWOs.length !== 1 ? "s" : ""} · {fmt(vendorWOs.reduce((t, w) => t + (w.contractValue || 0), 0))}
+                </div>
+                <div className="flex flex-col gap-4">
+                  {vendorWOs.map(wo => {
+                    const rows = rowsOf(wo);
+                    return (
+                      <div key={wo._id} className="border border-gray-200 dark:border-gray-700/40 rounded-lg overflow-hidden">
+                        <div className="flex items-center gap-3 flex-wrap px-3.5 py-2.5 bg-gray-50 dark:bg-gray-800/40">
+                          <button type="button" className="font-bold text-primary hover:underline" onClick={() => navigate(`/work-items/${wo._id}`)}>{wo.workOrderNo}</button>
+                          <NxBadge color={woStatusBadge(wo.status).color}>{woStatusBadge(wo.status).label}</NxBadge>
+                          {wo.category && <span className="text-xs text-gray-500">{wo.category}</span>}
+                          <span className="text-xs text-gray-400">{dayjs(wo.issueDate || wo.createdAt).format("DD MMM YYYY")}</span>
+                          <span className="ml-auto text-xs text-gray-500">Progress <b className="text-primary">{progressOf(rows)}%</b></span>
+                          <span className="font-bold">{fmt(wo.contractValue || 0)}</span>
+                        </div>
+                        {rows.length === 0 ? (
+                          <div className="px-3.5 py-4 text-xs text-gray-400">No scope items on this work order.</div>
+                        ) : (
+                          <Table>
+                            <Thead>
+                              <Tr><Th>Item</Th><Th>Unit</Th><Th className="text-right">Planned</Th><Th className="text-right">Executed</Th><Th className="text-right">Billed</Th><Th className="text-right">Rate</Th></Tr>
+                            </Thead>
+                            <Tbody>
+                              {rows.map(r => (
+                                <Tr key={r.key}>
+                                  <Td className="whitespace-normal">{r.description}</Td>
+                                  <Td>{r.unit || "—"}</Td>
+                                  <Td className="text-right font-mono">{r.planned ? nf(r.planned) : "—"}</Td>
+                                  <Td className="text-right font-mono text-emerald-600">{nf(r.done)}</Td>
+                                  <Td className="text-right font-mono">{nf(r.billed)}</Td>
+                                  <Td className="text-right font-mono">{r.rate ? fmt(r.rate) : "—"}</Td>
+                                </Tr>
+                              ))}
+                            </Tbody>
+                          </Table>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </Modal>
+            );
+          })()}
 
           {/* Work Orders tab */}
           {activeTab === "workorders" && (
@@ -367,8 +456,8 @@ function ProjectDetail({
                     </Thead>
                     <Tbody>
                       {wos.map(wo => (
-                        <Tr key={wo._id}>
-                          <Td>{wo.workOrderNo}</Td>
+                        <Tr key={wo._id} className={wo.vendorCode ? "cursor-pointer" : undefined} onClick={() => wo.vendorCode && setVendorView({ vendorCode: wo.vendorCode, woId: wo._id })} title="Click to see this work order in detail">
+                          <Td className="text-primary font-semibold">{wo.workOrderNo}</Td>
                           <Td>{wo.vendorName || "—"}</Td>
                           <Td>{wo.category || "—"}</Td>
                           <Td><NxBadge color={woStatusBadge(wo.status).color}>{woStatusBadge(wo.status).label}</NxBadge></Td>

@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Users } from "lucide-react";
 import Card from "../../../ui/Card";
 import Badge from "../../../ui/Badge";
@@ -23,6 +24,7 @@ interface ContractorsByCategoryProps {
 // extra request, so someone scanning this card can narrow it to one project
 // without leaving the dashboard.
 export default function ContractorsByCategory({ contractorsByCategory }: ContractorsByCategoryProps) {
+  const navigate = useNavigate();
   const [projectFilter, setProjectFilter] = useState("");
 
   const projectOptions = useMemo(() => {
@@ -70,7 +72,12 @@ export default function ContractorsByCategory({ contractorsByCategory }: Contrac
           </Thead>
           <Tbody>
             {rows.map((r, i) => (
-              <Tr key={`${r.contractor}-${r.project}-${i}`}>
+              <Tr
+                key={`${r.contractor}-${r.project}-${i}`}
+                className={r.projectId ? "cursor-pointer" : undefined}
+                title={r.projectId ? "Open this contractor in the project" : undefined}
+                onClick={() => r.projectId && navigate(`/projects?id=${r.projectId}${r.contractorCode ? `&vendor=${encodeURIComponent(r.contractorCode)}` : ""}`)}
+              >
                 <Td dense className="font-semibold text-[#172033] dark:text-[#F1F5F9] truncate" title={r.contractor}>{r.contractor}</Td>
                 <Td dense className="text-xs text-gray-500 dark:text-gray-400 truncate" title={r.category}>{r.category}</Td>
                 <Td dense className="text-xs text-gray-500 dark:text-gray-400 truncate" title={r.project}>{r.project}</Td>

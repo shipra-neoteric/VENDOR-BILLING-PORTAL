@@ -19,6 +19,7 @@ import { FilterRow, SelectFilter } from "../../ui/Filters";
 import { Skeleton, SkeletonTable } from "../../ui/Skeleton";
 import KpiCard from "../../features/dashboard/components/KpiCard";
 import ProjectLifecycle from "../../features/dashboard/components/ProjectLifecycle";
+import ProjectsOverviewTable from "../../features/dashboard/components/ProjectsOverviewTable";
 import ProjectHealth from "../../features/dashboard/components/ProjectHealth";
 import SpendByCategory from "../../features/dashboard/components/SpendByCategory";
 import ContractorsByCategory from "../../features/dashboard/components/ContractorsByCategory";
@@ -440,6 +441,22 @@ export default function Dashboard() {
                 </Card>
               )}
             </div>
+          )}
+
+          {/* Projects Overview table — same table as /projects-overview, driven by this page's filters. */}
+          {data && (
+            <Card className="mt-4 min-w-0">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-bold uppercase tracking-wide text-gray-400 dark:text-gray-500">Projects Overview</h3>
+                <Link to={{ pathname: "/projects-overview", search: searchParams.toString() }} className="text-xs font-semibold text-primary hover:underline">Open full page</Link>
+              </div>
+              <ProjectsOverviewTable
+                projects={data.projects}
+                stage={stage}
+                maxHeightClass="max-h-[60vh]"
+                exportParams={Object.fromEntries(Object.entries({ projectId, categoryId, contractorId, from, to }).filter(([, v]) => v))}
+              />
+            </Card>
           )}
 
           {data && (

@@ -21,6 +21,7 @@ import Pagination from "../../ui/Pagination";
 import Spinner from "../../ui/Spinner";
 import EmptyState from "../../ui/EmptyState";
 import { SearchFilter, DropdownSelectFilter } from "../../ui/Filters";
+import VendorParty, { vendorPartyText } from "../../components/VendorParty";
 import DateRangeFilter, { inDateRange } from "../../components/DateRangeFilter";
 import { selectableProjects } from "../../utils/projectOptions";
 import { useAuth } from "../../context/AuthContext";
@@ -59,6 +60,9 @@ interface Bill {
   // resolve bank details for this payee, not the row's own vendorCode.
   payeeVendorCode?: string;
   payeeVendorName?: string;
+  // Vendor Group the paid-to vendor belongs to, when any (display / filter only).
+  vendorGroupId?: string;
+  vendorGroupName?: string;
   companyName?: string;
   billDate: string;
   generatedBy?: string;
@@ -217,6 +221,7 @@ export default function Billing() {
   const [projectFilter, setProjectFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [deptFilter, setDeptFilter] = useState("");
+  const [groupFilter, setGroupFilter] = useState("");
   const [dateFrom, setDateFrom] = useState<Dayjs | null>(null);
   const [dateTo, setDateTo] = useState<Dayjs | null>(null);
 
@@ -421,6 +426,7 @@ export default function Billing() {
         !search ||
         (b.billNo || "").toLowerCase().includes(q) ||
         (b.vendorName || "").toLowerCase().includes(q) ||
+        (b.vendorGroupName || "").toLowerCase().includes(q) ||
         (b.workOrderNo || "").toLowerCase().includes(q) ||
         (b.projectName || "").toLowerCase().includes(q) ||
         (b.generatedBy || "").toLowerCase().includes(q) ||
@@ -428,10 +434,18 @@ export default function Billing() {
       const matchProject = !projectFilter || b.projectId === projectFilter;
       const matchStatus = !statusFilter || b.status === statusFilter;
       const matchDept = !deptFilter || (b.department || "") === deptFilter;
+      const matchGroup = !groupFilter || b.vendorGroupId === groupFilter;
       const matchDate = inDateRange(b.billDate, dateFrom, dateTo);
-      return matchSearch && matchProject && matchStatus && matchDept && matchDate;
+      return matchSearch && matchProject && matchStatus && matchDept && matchGroup && matchDate;
     }).sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
-  }, [bills, search, projectFilter, statusFilter, deptFilter, dateFrom, dateTo]);
+  }, [bills, search, projectFilter, statusFilter, deptFilter, groupFilter, dateFrom, dateTo]);
+
+  // Vendor Groups that actually appear in the loaded bills — the group filter's options.
+  const groupOptions = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const b of bills) if (b.vendorGroupId && b.vendorGroupName) seen.set(b.vendorGroupId, b.vendorGroupName);
+    return [...seen].map(([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label));
+  }, [bills]);
 
   const { page, totalPages, setPage, pageItems: pagedBills } = usePagination(filteredBills, 20);
 
@@ -504,7 +518,7 @@ export default function Billing() {
       <div className="bg-white/90 dark:bg-gray-800/95 backdrop-blur-xl border border-gray-100 dark:border-gray-700/50 rounded-xl shadow-sm p-5">
         <div className="bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700/40 rounded-lg p-3.5 mb-4">
           <div className="flex gap-2.5 items-center flex-wrap">
-            <SearchFilter placeholder="Search bill no., vendor, WO, project…" value={search} onChange={setSearch} />
+            <SearchFilter placeholder="Search bill no., vendor, group, WO, project…" value={search} onChange={setSearch} />
             <DropdownSelectFilter
               value={projectFilter}
               onChange={setProjectFilter}
@@ -532,6 +546,15 @@ export default function Billing() {
                 { label: "Custom Team", value: "custom" },
               ]}
             />
+            {groupOptions.length > 0 && (
+              <DropdownSelectFilter
+                value={groupFilter}
+                onChange={setGroupFilter}
+                placeholder="All Vendor Groups"
+                resetValue=""
+                options={groupOptions}
+              />
+            )}
             <DateRangeFilter onChange={(from, to) => { setDateFrom(from); setDateTo(to); }} />
             <span className="ml-auto text-gray-400 text-xs whitespace-nowrap">
               {filteredBills.length} bill{filteredBills.length !== 1 ? "s" : ""}
@@ -551,7 +574,7 @@ export default function Billing() {
                   <Th className="w-[105px]">Bill No.</Th>
                   <Th className="w-[125px]">Bill Type</Th>
                   <Th className="w-[100px]">Work Order</Th>
-                  <Th className="w-[120px]">Vendor</Th>
+                  <Th className="w-[150px]">Vendor</Th>
                   <Th className="w-[110px]">Project</Th>
                   <Th className="text-right w-[105px]">Amount</Th>
                   <Th className="w-[105px]">Approval</Th>
@@ -584,7 +607,9 @@ export default function Billing() {
                       )}
                     </Td>
                     <Td className="whitespace-nowrap truncate" title={r.workOrderNo || ""}>{r.workOrderNo || <span className="text-gray-300 dark:text-gray-600">—</span>}</Td>
-                    <Td className="whitespace-nowrap truncate" title={r.vendorName || ""}>{r.vendorName || <span className="text-gray-300 dark:text-gray-600">—</span>}</Td>
+                    <Td className="truncate" title={[r.vendorGroupName, r.vendorName].filter(Boolean).join(" · ")}>
+                      <VendorParty vendorName={r.vendorName} groupName={r.vendorGroupName} payeeName={r.billType === "bill_request" ? r.payeeVendorName : r.vendorName} />
+                    </Td>
                     <Td className="whitespace-nowrap truncate" title={r.projectName || ""}>{r.projectName || <span className="text-gray-300 dark:text-gray-600">—</span>}</Td>
                     <Td className="text-right font-bold whitespace-nowrap">{fmt(netAfterAdvance(r))}</Td>
                     <Td>
@@ -661,7 +686,7 @@ export default function Billing() {
             <DescItem label="Bill Date">{viewBill.billDate ? dayjs(viewBill.billDate).format("DD MMM YYYY") : "—"}</DescItem>
             <DescItem label="Project">{viewBill.projectName || "—"}</DescItem>
             <DescItem label="Work Order">{viewBill.workOrderNo || "—"}</DescItem>
-            <DescItem label="Vendor">{viewBill.vendorName || "—"}</DescItem>
+            <DescItem label="Vendor">{vendorPartyText(viewBill.vendorName, viewBill.vendorGroupName, viewBill.vendorName)}</DescItem>
             <DescItem label="Generated By">{viewBill.generatedBy || "—"}</DescItem>
           </Descriptions>
 

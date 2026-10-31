@@ -10,7 +10,7 @@ const { logAudit } = require('../utils/auditLog');
 const { hasUnapprovedVarianceForLineItem, resolveBillableItem, isWorkOrderApproved } = require('../utils/varianceCheck');
 const { nextBillNo, nextBillRequestReqNo } = require('../utils/codeGen');
 const { recomputeAfterInvalidate, expandBillableCandidates, recomputeParentFromSubItems } = require('../utils/progressHelpers');
-const { resolvePayee } = require('../utils/vendorGroupHelpers');
+const { resolvePayee, attachVendorGroups } = require('../utils/vendorGroupHelpers');
 const { applyAdvanceRecoveries } = require('../utils/advanceRecovery');
 const { getRetentionHeldForWorkOrder } = require('../utils/retentionHeld');
 const { notifyStagePending, settleAllPendingForEntity } = require('../utils/slackApprovals');
@@ -162,7 +162,9 @@ exports.listBillRequests = asyncHandler(async (req, res) => {
     })
     .sort({ stageNo: 1, createdAt: 1 });
 
-  success(res, { billRequests: requests });
+  // Vendor Group of each request's vendor, for the approval screens (display only).
+  const rows = await attachVendorGroups(requests.map((r) => r.toJSON()));
+  success(res, { billRequests: rows });
 });
 
 // Works out which scope items / particulars / progress entries go into a bill

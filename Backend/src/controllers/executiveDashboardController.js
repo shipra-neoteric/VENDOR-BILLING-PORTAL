@@ -751,8 +751,8 @@ async function buildExecutiveDashboardData(query) {
   // container rather than a fixed top-N preview, so trimming it here would
   // just hide real rows instead of the earlier top-10 cap.
   const perWorkOrderRows = await buildContractorCategoryRows(workOrders.filter(isCountableWo), runningBills, projects);
+  // contractorCode + projectId stay on each row so the dashboard card can open that contractor in its project.
   const contractorsByCategory = perWorkOrderRows
-    .map(({ contractorCode, ...rest }) => rest) // contractorCode is internal-only, not part of this row's documented shape
     .sort((a, b) => b.contractValue - a.contractValue);
 
   // ── Top Vendors Scorecard — one row per vendor (not per WorkOrder/

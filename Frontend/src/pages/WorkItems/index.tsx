@@ -2764,7 +2764,10 @@ export default function WorkItems() {
                         </Td>
                         <Td>
                           <div className="flex gap-1.5 items-center flex-wrap">
-                            <NxBadge color={displayStatus(record.status).color}>{displayStatus(record.status).label}</NxBadge>
+                            {/* An approved work order's progress isn't repeated here (the Step column already says Approved); Cancelled/Completed still show. */}
+                            {!(approvalStatusOf(record) === "approved" && ["draft", "issued", "in-progress"].includes(record.status)) && (
+                              <NxBadge color={displayStatus(record.status).color}>{displayStatus(record.status).label}</NxBadge>
+                            )}
                             {record.isLocked && (
                               <span title="Rates, scope items, milestones, and contract value are locked">
                                 <Lock className="w-3.5 h-3.5 text-gray-400" />
@@ -2772,7 +2775,7 @@ export default function WorkItems() {
                             )}
                             {delays > 0 && (
                               <span title={`${delays} scope item${delays > 1 ? "s" : ""} past their planned end date`}>
-                                <NxBadge color="red"><span className="inline-flex items-center gap-1"><AlertTriangle className="w-2.5 h-2.5" /> {delays} item{delays > 1 ? "s" : ""} overdue</span></NxBadge>
+                                <AlertTriangle className="w-3.5 h-3.5 text-red-400" />
                               </span>
                             )}
                           </div>

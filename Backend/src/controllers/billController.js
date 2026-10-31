@@ -3,7 +3,7 @@ const RunningBill  = require('../models/RunningBill');
 const BillRequest  = require('../models/BillRequest');
 const WorkOrder    = require('../models/WorkOrder');
 const Company      = require('../models/Company');
-const { resolvePayee } = require('../utils/vendorGroupHelpers');
+const { resolvePayee, attachVendorGroups } = require('../utils/vendorGroupHelpers');
 const asyncHandler = require('../utils/asyncHandler');
 const { success, created, notFound, badRequest, conflict, forbidden } = require('../utils/responseFormatter');
 const { canActOnDepartment } = require('../utils/departmentAccess');
@@ -407,6 +407,9 @@ exports.listBills = asyncHandler(async (req, res) => {
 
   const rows = [...bills, ...slipRows, ...requestRows].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
 
+  // Vendor Group shown next to each row's vendor (display only; see attachVendorGroups).
+  await attachVendorGroups(rows, (r) => r.payeeVendorCode || r.vendorCode);
+
   success(res, { bills: rows });
 });
 
@@ -416,6 +419,7 @@ exports.getBill = asyncHandler(async (req, res) => {
   query = query.populate('approvalHistory.by', 'name role');
   const bill = await query.lean();
   if (!bill) return notFound(res, 'Bill not found');
+  await attachVendorGroups([bill], (r) => r.payeeVendorCode || r.vendorCode);
   success(res, { bill });
 });
 

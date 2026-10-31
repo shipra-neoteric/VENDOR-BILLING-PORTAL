@@ -7,6 +7,7 @@ import {
 import { useNavigate, useSearchParams } from "react-router-dom";
 import dayjs from "dayjs";
 import apiClient from "../../services/apiClient";
+import VendorParty, { vendorPartyText } from "../../components/VendorParty";
 import { SearchFilter, DropdownSelectFilter } from "../../ui/Filters";
 import MultiSelect from "../../ui/MultiSelect";
 import { useAuth } from "../../context/AuthContext";
@@ -61,6 +62,7 @@ interface BillRequestRow {
   workOrderId?: string; workOrderNo: string;
   projectId?: string; projectName: string; projectLocation?: string;
   vendorCode?: string; vendorName: string; companyName?: string; category?: string; subCategory?: string;
+  vendorGroupName?: string;
   department?: string; customDepartment?: string;
   items: BillItem[]; remarks?: string; documents?: { name: string; url: string }[];
   periodFrom?: string; periodTo?: string;
@@ -100,7 +102,7 @@ interface BillRequestRow {
 // manualAgmApprove/manualGmApprove/manualReject).
 interface ManualBillRow {
   _id: string; billNo: string; amount: number; workOrderId?: string; workOrderNo?: string;
-  projectId?: string; projectName?: string; vendorCode?: string; vendorName?: string; companyName?: string; billDate: string; createdAt: string;
+  projectId?: string; projectName?: string; vendorCode?: string; vendorName?: string; vendorGroupName?: string; companyName?: string; billDate: string; createdAt: string;
   manualApprovalStatus: "pending" | "pending-gm" | "pending-l3" | "pending-l4" | "approved" | "rejected";
   department?: string; customDepartment?: string;
   retentionAmount?: number; advanceRecovery?: number; supersedeDeduction?: number; gstPercent?: number;
@@ -191,6 +193,7 @@ const BILL_STATUS_BADGE_COLOR: Record<string, NxBadgeColor> = {
 // that shared type for one screen.
 interface ManualBillDetail extends PrintableBill {
   workOrderNo?: string;
+  vendorGroupName?: string;
   workOrderId?: string;
   verificationBy?: { name?: string } | null;
   verificationAt?: string;
@@ -529,6 +532,7 @@ export default function BillApproval() {
         b.billNo.toLowerCase().includes(q) ||
         (b.workOrderNo || "").toLowerCase().includes(q) ||
         (b.vendorName || "").toLowerCase().includes(q) ||
+        (b.vendorGroupName || "").toLowerCase().includes(q) ||
         (b.vendorCode || "").toLowerCase().includes(q) ||
         (b.projectName || "").toLowerCase().includes(q)
       );
@@ -1157,6 +1161,7 @@ export default function BillApproval() {
         (r.billId?.billNo || "").toLowerCase().includes(q) ||
         r.workOrderNo.toLowerCase().includes(q) ||
         r.vendorName.toLowerCase().includes(q) ||
+        (r.vendorGroupName || "").toLowerCase().includes(q) ||
         (r.vendorCode || "").toLowerCase().includes(q) ||
         r.projectName.toLowerCase().includes(q)
       );
@@ -1414,9 +1419,9 @@ export default function BillApproval() {
                         <span className="text-gray-300 dark:text-gray-600">—</span>
                       )}
                     </Td>
-                    <Td>{b.projectName || "—"}</Td>
-                    <Td>{departmentLabel(resolveDeptRow(b))}</Td>
-                    <Td>{b.vendorName || "—"}</Td>
+                    <Td className="truncate" title={b.projectName || ""}>{b.projectName || "—"}</Td>
+                    <Td className="truncate">{departmentLabel(resolveDeptRow(b))}</Td>
+                    <Td className="truncate" title={vendorPartyText(b.vendorName, b.vendorGroupName, b.vendorName)}><VendorParty vendorName={b.vendorName} groupName={b.vendorGroupName} payeeName={b.vendorName} /></Td>
                     <Td className="font-mono">{fmt(b.amount)}</Td>
                     <Td>{dayjs(b.billDate || b.createdAt).format("DD MMM YYYY")}</Td>
                     <Td className="whitespace-nowrap">
@@ -1480,9 +1485,9 @@ export default function BillApproval() {
                         {r.workOrderNo}
                       </code>
                     </Td>
-                    <Td>{r.projectName}</Td>
-                    <Td>{departmentLabel(resolveDeptRow(r))}</Td>
-                    <Td>{r.vendorName}</Td>
+                    <Td className="truncate" title={r.projectName}>{r.projectName}</Td>
+                    <Td className="truncate">{departmentLabel(resolveDeptRow(r))}</Td>
+                    <Td className="truncate" title={vendorPartyText(r.vendorName, r.vendorGroupName, r.payeeVendorName)}><VendorParty vendorName={r.vendorName} groupName={r.vendorGroupName} payeeName={r.payeeVendorName} /></Td>
                     <Td className="font-mono">{fmt(reqAmount)}</Td>
                     <Td>{dayjs(r.createdAt).format("DD MMM YYYY")}</Td>
                     <Td className="whitespace-nowrap">
@@ -1601,7 +1606,7 @@ export default function BillApproval() {
                 )}
               </div>
               <div><span className="text-gray-500 dark:text-gray-400">Project: </span>{viewReq.projectName}</div>
-              <div><span className="text-gray-500 dark:text-gray-400">Contractor: </span>{viewReq.vendorName}</div>
+              <div><span className="text-gray-500 dark:text-gray-400">Contractor: </span>{vendorPartyText(viewReq.vendorName, viewReq.vendorGroupName, viewReq.payeeVendorName)}</div>
               <div><span className="text-gray-500 dark:text-gray-400">Requested By: </span>{viewReq.requestedBy?.name || "—"}</div>
               <div><span className="text-gray-500 dark:text-gray-400">Date: </span>{dayjs(viewReq.createdAt).format("DD MMM YYYY")}</div>
               {(() => {
@@ -2247,7 +2252,7 @@ export default function BillApproval() {
                 </code>
               ) : "—"}
             </DescItem>
-            <DescItem label="Vendor">{viewManualBill.vendorName || "—"}</DescItem>
+            <DescItem label="Vendor">{vendorPartyText(viewManualBill.vendorName, viewManualBill.vendorGroupName, viewManualBill.vendorName)}</DescItem>
             <DescItem label="Generated By">{viewManualBill.generatedBy || "—"}</DescItem>
             {(viewManualBill.projectLocation || viewManualBill.workOrderNote) && (
               <DescItem label="Location">

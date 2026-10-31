@@ -1,4 +1,5 @@
 const Contractor = require('../models/Contractor');
+const VendorGroup = require('../models/VendorGroup');
 
 // Resolves who a bill should actually pay out to. With no override (or an
 // override matching the work order's own vendor), pays that vendor exactly
@@ -35,4 +36,21 @@ async function resolvePayee(defaultVendorCode, defaultVendorName, requestedVendo
   return { vendorCode: payee.vendorCode, vendorName: payee.companyName, overridden: true };
 }
 
-module.exports = { resolvePayee };
+// Stamps vendorGroupId/vendorGroupName onto plain row objects — the Vendor Group of the vendor each
+// row is for (codeOf picks which code; default is the row's own vendorCode). Display only: approvers
+// see the group, the individual payee is shown separately once one has been chosen.
+async function attachVendorGroups(rows, codeOf = (r) => r.vendorCode) {
+  const codes = [...new Set(rows.map(codeOf).filter(Boolean))];
+  if (!codes.length) return rows;
+  const members = await Contractor.find({ vendorCode: { $in: codes }, groupId: { $ne: null } }).select('vendorCode groupId').lean();
+  const groups = await VendorGroup.find({ _id: { $in: [...new Set(members.map((m) => String(m.groupId)))] } }).select('name').lean();
+  const groupById = new Map(groups.map((g) => [String(g._id), g]));
+  const groupByCode = new Map(members.map((m) => [m.vendorCode, groupById.get(String(m.groupId))]));
+  for (const r of rows) {
+    const g = groupByCode.get(codeOf(r));
+    if (g) { r.vendorGroupId = String(g._id); r.vendorGroupName = g.name; }
+  }
+  return rows;
+}
+
+module.exports = { resolvePayee, attachVendorGroups };

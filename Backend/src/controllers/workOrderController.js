@@ -853,6 +853,8 @@ exports.finalApprove = asyncHandler(async (req, res) => {
     return forbidden(res, "You're not configured as the final approver for this department's work orders.");
   }
   workOrder.approvalStatus = 'approved';
+  // Approval is what issues the work order — the lifecycle status used to stay 'draft' forever.
+  if (workOrder.status === 'draft') workOrder.status = 'issued';
   workOrder.finalApprovedBy = req.user._id;
   workOrder.finalApprovedAt = new Date();
   workOrder.finalRemarks = req.body.remarks || '';
@@ -1049,6 +1051,7 @@ exports.addScopeProgress = asyncHandler(async (req, res) => {
   // see the overage flagged (yellow/red) on the Bill Review page and must sign
   // off on it before that item is billable.
   item.progressEntries.push({ date: date || new Date(), qtyAdded, dimensions: resolved.dimensions, documents: cleanDocuments(req.body.documents), remarks, tower, floor, flatNo, plotNo, locationNote, enteredBy: req.user._id });
+  if (workOrder.approvalStatus === 'approved' && ['draft', 'issued'].includes(workOrder.status)) workOrder.status = 'in-progress';
   item.completedQty = sumActiveQty(item.progressEntries);
   item.status =
     item.plannedQty > 0 && item.completedQty >= item.plannedQty ? 'completed'
@@ -1246,6 +1249,7 @@ exports.addSubItemProgress = asyncHandler(async (req, res) => {
   }
 
   subItem.progressEntries.push({ date: date || new Date(), qtyAdded, dimensions: resolved.dimensions, documents: cleanDocuments(req.body.documents), remarks, tower, floor, flatNo, plotNo, locationNote, enteredBy: req.user._id });
+  if (workOrder.approvalStatus === 'approved' && ['draft', 'issued'].includes(workOrder.status)) workOrder.status = 'in-progress';
   subItem.completedQty = sumActiveQty(subItem.progressEntries);
   subItem.status =
     subItem.plannedQty > 0 && subItem.completedQty >= subItem.plannedQty ? 'completed'

@@ -81,6 +81,8 @@ interface Bill {
   projectLocation?: string;
   vendorCode?: string;
   vendorName?: string;
+  // Vendor Group of the paid-to vendor, when any (display / search only).
+  vendorGroupName?: string;
   companyName?: string;
   billDate: string;
   billingPeriodFrom?: string;
@@ -536,6 +538,7 @@ export default function AccountsPayment() {
         !search ||
         (b.billNo || "").toLowerCase().includes(q) ||
         (b.vendorName || "").toLowerCase().includes(q) ||
+        (b.vendorGroupName || "").toLowerCase().includes(q) ||
         (b.vendorCode || "").toLowerCase().includes(q) ||
         (b.companyName || "").toLowerCase().includes(q) ||
         (b.workOrderNo || "").toLowerCase().includes(q) ||
@@ -1223,7 +1226,7 @@ export default function AccountsPayment() {
                 <Tr>
                   <Th className="w-[10%]">Bill No.</Th>
                   <Th className="w-[11%]">Work Order</Th>
-                  <Th className="w-[16%]">Vendor</Th>
+                  <Th className="w-[18%]">Vendor</Th>
                   <Th className="w-[15%]">Project</Th>
                   <Th className="text-right w-[12%]">Amount</Th>
                   <Th className="w-[15%]">Status</Th>
@@ -1257,16 +1260,20 @@ export default function AccountsPayment() {
                         </span>
                       ) : <span className="text-gray-300">—</span>}
                     </Td>
-                    <Td className="whitespace-nowrap truncate">
+                    <Td className="truncate" title={[r.vendorGroupName, r.vendorName].filter(Boolean).join(" · ")}>
+                      {r.vendorGroupName && <div className="truncate">{r.vendorGroupName}</div>}
                       {r.vendorName && r.vendorCode ? (
-                        <button
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); openVendorDrawer(r.vendorCode!); }}
-                          className="text-blue-600 hover:underline"
-                        >
-                          {r.vendorName}
-                        </button>
-                      ) : (r.vendorName || <span className="text-gray-300">—</span>)}
+                        <div className={r.vendorGroupName ? "truncate text-[10px]" : "truncate"}>
+                          {r.vendorGroupName && <span className="text-gray-400 dark:text-gray-500">Pay to: </span>}
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); openVendorDrawer(r.vendorCode!); }}
+                            className="text-blue-600 hover:underline"
+                          >
+                            {r.vendorName}
+                          </button>
+                        </div>
+                      ) : (r.vendorGroupName ? null : (r.vendorName || <span className="text-gray-300">—</span>))}
                     </Td>
                     <Td className="whitespace-nowrap truncate">{r.projectName || <span className="text-gray-300">—</span>}</Td>
                     <Td className="text-right font-mono font-bold whitespace-nowrap">{fmt(displayAmount(r))}</Td>

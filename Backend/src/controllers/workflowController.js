@@ -171,6 +171,7 @@ exports.completeStage = asyncHandler(async (req, res) => {
     const workOrder = await WorkOrder.findById(result.instance.entityId);
     if (workOrder && workOrder.approvalStatus !== 'approved') {
       workOrder.approvalStatus = 'approved';
+      if (workOrder.status === 'draft') workOrder.status = 'issued';
       workOrder.finalApprovedBy = req.user._id;
       workOrder.finalApprovedAt = new Date();
       workOrder.isLocked = true;
