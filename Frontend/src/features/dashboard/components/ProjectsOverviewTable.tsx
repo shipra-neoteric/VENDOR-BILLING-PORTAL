@@ -132,7 +132,7 @@ export default function ProjectsOverviewTable({ projects, stage = "", exportPara
               <SortHeader label="Paid" sortKey="paidAmount" active={sortKey === "paidAmount"} dir={sortDir} onClick={toggleSort} className="w-[9%] text-right" />
               <SortHeader label="Remaining" sortKey="remainingContract" active={sortKey === "remainingContract"} dir={sortDir} onClick={toggleSort} className="w-[9%] text-right" />
               <SortHeader label="Progress" sortKey="progress" active={sortKey === "progress"} dir={sortDir} onClick={toggleSort} className="w-[12%]" />
-              <Th className={`w-[12%] ${HEADER_CELL}`}>Cost Used</Th>
+              <Th className={`w-[12%] ${HEADER_CELL}`} title="Billed ÷ contract value (bills raised, paid or not)">Billed %</Th>
               <Th className={`w-[7%] text-right ${HEADER_CELL}`}>Pending</Th>
               <Th className={`w-[8%] ${HEADER_CELL}`}>Health</Th>
               <Th className={`w-[5%] text-center uppercase tracking-wider ${HEADER_CELL}`}>

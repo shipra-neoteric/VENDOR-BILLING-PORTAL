@@ -6,7 +6,6 @@ import Btn from "../../../ui/Btn";
 import Card from "../../../ui/Card";
 import Badge from "../../../ui/Badge";
 import EmptyState from "../../../ui/EmptyState";
-import { SelectFilter } from "../../../ui/Filters";
 import { Table, Thead, Tbody, Tr, Th, Td } from "../../../ui/Table";
 import { fmtCr } from "../utils";
 import type { ExecutiveDashboardContractorCategoryRow } from "../../../types/ExecutiveDashboard";
@@ -30,42 +29,39 @@ const partyKey = (r: ExecutiveDashboardContractorCategoryRow) => r.vendorGroupId
 const partyName = (r: ExecutiveDashboardContractorCategoryRow) => r.vendorGroupName || r.contractor;
 
 interface MergedRow {
-  key: string;          // party + project + category — one table row
-  party: string;        // partyKey, what the detail drawer opens
+  party: string;        // partyKey — one table row, and what the detail drawer opens
   contractor: string;
-  category: string;
-  project: string;
+  categories: string[];
+  sites: number;
+  workOrders: number;
   contractValue: number;
   paid: number;
   pending: number;
   status: Status;
 }
 
-// A project picker replaces the earlier "View Matrix" shortcut — filters
-// this card's own (already-fetched) rows by project name client-side, no
-// extra request, so someone scanning this card can narrow it to one project
-// without leaving the dashboard.
+// One row per contractor (a Vendor Group counts as one) across every site and category; the
+// per-site / per-work-order breakdown is in the drawer a row opens.
 export default function ContractorsByCategory({ contractorsByCategory }: ContractorsByCategoryProps) {
   const navigate = useNavigate();
-  const [projectFilter, setProjectFilter] = useState("");
   // Row click opens that party across every site (not just the clicked row's project).
   const [openParty, setOpenParty] = useState<string | null>(null);
 
-  // One row per (vendor group or vendor) × project × category — a group's vendors are merged into one row.
-  const merged = useMemo(() => {
-    const map = new Map<string, MergedRow>();
+  // One row per vendor group or vendor — all their work orders, sites and categories rolled together.
+  const rows = useMemo(() => {
+    const map = new Map<string, MergedRow & { siteSet: Set<string> }>();
     for (const r of contractorsByCategory) {
-      const key = `${partyKey(r)}|${r.projectId || r.project}|${r.category}`;
-      const m = map.get(key);
-      if (!m) {
-        map.set(key, {
-          key, party: partyKey(r), contractor: partyName(r), category: r.category, project: r.project,
-          contractValue: r.contractValue, paid: r.paid, pending: r.pending, status: r.status,
-        });
-      } else {
-        m.contractValue += r.contractValue; m.paid += r.paid; m.pending += r.pending;
-        if (STATUS_SEVERITY[r.status] > STATUS_SEVERITY[m.status]) m.status = r.status;
-      }
+      const key = partyKey(r);
+      const m = map.get(key) ?? {
+        party: key, contractor: partyName(r), categories: [], sites: 0, workOrders: 0, contractValue: 0, paid: 0, pending: 0, status: r.status, siteSet: new Set<string>(),
+      };
+      m.workOrders += 1;
+      m.contractValue += r.contractValue; m.paid += r.paid; m.pending += r.pending;
+      if (r.category && !m.categories.includes(r.category)) m.categories.push(r.category);
+      m.siteSet.add(r.projectId || r.project);
+      m.sites = m.siteSet.size;
+      if (STATUS_SEVERITY[r.status] > STATUS_SEVERITY[m.status]) m.status = r.status;
+      map.set(key, m);
     }
     return [...map.values()].sort((a, b) => b.contractValue - a.contractValue);
   }, [contractorsByCategory]);
@@ -92,15 +88,6 @@ export default function ContractorsByCategory({ contractorsByCategory }: Contrac
     };
   }, [openParty, contractorsByCategory]);
 
-  const projectOptions = useMemo(() => {
-    const names = [...new Set(merged.map(r => r.project).filter(Boolean))].sort();
-    return names.map(name => ({ label: name, value: name }));
-  }, [merged]);
-
-  const rows = projectFilter
-    ? merged.filter(r => r.project === projectFilter)
-    : merged;
-
   return (
     <Card size="sm">
       <div className="flex items-center justify-between mb-2.5 gap-3">
@@ -108,44 +95,36 @@ export default function ContractorsByCategory({ contractorsByCategory }: Contrac
           <Users className="w-4 h-4 text-primary" />
           Contractors by Category
         </h3>
-        {projectOptions.length > 0 && (
-          <SelectFilter
-            value={projectFilter}
-            onChange={setProjectFilter}
-            options={projectOptions}
-            placeholder="All Projects"
-          />
-        )}
       </div>
 
       {contractorsByCategory.length === 0 ? (
         <EmptyState title="No contractor activity yet" message="Contractors will appear here once work orders are raised." />
-      ) : rows.length === 0 ? (
-        <EmptyState title="No contractors for this project" message="Try a different project or clear the filter." />
       ) : (
         <Table containerClassName="max-h-[360px] overflow-y-auto" className="min-w-[760px]">
           <Thead>
             <Tr>
-              <Th className="w-[20%] truncate" dense>Contractor</Th>
-              <Th className="w-[13%] truncate" dense>Category</Th>
-              <Th className="w-[15%] truncate" dense>Project</Th>
-              <Th className="w-[16%] text-right truncate" dense>Contract Value</Th>
-              <Th className="w-[12%] text-right truncate" dense>Paid</Th>
-              <Th className="w-[12%] text-right truncate" dense>Pending</Th>
-              <Th className="w-[12%] truncate" dense>Status</Th>
+              <Th className="w-[22%] truncate" dense>Contractor</Th>
+              <Th className="w-[16%] truncate" dense>Category</Th>
+              <Th className="w-[7%] text-right truncate" dense>Sites</Th>
+              <Th className="w-[9%] text-right truncate" dense>Work Orders</Th>
+              <Th className="w-[14%] text-right truncate" dense>Contract Value</Th>
+              <Th className="w-[11%] text-right truncate" dense>Paid</Th>
+              <Th className="w-[11%] text-right truncate" dense>Pending</Th>
+              <Th className="w-[10%] truncate" dense>Status</Th>
             </Tr>
           </Thead>
           <Tbody>
             {rows.map(r => (
               <Tr
-                key={r.key}
+                key={r.party}
                 className="cursor-pointer"
                 title="Click to see this contractor's work orders, value and sites"
                 onClick={() => setOpenParty(r.party)}
               >
                 <Td dense className="font-semibold text-[#172033] dark:text-[#F1F5F9] truncate" title={r.contractor}>{r.contractor}</Td>
-                <Td dense className="text-xs text-gray-500 dark:text-gray-400 truncate" title={r.category}>{r.category}</Td>
-                <Td dense className="text-xs text-gray-500 dark:text-gray-400 truncate" title={r.project}>{r.project}</Td>
+                <Td dense className="text-xs text-gray-500 dark:text-gray-400 truncate" title={r.categories.join(", ")}>{r.categories.join(", ")}</Td>
+                <Td dense className="text-right">{r.sites}</Td>
+                <Td dense className="text-right">{r.workOrders}</Td>
                 <Td dense className="text-right truncate">{fmtCr(r.contractValue)}</Td>
                 <Td dense className="text-right text-emerald-600 dark:text-emerald-400 truncate">{fmtCr(r.paid)}</Td>
                 <Td dense className="text-right truncate">{fmtCr(r.pending)}</Td>

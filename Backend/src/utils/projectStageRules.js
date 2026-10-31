@@ -516,7 +516,7 @@ function computeBudgetRiskForecast({ project, awardedContractValue, workExecuted
     message: overrunPercent >= 5
       ? `At the current cost-vs-progress ratio, ${projectName} is on pace to finish ~${overrunPercent}% over its ₹${awardedContractValue.toLocaleString('en-IN')} contract value (projected ₹${projectedFinalCost.toLocaleString('en-IN')}).`
       : `${projectName} is tracking within budget at the current cost-vs-progress ratio (projected ₹${projectedFinalCost.toLocaleString('en-IN')} vs ₹${awardedContractValue.toLocaleString('en-IN')} contract value).`,
-    basis: `Linear extrapolation of billedGross/contractValue (${(costUsedRatio * 100).toFixed(1)}% cost used) against ${progress}% physical progress.`,
+    basis: `Linear extrapolation of billedGross/contractValue (${(costUsedRatio * 100).toFixed(1)}% of contract billed) against ${progress}% physical progress.`,
   };
 }
 
