@@ -13,9 +13,10 @@ const { billFinancialsForBill } = require('../utils/billFinancials');
 const { isStageBreached } = require('../utils/slaEngine');
 const {
   computeProjectStageInfo, buildProjectAlerts, stableAlertId, computeBudgetRiskForecast,
-  daysSince, lastStatusChangeAt, HEALTH_THRESHOLDS, isWoApproved, isCountableWo,
+  daysSince, lastStatusChangeAt, HEALTH_THRESHOLDS, isWoApproved, isCountableWo, scopeLines,
 } = require('../utils/projectStageRules');
 const { computeProjectRollup, isWorkBill } = require('../utils/projectRollup');
+const { attachVendorGroups } = require('../utils/vendorGroupHelpers');
 
 // Phase 1 (backend half) of the Projects Overview executive dashboard
 // rebuild — bulk version of projectController.getProjectStats, generalized
@@ -196,6 +197,8 @@ async function buildContractorCategoryRows(workOrders, runningBills, projects) {
 
     return {
       contractorCode: wo.vendorCode || '',
+      workOrderId: String(wo._id),
+      workOrderNo: wo.workOrderNo || '',
       contractor: resolveVendorName(wo),
       category: wo.category || 'Uncategorized',
       project: projectNameById.get(String(wo.projectId)) || wo.projectName || '',
@@ -555,12 +558,11 @@ async function buildExecutiveDashboardData(query) {
     bucket.totalWorkOrders += 1;
     bucket.awardedValue += wo.contractValue || 0;
     for (const si of wo.scopeItems || []) {
-      const planned = si.plannedQty || 0;
-      const completed = si.completedQty || 0;
-      const rate = si.rate || 0;
-      bucket.executedValue += completed * rate;
-      bucket.plannedQty += planned;
-      bucket.completedQty += completed;
+      for (const { planned, completed, rate } of scopeLines(si)) {
+        bucket.executedValue += completed * rate;
+        bucket.plannedQty += planned;
+        bucket.completedQty += completed;
+      }
     }
   }
   const categoryExecution = [...categoryExecTotals.entries()]
@@ -751,7 +753,9 @@ async function buildExecutiveDashboardData(query) {
   // container rather than a fixed top-N preview, so trimming it here would
   // just hide real rows instead of the earlier top-10 cap.
   const perWorkOrderRows = await buildContractorCategoryRows(workOrders.filter(isCountableWo), runningBills, projects);
-  // contractorCode + projectId stay on each row so the dashboard card can open that contractor in its project.
+  // contractorCode + projectId stay on each row so the dashboard card can open that contractor in its project;
+  // vendorGroupId/Name let it show a Vendor Group once instead of each of its vendors.
+  await attachVendorGroups(perWorkOrderRows, (r) => r.contractorCode);
   const contractorsByCategory = perWorkOrderRows
     .sort((a, b) => b.contractValue - a.contractValue);
 

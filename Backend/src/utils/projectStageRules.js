@@ -83,6 +83,19 @@ function isCountableWo(wo) {
   return isWoApproved(wo) && wo.status !== 'cancelled';
 }
 
+// The planned/completed/rate lines one scope item contributes. An item whose particulars carry their
+// own rates is measured and priced per particular (the item's own completedQty is only a rolled-up
+// display figure), so those lines are used instead of the item's — counting both would double it, and
+// counting only the item (as this used to) dropped the work entirely. An item with no priced
+// particulars ("particulars are reference only", or none) is just its own line.
+function scopeLines(si) {
+  const subs = si.subItems || [];
+  if (subs.some(s => (s.rate || 0) > 0)) {
+    return subs.map(s => ({ planned: s.plannedQty || 0, completed: s.completedQty || 0, rate: s.rate || 0 }));
+  }
+  return [{ planned: si.plannedQty || 0, completed: si.completedQty || 0, rate: si.rate || 0 }];
+}
+
 // Progress across work orders. Quantities in different units (sq.ft, nos, rmt...)
 // can't be added, so progress is weighted by rate: executed value / planned value.
 // Falls back to plain quantity only when no item carries a rate.
@@ -90,9 +103,10 @@ function scopeProgress(wos) {
   let plannedQty = 0, completedQty = 0, plannedValue = 0, executedValue = 0;
   for (const wo of wos) {
     for (const si of wo.scopeItems || []) {
-      const planned = si.plannedQty || 0, completed = si.completedQty || 0, rate = si.rate || 0;
-      plannedQty += planned; completedQty += completed;
-      plannedValue += planned * rate; executedValue += completed * rate;
+      for (const { planned, completed, rate } of scopeLines(si)) {
+        plannedQty += planned; completedQty += completed;
+        plannedValue += planned * rate; executedValue += completed * rate;
+      }
     }
   }
   let percent = 0;
@@ -518,6 +532,7 @@ module.exports = {
   isWoApproved,
   isCountableWo,
   scopeProgress,
+  scopeLines,
   woHasAnyProgress,
   woHasPlannedScope,
   OPEN_BILL_STATUSES,

@@ -52,6 +52,10 @@ export interface ExecutiveDashboardCategorySpend {
 export interface ExecutiveDashboardContractorCategoryRow {
   contractor: string;
   contractorCode?: string;
+  workOrderId?: string;
+  workOrderNo?: string;
+  vendorGroupId?: string;
+  vendorGroupName?: string;
   category: string;
   project: string;
   projectId?: string;
