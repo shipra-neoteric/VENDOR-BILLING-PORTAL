@@ -122,6 +122,9 @@ function findFinalHistoryEntry(history, stagePrefix, action) {
   return null;
 }
 
+// The stage that finalizes a document with this many approval levels (2 -> gm, 3 -> l3, 4 -> l4).
+const finalStageName = (levels) => (levels >= 4 ? 'l4' : levels === 3 ? 'l3' : 'gm');
+
 // Anyone who can open this page at all — Owner, or a dedicated "Final
 // Approval" Permission Matrix grant — sees the EXACT same queue: this page
 // is, in practice, Rahul's own approval process, not a personalized "your
@@ -334,6 +337,12 @@ async function buildDecidedItems(user, decision) {
       if (!viewOnly && !canActOnDepartment(user, br)) continue;
       const found = findFinalHistoryEntry(br.approvalHistory, '', action);
       if (!found) continue;
+      // The Rejected tab is the final approver's own rejections: one made at an earlier level (e.g. the GM's
+      // L2 on a 3-level department) was not made from this page and is left out.
+      if (decision === 'rejected') {
+        const levels = br.requiredApprovalsOverride ?? (await getApprovalConfig(br))?.requiredApprovals ?? 2;
+        if (found.stage !== finalStageName(levels)) continue;
+      }
       const { stage, entry } = found;
       const pendingSince = stage === 'l4' ? (br.l3ApprovedAt || br.createdAt)
         : stage === 'l3' ? (br.gmApprovedAt || br.createdAt)
@@ -377,8 +386,12 @@ async function buildDecidedItems(user, decision) {
     const seen = new Set();
     for (const bill of rows) {
       if (!viewOnly && !canActOnDepartment(user, bill)) continue;
-      const manualFound = (can(user, 'bill-requests', 'l4-approve') || can(user, 'bill-requests', 'l3-approve') || can(user, 'bill-requests', 'gm-approve') || viewOnly)
+      let manualFound = (can(user, 'bill-requests', 'l4-approve') || can(user, 'bill-requests', 'l3-approve') || can(user, 'bill-requests', 'gm-approve') || viewOnly)
         ? findFinalHistoryEntry(bill.approvalHistory, 'manual-', action) : null;
+      if (manualFound && decision === 'rejected') {
+        const levels = bill.requiredApprovalsOverride ?? (await getApprovalConfig(bill))?.requiredApprovals ?? 2;
+        if (manualFound.stage !== finalStageName(levels)) manualFound = null;
+      }
       const accountsEntry = (can(user, 'accounts-payment', 'l2-director-approve') || viewOnly)
         ? lastMatchingHistoryEntry(bill.approvalHistory, accountsMarker.stage, accountsMarker.action) : null;
 
