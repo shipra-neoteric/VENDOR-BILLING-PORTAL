@@ -23,7 +23,7 @@ import NxStatCard from "../../ui/nexora/StatCard";
 import Spinner from "../../ui/Spinner";
 import Segmented from "../../ui/Segmented";
 import { Table, Thead, Tbody, Tr, Th, Td } from "../../ui/Table";
-import { SearchFilter } from "../../ui/Filters";
+import { SearchFilter, SelectFilter } from "../../ui/Filters";
 import apiClient from "../../services/apiClient";
 import BillDetailModal, { type BillDetailRequest } from "../../components/BillDetailModal";
 import { vendorLabel } from "../../utils/vendorLabel";
@@ -212,6 +212,8 @@ function ProjectDetail({
   const [vendorView, setVendorView] = useState<{ vendorCode: string; woId?: string } | null>(deepVendor ? { vendorCode: deepVendor } : null);
   const navigate = useNavigate();
   const tabsRef = useRef<HTMLDivElement>(null);
+  // Work Orders tab: narrow the table to one vendor.
+  const [woVendorFilter, setWoVendorFilter] = useState("");
   // Stat cards / pills jump to the tab that explains them.
   function goTab(tab: "vendors" | "workorders" | "category" | "bills" | "activity") {
     setActiveTab(tab);
@@ -245,6 +247,17 @@ function ProjectDetail({
   }, [id]);
 
   const completedCount = wos.filter(w => w.status === "completed").length;
+
+  const woVendorKey = (w: WORow) => w.vendorCode || w.vendorName || "";
+  const woVendorOptions = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const w of wos) { const k = woVendorKey(w); if (k && !seen.has(k)) seen.set(k, w.vendorName || k); }
+    return [...seen].map(([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label));
+  }, [wos]);
+  const filteredWOs = useMemo(
+    () => (woVendorFilter ? wos.filter(w => woVendorKey(w) === woVendorFilter) : wos),
+    [wos, woVendorFilter]
+  );
 
   const projectVendors = useMemo(() => {
     const vendorCodes = new Set(wos.map(w => w.vendorCode).filter(Boolean));
@@ -304,7 +317,6 @@ function ProjectDetail({
                 <NxStatCard label="Total Contract Value" value={fmt(stats.awardedContractValue)} icon={Landmark} onClick={() => goTab("workorders")} />
                 <NxStatCard label="Work Executed" value={fmt(stats.workExecutedValue)} icon={HardHat} onClick={() => goTab("category")} />
                 <NxStatCard label="Total Billed" value={fmt(stats.billedGross)} icon={Receipt} onClick={() => goTab("bills")} />
-                <NxStatCard label="Total Certified (Net)" value={fmt(stats.certifiedNet)} icon={CheckCircle2} onClick={() => goTab("bills")} />
                 <NxStatCard label="Paid" value={fmt(stats.paidAmount)} icon={Banknote} onClick={() => goTab("bills")} />
                 <NxStatCard label="Remaining" value={fmt(stats.remainingContract)} icon={Clock} onClick={() => goTab("workorders")} />
                 <NxStatCard label="Overall Progress" value={`${stats.progress}%`} icon={TrendingUp} onClick={() => goTab("category")} />
@@ -441,7 +453,12 @@ function ProjectDetail({
               <div className="mb-5">
                 <div className="flex justify-between items-center mb-3">
                   <div className="font-bold text-[15px] text-[#1A1A2E] dark:text-[#F1F5F9]">Work Orders</div>
-                  <div className="text-xs text-gray-400">{wos.length} total</div>
+                  <div className="flex items-center gap-3">
+                    {woVendorOptions.length > 1 && (
+                      <SelectFilter value={woVendorFilter} onChange={setWoVendorFilter} options={woVendorOptions} placeholder="All Vendors" />
+                    )}
+                    <div className="text-xs text-gray-400">{woVendorFilter ? `${filteredWOs.length} of ${wos.length}` : `${wos.length} total`}</div>
+                  </div>
                 </div>
                 {wos.length === 0 ? (
                   <Card className="text-center py-12">
@@ -455,7 +472,7 @@ function ProjectDetail({
                       <Tr><Th>WO Number</Th><Th>Vendor</Th><Th>Category</Th><Th>Status</Th><Th className="text-right">Contract Value</Th></Tr>
                     </Thead>
                     <Tbody>
-                      {wos.map(wo => (
+                      {filteredWOs.map(wo => (
                         <Tr key={wo._id} className={wo.vendorCode ? "cursor-pointer" : undefined} onClick={() => wo.vendorCode && setVendorView({ vendorCode: wo.vendorCode, woId: wo._id })} title="Click to see this work order in detail">
                           <Td className="text-primary font-semibold">{wo.workOrderNo}</Td>
                           <Td>{wo.vendorName || "—"}</Td>

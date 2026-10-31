@@ -1933,7 +1933,8 @@ export default function WorkItems() {
   // Step pill counts — one per stage of the real approval chain (see
   // APPROVAL_STATUS_CFG's `level` field, L1=draft through L4=pending-final).
   const stepCounts = useMemo(() => {
-    const c: Record<string, number> = { approved: 0 };
+    // 'sent-back' is how a rejected work order is stored — shown as the Rejected pill.
+    const c: Record<string, number> = { approved: 0, "sent-back": 0 };
     for (const key of STEP_KEYS) c[key] = 0;
     for (const wo of filteredIgnoringStep) {
       const st = approvalStatusOf(wo);
@@ -2608,6 +2609,19 @@ export default function WorkItems() {
             style={stepFilter === "approved" ? { backgroundColor: "var(--theme-primary-tint)" } : undefined}
           >
             Approved <span className="ml-1 opacity-75">{stepCounts.approved}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setStepFilter(stepFilter === "sent-back" ? "all" : "sent-back")}
+            className={
+              stepFilter === "sent-back"
+                ? "shrink-0 px-3.5 py-1.5 rounded-lg text-sm font-semibold theme-text"
+                : "shrink-0 px-3.5 py-1.5 rounded-lg text-sm font-medium bg-gray-100 dark:bg-gray-700 text-gray-500! dark:text-gray-400!"
+            }
+            style={stepFilter === "sent-back" ? { backgroundColor: "var(--theme-primary-tint)" } : undefined}
+            title="Work orders an approver rejected / sent back for changes"
+          >
+            Rejected <span className="ml-1 opacity-75">{stepCounts["sent-back"]}</span>
           </button>
         </div>
 
