@@ -232,6 +232,19 @@ export interface SecurityDeposit {
   notes?: string;
 }
 
+// Extra scope added to an approved work order ("Add Scope") — travels the approval chain before its items join scopeItems.
+export interface AddendumItem {
+  description: string; remarks?: string; unit?: string; plannedQty: number; rate: number; amount: number;
+  gstPercent?: number; plannedStart?: string; plannedEnd?: string;
+}
+export interface AddendumHistoryEntry { stage: string; action: string; byName?: string; byRole?: string; remarks?: string; at?: string }
+export interface WorkOrderAddendum {
+  _id?: string; id?: string; no: number; reason?: string; items: AddendumItem[]; amount: number;
+  status: "pending-checker" | "pending-approver" | "pending-final" | "approved" | "sent-back";
+  createdByName?: string; createdAt?: string; approvedAt?: string; contractBefore?: number; contractAfter?: number;
+  history?: AddendumHistoryEntry[];
+}
+
 export interface WorkOrder {
   id: string;
   workOrderNo: string;
@@ -245,6 +258,8 @@ export interface WorkOrder {
   projectLocation?: string;
   vendorCode: string;
   vendorName: string;
+  // Vendor Group the vendor belongs to, when any (display only).
+  vendorGroupName?: string;
   ownerName: string;
   mobile: string;
   // Execution (construction, default) vs professional-services (design/
@@ -292,6 +307,7 @@ export interface WorkOrder {
   // grandfathered to 'approved' so they display as fully approved; only WOs
   // created after the workflow shipped actually travel through the chain.
   approvalStatus?: WorkOrderApprovalStatus;
+  addenda?: WorkOrderAddendum[];
   makerBy?: { _id: string; name: string; email?: string } | string;
   makerAt?: string;
   checkerBy?: { _id: string; name: string; email?: string } | string;

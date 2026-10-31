@@ -117,6 +117,10 @@ export default function WorkCategoryChecklist({ entries, onChange, uploadClient 
     );
   }
 
+  function patchEntry(workType: string, patch: Partial<WorkEntry>) {
+    onChange(entries.map(e => e.workType === workType ? { ...e, ...patch } : e));
+  }
+  const detailCls = "w-full h-9 px-2.5 text-[13px] rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-primary";
   return (
     <div>
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5">
@@ -156,6 +160,21 @@ export default function WorkCategoryChecklist({ entries, onChange, uploadClient 
           {entries.map(entry => (
             <div key={entry.workType} className="border rounded-lg p-3 border-gray-200 dark:border-gray-700/40">
               <span className="font-semibold text-sm text-[#1A1A2E] dark:text-[#F1F5F9]">{entry.workType}</span>
+              {entry.workType === "JCB" && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 mt-2.5 max-w-[460px]">
+                  <label className="text-xs font-semibold text-gray-500 dark:text-gray-400">Owner *
+                    <input className={`${detailCls} mt-1`} placeholder="JCB owner name" value={entry.ownerName ?? ""} onChange={e => patchEntry(entry.workType, { ownerName: e.target.value })} />
+                  </label>
+                  <label className="text-xs font-semibold text-gray-500 dark:text-gray-400">No. of hours *
+                    <input type="number" min="0" max="24" step="0.5" className={`${detailCls} mt-1`} placeholder="e.g. 8" value={entry.hours ?? ""} onChange={e => patchEntry(entry.workType, { hours: e.target.value === "" ? "" : Number(e.target.value) })} />
+                  </label>
+                </div>
+              )}
+              {entry.workType === "Tractor" && (
+                <label className="block mt-2.5 max-w-[220px] text-xs font-semibold text-gray-500 dark:text-gray-400">Number of tractor trips *
+                  <input type="number" min="1" step="1" className={`${detailCls} mt-1`} placeholder="e.g. 12" value={entry.tractorTrips ?? ""} onChange={e => patchEntry(entry.workType, { tractorTrips: e.target.value === "" ? "" : Number(e.target.value) })} />
+                </label>
+              )}
               <PhotoRow entry={entry} kind="images" label="Work Photos" min={minImages} max={MAX_IMAGES_PER_CATEGORY} />
               <PhotoRow entry={entry} kind="beforeImages" label="Before Photo" min={MIN_BEFORE_AFTER_IMAGES} max={MAX_BEFORE_AFTER_IMAGES} />
               <PhotoRow entry={entry} kind="afterImages" label="After Photo" min={MIN_BEFORE_AFTER_IMAGES} max={MAX_BEFORE_AFTER_IMAGES} />

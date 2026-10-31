@@ -131,6 +131,49 @@ const scopeItemSchema = new mongoose.Schema(
   { _id: true }
 );
 
+// "Add Scope" on an approved work order — new items that travel the approval chain before joining scopeItems.
+const addendumSchema = new mongoose.Schema(
+  {
+    no:     { type: Number, required: true },
+    reason: { type: String, default: '' },
+    items: [{
+      description:  { type: String, required: true },
+      remarks:      { type: String, default: '' },
+      unit:         { type: String, default: 'sq.ft' },
+      plannedQty:   { type: Number, default: 0 },
+      rate:         { type: Number, default: 0 },
+      amount:       { type: Number, default: 0 },
+      gstPercent:   { type: Number, default: 18 },
+      plannedStart: { type: String },
+      plannedEnd:   { type: String },
+      _id: false,
+    }],
+    amount: { type: Number, default: 0 },
+    status: { type: String, enum: ['pending-checker', 'pending-approver', 'pending-final', 'approved', 'sent-back'], default: 'pending-checker' },
+    createdBy:     { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    createdByName: { type: String, default: '' },
+    createdAt:     { type: Date, default: Date.now },
+    makerBy:       { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    checkerBy:     { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    approverBy:    { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    finalBy:       { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    approvedAt:    { type: Date },
+    contractBefore: { type: Number },
+    contractAfter:  { type: Number },
+    history: [{
+      stage:  { type: String },
+      action: { type: String },
+      by:     { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      byName: { type: String, default: '' },
+      byRole: { type: String, default: '' },
+      remarks:{ type: String, default: '' },
+      at:     { type: Date, default: Date.now },
+      _id: false,
+    }],
+  },
+  { _id: true }
+);
+
 const paymentMilestoneSchema = new mongoose.Schema(
   {
     stage:      { type: String, default: '' },
@@ -234,6 +277,8 @@ const workOrderSchema = new mongoose.Schema(
     // other WO field.
     internalRemark: { type: String, default: '' },
     scopeItems:    [scopeItemSchema],
+    // Extra work added after approval — see workOrderAddendumController.js.
+    addenda:       [addendumSchema],
     // Every time an approved variance raised a scope item's plan (see reviseWorkOrderPlan in
     // workOrderController.js) — the "Plan revisions" list on the work order screen.
     planRevisions: [{

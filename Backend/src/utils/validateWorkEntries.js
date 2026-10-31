@@ -10,11 +10,27 @@ const MAX_IMAGES_PER_CATEGORY = 5;
 const MIN_BEFORE_AFTER_IMAGES = 0;
 const MAX_BEFORE_AFTER_IMAGES = 5;
 
+// JCB needs the owner and the hours it ran; Tractor needs the number of trips.
+function machineDetailsInvalidReason(entry) {
+  if (entry.workType === 'JCB') {
+    if (!String(entry.ownerName || '').trim()) return '"JCB" needs the owner';
+    const hours = Number(entry.hours);
+    if (!Number.isFinite(hours) || hours <= 0 || hours > 24) return '"JCB" needs the number of hours it worked (above 0, at most 24)';
+  }
+  if (entry.workType === 'Tractor') {
+    const trips = Number(entry.tractorTrips);
+    if (!Number.isInteger(trips) || trips <= 0) return '"Tractor" needs the number of tractor trips';
+  }
+  return null;
+}
+
 function workEntriesInvalidReason(workEntries) {
   if (!Array.isArray(workEntries) || workEntries.length === 0) {
     return 'Select at least one work type from the checklist';
   }
   for (const entry of workEntries) {
+    const machineError = machineDetailsInvalidReason(entry);
+    if (machineError) return machineError;
     const count = Array.isArray(entry.images) ? entry.images.length : 0;
     if (count < MIN_IMAGES_PER_CATEGORY) {
       return `"${entry.workType}" needs at least ${MIN_IMAGES_PER_CATEGORY} photo${MIN_IMAGES_PER_CATEGORY === 1 ? '' : 's'} (has ${count})`;

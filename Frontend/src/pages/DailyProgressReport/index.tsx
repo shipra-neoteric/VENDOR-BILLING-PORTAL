@@ -10,7 +10,7 @@ import QcMigrationNotice from "../../components/QcMigrationNotice";
 import DrawingRequestButton from "../../components/DrawingRequestButton";
 import DateRangeFilter, { inDateRange } from "../../components/DateRangeFilter";
 import { buildDailyProgressReportSummary, periodLabel } from "../../utils/dailyProgressReportSummary";
-import { firstMissingProgressField, MIN_IMAGES_PER_CATEGORY } from "../../shared/constants/dailyProgressReportOptions";
+import { firstMissingProgressField, machineDetailMissing, MIN_IMAGES_PER_CATEGORY } from "../../shared/constants/dailyProgressReportOptions";
 import type { DailyProgressReportFormValues, WorkEntry } from "../../shared/constants/dailyProgressReportOptions";
 import { REVIEW_STATUS_LABEL, REVIEW_STATUS_COLOR } from "../../shared/constants/drawingRequestOptions";
 import type { DrawingRequest } from "../../shared/constants/drawingRequestOptions";
@@ -272,6 +272,8 @@ export default function DailyProgressReport() {
     const missing = firstMissingProgressField(form);
     if (missing) return toast.error(`Select ${missing}`);
     if (form.workEntries.length === 0) return toast.error("Check at least one work type");
+    const machineMissing = machineDetailMissing(form.workEntries);
+    if (machineMissing) return toast.error(machineMissing);
     // No labour on site that day means no work photos to take either — the
     // mandatory-photo rule only makes sense once there's actually a crew
     // present being reported on.
@@ -782,6 +784,12 @@ export default function DailyProgressReport() {
             {viewReport.workEntries.map(entry => (
               <div key={entry.workType} className="border border-gray-200 dark:border-gray-700/40 rounded-lg p-3">
                 <div className="font-semibold text-sm text-[#1A1A2E] dark:text-[#F1F5F9] mb-2">{entry.workType}</div>
+                {entry.workType === "JCB" && (entry.ownerName || entry.hours != null) && (
+                  <div className="text-xs text-gray-600 dark:text-gray-300 mb-2">Owner: <b>{entry.ownerName || "—"}</b> · Hours: <b>{entry.hours ?? "—"}</b></div>
+                )}
+                {entry.workType === "Tractor" && entry.tractorTrips != null && entry.tractorTrips !== "" && (
+                  <div className="text-xs text-gray-600 dark:text-gray-300 mb-2">Tractor trips: <b>{entry.tractorTrips}</b></div>
+                )}
                 <div className="flex flex-wrap gap-2">
                   {entry.images.map((img, i) => (
                     <a key={i} href={img.url} target="_blank" rel="noreferrer" className="w-16 h-16 rounded-md overflow-hidden border border-gray-200 dark:border-gray-700 shrink-0">

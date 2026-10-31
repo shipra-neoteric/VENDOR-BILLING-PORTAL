@@ -5,6 +5,7 @@ import toast from "react-hot-toast";
 import dayjs from "dayjs";
 import apiClient from "../services/apiClient";
 import WorkOrderApprovalWorkflow from "./WorkOrderApprovalWorkflow";
+import WorkOrderAddenda from "./WorkOrderAddenda";
 import { getWorkOrderDocuments } from "./DocumentsUpload";
 import PaymentMilestonesBuilder, { calcPayable } from "./PaymentMilestonesBuilder";
 import type { MilestoneDraft } from "./PaymentMilestonesBuilder";
@@ -283,6 +284,15 @@ export default function WorkOrderDetailView({
 
   return (
     <>
+      {/* ── Vendor Group — when this contractor belongs to one, the group is what the header leads with ── */}
+      {wo.vendorGroupName && (
+        <div className="mb-3 flex items-center gap-2 flex-wrap">
+          <Badge color="blue">Vendor Group</Badge>
+          <span className="font-bold text-[15px] text-[#1A1A2E] dark:text-[#F1F5F9]">{wo.vendorGroupName}</span>
+          <span className="text-xs text-gray-400">· {wo.vendorName}</span>
+        </div>
+      )}
+
       {/* ── Identity — Work Order / Project details vs Contractor details ── */}
       <Card padded={false} className="mb-5 overflow-hidden">
         <PairedGrid
@@ -837,6 +847,9 @@ export default function WorkOrderDetailView({
           )}
         </Card>
       )}
+
+      {/* ── Added scope (addenda) — extra work on this approved WO ────── */}
+      <WorkOrderAddenda workOrder={wo} readOnly={readOnly} onUpdated={(updated) => onUpdated?.(updated)} />
 
       {/* ── Approval Workflow & Signatures — at the bottom ──────────── */}
       <WorkOrderApprovalWorkflow

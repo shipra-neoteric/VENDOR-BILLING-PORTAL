@@ -7,7 +7,7 @@ export const WORK_TYPE_OPTIONS = [
   "Core Cutting", "Fire", "Waterproofing", "Carpenter", "Fabrication", "UPVC",
   "Material Lifting", "Excavation", "Plantation", "Scaffolding", "POP", "Aluminium",
   "AC", "Texture", "Camera", "Road", "Termite treatment", "Lift", "Material Shifting",
-  "Stone", "Tiles", "Epoxy", "Ceiling", "Welding", "Railing", "Other",
+  "Stone", "Tiles", "Epoxy", "Ceiling", "Welding", "Railing", "JCB", "Tractor", "Other",
 ];
 
 export const SHIFT_TYPE_OPTIONS = ["Day", "Night"];

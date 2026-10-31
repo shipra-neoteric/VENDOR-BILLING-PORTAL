@@ -1675,6 +1675,21 @@ export default function WorkItems() {
   const patchCreate = (patch: Partial<WOFormValues>) => setCreateValues(prev => ({ ...prev, ...patch }));
   const patchEdit    = (patch: Partial<WOFormValues>) => setEditValues(prev => ({ ...prev, ...patch }));
 
+  // One work order per site + vendor (group) + category — if one already exists, the New Work Order form
+  // says so (with its number) and cannot be saved; the server refuses it as well.
+  const [existingWo, setExistingWo] = useState<{ _id: string; workOrderNo: string; vendorName?: string; category?: string } | null>(null);
+  useEffect(() => {
+    if (!createDrawerOpen || !createValues.projectId || !createValues.vendorCode || !createValues.category) { setExistingWo(null); return; }
+    let live = true;
+    apiClient.get<{ existing: { _id: string; workOrderNo: string; vendorName?: string; category?: string } | null }>("/work-orders/existing", {
+      params: { projectId: createValues.projectId, vendorCode: createValues.vendorCode, category: createValues.category, contractType: createValues.contractType || "execution" },
+      suppressErrorToast: true,
+    })
+      .then(r => { if (live) setExistingWo(r.data.existing ?? null); })
+      .catch(() => { if (live) setExistingWo(null); });
+    return () => { live = false; };
+  }, [createDrawerOpen, createValues.projectId, createValues.vendorCode, createValues.category, createValues.contractType]);
+
   const createCatName = createValues.category;
   const editCatName   = editValues.category;
   const createGstPercent = createValues.gstPercent ?? 18;
@@ -2895,7 +2910,7 @@ export default function WorkItems() {
         <Modal
           icon={ClipboardList}
           title={<>Work Order — <span className="text-primary">{currentSelectedWO?.workOrderNo}</span></>}
-          subtitle={`${currentSelectedWO?.projectName ?? ""}${currentSelectedWO?.projectLocation ? ` — ${currentSelectedWO.projectLocation}` : ""}`}
+          subtitle={`${currentSelectedWO?.projectName ?? ""}${currentSelectedWO?.projectLocation ? ` — ${currentSelectedWO.projectLocation}` : ""}${currentSelectedWO?.vendorGroupName ? ` · ${currentSelectedWO.vendorGroupName}` : ""}`}
           extraWide
           onClose={() => setDrawerOpen(false)}
           footer={
@@ -2940,11 +2955,22 @@ export default function WorkItems() {
                 outline label="Cancel"
                 onClick={() => { setCreateValues(blankWOForm()); setCreateScopeItems([]); setCreateMilestones([]); setCreateSecurityDeposits([]); setCreateDiscount(null); setCreateWarranty([]); setCreateDrawerOpen(false); }}
               />
-              <Btn outline loading={saving} disabled={createDocsUploading} label="Save as Draft" onClick={() => handleCreate(false)} />
-              <Btn color="primary" loading={saving} disabled={createDocsUploading} label="Save & Submit for Review" onClick={() => handleCreate(true)} />
+              <Btn outline loading={saving} disabled={createDocsUploading || !!existingWo} label="Save as Draft" onClick={() => handleCreate(false)} />
+              <Btn color="primary" loading={saving} disabled={createDocsUploading || !!existingWo} label="Save & Submit for Review" onClick={() => handleCreate(true)} />
             </div>
           }
         >
+          {existingWo && (
+            <div className="mb-4 rounded-lg border border-amber-300 dark:border-amber-500/40 bg-amber-50 dark:bg-amber-500/10 px-3.5 py-3 text-sm text-amber-800 dark:text-amber-300">
+              <div className="font-bold mb-0.5">A work order already exists for this site, vendor and category</div>
+              <div>
+                <b>{existingWo.workOrderNo}</b>{existingWo.vendorName ? ` (${existingWo.vendorName}${existingWo.category ? `, ${existingWo.category}` : ""})` : ""} already covers this. A new work order can't be created — open it and use <b>Add Scope</b> to add the extra work.
+              </div>
+              <div className="mt-2">
+                <Btn small color="primary" label={`Open ${existingWo.workOrderNo}`} onClick={() => { setCreateDrawerOpen(false); navigate(`/work-items/${existingWo._id}`); }} />
+              </div>
+            </div>
+          )}
           <FormSection title="Work Order Information">
             <WOFormFields
               values={createValues}

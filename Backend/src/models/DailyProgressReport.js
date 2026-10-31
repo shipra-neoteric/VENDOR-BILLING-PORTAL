@@ -14,6 +14,10 @@ const workEntrySchema = new Schema(
     // of the same spot before work started and after it finished.
     beforeImages: [workImageSchema],
     afterImages:  [workImageSchema],
+    // JCB: whose machine and how many hours it ran. Tractor: how many trips. Only set on those work types.
+    ownerName: { type: String, default: '' },
+    hours:     { type: Number },
+    tractorTrips: { type: Number },
   },
   { _id: false }
 );

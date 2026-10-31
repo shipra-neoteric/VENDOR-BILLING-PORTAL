@@ -4,7 +4,7 @@ import axios from "axios";
 import dayjs from "dayjs";
 import toast from "react-hot-toast";
 import WorkCategoryChecklist from "../../components/WorkCategoryChecklist";
-import { firstMissingProgressField, MIN_IMAGES_PER_CATEGORY } from "../../shared/constants/dailyProgressReportOptions";
+import { firstMissingProgressField, machineDetailMissing, MIN_IMAGES_PER_CATEGORY } from "../../shared/constants/dailyProgressReportOptions";
 import type { DailyProgressReportFormValues, WorkEntry } from "../../shared/constants/dailyProgressReportOptions";
 import Btn from "../../ui/Btn";
 import Card from "../../ui/Card";
@@ -54,6 +54,8 @@ export default function PublicDailyProgressReportForm() {
     const missing = firstMissingProgressField(form);
     if (missing) return toast.error(`Select ${missing}`);
     if (form.workEntries.length === 0) return toast.error("Check at least one work type");
+    const machineMissing = machineDetailMissing(form.workEntries);
+    if (machineMissing) return toast.error(machineMissing);
     // No labour on site that day means no work photos to take either — the
     // mandatory-photo rule only makes sense once there's actually a crew
     // present being reported on.

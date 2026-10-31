@@ -7,8 +7,11 @@ const {
   submitWorkOrder, checkerApprove, approverApprove, finalApprove, sendBack,
   addScopeProgress, editProgressEntry, deleteProgressEntry, invalidateProgressEntry,
   addSubItemProgress, editSubItemProgressEntry, deleteSubItemProgressEntry, invalidateSubItemProgressEntry,
-  approveScopeItemVariance, approveSubItemVariance,
+  approveScopeItemVariance, approveSubItemVariance, findExistingWorkOrder,
 } = require('../controllers/workOrderController');
+const {
+  createAddendum, addendumCheckerApprove, addendumApproverApprove, addendumFinalApprove, addendumSendBack,
+} = require('../controllers/workOrderAddendumController');
 
 router.use(authenticate);
 
@@ -16,6 +19,9 @@ router.get('/',            listWorkOrders);
 // Must come before '/:id' — otherwise Express would match "bulk-detail" as
 // an :id value and this route would never be reached.
 router.get('/bulk-detail', getWorkOrdersBulkDetail);
+// Must also come before '/:id' — the New Work Order form asks whether a work order already covers a
+// site + vendor (group) + category.
+router.get('/existing', findExistingWorkOrder);
 router.get('/:id',         getWorkOrder);
 router.get('/:id/retention-held', getWorkOrderRetentionHeld);
 // 'create'/'edit' are the pre-existing broad grants; 'maker' is the new,
@@ -38,6 +44,13 @@ router.patch('/:id/submit',          authorizeOr('work-orders', 'maker'), submit
 router.patch('/:id/checker-approve', authorizeOr('work-orders', 'checker', 'CEO'), checkerApprove);
 router.patch('/:id/approver-approve', authorizeOr('work-orders', 'approver', 'CEO'), approverApprove);
 router.patch('/:id/final-approve',   authorizeOrAlt('work-orders', 'ceo-approve', 'md-approvals', 'approve', 'CEO'), finalApprove);
+// "Add Scope" on an approved work order: same stage permissions as the work order's own chain.
+router.post('/:id/addenda', authorizeAnyOr('work-orders', ['create', 'maker', 'edit']), createAddendum);
+router.patch('/:id/addenda/:addendumId/checker-approve', authorizeOr('work-orders', 'checker', 'CEO'), addendumCheckerApprove);
+router.patch('/:id/addenda/:addendumId/approver-approve', authorizeOr('work-orders', 'approver', 'CEO'), addendumApproverApprove);
+router.patch('/:id/addenda/:addendumId/final-approve', authorizeOrAlt('work-orders', 'ceo-approve', 'md-approvals', 'approve', 'CEO'), addendumFinalApprove);
+router.patch('/:id/addenda/:addendumId/send-back', authorizeAnyOrAlt('work-orders', ['checker', 'approver', 'ceo-approve'], 'md-approvals', 'reject', 'CEO'), addendumSendBack);
+
 router.patch('/:id/send-back',       authorizeAnyOrAlt('work-orders', ['checker', 'approver', 'ceo-approve'], 'md-approvals', 'reject', 'CEO'), sendBack);
 // site-dri is hardcoded here (unlike most other modules) because logging
 // progress is that role's actual job — none of today's real DRI accounts have

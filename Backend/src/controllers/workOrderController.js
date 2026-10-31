@@ -36,6 +36,8 @@ const { milestonesExceedContract } = require('../utils/validateMilestones');
 const { documentsExceedLimit } = require('../utils/validateDocuments');
 const { logAudit, diffFields } = require('../utils/auditLog');
 const { archiveDeleted } = require('../utils/recycleBin');
+const { findExistingSiteVendorCategoryWo, duplicateMessage } = require('../utils/woDuplicateGuard');
+const { attachVendorGroups } = require('../utils/vendorGroupHelpers');
 const { attachBalanceAmounts } = require('../utils/balanceAmounts');
 const { resolveEntryQty, cleanDocuments, sumActiveQty, applyVarianceGate, recomputeParentFromSubItems } = require('../utils/progressHelpers');
 const { getRetentionHeldForWorkOrder } = require('../utils/retentionHeld');
@@ -273,6 +275,9 @@ exports.listWorkOrders = asyncHandler(async (req, res) => {
   // New Bill asks for this: each scope item's amount still owed once its quantity is billed.
   if (req.query.withBalance === 'true') await attachBalanceAmounts(workOrders);
 
+  // Vendor Group of each work order's vendor (shown in the WO header; display only).
+  await attachVendorGroups(workOrders, (w) => (w.contractType === 'professional-services' ? '' : w.vendorCode));
+
   success(res, { workOrders });
 });
 
@@ -308,6 +313,7 @@ exports.getWorkOrder =asyncHandler(async (req, res) => {
     if (details) workOrder.contractorDetails = details;
     overlayLiveContractorFields(workOrder, party, isProfessionalServices);
   }
+  await attachVendorGroups([workOrder], (w) => (w.contractType === 'professional-services' ? '' : w.vendorCode));
 
   success(res, { workOrder });
 });
@@ -370,6 +376,14 @@ exports.getWorkOrderRetentionHeld = asyncHandler(async (req, res) => {
   success(res, { held });
 });
 
+// GET /work-orders/existing?projectId&vendorCode&category&contractType — the work order already covering this
+// site + vendor group + category, or null (drives the New Work Order form's warning).
+exports.findExistingWorkOrder = asyncHandler(async (req, res) => {
+  const { projectId, vendorCode, category, contractType } = req.query;
+  const existing = await findExistingSiteVendorCategoryWo({ projectId, vendorCode, category, contractType });
+  success(res, { existing: existing || null, message: existing ? duplicateMessage(existing) : '' });
+});
+
 exports.createWorkOrder = asyncHandler(async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
@@ -403,6 +417,15 @@ exports.createWorkOrder = asyncHandler(async (req, res) => {
         ? 'Consultant not found for this consultant code'
         : 'Contractor not found for this vendor code');
     }
+  }
+
+  // One work order per site + vendor (group) + category: more work for the same goes on that one as an
+  // addendum ("Add Scope"), never a new work order.
+  const existingWo = await findExistingSiteVendorCategoryWo({
+    projectId: req.body.projectId, vendorCode: req.body.vendorCode, category: req.body.category, contractType: req.body.contractType,
+  });
+  if (existingWo) {
+    return res.status(409).json({ success: false, message: duplicateMessage(existingWo), data: { existing: existingWo } });
   }
 
   let workOrderNo = (req.body.workOrderNo || '').trim();
