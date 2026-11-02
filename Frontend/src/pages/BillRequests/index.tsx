@@ -193,6 +193,8 @@ const BILL_STATUS_BADGE_COLOR: Record<string, NxBadgeColor> = {
 // that shared type for one screen.
 interface ManualBillDetail extends PrintableBill {
   workOrderNo?: string;
+  // Attached files (name + link) — shown in the manual-bill review drawer.
+  documents?: { name: string; url: string }[];
   vendorGroupName?: string;
   workOrderId?: string;
   verificationBy?: { name?: string } | null;
@@ -2324,6 +2326,25 @@ export default function BillApproval() {
               </Tfoot>
             </Table>
           </div>
+
+          {viewManualBill.remarks && (
+            <div className="mb-4 text-gray-500 dark:text-gray-400 text-[13px]"><strong>Remarks:</strong> {viewManualBill.remarks}</div>
+          )}
+
+          {viewManualBill.documents && viewManualBill.documents.length > 0 && (
+            <div className="mb-4 text-[13px]">
+              <strong className="text-gray-500 dark:text-gray-400">Documents:</strong>
+              <div className="mt-1.5 flex flex-col gap-1.5">
+                {viewManualBill.documents.map((d, i) => (
+                  <a key={i} href={d.url} target="_blank" rel="noreferrer" download={d.name}
+                    className="inline-flex items-center gap-2 text-primary hover:underline">
+                    <FileText className="w-3.5 h-3.5 shrink-0" />
+                    <span className="truncate">{d.name}</span>
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
 
           {(() => {
             const gross = viewManualBill.amount || 0;
