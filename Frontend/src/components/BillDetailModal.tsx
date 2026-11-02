@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Trophy, ArrowRight, Check, X, AlertTriangle, ChevronDown } from "lucide-react";
+import { Trophy, ArrowRight, Check, X, AlertTriangle, ChevronDown, FileText } from "lucide-react";
 import dayjs from "dayjs";
 import { billFinancials } from "../shared/utils/billMath";
 import Modal from "../ui/Modal";
@@ -170,6 +170,8 @@ export interface BillDetailRequest {
   subCategory: string;
   items: BillDetailItem[];
   remarks: string;
+  // Files attached to the request / bill (name + link).
+  documents?: { name: string; url: string }[];
   periodFrom?: string;
   periodTo?: string;
   status: "pending" | "approved" | "rejected";
@@ -485,6 +487,21 @@ export default function BillDetailModal({
         {billRequest.remarks && (
           <div className="bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 rounded-md px-2.5 py-2 text-sm text-amber-800 dark:text-amber-300">
             <strong>Remarks:</strong> {billRequest.remarks}
+          </div>
+        )}
+
+        {billRequest.documents && billRequest.documents.length > 0 && (
+          <div className="text-[13px]">
+            <strong className="text-gray-500 dark:text-gray-400">Documents:</strong>
+            <div className="mt-1.5 flex flex-col gap-1.5">
+              {billRequest.documents.map((d, i) => (
+                <a key={i} href={d.url} target="_blank" rel="noreferrer" download={d.name}
+                  className="inline-flex items-center gap-2 text-primary hover:underline">
+                  <FileText className="w-3.5 h-3.5 shrink-0" />
+                  <span className="truncate">{d.name}</span>
+                </a>
+              ))}
+            </div>
           </div>
         )}
 
