@@ -20,6 +20,7 @@ import { Table, Thead, Tbody, Tr, Th, Td } from "../../ui/Table";
 import { SearchFilter, DropdownSelectFilter } from "../../ui/Filters";
 import DateRangeFilter, { inDateRange } from "../../components/DateRangeFilter";
 import ReviewDrawer from "./ReviewDrawer";
+import VendorParty from "../../components/VendorParty";
 import { SYSTEM_LABEL } from "./types";
 import type { MdApprovalRow, MdSystem, MdTab } from "./types";
 
@@ -276,6 +277,7 @@ export default function MdApprovals() {
         (r.workOrderNo || "").toLowerCase().includes(q) ||
         (r.projectName || "").toLowerCase().includes(q) ||
         (r.vendorName || "").toLowerCase().includes(q) ||
+        (r.vendorGroupName || "").toLowerCase().includes(q) ||
         (r.department || "").toLowerCase().includes(q) ||
         (r.approvalType || "").toLowerCase().includes(q) ||
         SYSTEM_LABEL[r.system].toLowerCase().includes(q) ||
@@ -628,7 +630,7 @@ export default function MdApprovals() {
                 <Td className="font-bold break-words">{row.referenceNumber || "—"}</Td>
                 <Td className="break-words">{row.workOrderNo || "—"}</Td>
                 <Td className="break-words">{row.projectName || "—"}</Td>
-                <Td className="break-words">{row.vendorName || "—"}</Td>
+                <Td className="break-words"><VendorParty vendorName={row.vendorName ?? undefined} groupName={row.vendorGroupName} payeeName={row.vendorName ?? undefined} /></Td>
                 <Td className="break-words">{row.department || "—"}</Td>
                 <Td className="font-mono whitespace-nowrap">{fmt(row.amount)}</Td>
                 <Td>

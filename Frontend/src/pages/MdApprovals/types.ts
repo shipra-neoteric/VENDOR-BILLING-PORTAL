@@ -10,6 +10,9 @@ export interface MdApprovalRow {
   workOrderNo?: string | null;
   projectName?: string | null;
   vendorName?: string | null;
+  vendorCode?: string | null;
+  // Vendor Group of the vendor, when any (display only).
+  vendorGroupName?: string;
   department?: string | null;
   isArchived?: boolean;
   amount: number;

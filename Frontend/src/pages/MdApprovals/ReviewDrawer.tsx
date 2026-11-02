@@ -86,6 +86,7 @@ function billToSyntheticRequest(bill: Record<string, unknown>): BillDetailReques
     projectName: (bill.projectName as string) || "",
     projectLocation: (bill.projectLocation as string) || "",
     vendorName: (bill.vendorName as string) || "",
+    vendorGroupName: (bill.vendorGroupName as string) || undefined,
     // A manual bill has no real category field (that's a BillRequest-only
     // concept) — department is the closest equivalent it actually carries,
     // same label convention BillRequests/index.tsx's own departmentLabel uses.

@@ -51,6 +51,7 @@ const WorkOrder = require('../models/WorkOrder');
 const BillRequest = require('../models/BillRequest');
 const RunningBill = require('../models/RunningBill');
 const User = require('../models/User');
+const { attachVendorGroups } = require('../utils/vendorGroupHelpers');
 
 const DAY_MS = 86400000;
 const dayFloor = (from, to) => Math.max(0, Math.floor((new Date(to).getTime() - new Date(from).getTime()) / DAY_MS));
@@ -179,6 +180,7 @@ async function buildPendingItems(user) {
       isArchived: wo.status === 'cancelled',
       projectName: wo.projectName || null,
       vendorName: wo.vendorName || null,
+      vendorCode: wo.vendorCode || null,
       requester: wo.createdBy?.name || null,
       department: departmentOf(wo),
       amount: wo.contractValue || 0,
@@ -209,6 +211,7 @@ async function buildPendingItems(user) {
       isArchived: !!br.isArchived,
       projectName: br.projectName || null,
       vendorName: br.vendorName || null,
+      vendorCode: br.vendorCode || null,
       requester: br.requestedBy?.name || null,
       department: departmentOf(br),
       amount: (br.items || []).reduce((s, it) => s + (it.amount ?? (it.rate || 0) * it.billedQty), 0),
@@ -242,6 +245,7 @@ async function buildPendingItems(user) {
       isArchived: !!bill.isArchived,
       projectName: bill.projectName || null,
       vendorName: bill.vendorName || null,
+      vendorCode: bill.vendorCode || null,
       requester: bill.createdBy?.name || bill.generatedBy || null,
       department: departmentOf(bill),
       amount: bill.amount || 0,
@@ -270,6 +274,7 @@ async function buildPendingItems(user) {
         isArchived: !!bill.isArchived,
         projectName: bill.projectName || null,
         vendorName: bill.vendorName || null,
+        vendorCode: bill.vendorCode || null,
         requester: bill.createdBy?.name || bill.generatedBy || null,
         department: departmentOf(bill),
         amount: bill.amount || 0,
@@ -322,6 +327,7 @@ async function buildDecidedItems(user, decision) {
         isArchived: wo.status === 'cancelled',
         projectName: wo.projectName || null,
         vendorName: wo.vendorName || null,
+        vendorCode: wo.vendorCode || null,
         requester: wo.createdBy?.name || null,
         department: departmentOf(wo),
         amount: wo.contractValue || 0,
@@ -366,6 +372,7 @@ async function buildDecidedItems(user, decision) {
         isArchived: !!br.isArchived,
         projectName: br.projectName || null,
         vendorName: br.vendorName || null,
+        vendorCode: br.vendorCode || null,
         requester: br.requestedBy?.name || null,
         department: departmentOf(br),
         amount: (br.items || []).reduce((s, it) => s + (it.amount ?? (it.rate || 0) * it.billedQty), 0),
@@ -422,6 +429,7 @@ async function buildDecidedItems(user, decision) {
             isArchived: !!bill.isArchived,
             projectName: bill.projectName || null,
             vendorName: bill.vendorName || null,
+            vendorCode: bill.vendorCode || null,
             requester: bill.createdBy?.name || bill.generatedBy || null,
             department: departmentOf(bill),
             amount: bill.amount || 0,
@@ -450,6 +458,7 @@ async function buildDecidedItems(user, decision) {
             isArchived: !!bill.isArchived,
             projectName: bill.projectName || null,
             vendorName: bill.vendorName || null,
+            vendorCode: bill.vendorCode || null,
             requester: bill.createdBy?.name || bill.generatedBy || null,
             department: departmentOf(bill),
             amount: bill.amount || 0,
@@ -489,6 +498,8 @@ exports.listMdApprovals = asyncHandler(async (req, res) => {
 
   const items = tab === 'pending' ? await buildPendingItems(user) : await buildDecidedItems(user, tab);
 
+  // Vendor Group of each row's vendor — the queue shows the group, not the individual vendor (display only).
+  await attachVendorGroups(items, (i) => i.vendorCode);
   success(res, { items, tab });
 });
 
@@ -602,6 +613,8 @@ exports.getMdApprovalDetail = asyncHandler(async (req, res) => {
   // (RunningBill-Manual instead reads straight off GET /bills/:id, which is
   // already fully populated for this purpose).
   if (system === 'BillRequest') {
+    const groupRow = { vendorCode: doc.vendorCode };
+    await attachVendorGroups([groupRow], (r) => r.vendorCode);
     detail.billRequestRaw = {
       _id: String(doc._id),
       reqNo: doc.reqNo,
@@ -612,10 +625,12 @@ exports.getMdApprovalDetail = asyncHandler(async (req, res) => {
       projectName: doc.projectName,
       projectLocation: doc.projectLocation,
       vendorName: doc.vendorName,
+      vendorGroupName: groupRow.vendorGroupName,
       category: doc.category,
       subCategory: doc.subCategory,
       items: doc.items || [],
       remarks: doc.remarks || '',
+      documents: doc.documents || [],
       periodFrom: doc.periodFrom,
       periodTo: doc.periodTo,
       status: doc.status === 'approved' ? 'approved' : doc.status === 'rejected' ? 'rejected' : 'pending',

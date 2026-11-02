@@ -166,6 +166,8 @@ export interface BillDetailRequest {
   // (e.g. a cost breakdown) — see ReviewDrawer's RunningBill-Manual loader.
   workOrderNote?: string;
   vendorName: string;
+  // Vendor Group of the contractor, when any — shown first with the contractor in brackets.
+  vendorGroupName?: string;
   category: string;
   subCategory: string;
   items: BillDetailItem[];
@@ -306,7 +308,7 @@ export default function BillDetailModal({
       ),
     ],
     ["Project", billRequest.projectName],
-    ["Contractor", billRequest.vendorName],
+    ["Contractor", billRequest.vendorGroupName && billRequest.vendorGroupName !== billRequest.vendorName ? `${billRequest.vendorGroupName} (${billRequest.vendorName})` : billRequest.vendorName],
     ["Category", [billRequest.category, billRequest.subCategory].filter(Boolean).join(" › ")],
     ...(() => {
       // The specific site location (Tower/Floor/Plot…) the DRI actually
