@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
   HardHat, Users, Briefcase, Activity, CheckCircle2, Clock, Building2, FileText,
-  Receipt, Ruler, Pencil, Ban, History, Send, ClipboardList, Info, Download,
+  Receipt, Ruler, Pencil, Ban, History, Send, ClipboardList, Info, Download, Search,
 } from "lucide-react";
 import apiClient from "../../services/apiClient";
 import { useAuth } from "../../context/AuthContext";
@@ -473,6 +473,7 @@ export default function DRIDashboard() {
 
   // ── Bulk measurement: tick several rows (items without particulars, or particulars) and log them in one go, each
   // pre-filled with what is still to be done (planned − executed). Key = "workOrderId|itemId|subItemId".
+  const [woSearch, setWoSearch] = useState("");
   const [bulkSel, setBulkSel] = useState<Set<string>>(new Set());
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkDate, setBulkDate] = useState(dayjs().format("YYYY-MM-DD"));
@@ -994,7 +995,8 @@ export default function DRIDashboard() {
   // Group WOs by vendor within the selected project
   const vendorGroups = (() => {
     const groups = new Map<string, { vendorName: string; vendorCode: string; wos: WORow[] }>();
-    projectWOs.forEach(wo => {
+    const q = woSearch.trim().toLowerCase();
+    projectWOs.filter(wo => !q || [wo.workOrderNo, wo.vendorName, wo.vendorCode, wo.category].some(v => (v || "").toLowerCase().includes(q))).forEach(wo => {
       const code = wo.vendorCode || "unknown";
       if (!groups.has(code)) groups.set(code, { vendorName: wo.vendorName || code, vendorCode: code, wos: [] });
       groups.get(code)!.wos.push(wo);
@@ -1039,10 +1041,19 @@ export default function DRIDashboard() {
         </div>
       )}
 
+      <div className="relative mb-4 max-w-md">
+        <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+        <input
+          value={woSearch} onChange={(e) => setWoSearch(e.target.value)} placeholder="Search work order, contractor, code or category…"
+          className="w-full h-10 pl-9 pr-3 text-[13px] rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1E293B] text-[#1A1A2E] dark:text-[#F1F5F9]"
+        />
+      </div>
+
       {detailLoading ? (
         <Spinner size="large" />
       ) : (
         <>
+          {woSearch.trim() && vendorGroups.length === 0 && <div className="py-8 text-center text-sm text-gray-400">No work order matches "{woSearch.trim()}".</div>}
           {/* Vendor + WO cards */}
           {vendorGroups.map(vg => (
             <div key={vg.vendorCode} className="bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700/40 rounded-lg overflow-hidden mb-4 shadow-sm">
