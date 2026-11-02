@@ -286,7 +286,8 @@ export default function MdApprovals() {
     if (tab === "aging") list = [...list].sort((a, b) => (b.daysPending ?? 0) - (a.daysPending ?? 0));
     // Every other tab: newest first, then older — by when it reached this approval stage (pending) or
     // was decided (approved / rejected). Ties fall back to the reference number, highest first.
-    else list = [...list].sort((a, b) => newestFirstTime(b) - newestFirstTime(a) || (b.referenceNumber || "").localeCompare(a.referenceNumber || "", undefined, { numeric: true }));
+    // Manual bills sit below every other kind of request (bill requests, work orders, accounts); within each group newest first.
+    else list = [...list].sort((a, b) => (a.system === "RunningBill-Manual" ? 1 : 0) - (b.system === "RunningBill-Manual" ? 1 : 0) || newestFirstTime(b) - newestFirstTime(a) || (b.referenceNumber || "").localeCompare(a.referenceNumber || "", undefined, { numeric: true }));
     return list;
   }, [items, tab, systemGroupKey, deptFilter, projectFilter, showArchived, search, dateFrom, dateTo]);
 
