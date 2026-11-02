@@ -464,6 +464,12 @@ export default function DRIDashboard() {
   // see woBillsMap's own comment above for why this exists alongside
   // allBills/projectBills (bill *requests*, a different collection).
   const hasBill = (woId: string) => (woBillsMap[woId]?.length ?? 0) > 0;
+  // "84 No." / "120 sq.ft, 4 rft" — a pending-bill list's quantities added up per unit (different units can't be summed).
+  const unitTotals = (rows: { unit: string; billedQty: number }[]) => {
+    const by = new Map<string, number>();
+    for (const r of rows) by.set(r.unit || "", (by.get(r.unit || "") ?? 0) + r.billedQty);
+    return [...by].map(([u, q]) => `${fmtN(q)}${u ? ` ${u}` : ""}`).join(", ");
+  };
 
   // ── Bulk measurement: tick several rows (items without particulars, or particulars) and log them in one go, each
   // pre-filled with what is still to be done (planned − executed). Key = "workOrderId|itemId|subItemId".
@@ -1872,6 +1878,16 @@ export default function DRIDashboard() {
         >
           <Alert type="info" message="Project bill request" description="Select work orders to include. Quantities are auto-calculated from recorded measurement since last billing." />
 
+          {billableWODetails.length > 0 && (() => {
+            const all = billableWODetails.flatMap(d => getPendingBillableRows(d.scopeItems));
+            return (
+              <div className="mt-3 text-[13px] text-gray-600 dark:text-gray-300">
+                Total pending: <strong>{all.length} entr{all.length === 1 ? "y" : "ies"}</strong> across {billableWODetails.length} work order{billableWODetails.length !== 1 ? "s" : ""}
+                <span className="text-gray-400"> · {unitTotals(all)}</span>
+              </div>
+            );
+          })()}
+
           <div className="mt-3.5">
             {billableWODetails.length === 0 ? (
               <EmptyState icon={FileText} title="No pending measurement to bill" message="Record daily measurement first." />
@@ -1903,12 +1919,18 @@ export default function DRIDashboard() {
                                 })}
                               />
                               <div className="flex-1">
-                                <div className="font-bold text-primary text-[13px]">{detail.workOrderNo}</div>
+                                <div className="font-bold text-primary text-[13px]">
+                                  {detail.workOrderNo}
+                                  <span className="ml-2 text-[11px] font-semibold text-gray-500 dark:text-gray-400">
+                                    {pendingItems.length} entr{pendingItems.length === 1 ? "y" : "ies"} · {unitTotals(pendingItems)}
+                                  </span>
+                                </div>
                                 {detail.category && <div className="text-[11px] text-gray-400 mb-2">{detail.category}</div>}
                                 <table className="w-full border-collapse text-xs">
                                   <tbody>
-                                    {pendingItems.map(row => (
+                                    {pendingItems.map((row, rowNo) => (
                                       <tr key={row.key}>
+                                        <td className="py-0.5 pr-2 w-8 text-gray-400 font-mono text-right">{rowNo + 1}.</td>
                                         <td className="py-0.5 text-[#1A1A2E] dark:text-[#F1F5F9] font-medium">{row.description}</td>
                                         <td className="py-0.5 px-2 text-gray-500 dark:text-gray-400">{row.unit}</td>
                                         <td className="py-0.5 text-gray-500 dark:text-gray-400">Prev billed: {fmtN(row.lastBilledQty)}</td>
@@ -1942,7 +1964,7 @@ export default function DRIDashboard() {
             <div className="mt-3">
               <Alert
                 type="warning"
-                message={<><strong>{billWOIds.size} work order{billWOIds.size !== 1 ? "s" : ""}</strong> will be included in this bill request.</>}
+                message={<><strong>{billWOIds.size} work order{billWOIds.size !== 1 ? "s" : ""}</strong> ({billableWODetails.filter(d => billWOIds.has(d._id)).reduce((t, d) => t + getPendingBillableRows(d.scopeItems).length, 0)} entries) will be included in this bill request.</>}
               />
             </div>
           )}
