@@ -6,6 +6,7 @@ import dayjs from "dayjs";
 import apiClient from "../services/apiClient";
 import WorkOrderApprovalWorkflow from "./WorkOrderApprovalWorkflow";
 import WorkOrderAddenda from "./WorkOrderAddenda";
+import WorkOrderHistory from "./WorkOrderHistory";
 import { getWorkOrderDocuments } from "./DocumentsUpload";
 import PaymentMilestonesBuilder, { calcPayable } from "./PaymentMilestonesBuilder";
 import type { MilestoneDraft } from "./PaymentMilestonesBuilder";
@@ -850,6 +851,9 @@ export default function WorkOrderDetailView({
 
       {/* ── Added scope (addenda) — extra work on this approved WO ────── */}
       <WorkOrderAddenda workOrder={wo} readOnly={readOnly} onUpdated={(updated) => onUpdated?.(updated)} />
+
+      {/* ── Edit history — who changed what, and when ───────────────── */}
+      <WorkOrderHistory workOrderId={wo.id} />
 
       {/* ── Approval Workflow & Signatures — at the bottom ──────────── */}
       <WorkOrderApprovalWorkflow

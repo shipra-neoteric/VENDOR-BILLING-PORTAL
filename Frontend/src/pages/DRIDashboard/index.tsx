@@ -465,6 +465,85 @@ export default function DRIDashboard() {
   // allBills/projectBills (bill *requests*, a different collection).
   const hasBill = (woId: string) => (woBillsMap[woId]?.length ?? 0) > 0;
 
+  // ── Bulk measurement: tick several rows (items without particulars, or particulars) and log them in one go, each
+  // pre-filled with what is still to be done (planned − executed). Key = "workOrderId|itemId|subItemId".
+  const [bulkSel, setBulkSel] = useState<Set<string>>(new Set());
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkDate, setBulkDate] = useState(dayjs().format("YYYY-MM-DD"));
+  const [bulkRemarks, setBulkRemarks] = useState("");
+  const [bulkQty, setBulkQty] = useState<Record<string, string>>({});
+  const [bulkSaving, setBulkSaving] = useState(false);
+  const bulkKey = (woId: string, itemId: string, subId?: string) => `${woId}|${itemId}|${subId ?? ""}`;
+  const bulkRemaining = (planned: number, executed: number) => Math.max(0, Math.round(((planned || 0) - (executed || 0)) * 1e5) / 1e5);
+  // A row can be ticked unless it is already fully measured (a planned quantity of 0 = "not set", always allowed).
+  const bulkSelectable = (planned: number, executed: number) => !(planned > 0 && executed >= planned);
+  const bulkKeysFor = (d: WODetail): string[] => d.scopeItems.flatMap(si =>
+    (si.subItems?.length ?? 0) > 0
+      ? si.subItems!.filter(x => bulkSelectable(x.plannedQty, x.completedQty)).map(x => bulkKey(d._id, si._id, x._id))
+      : (bulkSelectable(si.plannedQty, si.completedQty) ? [bulkKey(d._id, si._id)] : [])
+  );
+  const bulkInfo = (key: string) => {
+    const [woId, itemId, subId] = key.split("|");
+    const d = woDetails.get(woId);
+    const si = d?.scopeItems.find(x => x._id === itemId);
+    const sub = subId ? si?.subItems?.find(x => x._id === subId) : undefined;
+    const t = sub ?? si;
+    if (!d || !si || !t) return null;
+    return {
+      woId, itemId, subId, woNo: d.workOrderNo, unit: t.unit || si.unit,
+      label: sub ? `${si.description} — ${sub.description}` : si.description,
+      planned: t.plannedQty || 0, executed: t.completedQty || 0,
+    };
+  };
+  const toggleBulk = (key: string) => setBulkSel(prev => { const n = new Set(prev); if (n.has(key)) n.delete(key); else n.add(key); return n; });
+  const openBulk = () => {
+    const q: Record<string, string> = {};
+    for (const k of bulkSel) { const i = bulkInfo(k); if (i) { const r = bulkRemaining(i.planned, i.executed); q[k] = r > 0 ? String(r) : ""; } }
+    setBulkQty(q); setBulkDate(dayjs().format("YYYY-MM-DD")); setBulkRemarks(""); setBulkOpen(true);
+  };
+  const submitBulk = async () => {
+    const jobs = [...bulkSel].map(k => ({ k, i: bulkInfo(k) })).filter((j): j is { k: string; i: NonNullable<ReturnType<typeof bulkInfo>> } => !!j.i);
+    const bad = jobs.find(j => !(Number(bulkQty[j.k]) > 0));
+    if (bad) { toast.error(`Enter a quantity above 0 for "${bad.i.label}"`); return; }
+    setBulkSaving(true);
+    const touched = new Set<string>(); const done: string[] = []; const failed: string[] = [];
+    for (const { k, i } of jobs) {
+      const path = i.subId
+        ? `/work-orders/${i.woId}/scope-items/${i.itemId}/sub-items/${i.subId}/progress`
+        : `/work-orders/${i.woId}/scope-items/${i.itemId}/progress`;
+      try {
+        await apiClient.post(path, { date: bulkDate || dayjs().format("YYYY-MM-DD"), qtyAdded: Number(bulkQty[k]), remarks: bulkRemarks, locationNote: "" });
+        touched.add(i.woId); done.push(k);
+      } catch (e: any) {
+        failed.push(`${i.label}: ${e?.response?.data?.message || "failed"}`);
+      }
+    }
+    for (const woId of touched) { try { await reloadWODetail(woId); } catch { /* the next refresh picks it up */ } }
+    setBulkSel(prev => { const n = new Set(prev); done.forEach(k => n.delete(k)); return n; });
+    setBulkSaving(false);
+    if (failed.length === 0) { toast.success(`${done.length} measurement${done.length !== 1 ? "s" : ""} recorded`); setBulkOpen(false); }
+    else toast.error(`${done.length} recorded, ${failed.length} failed — ${failed[0]}`, { duration: 7000 });
+  };
+
+  // Billed / unbilled quantity per scope item. Billing runs per particular when an item has them (the item's own
+  // lastBilledQty stays 0). The item's Executed is a roll-up of its particulars (each one's fraction done, averaged and
+  // projected onto the item's planned quantity — see recomputeParentFromSubItems), so its Billed is rolled up the same
+  // way: that keeps Billed comparable with Executed even though every particular is measured against the same area.
+  // Unbilled is only blanked for an older work order that has bills but no billed quantity recorded anywhere.
+  const woBilledQtyRecorded = (d: WODetail) => d.scopeItems.some(si => (si.lastBilledQty || 0) > 0 || (si.subItems ?? []).some(x => (x.lastBilledQty || 0) > 0));
+  const unbilledBlanked = (d: WODetail) => hasBill(d._id) && !woBilledQtyRecorded(d);
+  const itemBilled = (si: ScopeItemDetail) => {
+    const subs = si.subItems ?? [];
+    if (subs.length === 0) return si.lastBilledQty || 0;
+    const planned = si.plannedQty || subs.reduce((t, x) => t + (x.plannedQty || 0), 0);
+    const avgBilledFraction = subs.reduce((t, x) => t + ((x.plannedQty || 0) > 0 ? Math.min(1, (x.lastBilledQty || 0) / x.plannedQty) : 0), 0) / subs.length;
+    return Math.round(planned * avgBilledFraction);
+  };
+  const itemUnbilled = (si: ScopeItemDetail, d: WODetail) => {
+    if (unbilledBlanked(d)) return 0;
+    return Math.max(0, (si.completedQty || 0) - itemBilled(si));
+  };
+
   // Mirrors the backend's expandBillableCandidates — billing (and this
   // preview of it) operates per particular when an item has them, never
   // against the parent's own rolled-up completedQty, which is only ever a
@@ -516,7 +595,7 @@ export default function DRIDashboard() {
       project: detail.projectName || (typeof detail.projectId === "object" ? detail.projectId?.name ?? "" : ""),
       workOrderNo: detail.workOrderNo, vendor: detail.vendorName ?? "",
       item: sub ? `${item.description} › ${sub.description}` : item.description, unit: target.unit,
-      planned: target.plannedQty || 0, executed: target.completedQty || 0, billed: sub ? null : (item.lastBilledQty || 0),
+      planned: target.plannedQty || 0, executed: target.completedQty || 0, billed: sub ? (sub.lastBilledQty || 0) : itemBilled(item),
       generatedOn: dayjs().format("DD MMM YYYY"), entries: sheetEntries,
     };
   };
@@ -1011,6 +1090,20 @@ export default function DRIDashboard() {
                       <Table className="min-w-[980px]">
                         <Thead>
                           <Tr>
+                            {canEdit && (
+                              <Th dense className="w-[3%]">
+                                {(() => {
+                                  const keys = bulkKeysFor(detail);
+                                  const allOn = keys.length > 0 && keys.every(k => bulkSel.has(k));
+                                  return (
+                                    <input
+                                      type="checkbox" checked={allOn} disabled={keys.length === 0} title="Select every row of this work order"
+                                      onChange={() => setBulkSel(prev => { const n = new Set(prev); keys.forEach(k => (allOn ? n.delete(k) : n.add(k))); return n; })}
+                                    />
+                                  );
+                                })()}
+                              </Th>
+                            )}
                             <Th dense className="w-[4%]">#</Th>
                             <Th dense className="w-[24%]">Description</Th>
                             <Th dense className="w-[7%]">Unit</Th>
@@ -1025,12 +1118,19 @@ export default function DRIDashboard() {
                         <Tbody>
                           {detail.scopeItems.map((si, idx) => {
                             const p = pctOf(si.completedQty, si.plannedQty);
-                            const billed = si.lastBilledQty || 0;
-                            const unbilled = hasBill(wo._id) ? 0 : Math.max(0, si.completedQty - billed);
+                            const billed = itemBilled(si);
+                            const unbilled = itemUnbilled(si, detail);
                             const hasSubItems = (si.subItems?.length ?? 0) > 0;
                             return (
                               <Fragment key={si._id}>
                                 <Tr className="cursor-pointer" onClick={() => setItemView({ woId: wo._id, itemId: si._id })}>
+                                  {canEdit && (
+                                    <Td dense onClick={(ev) => ev.stopPropagation()}>
+                                      {!hasSubItems && bulkSelectable(si.plannedQty, si.completedQty) && (
+                                        <input type="checkbox" checked={bulkSel.has(bulkKey(wo._id, si._id))} onChange={() => toggleBulk(bulkKey(wo._id, si._id))} />
+                                      )}
+                                    </Td>
+                                  )}
                                   <Td dense className="text-gray-400 whitespace-nowrap">{idx + 1}</Td>
                                   <Td dense className="font-semibold text-[#1A1A2E] dark:text-[#F1F5F9]">
                                     {si.description}
@@ -1070,6 +1170,13 @@ export default function DRIDashboard() {
                                   const sp = pctOf(sub.completedQty, sub.plannedQty);
                                   return (
                                     <Tr key={sub._id} className="bg-gray-50/60 dark:bg-gray-800/20 cursor-pointer" onClick={() => setItemView({ woId: wo._id, itemId: si._id, subId: sub._id })}>
+                                      {canEdit && (
+                                        <Td dense onClick={(ev) => ev.stopPropagation()}>
+                                          {bulkSelectable(sub.plannedQty, sub.completedQty) && (
+                                            <input type="checkbox" checked={bulkSel.has(bulkKey(wo._id, si._id, sub._id))} onChange={() => toggleBulk(bulkKey(wo._id, si._id, sub._id))} />
+                                          )}
+                                        </Td>
+                                      )}
                                       <Td dense className="pl-7 text-gray-400 text-[11px]">{idx + 1}.{subIdx + 1}</Td>
                                       <Td dense className="font-medium text-gray-600 dark:text-gray-300">
                                         {sub.description}
@@ -1079,10 +1186,13 @@ export default function DRIDashboard() {
                                       <Td dense className="text-gray-500 dark:text-gray-400 text-[11px]">{sub.unit}</Td>
                                       <Td dense className="font-mono text-[11px]">{fmtN(sub.plannedQty)}</Td>
                                       <Td dense className={`font-mono text-[11px] ${sub.completedQty > 0 ? "text-emerald-600" : "text-gray-400"}`}>{fmtN(sub.completedQty)}</Td>
-                                      {/* Billing tracks at the item level (its completedQty rolls up from all
-                                          particulars), not per particular — shown blank here on purpose. */}
-                                      <Td dense className="text-[11px] text-gray-400">—</Td>
-                                      <Td dense className="text-[11px] text-gray-400">—</Td>
+                                      <Td dense className="font-mono text-[11px] text-blue-600 whitespace-nowrap">{sub.lastBilledQty ? fmtN(sub.lastBilledQty) : <span className="text-gray-400">—</span>}</Td>
+                                      <Td dense className="font-mono text-[11px] whitespace-nowrap">
+                                        {(() => {
+                                          const subUnbilled = unbilledBlanked(detail) ? 0 : Math.max(0, (sub.completedQty || 0) - (sub.lastBilledQty || 0));
+                                          return subUnbilled > 0 ? <span className="text-primary font-bold">{fmtN(subUnbilled)}</span> : <span className="text-gray-400">—</span>;
+                                        })()}
+                                      </Td>
                                       <Td dense className="min-w-[120px]">
                                         <div className="flex items-center gap-1.5">
                                           <div className="flex-1 h-[5px] bg-gray-100 dark:bg-gray-700/40 rounded-full overflow-hidden">
@@ -1214,6 +1324,66 @@ export default function DRIDashboard() {
       )}
 
       {/* ── Item / particular detail (click a row in the scope-items table) ──────── */}
+      {canEdit && bulkSel.size > 0 && !bulkOpen && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[150] flex items-center gap-3 rounded-xl bg-[#1A1A2E] text-white shadow-2xl px-4 py-2.5">
+          <span className="text-sm font-semibold">{bulkSel.size} row{bulkSel.size !== 1 ? "s" : ""} selected</span>
+          <NxBtn color="primary" label="Add measurement for selected" onClick={openBulk} />
+          <button type="button" className="text-xs text-gray-300 hover:text-white underline" onClick={() => setBulkSel(new Set())}>Clear</button>
+        </div>
+      )}
+
+      {bulkOpen && (
+        <Modal
+          icon={Ruler}
+          title={`Add measurement — ${bulkSel.size} selected`}
+          extraWide
+          onClose={() => !bulkSaving && setBulkOpen(false)}
+          footer={
+            <div className="flex justify-end gap-2">
+              <NxBtn color="secondary" label="Cancel" onClick={() => !bulkSaving && setBulkOpen(false)} />
+              <NxBtn color="primary" label={bulkSaving ? "Saving…" : `Submit ${bulkSel.size}`} loading={bulkSaving} onClick={submitBulk} />
+            </div>
+          }
+        >
+          <div className="text-[11px] font-semibold text-gray-400 dark:text-gray-500 -mt-1 mb-3">
+            Each quantity is pre-filled with what is still to be done (planned − executed). Change any of them if needed.
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+            <label className="text-xs font-semibold text-gray-500 dark:text-gray-400">Date
+              <input type="date" value={bulkDate} onChange={(e) => setBulkDate(e.target.value)} className="mt-1 w-full h-9 px-2.5 text-[13px] rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900" />
+            </label>
+            <label className="text-xs font-semibold text-gray-500 dark:text-gray-400">Remarks (optional, applied to all)
+              <input value={bulkRemarks} onChange={(e) => setBulkRemarks(e.target.value)} className="mt-1 w-full h-9 px-2.5 text-[13px] rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900" />
+            </label>
+          </div>
+          <Table className="min-w-[640px]">
+            <Thead>
+              <Tr><Th dense>Work order</Th><Th dense>Item</Th><Th dense className="text-right">Planned</Th><Th dense className="text-right">Executed</Th><Th dense className="text-right w-[150px]">Quantity to add</Th></Tr>
+            </Thead>
+            <Tbody>
+              {[...bulkSel].map(k => {
+                const i = bulkInfo(k);
+                if (!i) return null;
+                return (
+                  <Tr key={k}>
+                    <Td dense className="whitespace-nowrap text-primary font-semibold">{i.woNo}</Td>
+                    <Td dense className="whitespace-normal">{i.label}</Td>
+                    <Td dense className="text-right font-mono">{i.planned > 0 ? fmtN(i.planned) : "—"} {i.unit}</Td>
+                    <Td dense className="text-right font-mono text-emerald-600">{fmtN(i.executed)}</Td>
+                    <Td dense>
+                      <input
+                        type="number" min="0" step="any" value={bulkQty[k] ?? ""} onChange={(e) => setBulkQty(prev => ({ ...prev, [k]: e.target.value }))}
+                        className="w-full h-9 px-2.5 text-[13px] text-right font-mono rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"
+                      />
+                    </Td>
+                  </Tr>
+                );
+              })}
+            </Tbody>
+          </Table>
+        </Modal>
+      )}
+
       {itemView && (() => {
         const detail = woDetails.get(itemView.woId);
         const item = detail?.scopeItems.find(s => s._id === itemView.itemId);
@@ -1229,7 +1399,10 @@ export default function DRIDashboard() {
         const active = entries.filter(e => !e.invalidated?.done);
         const planned = target.plannedQty || 0;
         const executed = target.completedQty || 0;
-        const billed = sub ? null : (item.lastBilledQty || 0);
+        const billed = sub ? (sub.lastBilledQty || 0) : itemBilled(item);
+        const unbilledQty = sub
+          ? (unbilledBlanked(detail) ? 0 : Math.max(0, (sub.completedQty || 0) - (sub.lastBilledQty || 0)))
+          : itemUnbilled(item, detail);
         const pct = pctOf(executed, planned);
         const close = () => setItemView(null);
         const downloadSheet = () => {
@@ -1279,12 +1452,10 @@ export default function DRIDashboard() {
                 <DescItem label="Executed"><span className="text-emerald-600 font-semibold">{fmtN(executed)} {target.unit}</span></DescItem>
                 <DescItem label="Remaining">{planned > 0 ? `${fmtN(Math.max(0, planned - executed))} ${target.unit}` : "—"}</DescItem>
                 <DescItem label="Status">{STATUS_LABEL[target.status ?? ""] ?? target.status ?? "—"}</DescItem>
-                {billed !== null && <DescItem label="Billed"><span className="text-blue-600 font-semibold">{fmtN(billed)} {target.unit}</span></DescItem>}
-                {billed !== null && (
-                  <DescItem label="Unbilled">
-                    {hasBill(detail._id) ? "—" : <span className="text-primary font-semibold">{fmtN(Math.max(0, executed - billed))} {target.unit}</span>}
-                  </DescItem>
-                )}
+                <DescItem label="Billed"><span className="text-blue-600 font-semibold">{fmtN(billed)} {target.unit}</span></DescItem>
+                <DescItem label="Unbilled">
+                  {unbilledQty > 0 ? <span className="text-primary font-semibold">{fmtN(unbilledQty)} {target.unit}</span> : "—"}
+                </DescItem>
                 <DescItem label="Entries">{active.length}{entries.length !== active.length ? ` (+${entries.length - active.length} invalidated)` : ""}</DescItem>
                 {target.rate != null && <DescItem label="Rate">₹{fmtN(target.rate)} / {target.unit}</DescItem>}
                 {target.amount != null && <DescItem label="Amount">₹{fmtN(target.amount)}</DescItem>}

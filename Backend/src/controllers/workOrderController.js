@@ -118,9 +118,41 @@ function diffScopeItems(before, after) {
   for (const si of after || []) {
     const prev = beforeById.get(String(si._id));
     if (!prev) continue;
-    const itemChanges = diffFields(prev, si, ['rate', 'plannedQty', 'description']);
+    const itemChanges = diffFields(prev, si, ['rate', 'plannedQty', 'description', 'unit', 'gstPercent', 'amount', 'plannedStart', 'plannedEnd']);
     if (itemChanges) changes[si.description || String(si._id)] = itemChanges;
   }
+  return Object.keys(changes).length ? changes : null;
+}
+
+// Items typed in / removed during an edit — by name, for the edit history.
+function scopeItemsAddedRemoved(before, after) {
+  const beforeIds = new Set((before || []).map(si => String(si._id)));
+  const afterIds = new Set((after || []).map(si => String(si._id)));
+  const added = (after || []).filter(si => !beforeIds.has(String(si._id))).map(si => si.description);
+  const removed = (before || []).filter(si => !afterIds.has(String(si._id))).map(si => si.description);
+  return { added, removed };
+}
+
+// Everything a general edit can change, as {field: {from, to}} — shown in the work order's edit history.
+const EDIT_LABELS = {
+  projectName: 'Project', companyName: 'Company', vendorCode: 'Vendor', category: 'Category', subCategory: 'Sub-category',
+  department: 'Department', customDepartment: 'Custom department', issueDate: 'Issue date', totalTenure: 'Tenure',
+  description: 'Description', scopeOfWork: 'Scope of work', internalRemark: 'Internal remark', contractValue: 'Contract value',
+  discount: 'Discount', gstPercent: 'GST %', retentionPercent: 'Retention %', status: 'Status', documents: 'Documents',
+  paymentMilestones: 'Payment milestones', warrantyTerms: 'Warranty terms', itemsAdded: 'Items added', itemsRemoved: 'Items removed', scopeItems: 'Items changed',
+};
+function buildEditChanges(before, after) {
+  const changes = { ...(diffFields(before, after, ['projectName', 'companyName', 'vendorCode', 'category', 'subCategory', 'department', 'customDepartment', 'issueDate', 'totalTenure', 'description', 'scopeOfWork', 'internalRemark', 'contractValue', 'discount', 'gstPercent', 'retentionPercent', 'status']) || {}) };
+  const names = (arr) => (arr || []).map((d) => d.name);
+  if (JSON.stringify(names(before.documents)) !== JSON.stringify(names(after.documents))) changes.documents = { from: names(before.documents), to: names(after.documents) };
+  const ms = (arr) => (arr || []).map((m) => `${m.stage || m.type || 'Milestone'}: ₹${Number(m.amount || 0).toLocaleString('en-IN')}`);
+  if (JSON.stringify(ms(before.paymentMilestones)) !== JSON.stringify(ms(after.paymentMilestones))) changes.paymentMilestones = { from: ms(before.paymentMilestones), to: ms(after.paymentMilestones) };
+  if (JSON.stringify(before.warrantyTerms || []) !== JSON.stringify(after.warrantyTerms || [])) changes.warrantyTerms = { from: before.warrantyTerms || [], to: after.warrantyTerms || [] };
+  const { added, removed } = scopeItemsAddedRemoved(before.scopeItems, after.scopeItems);
+  if (added.length) changes.itemsAdded = { from: null, to: added };
+  if (removed.length) changes.itemsRemoved = { from: removed, to: null };
+  const itemEdits = diffScopeItems(before.scopeItems, after.scopeItems);
+  if (itemEdits) changes.scopeItems = itemEdits;
   return Object.keys(changes).length ? changes : null;
 }
 
@@ -376,6 +408,17 @@ exports.getWorkOrderRetentionHeld = asyncHandler(async (req, res) => {
   success(res, { held });
 });
 
+// GET /work-orders/:id/history — who did what to this work order and when (edits, approvals, locks, scope additions,
+// progress), newest first, straight from the audit trail.
+exports.getWorkOrderHistory = asyncHandler(async (req, res) => {
+  const AuditLog = require('../models/AuditLog');
+  if (!OBJECT_ID_RE.test(req.params.id)) return badRequest(res, 'Invalid work order id');
+  const logs = await AuditLog.find({ entityType: 'WorkOrder', entityId: req.params.id })
+    .sort({ createdAt: -1 }).limit(300)
+    .select('action userName description changes createdAt').lean();
+  success(res, { history: logs });
+});
+
 // GET /work-orders/existing?projectId&vendorCode&category&contractType — the work order already covering this
 // site + vendor group + category, or null (drives the New Work Order form's warning).
 exports.findExistingWorkOrder = asyncHandler(async (req, res) => {
@@ -620,13 +663,11 @@ exports.updateWorkOrder = asyncHandler(async (req, res) => {
   if (!workOrder) return notFound(res, 'Work order not found');
 
   const after = workOrder.toObject();
-  const topLevelChanges = diffFields(before, after, ['contractValue', 'retentionPercent', 'gstPercent', 'status']);
-  const scopeItemChanges = diffScopeItems(before.scopeItems, after.scopeItems);
-  const changes = (topLevelChanges || scopeItemChanges) ? { ...topLevelChanges, ...(scopeItemChanges ? { scopeItems: scopeItemChanges } : {}) } : null;
+  const changes = buildEditChanges(before, after);
   if (changes) {
     await logAudit({
       action: 'UPDATE', module: 'work-orders', user: req.user,
-      description: `Updated work order ${workOrder.workOrderNo}`,
+      description: `Edited work order ${workOrder.workOrderNo} — ${Object.keys(changes).map((k) => EDIT_LABELS[k] || k).join(', ')}`,
       entityType: 'WorkOrder', entityId: workOrder._id, entityLabel: workOrder.workOrderNo,
       changes,
     });

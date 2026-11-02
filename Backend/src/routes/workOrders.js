@@ -7,7 +7,7 @@ const {
   submitWorkOrder, checkerApprove, approverApprove, finalApprove, sendBack,
   addScopeProgress, editProgressEntry, deleteProgressEntry, invalidateProgressEntry,
   addSubItemProgress, editSubItemProgressEntry, deleteSubItemProgressEntry, invalidateSubItemProgressEntry,
-  approveScopeItemVariance, approveSubItemVariance, findExistingWorkOrder,
+  approveScopeItemVariance, approveSubItemVariance, findExistingWorkOrder, getWorkOrderHistory,
 } = require('../controllers/workOrderController');
 const {
   createAddendum, addendumCheckerApprove, addendumApproverApprove, addendumFinalApprove, addendumSendBack,
@@ -23,6 +23,7 @@ router.get('/bulk-detail', getWorkOrdersBulkDetail);
 // site + vendor (group) + category.
 router.get('/existing', findExistingWorkOrder);
 router.get('/:id',         getWorkOrder);
+router.get('/:id/history', getWorkOrderHistory);
 router.get('/:id/retention-held', getWorkOrderRetentionHeld);
 // 'create'/'edit' are the pre-existing broad grants; 'maker' is the new,
 // more specific L1 grant for the 4-level approval chain — either unlocks these.
