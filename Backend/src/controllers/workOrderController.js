@@ -534,6 +534,34 @@ exports.createWorkOrder = asyncHandler(async (req, res) => {
   created(res, { workOrder }, 'Work order created successfully');
 });
 
+// Fields an edit must never overwrite: they change only through progress / billing / variance flows.
+const SERVER_OWNED_FIELDS = [
+  'progressEntries', 'completedQty', 'lastBilledQty', 'status',
+  'varianceApproved', 'varianceApprovedBy', 'varianceApprovedAt', 'varianceApprovedAtQty',
+  'originalPlannedQty', 'originalAmount', 'revisedAt', 'revisedBy',
+];
+const norm = (s) => String(s || '').trim().toLowerCase();
+
+// Match each incoming item/particular to the live one — by _id, else (stale/missing id) by description among the
+// still-unmatched ones — then keep the live _id and server-owned fields. Genuinely new rows pass through untouched.
+function mergeLiveFields(liveList, incomingList, recurse) {
+  const live = liveList || [];
+  const used = new Set();
+  return (incomingList || []).map((inc) => {
+    let match = inc && inc._id ? live.find((l) => String(l._id) === String(inc._id)) : null;
+    if (!match && inc) match = live.find((l) => !used.has(String(l._id)) && norm(l.description) === norm(inc.description));
+    if (!match || used.has(String(match._id))) return inc;
+    used.add(String(match._id));
+    const out = { ...inc, _id: match._id };
+    for (const f of SERVER_OWNED_FIELDS) if (f in match) out[f] = match[f]; else delete out[f];
+    if (recurse && Array.isArray(inc.subItems)) out.subItems = mergeLiveFields(match.subItems, inc.subItems, false);
+    return out;
+  });
+}
+function preserveServerOwnedScopeFields(liveItems, incomingItems) {
+  return mergeLiveFields(liveItems, incomingItems, true);
+}
+
 exports.updateWorkOrder = asyncHandler(async (req, res) => {
   // vendorName/ownerName/mobile are snapshotted onto the WO ONLY at creation
   // time (createWorkOrder) and must never be re-written by a general edit —
@@ -551,6 +579,9 @@ exports.updateWorkOrder = asyncHandler(async (req, res) => {
   if (before.isLocked) return badRequest(res, 'This work order is locked and cannot be edited. Unlock it first.');
 
   if (updateData.scopeItems) {
+    // The edit screen sends back a snapshot of the scope it loaded; progress, billed quantity and ids are
+    // owned by the server, so carry them over from the live document instead of trusting that snapshot.
+    updateData.scopeItems = preserveServerOwnedScopeFields(before.scopeItems, updateData.scopeItems);
     resolveScopeItemIdsForMilestones(updateData.scopeItems, updateData.paymentMilestones || before.paymentMilestones);
   }
 
