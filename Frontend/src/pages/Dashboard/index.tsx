@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
   LayoutDashboard, Building2, Receipt, Banknote,
-  RotateCcw, X, AlertTriangle, AlertCircle, ArrowUpRight,
+  RotateCcw, X, AlertTriangle, AlertCircle, ArrowUpRight, SlidersHorizontal,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import apiClient from "../../services/apiClient";
@@ -41,6 +41,15 @@ export default function Dashboard() {
   const [contractors, setContractors] = useState<ContractorOption[]>([]);
   const { categories } = useCategories();
   const [showAllAlerts, setShowAllAlerts] = useState(false);
+  // Year / Quarter / Week live behind one filter icon instead of three always-visible dropdowns.
+  const [scopeOpen, setScopeOpen] = useState(false);
+  const scopeRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!scopeOpen) return;
+    const onDown = (e: MouseEvent) => { if (scopeRef.current && !scopeRef.current.contains(e.target as Node)) setScopeOpen(false); };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [scopeOpen]);
 
   useEffect(() => {
     apiClient.get("/projects").then(res => setProjects(res.data.projects ?? [])).catch(() => {});
@@ -234,26 +243,6 @@ export default function Dashboard() {
         icon={LayoutDashboard}
         actions={
           <div className="flex items-center gap-2">
-            <MobileFilters className="flex items-center gap-2 flex-wrap" active={!!(yearValue || quarterValue || weekValue)}>
-            <SelectFilter
-              value={yearValue}
-              onChange={setYear}
-              placeholder="Yearly"
-              options={yearOptions.map(o => ({ label: o.label, value: o.value }))}
-            />
-            <SelectFilter
-              value={quarterValue}
-              onChange={setQuarter}
-              placeholder="Quarterly"
-              options={quarterOptionsForYear.map(o => ({ label: o.label, value: o.value }))}
-            />
-            <SelectFilter
-              value={weekValue}
-              onChange={setWeek}
-              placeholder="Weekly"
-              options={weekOptionsForYear.map(o => ({ label: o.label, value: o.value }))}
-            />
-            </MobileFilters>
             <NxBtn
               color="primary"
               label="Projects"
@@ -265,10 +254,27 @@ export default function Dashboard() {
       />
 
       <div className="flex flex-wrap items-end justify-between gap-3 mb-4">
-        <MobileFilters className="flex flex-wrap items-end gap-3 !mb-0" active={hasFilters}>
+        <MobileFilters className="flex flex-wrap items-end gap-3 !mb-0" active={hasFilters || !!(yearValue || quarterValue || weekValue)}>
           <SelectFilter value={projectId} onChange={v => setFilter("projectId", v)} placeholder="All Projects" options={projectOptions.map(p => ({ label: p.name, value: p._id }))} />
           <SelectFilter value={categoryId} onChange={v => setFilter("categoryId", v)} placeholder="All Categories" options={categoryOptions} />
           <SelectFilter value={contractorId} onChange={v => setFilter("contractorId", v)} placeholder="All Contractors" options={contractorOptions} />
+          <div ref={scopeRef} className="relative">
+            <button
+              type="button" onClick={() => setScopeOpen(o => !o)} aria-expanded={scopeOpen} aria-label="Filter by year, quarter or week" title="Year, quarter, week"
+              className="relative inline-flex items-center justify-center gap-1.5 h-10 px-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0F172A] text-gray-600 dark:text-gray-300 hover:border-primary/60 transition-colors"
+            >
+              <SlidersHorizontal className="w-4 h-4" />
+              <span className="md:hidden text-[13px] font-semibold">Year / Quarter / Week</span>
+              {(yearValue || quarterValue || weekValue) && <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-primary" />}
+            </button>
+            {scopeOpen && (
+              <div className="absolute left-0 top-12 z-30 w-60 max-w-[calc(100vw-2rem)] flex flex-col gap-2 p-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1E293B] shadow-lg">
+                <SelectFilter value={yearValue} onChange={setYear} placeholder="Yearly" options={yearOptions.map(o => ({ label: o.label, value: o.value }))} />
+                <SelectFilter value={quarterValue} onChange={setQuarter} placeholder="Quarterly" options={quarterOptionsForYear.map(o => ({ label: o.label, value: o.value }))} />
+                <SelectFilter value={weekValue} onChange={setWeek} placeholder="Weekly" options={weekOptionsForYear.map(o => ({ label: o.label, value: o.value }))} />
+              </div>
+            )}
+          </div>
           {hasFilters && <Btn label="Reset Filters" icon={RotateCcw} outline small onClick={resetFilters} />}
         </MobileFilters>
       </div>
