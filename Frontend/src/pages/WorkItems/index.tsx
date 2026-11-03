@@ -1679,15 +1679,16 @@ export default function WorkItems() {
   // One work order per site + vendor (group) + category — if one already exists, the New Work Order form
   // says so (with its number) and cannot be saved; the server refuses it as well.
   const [existingWo, setExistingWo] = useState<{ _id: string; workOrderNo: string; vendorName?: string; category?: string } | null>(null);
+  const [dupPopupOpen, setDupPopupOpen] = useState(false);
   useEffect(() => {
-    if (!createDrawerOpen || !createValues.projectId || !createValues.vendorCode || !createValues.category) { setExistingWo(null); return; }
+    if (!createDrawerOpen || !createValues.projectId || !createValues.vendorCode || !createValues.category) { setExistingWo(null); setDupPopupOpen(false); return; }
     let live = true;
     apiClient.get<{ existing: { _id: string; workOrderNo: string; vendorName?: string; category?: string } | null }>("/work-orders/existing", {
       params: { projectId: createValues.projectId, vendorCode: createValues.vendorCode, category: createValues.category, contractType: createValues.contractType || "execution" },
       suppressErrorToast: true,
     })
-      .then(r => { if (live) setExistingWo(r.data.existing ?? null); })
-      .catch(() => { if (live) setExistingWo(null); });
+      .then(r => { if (live) { const ex = r.data.existing ?? null; setExistingWo(ex); setDupPopupOpen(!!ex); } })
+      .catch(() => { if (live) { setExistingWo(null); setDupPopupOpen(false); } });
     return () => { live = false; };
   }, [createDrawerOpen, createValues.projectId, createValues.vendorCode, createValues.category, createValues.contractType]);
 
@@ -2104,6 +2105,7 @@ export default function WorkItems() {
   // its creator (or Owner) until someone submits it, per the real
   // approvalStatus-based visibility rule already enforced backend-side.
   const handleCreate = async (submitAfter: boolean) => {
+    if (existingWo) { setDupPopupOpen(true); return; }
     if (!validateWOForm(createValues, createErrors)) return;
     if (createDocsUploading) {
       toast.error("A document is still uploading — wait for it to finish before saving");
@@ -2952,6 +2954,17 @@ export default function WorkItems() {
         </Modal>
       )}
 
+      {dupPopupOpen && existingWo && (
+        <ConfirmModal
+          zIndex={300}
+          title="Work order already exists"
+          message={`${existingWo.workOrderNo}${existingWo.vendorName ? ` (${existingWo.vendorName}${existingWo.category ? `, ${existingWo.category}` : ""})` : ""} already covers this site, vendor and category. A new work order can't be created — open it and use Add Scope to add the extra work.`}
+          confirmLabel={`Open ${existingWo.workOrderNo}`}
+          onConfirm={() => { setDupPopupOpen(false); setCreateDrawerOpen(false); navigate(`/work-items/${existingWo._id}`); }}
+          onCancel={() => setDupPopupOpen(false)}
+        />
+      )}
+
       {/* ── Create Drawer ────────────────────────────────────── */}
       {createDrawerOpen && (
         <Modal
@@ -2966,22 +2979,11 @@ export default function WorkItems() {
                 outline label="Cancel"
                 onClick={() => { setCreateValues(blankWOForm()); setCreateScopeItems([]); setCreateMilestones([]); setCreateSecurityDeposits([]); setCreateDiscount(null); setCreateWarranty([]); setCreateDrawerOpen(false); }}
               />
-              <Btn outline loading={saving} disabled={createDocsUploading || !!existingWo} label="Save as Draft" onClick={() => handleCreate(false)} />
-              <Btn color="primary" loading={saving} disabled={createDocsUploading || !!existingWo} label="Save & Submit for Review" onClick={() => handleCreate(true)} />
+              <Btn outline loading={saving} disabled={createDocsUploading} label="Save as Draft" onClick={() => handleCreate(false)} />
+              <Btn color="primary" loading={saving} disabled={createDocsUploading} label="Save & Submit for Review" onClick={() => handleCreate(true)} />
             </div>
           }
         >
-          {existingWo && (
-            <div className="mb-4 rounded-lg border border-amber-300 dark:border-amber-500/40 bg-amber-50 dark:bg-amber-500/10 px-3.5 py-3 text-sm text-amber-800 dark:text-amber-300">
-              <div className="font-bold mb-0.5">A work order already exists for this site, vendor and category</div>
-              <div>
-                <b>{existingWo.workOrderNo}</b>{existingWo.vendorName ? ` (${existingWo.vendorName}${existingWo.category ? `, ${existingWo.category}` : ""})` : ""} already covers this. A new work order can't be created — open it and use <b>Add Scope</b> to add the extra work.
-              </div>
-              <div className="mt-2">
-                <Btn small color="primary" label={`Open ${existingWo.workOrderNo}`} onClick={() => { setCreateDrawerOpen(false); navigate(`/work-items/${existingWo._id}`); }} />
-              </div>
-            </div>
-          )}
           <FormSection title="Work Order Information">
             <WOFormFields
               values={createValues}
