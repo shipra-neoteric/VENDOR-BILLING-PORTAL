@@ -682,8 +682,8 @@ export default function MdApprovals() {
                   const cut = deductionFor(reviewRow);
                   const tooBig = cut.amount > 0 && cut.amount >= (reviewRow.amount || 0);
                   return (
-                    <div className="rounded-lg border border-gray-200 dark:border-gray-700/60 p-3">
-                      <div className="text-[11px] font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">Deduct from gross total (optional)</div>
+                    <div className="rounded-lg border border-amber-300 dark:border-amber-500/40 bg-amber-50 dark:bg-amber-500/10 p-3">
+                      <div className="text-[11px] font-bold uppercase tracking-wide text-amber-700 dark:text-amber-400 mb-2">Deduct from gross total (optional)</div>
                       <div className="grid grid-cols-1 sm:grid-cols-[180px_1fr] gap-2">
                         <input
                           type="number" min="0" step="any" inputMode="decimal" placeholder="Amount to deduct (₹)" value={mine.amount}
