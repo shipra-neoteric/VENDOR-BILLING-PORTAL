@@ -382,7 +382,7 @@ async function buildExecutiveDashboardData(query) {
     const openBills = bills.filter(b => !CLOSED_BILL_STATUSES.includes(b.status)).length;
     const activeVendors = new Set(roll.countedWos.map(w => w.vendorCode).filter(Boolean)).size;
 
-    const financials = { workExecutedValue, billedGross, certifiedNet, paidAmount, certifiedUnpaid };
+    const financials = { awardedContractValue, workExecutedValue, billedGross, certifiedNet, paidAmount, certifiedUnpaid };
     const { overallStage, bottleneck, health, healthReasons } = computeProjectStageInfo({
       project, wos: roll.countedWos, bills, billReqs, financials,
     });

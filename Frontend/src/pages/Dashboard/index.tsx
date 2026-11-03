@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
-  LayoutDashboard, Building2, Receipt, Banknote, Hourglass,
-  RotateCcw, X, AlertTriangle, TrendingUp, Clock, AlertCircle, ArrowUpRight, ShieldAlert,
+  LayoutDashboard, Building2, Receipt, Banknote,
+  RotateCcw, X, AlertTriangle, AlertCircle, ArrowUpRight,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import apiClient from "../../services/apiClient";
@@ -19,7 +19,6 @@ import { SelectFilter } from "../../ui/Filters";
 import MobileFilters from "../../ui/MobileFilters";
 import { Skeleton, SkeletonTable } from "../../ui/Skeleton";
 import KpiCard from "../../features/dashboard/components/KpiCard";
-import ProjectLifecycle from "../../features/dashboard/components/ProjectLifecycle";
 import SpendByCategory from "../../features/dashboard/components/SpendByCategory";
 import ContractorsByCategory from "../../features/dashboard/components/ContractorsByCategory";
 import ApprovalBottleneckByLevel from "../../features/dashboard/components/ApprovalBottleneckByLevel";
@@ -32,17 +31,6 @@ const EMPTY_KPIS: ExecutiveDashboardKPIs = {
 
 interface ProjectOption { _id: string; name: string; parentId?: string | null; }
 interface ContractorOption { vendorCode: string; companyName: string; }
-
-// Matches the `type` strings produced by Backend/src/utils/projectStageRules.js's
-// buildAlerts() — a per-alert icon so the compact "Needs Your Attention" rows
-// read at a glance, not just a generic warning triangle for everything.
-const ALERT_TYPE_ICON: Record<string, LucideIcon> = {
-  "sla-breach": ShieldAlert,
-  "billing-exceeds-executed": TrendingUp,
-  "bill-request-pending-approval": Hourglass,
-  "bill-pending-approval": Hourglass,
-  "certified-payment-overdue": Clock,
-};
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -72,15 +60,6 @@ export default function Dashboard() {
   // overallStage, same field the stage cards themselves are counted from.
   const stage = searchParams.get("stage") ?? "";
   const hasFilters = !!(projectId || categoryId || contractorId || from || to || stage);
-
-  function toggleStageFilter(s: string) {
-    setSearchParams(prev => {
-      const next = new URLSearchParams(prev);
-      if (next.get("stage") === s) next.delete("stage");
-      else next.set("stage", s);
-      return next;
-    }, { replace: true });
-  }
 
   function setFilter(key: string, value: string) {
     setSearchParams(prev => {
@@ -197,6 +176,9 @@ export default function Dashboard() {
     navigate({ pathname: "/projects-overview", search: searchParams.toString() });
   }
 
+  // "Needs Your Attention" lists only the projects whose billing has gone past their contract value.
+  const contractAlerts = useMemo(() => (data?.alerts ?? []).filter(a => a.type === "billing-exceeds-contract"), [data]);
+
   const projectOptions = useMemo(() => selectableProjects(projects), [projects]);
   const categoryOptions = useMemo(
     () => categories.filter(c => !c.parentId).map(c => ({ label: c.name, value: c.name })),
@@ -273,7 +255,7 @@ export default function Dashboard() {
             />
             </MobileFilters>
             <NxBtn
-              color="secondary"
+              color="primary"
               label="Projects"
               icon={ArrowUpRight}
               onClick={() => navigate({ pathname: "/projects-overview", search: searchParams.toString() })}
@@ -326,102 +308,34 @@ export default function Dashboard() {
             ))}
           </div>
 
-          {data && <BillingVsPaymentTrend trend={data.billingVsPaymentTrend} />}
-
-          {/* Lifecycle card + attention panel, matched to the same height:
-              ProjectHealth stays its natural compact size, and
-              ProjectLifecycle (flex-1) grows to absorb whatever's left so
-              the combined left column matches the (alert-driven, variable)
-              right panel's height — ProjectLifecycle then shares that extra
-              space evenly across its own sections internally instead of
-              piling it into one gap. */}
+          {/* Trend chart (left) with the compact needs-attention / forecast panel beside it (right). */}
           {data && (
-            <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 mt-4 items-stretch">
-              <div className="xl:col-span-2 min-w-0 flex flex-col gap-4">
-                <ProjectLifecycle
-                  className="flex-1"
-                  stageSummary={data.stageSummary}
-                  kpis={kpis}
-                  activity={data.activity}
-                  activeStage={stage || null}
-                  onSelectStage={toggleStageFilter}
-                  onViewDetails={goToProjectsList}
-                />
-              </div>
-
-              {(data.alerts.length > 0 || data.forecasts) && (
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+              <div className="xl:col-span-2 min-w-0"><BillingVsPaymentTrend trend={data.billingVsPaymentTrend} /></div>
+              {contractAlerts.length > 0 && (
                 <Card className="xl:col-span-1 min-w-0 flex flex-col">
-                  {data.alerts.length > 0 && (
-                  <>
-                  <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center justify-between mb-2">
                     <h3 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-gray-400 dark:text-gray-500">
                       <AlertTriangle className="w-4 h-4 text-amber-500" />
                       Needs Your Attention
                     </h3>
-                    {data.alerts.length > 6 && (
-                      <button
-                        type="button"
-                        onClick={() => setShowAllAlerts(v => !v)}
-                        className="text-xs font-semibold text-primary shrink-0 hover:underline"
-                      >
-                        {showAllAlerts ? "Show Less" : `View All (${data.alertsTotalCount})`}
+                    {contractAlerts.length > 6 && (
+                      <button type="button" onClick={() => setShowAllAlerts(v => !v)} className="text-xs font-semibold text-primary shrink-0 hover:underline">
+                        {showAllAlerts ? "Show Less" : `View All (${contractAlerts.length})`}
                       </button>
                     )}
                   </div>
-                  <div className={`space-y-1.5 flex-1 overflow-y-auto pr-0.5 ${showAllAlerts ? "max-h-[420px]" : ""}`}>
-                    {(showAllAlerts ? data.alerts : data.alerts.slice(0, 6)).map(a => {
-                      const AlertIcon = ALERT_TYPE_ICON[a.type] ?? AlertTriangle;
-                      const critical = a.severity === "critical";
-                      return (
-                        <Link
-                          key={a.id}
-                          to={a.link}
-                          className={`flex items-center gap-2.5 rounded-lg p-2 transition-colors ${critical ? "bg-red-50 hover:bg-red-100 dark:bg-red-500/10 dark:hover:bg-red-500/15" : "bg-amber-50 hover:bg-amber-100 dark:bg-amber-500/10 dark:hover:bg-amber-500/15"}`}
-                        >
-                          <div className={`w-6 h-6 rounded-md flex items-center justify-center shrink-0 ${critical ? "bg-red-500" : "bg-amber-500"}`}>
-                            <AlertIcon className="w-3 h-3 text-white" strokeWidth={2.25} />
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className={`text-xs font-bold truncate ${critical ? "text-red-700 dark:text-red-400" : "text-amber-700 dark:text-amber-400"}`}>{a.projectName}</div>
-                            <div className="text-[11px] text-gray-500 dark:text-gray-400 truncate">{a.title}</div>
-                          </div>
-                        </Link>
-                      );
-                    })}
+                  <div className={`flex-1 overflow-y-auto pr-0.5 divide-y divide-gray-100 dark:divide-gray-700/40 ${showAllAlerts ? "max-h-[420px]" : ""}`}>
+                    {(showAllAlerts ? contractAlerts : contractAlerts.slice(0, 6)).map(a => (
+                      <Link key={a.id} to={a.link} className="flex items-baseline gap-2 py-2 hover:bg-gray-50 dark:hover:bg-white/5 rounded transition-colors">
+                        <span className={`w-2 h-2 rounded-full shrink-0 translate-y-[-1px] ${a.severity === "critical" ? "bg-red-500" : "bg-amber-500"}`} />
+                        <span className="min-w-0 flex-1 truncate text-xs">
+                          <span className="font-bold text-[#172033] dark:text-[#F1F5F9]">{a.projectName}</span>
+                          <span className="text-gray-500 dark:text-gray-400"> — {a.title}</span>
+                        </span>
+                      </Link>
+                    ))}
                   </div>
-                  </>
-                  )}
-
-                  {data.forecasts && (
-                    <div className={data.alerts.length > 0 ? "mt-4 pt-3 border-t border-gray-100 dark:border-gray-700/40" : ""}>
-                      <h3 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-2">
-                        <TrendingUp className="w-4 h-4 text-primary" />
-                        If This Continues
-                      </h3>
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2 rounded-lg p-1.5 bg-primary/5 dark:bg-primary/10">
-                          <div className="w-6 h-6 rounded-md flex items-center justify-center shrink-0 bg-primary">
-                            <Banknote className="w-3 h-3 text-white" strokeWidth={2.25} />
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="text-xs font-bold truncate text-[#172033] dark:text-[#F1F5F9]">{fmtCr(data.forecasts.cashRequirement.totalCertifiedUnpaid)} cash required</div>
-                            <div className="text-[10px] text-gray-500 dark:text-gray-400 truncate">{data.forecasts.cashRequirement.basis}</div>
-                          </div>
-                        </div>
-                        {data.forecasts.budgetRisk.filter(f => f.flagged).slice(0, 2).map(f => (
-                          <div key={f.projectId} className="flex items-center gap-2 rounded-lg p-1.5 bg-red-50 dark:bg-red-500/10">
-                            <div className="w-6 h-6 rounded-md flex items-center justify-center shrink-0 bg-red-500">
-                              <TrendingUp className="w-3 h-3 text-white" strokeWidth={2.25} />
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <div className="text-xs font-bold truncate text-red-700 dark:text-red-400">{f.projectName} — +{f.overrunPercent}% overrun</div>
-                              <div className="text-[10px] text-gray-500 dark:text-gray-400 truncate">{f.message}</div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
                 </Card>
               )}
             </div>

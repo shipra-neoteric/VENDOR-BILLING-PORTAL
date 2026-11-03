@@ -364,7 +364,7 @@ function computeProjectStageInfo({ project, wos, bills, billReqs, financials }) 
 // Builds every qualifying alert for ONE project. The caller (controller)
 // concatenates across projects, sorts, and caps the list.
 function buildProjectAlerts({ project, wos, bills, billReqs, financials, slaBreachedIds }) {
-  const { workExecutedValue, billedGross } = financials;
+  const { awardedContractValue, billedGross } = financials;
   const certifiedUnpaid = financials.certifiedUnpaid ?? Math.max(0, (financials.certifiedNet || 0) - (financials.paidAmount || 0));
   const alerts = [];
   const projectId = String(project._id);
@@ -400,16 +400,16 @@ function buildProjectAlerts({ project, wos, bills, billReqs, financials, slaBrea
     }
   }
 
-  // 1. Billing exceeds executed value
-  if (workExecutedValue > 0 && billedGross > workExecutedValue) {
-    const overAmount = Math.round(billedGross - workExecutedValue);
-    const ratio = overAmount / workExecutedValue;
+  // 1. Billing exceeds the contract value
+  if (awardedContractValue > 0 && billedGross > awardedContractValue) {
+    const overAmount = Math.round(billedGross - awardedContractValue);
+    const ratio = overAmount / awardedContractValue;
     alerts.push({
-      type: 'billing-exceeds-executed',
+      type: 'billing-exceeds-contract',
       severity: ratio >= HEALTH_THRESHOLDS.overbillingCriticalRatio ? 'critical' : 'attention',
       projectId, projectName,
-      title: 'Billing exceeds executed value',
-      message: `${project.name}: billed ₹${billedGross.toLocaleString('en-IN')} against executed value of ₹${workExecutedValue.toLocaleString('en-IN')} — ₹${overAmount.toLocaleString('en-IN')} over.`,
+      title: 'Billing exceeds contract value',
+      message: `${project.name}: billed ₹${billedGross.toLocaleString('en-IN')} against contract value of ₹${awardedContractValue.toLocaleString('en-IN')} — ₹${overAmount.toLocaleString('en-IN')} over.`,
       amount: overAmount,
       link: `/projects?id=${projectId}`,
     });
