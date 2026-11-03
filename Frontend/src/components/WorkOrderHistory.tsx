@@ -94,7 +94,6 @@ export default function WorkOrderHistory({ workOrderId }: { workOrderId: string 
       <button type="button" onClick={() => setOpen((o) => !o)} className="w-full flex items-center gap-2 text-left">
         <History className="w-4 h-4 text-primary" />
         <span className="font-bold text-[14px] text-[#1A1A2E] dark:text-[#F1F5F9]">Edit history</span>
-        <span className="text-xs text-gray-400">who changed what, and when</span>
         <Chevron className="w-4 h-4 text-gray-400 ml-auto" />
       </button>
 
