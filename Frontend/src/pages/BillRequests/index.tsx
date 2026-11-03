@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import {
   FileText, Eye, Printer, CheckCircle2, XCircle, Check, X, Clock,
-  Trophy, Download, Pencil, Trash2,
+  Trophy, Download, Pencil, Trash2, Archive,
 } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import dayjs from "dayjs";
@@ -29,7 +29,6 @@ import { BILL_STATUS_LABEL } from "../../shared/constants/billStatus";
 import { Descriptions, DescItem } from "../../ui/Descriptions";
 import type { NxBadgeColor } from "../../ui/nexora/Badge";
 import SField from "../../ui/SField";
-import UISwitch from "../../ui/Switch";
 import UIBadge from "../../ui/Badge";
 import Btn from "../../ui/Btn";
 import Segmented from "../../ui/Segmented";
@@ -1356,7 +1355,7 @@ export default function BillApproval() {
             value={reqSearch} onChange={setReqSearch}
           />}
         >
-          <div className="md:w-60">
+          <div className="md:w-48">
             <MultiSelect
               placeholder="All projects"
               values={reqProjectFilters} onChange={setReqProjectFilters}
@@ -1369,7 +1368,6 @@ export default function BillApproval() {
             options={departmentOptions}
           />
           <DateRangeFilter onChange={(from, to) => { setReqDateFrom(from); setReqDateTo(to); }} />
-          <UISwitch checked={showArchived} onChange={setShowArchived} onLabel="Archived" offLabel="Show Archived" />
           <DropdownSelectFilter
             value={exportScope} onChange={v => setExportScope((v || "all") as typeof exportScope)}
             placeholder="All Progress"
@@ -1382,6 +1380,14 @@ export default function BillApproval() {
             ]}
           />
           <Btn small outline icon={Download} label="Download PDF" onClick={downloadBillApprovalPDFExport} />
+          <Btn
+            small outline={!showArchived}
+            style={!showArchived ? undefined : { color: "var(--theme-primary)" }}
+            className={!showArchived ? "" : "shadow-none! border-none! bg-primary/15! hover:bg-primary/20!"}
+            icon={Archive}
+            label={`Archive${billReqs.filter(r => r.isArchived).length ? ` (${billReqs.filter(r => r.isArchived).length})` : ""}`}
+            onClick={() => setShowArchived(v => !v)}
+          />
         </MobileFilters>
       </div>
 
