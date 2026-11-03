@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
-  LayoutDashboard, Building2, HardHat, Receipt, Banknote, Hourglass,
+  LayoutDashboard, Building2, Receipt, Banknote, Hourglass,
   RotateCcw, X, AlertTriangle, TrendingUp, Clock, AlertCircle, ArrowUpRight, ShieldAlert,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -15,12 +15,11 @@ import PageHeader from "../../ui/PageHeader";
 import Btn from "../../ui/Btn";
 import NxBtn from "../../ui/nexora/Btn";
 import Card from "../../ui/Card";
-import { FilterRow, SelectFilter } from "../../ui/Filters";
+import { SelectFilter } from "../../ui/Filters";
+import MobileFilters from "../../ui/MobileFilters";
 import { Skeleton, SkeletonTable } from "../../ui/Skeleton";
 import KpiCard from "../../features/dashboard/components/KpiCard";
 import ProjectLifecycle from "../../features/dashboard/components/ProjectLifecycle";
-import ProjectsOverviewTable from "../../features/dashboard/components/ProjectsOverviewTable";
-import ProjectHealth from "../../features/dashboard/components/ProjectHealth";
 import SpendByCategory from "../../features/dashboard/components/SpendByCategory";
 import ContractorsByCategory from "../../features/dashboard/components/ContractorsByCategory";
 import ApprovalBottleneckByLevel from "../../features/dashboard/components/ApprovalBottleneckByLevel";
@@ -240,9 +239,9 @@ export default function Dashboard() {
   const kpiCards: { label: string; value: string | number; icon: LucideIcon; tone: "neutral" | "green" | "red" | "amber" | "blue" }[] = data ? [
     { label: "Active Projects", value: kpis.activeProjects, icon: Building2, tone: "blue" },
     { label: "Total Contract Value", value: fmtCr(kpis.totalContractValue), icon: LayoutDashboard, tone: "neutral" },
-    { label: "Total Executed", value: fmtCr(kpis.workExecuted), icon: HardHat, tone: "neutral" },
     { label: "Total Billed", value: fmtCr(kpis.totalBilled), icon: Receipt, tone: "blue" },
     { label: "Total Paid", value: fmtCr(kpis.totalPaid), icon: Banknote, tone: "green" },
+    { label: "Overdue Amount", value: fmtCr(kpis.overdueAmount), icon: AlertCircle, tone: "red" },
   ] : [];
 
   return (
@@ -253,6 +252,7 @@ export default function Dashboard() {
         icon={LayoutDashboard}
         actions={
           <div className="flex items-center gap-2">
+            <MobileFilters className="flex items-center gap-2 flex-wrap" active={!!(yearValue || quarterValue || weekValue)}>
             <SelectFilter
               value={yearValue}
               onChange={setYear}
@@ -271,6 +271,7 @@ export default function Dashboard() {
               placeholder="Weekly"
               options={weekOptionsForYear.map(o => ({ label: o.label, value: o.value }))}
             />
+            </MobileFilters>
             <NxBtn
               color="secondary"
               label="Projects"
@@ -282,12 +283,12 @@ export default function Dashboard() {
       />
 
       <div className="flex flex-wrap items-end justify-between gap-3 mb-4">
-        <FilterRow className="!mb-0">
+        <MobileFilters className="flex flex-wrap items-end gap-3 !mb-0" active={hasFilters}>
           <SelectFilter value={projectId} onChange={v => setFilter("projectId", v)} placeholder="All Projects" options={projectOptions.map(p => ({ label: p.name, value: p._id }))} />
           <SelectFilter value={categoryId} onChange={v => setFilter("categoryId", v)} placeholder="All Categories" options={categoryOptions} />
           <SelectFilter value={contractorId} onChange={v => setFilter("contractorId", v)} placeholder="All Contractors" options={contractorOptions} />
           {hasFilters && <Btn label="Reset Filters" icon={RotateCcw} outline small onClick={resetFilters} />}
-        </FilterRow>
+        </MobileFilters>
       </div>
 
       {filterChips.length > 0 && (
@@ -325,23 +326,7 @@ export default function Dashboard() {
             ))}
           </div>
 
-          {/* Big trend chart (left) + a stacked column of the four numbers that
-              matter most day-to-day (right) — same "large chart + stacked
-              side stats" rhythm as the reference layout, built from numbers
-              already on data.kpis/data.paymentAging (no new backend calls). */}
-          {data && (
-            <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-              <div className="xl:col-span-2 min-w-0">
-                <BillingVsPaymentTrend trend={data.billingVsPaymentTrend} />
-              </div>
-              <div className="xl:col-span-1 flex flex-col gap-3">
-                <KpiCard label="Overdue Amount" value={fmtCr(kpis.overdueAmount)} icon={AlertCircle} tone="red" />
-                <KpiCard label="Pending Approvals" value={kpis.pendingApprovals} icon={Hourglass} tone="amber" />
-                <KpiCard label="Outstanding Amount" value={fmtCr(kpis.outstandingAmount)} icon={Receipt} tone="blue" />
-                <KpiCard label="Total Certified" value={fmtCr(kpis.totalCertified)} icon={Banknote} tone="green" />
-              </div>
-            </div>
-          )}
+          {data && <BillingVsPaymentTrend trend={data.billingVsPaymentTrend} />}
 
           {/* Lifecycle card + attention panel, matched to the same height:
               ProjectHealth stays its natural compact size, and
@@ -353,7 +338,6 @@ export default function Dashboard() {
           {data && (
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 mt-4 items-stretch">
               <div className="xl:col-span-2 min-w-0 flex flex-col gap-4">
-                <ProjectHealth projects={data.projects} />
                 <ProjectLifecycle
                   className="flex-1"
                   stageSummary={data.stageSummary}
@@ -441,22 +425,6 @@ export default function Dashboard() {
                 </Card>
               )}
             </div>
-          )}
-
-          {/* Projects Overview table — same table as /projects-overview, driven by this page's filters. */}
-          {data && (
-            <Card className="mt-4 min-w-0">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-bold uppercase tracking-wide text-gray-400 dark:text-gray-500">Projects Overview</h3>
-                <Link to={{ pathname: "/projects-overview", search: searchParams.toString() }} className="text-xs font-semibold text-primary hover:underline">Open full page</Link>
-              </div>
-              <ProjectsOverviewTable
-                projects={data.projects}
-                stage={stage}
-                maxHeightClass="max-h-[60vh]"
-                exportParams={Object.fromEntries(Object.entries({ projectId, categoryId, contractorId, from, to }).filter(([, v]) => v))}
-              />
-            </Card>
           )}
 
           {data && (

@@ -4,7 +4,6 @@ import { Users } from "lucide-react";
 import Modal from "../../../ui/Modal";
 import Btn from "../../../ui/Btn";
 import Card from "../../../ui/Card";
-import Badge from "../../../ui/Badge";
 import EmptyState from "../../../ui/EmptyState";
 import { Table, Thead, Tbody, Tr, Th, Td } from "../../../ui/Table";
 import { fmtCr } from "../utils";
@@ -12,11 +11,6 @@ import type { ExecutiveDashboardContractorCategoryRow } from "../../../types/Exe
 
 type Status = ExecutiveDashboardContractorCategoryRow["status"];
 
-// green=Healthy, amber=Attention, blue=Pending, red=Critical — same badge
-// color vocabulary already used for HEALTH_BADGE on the main table above.
-const STATUS_BADGE: Record<Status, "green" | "amber" | "blue" | "red"> = {
-  Healthy: "green", Attention: "amber", Pending: "blue", Critical: "red",
-};
 // When several work orders collapse into one row, it shows the worst of their statuses.
 const STATUS_SEVERITY: Record<Status, number> = { Healthy: 0, Pending: 1, Attention: 2, Critical: 3 };
 
@@ -103,14 +97,13 @@ export default function ContractorsByCategory({ contractorsByCategory }: Contrac
         <Table containerClassName="max-h-[360px] overflow-y-auto" className="min-w-[760px]">
           <Thead>
             <Tr>
-              <Th className="w-[22%] truncate" dense>Contractor</Th>
-              <Th className="w-[16%] truncate" dense>Category</Th>
+              <Th className="w-[26%] truncate" dense>Contractor</Th>
+              <Th className="w-[20%] truncate" dense>Category</Th>
               <Th className="w-[7%] text-right truncate" dense>Sites</Th>
               <Th className="w-[9%] text-right truncate" dense>Work Orders</Th>
               <Th className="w-[14%] text-right truncate" dense>Contract Value</Th>
               <Th className="w-[11%] text-right truncate" dense>Paid</Th>
               <Th className="w-[11%] text-right truncate" dense>Pending</Th>
-              <Th className="w-[10%] truncate" dense>Status</Th>
             </Tr>
           </Thead>
           <Tbody>
@@ -128,7 +121,6 @@ export default function ContractorsByCategory({ contractorsByCategory }: Contrac
                 <Td dense className="text-right truncate">{fmtCr(r.contractValue)}</Td>
                 <Td dense className="text-right text-emerald-600 dark:text-emerald-400 truncate">{fmtCr(r.paid)}</Td>
                 <Td dense className="text-right truncate">{fmtCr(r.pending)}</Td>
-                <Td dense className="truncate"><Badge color={STATUS_BADGE[r.status]} small>{r.status}</Badge></Td>
               </Tr>
             ))}
           </Tbody>
@@ -184,7 +176,7 @@ export default function ContractorsByCategory({ contractorsByCategory }: Contrac
               <Tr>
                 <Th dense>WO</Th>
                 {detail.isGroup && <Th dense>Vendor</Th>}
-                <Th dense>Site</Th><Th dense>Category</Th><Th dense className="text-right">Contract value</Th><Th dense className="text-right">Paid</Th><Th dense className="text-right">Pending</Th><Th dense>Status</Th>
+                <Th dense>Site</Th><Th dense>Category</Th><Th dense className="text-right">Contract value</Th><Th dense className="text-right">Paid</Th><Th dense className="text-right">Pending</Th>
               </Tr>
             </Thead>
             <Tbody>
@@ -201,7 +193,6 @@ export default function ContractorsByCategory({ contractorsByCategory }: Contrac
                   <Td dense className="text-right">{fmtCr(r.contractValue)}</Td>
                   <Td dense className="text-right text-emerald-600 dark:text-emerald-400">{fmtCr(r.paid)}</Td>
                   <Td dense className="text-right">{fmtCr(r.pending)}</Td>
-                  <Td dense><Badge color={STATUS_BADGE[r.status]} small>{r.status}</Badge></Td>
                 </Tr>
               ))}
             </Tbody>

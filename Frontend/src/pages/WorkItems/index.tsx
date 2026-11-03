@@ -5,7 +5,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   Plus, Pencil, Eye, Paperclip, Trash2, Ban, Lock, Unlock, AlertTriangle,
   FileText, ClipboardList, BarChart3, Link2, Zap, Briefcase, Search, Check, Loader2,
-  CalendarRange, PlayCircle, CheckCircle2, Download, Archive,
+  CalendarRange, SlidersHorizontal, PlayCircle, CheckCircle2, Download, Archive,
 } from "lucide-react";
 import dayjs from "dayjs";
 import type { Dayjs } from "dayjs";
@@ -1568,6 +1568,7 @@ export default function WorkItems() {
 
   const [createDrawerOpen,    setCreateDrawerOpen]    = useState(false);
   const [search,              setSearch]              = useState("");
+  const [filtersOpen,         setFiltersOpen]         = useState(false); // phone view only: the dropdown filters fold away behind a button
   const [statusFilter,        setStatusFilter]        = useState<string>("all");
   const [stepFilter,          setStepFilter]          = useState<string>("all");
   const [categoryFilter,      setCategoryFilter]      = useState<string>("all");
@@ -2649,7 +2650,16 @@ export default function WorkItems() {
               oversized crammed into this one dense filter row. */}
           <div className="flex gap-2 items-center flex-wrap [&_input]:h-9! [&_button]:h-9! [&_input]:text-[13px]! [&_button]:text-[13px]!">
             <SearchFilter placeholder="Search by WO No, project, vendor…" value={search} onChange={setSearch} />
+            <button
+              type="button" onClick={() => setFiltersOpen(o => !o)} aria-expanded={filtersOpen}
+              className="md:hidden relative inline-flex items-center gap-1.5 px-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0F172A] font-semibold text-gray-600 dark:text-gray-300"
+            >
+              <SlidersHorizontal className="w-4 h-4" /> Filters
+              {hasActiveFilters && <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-primary" />}
+            </button>
 
+            {/* On a phone the dropdowns sit two to a row, hidden until "Filters" is tapped; from md up they flow inline as before. */}
+            <div className={`${filtersOpen ? "grid grid-cols-2 gap-2 w-full [&>*]:min-w-0 [&>*]:w-full" : "hidden"} md:contents`}>
             <DropdownSelectFilter
               value={categoryFilter} onChange={setCategoryFilter} placeholder="All Categories"
               options={topLevelCats.filter(c => c.isActive).map(c => ({ label: c.name, value: c.name }))}
@@ -2675,7 +2685,7 @@ export default function WorkItems() {
                 { label: "Cancelled", value: "cancelled" },
               ]}
             />
-            <div className="w-56">
+            <div className="md:w-56">
               <MultiSelect
                 values={projectFilter} onChange={setProjectFilter} placeholder="All Projects"
                 options={selectableProjects(projects).map(p => ({ label: p.name, value: p.id }))}
@@ -2685,6 +2695,7 @@ export default function WorkItems() {
             <DateRangeFilter onChange={(from, to) => { setDateFrom(from); setDateTo(to); }} />
 
             {hasActiveFilters && <Btn small outline label="Clear all" onClick={clearAllFilters} />}
+            </div>
           </div>
 
           {/* Active filter chips */}
@@ -2793,8 +2804,8 @@ export default function WorkItems() {
                         </Td>
                         <Td>
                           <div className="flex gap-1.5 items-center flex-wrap">
-                            {/* An approved work order's progress isn't repeated here (the Step column already says Approved); Cancelled/Completed still show. */}
-                            {!(approvalStatusOf(record) === "approved" && ["draft", "issued", "in-progress"].includes(record.status)) && (
+                            {/* A work order in (or through) the approval chain doesn't repeat its progress status here (the Step column already says where it is); Cancelled/Completed still show. */}
+                            {!(["approved", ...STEP_KEYS].includes(approvalStatusOf(record)) && ["draft", "issued", "in-progress"].includes(record.status)) && (
                               <NxBadge color={displayStatus(record.status).color}>{displayStatus(record.status).label}</NxBadge>
                             )}
                             {record.isLocked && (

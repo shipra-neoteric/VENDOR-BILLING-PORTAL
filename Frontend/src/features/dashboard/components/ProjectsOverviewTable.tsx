@@ -5,7 +5,6 @@ import apiClient from "../../../services/apiClient";
 import { fmtCr } from "../utils";
 import type { ExecutiveDashboardProjectRow } from "../../../types/ExecutiveDashboard";
 import Btn from "../../../ui/Btn";
-import Badge from "../../../ui/Badge";
 import { SearchFilter } from "../../../ui/Filters";
 import { Table, Thead, Tbody, Tr, Th, Td } from "../../../ui/Table";
 import EmptyState from "../../../ui/EmptyState";
@@ -24,9 +23,6 @@ const STAGE_TEXT: Record<string, string> = {
   "Completed": "text-teal-600 dark:text-teal-400",
 };
 
-const HEALTH_BADGE: Record<string, "green" | "amber" | "red"> = {
-  Healthy: "green", Attention: "amber", Critical: "red",
-};
 
 function saveBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
@@ -134,7 +130,6 @@ export default function ProjectsOverviewTable({ projects, stage = "", exportPara
               <SortHeader label="Progress" sortKey="progress" active={sortKey === "progress"} dir={sortDir} onClick={toggleSort} className="w-[12%]" />
               <Th className={`w-[12%] ${HEADER_CELL}`} title="Billed ÷ contract value (bills raised, paid or not)">Billed %</Th>
               <Th className={`w-[7%] text-right ${HEADER_CELL}`}>Pending</Th>
-              <Th className={`w-[8%] ${HEADER_CELL}`}>Health</Th>
               <Th className={`w-[5%] text-center uppercase tracking-wider ${HEADER_CELL}`}>
                 ACTION
               </Th>
@@ -195,18 +190,6 @@ export default function ProjectsOverviewTable({ projects, stage = "", exportPara
                       <span className="text-gray-300 dark:text-gray-600">₹0</span>
                     );
                   })()}
-                </Td>
-                <Td className={BODY_CELL}>
-                  <button
-                    type="button"
-                    className="cursor-help focus:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded"
-                    title={p.healthReasons.length ? p.healthReasons.join(" · ") : "No issues detected"}
-                    aria-label={`Health: ${p.health}.${p.healthReasons.length ? " " + p.healthReasons.join(". ") : " No issues detected."}`}
-                  >
-                    <Badge color={HEALTH_BADGE[p.health] ?? "gray"} small>
-                      {p.health}
-                    </Badge>
-                  </button>
                 </Td>
                 <Td className={`${BODY_CELL} text-center`}>
                   <button

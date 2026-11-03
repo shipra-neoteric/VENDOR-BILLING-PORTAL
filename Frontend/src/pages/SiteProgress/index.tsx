@@ -8,7 +8,8 @@ import dayjs from "dayjs";
 import type { Dayjs } from "dayjs";
 import apiClient from "../../services/apiClient";
 import { useAuth } from "../../context/AuthContext";
-import { DropdownSelectFilter, FilterRow, SearchFilter } from "../../ui/Filters";
+import { DropdownSelectFilter, SearchFilter } from "../../ui/Filters";
+import MobileFilters from "../../ui/MobileFilters";
 import DateRangeFilter, { inDateRange } from "../../components/DateRangeFilter";
 import WorkflowInstanceStepper from "../../components/WorkflowInstanceStepper";
 import PlannedQtyCell from "../../components/PlannedQtyCell";
@@ -559,8 +560,11 @@ export default function SiteProgress({ embeddedEditBRId, onEmbeddedClose }: {
 
       <>
           {/* ── Filters ── */}
-          <FilterRow>
-            <SearchFilter value={search} onChange={setSearch} placeholder="Search by project, work order, DRI, progress…" />
+          <MobileFilters
+            className="flex flex-wrap items-end gap-3 mb-4"
+            active={!!selProjectId || !!selDriId || !!dateFrom || !!dateTo}
+            search={<SearchFilter value={search} onChange={setSearch} placeholder="Search by project, work order, DRI, progress…" />}
+          >
             <DropdownSelectFilter
               value={selProjectId ?? ""} onChange={v => setSelProjectId(v || undefined)}
               placeholder="All projects" resetValue=""
@@ -572,7 +576,7 @@ export default function SiteProgress({ embeddedEditBRId, onEmbeddedClose }: {
               options={driList.map(d => ({ label: `${d.name} (${d.email})`, value: d._id }))}
             />
             <DateRangeFilter onChange={(from, to) => { setDateFrom(from); setDateTo(to); }} />
-          </FilterRow>
+          </MobileFilters>
 
           {/* ── Recent DRI Progress ── */}
           <div className="mb-7">

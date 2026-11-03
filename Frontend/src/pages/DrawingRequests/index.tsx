@@ -14,7 +14,8 @@ import PageHeader from "../../ui/PageHeader";
 import QcMigrationNotice from "../../components/QcMigrationNotice";
 import Btn from "../../ui/Btn";
 import Badge from "../../ui/Badge";
-import { FilterRow, SearchFilter, SelectFilter } from "../../ui/Filters";
+import { SearchFilter, SelectFilter } from "../../ui/Filters";
+import MobileFilters from "../../ui/MobileFilters";
 import { DateRangePicker } from "../../ui/DatePicker";
 import { Table, Thead, Tbody, Tr, Th, Td, TdText } from "../../ui/Table";
 import { SkeletonTable } from "../../ui/Skeleton";
@@ -110,15 +111,14 @@ export default function DrawingRequests() {
         actions={<DrawingRequestButton projectOptions={projectOptions} onSubmitted={load} />}
       />
 
-      <FilterRow>
-        <SearchFilter value={search} onChange={setSearch} placeholder="Search project…" />
+      <MobileFilters className="flex flex-wrap items-end gap-3 mb-4" active={!!(typeFilter || priorityFilter || statusFilter || reviewStatusFilter || dateFrom || dateTo)} search={<SearchFilter value={search} onChange={setSearch} placeholder="Search project…" />}>
         <SelectFilter value={typeFilter} onChange={setTypeFilter} placeholder="All Types" options={DRAWING_TYPE_OPTIONS.map(t => ({ label: t, value: t }))} />
         <SelectFilter value={priorityFilter} onChange={setPriorityFilter} placeholder="All Priorities" options={PRIORITY_OPTIONS.map(p => ({ label: PRIORITY_LABEL[p], value: p }))} />
         <SelectFilter value={statusFilter} onChange={setStatusFilter} placeholder="All Statuses" options={STATUS_OPTIONS.map(s => ({ label: STATUS_LABEL[s], value: s }))} />
         <SelectFilter value={reviewStatusFilter} onChange={setReviewStatusFilter} placeholder="All Review Stages" options={REVIEW_STATUS_OPTIONS.map(s => ({ label: REVIEW_STATUS_LABEL[s], value: s }))} />
         <DateRangePicker from={dateFrom} to={dateTo} onChange={(f, t) => { setDateFrom(f); setDateTo(t); }} />
         <Btn label="Search" icon={Eye} color="purple" onClick={load} />
-      </FilterRow>
+      </MobileFilters>
 
       {loading ? (
         <SkeletonTable rows={6} cols={14} />

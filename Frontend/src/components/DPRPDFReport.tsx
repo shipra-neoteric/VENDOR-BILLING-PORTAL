@@ -156,7 +156,7 @@ export async function downloadDPRPDF(viewType: "operational" | "financial", repo
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `MIS-Report-${viewType}-${report.meta.date}.pdf`;
+  a.download = `DPR-Report-${viewType}-${report.meta.date}.pdf`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);

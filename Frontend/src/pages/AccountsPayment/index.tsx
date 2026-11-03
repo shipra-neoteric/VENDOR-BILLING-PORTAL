@@ -26,7 +26,8 @@ import { Descriptions, DescItem } from "../../ui/Descriptions";
 import { Table, Thead, Tbody, Tr, Th, Td } from "../../ui/Table";
 import { usePagination } from "../../ui/usePagination";
 import Pagination from "../../ui/Pagination";
-import { SearchFilter, FilterRow, DropdownSelectFilter } from "../../ui/Filters";
+import { SearchFilter, DropdownSelectFilter } from "../../ui/Filters";
+import MobileFilters from "../../ui/MobileFilters";
 import apiClient from "../../services/apiClient";
 import DateRangeFilter, { inDateRange } from "../../components/DateRangeFilter";
 import { selectableProjects } from "../../utils/projectOptions";
@@ -442,7 +443,7 @@ export default function AccountsPayment() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, bills, loading]);
 
-  // Deep link from MIS Overview's "Bill approval pipeline" stage click
+  // Deep link from a dashboard stage click
   // (?tab=<matchesTab key>) — same camelCase keys matchesTab() above already
   // understands (draft/verifyDone/l1Approved/approved/sentToTms/hold/paid),
   // just settable from a URL instead of only a tile click.
@@ -1181,8 +1182,11 @@ export default function AccountsPayment() {
 
 
       {/* Filter row */}
-      < FilterRow >
-        <SearchFilter placeholder="Search by bill no, vendor, work order, project…" value={search} onChange={setSearch} />
+      <MobileFilters
+        className="flex flex-wrap items-end gap-3 mb-4"
+        active={!!dateFrom || !!dateTo || !!projectFilter || !!vendorFilter || !!companyFilter || showArchived}
+        search={<SearchFilter placeholder="Search by bill no, vendor, work order, project…" value={search} onChange={setSearch} />}
+      >
         <DateRangeFilter onChange={(from, to) => { setDateFrom(from); setDateTo(to); }} />
         <DropdownSelectFilter
           placeholder="All Projects" resetValue=""
@@ -1212,7 +1216,7 @@ export default function AccountsPayment() {
           label="Archive"
           onClick={() => setShowArchived(v => !v)}
         />
-      </FilterRow >
+      </MobileFilters>
 
       {
         loading ? (

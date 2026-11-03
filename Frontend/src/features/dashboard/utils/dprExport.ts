@@ -22,7 +22,7 @@ const fmt = (n: number) => Math.round((n || 0) * 100) / 100;
 export function downloadDPRCsv(viewType: "operational" | "financial", report: DPRReport, projectLabel: string) {
   const { operational: o, financial: f, meta } = report;
   const lines: string[] = [
-    toCsvRow([`${viewType.toUpperCase()} MIS REPORT`]),
+    toCsvRow([`${viewType.toUpperCase()} DPR REPORT`]),
     toCsvRow(["Project", projectLabel]),
     toCsvRow([meta.isSingleDay ? "Date" : "Period", formatDprDateRange(meta)]),
     toCsvRow(["Generated", new Date(meta.generatedAt).toLocaleString("en-IN")]),
@@ -80,7 +80,7 @@ export function downloadDPRCsv(viewType: "operational" | "financial", report: DP
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `MIS-Report-${viewType}-${meta.date}.csv`;
+  a.download = `DPR-Report-${viewType}-${meta.date}.csv`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);

@@ -147,7 +147,7 @@ export default function SlaDashboard() {
       const res = await apiClient.get("/workflows/mis-report", { params });
       setReport(res.data);
     } catch (e: unknown) {
-      setError((e as Error).message || "Failed to load SLA MIS report");
+      setError((e as Error).message || "Failed to load SLA report");
     } finally { setLoading(false); }
   }, [entityFilter, rangeFilter]);
 
@@ -182,7 +182,7 @@ export default function SlaDashboard() {
       .finally(() => setBrDetailLoading(false));
   }, [viewBillRequestId]);
 
-  if (loading && !report) return <Spinner label="Loading SLA MIS report…" />;
+  if (loading && !report) return <Spinner label="Loading SLA report…" />;
 
   if (error) return <div className="m-6"><Alert type="error" message={error} /></div>;
   if (!report) return null;

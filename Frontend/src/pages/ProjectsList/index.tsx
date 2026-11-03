@@ -8,7 +8,8 @@ import { useCategories } from "../../hooks/useCategories";
 import { selectableProjects } from "../../utils/projectOptions";
 import PageHeader from "../../ui/PageHeader";
 import Btn from "../../ui/Btn";
-import { FilterRow, SelectFilter } from "../../ui/Filters";
+import { SelectFilter } from "../../ui/Filters";
+import MobileFilters from "../../ui/MobileFilters";
 import { DateRangePicker } from "../../ui/DatePicker";
 import { SkeletonTable } from "../../ui/Skeleton";
 
@@ -101,7 +102,7 @@ export default function ProjectsList() {
         }
       />
 
-      <FilterRow>
+      <MobileFilters className="flex flex-wrap items-end gap-3 mb-4" active={hasFilters}>
         <SelectFilter value={projectId} onChange={v => setFilter("projectId", v)} placeholder="All Projects" options={projectOptions.map(p => ({ label: p.name, value: p._id }))} />
         <SelectFilter value={categoryId} onChange={v => setFilter("categoryId", v)} placeholder="All Categories" options={categoryOptions} />
         <SelectFilter value={contractorId} onChange={v => setFilter("contractorId", v)} placeholder="All Contractors" options={contractorOptions} />
@@ -112,7 +113,7 @@ export default function ProjectsList() {
           return next;
         }, { replace: true })} />
         {hasFilters && <Btn label="Reset Filters" icon={RotateCcw} outline small onClick={resetFilters} />}
-      </FilterRow>
+      </MobileFilters>
 
       {filterChips.length > 0 && (
         <div className="flex flex-wrap gap-2 mb-3 -mt-1">

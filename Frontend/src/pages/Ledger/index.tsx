@@ -13,6 +13,7 @@ import NxBadge from "../../ui/nexora/Badge";
 import type { NxBadgeColor } from "../../ui/nexora/Badge";
 import NxStatCard from "../../ui/nexora/StatCard";
 import { DropdownSelectFilter } from "../../ui/Filters";
+import MobileFilters from "../../ui/MobileFilters";
 import SField from "../../ui/SField";
 import { Descriptions, DescItem } from "../../ui/Descriptions";
 import Btn from "../../ui/Btn";
@@ -511,7 +512,10 @@ export default function Ledger() {
 
       {/* Filters */}
       <div className="bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700/40 rounded-lg p-3.5 mb-4">
-        <div className="flex gap-2.5 items-center flex-wrap">
+        <MobileFilters
+          className="flex gap-2.5 items-center flex-wrap"
+          active={projectFilter !== "all" || vendorFilter !== "all"}
+        >
           <DropdownSelectFilter
             value={projectFilter} onChange={setProjectFilter} placeholder="All Projects"
             options={selectableProjects(projects).map(p => ({ value: p._id, label: p.name || p._id }))}
@@ -521,7 +525,7 @@ export default function Ledger() {
             options={contractors.map(c => ({ value: c.vendorCode, label: `${c.vendorCode} — ${vendorLabel(c.companyName || "", c.shortCode)}` }))}
           />
           <DateRangeFilter onChange={(from, to) => { setDateFrom(from); setDateTo(to); }} />
-          <div className="w-full sm:w-64">
+          <div className="w-full md:w-64">
             <SField
               value={null} placeholder="Jump to Work Order…"
               onChange={id => { if (id) setSelectedWOId(id); }}
@@ -531,7 +535,7 @@ export default function Ledger() {
           <span className="ml-auto text-gray-400 text-xs whitespace-nowrap">
             {woSummaries.length} work order{woSummaries.length !== 1 ? "s" : ""}
           </span>
-        </div>
+        </MobileFilters>
       </div>
 
       {/* Summary table */}

@@ -9,6 +9,7 @@ import NxBadge from "../../ui/nexora/Badge";
 import type { NxBadgeColor } from "../../ui/nexora/Badge";
 import NxStatCard from "../../ui/nexora/StatCard";
 import { SearchFilter, DropdownSelectFilter } from "../../ui/Filters";
+import MobileFilters from "../../ui/MobileFilters";
 import { Table, Thead, Tbody, Tr, Th, Td, TdText } from "../../ui/Table";
 import { usePagination } from "../../ui/usePagination";
 import Pagination from "../../ui/Pagination";
@@ -187,8 +188,11 @@ export default function ProcurementTracker() {
 
       <div className="bg-white/90 dark:bg-gray-800/95 backdrop-blur-xl border border-gray-100 dark:border-gray-700/50 rounded-xl shadow-sm p-5">
         <div className="bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700/40 rounded-lg p-3.5 mb-4">
-          <div className="flex gap-2.5 items-center flex-wrap">
-            <SearchFilter value={search} onChange={setSearch} placeholder="Search bill no., PO, vendor, project, amount…" />
+          <MobileFilters
+            className="flex gap-2.5 items-center flex-wrap"
+            active={!!(projectFilter || vendorFilter || statusFilter)}
+            search={<SearchFilter value={search} onChange={setSearch} placeholder="Search bill no., PO, vendor, project, amount…" />}
+          >
             <DropdownSelectFilter
               value={projectFilter} onChange={setProjectFilter} placeholder="All Projects" resetValue=""
               options={selectableProjects(projects).map(p => ({ label: p.name, value: p.id }))}
@@ -201,7 +205,7 @@ export default function ProcurementTracker() {
               value={statusFilter} onChange={setStatusFilter} placeholder="All Statuses" resetValue=""
               options={["draft", "verify-done", "l1-approved", "approved", "sent-to-tms", "hold", "paid", "rejected"].map(s => ({ label: STATUS_LABEL[s], value: s }))}
             />
-          </div>
+          </MobileFilters>
         </div>
 
         {loading ? (

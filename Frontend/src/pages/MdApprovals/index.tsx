@@ -18,6 +18,7 @@ import Modal from "../../ui/Modal";
 import Field from "../../ui/Field";
 import { Table, Thead, Tbody, Tr, Th, Td } from "../../ui/Table";
 import { SearchFilter, DropdownSelectFilter } from "../../ui/Filters";
+import MobileFilters from "../../ui/MobileFilters";
 import DateRangeFilter, { inDateRange } from "../../components/DateRangeFilter";
 import ReviewDrawer from "./ReviewDrawer";
 import VendorParty from "../../components/VendorParty";
@@ -534,13 +535,16 @@ export default function MdApprovals() {
               triggers bumped a notch above their shared-component default,
               same idea as WorkItems/index.tsx's own scoped resize of this
               row, just the other direction. */}
-          <div className="flex gap-2.5 items-center flex-wrap [&_input]:h-11! [&_button]:h-11! [&_input]:text-[14px]! [&_button]:text-[14px]!">
-            <SearchFilter value={search} onChange={setSearch} placeholder="Search by reference, requester, department…" />
+          <MobileFilters
+            className="flex gap-2.5 items-center flex-wrap [&_input]:h-11! [&_button]:h-11! [&_input]:text-[14px]! [&_button]:text-[14px]!"
+            active={hasActiveFilters}
+            search={<SearchFilter value={search} onChange={setSearch} placeholder="Search by reference, requester, department…" />}
+          >
             <DropdownSelectFilter value={projectFilter} onChange={setProjectFilter} options={projectOptions} placeholder="All projects" resetValue="all" />
             <DropdownSelectFilter value={deptFilter} onChange={setDeptFilter} options={deptOptions} placeholder="All departments" resetValue="all" />
             <DateRangeFilter onChange={(from, to) => { setDateFrom(from); setDateTo(to); }} />
             {hasActiveFilters && <Btn small outline label="Clear all" onClick={clearAllFilters} />}
-          </div>
+          </MobileFilters>
         </div>
 
         {/* Bulk-approve bar — only ever shown with a live selection on a tab
@@ -642,6 +646,7 @@ export default function MdApprovals() {
                   ) : (
                     <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                       <span className="whitespace-nowrap">{row.daysPending === null ? "—" : `${row.daysPending ?? 0} days`}</span>
+                      {isOverdue(row) && <NxBadge color="red">Overdue</NxBadge>}
                     </div>
                   )}
                 </Td>

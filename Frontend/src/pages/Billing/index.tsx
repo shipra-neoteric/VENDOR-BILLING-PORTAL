@@ -21,6 +21,7 @@ import Pagination from "../../ui/Pagination";
 import Spinner from "../../ui/Spinner";
 import EmptyState from "../../ui/EmptyState";
 import { SearchFilter, DropdownSelectFilter } from "../../ui/Filters";
+import MobileFilters from "../../ui/MobileFilters";
 import VendorParty, { vendorPartyText } from "../../components/VendorParty";
 import DateRangeFilter, { inDateRange } from "../../components/DateRangeFilter";
 import { selectableProjects } from "../../utils/projectOptions";
@@ -517,8 +518,11 @@ export default function Billing() {
 
       <div className="bg-white/90 dark:bg-gray-800/95 backdrop-blur-xl border border-gray-100 dark:border-gray-700/50 rounded-xl shadow-sm p-5">
         <div className="bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700/40 rounded-lg p-3.5 mb-4">
-          <div className="flex gap-2.5 items-center flex-wrap">
-            <SearchFilter placeholder="Search bill no., vendor, group, WO, project…" value={search} onChange={setSearch} />
+          <MobileFilters
+            className="flex gap-2.5 items-center flex-wrap"
+            active={!!projectFilter || !!statusFilter || !!deptFilter || !!groupFilter || !!dateFrom || !!dateTo}
+            search={<SearchFilter placeholder="Search bill no., vendor, group, WO, project…" value={search} onChange={setSearch} />}
+          >
             <DropdownSelectFilter
               value={projectFilter}
               onChange={setProjectFilter}
@@ -559,7 +563,7 @@ export default function Billing() {
             <span className="ml-auto text-gray-400 text-xs whitespace-nowrap">
               {filteredBills.length} bill{filteredBills.length !== 1 ? "s" : ""}
             </span>
-          </div>
+          </MobileFilters>
         </div>
 
         {loading ? (

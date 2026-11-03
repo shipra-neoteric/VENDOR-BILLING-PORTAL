@@ -9,6 +9,7 @@ import dayjs from "dayjs";
 import apiClient from "../../services/apiClient";
 import VendorParty, { vendorPartyText } from "../../components/VendorParty";
 import { SearchFilter, DropdownSelectFilter } from "../../ui/Filters";
+import MobileFilters from "../../ui/MobileFilters";
 import MultiSelect from "../../ui/MultiSelect";
 import { useAuth } from "../../context/AuthContext";
 import type { AuthUser } from "../../context/AuthContext";
@@ -1347,12 +1348,15 @@ export default function BillApproval() {
         />
       </div>
       <div className="bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700/40 rounded-lg p-3.5 mb-4">
-        <div className="flex gap-2.5 flex-wrap items-center">
-          <SearchFilter
+        <MobileFilters
+          className="flex gap-2.5 flex-wrap items-center"
+          active={reqProjectFilters.length > 0 || !!reqDeptFilter || showArchived || exportScope !== "all"}
+          search={<SearchFilter
             placeholder="Search by request no, work order, contractor, or project…"
             value={reqSearch} onChange={setReqSearch}
-          />
-          <div className="w-60">
+          />}
+        >
+          <div className="md:w-60">
             <MultiSelect
               placeholder="All projects"
               values={reqProjectFilters} onChange={setReqProjectFilters}
@@ -1378,7 +1382,7 @@ export default function BillApproval() {
             ]}
           />
           <Btn small outline icon={Download} label="Download PDF" onClick={downloadBillApprovalPDFExport} />
-        </div>
+        </MobileFilters>
       </div>
 
       {/* One merged, number-sorted table — manual bills (Billing -> New Bill,
@@ -1469,7 +1473,6 @@ export default function BillApproval() {
                   <Tr key={row.key} className="cursor-pointer" onClick={() => openViewReq(r)}>
                     <Td>
                       <div className="flex gap-1.5 items-center">
-                        {r.stageNo && <NxBadge color="orange">S{r.stageNo}</NxBadge>}
                         <span className="text-primary font-bold text-[13px]">{r.billId?.billNo || r.reqNo}</span>
                       </div>
                       {r.billId?.billNo && (

@@ -1,6 +1,6 @@
 import {
   Activity, ChevronRight, ClipboardList, FileSignature, HardHat, Receipt, Hourglass,
-  TrendingUp, Briefcase, BarChart3, ReceiptText, UserCheck, PenTool, Clock, ShieldAlert, ShieldX,
+  TrendingUp, Briefcase, BarChart3, ReceiptText, UserCheck, PenTool, Clock,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import Card from "../../../ui/Card";
@@ -146,10 +146,6 @@ export default function ProjectLifecycle({
           <StatChip icon={TrendingUp} tone="blue" label="Overall Progress" value={`${overallProgress}%`} />
           <Divider />
           <StatChip icon={Clock} tone="amber" label="Delayed Projects" value={`${activity.delayedProjects}`} />
-          <Divider />
-          <StatChip icon={ShieldAlert} tone="amber" label="At Risk Projects" value={`${activity.atRiskProjects}`} />
-          <Divider />
-          <StatChip icon={ShieldX} tone="red" label="Critical Projects" value={`${activity.criticalProjects}`} />
         </div>
       </div>
     </Card>

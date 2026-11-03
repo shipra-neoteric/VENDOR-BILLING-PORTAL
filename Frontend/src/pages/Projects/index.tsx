@@ -313,7 +313,7 @@ function ProjectDetail({
           {/* Financial stats */}
           {stats && (
             <>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 lg:[&_.tabular-nums]:text-base 2xl:[&_.tabular-nums]:text-xl gap-3 mb-4">
                 <NxStatCard label="Total Contract Value" value={fmt(stats.awardedContractValue)} icon={Landmark} onClick={() => goTab("workorders")} />
                 <NxStatCard label="Work Executed" value={fmt(stats.workExecutedValue)} icon={HardHat} onClick={() => goTab("category")} />
                 <NxStatCard label="Total Billed" value={fmt(stats.billedGross)} icon={Receipt} onClick={() => goTab("bills")} />
