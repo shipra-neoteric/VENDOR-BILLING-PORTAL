@@ -2755,17 +2755,17 @@ export default function WorkItems() {
                   <Tr>
                     <Th className="w-[8%]">WO No</Th>
                     <Th className="w-[7%]">Date</Th>
-                    <Th className="w-[8%]">Project</Th>
+                    <Th className="w-[10%]">Project</Th>
                     <Th className="w-[8%]">Category</Th>
                     <Th className="w-[8%]">Vendor Code</Th>
-                    <Th className="w-[10%]">Company Name</Th>
+                    <Th className="w-[11%]">Company Name</Th>
                     {/* Widened from 9% — a large contract value (e.g.
                         ₹1,04,91,430.00) overflowed this column's old width
                         and visually overlapped the Status badge next to it. */}
                     <Th className="text-right w-[13%]">Contract Value</Th>
-                    <Th className="w-[12%]">Status</Th>
-                    <Th className="w-[9%]">Step</Th>
-                    <Th className="w-[6%]">Created</Th>
+                    <Th className="w-[6%]">Status</Th>
+                    <Th className="w-[11%]">Step</Th>
+                    <Th className="w-[7%]">Created</Th>
                     <Th className="w-[11%]">Actions</Th>
                   </Tr>
                 </Thead>

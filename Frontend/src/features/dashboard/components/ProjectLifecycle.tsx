@@ -1,6 +1,6 @@
 import {
   Activity, ChevronRight, ClipboardList, FileSignature, HardHat, Receipt, Hourglass,
-  TrendingUp, Briefcase, BarChart3, ReceiptText, UserCheck, PenTool, Clock,
+  TrendingUp, Briefcase, BarChart3, ReceiptText, UserCheck, PenTool,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import Card from "../../../ui/Card";
@@ -144,16 +144,10 @@ export default function ProjectLifecycle({
 
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-gray-100 dark:border-gray-700/40 px-3 py-2">
           <StatChip icon={TrendingUp} tone="blue" label="Overall Progress" value={`${overallProgress}%`} />
-          <Divider />
-          <StatChip icon={Clock} tone="amber" label="Delayed Projects" value={`${activity.delayedProjects}`} />
         </div>
       </div>
     </Card>
   );
-}
-
-function Divider() {
-  return <span className="hidden sm:block w-px h-4 bg-gray-200 dark:bg-gray-700/40" />;
 }
 
 function StatChip({ icon: Icon, tone, label, value }: { icon: LucideIcon; tone: Tone; label: string; value: string }) {
