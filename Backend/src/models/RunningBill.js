@@ -346,6 +346,16 @@ const runningBillSchema = new mongoose.Schema(
     // nonzero, same convention as adjustmentAmount below.
     retentionReleased:       { type: Number, default: 0 },
     retentionReleaseRemark:  { type: String, default: '' },
+    // The final approver's cut of the gross total (see utils/finalDeduction.js) — the bill's own `amount` is already
+    // reduced by it; this keeps the figure, the reason, who and when.
+    finalDeduction: {
+      amount:      { type: Number },
+      remark:      { type: String, default: '' },
+      grossBefore: { type: Number },
+      by:          { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      byName:      { type: String },
+      at:          { type: Date },
+    },
     // Keeps a bill out of the Final Approval (MD) pending queue without
     // touching its status — it stays actionable from Accounts Payment.
     hideFromFinalApproval: { type: Boolean, default: false },

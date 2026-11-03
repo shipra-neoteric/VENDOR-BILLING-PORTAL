@@ -18,6 +18,7 @@ const { canActOnDepartment } = require('../utils/departmentAccess');
 const { can } = require('../middleware/auth');
 const { getApprovalConfig, approverAllowed } = require('../utils/approvalRules');
 const { notifyStageInApp, notifyUser } = require('../utils/notificationService');
+const { parseFinalDeduction, finalDeductionSnapshot, round2: roundMoney } = require('../utils/finalDeduction');
 
 // The segregation-of-duty checks below (agm≠gm, gm≠l3, l3≠l4) exist so one
 // person can't rubber-stamp their own prior stage BY DEFAULT — but an admin
@@ -563,7 +564,12 @@ async function finalizeBillRequest(br, wo, req, res, finalStage) {
     };
   });
 
-  const totalAmount     = lineItems.reduce((s, l) => s + l.amount, 0);
+  const itemsTotal = lineItems.reduce((s, l) => s + l.amount, 0);
+  // The final approver may cut the gross total (amount + optional remark); GST etc. are then worked out on what is left.
+  const cut = parseFinalDeduction(req.body, itemsTotal);
+  if (cut.error) { badRequest(res, cut.error); return null; }
+  const totalAmount     = roundMoney(itemsTotal - cut.amount);
+  const finalDeduction  = cut.amount > 0 ? finalDeductionSnapshot(itemsTotal, cut.amount, cut.remark, req.user) : undefined;
   const retentionAmount = br.retentionAmount || 0;
   const advanceRecovery = br.advanceRecovery || 0;
   const billNo = await nextBillNo();
@@ -585,6 +591,7 @@ async function finalizeBillRequest(br, wo, req, res, finalStage) {
     billDate:    new Date(),
     lineItems,
     amount:           totalAmount,
+    ...(finalDeduction ? { finalDeduction } : {}),
     retentionPercent: wo.retentionPercent ?? 0,
     retentionAmount,
     advanceRecovery,
@@ -622,6 +629,7 @@ async function finalizeBillRequest(br, wo, req, res, finalStage) {
     rate:   lineItems[i].rate,
     amount: lineItems[i].amount,
   }));
+  if (finalDeduction) br.finalDeduction = finalDeduction;
   br.status      = 'approved';
   br.billId      = runningBill._id;
   br.processedBy = req.user._id;
@@ -657,7 +665,7 @@ async function finalizeBillRequest(br, wo, req, res, finalStage) {
 
   await logAudit({
     action: 'APPROVE', module: 'bill-requests', user: req.user,
-    description: `${finalStage.toUpperCase()} approved ${br.reqNo} — generated bill ${billNo} (₹${totalAmount.toLocaleString('en-IN')})`,
+    description: `${finalStage.toUpperCase()} approved ${br.reqNo} — generated bill ${billNo} (₹${totalAmount.toLocaleString('en-IN')})${finalDeduction ? ` after a deduction of ₹${finalDeduction.amount.toLocaleString('en-IN')}${finalDeduction.remark ? ` (${finalDeduction.remark})` : ''}` : ''}`,
     entityType: 'BillRequest', entityId: br._id, entityLabel: br.reqNo,
   });
 

@@ -45,6 +45,8 @@ export interface RunningBillLineItem {
 }
 
 export interface RunningBillDetail {
+  // The final approver's cut of the gross total (amount, remark, who) — bill.amount is already reduced by it.
+  finalDeduction?: { amount: number; remark?: string; byName?: string; at?: string; grossBefore?: number } | null;
   id: string;
   billNo: string;
   workOrderId?: string;
@@ -89,7 +91,7 @@ export interface RunningBillDetail {
 export const fmt = (n: number) => "₹" + (n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export const getLineItemsGross = (bill: RunningBillDetail) =>
-  (bill.lineItems || []).reduce((sum, li) => sum + (Number(li.amount) || 0), 0);
+  (bill.lineItems || []).reduce((sum, li) => sum + (Number(li.amount) || 0), 0) - (Number(bill.finalDeduction?.amount) || 0);
 
 export const netAfterAdvance = (b: RunningBillDetail) =>
   billFinancials({
@@ -517,6 +519,21 @@ export default function RunningBillDetailView({
             ))}
           </Tbody>
           <Tfoot>
+            {(bill.finalDeduction?.amount ?? 0) > 0 && (
+              <>
+                <Tr>
+                  <Td colSpan={4} className="text-right font-semibold text-gray-500 dark:text-gray-400">Items total</Td>
+                  <Td className="text-right font-mono font-semibold">{fmt(getLineItemsGross(bill) + bill.finalDeduction!.amount)}</Td>
+                </Tr>
+                <Tr className="bg-red-50 dark:bg-red-500/10">
+                  <Td colSpan={4} className="text-right font-semibold text-red-600 dark:text-red-400">
+                    Amount reduced{bill.finalDeduction!.byName ? ` by ${bill.finalDeduction!.byName}` : ""}
+                    {bill.finalDeduction!.remark ? <span className="block text-[11px] font-normal">Remark: {bill.finalDeduction!.remark}</span> : null}
+                  </Td>
+                  <Td className="text-right font-mono font-semibold text-red-600 dark:text-red-400">− {fmt(bill.finalDeduction!.amount)}</Td>
+                </Tr>
+              </>
+            )}
             <Tr>
               <Td colSpan={4} className="text-right font-bold text-gray-500 dark:text-gray-400">Total Billed Amount</Td>
               <Td className="text-right font-mono font-bold text-[#ff7a00] text-[14px]">{fmt(bill.amount)}</Td>

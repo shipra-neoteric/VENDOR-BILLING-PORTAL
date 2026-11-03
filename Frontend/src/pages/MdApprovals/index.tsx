@@ -204,6 +204,15 @@ export default function MdApprovals() {
 
   const [reviewRow, setReviewRow] = useState<MdApprovalRow | null>(null);
   const [approveTarget, setApproveTarget] = useState<MdApprovalRow | null>(null);
+  // The final approver's optional cut of a bill's gross total (amount + remark), keyed to the row it was typed for so it
+  // can never ride along on a different row's approval.
+  const [deduct, setDeduct] = useState<{ key: string; amount: string; remark: string }>({ key: "", amount: "", remark: "" });
+  const rowKey = (r: MdApprovalRow) => `${r.system}:${r.id}`;
+  const deductionFor = (r: MdApprovalRow | null) => {
+    if (!r || deduct.key !== rowKey(r)) return { amount: 0, remark: "" };
+    const n = Number(deduct.amount);
+    return { amount: Number.isFinite(n) && n > 0 ? n : 0, remark: deduct.remark.trim() };
+  };
   const [rejectTarget, setRejectTarget] = useState<MdApprovalRow | null>(null);
   const [sendBackTarget, setSendBackTarget] = useState<MdApprovalRow | null>(null);
   const [reason, setReason] = useState("");
@@ -316,6 +325,7 @@ export default function MdApprovals() {
     setSendBackTarget(null);
     setReviewRow(null);
     setReason("");
+    setDeduct({ key: "", amount: "", remark: "" });
     load();
     loadTileStats();
   };
@@ -325,7 +335,8 @@ export default function MdApprovals() {
     setSaving(true);
     try {
       const { method, path } = approveEndpointFor(approveTarget);
-      const res = await apiClient[method](path, { remarks: "" });
+      const d = deductionFor(approveTarget);
+      const res = await apiClient[method](path, { remarks: "", ...(d.amount > 0 ? { deductionAmount: d.amount, deductionRemark: d.remark } : {}) });
       toast.success(res.data?.message || "Approved");
       refetchAndClose();
     } catch (e: any) {
@@ -664,12 +675,44 @@ export default function MdApprovals() {
           onClose={() => setReviewRow(null)}
           footer={
             !isDecidedTab ? (
-              <div className="flex justify-end gap-2">
+              <div className="flex flex-col gap-3 w-full">
+                {canApprove && (reviewRow.system === "BillRequest" || reviewRow.system === "RunningBill-Manual") && (() => {
+                  const key = rowKey(reviewRow);
+                  const mine = deduct.key === key ? deduct : { key, amount: "", remark: "" };
+                  const cut = deductionFor(reviewRow);
+                  const tooBig = cut.amount > 0 && cut.amount >= (reviewRow.amount || 0);
+                  return (
+                    <div className="rounded-lg border border-gray-200 dark:border-gray-700/60 p-3">
+                      <div className="text-[11px] font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">Deduct from gross total (optional)</div>
+                      <div className="grid grid-cols-1 sm:grid-cols-[180px_1fr] gap-2">
+                        <input
+                          type="number" min="0" step="any" inputMode="decimal" placeholder="Amount to deduct (₹)" value={mine.amount}
+                          onChange={(e) => setDeduct({ ...mine, key, amount: e.target.value })}
+                          className="h-9 px-2.5 text-[13px] rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 font-mono"
+                        />
+                        <input
+                          type="text" maxLength={500} placeholder="Remark — why this amount is being deducted (optional)" value={mine.remark}
+                          onChange={(e) => setDeduct({ ...mine, key, remark: e.target.value })}
+                          className="h-9 px-2.5 text-[13px] rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"
+                        />
+                      </div>
+                      {cut.amount > 0 && (
+                        <div className={`mt-2 text-xs ${tooBig ? "text-red-600" : "text-gray-600 dark:text-gray-300"}`}>
+                          {tooBig
+                            ? "The deduction must be less than the gross total."
+                            : `Gross total ${fmt(reviewRow.amount || 0)} → ${fmt((reviewRow.amount || 0) - cut.amount)} (GST and net payable are worked out on this).`}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+                <div className="flex justify-end gap-2">
                 {canReject && reviewRow.system === "WorkOrder" && (
                   <Btn outline icon={Undo2} label="Send Back" onClick={() => { setSendBackTarget(reviewRow); setReviewRow(null); }} />
                 )}
                 {canReject && <Btn color="red" icon={X} label="Reject" onClick={() => { setRejectTarget(reviewRow); setReviewRow(null); }} />}
-                {canApprove && <Btn color="green" icon={Check} label="Approve" onClick={() => { setApproveTarget(reviewRow); setReviewRow(null); }} />}
+                {canApprove && <Btn color="green" icon={Check} label="Approve" disabled={deductionFor(reviewRow).amount > 0 && deductionFor(reviewRow).amount >= (reviewRow.amount || 0)} onClick={() => { setApproveTarget(reviewRow); setReviewRow(null); }} />}
+                </div>
               </div>
             ) : undefined
           }
@@ -679,7 +722,7 @@ export default function MdApprovals() {
       {approveTarget && (
         <ConfirmModal
           title="Approve"
-          message={`Approve ${approveTarget.referenceNumber || "this item"}? This is the final approval stage for this ${approveTarget.approvalType}.`}
+          message={`Approve ${approveTarget.referenceNumber || "this item"}? This is the final approval stage for this ${approveTarget.approvalType}.${deductionFor(approveTarget).amount > 0 ? ` The gross total will be reduced by ${fmt(deductionFor(approveTarget).amount)}.` : ""}`}
           confirmLabel="Approve"
           loading={saving}
           onConfirm={handleApprove}

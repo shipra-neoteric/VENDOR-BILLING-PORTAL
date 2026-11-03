@@ -73,6 +73,8 @@ interface LineItem {
 }
 
 interface Bill {
+  // The final approver's cut of the gross total — bill.amount is already reduced by it (see RunningBillDetailView).
+  finalDeduction?: { amount: number; remark?: string; byName?: string; at?: string } | null;
   id: string;
   billNo: string;
   workOrderId?: string;
@@ -201,7 +203,7 @@ const getLineItemsGross = (bill: Bill) =>
   (bill.lineItems || []).reduce(
     (sum, li) => sum + (Number(li.amount) || 0),
     0
-  );
+  ) - (Number(bill.finalDeduction?.amount) || 0);
 import { normalizeId } from "../../shared/utils/normalizeId";
 
 // Full-fidelity normalize — for the WO quick-view drawer, which

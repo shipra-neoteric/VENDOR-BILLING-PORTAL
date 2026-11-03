@@ -95,6 +95,7 @@ function billToSyntheticRequest(bill: Record<string, unknown>): BillDetailReques
       : (DEPARTMENT_LABEL[bill.department as string] || ""),
     subCategory: "",
     items: (bill.lineItems as BillDetailRequest["items"]) || [],
+    finalDeduction: (bill.finalDeduction as BillDetailRequest["finalDeduction"]) ?? null,
     remarks: (bill.remarks as string) || "",
     documents: (bill.documents as BillDetailRequest["documents"]) || [],
     status: status as BillDetailRequest["status"],

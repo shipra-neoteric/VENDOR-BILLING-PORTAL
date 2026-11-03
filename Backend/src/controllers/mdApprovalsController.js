@@ -631,6 +631,7 @@ exports.getMdApprovalDetail = asyncHandler(async (req, res) => {
       items: doc.items || [],
       remarks: doc.remarks || '',
       documents: doc.documents || [],
+      finalDeduction: doc.finalDeduction?.amount ? { amount: doc.finalDeduction.amount, remark: doc.finalDeduction.remark || '', byName: doc.finalDeduction.byName, at: doc.finalDeduction.at } : null,
       periodFrom: doc.periodFrom,
       periodTo: doc.periodTo,
       status: doc.status === 'approved' ? 'approved' : doc.status === 'rejected' ? 'rejected' : 'pending',

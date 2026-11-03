@@ -155,6 +155,8 @@ export interface BillDetailItem {
 
 export interface BillDetailRequest {
   _id: string;
+  // The final approver's cut of the gross total (amount, remark, who) — shown under Gross Total once approved.
+  finalDeduction?: { amount: number; remark?: string; byName?: string; at?: string } | null;
   reqNo: string;
   stageNo?: number;
   workOrderId?: string;
@@ -463,6 +465,21 @@ export default function BillDetailModal({
                   <Td colSpan={4} className="font-bold text-right text-primary">Gross Total</Td>
                   <Td className="font-bold text-right text-[#1A1A2E] dark:text-[#F1F5F9]">{fmt(viewTotal)}</Td>
                 </Tr>
+                {(billRequest.finalDeduction?.amount ?? 0) > 0 && (
+                  <>
+                    <Tr className="bg-red-50 dark:bg-red-500/10">
+                      <Td colSpan={4} className="text-right font-semibold text-red-600 dark:text-red-400">
+                        Deduction{billRequest.finalDeduction!.byName ? ` by ${billRequest.finalDeduction!.byName}` : ""}
+                        {billRequest.finalDeduction!.remark ? <span className="block text-[11px] font-normal">{billRequest.finalDeduction!.remark}</span> : null}
+                      </Td>
+                      <Td className="text-right font-semibold font-mono text-red-600 dark:text-red-400">− {fmt(billRequest.finalDeduction!.amount)}</Td>
+                    </Tr>
+                    <Tr className="bg-primary/5">
+                      <Td colSpan={4} className="font-bold text-right text-primary">Gross after deduction</Td>
+                      <Td className="font-bold text-right text-[#1A1A2E] dark:text-[#F1F5F9]">{fmt(viewTotal - billRequest.finalDeduction!.amount)}</Td>
+                    </Tr>
+                  </>
+                )}
                 {(billRequest.billId?.retentionPercent ?? 0) > 0 && (
                   <Tr className="bg-red-50 dark:bg-red-500/10">
                     <Td colSpan={4} className="text-right font-semibold text-red-600 dark:text-red-400">

@@ -24,6 +24,19 @@ const { notifyStagePending, settleAllPendingForEntity } = require('../utils/slac
 const { getApprovalConfig, approverAllowed, DEFAULT_AGM_ROLES, DEFAULT_GM_ROLES, DEFAULT_L3_ROLES, DEFAULT_L4_ROLES } = require('../utils/approvalRules');
 const { notifyStageInApp, notifyByPermission } = require('../utils/notificationService');
 const User = require('../models/User');
+const { parseFinalDeduction, finalDeductionSnapshot, round2: roundMoney } = require('../utils/finalDeduction');
+
+// The final approver of a manual bill may cut its gross total (deductionAmount + optional deductionRemark in the request
+// body); GST etc. are then worked out on what is left. Returns an error message, or null when applied / nothing asked.
+function applyFinalDeductionToBill(bill, req) {
+  const cut = parseFinalDeduction(req.body, bill.amount || 0);
+  if (cut.error) return cut.error;
+  if (cut.amount > 0) {
+    bill.finalDeduction = finalDeductionSnapshot(bill.amount, cut.amount, cut.remark, req.user);
+    bill.amount = roundMoney((bill.amount || 0) - cut.amount);
+  }
+  return null;
+}
 
 // Same cap as a Work Order's attached documents (see utils/validateDocuments.js).
 const MAX_BILL_DOCUMENTS = 5;
@@ -954,7 +967,7 @@ exports.editManualBill = asyncHandler(async (req, res) => {
   for (const k of EDITABLE) if (req.body[k] !== undefined) bill[k] = req.body[k];
   bill.workOrderId = newWOId || undefined;
   bill.lineItems = lineItems;
-  bill.amount = lineItems.reduce((sum, li) => sum + (Number(li.amount) || 0), 0);
+  bill.amount = roundMoney(lineItems.reduce((sum, li) => sum + (Number(li.amount) || 0), 0) - (Number(bill.finalDeduction?.amount) || 0)); // keeps a final-approval deduction if the bill is edited afterwards
   bill.linkedBills = Array.isArray(req.body.linkedBills) ? req.body.linkedBills : [];
   bill.retentionReleased = Number(req.body.retentionReleaseAmount) || 0;
   bill.milestoneId = milestone ? milestone._id : null;
@@ -1164,6 +1177,7 @@ exports.manualAgmApprove = asyncHandler(async (req, res) => {
   // bill.manualGmApprovedBy/'manual-gm' history entry onto this same AGM's
   // action, which is wrong for a department with no real L2 stage at all.
   const isFinal = (bill.requiredApprovalsOverride ?? approvalConfig?.requiredApprovals) === 1;
+  if (isFinal) { const dErr = applyFinalDeductionToBill(bill, req); if (dErr) return badRequest(res, dErr); }
   bill.manualApprovalStatus = isFinal ? 'approved' : 'pending-gm';
   // This department's chain ends here — swap the "BR-####" placeholder
   // (see createBill's own comment) for a real "RA-####" number now that the
@@ -1228,6 +1242,7 @@ async function manualGmApproveHandler(req, res) {
     return success(res, { bill }, 'L2 approved — moved to L3 approval');
   }
 
+  { const dErr = applyFinalDeductionToBill(bill, req); if (dErr) return badRequest(res, dErr); }
   bill.manualApprovalStatus = 'approved';
   // Swap the "BR-####" placeholder for a real "RA-####" number now that this
   // department's (2-level) chain is genuinely complete.
@@ -1289,6 +1304,7 @@ async function manualL3ApproveHandler(req, res) {
     return success(res, { bill }, 'L3 approved — moved to L4 approval');
   }
 
+  { const dErr = applyFinalDeductionToBill(bill, req); if (dErr) return badRequest(res, dErr); }
   bill.manualApprovalStatus = 'approved';
   // Swap the "BR-####" placeholder for a real "RA-####" number now that this
   // department's (3-level) chain is genuinely complete.
@@ -1335,6 +1351,7 @@ exports.manualL4Approve = asyncHandler(async (req, res) => {
 
   bill.manualL4ApprovedBy = req.user._id;
   bill.manualL4ApprovedAt = new Date();
+  { const dErr = applyFinalDeductionToBill(bill, req); if (dErr) return badRequest(res, dErr); }
   bill.manualApprovalStatus = 'approved';
   // Always the department's last configurable level — swap the "BR-####"
   // placeholder for a real "RA-####" number now that the chain is complete.

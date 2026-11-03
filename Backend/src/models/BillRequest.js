@@ -94,6 +94,16 @@ const billRequestSchema = new Schema(
     // once finalizeBillRequest actually creates the bill.
     retentionReleaseAmount: { type: Number, default: 0 },
     retentionReleaseRemark: { type: String, default: '' },
+    // The final approver's cut of the gross total (see utils/finalDeduction.js) — the bill's own `amount` is already
+    // reduced by it; this keeps the figure, the reason, who and when.
+    finalDeduction: {
+      amount:      { type: Number },
+      remark:      { type: String, default: '' },
+      grossBefore: { type: Number },
+      by:          { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      byName:      { type: String },
+      at:          { type: Date },
+    },
     // Which real AdvanceSlip(s) advanceRecovery is actually settling — set by
     // AGM alongside advanceRecovery, but not applied (slip balances updated)
     // until gmApprove actually creates the RunningBill, exactly like the
