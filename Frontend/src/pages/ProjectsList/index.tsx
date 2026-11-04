@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
-import { LayoutDashboard, ArrowLeft, RotateCcw, X } from "lucide-react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { LayoutDashboard, RotateCcw, X, Download } from "lucide-react";
 import apiClient from "../../services/apiClient";
 import { useExecutiveDashboard } from "../../features/dashboard/hooks/useExecutiveDashboard";
-import ProjectsOverviewTable from "../../features/dashboard/components/ProjectsOverviewTable";
+import ProjectsOverviewTable, { exportProjectsOverviewCsv } from "../../features/dashboard/components/ProjectsOverviewTable";
+import ProjectLifecycle from "../../features/dashboard/components/ProjectLifecycle";
 import { useCategories } from "../../hooks/useCategories";
 import { selectableProjects } from "../../utils/projectOptions";
 import PageHeader from "../../ui/PageHeader";
@@ -29,6 +30,8 @@ interface ContractorOption {
 // ── Main Component ─────────────────────────────────────────────────────────────
 export default function ProjectsList() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const [exporting, setExporting] = useState(false);
   const { data, loading, error, retry } = useExecutiveDashboard();
 
   const [projects, setProjects] = useState<ProjectOption[]>([]);
@@ -95,14 +98,17 @@ export default function ProjectsList() {
         title="Projects Overview"
         subtitle="Complete view of project progress, cost and attention areas."
         icon={LayoutDashboard}
+        onBack={() => navigate("/dashboard")}
         actions={
-          <Link to="/dashboard">
-            <Btn title="Back to Dashboard" aria-label="Back to Dashboard" icon={ArrowLeft} outline small />
-          </Link>
+          <Btn
+            label={exporting ? "Exporting…" : "Export CSV"} icon={Download} outline small loading={exporting}
+            onClick={async () => { setExporting(true); await exportProjectsOverviewCsv(exportParams); setExporting(false); }}
+            aria-label="Export projects overview as CSV"
+          />
         }
       />
 
-      <MobileFilters className="flex flex-wrap items-end gap-3 mb-4" active={hasFilters}>
+      <MobileFilters className="flex flex-wrap items-end gap-3 mb-5" active={hasFilters}>
         <SelectFilter value={projectId} onChange={v => setFilter("projectId", v)} placeholder="All Projects" options={projectOptions.map(p => ({ label: p.name, value: p._id }))} />
         <SelectFilter value={categoryId} onChange={v => setFilter("categoryId", v)} placeholder="All Categories" options={categoryOptions} />
         <SelectFilter value={contractorId} onChange={v => setFilter("contractorId", v)} placeholder="All Contractors" options={contractorOptions} />
@@ -129,6 +135,17 @@ export default function ProjectsList() {
         </div>
       )}
 
+      {data && (
+        <ProjectLifecycle
+          className="mb-5"
+          stageSummary={data.stageSummary}
+          kpis={data.kpis}
+          activity={data.activity}
+          activeStage={stage || null}
+          onSelectStage={(st) => setFilter("stage", stage === st ? "" : st)}
+        />
+      )}
+
       {loading && !data ? (
         <SkeletonTable rows={10} cols={9} />
       ) : error ? (
@@ -138,7 +155,7 @@ export default function ProjectsList() {
           <Btn label="Retry" color="primary" onClick={retry} />
         </div>
       ) : (
-        <ProjectsOverviewTable projects={data?.projects ?? []} stage={stage} exportParams={exportParams} />
+        <ProjectsOverviewTable projects={data?.projects ?? []} stage={stage} />
       )}
     </div>
   );

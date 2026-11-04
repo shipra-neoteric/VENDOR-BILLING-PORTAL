@@ -1,28 +1,26 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowUp, ArrowDown, ArrowUpDown, Download, ExternalLink } from "lucide-react";
+import { ArrowUp, ArrowDown, ArrowUpDown, Eye, Search, ChevronLeft, ChevronRight } from "lucide-react";
 import apiClient from "../../../services/apiClient";
 import { fmtCr } from "../utils";
 import type { ExecutiveDashboardProjectRow } from "../../../types/ExecutiveDashboard";
-import Btn from "../../../ui/Btn";
-import { SearchFilter } from "../../../ui/Filters";
+import Badge from "../../../ui/Badge";
+import Card from "../../../ui/Card";
 import { Table, Thead, Tbody, Tr, Th, Td } from "../../../ui/Table";
 import EmptyState from "../../../ui/EmptyState";
 
-type SortKey = "name" | "awardedContractValue" | "workExecutedValue" | "billedGross" | "certifiedNet" | "paidAmount" | "remainingContract" | "progress" | "pendingBillReqs";
+type SortKey = "name" | "awardedContractValue" | "paidAmount" | "remainingContract" | "progress";
 
-const HEADER_CELL = "px-3! py-2! text-[11px]! border-r border-gray-200 dark:border-gray-700/60 last:border-r-0";
-const BODY_CELL = "px-3! py-1.5! text-[13px]! align-middle! border-r border-gray-100 dark:border-gray-700/40 last:border-r-0";
+const PAGE_SIZE = 10;
 
-const STAGE_TEXT: Record<string, string> = {
-  "Planning": "text-blue-600 dark:text-blue-400",
-  "Work Orders Issued": "text-blue-600 dark:text-blue-400",
-  "Work in Progress": "text-emerald-600 dark:text-emerald-400",
-  "Billing": "text-purple-600 dark:text-purple-400",
-  "Payment Pending": "text-amber-600 dark:text-amber-400",
-  "Completed": "text-teal-600 dark:text-teal-400",
+const STAGE_BADGE: Record<string, "blue" | "green" | "purple" | "amber" | "teal"> = {
+  "Planning": "blue",
+  "Work Orders Issued": "blue",
+  "Work in Progress": "green",
+  "Billing": "purple",
+  "Payment Pending": "amber",
+  "Completed": "teal",
 };
-
 
 function saveBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
@@ -35,13 +33,23 @@ function saveBlob(blob: Blob, filename: string) {
   URL.revokeObjectURL(url);
 }
 
+// Downloads the projects overview as CSV for the given filters (used by the page's header button).
+export async function exportProjectsOverviewCsv(exportParams: Record<string, string> = {}) {
+  try {
+    const res = await apiClient.get("/dashboard/executive/export.csv", { params: exportParams, responseType: "blob" });
+    saveBlob(res.data as Blob, `projects-overview-${new Date().toISOString().slice(0, 10)}.csv`);
+  } catch {
+    // Handled globally
+  }
+}
+
 function SortHeader({ label, sortKey, active, dir, onClick, className }: {
   label: string; sortKey: SortKey; active: boolean; dir: "asc" | "desc"; onClick: (k: SortKey) => void; className?: string;
 }) {
   const Icon = !active ? ArrowUpDown : dir === "asc" ? ArrowUp : ArrowDown;
   const alignRight = className?.includes("text-right");
   return (
-    <Th className={`${HEADER_CELL} ${className ?? ""}`}>
+    <Th className={className}>
       <button
         type="button"
         onClick={() => onClick(sortKey)}
@@ -53,36 +61,21 @@ function SortHeader({ label, sortKey, active, dir, onClick, className }: {
   );
 }
 
-// The Projects Overview table — shared by the Dashboard and the standalone /projects-overview page.
-// `projects` is the dashboard's own project rows (already filtered by the page's filters); `stage`
-// narrows them further by overall stage; `exportParams` is passed straight to the CSV export.
-export default function ProjectsOverviewTable({ projects, stage = "", exportParams = {}, maxHeightClass = "max-h-[70vh]" }: {
+// "My Projects" — the projects overview table (the projects page's rows, already filtered by the page's filters;
+// `stage` narrows them further by overall stage), with its own search and paging.
+export default function ProjectsOverviewTable({ projects, stage = "" }: {
   projects: ExecutiveDashboardProjectRow[];
   stage?: string;
-  exportParams?: Record<string, string>;
-  maxHeightClass?: string;
 }) {
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("awardedContractValue");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
-  const [exporting, setExporting] = useState(false);
+  const [page, setPage] = useState(1);
 
   function toggleSort(key: SortKey) {
     if (key === sortKey) setSortDir(d => (d === "asc" ? "desc" : "asc"));
     else { setSortKey(key); setSortDir("desc"); }
-  }
-
-  async function exportCsv() {
-    setExporting(true);
-    try {
-      const res = await apiClient.get("/dashboard/executive/export.csv", { params: exportParams, responseType: "blob" });
-      saveBlob(res.data as Blob, `projects-overview-${new Date().toISOString().slice(0, 10)}.csv`);
-    } catch {
-      // Handled globally
-    } finally {
-      setExporting(false);
-    }
   }
 
   const rows = useMemo(() => {
@@ -97,115 +90,109 @@ export default function ProjectsOverviewTable({ projects, stage = "", exportPara
     });
   }, [projects, search, sortKey, sortDir, stage]);
 
+  // Back to the first page whenever the list itself changes.
+  useEffect(() => { setPage(1); }, [search, stage, projects, sortKey, sortDir]);
+
+  const pageCount = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+  const current = Math.min(page, pageCount);
+  const pageRows = rows.slice((current - 1) * PAGE_SIZE, current * PAGE_SIZE);
+  const from = rows.length === 0 ? 0 : (current - 1) * PAGE_SIZE + 1;
+  const to = Math.min(current * PAGE_SIZE, rows.length);
+
   return (
-    <div className="min-w-0">
-      <div className="mb-3 flex items-center gap-3">
-        <div className="flex-1">
-          <SearchFilter value={search} onChange={setSearch} placeholder="Search by project name or code…" />
+    <Card className="min-w-0">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <h3 className="text-base font-bold text-[#172033] dark:text-white">My Projects</h3>
+        <div className="relative w-full sm:w-72">
+          <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <input
+            value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by project name or code…"
+            className="w-full h-9 pl-9 pr-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0F172A] text-[13px] text-[#1A1A2E] dark:text-[#F1F5F9] placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+          />
         </div>
-        <Btn
-          label={exporting ? "Exporting…" : "Export CSV"}
-          icon={Download}
-          outline
-          small
-          loading={exporting}
-          onClick={exportCsv}
-          aria-label="Export projects overview as CSV"
-        />
       </div>
 
       {rows.length === 0 ? (
         <EmptyState title="No projects match these filters" message="Try widening the date range or clearing a filter." />
       ) : (
-        <Table containerClassName={`${maxHeightClass} overflow-y-auto`} className="min-w-[1100px]">
-          <Thead>
-            <Tr>
-              <Th className={`w-[3%] ${HEADER_CELL}`}>#</Th>
-              <SortHeader label="Project" sortKey="name" active={sortKey === "name"} dir={sortDir} onClick={toggleSort} className="w-[16%]" />
-              <Th className={`w-[9%] ${HEADER_CELL}`}>Stage</Th>
-              <SortHeader label="Contract" sortKey="awardedContractValue" active={sortKey === "awardedContractValue"} dir={sortDir} onClick={toggleSort} className="w-[9%] text-right" />
-              <SortHeader label="Executed" sortKey="workExecutedValue" active={sortKey === "workExecutedValue"} dir={sortDir} onClick={toggleSort} className="w-[9%] text-right" />
-              <SortHeader label="Paid" sortKey="paidAmount" active={sortKey === "paidAmount"} dir={sortDir} onClick={toggleSort} className="w-[9%] text-right" />
-              <SortHeader label="Remaining" sortKey="remainingContract" active={sortKey === "remainingContract"} dir={sortDir} onClick={toggleSort} className="w-[9%] text-right" />
-              <SortHeader label="Progress" sortKey="progress" active={sortKey === "progress"} dir={sortDir} onClick={toggleSort} className="w-[12%]" />
-              <Th className={`w-[12%] ${HEADER_CELL}`} title="Billed ÷ contract value (bills raised, paid or not)">Billed %</Th>
-              <Th className={`w-[7%] text-right ${HEADER_CELL}`}>Pending</Th>
-              <Th className={`w-[5%] text-center uppercase tracking-wider ${HEADER_CELL}`}>
-                ACTION
-              </Th>
-            </Tr>
-          </Thead>
-          <Tbody>
-            {rows.map((p, i) => (
-              <Tr key={p.projectId} className={i % 2 === 1 ? "bg-gray-50/60 dark:bg-white/[0.02]" : ""}>
-                <Td className={`${BODY_CELL} text-gray-400`}>{i + 1}</Td>
-                <Td className={BODY_CELL}>
-                  <div className="font-semibold text-[#172033] dark:text-[#F1F5F9] whitespace-nowrap truncate leading-tight" title={p.name}>{p.name}</div>
-                  <div className="text-[11px] text-gray-400 leading-tight">{p.code}</div>
-                </Td>
-                <Td className={`${BODY_CELL} whitespace-nowrap overflow-hidden`}>
-                  <span className={`block truncate font-medium text-[11px]! ${STAGE_TEXT[p.overallStage] ?? "text-gray-500"}`} title={p.overallStage}>
-                    {p.overallStage}
-                  </span>
-                </Td>
-                <Td className={`${BODY_CELL} text-right tabular-nums`}>{fmtCr(p.awardedContractValue)}</Td>
-                <Td className={`${BODY_CELL} text-right tabular-nums`}>{fmtCr(p.workExecutedValue)}</Td>
-                <Td className={`${BODY_CELL} text-right tabular-nums text-emerald-600 dark:text-emerald-400`}>{fmtCr(p.paidAmount)}</Td>
-                <Td className={`${BODY_CELL} text-right tabular-nums`}>{fmtCr(p.remainingContract)}</Td>
-                <Td className={BODY_CELL}>
-                  <div className="flex items-center gap-2 min-w-[90px]">
-                    <div className="w-12 h-1.5 rounded-full bg-gray-100 dark:bg-gray-700 overflow-hidden shrink-0">
-                      <div className="h-full rounded-full bg-blue-500" style={{ width: `${Math.min(100, p.progress)}%` }} />
-                    </div>
-                    <span className="text-xs font-semibold tabular-nums">{p.progress}%</span>
-                  </div>
-                </Td>
-                <Td className={BODY_CELL}>
-                  {(() => {
-                    const costUsedPct = p.awardedContractValue > 0 ? Math.round((p.billedGross / p.awardedContractValue) * 100) : 0;
-                    const overspending = costUsedPct > p.progress + 10;
-                    // Displayed text is capped at 100% (a corrupt/missing contractValue
-                    // or genuine overbilling can otherwise show "463%") — the
-                    // overspending flag/bar-color still uses the real, uncapped
-                    // ratio so a genuinely huge overspend still reads as amber.
-                    const displayPct = Math.min(100, costUsedPct);
-                    return (
-                      <div className="flex items-center gap-2 min-w-[90px]">
-                        <div className="w-12 h-1.5 rounded-full bg-gray-100 dark:bg-gray-700 overflow-hidden shrink-0">
-                          <div className={`h-full rounded-full ${overspending ? "bg-amber-500" : "bg-blue-500"}`} style={{ width: `${displayPct}%` }} />
-                        </div>
-                        <span className="text-xs font-semibold tabular-nums">{displayPct}%{overspending && costUsedPct > 100 ? "+" : ""}</span>
-                      </div>
-                    );
-                  })()}
-                </Td>
-                <Td className={`${BODY_CELL} text-right`}>
-                  {(() => {
-                    const pendingPayment = Math.max(0, p.certifiedNet - p.paidAmount);
-                    return pendingPayment > 0 ? (
-                      <span className="font-bold text-amber-600 dark:text-amber-400 tabular-nums">
-                        {fmtCr(pendingPayment)}
-                      </span>
-                    ) : (
-                      <span className="text-gray-300 dark:text-gray-600">₹0</span>
-                    );
-                  })()}
-                </Td>
-                <Td className={`${BODY_CELL} text-center`}>
-                  <button
-                    type="button"
-                    onClick={() => navigate(`/projects?id=${p.projectId}`)}
-                    className="inline-flex items-center justify-center p-1 text-gray-500 hover:text-primary hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors"
-                    title="View Project Details"
-                  >
-                    <ExternalLink className="w-4 h-4" />
-                  </button>
-                </Td>
+        <>
+          <Table className="min-w-[760px]">
+            <Thead>
+              <Tr>
+                <SortHeader label="Project" sortKey="name" active={sortKey === "name"} dir={sortDir} onClick={toggleSort} className="w-[26%]" />
+                <Th className="w-[14%]">Stage</Th>
+                <SortHeader label="Progress" sortKey="progress" active={sortKey === "progress"} dir={sortDir} onClick={toggleSort} className="w-[16%]" />
+                <SortHeader label="Paid" sortKey="paidAmount" active={sortKey === "paidAmount"} dir={sortDir} onClick={toggleSort} className="w-[12%] text-right" />
+                <SortHeader label="Remaining" sortKey="remainingContract" active={sortKey === "remainingContract"} dir={sortDir} onClick={toggleSort} className="w-[12%] text-right" />
+                <Th className="w-[12%] text-right">Pending</Th>
+                <Th className="w-[8%] text-center">Action</Th>
               </Tr>
-            ))}
-          </Tbody>
-        </Table>
+            </Thead>
+            <Tbody>
+              {pageRows.map((p) => {
+                const pending = Math.max(0, p.certifiedNet - p.paidAmount);
+                return (
+                  <Tr key={p.projectId}>
+                    <Td>
+                      <div className="font-semibold text-[#172033] dark:text-[#F1F5F9] truncate" title={p.name}>{p.name}</div>
+                      <div className="text-[11px] text-gray-400">{p.code}</div>
+                    </Td>
+                    <Td><Badge color={STAGE_BADGE[p.overallStage] ?? "gray"} small>{p.overallStage}</Badge></Td>
+                    <Td>
+                      <div className="flex items-center gap-2 min-w-[90px]">
+                        <div className="w-14 h-1.5 rounded-full bg-gray-100 dark:bg-gray-700 overflow-hidden shrink-0">
+                          <div className="h-full rounded-full bg-blue-500" style={{ width: `${Math.min(100, p.progress)}%` }} />
+                        </div>
+                        <span className="text-xs font-semibold tabular-nums">{p.progress}%</span>
+                      </div>
+                    </Td>
+                    <Td className="text-right tabular-nums text-emerald-600 dark:text-emerald-400">{fmtCr(p.paidAmount)}</Td>
+                    <Td className="text-right tabular-nums">{fmtCr(p.remainingContract)}</Td>
+                    <Td className="text-right">
+                      {pending > 0
+                        ? <span className="font-bold text-amber-600 dark:text-amber-400 tabular-nums">{fmtCr(pending)}</span>
+                        : <span className="text-gray-300 dark:text-gray-600">₹0</span>}
+                    </Td>
+                    <Td className="text-center">
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/projects?id=${p.projectId}`)}
+                        className="inline-flex items-center justify-center p-1.5 text-gray-500 hover:text-primary hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors"
+                        title="View Project Details"
+                        aria-label={`View ${p.name}`}
+                      >
+                        <Eye className="w-4 h-4" />
+                      </button>
+                    </Td>
+                  </Tr>
+                );
+              })}
+            </Tbody>
+          </Table>
+
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-xs text-gray-500 dark:text-gray-400">
+            <span>Showing {from} to {to} of {rows.length} project{rows.length !== 1 ? "s" : ""}</span>
+            {pageCount > 1 && (
+              <div className="flex items-center gap-1">
+                <button type="button" disabled={current === 1} onClick={() => setPage(current - 1)} aria-label="Previous page"
+                  className="w-8 h-8 inline-flex items-center justify-center rounded-md border border-gray-200 dark:border-gray-700 disabled:opacity-40">
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                {Array.from({ length: pageCount }, (_, i) => i + 1).map(n => (
+                  <button key={n} type="button" onClick={() => setPage(n)} aria-current={n === current ? "page" : undefined}
+                    className={`w-8 h-8 inline-flex items-center justify-center rounded-md border text-xs font-semibold ${n === current ? "bg-primary border-primary text-white" : "border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>
+                    {n}
+                  </button>
+                ))}
+                <button type="button" disabled={current === pageCount} onClick={() => setPage(current + 1)} aria-label="Next page"
+                  className="w-8 h-8 inline-flex items-center justify-center rounded-md border border-gray-200 dark:border-gray-700 disabled:opacity-40">
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+          </div>
+        </>
       )}
-    </div>
+    </Card>
   );
 }
