@@ -606,12 +606,16 @@ function ProjectDetail({
               ) : (
                 <Table>
                   <Thead>
-                    <Tr><Th>Req No</Th><Th>Work Order</Th><Th>Vendor</Th><Th>Category</Th><Th className="text-right">Amount</Th><Th>Date</Th><Th>Status</Th></Tr>
+                    <Tr><Th>Bill No</Th><Th>Work Order</Th><Th>Vendor</Th><Th>Category</Th><Th className="text-right">Amount</Th><Th>Date</Th><Th>Status</Th></Tr>
                   </Thead>
                   <Tbody>
                     {billRequests.map(br => (
                       <Tr key={br._id} onClick={() => setViewBill(br)} className="cursor-pointer">
-                        <Td>{br.reqNo}</Td>
+                        <Td>
+                          {/* Once a request has become a bill its RA number is the one everyone uses; the BR number stays as a small note. */}
+                          <div className="font-semibold">{br.billId?.billNo || br.reqNo}</div>
+                          {br.billId?.billNo && <div className="text-[10px] text-gray-400">was {br.reqNo}</div>}
+                        </Td>
                         <Td>{br.workOrderNo}</Td>
                         <Td>{br.vendorName}</Td>
                         <Td>{br.category || "—"}</Td>
