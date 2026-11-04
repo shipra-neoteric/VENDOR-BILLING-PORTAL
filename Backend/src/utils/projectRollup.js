@@ -30,12 +30,14 @@ const isRejectedBill = (b) => b.status === 'rejected' || b.manualApprovalStatus 
 const isAdvanceBill = (b) => String(b.billType || '').startsWith('advance');
 const isWorkBill = (b) => !isRejectedBill(b) && !b.isUnsubmittedDraft && !isAdvanceBill(b);
 
-function computeProjectRollup(wos, bills) {
+// `cumulativeOffsets` (optional, billId -> amount from utils/cumulativeOffsets.js): the part of a cumulative bill that repeats earlier
+// bills — taken off billedGross so the same work is not counted twice.
+function computeProjectRollup(wos, bills, cumulativeOffsets = null) {
   const countedWos = wos.filter(isCountableWo);
   const awardedContractValue = countedWos.reduce((s, w) => s + (w.contractValue || 0), 0);
   const { executedValue: workExecutedValue, percent: progress } = scopeProgress(countedWos);
 
-  const billedGross = bills.filter(isWorkBill).reduce((s, b) => s + (b.amount || 0), 0);
+  const billedGross = bills.filter(isWorkBill).reduce((s, b) => s + (b.amount || 0) - (cumulativeOffsets ? (cumulativeOffsets.get(String(b._id)) || 0) : 0), 0);
   const advanceAmount = bills.filter(b => isAdvanceBill(b) && !isRejectedBill(b) && !b.isUnsubmittedDraft)
     .reduce((s, b) => s + (b.amount || 0), 0);
 

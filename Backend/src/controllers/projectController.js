@@ -10,6 +10,7 @@ const { nextProjectCode } = require('../utils/codeGen');
 const { logAudit, diffFields } = require('../utils/auditLog');
 const { computeProjectRollup } = require('../utils/projectRollup');
 const { excludeDuplicateBills } = require('../utils/duplicateBills');
+const { getCumulativeOffsets } = require('../utils/cumulativeOffsets');
 const { scopeProgress } = require('../utils/projectStageRules');
 
 // Every GET below strips the real slackWebhookUrl before it ever leaves the
@@ -148,7 +149,7 @@ exports.getProjectStats = asyncHandler(async (req, res) => {
   // the two screens can't disagree: only approved, non-cancelled work orders count
   // towards contract/executed/progress; billed excludes rejected, unsubmitted and
   // advance bills; outstanding is bills still 'approved', not certified - paid.
-  const roll = computeProjectRollup(wos, runningBills);
+  const roll = computeProjectRollup(wos, runningBills, await getCumulativeOffsets());
   const { awardedContractValue, workExecutedValue, billedGross, certifiedNet, paidAmount, progress } = roll;
 
   const categoryMap = {};

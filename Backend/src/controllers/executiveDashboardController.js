@@ -121,6 +121,7 @@ function checkProjectReconciliation(row) {
 
 const { isPaidLike, CERTIFIED_STATUSES } = require('../utils/paidStatuses');
 const { excludeDuplicateBills } = require('../utils/duplicateBills');
+const { getCumulativeOffsets } = require('../utils/cumulativeOffsets');
 const CERTIFIED_BILL_STATUSES_SHARED = CERTIFIED_STATUSES;
 
 // Shared vendor-name resolution + per-WorkOrder financial/status rollup —
@@ -320,6 +321,7 @@ async function buildExecutiveDashboardData(query) {
 
   // Copies made by the legacy reconciliation script are not counted anywhere below (see utils/duplicateBills.js).
   const runningBills = await excludeDuplicateBills(runningBillsAll);
+  const cumulativeOffsets = await getCumulativeOffsets(); // repeated work inside cumulative bills is not counted as Billed again
 
   // SLA breach lookup for "Needs Your Attention" (Phase 2, below) — a WO/
   // BillRequest currently sitting past its current stage's dueAt, per the
@@ -377,7 +379,7 @@ async function buildExecutiveDashboardData(query) {
 
     // Shared with projectController.getProjectStats (utils/projectRollup.js) — see
     // there for exactly what each figure counts.
-    const roll = computeProjectRollup(wos, bills);
+    const roll = computeProjectRollup(wos, bills, cumulativeOffsets);
     const {
       awardedContractValue, workExecutedValue, progress, billedGross, advanceAmount,
       certifiedNet, paidAmount, certifiedUnpaid, overdueAmount, remainingContract,
@@ -483,7 +485,7 @@ async function buildExecutiveDashboardData(query) {
     const woBills = rbByWorkOrder.get(woKey) || [];
     const woBillReqs = brByWorkOrder.get(woKey) || [];
 
-    const woRoll = computeProjectRollup([wo], woBills);
+    const woRoll = computeProjectRollup([wo], woBills, cumulativeOffsets);
 
     const { overallStage: woStage } = computeProjectStageInfo({
       project: projectById.get(String(wo.projectId)),
