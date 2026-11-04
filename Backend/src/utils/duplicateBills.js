@@ -20,7 +20,8 @@ async function getDuplicateBillIds() {
   let ids = new Set();
   if (copies.length) {
     const woIds = [...new Set(copies.map((c) => String(c.workOrderId)))];
-    const others = await RunningBill.find({ workOrderId: { $in: woIds }, remarks: { $not: LEGACY_NOTE }, status: { $ne: 'rejected' } })
+    // The "real" bill must be a live one: not rejected and not archived (an old archived 'submitted' bill is not a twin).
+    const others = await RunningBill.find({ workOrderId: { $in: woIds }, remarks: { $not: LEGACY_NOTE }, status: { $ne: 'rejected' }, isArchived: { $ne: true } })
       .select('workOrderId amount lineItems').lean();
     const have = new Set(others.map(sigOf));
     ids = new Set(copies.filter((c) => have.has(sigOf(c))).map((c) => String(c._id)));
