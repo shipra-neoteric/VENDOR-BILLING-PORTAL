@@ -242,8 +242,9 @@ const BILL_LIST_STATUS_CFG: Record<BillStatus, { label: string; color: NxBadgeCo
   draft: { label: "Awaiting Verification", color: "gray" },
   "verify-done": { label: "Pending L1", color: "amber" },
   "l1-approved": { label: "Pending L2", color: "cyan" },
-  approved: { label: "Ready for TMS", color: "blue" },
-  "sent-to-tms": { label: "Sent to TMS", color: "indigo" },
+  // TMS isn't connected: approval at L2 means the payment is done, so these two stages read as Paid.
+  approved: isPaidLike("approved") ? { label: "Paid", color: "green" } : { label: "Ready for TMS", color: "blue" },
+  "sent-to-tms": isPaidLike("sent-to-tms") ? { label: "Paid", color: "green" } : { label: "Sent to TMS", color: "indigo" },
   hold: { label: "Hold", color: "orange" },
   paid: { label: "Paid", color: "green" },
   rejected: { label: "Rejected", color: "red" },
@@ -573,8 +574,12 @@ export default function AccountsPayment() {
     { key: "draft", label: "Awaiting Verification", count: draftBills.length },
     { key: "verifyDone", label: "Pending L1", count: verifyDoneBills.length },
     { key: "l1Approved", label: "Pending L2", count: l1ApprovedBills.length },
-    { key: "approved", label: "Ready for TMS", count: approvedBills.length },
-    { key: "sentToTms", label: "Sent to TMS", count: sentToTmsBills.length },
+    ...(isPaidLike("approved")
+      ? [{ key: "paid", label: "Paid", count: paidBills.length }]
+      : [
+          { key: "approved", label: "Ready for TMS", count: approvedBills.length },
+          { key: "sentToTms", label: "Sent to TMS", count: sentToTmsBills.length },
+        ]),
   ];
 
   const drawerBill = useMemo(
