@@ -12,7 +12,8 @@
 //     counting both double-counts it and distorts "billed vs executed").
 //   - certifiedNet: netAfterHold of approved + paid bills (advances included —
 //     they are real certified money).
-//   - paidAmount: netPayable of paid bills (cash out, after TDS/adjustment).
+//   - paidAmount: netPayable of paid bills (cash out, after TDS/adjustment). While TMS is not connected, bills
+//     that are Ready for TMS / Sent to TMS count as paid too (see ./paidStatuses.js).
 //   - certifiedUnpaid: netAfterHold of bills still 'approved' (certified but
 //     not yet paid). This — not certifiedNet - paidAmount — is the real
 //     outstanding: that difference also contains the TDS/adjustment withheld on
@@ -20,6 +21,7 @@
 //   - remainingContract: contract minus what has been paid before TDS
 //     (paidGross), so a fully paid project with TDS doesn't show a remainder.
 const { billFinancialsForBill } = require('./billFinancials');
+const { isPaidLike, CERTIFIED_STATUSES } = require('./paidStatuses');
 const {
   isCountableWo, scopeProgress, daysSince, lastStatusChangeAt, HEALTH_THRESHOLDS,
 } = require('./projectStageRules');
@@ -39,10 +41,10 @@ function computeProjectRollup(wos, bills) {
 
   let certifiedNet = 0, paidAmount = 0, paidGross = 0, certifiedUnpaid = 0, overdueAmount = 0;
   for (const b of bills) {
-    if (b.status !== 'approved' && b.status !== 'paid') continue;
+    if (!CERTIFIED_STATUSES.includes(b.status)) continue;
     const f = billFinancialsForBill(b);
     certifiedNet += f.netAfterHold;
-    if (b.status === 'paid') {
+    if (isPaidLike(b.status)) {
       paidAmount += f.netPayable;
       paidGross += f.netAfterHold;
     } else {

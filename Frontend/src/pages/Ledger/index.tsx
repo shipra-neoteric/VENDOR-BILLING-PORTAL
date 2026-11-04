@@ -8,6 +8,8 @@ import DateRangeFilter, { inDateRange } from "../../components/DateRangeFilter";
 import { selectableProjects, getWorkOrderProjectId } from "../../utils/projectOptions";
 import { vendorLabel } from "../../utils/vendorLabel";
 import PageHeader from "../../ui/PageHeader";
+import { isPaidLike } from "../../shared/utils/paidStatuses";
+import { excludeDuplicateBills } from "../../shared/utils/duplicateBills";
 import NxBtn from "../../ui/nexora/Btn";
 import NxBadge from "../../ui/nexora/Badge";
 import type { NxBadgeColor } from "../../ui/nexora/Badge";
@@ -49,6 +51,7 @@ interface Bill {
   supersededBy?: { _id: string; billNo: string; billType?: string } | null;
   linkedBills?: { billId: string; billNo: string; relationshipType: string }[];
   billingCycle?: number;
+  lineItems?: { description?: string; billedQty?: number }[];
 }
 interface Project { _id: string; code?: string; name?: string; parentId?: string | null; }
 interface Contractor { _id: string; vendorCode: string; companyName?: string; shortCode?: string; }
@@ -198,7 +201,7 @@ export default function Ledger() {
         apiClient.get("/contractors"),
       ]);
       setWorkOrders(woRes.data.workOrders ?? woRes.data ?? []);
-      setBills(billRes.data.bills ?? billRes.data ?? []);
+      setBills(excludeDuplicateBills<Bill>(billRes.data.bills ?? billRes.data ?? []));
       setProjects(projRes.data.projects ?? projRes.data ?? []);
       setContractors(ctrRes.data.contractors ?? ctrRes.data ?? []);
     } catch (e: unknown) {
@@ -285,14 +288,14 @@ export default function Ledger() {
   const portfolioCertified     = woSummaries.reduce((s, r) => s + r.certifiedNet, 0);
   const portfolioBalance       = woSummaries.reduce((s, r) => s + Math.max(r.balance, 0), 0);
   const portfolioActuallyPaid  = bills
-    .filter(b => b.status === "paid" && woSummaries.some(r => r.wo._id === b.workOrderId))
+    .filter(b => isPaidLike(b.status) && woSummaries.some(r => r.wo._id === b.workOrderId))
     .reduce((s, b) => s + calcBill(b).net, 0);
   // Gross (incl. GST) of paid bills — matches the single-WO detail view's
   // "Total Bill Amount" card exactly (that one sums r.gross over paid rows);
   // this used to sum the raw pre-GST b.amount instead, silently disagreeing
   // with the detail view under the identical label.
   const portfolioTotalBillAmountPaid = bills
-    .filter(b => b.status === "paid" && woSummaries.some(r => r.wo._id === b.workOrderId))
+    .filter(b => isPaidLike(b.status) && woSummaries.some(r => r.wo._id === b.workOrderId))
     .reduce((s, b) => s + calcBill(b).gross, 0);
 
   // ═══════════════════════════════════════════════════════════
@@ -330,11 +333,11 @@ export default function Ledger() {
           />
           <NxStatCard
             label="Total Bill Amount" icon={FileText}
-            value={<>{fmt(detail.rows.filter(r => r.b.status === "paid").reduce((s, r) => s + r.gross, 0))}<div className="text-[11px] font-normal text-gray-400 mt-0.5">gross billed (paid bills)</div></>}
+            value={<>{fmt(detail.rows.filter(r => isPaidLike(r.b.status)).reduce((s, r) => s + r.gross, 0))}<div className="text-[11px] font-normal text-gray-400 mt-0.5">gross billed (paid bills)</div></>}
           />
           <NxStatCard
             label="Paid" icon={Landmark}
-            value={<>{fmt(detail.rows.filter(r => r.b.status === "paid").reduce((s, r) => s + r.net, 0))}<div className="text-[11px] font-normal text-gray-400 mt-0.5">actual bank transfer</div></>}
+            value={<>{fmt(detail.rows.filter(r => isPaidLike(r.b.status)).reduce((s, r) => s + r.net, 0))}<div className="text-[11px] font-normal text-gray-400 mt-0.5">actual bank transfer</div></>}
           />
           <NxStatCard
             label="Remaining" icon={Scale}

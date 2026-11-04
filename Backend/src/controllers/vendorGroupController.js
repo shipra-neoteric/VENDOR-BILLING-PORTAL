@@ -7,6 +7,8 @@ const asyncHandler = require('../utils/asyncHandler');
 const { success, created, notFound, badRequest } = require('../utils/responseFormatter');
 const { nextVendorGroupCode } = require('../utils/codeGen');
 const { logAudit, diffFields } = require('../utils/auditLog');
+const { isPaidLike } = require('../utils/paidStatuses');
+const { excludeDuplicateBills } = require('../utils/duplicateBills');
 
 exports.listVendorGroups = asyncHandler(async (req, res) => {
   const groups = await VendorGroup.find().sort({ name: 1 }).lean();
@@ -93,8 +95,8 @@ exports.getVendorGroupProgress = asyncHandler(async (req, res) => {
     .sort({ createdAt: -1 }).lean();
 
   const woIds = workOrders.map(w => w._id);
-  const bills = await RunningBill.find({ workOrderId: { $in: woIds }, isActive: { $ne: false } })
-    .select('workOrderId vendorCode amount status paidAmount').lean();
+  const bills = await excludeDuplicateBills(await RunningBill.find({ workOrderId: { $in: woIds }, isActive: { $ne: false } })
+    .select('workOrderId vendorCode amount status paidAmount').lean());
 
   const billsByWO = new Map();
   for (const b of bills) {
@@ -117,7 +119,7 @@ exports.getVendorGroupProgress = asyncHandler(async (req, res) => {
     row.contractValue += wo.contractValue || 0;
     for (const b of billsByWO.get(String(wo._id)) || []) {
       row.billed += b.amount || 0;
-      if (b.status === 'paid') row.paid += b.paidAmount ?? b.amount ?? 0;
+      if (isPaidLike(b.status)) row.paid += b.paidAmount ?? b.amount ?? 0;
     }
   }
 

@@ -119,7 +119,9 @@ function checkProjectReconciliation(row) {
   return warnings;
 }
 
-const CERTIFIED_BILL_STATUSES_SHARED = ['approved', 'paid'];
+const { isPaidLike, CERTIFIED_STATUSES } = require('../utils/paidStatuses');
+const { excludeDuplicateBills } = require('../utils/duplicateBills');
+const CERTIFIED_BILL_STATUSES_SHARED = CERTIFIED_STATUSES;
 
 // Shared vendor-name resolution + per-WorkOrder financial/status rollup —
 // used by BOTH the capped top-10 `contractorsByCategory` list on /executive
@@ -171,12 +173,12 @@ async function buildContractorCategoryRows(workOrders, runningBills, projects) {
   // HEALTH_THRESHOLDS above), rather than inventing new ones for this table.
   return workOrders.map(wo => {
     const bills = rbByWorkOrder.get(String(wo._id)) || [];
-    const paidBills = bills.filter(b => b.status === 'paid');
+    const paidBills = bills.filter(b => isPaidLike(b.status));
     const certifiedBills = bills.filter(b => CERTIFIED_BILL_STATUSES_SHARED.includes(b.status));
     const paid = paidBills.reduce((s, b) => s + billFinancialsForBill(b).netPayable, 0);
     const certifiedNet = certifiedBills.reduce((s, b) => s + billFinancialsForBill(b).netAfterHold, 0);
     const contractValue = wo.contractValue || 0;
-    const pending = bills.filter(b => b.status === 'approved').reduce((s, b) => s + billFinancialsForBill(b).netAfterHold, 0);
+    const pending = bills.filter(b => b.status === 'approved' && !isPaidLike(b.status)).reduce((s, b) => s + billFinancialsForBill(b).netAfterHold, 0);
 
     // No bills raised yet, or bills raised but nothing certified/paid so far
     // (e.g. still sitting in draft/verify-done) — nothing to judge health on
@@ -311,10 +313,13 @@ async function buildExecutiveDashboardData(query) {
     dataWarnings.push("'from'/'to' scope RunningBills by billDate only — Work Orders and Bill Requests are not date-filtered (no single natural date field to scope them by for this rollup yet).");
   }
 
-  const [runningBills, billRequests] = await Promise.all([
+  const [runningBillsAll, billRequests] = await Promise.all([
     RunningBill.find(rbFilter).lean(),
     woIds.length ? BillRequest.find({ workOrderId: { $in: woIds } }).lean() : Promise.resolve([]),
   ]);
+
+  // Copies made by the legacy reconciliation script are not counted anywhere below (see utils/duplicateBills.js).
+  const runningBills = await excludeDuplicateBills(runningBillsAll);
 
   // SLA breach lookup for "Needs Your Attention" (Phase 2, below) — a WO/
   // BillRequest currently sitting past its current stage's dueAt, per the
@@ -359,7 +364,7 @@ async function buildExecutiveDashboardData(query) {
   }
 
   const PENDING_BILL_REQ_STATUSES = ['pending', 'pending-gm', 'pending-l3', 'pending-l4'];
-  const CERTIFIED_BILL_STATUSES = ['approved', 'paid'];
+  const CERTIFIED_BILL_STATUSES = CERTIFIED_STATUSES;
   const CLOSED_BILL_STATUSES = ['approved', 'paid', 'rejected'];
 
   // ── Per-project rollup — same fields projectController.getProjectStats
@@ -593,7 +598,7 @@ async function buildExecutiveDashboardData(query) {
   // Payment (?bill=<id>, the same param AccountsPayment/index.tsx already
   // reads to auto-open a bill's drawer — see its Slack deep-link comment).
   const pendingPaymentBills = [];
-  for (const b of runningBills.filter(x => x.status === 'approved')) {
+  for (const b of runningBills.filter(x => x.status === 'approved' && !isPaidLike(x.status))) {
     const days = daysSince(lastStatusChangeAt(b));
     if (days === null) continue;
     const bucket = AGING_BUCKETS.find(x => days >= x.min && days <= x.max) || AGING_BUCKETS[AGING_BUCKETS.length - 1];
@@ -710,8 +715,10 @@ async function buildExecutiveDashboardData(query) {
       const bucket = trendByKey.get(monthKey(new Date(b.billDate)));
       if (bucket) bucket.billed += b.amount || 0;
     }
-    if (b.status === 'paid' && b.paymentDate) {
-      const bucket = trendByKey.get(monthKey(new Date(b.paymentDate)));
+    // Paid-like bills without a payment date (Ready/Sent to TMS) count in the month they were last actioned.
+    const paidOn = isPaidLike(b.status) ? (b.paymentDate || (b.status !== 'paid' ? lastStatusChangeAt(b) : null)) : null;
+    if (paidOn) {
+      const bucket = trendByKey.get(monthKey(new Date(paidOn)));
       if (bucket) bucket.paid += billFinancialsForBill(b).netPayable;
     }
   }
@@ -1106,7 +1113,7 @@ async function buildContractorMatrixData(query) {
     if (fromDate) rbFilter.billDate.$gte = fromDate;
     if (toDate) rbFilter.billDate.$lte = toDate;
   }
-  const runningBills = await RunningBill.find(rbFilter).lean();
+  const runningBills = await excludeDuplicateBills(await RunningBill.find(rbFilter).lean());
 
   const perWorkOrderRows = await buildContractorCategoryRows(workOrders.filter(isCountableWo), runningBills, projects);
 

@@ -7,6 +7,8 @@ const Category     = require('../models/Category');
 const asyncHandler = require('../utils/asyncHandler');
 const { success }  = require('../utils/responseFormatter');
 const { billFinancialsForBill } = require('../utils/billFinancials');
+const { isPaidLike } = require('../utils/paidStatuses');
+const { excludeDuplicateBills } = require('../utils/duplicateBills');
 
 // ── Date helpers (no dayjs in this backend — plain Date arithmetic) ──
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -79,7 +81,7 @@ exports.getDPR = asyncHandler(async (req, res) => {
 
   const projectFilter = projectId ? { projectId } : {};
 
-  const [workOrders, billRequests, runningBills, advanceSlips, projects, categories] = await Promise.all([
+  const [workOrders, billRequests, runningBillsAll, advanceSlips, projects, categories] = await Promise.all([
     WorkOrder.find(projectFilter).lean(),
     BillRequest.find({ ...projectFilter, isArchived: { $ne: true } }).lean(),
     RunningBill.find({ ...projectFilter, isArchived: { $ne: true } }).lean(),
@@ -88,6 +90,7 @@ exports.getDPR = asyncHandler(async (req, res) => {
     Category.find({ isActive: true, parentId: null }).select('name color').lean(),
   ]);
 
+  const runningBills = await excludeDuplicateBills(runningBillsAll); // legacy reconciliation copies are not counted
   const projectName = new Map(projects.map(p => [String(p._id), p.name]));
   const projectLocation = new Map(projects.map(p => [String(p._id), p.location || '']));
 
@@ -270,7 +273,7 @@ exports.getDPR = asyncHandler(async (req, res) => {
   for (const b of runningBills) {
     if (!b.projectId) continue;
     const p = ensureProj(b.projectId, b.projectName);
-    if (b.status === 'paid') { p.paidCount++; p.releasedAmount += netReleased(b); }
+    if (isPaidLike(b.status)) { p.paidCount++; p.releasedAmount += netReleased(b); }
     else if (['draft', 'verify-done', 'l1-approved', 'approved', 'sent-to-tms', 'hold'].includes(b.status)) { p.pendingAmount += b.amount || 0; }
   }
   const projectPerformance = [...projPerf.values()].map(p => ({

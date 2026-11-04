@@ -9,6 +9,7 @@ const { success, created, notFound, badRequest, conflict } = require('../utils/r
 const { nextProjectCode } = require('../utils/codeGen');
 const { logAudit, diffFields } = require('../utils/auditLog');
 const { computeProjectRollup } = require('../utils/projectRollup');
+const { excludeDuplicateBills } = require('../utils/duplicateBills');
 const { scopeProgress } = require('../utils/projectStageRules');
 
 // Every GET below strips the real slackWebhookUrl before it ever leaves the
@@ -129,11 +130,12 @@ exports.deleteProject = asyncHandler(async (req, res) => {
 exports.getProjectStats = asyncHandler(async (req, res) => {
   const { id } = req.params;
 
-  const [project, wos, runningBills] = await Promise.all([
+  const [project, wos, runningBillsAll] = await Promise.all([
     Project.findById(id).lean(),
     WorkOrder.find({ projectId: id }).select('-documents').lean(),
     RunningBill.find({ projectId: id }).lean(),
   ]);
+  const runningBills = await excludeDuplicateBills(runningBillsAll); // copies from the legacy reconciliation script are not counted
 
   if (!project) return notFound(res, 'Project not found');
 
