@@ -206,7 +206,10 @@ function ProjectDetail({
   const [contractors, setContractors] = useState<ContractorRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedWONo, setSelectedWONo] = useState<string>("");
-  const [activeTab, setActiveTab] = useState<"vendors" | "workorders" | "category" | "bills" | "activity">("vendors");
+  const [activeTab, setActiveTab] = useState<"vendors" | "workorders" | "category" | "bills" | "activity">(
+    // Category opens first; a link that targets one vendor (?vendor=) still opens on the Vendors tab.
+    new URLSearchParams(window.location.search).has("vendor") ? "vendors" : "category",
+  );
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [viewBill, setViewBill] = useState<BillDetailRequest | null>(null);
   // Drill-down drawer: a whole vendor's work orders, or just one work order (woId).
@@ -344,10 +347,10 @@ function ProjectDetail({
               // ✅ Correct (type-safe wrapper)
               onChange={(val) => setActiveTab(val as any)}
               options={[
-                { value: "vendors", label: <span className="flex items-center gap-1.5"><Users className="w-3.5 h-3.5" />Vendors</span> },
-                { value: "workorders", label: <span className="flex items-center gap-1.5"><ClipboardList className="w-3.5 h-3.5" />Work Orders</span> },
                 { value: "category", label: <span className="flex items-center gap-1.5"><LayoutGrid className="w-3.5 h-3.5" />Category</span> },
+                { value: "workorders", label: <span className="flex items-center gap-1.5"><ClipboardList className="w-3.5 h-3.5" />Work Orders</span> },
                 { value: "bills", label: <span className="flex items-center gap-1.5"><FileText className="w-3.5 h-3.5" />Bills</span> },
+                { value: "vendors", label: <span className="flex items-center gap-1.5"><Users className="w-3.5 h-3.5" />Vendors</span> },
                 { value: "activity", label: <span className="flex items-center gap-1.5"><Activity className="w-3.5 h-3.5" />Live Activity</span> },
               ]}
             />
