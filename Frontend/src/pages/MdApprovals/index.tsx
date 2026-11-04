@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import dayjs from "dayjs";
@@ -217,13 +217,13 @@ export default function MdApprovals() {
   const [sendBackTarget, setSendBackTarget] = useState<MdApprovalRow | null>(null);
   const [reason, setReason] = useState("");
 
-  const load = useCallback(() => {
-    setLoading(true);
+  const load = useCallback((silent = false) => {
+    if (!silent) setLoading(true);
     const backendTab = tab === "aging" ? "pending" : tab;
     apiClient.get<{ items: MdApprovalRow[] }>("/md/approvals", { params: { tab: backendTab } })
       .then((res) => setItems(res.data.items ?? []))
-      .catch(() => setItems([]))
-      .finally(() => setLoading(false));
+      .catch(() => { if (!silent) setItems([]); })
+      .finally(() => { if (!silent) setLoading(false); });
   }, [tab]);
 
   useEffect(() => { load(); }, [load]);
@@ -319,15 +319,39 @@ export default function MdApprovals() {
     setDateTo(null);
   };
 
-  const refetchAndClose = () => {
+  // After an action the row is taken out of the list and the tiles are nudged right away — no spinner, no full reload. One quiet
+  // refetch a moment later (debounced, so a run of approvals triggers only one) keeps everything in step with the server.
+  const reconcileTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scheduleReconcile = () => {
+    if (reconcileTimer.current) clearTimeout(reconcileTimer.current);
+    reconcileTimer.current = setTimeout(() => { load(true); loadTileStats(); }, 2500);
+  };
+  useEffect(() => () => { if (reconcileTimer.current) clearTimeout(reconcileTimer.current); }, []);
+
+  const dropRowsLocally = (rows: MdApprovalRow[], kind: "approve" | "reject" | "other") => {
+    if (rows.length === 0) return;
+    const gone = new Set(rows.map((r) => `${r.system}-${r.id}`));
+    setItems((prev) => prev.filter((r) => !gone.has(`${r.system}-${r.id}`)));
+    setTileStats((t) => ({
+      ...t,
+      pendingCount: Math.max(0, t.pendingCount - rows.length),
+      pendingAmount: Math.max(0, t.pendingAmount - rows.reduce((sum, r) => sum + (r.amount || 0), 0)),
+      overdueCount: Math.max(0, t.overdueCount - rows.filter(isOverdue).length),
+      approvedCount: t.approvedCount + (kind === "approve" ? rows.length : 0),
+      rejectedCount: t.rejectedCount + (kind === "reject" ? rows.length : 0),
+    }));
+    scheduleReconcile();
+  };
+
+  const refetchAndClose = (row?: MdApprovalRow | null, kind: "approve" | "reject" | "other" = "other") => {
     setApproveTarget(null);
     setRejectTarget(null);
     setSendBackTarget(null);
     setReviewRow(null);
     setReason("");
     setDeduct({ key: "", amount: "", remark: "" });
-    load();
-    loadTileStats();
+    if (row) dropRowsLocally([row], kind);
+    else { load(true); loadTileStats(); }
   };
 
   const handleApprove = async () => {
@@ -338,7 +362,7 @@ export default function MdApprovals() {
       const d = deductionFor(approveTarget);
       const res = await apiClient[method](path, { remarks: "", ...(d.amount > 0 ? { deductionAmount: d.amount, deductionRemark: d.remark } : {}) });
       toast.success(res.data?.message || "Approved");
-      refetchAndClose();
+      refetchAndClose(approveTarget, "approve");
     } catch (e: any) {
       toast.error(e?.response?.data?.message || "Failed to approve");
     } finally { setSaving(false); }
@@ -371,8 +395,7 @@ export default function MdApprovals() {
       else toast(`Approved ${okCount}, failed ${failCount} — check the remaining rows`, { icon: "⚠️" });
       setBulkApproveOpen(false);
       setSelected(new Set());
-      load();
-      loadTileStats();
+      dropRowsLocally(rows.filter((_, i) => results[i].status === "fulfilled"), "approve");
     } finally {
       setBulkSaving(false);
     }
@@ -400,8 +423,7 @@ export default function MdApprovals() {
       setBulkRejectOpen(false);
       setBulkReason("");
       setSelected(new Set());
-      load();
-      loadTileStats();
+      dropRowsLocally(rows.filter((_, i) => results[i].status === "fulfilled"), "reject");
     } finally {
       setBulkSaving(false);
     }
@@ -414,7 +436,7 @@ export default function MdApprovals() {
       const { method, path, bodyKey } = ACTION_ENDPOINTS[rejectTarget.system].reject;
       await apiClient[method](path(rejectTarget.id), { [bodyKey]: reason });
       toast.success("Rejected");
-      refetchAndClose();
+      refetchAndClose(rejectTarget, "reject");
     } catch (e: any) {
       toast.error(e?.response?.data?.message || "Failed to reject");
     } finally { setSaving(false); }
@@ -428,7 +450,7 @@ export default function MdApprovals() {
     try {
       await apiClient[cfg.method](cfg.path(sendBackTarget.id), { reason });
       toast.success("Sent back");
-      refetchAndClose();
+      refetchAndClose(sendBackTarget, "other");
     } catch (e: any) {
       toast.error(e?.response?.data?.message || "Failed to send back");
     } finally { setSaving(false); }
