@@ -42,6 +42,7 @@ import RunningBillDetailView from "../../components/RunningBillDetailView";
 import type { WorkOrder, Contractor } from "../../types/VendorBilling";
 import { printBill, resolvePrintParty } from "../../shared/utils/printBill";
 import { billFinancials } from "../../shared/utils/billMath";
+import { isPaidLike } from "../../shared/utils/paidStatuses";
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -499,7 +500,8 @@ export default function AccountsPayment() {
   const approvedBills = useMemo(() => bills.filter((b) => b.status === "approved"), [bills]);
   const sentToTmsBills = useMemo(() => bills.filter((b) => b.status === "sent-to-tms"), [bills]);
   const holdBills = useMemo(() => bills.filter((b) => b.status === "hold"), [bills]);
-  const paidBills = useMemo(() => bills.filter((b) => b.status === "paid"), [bills]);
+  // TMS isn't connected yet, so Ready for TMS / Sent to TMS count as Paid (see shared/utils/paidStatuses.ts).
+  const paidBills = useMemo(() => bills.filter((b) => isPaidLike(b.status)), [bills]);
   const rejectedBills = useMemo(() => bills.filter((b) => b.status === "rejected"), [bills]);
 
   // Flashcard-level groupings — "Verified" covers both approval stages
@@ -507,11 +509,16 @@ export default function AccountsPayment() {
   // (ready to send + already sent, still awaiting payment confirmation).
   // The underlying per-stage tabs/pills below the flashcards are untouched.
   const verifiedBills = useMemo(() => bills.filter((b) => b.status === "verify-done" || b.status === "l1-approved"), [bills]);
-  const pendingPaymentBills = useMemo(() => bills.filter((b) => b.status === "approved" || b.status === "sent-to-tms"), [bills]);
+  const pendingPaymentBills = useMemo(() => bills.filter((b) => (b.status === "approved" || b.status === "sent-to-tms") && !isPaidLike(b.status)), [bills]);
+  const showPendingPayment = !isPaidLike("approved");
 
   const stats = useMemo(() => {
     const now = dayjs();
-    const paidThisMonth = bills.filter((b) => b.status === "paid" && b.paymentDate && dayjs(b.paymentDate).isSame(now, "month"));
+    const paidThisMonth = bills.filter((b) => {
+      if (!isPaidLike(b.status)) return false;
+      const d = b.paymentDate ?? b.tmsSentAt ?? b.createdAt;
+      return !!d && dayjs(d).isSame(now, "month");
+    });
     return {
       paidThisMonthCount: paidThisMonth.length,
       paidThisMonthAmt: paidThisMonth.reduce((s, b) => s + (b.paidAmount ?? netPayableFinal(b)), 0),
@@ -526,9 +533,9 @@ export default function AccountsPayment() {
       case "verified": return b.status === "verify-done" || b.status === "l1-approved";
       case "approved": return b.status === "approved";
       case "sentToTms": return b.status === "sent-to-tms";
-      case "pendingPayment": return b.status === "approved" || b.status === "sent-to-tms";
+      case "pendingPayment": return (b.status === "approved" || b.status === "sent-to-tms") && !isPaidLike(b.status);
       case "hold": return b.status === "hold";
-      case "paid": return b.status === "paid";
+      case "paid": return isPaidLike(b.status);
       case "rejected": return b.status === "rejected";
       default: return true; // "all"
     }
@@ -1120,7 +1127,7 @@ export default function AccountsPayment() {
       />
 
       {/* Stat cards — each doubles as a shortcut into the matching tab filter below */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-5">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-5">
         <NxStatCard
           label="Draft" value={<>{draftBills.length}<div className="text-[11px] font-normal text-gray-400 mt-0.5">Awaiting verification</div></>}
           icon={FilePlus}
@@ -1131,11 +1138,13 @@ export default function AccountsPayment() {
           icon={ShieldCheck}
           active={activeTab === "verified"} onClick={() => setActiveTab(activeTab === "verified" ? "all" : "verified")}
         />
-        <NxStatCard
-          label="Pending Payment" value={<>{pendingPaymentBills.length}<div className="text-[11px] font-normal text-gray-400 mt-0.5">Ready + sent to TMS</div></>}
-          icon={Send}
-          active={activeTab === "pendingPayment"} onClick={() => setActiveTab(activeTab === "pendingPayment" ? "all" : "pendingPayment")}
-        />
+        {showPendingPayment && (
+          <NxStatCard
+            label="Pending Payment" value={<>{pendingPaymentBills.length}<div className="text-[11px] font-normal text-gray-400 mt-0.5">Ready + sent to TMS</div></>}
+            icon={Send}
+            active={activeTab === "pendingPayment"} onClick={() => setActiveTab(activeTab === "pendingPayment" ? "all" : "pendingPayment")}
+          />
+        )}
         <NxStatCard
           label="Hold" value={<>{holdBills.length}<div className="text-[11px] font-normal text-gray-400 mt-0.5">Paused before TMS</div></>}
           icon={PauseCircle}
