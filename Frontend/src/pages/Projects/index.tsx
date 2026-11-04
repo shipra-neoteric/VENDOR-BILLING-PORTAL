@@ -279,8 +279,16 @@ function ProjectDetail({
     });
   }, [wos, contractors]);
 
-  const TabCount = ({ children, title, tone }: { children: ReactNode; title: string; tone?: "amber" }) => (
-    <span title={title} className={`px-2 py-0.5 ml-0.5 rounded-full text-[10px] font-bold tabular-nums ${tone === "amber" ? "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300" : "bg-gray-200/80 text-gray-600 dark:bg-gray-700 dark:text-gray-300"}`}>{children}</span>
+  const TAB_TONES = {
+    blue:   { badge: "bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300", icon: "text-blue-500" },
+    indigo: { badge: "bg-indigo-100 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300", icon: "text-indigo-500" },
+    teal:   { badge: "bg-teal-100 text-teal-700 dark:bg-teal-500/20 dark:text-teal-300", icon: "text-teal-500" },
+    green:  { badge: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300", icon: "text-emerald-500" },
+    purple: { badge: "bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-300", icon: "text-purple-500" },
+    amber:  { badge: "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300", icon: "text-amber-500" },
+  } as const;
+  const TabCount = ({ children, title, tone }: { children: ReactNode; title: string; tone: keyof typeof TAB_TONES }) => (
+    <span title={title} className={`px-2 py-0.5 ml-0.5 rounded-full text-[10px] font-bold tabular-nums ${TAB_TONES[tone].badge}`}>{children}</span>
   );
 
   return (
@@ -341,11 +349,11 @@ function ProjectDetail({
               // ✅ Correct (type-safe wrapper)
               onChange={(val) => setActiveTab(val as any)}
               options={[
-                { value: "category", label: <span className="flex items-center gap-2"><LayoutGrid className="w-3.5 h-3.5" />Category</span> },
-                { value: "workorders", label: <span className="flex items-center gap-2"><ClipboardList className="w-3.5 h-3.5" />Work Orders{stats && <TabCount title={`${stats.woCount} work orders, ${completedCount} completed`}>{stats.woCount}</TabCount>}</span> },
-                { value: "bills", label: <span className="flex items-center gap-2"><FileText className="w-3.5 h-3.5" />Bills{stats && <TabCount title={`${stats.openBills} open bills`}>{stats.openBills}</TabCount>}{stats && stats.pendingBillReqs > 0 && <TabCount tone="amber" title={`${stats.pendingBillReqs} pending bill request${stats.pendingBillReqs !== 1 ? "s" : ""}`}>{stats.pendingBillReqs} pending</TabCount>}</span> },
-                { value: "vendors", label: <span className="flex items-center gap-2"><Users className="w-3.5 h-3.5" />Vendors{stats && <TabCount title={`${stats.activeVendors} active contractors`}>{stats.activeVendors}</TabCount>}</span> },
-                { value: "activity", label: <span className="flex items-center gap-2"><Activity className="w-3.5 h-3.5" />Live Activity</span> },
+                { value: "category", label: <span className="flex items-center gap-2"><LayoutGrid className="w-3.5 h-3.5 text-purple-500" />Category</span> },
+                { value: "workorders", label: <span className="flex items-center gap-2"><ClipboardList className="w-3.5 h-3.5 text-blue-500" />Work Orders{stats && <TabCount tone="blue" title={`${stats.woCount} work orders, ${completedCount} completed`}>{stats.woCount}</TabCount>}</span> },
+                { value: "bills", label: <span className="flex items-center gap-2"><FileText className="w-3.5 h-3.5 text-indigo-500" />Bills{stats && <TabCount tone="indigo" title={`${stats.openBills} open bills`}>{stats.openBills}</TabCount>}{stats && stats.pendingBillReqs > 0 && <TabCount tone="amber" title={`${stats.pendingBillReqs} pending bill request${stats.pendingBillReqs !== 1 ? "s" : ""}`}>{stats.pendingBillReqs} pending</TabCount>}</span> },
+                { value: "vendors", label: <span className="flex items-center gap-2"><Users className="w-3.5 h-3.5 text-teal-500" />Vendors{stats && <TabCount tone="teal" title={`${stats.activeVendors} active contractors`}>{stats.activeVendors}</TabCount>}</span> },
+                { value: "activity", label: <span className="flex items-center gap-2"><Activity className="w-3.5 h-3.5 text-emerald-500" />Live Activity</span> },
               ]}
             />
           </div>
