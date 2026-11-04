@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
@@ -278,35 +279,36 @@ function ProjectDetail({
     });
   }, [wos, contractors]);
 
+  const TabCount = ({ children, title, tone }: { children: ReactNode; title: string; tone?: "amber" }) => (
+    <span title={title} className={`px-2 py-0.5 ml-0.5 rounded-full text-[10px] font-bold tabular-nums ${tone === "amber" ? "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300" : "bg-gray-200/80 text-gray-600 dark:bg-gray-700 dark:text-gray-300"}`}>{children}</span>
+  );
+
   return (
     <div>
-      <div className="flex items-center gap-2.5 mb-5">
-        <Btn outline small icon={ArrowLeft} title="Back to Projects" aria-label="Back to Projects" onClick={onBack} />
-      </div>
-
-      {/* Project header card */}
-      <Card className="mb-5">
-        <div className="flex justify-between items-start gap-5 flex-wrap">
-          <div>
-            <NxBadge color="gray">{project.code}</NxBadge>
-            <div className="text-2xl font-extrabold text-[#1A1A2E] dark:text-[#F1F5F9] leading-tight mt-2 mb-1.5">
-              {project.name}
-            </div>
-            {project.client && <div className="text-[13px] text-gray-500 dark:text-gray-400 mb-0.5">🏢 Client: {project.client}</div>}
-            <div className="text-sm text-gray-500 dark:text-gray-400">📍 {project.location || "—"}</div>
-            {(project.startDate || project.expectedCompletion) && (
-              <div className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-                {project.startDate && `Start: ${dayjs(project.startDate).format("MMM YYYY")}`}
-                {project.startDate && project.expectedCompletion && " → "}
-                {project.expectedCompletion && `Target: ${dayjs(project.expectedCompletion).format("MMM YYYY")}`}
-              </div>
-            )}
-            <div className="flex gap-2 mt-2.5 flex-wrap">
+      {/* Project header card — compact: back button, name + code, then one meta line */}
+      <Card className="mb-6">
+        <div className="flex items-start gap-4 py-1">
+          <Btn outline small icon={ArrowLeft} title="Back to Projects" aria-label="Back to Projects" onClick={onBack} />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <h2 className="text-xl font-extrabold text-[#1A1A2E] dark:text-[#F1F5F9] leading-tight">{project.name}</h2>
+              <NxBadge color="gray">{project.code}</NxBadge>
               <NxBadge color={projectStatusBadge(project.status).color}>{projectStatusBadge(project.status).label}</NxBadge>
               {project.projectType && (
                 <NxBadge color={project.projectType === "apartment" ? "indigo" : "teal"}>
                   {project.projectType === "apartment" ? "Apartment" : "Plot"}
                 </NxBadge>
+              )}
+            </div>
+            <div className="mt-2.5 flex items-center gap-x-5 gap-y-1 flex-wrap text-[13px] text-gray-500 dark:text-gray-400">
+              <span>📍 {project.location || "—"}</span>
+              {project.client && <span>🏢 {project.client}</span>}
+              {(project.startDate || project.expectedCompletion) && (
+                <span className="text-xs text-gray-400 dark:text-gray-500">
+                  {project.startDate && `Start: ${dayjs(project.startDate).format("MMM YYYY")}`}
+                  {project.startDate && project.expectedCompletion && " → "}
+                  {project.expectedCompletion && `Target: ${dayjs(project.expectedCompletion).format("MMM YYYY")}`}
+                </span>
               )}
             </div>
           </div>
@@ -320,7 +322,7 @@ function ProjectDetail({
           {/* Financial stats */}
           {stats && (
             <>
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 lg:[&_.tabular-nums]:text-base 2xl:[&_.tabular-nums]:text-xl gap-3 mb-4">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 lg:[&_.tabular-nums]:text-base 2xl:[&_.tabular-nums]:text-xl gap-4 mb-6">
                 <NxStatCard label="Total Contract Value" value={fmt(stats.awardedContractValue)} icon={Landmark} onClick={() => goTab("workorders")} />
                 <NxStatCard label="Work Executed" value={fmt(stats.workExecutedValue)} icon={HardHat} onClick={() => goTab("category")} />
                 <NxStatCard label="Total Billed" value={fmt(stats.billedGross)} icon={Receipt} onClick={() => goTab("bills")} />
@@ -329,29 +331,21 @@ function ProjectDetail({
                 <NxStatCard label="Overall Progress" value={`${stats.progress}%`} icon={TrendingUp} onClick={() => goTab("category")} />
               </div>
 
-              {/* Quick indicators */}
-              <div className="flex gap-2.5 flex-wrap mb-5">
-                <button type="button" onClick={() => goTab("vendors")} className="cursor-pointer"><NxBadge size="md" color="teal">{stats.activeVendors} Active Contractor{stats.activeVendors !== 1 ? "s" : ""}</NxBadge></button>
-                <NxBadge size="md" color="blue">{stats.woCount} Work Order{stats.woCount !== 1 ? "s" : ""}</NxBadge>
-                <button type="button" onClick={() => goTab("workorders")} className="cursor-pointer"><NxBadge size="md" color="green">{completedCount} Completed WOs</NxBadge></button>
-                <button type="button" onClick={() => goTab("bills")} className="cursor-pointer"><NxBadge size="md" color={stats.pendingBillReqs > 0 ? "amber" : "gray"}>{stats.pendingBillReqs} Pending Bill Req{stats.pendingBillReqs !== 1 ? "s" : ""}</NxBadge></button>
-                <button type="button" onClick={() => goTab("bills")} className="cursor-pointer"><NxBadge size="md" color={stats.openBills > 0 ? "indigo" : "gray"}>{stats.openBills} Open Bill{stats.openBills !== 1 ? "s" : ""}</NxBadge></button>
-              </div>
             </>
           )}
 
           {/* Tab switcher */}
-          <div className="mb-5 scroll-mt-4" ref={tabsRef}>
+          <div className="mb-6 scroll-mt-4" ref={tabsRef}>
             <Segmented
               value={activeTab}
               // ✅ Correct (type-safe wrapper)
               onChange={(val) => setActiveTab(val as any)}
               options={[
-                { value: "category", label: <span className="flex items-center gap-1.5"><LayoutGrid className="w-3.5 h-3.5" />Category</span> },
-                { value: "workorders", label: <span className="flex items-center gap-1.5"><ClipboardList className="w-3.5 h-3.5" />Work Orders</span> },
-                { value: "bills", label: <span className="flex items-center gap-1.5"><FileText className="w-3.5 h-3.5" />Bills</span> },
-                { value: "vendors", label: <span className="flex items-center gap-1.5"><Users className="w-3.5 h-3.5" />Vendors</span> },
-                { value: "activity", label: <span className="flex items-center gap-1.5"><Activity className="w-3.5 h-3.5" />Live Activity</span> },
+                { value: "category", label: <span className="flex items-center gap-2"><LayoutGrid className="w-3.5 h-3.5" />Category</span> },
+                { value: "workorders", label: <span className="flex items-center gap-2"><ClipboardList className="w-3.5 h-3.5" />Work Orders{stats && <TabCount title={`${stats.woCount} work orders, ${completedCount} completed`}>{stats.woCount}</TabCount>}</span> },
+                { value: "bills", label: <span className="flex items-center gap-2"><FileText className="w-3.5 h-3.5" />Bills{stats && <TabCount title={`${stats.openBills} open bills`}>{stats.openBills}</TabCount>}{stats && stats.pendingBillReqs > 0 && <TabCount tone="amber" title={`${stats.pendingBillReqs} pending bill request${stats.pendingBillReqs !== 1 ? "s" : ""}`}>{stats.pendingBillReqs} pending</TabCount>}</span> },
+                { value: "vendors", label: <span className="flex items-center gap-2"><Users className="w-3.5 h-3.5" />Vendors{stats && <TabCount title={`${stats.activeVendors} active contractors`}>{stats.activeVendors}</TabCount>}</span> },
+                { value: "activity", label: <span className="flex items-center gap-2"><Activity className="w-3.5 h-3.5" />Live Activity</span> },
               ]}
             />
           </div>
