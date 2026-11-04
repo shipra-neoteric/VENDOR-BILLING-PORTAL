@@ -153,6 +153,10 @@ function billReqStatusBadge(status: string): { label: string; color: NxBadgeColo
 }
 
 import { normalizeId } from "../../shared/utils/normalizeId";
+// A bill request's amount: the bill it became (already net of any final-approval deduction) when there is one, else its items.
+const billRequestAmount = (br: BillDetailRequest) =>
+  br.billId?.amount ?? (br.items || []).reduce((sum, it) => sum + (Number(it.amount) || (Number(it.rate) || 0) * (Number(it.billedQty) || 0)), 0);
+
 const fmt = (n: number) => "₹" + (n ?? 0).toLocaleString("en-IN", { maximumFractionDigits: 0 });
 
 // ── Workflow Timeline helpers ──────────────────────────────────────────────────
@@ -599,7 +603,7 @@ function ProjectDetail({
               ) : (
                 <Table>
                   <Thead>
-                    <Tr><Th>Req No</Th><Th>Work Order</Th><Th>Vendor</Th><Th>Category</Th><Th>Date</Th><Th>Status</Th></Tr>
+                    <Tr><Th>Req No</Th><Th>Work Order</Th><Th>Vendor</Th><Th>Category</Th><Th className="text-right">Amount</Th><Th>Date</Th><Th>Status</Th></Tr>
                   </Thead>
                   <Tbody>
                     {billRequests.map(br => (
@@ -608,6 +612,7 @@ function ProjectDetail({
                         <Td>{br.workOrderNo}</Td>
                         <Td>{br.vendorName}</Td>
                         <Td>{br.category || "—"}</Td>
+                        <Td className="text-right font-mono">{fmt(billRequestAmount(br))}</Td>
                         <Td>{dayjs(br.createdAt).format("DD MMM YYYY")}</Td>
                         <Td><NxBadge color={billReqStatusBadge(br.status).color}>{billReqStatusBadge(br.status).label}</NxBadge></Td>
                       </Tr>
