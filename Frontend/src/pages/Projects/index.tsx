@@ -580,13 +580,19 @@ function ProjectDetail({
                           <Td>{cat.vendorCount}</Td>
                           <Td className="text-right font-bold">{fmt(cat.contractValue)}</Td>
                           <Td className="text-right">{fmt(cat.workExecuted)}</Td>
-                          <Td className="min-w-[140px]">
-                            <div className="flex items-center gap-2">
-                              <div className="flex-1 h-2 bg-gray-100 dark:bg-gray-700 rounded overflow-hidden">
-                                <div className={`h-full rounded ${cat.progress >= 100 ? "bg-emerald-500" : "bg-primary"}`} style={{ width: `${cat.progress}%` }} />
-                              </div>
-                              <span className={`text-xs font-bold min-w-[32px] ${cat.progress >= 100 ? "text-emerald-500" : "text-primary"}`}>{cat.progress}%</span>
-                            </div>
+                          <Td className="min-w-[170px]">
+                            {(() => {
+                              const pct = Math.max(0, Math.min(100, cat.progress));
+                              const bar = pct >= 100 ? "bg-emerald-500" : pct >= 50 ? "bg-blue-500" : pct > 0 ? "bg-amber-500" : "bg-gray-300 dark:bg-gray-600";
+                              return (
+                                <div className="flex items-center gap-3">
+                                  <div className="flex-1 h-1.5 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
+                                    <div className={`h-full rounded-full ${bar}`} style={{ width: `${pct}%` }} />
+                                  </div>
+                                  <span className={`w-10 text-right text-xs font-semibold tabular-nums ${pct === 0 ? "text-gray-400" : "text-gray-700 dark:text-gray-200"}`}>{cat.progress}%</span>
+                                </div>
+                              );
+                            })()}
                           </Td>
                         </Tr>
                       ))}
