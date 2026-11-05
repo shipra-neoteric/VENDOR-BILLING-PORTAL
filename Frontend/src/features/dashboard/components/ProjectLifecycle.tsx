@@ -1,6 +1,6 @@
 import {
-  ChevronRight, ClipboardList, FileSignature, HardHat, Receipt, Hourglass,
-  TrendingUp, Briefcase, BarChart3, ReceiptText, UserCheck, PenTool,
+  ChevronRight, FileSignature, HardHat, Receipt, Hourglass,
+  TrendingUp, BarChart3, ReceiptText, UserCheck, PenTool,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import Card from "../../../ui/Card";
@@ -19,7 +19,6 @@ const TONE = {
 } satisfies Record<Tone, { icon: string; tile: string; text: string }>;
 
 const STAGE_TILES: { stage: ExecutiveDashboardStageSummaryEntry["stage"]; label: string; icon: LucideIcon; tone: Tone }[] = [
-  { stage: "Planning", label: "Planning", icon: ClipboardList, tone: "blue" },
   { stage: "Work Orders Issued", label: "Work Orders Issued", icon: FileSignature, tone: "blue" },
   { stage: "Work in Progress", label: "Work in Progress", icon: HardHat, tone: "green" },
   { stage: "Billing", label: "Billing", icon: Receipt, tone: "purple" },
@@ -29,7 +28,6 @@ const STAGE_TILES: { stage: ExecutiveDashboardStageSummaryEntry["stage"]; label:
 // Current operational workload, one compact item per data.activity field (see ExecutiveDashboardActivity's own
 // comment in Frontend/src/types/ExecutiveDashboard.ts, and executiveDashboardController.js's `activity` block).
 const ACTIVITY_TILES: { key: keyof ExecutiveDashboardActivity; label: string; status: string; icon: LucideIcon; tone: Tone }[] = [
-  { key: "workOrdersActive", label: "Work Orders", status: "Active", icon: Briefcase, tone: "blue" },
   { key: "siteProgressPending", label: "Site Progress / DPR", status: "Pending", icon: BarChart3, tone: "purple" },
   { key: "billsAwaitingVerification", label: "Bills", status: "Awaiting Verification", icon: ReceiptText, tone: "amber" },
   { key: "approvalsPending", label: "Approvals", status: "Pending", icon: UserCheck, tone: "red" },
@@ -59,7 +57,7 @@ export default function ProjectLifecycle({
         </div>
       )}
 
-      <div className="grid grid-cols-[repeat(5,minmax(120px,1fr))] gap-4 overflow-x-auto">
+      <div className="grid grid-cols-[repeat(4,minmax(120px,1fr))] gap-4 overflow-x-auto">
         {STAGE_TILES.map((s, i) => {
           const Icon = s.icon;
           const t = TONE[s.tone];
@@ -89,7 +87,7 @@ export default function ProjectLifecycle({
 
       <Card>
         <h3 className="text-sm font-bold text-[#172033] dark:text-white mb-4">Activity at a Glance</h3>
-        <div className="grid grid-cols-[repeat(5,minmax(130px,1fr))] gap-4 overflow-x-auto">
+        <div className="grid grid-cols-[repeat(4,minmax(130px,1fr))] gap-4 overflow-x-auto">
           {ACTIVITY_TILES.map((n) => {
             const Icon = n.icon;
             const t = TONE[n.tone];
