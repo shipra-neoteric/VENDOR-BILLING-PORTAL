@@ -4,6 +4,10 @@ import apiClient from "../../../services/apiClient";
 import type { ExecutiveDashboardReport } from "../../../types/ExecutiveDashboard";
 
 const DEBOUNCE_MS = 350;
+// Reports already loaded this session, by filter set. Going Dashboard -> Projects -> back (or between the pages that share this
+// hook) shows the last report at once and refreshes it quietly, instead of an empty page and a spinner for every visit.
+const FRESH_MS = 30_000;
+const reportCache = new Map<string, { data: ExecutiveDashboardReport; at: number }>();
 
 // Reads project/category/contractor/date filters straight off the URL (so a
 // refresh or a shared link reproduces the exact same view) and calls GET
@@ -11,9 +15,12 @@ const DEBOUNCE_MS = 350;
 // here — the backend no-ops it (Phase 2) and there's no UI control for it yet.
 export function useExecutiveDashboard() {
   const [searchParams] = useSearchParams();
-  const [data, setData] = useState<ExecutiveDashboardReport | null>(null);
-  const [loading, setLoading] = useState(true);
+  const cacheKey = searchParams.toString();
+  const cached = reportCache.get(cacheKey);
+  const [data, setData] = useState<ExecutiveDashboardReport | null>(cached ? cached.data : null);
+  const [loading, setLoading] = useState(!cached);
   const [error, setError] = useState<Error | null>(null);
+  const firstRun = useRef(true);
   // Bumped by retry() to force the effect below to re-run even when none of
   // the actual filter values changed (a plain "try again" after a failure).
   const [retryTick, setRetryTick] = useState(0);
@@ -35,8 +42,15 @@ export function useExecutiveDashboard() {
 
   useEffect(() => {
     const gen = ++requestGen.current;
+    const hit = reportCache.get(cacheKey);
+    if (hit) { setData(hit.data); setLoading(false); setError(null); }
+    // Fresh enough (and not a manual retry): nothing to fetch.
+    if (hit && Date.now() - hit.at < FRESH_MS && retryTick === 0) { firstRun.current = false; return; }
+    // The first load of a page goes out at once; the debounce is only for a user typing / changing filters afterwards.
+    const wait = firstRun.current ? 0 : DEBOUNCE_MS;
+    firstRun.current = false;
     const timer = setTimeout(() => {
-      setLoading(true);
+      if (!hit) setLoading(true);
       const params: Record<string, string> = {};
       if (projectId) params.projectId = projectId;
       if (categoryId) params.categoryId = categoryId;
@@ -48,6 +62,7 @@ export function useExecutiveDashboard() {
         .get<ExecutiveDashboardReport>("/dashboard/executive", { params })
         .then((res) => {
           if (gen !== requestGen.current) return;
+          reportCache.set(cacheKey, { data: res.data, at: Date.now() });
           setData(res.data);
           setError(null);
         })
@@ -59,10 +74,10 @@ export function useExecutiveDashboard() {
           if (gen !== requestGen.current) return;
           setLoading(false);
         });
-    }, DEBOUNCE_MS);
+    }, wait);
 
     return () => clearTimeout(timer);
-  }, [projectId, categoryId, contractorId, from, to, retryTick]);
+  }, [projectId, categoryId, contractorId, from, to, retryTick, cacheKey]);
 
   const retry = () => setRetryTick((t) => t + 1);
 
