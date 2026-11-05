@@ -86,6 +86,17 @@ function computeProjectRollup(wos, bills, cumulativeOffsets = null) {
     }
   }
 
+  // Bills stuck in the final-approval queue for more than a day (same rule as the Final Approval page's "Overdue" badge:
+  // l1-approved bills awaiting L2 Director, or manual-chain bills pending approval; re-queued bills show no age there, so are skipped).
+  const MANUAL_PENDING = ['pending', 'pending-gm', 'pending-l3', 'pending-l4'];
+  for (const b of bills) {
+    if (isRejectedBill(b) || b.isUnsubmittedDraft || b.isArchived) continue;
+    let since = null;
+    if (MANUAL_PENDING.includes(b.manualApprovalStatus)) since = lastStatusChangeAt(b);
+    else if (b.status === 'l1-approved' && !b.hideFromFinalApproval && !b.finalApprovalPendingSince) since = b.l1ApprovedAt || b.createdAt;
+    if (since && Date.now() - new Date(since).getTime() > 24 * 60 * 60 * 1000) overdueAmount += b.amount || 0;
+  }
+
   return {
     countedWos,
     awardedContractValue,
