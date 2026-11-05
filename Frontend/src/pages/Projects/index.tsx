@@ -144,6 +144,7 @@ function woStatusBadge(status: string): { label: string; color: NxBadgeColor } {
   if (status === "completed") return { label: "Completed", color: "green" };
   if (status === "in-progress") return { label: "In Progress", color: "amber" };
   if (status === "issued") return { label: "Issued", color: "blue" };
+  if (status === "cancelled") return { label: "Cancelled", color: "red" };
   return { label: "Draft", color: "gray" };
 }
 function billReqStatusBadge(status: string): { label: string; color: NxBadgeColor } {
