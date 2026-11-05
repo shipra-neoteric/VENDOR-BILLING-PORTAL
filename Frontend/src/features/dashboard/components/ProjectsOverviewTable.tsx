@@ -9,7 +9,7 @@ import Card from "../../../ui/Card";
 import { Table, Thead, Tbody, Tr, Th, Td } from "../../../ui/Table";
 import EmptyState from "../../../ui/EmptyState";
 
-type SortKey = "name" | "awardedContractValue" | "paidAmount" | "remainingContract" | "progress";
+type SortKey = "name" | "awardedContractValue" | "paidAmount" | "pendingBillsAmount" | "progress";
 
 const PAGE_SIZE = 10;
 
@@ -123,14 +123,14 @@ export default function ProjectsOverviewTable({ projects, stage = "" }: {
                 <Th className="w-[14%]">Stage</Th>
                 <SortHeader label="Progress" sortKey="progress" active={sortKey === "progress"} dir={sortDir} onClick={toggleSort} className="w-[16%]" />
                 <SortHeader label="Paid" sortKey="paidAmount" active={sortKey === "paidAmount"} dir={sortDir} onClick={toggleSort} className="w-[12%] text-right" />
-                <SortHeader label="Remaining" sortKey="remainingContract" active={sortKey === "remainingContract"} dir={sortDir} onClick={toggleSort} className="w-[12%] text-right" />
-                <Th className="w-[12%] text-right">Pending</Th>
+                <SortHeader label="Remaining" sortKey="pendingBillsAmount" active={sortKey === "pendingBillsAmount"} dir={sortDir} onClick={toggleSort} className="w-[16%] text-right" />
                 <Th className="w-[8%] text-center">Action</Th>
               </Tr>
             </Thead>
             <Tbody>
               {pageRows.map((p) => {
-                const pending = Math.max(0, p.certifiedUnpaid); // certified bills not yet paid — NOT certified minus paid, which only differs by TDS/adjustments
+                // Remaining = value of the bills still waiting (verification / approval / hold), not contract minus paid.
+                const pending = Math.max(0, p.pendingBillsAmount);
                 return (
                   <Tr key={p.projectId}>
                     <Td>
@@ -147,7 +147,6 @@ export default function ProjectsOverviewTable({ projects, stage = "" }: {
                       </div>
                     </Td>
                     <Td className="text-right tabular-nums text-emerald-600 dark:text-emerald-400">{fmtCr(p.paidAmount)}</Td>
-                    <Td className="text-right tabular-nums">{fmtCr(p.remainingContract)}</Td>
                     <Td className="text-right">
                       {pending > 0
                         ? <span className="font-bold text-amber-600 dark:text-amber-400 tabular-nums">{fmtCr(pending)}</span>

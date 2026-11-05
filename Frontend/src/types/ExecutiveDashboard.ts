@@ -76,6 +76,8 @@ export interface ExecutiveDashboardProjectRow {
   certifiedNet: number;
   paidAmount: number;
   remainingContract: number;
+  // Value (net payable) of bills still waiting in verification / approval / hold — what the Projects Overview "Remaining" column shows.
+  pendingBillsAmount: number;
   // Certified but not yet paid (bills still 'approved'), the part of that aged past
   // the attention threshold, and advances given (excluded from billedGross).
   certifiedUnpaid: number;

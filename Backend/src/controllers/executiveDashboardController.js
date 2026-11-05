@@ -382,7 +382,7 @@ async function buildExecutiveDashboardData(query) {
     const roll = computeProjectRollup(wos, bills, cumulativeOffsets);
     const {
       awardedContractValue, workExecutedValue, progress, billedGross, billedWork, advanceAmount,
-      certifiedNet, paidAmount, certifiedUnpaid, overdueAmount, remainingContract,
+      certifiedNet, paidAmount, certifiedUnpaid, overdueAmount, remainingContract, pendingBillsAmount,
     } = roll;
 
     const pendingBillReqs = billReqs.filter(b => PENDING_BILL_REQ_STATUSES.includes(b.status)).length;
@@ -405,6 +405,7 @@ async function buildExecutiveDashboardData(query) {
       certifiedNet,
       paidAmount,
       remainingContract,
+      pendingBillsAmount,
       // Certified but not yet paid / of which aged past the attention threshold /
       // advances given (excluded from billedGross) — see utils/projectRollup.js.
       certifiedUnpaid,
@@ -1030,6 +1031,7 @@ const CSV_EXPORT_COLUMNS = [
   { key: 'certifiedNet', label: 'Certified Net (Rs)', format: money },
   { key: 'paidAmount', label: 'Paid Amount (Rs)', format: money },
   { key: 'remainingContract', label: 'Remaining Contract (Rs)', format: money },
+  { key: 'pendingBillsAmount', label: 'Pending Bills (Rs)', format: money },
   { key: 'progress', label: 'Progress %' },
   { key: 'pendingBillReqs', label: 'Pending Bill Requests' },
   { key: 'openBills', label: 'Open Bills' },

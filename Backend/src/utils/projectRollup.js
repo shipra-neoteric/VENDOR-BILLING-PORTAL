@@ -66,6 +66,11 @@ function computeProjectRollup(wos, bills, cumulativeOffsets = null) {
   const billedWork = bills.filter(isWorkBill).reduce((s, b) => s + (b.amount || 0)
     - (cumulativeOffsets ? (cumulativeOffsets.get(String(b._id)) || 0) : 0) + (backedMap ? (backedMap.get(String(b._id)) || 0) : 0), 0);
 
+  // Bills still waiting (in verification / approval / hold) — raised, not rejected, not yet counted as paid. Net payable, like Paid.
+  const pendingBillsAmount = bills
+    .filter(b => !isRejectedBill(b) && !b.isUnsubmittedDraft && !b.isArchived && !isPaidLike(b.status))
+    .reduce((s, b) => s + billFinancialsForBill(b).netPayable, 0);
+
   let certifiedNet = 0, paidAmount = 0, paidGross = 0, certifiedUnpaid = 0, overdueAmount = 0;
   for (const b of bills) {
     if (!CERTIFIED_STATUSES.includes(b.status)) continue;
@@ -95,6 +100,7 @@ function computeProjectRollup(wos, bills, cumulativeOffsets = null) {
     certifiedUnpaid,
     overdueAmount,
     remainingContract: Math.max(0, awardedContractValue - paidGross),
+    pendingBillsAmount,
   };
 }
 
