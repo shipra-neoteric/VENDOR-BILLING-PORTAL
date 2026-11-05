@@ -20,7 +20,7 @@ const TONE = {
 
 const STAGE_TILES: { stage: ExecutiveDashboardStageSummaryEntry["stage"]; label: string; icon: LucideIcon; tone: Tone }[] = [
   { stage: "Work Orders Issued", label: "Work Orders Issued", icon: FileSignature, tone: "blue" },
-  { stage: "Work in Progress", label: "Work in Progress", icon: HardHat, tone: "green" },
+  { stage: "Work in Progress", label: "Work Orders In Progress", icon: HardHat, tone: "green" },
   { stage: "Billing", label: "Billing", icon: Receipt, tone: "purple" },
   { stage: "Payment Pending", label: "Payment Pending", icon: Hourglass, tone: "amber" },
 ];
