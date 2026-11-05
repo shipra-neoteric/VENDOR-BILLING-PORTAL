@@ -94,7 +94,7 @@ function computeProjectRollup(wos, bills, cumulativeOffsets = null) {
     let since = null;
     if (MANUAL_PENDING.includes(b.manualApprovalStatus)) since = lastStatusChangeAt(b);
     else if (b.status === 'l1-approved' && !b.hideFromFinalApproval && !b.finalApprovalPendingSince) since = b.l1ApprovedAt || b.createdAt;
-    if (since && Date.now() - new Date(since).getTime() > 24 * 60 * 60 * 1000) overdueAmount += b.amount || 0;
+    if (since && Date.now() - new Date(since).getTime() > 24 * 60 * 60 * 1000) overdueAmount += billFinancialsForBill(b).netPayable;
   }
 
   return {

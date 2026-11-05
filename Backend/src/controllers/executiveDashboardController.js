@@ -17,6 +17,7 @@ const {
 } = require('../utils/projectStageRules');
 const { computeProjectRollup, countedWosFor, billedContribution } = require('../utils/projectRollup');
 const { attachVendorGroups } = require('../utils/vendorGroupHelpers');
+const { getApprovalConfig } = require('../utils/approvalRules');
 
 // Phase 1 (backend half) of the Projects Overview executive dashboard
 // rebuild — bulk version of projectController.getProjectStats, generalized
@@ -365,6 +366,23 @@ async function buildExecutiveDashboardData(query) {
     brByProject.get(key).push(br);
   }
 
+  // Bill Requests sitting at their department's FINAL approval stage for over 24h — the same rule as the Final Approval page's
+  // "Overdue" badge (mdApprovalsController). Added to each project's overdueAmount below. Amount = sum of the request's items.
+  const brOverdueByProject = new Map();
+  for (const br of billRequests) {
+    if (br.isArchived || !br.projectId) continue;
+    const config = await getApprovalConfig(br);
+    const levels = config?.requiredApprovals ?? 2;
+    let since = null;
+    if (br.status === 'pending-l4') since = br.l3ApprovedAt || br.createdAt;
+    else if (br.status === 'pending-l3' && levels < 4) since = br.gmApprovedAt || br.createdAt;
+    else if (br.status === 'pending-gm' && levels < 3) since = br.agmApprovedAt || br.createdAt;
+    if (!since || Date.now() - new Date(since).getTime() <= 24 * 60 * 60 * 1000) continue;
+    const amt = (br.items || []).reduce((s, it) => s + (it.amount ?? (it.rate || 0) * it.billedQty), 0);
+    const key = String(br.projectId);
+    brOverdueByProject.set(key, (brOverdueByProject.get(key) || 0) + amt);
+  }
+
   const PENDING_BILL_REQ_STATUSES = ['pending', 'pending-gm', 'pending-l3', 'pending-l4'];
   const CERTIFIED_BILL_STATUSES = CERTIFIED_STATUSES;
   const CLOSED_BILL_STATUSES = ['approved', 'paid', 'rejected'];
@@ -382,8 +400,9 @@ async function buildExecutiveDashboardData(query) {
     const roll = computeProjectRollup(wos, bills, cumulativeOffsets);
     const {
       awardedContractValue, workExecutedValue, progress, billedGross, billedWork, advanceAmount,
-      certifiedNet, paidAmount, certifiedUnpaid, overdueAmount, remainingContract, pendingBillsAmount,
+      certifiedNet, paidAmount, certifiedUnpaid, remainingContract, pendingBillsAmount,
     } = roll;
+    const overdueAmount = roll.overdueAmount + (brOverdueByProject.get(key) || 0);
 
     const pendingBillReqs = billReqs.filter(b => PENDING_BILL_REQ_STATUSES.includes(b.status)).length;
     const openBills = bills.filter(b => !CLOSED_BILL_STATUSES.includes(b.status)).length;
