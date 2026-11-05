@@ -36,6 +36,14 @@ const isWorkBill = (b) => !isRejectedBill(b) && !b.isUnsubmittedDraft && !isAdva
 // (not rejected, not archived, not an unsubmitted draft) was raised against it — work that was billed is real work even
 // if the work order itself never got its approval. (Only when it has a contract value: a ₹0 work order adds nothing to the
 // contract, and its progress entries are not a trustworthy measure of executed work.)
+// What one bill adds to "Billed": a work bill's gross less what is taken off it (cumulativeOffsets), an advance bill's full
+// amount, nothing for rejected / unsubmitted bills. The Dashboard's category spend and monthly trend use this too, so every
+// Billed figure adds up the same way.
+const billedContribution = (b, offsets) => {
+  if (isRejectedBill(b) || b.isUnsubmittedDraft) return 0;
+  if (isAdvanceBill(b)) return b.amount || 0;
+  return (b.amount || 0) - (offsets ? (offsets.get(String(b._id)) || 0) : 0);
+};
 const hasLiveBill = (b) => !isRejectedBill(b) && !b.isUnsubmittedDraft && !b.isArchived;
 function countedWosFor(wos, bills) {
   const billed = new Set((bills || []).filter(hasLiveBill).map(b => String(b.workOrderId)));
@@ -47,9 +55,16 @@ function computeProjectRollup(wos, bills, cumulativeOffsets = null) {
   const awardedContractValue = countedWos.reduce((s, w) => s + (w.contractValue || 0), 0);
   const { executedValue: workExecutedValue, percent: progress } = scopeProgress(countedWos);
 
-  const billedGross = bills.filter(isWorkBill).reduce((s, b) => s + (b.amount || 0) - (cumulativeOffsets ? (cumulativeOffsets.get(String(b._id)) || 0) : 0), 0);
   const advanceAmount = bills.filter(b => isAdvanceBill(b) && !isRejectedBill(b) && !b.isUnsubmittedDraft)
     .reduce((s, b) => s + (b.amount || 0), 0);
+  // Billed = running bills' gross, less what repeats earlier bills or recovers an advance (cumulativeOffsets), PLUS the advances
+  // given. Advances are counted because the money is out; their recovery is taken off the running bills so nothing is counted twice.
+  const billedGross = bills.reduce((s, b) => s + billedContribution(b, cumulativeOffsets), 0);
+  // Work billed only (no advances; a real advance recovery is not taken off) — what "billed more than executed / more than the
+  // contract" health checks and alerts compare, because an advance is not work.
+  const backedMap = cumulativeOffsets && cumulativeOffsets.backedMap;
+  const billedWork = bills.filter(isWorkBill).reduce((s, b) => s + (b.amount || 0)
+    - (cumulativeOffsets ? (cumulativeOffsets.get(String(b._id)) || 0) : 0) + (backedMap ? (backedMap.get(String(b._id)) || 0) : 0), 0);
 
   let certifiedNet = 0, paidAmount = 0, paidGross = 0, certifiedUnpaid = 0, overdueAmount = 0;
   for (const b of bills) {
@@ -72,6 +87,7 @@ function computeProjectRollup(wos, bills, cumulativeOffsets = null) {
     workExecutedValue,
     progress,
     billedGross,
+    billedWork,
     advanceAmount,
     certifiedNet,
     paidAmount,
@@ -82,4 +98,4 @@ function computeProjectRollup(wos, bills, cumulativeOffsets = null) {
   };
 }
 
-module.exports = { computeProjectRollup, countedWosFor, isRejectedBill, isAdvanceBill, isWorkBill };
+module.exports = { computeProjectRollup, countedWosFor, billedContribution, isRejectedBill, isAdvanceBill, isWorkBill };

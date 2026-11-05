@@ -6,7 +6,7 @@
 // every item quantity no more than this bill's) is not new work — it is returned here, to be taken off "Billed".
 //
 //  - Recovery that is backed by an advance actually given (advance bills to the same vendor group on the same project) is a
-//    real advance recovery and is left alone.
+//    real advance recovery. Billed counts the advance itself, so this part is taken off the running bill too (no double count).
 //  - Recovery that no earlier bill explains (paid earlier on paper, outside the system) is left alone too.
 //  - Only the money rollups' "Billed" is affected. Paid / net payable are unchanged (they already net the recovery off).
 const RunningBill = require('../models/RunningBill');
@@ -16,6 +16,7 @@ const { excludeDuplicateBills } = require('./duplicateBills');
 const TTL_MS = 5 * 60 * 1000;
 const QTY_TOLERANCE = 1.01; // an item quantity that is within 1% still counts as "inside"
 let cache = { at: 0, map: new Map() };
+// map.backedMap (billId -> the part of that bill's amount taken off for a real advance recovery) rides on the returned Map.
 
 const isAdvance = (b) => String(b.billType || '').startsWith('advance');
 const key = (s) => String(s || '').trim().toLowerCase();
@@ -43,14 +44,19 @@ async function getCumulativeOffsets() {
   const qtys = new Map(work.map((b) => [String(b._id), qtyOf(b)]));
 
   const map = new Map();
+  const backedMap = new Map();
+  map.backedMap = backedMap;
   const withRecovery = work.filter((b) => (b.advanceRecovery || 0) > 0).sort((a, b) => new Date(a.billDate) - new Date(b.billDate));
   for (const b of withRecovery) {
     const pk = poolKey(b);
     const left = pool.get(pk) || 0;
     const backed = Math.min(b.advanceRecovery, left);
     pool.set(pk, left - backed);
+    if (backed > 0.5) backedMap.set(String(b._id), Math.round(backed * 100) / 100);
     const excess = b.advanceRecovery - backed;
-    if (excess <= 0.5) continue;
+    // Recovery of a real advance is taken off Billed too: the advance itself is counted in Billed, so without this the same
+    // money would be counted twice (once as the advance, once inside the running bill's gross).
+    if (excess <= 0.5) { if (backed > 0.5) map.set(String(b._id), Math.round(backed * 100) / 100); continue; }
     const q = qtys.get(String(b._id));
     const others = (byWo.get(String(b.workOrderId)) || []).filter((o) => String(o._id) !== String(b._id)
       && ((o.amount || 0) < (b.amount || 0) - 1 || (Math.abs((o.amount || 0) - (b.amount || 0)) <= 1 && String(o._id) < String(b._id)))
@@ -59,7 +65,8 @@ async function getCumulativeOffsets() {
     const maximal = others.filter((o) => !others.some((p) => p !== o && (p.amount || 0) >= (o.amount || 0) && inside(qtys.get(String(o._id)), qtys.get(String(p._id)))));
     const covered = maximal.reduce((s, o) => s + (o.amount || 0), 0);
     const offset = Math.min(excess, covered);
-    if (offset > 0.5) map.set(String(b._id), Math.round(offset * 100) / 100);
+    const total = backed + (offset > 0.5 ? offset : 0);
+    if (total > 0.5) map.set(String(b._id), Math.round(total * 100) / 100);
   }
   cache = { at: Date.now(), map };
   return map;

@@ -15,7 +15,7 @@ const {
   computeProjectStageInfo, buildProjectAlerts, stableAlertId, computeBudgetRiskForecast,
   daysSince, lastStatusChangeAt, HEALTH_THRESHOLDS, isWoApproved, isCountableWo, scopeLines,
 } = require('../utils/projectStageRules');
-const { computeProjectRollup, countedWosFor, isWorkBill } = require('../utils/projectRollup');
+const { computeProjectRollup, countedWosFor, billedContribution } = require('../utils/projectRollup');
 const { attachVendorGroups } = require('../utils/vendorGroupHelpers');
 
 // Phase 1 (backend half) of the Projects Overview executive dashboard
@@ -381,7 +381,7 @@ async function buildExecutiveDashboardData(query) {
     // there for exactly what each figure counts.
     const roll = computeProjectRollup(wos, bills, cumulativeOffsets);
     const {
-      awardedContractValue, workExecutedValue, progress, billedGross, advanceAmount,
+      awardedContractValue, workExecutedValue, progress, billedGross, billedWork, advanceAmount,
       certifiedNet, paidAmount, certifiedUnpaid, overdueAmount, remainingContract,
     } = roll;
 
@@ -389,7 +389,7 @@ async function buildExecutiveDashboardData(query) {
     const openBills = bills.filter(b => !CLOSED_BILL_STATUSES.includes(b.status)).length;
     const activeVendors = new Set(roll.countedWos.map(w => w.vendorCode).filter(Boolean)).size;
 
-    const financials = { awardedContractValue, workExecutedValue, billedGross, certifiedNet, paidAmount, certifiedUnpaid };
+    const financials = { awardedContractValue, workExecutedValue, billedGross: billedWork, certifiedNet, paidAmount, certifiedUnpaid };
     const { overallStage, bottleneck, health, healthReasons } = computeProjectStageInfo({
       project, wos: roll.countedWos, bills, billReqs, financials,
     });
@@ -535,10 +535,12 @@ async function buildExecutiveDashboardData(query) {
   // so categorySpend's total always reconciles with kpis.totalBilled.
   const woById = new Map(workOrders.map(w => [String(w._id), w]));
   const categoryTotals = new Map();
-  for (const b of runningBills.filter(x => x.projectId && isWorkBill(x))) {
+  for (const b of runningBills.filter(x => x.projectId)) {
+    const part = billedContribution(b, cumulativeOffsets);
+    if (!part) continue;
     const wo = b.workOrderId ? woById.get(String(b.workOrderId)) : null;
     const cat = (wo && wo.category) ? wo.category : 'Uncategorized';
-    categoryTotals.set(cat, (categoryTotals.get(cat) || 0) + (b.amount || 0));
+    categoryTotals.set(cat, (categoryTotals.get(cat) || 0) + part);
   }
   const categorySpendTotal = [...categoryTotals.values()].reduce((s, v) => s + v, 0);
   const categorySpend = [...categoryTotals.entries()]
@@ -713,9 +715,9 @@ async function buildExecutiveDashboardData(query) {
   }
   const trendByKey = new Map(trendMonths.map(m => [m.key, m]));
   for (const b of runningBills) {
-    if (b.billDate && isWorkBill(b)) {
+    if (b.billDate) {
       const bucket = trendByKey.get(monthKey(new Date(b.billDate)));
-      if (bucket) bucket.billed += b.amount || 0;
+      if (bucket) bucket.billed += billedContribution(b, cumulativeOffsets);
     }
     // Paid-like bills without a payment date (Ready/Sent to TMS) count in the month they were last actioned.
     const paidOn = isPaidLike(b.status) ? (b.paymentDate || (b.status !== 'paid' ? lastStatusChangeAt(b) : null)) : null;
