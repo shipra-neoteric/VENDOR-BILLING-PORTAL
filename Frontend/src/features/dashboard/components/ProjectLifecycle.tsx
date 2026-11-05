@@ -39,7 +39,7 @@ const ACTIVITY_TILES: { key: keyof ExecutiveDashboardActivity; label: string; st
 // Stage summary tiles (tinted, one per stage) followed by an "Activity at a Glance" card: the five workload counts
 // in one row, and the overall progress (work executed ÷ contract value) as a bar underneath.
 export default function ProjectLifecycle({
-  stageSummary, kpis, activity, activeStage, onSelectStage, onViewDetails, className = "",
+  stageSummary, activity, activeStage, onSelectStage, onViewDetails, className = "",
 }: {
   stageSummary: ExecutiveDashboardStageSummaryEntry[];
   kpis: ExecutiveDashboardKPIs;
@@ -50,10 +50,6 @@ export default function ProjectLifecycle({
   className?: string;
 }) {
   const countByStage = new Map(stageSummary.map(s => [s.stage, s.count]));
-
-  const overallProgress = kpis.totalContractValue > 0
-    ? Math.round((kpis.workExecuted / kpis.totalContractValue) * 100)
-    : 0;
 
   return (
     <div className={`flex flex-col gap-4 ${className}`}>
@@ -110,15 +106,6 @@ export default function ProjectLifecycle({
               </div>
             );
           })}
-        </div>
-
-        <div className="mt-5 flex items-center gap-3 rounded-lg border border-gray-100 dark:border-gray-700/40 px-3 py-2.5">
-          <TrendingUp className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" strokeWidth={2.25} />
-          <span className="text-xs text-gray-500 dark:text-gray-400 shrink-0">Overall Progress</span>
-          <span className="text-xs font-extrabold tabular-nums text-blue-600 dark:text-blue-400 shrink-0">{overallProgress}%</span>
-          <div className="flex-1 h-1.5 rounded-full bg-gray-100 dark:bg-gray-700 overflow-hidden">
-            <div className="h-full rounded-full bg-blue-500" style={{ width: `${Math.min(100, overallProgress)}%` }} />
-          </div>
         </div>
       </Card>
     </div>

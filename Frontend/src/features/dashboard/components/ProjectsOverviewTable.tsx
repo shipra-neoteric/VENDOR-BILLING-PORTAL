@@ -9,7 +9,7 @@ import Card from "../../../ui/Card";
 import { Table, Thead, Tbody, Tr, Th, Td } from "../../../ui/Table";
 import EmptyState from "../../../ui/EmptyState";
 
-type SortKey = "name" | "awardedContractValue" | "paidAmount" | "pendingBillsAmount" | "progress";
+type SortKey = "name" | "awardedContractValue" | "paidAmount" | "pendingBillsAmount";
 
 const PAGE_SIZE = 10;
 
@@ -119,12 +119,11 @@ export default function ProjectsOverviewTable({ projects, stage = "" }: {
           <Table className="min-w-[760px]">
             <Thead>
               <Tr>
-                <SortHeader label="Project" sortKey="name" active={sortKey === "name"} dir={sortDir} onClick={toggleSort} className="w-[26%]" />
-                <Th className="w-[14%]">Stage</Th>
-                <SortHeader label="Progress" sortKey="progress" active={sortKey === "progress"} dir={sortDir} onClick={toggleSort} className="w-[16%]" />
-                <SortHeader label="Paid" sortKey="paidAmount" active={sortKey === "paidAmount"} dir={sortDir} onClick={toggleSort} className="w-[12%] text-right" />
-                <SortHeader label="Remaining" sortKey="pendingBillsAmount" active={sortKey === "pendingBillsAmount"} dir={sortDir} onClick={toggleSort} className="w-[16%] text-right" />
-                <Th className="w-[8%] text-center">Action</Th>
+                <SortHeader label="Project" sortKey="name" active={sortKey === "name"} dir={sortDir} onClick={toggleSort} className="w-[34%]" />
+                <Th className="w-[20%]">Stage</Th>
+                <SortHeader label="Paid" sortKey="paidAmount" active={sortKey === "paidAmount"} dir={sortDir} onClick={toggleSort} className="w-[18%] text-right" />
+                <SortHeader label="Remaining" sortKey="pendingBillsAmount" active={sortKey === "pendingBillsAmount"} dir={sortDir} onClick={toggleSort} className="w-[18%] text-right" />
+                <Th className="w-[10%] text-center">Action</Th>
               </Tr>
             </Thead>
             <Tbody>
@@ -138,14 +137,6 @@ export default function ProjectsOverviewTable({ projects, stage = "" }: {
                       <div className="text-[11px] text-gray-400">{p.code}</div>
                     </Td>
                     <Td><Badge color={STAGE_BADGE[p.overallStage] ?? "gray"} small>{p.overallStage}</Badge></Td>
-                    <Td>
-                      <div className="flex items-center gap-2 min-w-[90px]">
-                        <div className="w-14 h-1.5 rounded-full bg-gray-100 dark:bg-gray-700 overflow-hidden shrink-0">
-                          <div className="h-full rounded-full bg-blue-500" style={{ width: `${Math.min(100, p.progress)}%` }} />
-                        </div>
-                        <span className="text-xs font-semibold tabular-nums">{p.progress}%</span>
-                      </div>
-                    </Td>
                     <Td className="text-right tabular-nums text-emerald-600 dark:text-emerald-400">{fmtCr(p.paidAmount)}</Td>
                     <Td className="text-right">
                       {pending > 0
