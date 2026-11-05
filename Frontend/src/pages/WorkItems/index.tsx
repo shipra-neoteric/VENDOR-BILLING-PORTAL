@@ -1837,6 +1837,9 @@ export default function WorkItems() {
           matchProgress = countDelays(wo) > 0;
         } else if (progressFilter === "cancelled") {
           matchProgress = wo.status === "cancelled";
+        } else if (progressFilter === "draft") {
+          // Same rule as the Draft card above: still a draft and nothing billed against it.
+          matchProgress = wo.status === "draft" && !hasBill(wo.id);
         }
       }
 
@@ -1907,6 +1910,9 @@ export default function WorkItems() {
           matchProgress = countDelays(wo) > 0;
         } else if (progressFilter === "cancelled") {
           matchProgress = wo.status === "cancelled";
+        } else if (progressFilter === "draft") {
+          // Same rule as the Draft card above: still a draft and nothing billed against it.
+          matchProgress = wo.status === "draft" && !hasBill(wo.id);
         }
       }
       // Cancelled work orders are archived — hidden by default (both from the
@@ -2680,6 +2686,7 @@ export default function WorkItems() {
             <DropdownSelectFilter
               value={progressFilter} onChange={setProgressFilter} placeholder="All Progress"
               options={[
+                { label: "Draft", value: "draft" },
                 { label: "Not Started", value: "not-started" },
                 { label: "Pending Approval", value: "pending-approval" },
                 { label: "In Progress", value: "running" },
@@ -2717,7 +2724,7 @@ export default function WorkItems() {
               )}
               {progressFilter !== "all" && (
                 <span className="bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-600 text-emerald-600 text-[11px] px-2 py-0.5 rounded flex items-center gap-1">
-                  Progress: {progressFilter === "not-started" ? "Not Started" : progressFilter === "pending-approval" ? "Pending Approval" : progressFilter === "running" ? "In Progress" : progressFilter === "completed" ? "Completed" : progressFilter === "cancelled" ? "Cancelled" : "Overdue"}
+                  Progress: {progressFilter === "not-started" ? "Not Started" : progressFilter === "pending-approval" ? "Pending Approval" : progressFilter === "running" ? "In Progress" : progressFilter === "completed" ? "Completed" : progressFilter === "cancelled" ? "Cancelled" : progressFilter === "draft" ? "Draft" : "Overdue"}
                   <button type="button" onClick={() => setProgressFilter("all")} className="text-emerald-600">×</button>
                 </span>
               )}
