@@ -15,7 +15,7 @@ const {
   computeProjectStageInfo, buildProjectAlerts, stableAlertId, computeBudgetRiskForecast,
   daysSince, lastStatusChangeAt, HEALTH_THRESHOLDS, isWoApproved, isCountableWo, scopeLines,
 } = require('../utils/projectStageRules');
-const { computeProjectRollup, isWorkBill } = require('../utils/projectRollup');
+const { computeProjectRollup, countedWosFor, isWorkBill } = require('../utils/projectRollup');
 const { attachVendorGroups } = require('../utils/vendorGroupHelpers');
 
 // Phase 1 (backend half) of the Projects Overview executive dashboard
@@ -556,7 +556,7 @@ async function buildExecutiveDashboardData(query) {
   // plannedQty/completedQty/rate fields the per-project workExecutedValue
   // rollup above already uses — just grouped by category instead of project.
   const categoryExecTotals = new Map();
-  for (const wo of workOrders.filter(isCountableWo)) {
+  for (const wo of countedWosFor(workOrders, runningBills)) {
     const cat = wo.category || 'Uncategorized';
     if (!categoryExecTotals.has(cat)) {
       categoryExecTotals.set(cat, { totalWorkOrders: 0, awardedValue: 0, executedValue: 0, plannedQty: 0, completedQty: 0 });
@@ -761,7 +761,7 @@ async function buildExecutiveDashboardData(query) {
   // logic. Uncapped — the frontend card renders this in its own scrollable
   // container rather than a fixed top-N preview, so trimming it here would
   // just hide real rows instead of the earlier top-10 cap.
-  const perWorkOrderRows = await buildContractorCategoryRows(workOrders.filter(isCountableWo), runningBills, projects);
+  const perWorkOrderRows = await buildContractorCategoryRows(countedWosFor(workOrders, runningBills), runningBills, projects);
   // contractorCode + projectId stay on each row so the dashboard card can open that contractor in its project;
   // vendorGroupId/Name let it show a Vendor Group once instead of each of its vendors.
   await attachVendorGroups(perWorkOrderRows, (r) => r.contractorCode);
@@ -1117,7 +1117,7 @@ async function buildContractorMatrixData(query) {
   }
   const runningBills = await excludeDuplicateBills(await RunningBill.find(rbFilter).lean());
 
-  const perWorkOrderRows = await buildContractorCategoryRows(workOrders.filter(isCountableWo), runningBills, projects);
+  const perWorkOrderRows = await buildContractorCategoryRows(countedWosFor(workOrders, runningBills), runningBills, projects);
 
   // ── Group per-WorkOrder rows into the (contractorCode, category) cross-tab
   // — a contractor can have multiple WorkOrders in the same category across

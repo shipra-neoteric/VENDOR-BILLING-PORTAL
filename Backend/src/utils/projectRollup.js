@@ -32,8 +32,18 @@ const isWorkBill = (b) => !isRejectedBill(b) && !b.isUnsubmittedDraft && !isAdva
 
 // `cumulativeOffsets` (optional, billId -> amount from utils/cumulativeOffsets.js): the part of a cumulative bill that repeats earlier
 // bills — taken off billedGross so the same work is not counted twice.
+// A work order counts toward contract / executed / progress when it is approved and not cancelled, OR when a live bill
+// (not rejected, not archived, not an unsubmitted draft) was raised against it — work that was billed is real work even
+// if the work order itself never got its approval. (Only when it has a contract value: a ₹0 work order adds nothing to the
+// contract, and its progress entries are not a trustworthy measure of executed work.)
+const hasLiveBill = (b) => !isRejectedBill(b) && !b.isUnsubmittedDraft && !b.isArchived;
+function countedWosFor(wos, bills) {
+  const billed = new Set((bills || []).filter(hasLiveBill).map(b => String(b.workOrderId)));
+  return wos.filter(w => isCountableWo(w) || ((w.contractValue || 0) > 0 && billed.has(String(w._id))));
+}
+
 function computeProjectRollup(wos, bills, cumulativeOffsets = null) {
-  const countedWos = wos.filter(isCountableWo);
+  const countedWos = countedWosFor(wos, bills);
   const awardedContractValue = countedWos.reduce((s, w) => s + (w.contractValue || 0), 0);
   const { executedValue: workExecutedValue, percent: progress } = scopeProgress(countedWos);
 
@@ -72,4 +82,4 @@ function computeProjectRollup(wos, bills, cumulativeOffsets = null) {
   };
 }
 
-module.exports = { computeProjectRollup, isRejectedBill, isAdvanceBill, isWorkBill };
+module.exports = { computeProjectRollup, countedWosFor, isRejectedBill, isAdvanceBill, isWorkBill };
