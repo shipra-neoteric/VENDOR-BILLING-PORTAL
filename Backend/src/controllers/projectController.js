@@ -8,10 +8,12 @@ const asyncHandler = require('../utils/asyncHandler');
 const { success, created, notFound, badRequest, conflict } = require('../utils/responseFormatter');
 const { nextProjectCode } = require('../utils/codeGen');
 const { logAudit, diffFields } = require('../utils/auditLog');
-const { computeProjectRollup } = require('../utils/projectRollup');
+const { computeProjectRollup, billedContribution, isRejectedBill, isAdvanceBill } = require('../utils/projectRollup');
+const { billFinancialsForBill } = require('../utils/billFinancials');
+const { isPaidLike } = require('../utils/paidStatuses');
 const { excludeDuplicateBills } = require('../utils/duplicateBills');
 const { getCumulativeOffsets } = require('../utils/cumulativeOffsets');
-const { scopeProgress } = require('../utils/projectStageRules');
+const { scopeProgress, isCountableWo } = require('../utils/projectStageRules');
 
 // Every GET below strips the real slackWebhookUrl before it ever leaves the
 // server — GET /projects and GET /projects/:id have no role restriction (any
@@ -227,4 +229,56 @@ exports.getAllProjectsActivity = asyncHandler(async (req, res) => {
     .sort({ createdAt: -1 })
     .limit(Math.min(parseInt(limit) || 100, 300));
   success(res, { events });
+});
+
+// GET /api/projects/:id/breakdown — the rows behind each tile on the project page (Contract, Executed, Billed, Paid, Progress),
+// built with the SAME rules as getProjectStats / computeProjectRollup so every list adds up to its tile.
+exports.getProjectBreakdown = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const [project, wos, runningBillsAll] = await Promise.all([
+    Project.findById(id).select('_id').lean(),
+    WorkOrder.find({ projectId: id }).select('-documents').lean(),
+    RunningBill.find({ projectId: id }).lean(),
+  ]);
+  if (!project) return notFound(res, 'Project not found');
+  const bills = await excludeDuplicateBills(runningBillsAll);
+  const offsets = await getCumulativeOffsets();
+  const roll = computeProjectRollup(wos, bills, offsets);
+  const counted = new Set(roll.countedWos.map(w => String(w._id)));
+  const woById = new Map(wos.map(w => [String(w._id), w]));
+  const round2 = (n) => Math.round((n || 0) * 100) / 100;
+
+  const contract = wos.map(w => {
+    const isCounted = counted.has(String(w._id));
+    let reason = '';
+    if (!isCounted) reason = w.status === 'cancelled' ? 'Cancelled' : (w.contractValue || 0) > 0 ? 'Not approved yet' : 'No contract value';
+    else if (!isCountableWo(w)) reason = 'Counted because a bill exists';
+    return { id: w._id, workOrderNo: w.workOrderNo, vendorName: w.vendorName, category: w.category || '', status: w.status, contractValue: round2(w.contractValue), counted: isCounted, reason };
+  }).sort((a, b) => Number(b.counted) - Number(a.counted) || b.contractValue - a.contractValue);
+
+  const executed = roll.countedWos.map(w => {
+    const sp = scopeProgress([w]);
+    return { id: w._id, workOrderNo: w.workOrderNo, vendorName: w.vendorName, status: w.status, plannedValue: round2(sp.plannedValue), executedValue: round2(sp.executedValue), percent: sp.percent };
+  }).sort((a, b) => b.executedValue - a.executedValue);
+
+  const billRows = bills.map(b => {
+    const wo = b.workOrderId ? woById.get(String(b.workOrderId)) : null;
+    const part = billedContribution(b, offsets);
+    const off = offsets.get(String(b._id)) || 0;
+    let note = '';
+    if (isRejectedBill(b)) note = 'Rejected — not counted';
+    else if (b.isUnsubmittedDraft) note = 'Not submitted — not counted';
+    else if (isAdvanceBill(b)) note = 'Advance — counted in full';
+    else if (off > 0.5) note = 'Part repeats earlier bills / advance recovery taken off';
+    const f = billFinancialsForBill(b);
+    return { id: b._id, billNo: b.billNo, workOrderNo: wo ? wo.workOrderNo : (b.workOrderNo || '—'), vendorName: b.vendorName || (wo && wo.vendorName) || '', status: b.status, billType: b.billType || 'running', billDate: b.billDate, gross: round2(b.amount), takenOff: round2(off), counted: round2(part), netPayable: round2(f.netPayable), paidLike: isPaidLike(b.status), note };
+  }).sort((a, b) => new Date(b.billDate) - new Date(a.billDate));
+
+  success(res, {
+    totals: { contract: roll.awardedContractValue, executed: roll.workExecutedValue, billed: roll.billedGross, paid: roll.paidAmount, progress: roll.progress },
+    contract, executed,
+    billed: billRows,
+    paid: billRows.filter(r => r.paidLike).map(r => ({ ...r })),
+    duplicatesHidden: runningBillsAll.length - bills.length,
+  });
 });

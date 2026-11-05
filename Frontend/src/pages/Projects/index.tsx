@@ -28,6 +28,7 @@ import { SearchFilter, SelectFilter } from "../../ui/Filters";
 import apiClient from "../../services/apiClient";
 import BillDetailModal, { type BillDetailRequest } from "../../components/BillDetailModal";
 import { vendorLabel } from "../../utils/vendorLabel";
+import TileBreakdownDrawer, { type TileKind, type BillRow } from "./TileBreakdownDrawer";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 interface Project {
@@ -214,6 +215,10 @@ function ProjectDetail({
   );
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [viewBill, setViewBill] = useState<BillDetailRequest | null>(null);
+  // Which stat tile's full list is open in the side drawer (Contract / Executed / Billed / Paid / Progress).
+  // Project bills that never had a bill request (advance bills, manual bills) — they belong to the project too, so the Bills tab lists them.
+  const [directBills, setDirectBills] = useState<BillRow[]>([]);
+  const [tileDrawer, setTileDrawer] = useState<TileKind | null>(null);
   // Drill-down drawer: a whole vendor's work orders, or just one work order (woId).
   const [searchParams] = useSearchParams();
   // /projects?id=…&vendor=CODE (from the dashboard's Contractors by Category) opens that vendor's drawer.
@@ -223,12 +228,6 @@ function ProjectDetail({
   const tabsRef = useRef<HTMLDivElement>(null);
   // Work Orders tab: narrow the table to one vendor.
   const [woVendorFilter, setWoVendorFilter] = useState("");
-  // Stat cards / pills jump to the tab that explains them.
-  function goTab(tab: "vendors" | "workorders" | "category" | "bills" | "activity") {
-    setActiveTab(tab);
-    setTimeout(() => tabsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
-  }
-
   useEffect(() => {
     setLoading(true);
     setSelectedCategory(null);
@@ -240,13 +239,17 @@ function ProjectDetail({
       apiClient.get(`/contractors`),
       // Consultants are vendors too (work orders carry their CN- code), so they show in the Vendors tab.
       apiClient.get(`/consultants`).catch(() => ({ data: { consultants: [] } })),
+      apiClient.get(`/projects/${id}/breakdown`).catch(() => ({ data: { billed: [] } })),
     ])
-      .then(([wosR, statsR, actR, brR, contR, consR]) => {
+      .then(([wosR, statsR, actR, brR, contR, consR, bdR]) => {
         const loadedWOs: WORow[] = wosR.data.workOrders ?? [];
         setWOs(loadedWOs);
         setStats(statsR.data.stats ?? null);
         setActivity(actR.data.events ?? []);
-        setBillRequests(brR.data.billRequests ?? []);
+        const loadedBRs: BillDetailRequest[] = brR.data.billRequests ?? [];
+        setBillRequests(loadedBRs);
+        const requested = new Set(loadedBRs.map(b => b.billId?.billNo).filter(Boolean));
+        setDirectBills(((bdR.data?.data ?? bdR.data)?.billed ?? []).filter((b: BillRow) => !requested.has(b.billNo)));
         const consultantRows: ContractorRow[] = (consR.data.consultants ?? []).map((c: { _id: string; consultantCode: string; firmName: string; principalName?: string }) => ({
           _id: c._id, vendorCode: c.consultantCode, companyName: c.firmName, ownerName: c.principalName,
         }));
@@ -337,11 +340,11 @@ function ProjectDetail({
           {stats && (
             <>
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 lg:[&_.tabular-nums]:text-base 2xl:[&_.tabular-nums]:text-xl gap-4 mb-6">
-                <NxStatCard label="Total Contract Value" value={fmt(stats.awardedContractValue)} icon={Landmark} onClick={() => goTab("workorders")} />
-                <NxStatCard label="Work Executed" value={fmt(stats.workExecutedValue)} icon={HardHat} onClick={() => goTab("category")} />
-                <NxStatCard label="Total Billed" value={fmt(stats.billedGross)} icon={Receipt} onClick={() => goTab("bills")} />
-                <NxStatCard label="Paid" value={fmt(stats.paidAmount)} icon={Banknote} onClick={() => goTab("bills")} />
-                <NxStatCard label="Overall Progress" value={`${stats.progress}%`} icon={TrendingUp} onClick={() => goTab("category")} />
+                <NxStatCard label="Total Contract Value" value={fmt(stats.awardedContractValue)} icon={Landmark} onClick={() => setTileDrawer("contract")} />
+                <NxStatCard label="Work Executed" value={fmt(stats.workExecutedValue)} icon={HardHat} onClick={() => setTileDrawer("executed")} />
+                <NxStatCard label="Total Billed" value={fmt(stats.billedGross)} icon={Receipt} onClick={() => setTileDrawer("billed")} />
+                <NxStatCard label="Paid" value={fmt(stats.paidAmount)} icon={Banknote} onClick={() => setTileDrawer("paid")} />
+                <NxStatCard label="Overall Progress" value={`${stats.progress}%`} icon={TrendingUp} onClick={() => setTileDrawer("progress")} />
               </div>
 
             </>
@@ -356,7 +359,7 @@ function ProjectDetail({
               options={[
                 { value: "category", label: <span className="flex items-center gap-2"><LayoutGrid className="w-3.5 h-3.5 text-purple-500" />Category</span> },
                 { value: "workorders", label: <span className="flex items-center gap-2"><ClipboardList className="w-3.5 h-3.5 text-blue-500" />Work Orders{stats && <TabCount tone="blue" title={`${stats.woCount} work orders, ${completedCount} completed`}>{stats.woCount}</TabCount>}</span> },
-                { value: "bills", label: <span className="flex items-center gap-2"><FileText className="w-3.5 h-3.5 text-indigo-500" />Bills{stats && <TabCount tone="indigo" title={`${stats.openBills} open bills`}>{stats.openBills}</TabCount>}{stats && stats.pendingBillReqs > 0 && <TabCount tone="amber" title={`${stats.pendingBillReqs} pending bill request${stats.pendingBillReqs !== 1 ? "s" : ""}`}>{stats.pendingBillReqs} pending</TabCount>}</span> },
+                { value: "bills", label: <span className="flex items-center gap-2"><FileText className="w-3.5 h-3.5 text-indigo-500" />Bills{stats && stats.openBills > 0 && <TabCount tone="indigo" title={`${stats.openBills} open bills`}>{stats.openBills}</TabCount>}{stats && stats.pendingBillReqs > 0 && <TabCount tone="amber" title={`${stats.pendingBillReqs} pending bill request${stats.pendingBillReqs !== 1 ? "s" : ""}`}>{stats.pendingBillReqs} pending</TabCount>}</span> },
                 { value: "vendors", label: <span className="flex items-center gap-2"><Users className="w-3.5 h-3.5 text-teal-500" />Vendors{stats && <TabCount tone="teal" title={`${stats.activeVendors} active contractors`}>{stats.activeVendors}</TabCount>}</span> },
                 { value: "activity", label: <span className="flex items-center gap-2"><Activity className="w-3.5 h-3.5 text-emerald-500" />Live Activity</span> },
               ]}
@@ -392,6 +395,8 @@ function ProjectDetail({
               )}
             </div>
           )}
+
+          {tileDrawer && <TileBreakdownDrawer projectId={String(id)} kind={tileDrawer} onClose={() => setTileDrawer(null)} />}
 
           {vendorView && (() => {
             const contractor = contractors.find(c => c.vendorCode === vendorView.vendorCode);
@@ -604,9 +609,9 @@ function ProjectDetail({
             <div className="mb-5">
               <div className="flex justify-between items-center mb-3">
                 <div className="font-bold text-[15px] text-[#1A1A2E] dark:text-[#F1F5F9]">Bills</div>
-                <div className="text-xs text-gray-400">{billRequests.length} total</div>
+                <div className="text-xs text-gray-400">{billRequests.length + directBills.length} total</div>
               </div>
-              {billRequests.length === 0 ? (
+              {billRequests.length + directBills.length === 0 ? (
                 <Card className="text-center py-12">
                   <div className="text-sm font-semibold text-gray-500 dark:text-gray-400">No bills yet</div>
                 </Card>
@@ -629,6 +634,20 @@ function ProjectDetail({
                         <Td className="text-right font-mono">{fmt(billRequestAmount(br))}</Td>
                         <Td>{dayjs(br.createdAt).format("DD MMM YYYY")}</Td>
                         <Td><NxBadge color={billReqStatusBadge(br.status).color}>{billReqStatusBadge(br.status).label}</NxBadge></Td>
+                      </Tr>
+                    ))}
+                    {directBills.map(b => (
+                      <Tr key={b.id}>
+                        <Td>
+                          <div className="font-semibold">{b.billNo}</div>
+                          <div className="text-[10px] text-gray-400">{b.billType.startsWith("advance") ? "Advance bill" : "Direct bill (no request)"}</div>
+                        </Td>
+                        <Td>{b.workOrderNo}</Td>
+                        <Td>{b.vendorName || "—"}</Td>
+                        <Td>{b.billType.startsWith("advance") ? "Advance" : "—"}</Td>
+                        <Td className="text-right font-mono">{fmt(b.gross)}</Td>
+                        <Td>{b.billDate ? dayjs(b.billDate).format("DD MMM YYYY") : "—"}</Td>
+                        <Td><NxBadge color={b.status === "rejected" ? "red" : (b.status === "approved" || b.status === "paid") ? "green" : "amber"}>{b.status === "rejected" ? "Rejected" : b.status === "paid" ? "Paid" : b.status === "approved" ? "Approved" : "Pending"}</NxBadge></Td>
                       </Tr>
                     ))}
                   </Tbody>

@@ -3,7 +3,7 @@ const { authenticate, authorizeOr } = require('../middleware/auth');
 const { createProjectRules } = require('../validators/project.validator');
 const {
   listProjects, getProject, createProject, updateProject, deleteProject,
-  getProjectStats, getProjectActivity, getAllProjectsActivity,
+  getProjectStats, getProjectBreakdown, getProjectActivity, getAllProjectsActivity,
 } = require('../controllers/projectController');
 
 router.use(authenticate);
@@ -23,6 +23,7 @@ router.get('/activity',     authorizeOr('bill-review', 'view'), getAllProjectsAc
 // granted 'projects' explicitly) that can see the Projects page today but
 // was never granted 'dashboard'.
 router.get('/:id/stats',    authorizeOr('projects', 'view'), getProjectStats);
+router.get('/:id/breakdown', authorizeOr('projects', 'view'), getProjectBreakdown);
 // Same financial-events feed as GET /activity above (PAYMENT_RELEASED,
 // BILL_REQUESTED, etc., unfiltered) — was missing any gate at all, so any
 // authenticated user who knew/guessed a project id could read its full
