@@ -526,6 +526,9 @@ async function buildExecutiveDashboardData(query) {
   // its own exclusive count only — nothing after it in STAGE_ORDER is safe
   // to assume it passed through.
   cumulativeStageCounts.set('Payment Pending', stageCounts.get('Payment Pending') || 0);
+  // "Work in Progress" simply counts the work orders whose own status is in-progress (cancelled ones excluded), so the tile reads
+  // exactly like the Work Orders list instead of being derived from progress entries.
+  cumulativeStageCounts.set('Work in Progress', workOrders.filter(w => w.status === 'in-progress').length);
   const stageSummary = STAGE_ORDER.map(stage => ({ stage, count: cumulativeStageCounts.get(stage) || 0 }));
 
   // ── Spend by Category — group billedGross (RunningBill.amount, same basis

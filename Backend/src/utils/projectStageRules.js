@@ -181,6 +181,8 @@ function woLastProgressDate(wo) {
 //                        not Planning — it has a real approved WorkOrder.
 //   6. Planning        — fallback: no approved WorkOrder at all.
 function computeOverallStage({ project, wos, bills, billReqs, certifiedUnpaid }) {
+  // A project that has been marked Completed on the Projects page is Completed, whatever its work orders say.
+  if (project && project.status === 'completed') return 'Completed';
   const approvedWos = wos.filter(isWoApproved);
   const hasApprovedWo = approvedWos.length > 0;
   const hasOpenBill = bills.some(b => OPEN_BILL_STATUSES.includes(b.status));
