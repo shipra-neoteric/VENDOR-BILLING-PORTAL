@@ -641,7 +641,7 @@ function ProjectDetail({
               ) : (
                 <Table>
                   <Thead>
-                    <Tr><Th>Bill No</Th><Th>Work Order</Th><Th>Vendor</Th><Th>Category</Th><Th className="text-right">Amount</Th><Th>Date</Th><Th>Status</Th></Tr>
+                    <Tr><Th>Bill No</Th><Th>Work Order</Th><Th>Vendor</Th><Th>Category</Th><Th className="text-right">Gross Amount</Th><Th>Date</Th><Th>Status</Th></Tr>
                   </Thead>
                   <Tbody>
                     {billRequests.map(br => (
