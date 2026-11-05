@@ -237,14 +237,19 @@ function ProjectDetail({
       apiClient.get(`/projects/${id}/activity?limit=30`),
       apiClient.get(`/bill-requests?projectId=${id}`),
       apiClient.get(`/contractors`),
+      // Consultants are vendors too (work orders carry their CN- code), so they show in the Vendors tab.
+      apiClient.get(`/consultants`).catch(() => ({ data: { consultants: [] } })),
     ])
-      .then(([wosR, statsR, actR, brR, contR]) => {
+      .then(([wosR, statsR, actR, brR, contR, consR]) => {
         const loadedWOs: WORow[] = wosR.data.workOrders ?? [];
         setWOs(loadedWOs);
         setStats(statsR.data.stats ?? null);
         setActivity(actR.data.events ?? []);
         setBillRequests(brR.data.billRequests ?? []);
-        setContractors(contR.data.contractors ?? []);
+        const consultantRows: ContractorRow[] = (consR.data.consultants ?? []).map((c: { _id: string; consultantCode: string; firmName: string; principalName?: string }) => ({
+          _id: c._id, vendorCode: c.consultantCode, companyName: c.firmName, ownerName: c.principalName,
+        }));
+        setContractors([...(contR.data.contractors ?? []), ...consultantRows]);
         if (loadedWOs.length > 0) {
           const active = loadedWOs.find(w => w.status === "in-progress") ?? loadedWOs[loadedWOs.length - 1];
           setSelectedWONo(active.workOrderNo);
@@ -330,12 +335,11 @@ function ProjectDetail({
           {/* Financial stats */}
           {stats && (
             <>
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 lg:[&_.tabular-nums]:text-base 2xl:[&_.tabular-nums]:text-xl gap-4 mb-6">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 lg:[&_.tabular-nums]:text-base 2xl:[&_.tabular-nums]:text-xl gap-4 mb-6">
                 <NxStatCard label="Total Contract Value" value={fmt(stats.awardedContractValue)} icon={Landmark} onClick={() => goTab("workorders")} />
                 <NxStatCard label="Work Executed" value={fmt(stats.workExecutedValue)} icon={HardHat} onClick={() => goTab("category")} />
                 <NxStatCard label="Total Billed" value={fmt(stats.billedGross)} icon={Receipt} onClick={() => goTab("bills")} />
                 <NxStatCard label="Paid" value={fmt(stats.paidAmount)} icon={Banknote} onClick={() => goTab("bills")} />
-                <NxStatCard label="Remaining" value={fmt(stats.remainingContract)} icon={Clock} onClick={() => goTab("workorders")} />
                 <NxStatCard label="Overall Progress" value={`${stats.progress}%`} icon={TrendingUp} onClick={() => goTab("category")} />
               </div>
 
