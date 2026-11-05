@@ -28,6 +28,7 @@ import { SearchFilter, SelectFilter } from "../../ui/Filters";
 import apiClient from "../../services/apiClient";
 import BillDetailModal, { type BillDetailRequest } from "../../components/BillDetailModal";
 import { vendorLabel } from "../../utils/vendorLabel";
+import { isPaidLike } from "../../shared/utils/paidStatuses";
 import TileBreakdownDrawer, { type TileKind, type BillRow } from "./TileBreakdownDrawer";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -148,10 +149,26 @@ function woStatusBadge(status: string): { label: string; color: NxBadgeColor } {
   if (status === "cancelled") return { label: "Cancelled", color: "red" };
   return { label: "Draft", color: "gray" };
 }
-function billReqStatusBadge(status: string): { label: string; color: NxBadgeColor } {
-  if (status === "approved") return { label: "Approved", color: "green" };
+// Once a request has become a bill, the BILL's own stage is what matters (the request itself stays "approved" from then on).
+// Same labels as Accounts Payment; Ready for TMS / Sent to TMS read as Paid while TMS is not connected.
+function billStatusBadge(status: string): { label: string; color: NxBadgeColor } {
+  if (isPaidLike(status)) return { label: "Paid", color: "green" };
+  if (status === "draft") return { label: "Awaiting Verification", color: "gray" };
+  if (status === "verify-done") return { label: "Pending L1", color: "amber" };
+  if (status === "l1-approved") return { label: "Pending L2", color: "cyan" };
+  if (status === "hold") return { label: "Hold", color: "orange" };
   if (status === "rejected") return { label: "Rejected", color: "red" };
+  if (status === "approved") return { label: "Ready for TMS", color: "blue" };
+  if (status === "verified" || status === "submitted") return { label: "Awaiting Verification", color: "gray" };
+  return { label: "Pending", color: "amber" };
+}
+function billReqStatusBadge(status: string): { label: string; color: NxBadgeColor } {
+  if (status === "approved") return { label: "Bill pending", color: "gray" }; // request approved but its bill is not raised yet
+  if (status === "rejected") return { label: "Rejected", color: "red" };
+  if (status === "pending") return { label: "Pending L1", color: "amber" };
   if (status === "pending-gm") return { label: "Pending L2", color: "amber" };
+  if (status === "pending-l3") return { label: "Pending L3", color: "amber" };
+  if (status === "pending-l4") return { label: "Pending L4", color: "amber" };
   return { label: "Pending", color: "amber" };
 }
 
@@ -633,7 +650,7 @@ function ProjectDetail({
                         <Td>{br.category || "—"}</Td>
                         <Td className="text-right font-mono">{fmt(billRequestAmount(br))}</Td>
                         <Td>{dayjs(br.createdAt).format("DD MMM YYYY")}</Td>
-                        <Td><NxBadge color={billReqStatusBadge(br.status).color}>{billReqStatusBadge(br.status).label}</NxBadge></Td>
+                        <Td>{(() => { const st = br.billId?.status ? billStatusBadge(br.billId.status) : billReqStatusBadge(br.status); return <NxBadge color={st.color}>{st.label}</NxBadge>; })()}</Td>
                       </Tr>
                     ))}
                     {directBills.map(b => (
@@ -647,7 +664,7 @@ function ProjectDetail({
                         <Td>{b.billType.startsWith("advance") ? "Advance" : "—"}</Td>
                         <Td className="text-right font-mono">{fmt(b.gross)}</Td>
                         <Td>{b.billDate ? dayjs(b.billDate).format("DD MMM YYYY") : "—"}</Td>
-                        <Td><NxBadge color={b.status === "rejected" ? "red" : (b.status === "approved" || b.status === "paid") ? "green" : "amber"}>{b.status === "rejected" ? "Rejected" : b.status === "paid" ? "Paid" : b.status === "approved" ? "Approved" : "Pending"}</NxBadge></Td>
+                        <Td><NxBadge color={billStatusBadge(b.status).color}>{billStatusBadge(b.status).label}</NxBadge></Td>
                       </Tr>
                     ))}
                   </Tbody>
