@@ -130,7 +130,7 @@ export default function ProjectsOverviewTable({ projects, stage = "" }: {
             </Thead>
             <Tbody>
               {pageRows.map((p) => {
-                const pending = Math.max(0, p.certifiedNet - p.paidAmount);
+                const pending = Math.max(0, p.certifiedUnpaid); // certified bills not yet paid — NOT certified minus paid, which only differs by TDS/adjustments
                 return (
                   <Tr key={p.projectId}>
                     <Td>
