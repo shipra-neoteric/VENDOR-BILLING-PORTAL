@@ -359,7 +359,7 @@ function ProjectDetail({
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 lg:[&_.tabular-nums]:text-base 2xl:[&_.tabular-nums]:text-xl gap-4 mb-6">
                 <NxStatCard label="Total Contract Value" value={fmt(stats.awardedContractValue)} icon={Landmark} onClick={() => setTileDrawer("contract")} />
                 <NxStatCard label="Work Executed" value={fmt(stats.workExecutedValue)} icon={HardHat} onClick={() => setTileDrawer("executed")} />
-                <NxStatCard label="Total Billed" value={fmt(stats.billedGross)} icon={Receipt} onClick={() => setTileDrawer("billed")} />
+                <NxStatCard label="Total Billed" value={<>{fmt(stats.billedGross)}<div className="text-[11px] font-normal text-gray-400 mt-0.5">Gross</div></>} icon={Receipt} onClick={() => setTileDrawer("billed")} />
                 <NxStatCard label="Paid" value={<>{fmt(stats.paidAmount)}<div className="text-[11px] font-normal text-gray-400 mt-0.5">Net payable</div></>} icon={Banknote} onClick={() => setTileDrawer("paid")} />
                 <NxStatCard label="Overall Progress" value={`${stats.progress}%`} icon={TrendingUp} onClick={() => setTileDrawer("progress")} />
               </div>
