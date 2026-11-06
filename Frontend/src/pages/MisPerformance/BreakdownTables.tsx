@@ -68,7 +68,7 @@ const share = (v: number | null, bad: boolean) => (
 // separately underneath and are NOT part of any employee average.
 export function UserTable({ rows, average, onSelect }: { rows: UserRow[]; average: UserAverage; unitLabel?: string; onSelect?: (u: UserRow) => void }) {
   const people = rows.filter(r => r.userId !== "unassigned");
-  const widths = [13.5, 7, 6.5, 6.5, 6.5, 7, 7.5, 7, 7.5, 8, 8, 8, 7];
+  const widths = [12.5, 9, 6.5, 6.5, 6.5, 7, 7.5, 7, 7.5, 8, 8, 8, 6];
 
   const cells = (r: UserRow) => (
     <>
@@ -115,7 +115,7 @@ export function UserTable({ rows, average, onSelect }: { rows: UserRow[]; averag
         {people.map(r => (
           <Tr key={r.userId} className={onSelect ? "cursor-pointer hover:bg-orange-50/50 dark:hover:bg-gray-800/60" : ""} onClick={onSelect ? () => onSelect(r) : undefined}>
             <Td dense><div className="font-semibold">{r.name}</div>{r.department && <div className="text-[11px] text-gray-400 capitalize">{r.department}</div>}</Td>
-            <Td dense className="whitespace-nowrap">{r.role || "—"}</Td>
+            <Td dense className="break-words leading-tight">{r.role || "—"}</Td>
             {cells(r)}
           </Tr>
         ))}
