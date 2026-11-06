@@ -168,9 +168,11 @@ billRequestSchema.index({ requestedBy: 1, status: 1 });
 // billing risk. This index makes the second create's own write throw a
 // duplicate-key error instead, which the controller catches and turns into
 // the same "already pending" message the findOne check already gives.
+// It needs its own name: with the default name it collided with the plain { workOrderId: 1 } index above (same key, same default name),
+// the build failed silently, and the live database never got this guard.
 billRequestSchema.index(
   { workOrderId: 1 },
-  { unique: true, partialFilterExpression: { status: { $in: ['pending', 'pending-gm', 'pending-l3', 'pending-l4'] } } }
+  { name: 'workOrderId_inflight_unique', unique: true, partialFilterExpression: { status: { $in: ['pending', 'pending-gm', 'pending-l3', 'pending-l4'] } } }
 );
 billRequestSchema.index({ status: 1, createdAt: -1 });
 billRequestSchema.index({ 'approvalHistory.stage': 1, 'approvalHistory.action': 1 });

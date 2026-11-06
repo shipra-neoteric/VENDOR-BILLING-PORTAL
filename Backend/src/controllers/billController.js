@@ -25,6 +25,7 @@ const { getApprovalConfig, approverAllowed, DEFAULT_AGM_ROLES, DEFAULT_GM_ROLES,
 const { notifyStageInApp, notifyByPermission } = require('../utils/notificationService');
 const User = require('../models/User');
 const { parseFinalDeduction, finalDeductionSnapshot, round2: roundMoney } = require('../utils/finalDeduction');
+const { billFinancialsForBill } = require('../utils/billFinancials');
 
 // The final approver of a manual bill may cut its gross total (deductionAmount + optional deductionRemark in the request
 // body); GST etc. are then worked out on what is left. Returns an error message, or null when applied / nothing asked.
@@ -124,6 +125,8 @@ exports.listBills = asyncHandler(async (req, res) => {
       { manualApprovalStatus: { $exists: false } },
       { manualApprovalStatus: 'approved' },
     ] });
+    // ...and a draft that was never submitted is not ready for Accounts either (its "approved" is only the schema default).
+    filter.$and.push({ isUnsubmittedDraft: { $ne: true } });
   }
   // Unsubmitted drafts (Billing -> New Bill "Save as Draft") are invisible to
   // everyone except their own creator and the Owner role (codebase convention
@@ -1074,6 +1077,11 @@ exports.verifyBill = asyncHandler(async (req, res) => {
   if (bill.status !== 'draft') {
     return badRequest(res, `Cannot verify a bill with status '${bill.status}'`);
   }
+  // A bill saved as a draft has not entered the approval chain at all (its manualApprovalStatus is just the schema default, not a real
+  // sign-off), so it must be submitted — and signed off — before Accounts can verify it.
+  if (bill.isUnsubmittedDraft) {
+    return badRequest(res, 'This bill is saved as a draft. Submit it for approval first.');
+  }
   if (bill.manualApprovalStatus !== 'approved') {
     return badRequest(res, `This bill needs AGM/GM sign-off on Bill Requests before it can be verified (currently ${bill.manualApprovalStatus === 'pending-gm' ? 'pending GM approval' : bill.manualApprovalStatus}).`);
   }
@@ -1184,6 +1192,9 @@ exports.manualAgmApprove = asyncHandler(async (req, res) => {
   // sign-off chain is genuinely complete.
   if (isFinal) bill.billNo = await nextBillNo();
   await bill.save();
+  // Single-approval department: this AGM sign-off IS the final approval, so a Mobilisation Advance bill gets its recoverable advance slip
+  // here exactly as it does at the GM / L3 / L4 final approvals (no-op for every other bill).
+  if (isFinal) await createAdvanceSlipForApprovedBill(bill, req.user).catch((err) => console.error('[advance] slip for', bill.billNo, 'failed:', err.message));
   await bill.populate('manualAgmApprovedBy', 'name role');
 
   await logAudit({
@@ -1624,7 +1635,8 @@ exports.sendToTms = asyncHandler(async (req, res) => {
     bill.tmsSentAt = new Date();
     bill.tmsCallbackReceivedAt = new Date();
     bill.paymentDate = bill.paymentDate || new Date();
-    if (bill.paidAmount == null) bill.paidAmount = bill.amount;
+    // What actually goes out: the bill's net payable (after retention, advance recovery, GST, TDS, adjustment) — not the pre-GST base amount.
+    if (bill.paidAmount == null) bill.paidAmount = billFinancialsForBill(bill).netPayable;
     bill.tmsLastError = '';
     pushHistory(bill, 'tms-handoff', 'sent', req.user._id, req.body.remarks);
     pushHistory(bill, 'tms-callback', 'paid', req.user._id, 'TMS integration on hold — marked paid immediately');
