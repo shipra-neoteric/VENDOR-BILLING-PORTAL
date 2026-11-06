@@ -151,21 +151,22 @@ export default function MisReport() {
 
       <NxCard padded={false}>
         {loading ? <div className="p-10"><Spinner label="Loading…" /></div> : (
-          <Table>
-            <Thead>
+          <Table containerClassName="max-h-[500px] overflow-y-auto">
+            <colgroup><col style={{ width: "12%" }} /><col style={{ width: "6%" }} /><col style={{ width: "7%" }} /><col style={{ width: "7%" }} /><col style={{ width: "6%" }} /><col style={{ width: "7.5%" }} /><col style={{ width: "7%" }} /><col style={{ width: "6.5%" }} /><col style={{ width: "11%" }} /><col style={{ width: "7.5%" }} /><col style={{ width: "7%" }} /><col style={{ width: "7.5%" }} /><col style={{ width: "8%" }} /></colgroup>
+            <Thead className="sticky top-0 z-10">
               <Tr>
-                <Th>User</Th><Th>Role</Th>
-                <Th className="text-right">Work Orders</Th><Th className="text-right">Bill Requests</Th><Th className="text-right">Bills</Th>
-                <Th className="text-right">Approved</Th><Th className="text-right">Rejected</Th><Th className="text-right">Sent Back</Th>
-                <Th className="text-right">SLA Compliance</Th>
-                <Th className="text-right" title="This user's own average time to complete a stage">Avg TAT</Th>
-                <Th className="text-right" title="Work Orders + Bill Requests + Bills created, per week of the selected period">Docs / Week</Th>
-                <Th className="text-right" title="Approved decisions per week of the selected period">Approvals / Week</Th>
-                <Th>Last Active</Th>
+                <Th dense className="whitespace-normal! leading-tight align-bottom">User</Th><Th dense className="whitespace-normal! leading-tight align-bottom">Role</Th>
+                <Th dense className="whitespace-normal! leading-tight align-bottom text-right">Work Orders</Th><Th dense className="whitespace-normal! leading-tight align-bottom text-right">Bill Requests</Th><Th dense className="whitespace-normal! leading-tight align-bottom text-right">Bills</Th>
+                <Th dense className="whitespace-normal! leading-tight align-bottom text-right">Approved</Th><Th dense className="whitespace-normal! leading-tight align-bottom text-right">Rejected</Th><Th dense className="whitespace-normal! leading-tight align-bottom text-right">Sent Back</Th>
+                <Th dense className="whitespace-normal! leading-tight align-bottom text-right">SLA Compliance</Th>
+                <Th dense className="whitespace-normal! leading-tight align-bottom text-right" title="This user's own average time to complete a stage">Avg TAT</Th>
+                <Th dense className="whitespace-normal! leading-tight align-bottom text-right" title="Work Orders + Bill Requests + Bills created, per week of the selected period">Docs / Week</Th>
+                <Th dense className="whitespace-normal! leading-tight align-bottom text-right" title="Approved decisions per week of the selected period">Approvals / Week</Th>
+                <Th dense className="whitespace-normal! leading-tight align-bottom">Last Active</Th>
               </Tr>
             </Thead>
             <Tbody>
-              {rows.length === 0 && <Tr><Td colSpan={13} className="text-center text-gray-400 py-8">No users found</Td></Tr>}
+              {rows.length === 0 && <Tr><Td dense colSpan={13} className="text-center text-gray-400 py-8">No users found</Td></Tr>}
               {rows.map(r => (
                 <Tr
                   key={r.userId}
@@ -174,19 +175,19 @@ export default function MisReport() {
                   onClick={() => setSelected(r)}
                   onKeyDown={e => { if (e.key === "Enter") setSelected(r); }}
                 >
-                  <Td><div className="font-semibold">{r.name}</div>{r.department && <div className="text-[11px] text-gray-400">{cap(r.department)}</div>}</Td>
-                  <Td className="whitespace-nowrap">{r.role || "—"}</Td>
-                  <Td className="text-right">{num(r.workOrders)}</Td>
-                  <Td className="text-right">{num(r.billRequests)}</Td>
-                  <Td className="text-right">{num(r.bills)}</Td>
-                  <Td className="text-right">{num(r.approved, "text-emerald-600")}</Td>
-                  <Td className="text-right">{num(r.rejected, "text-red-600")}</Td>
-                  <Td className="text-right">{num(r.sentBack, "text-amber-600")}</Td>
-                  <Td className="text-right"><div className="flex justify-end"><SlaCell row={r} /></div></Td>
-                  <Td className="text-right tabular-nums whitespace-nowrap">{fmtDuration(r.avgTatMinutes)}</Td>
-                  <Td className="text-right">{num(perWeek(docsOf(r), r, from, to))}</Td>
-                  <Td className="text-right">{num(perWeek(r.approved, r, from, to), "text-emerald-600")}</Td>
-                  <Td className="whitespace-nowrap text-xs text-gray-500">{r.lastActiveAt ? dayjs(r.lastActiveAt).format("DD MMM YYYY") : "—"}</Td>
+                  <Td dense><div className="font-semibold">{r.name}</div>{r.department && <div className="text-[11px] text-gray-400">{cap(r.department)}</div>}</Td>
+                  <Td dense className="whitespace-nowrap">{r.role || "—"}</Td>
+                  <Td dense className="text-right">{num(r.workOrders)}</Td>
+                  <Td dense className="text-right">{num(r.billRequests)}</Td>
+                  <Td dense className="text-right">{num(r.bills)}</Td>
+                  <Td dense className="text-right">{num(r.approved, "text-emerald-600")}</Td>
+                  <Td dense className="text-right">{num(r.rejected, "text-red-600")}</Td>
+                  <Td dense className="text-right">{num(r.sentBack, "text-amber-600")}</Td>
+                  <Td dense className="text-right"><div className="flex justify-end"><SlaCell row={r} /></div></Td>
+                  <Td dense className="text-right tabular-nums whitespace-nowrap">{fmtDuration(r.avgTatMinutes)}</Td>
+                  <Td dense className="text-right">{num(perWeek(docsOf(r), r, from, to))}</Td>
+                  <Td dense className="text-right">{num(perWeek(r.approved, r, from, to), "text-emerald-600")}</Td>
+                  <Td dense className="whitespace-nowrap text-xs text-gray-500">{r.lastActiveAt ? dayjs(r.lastActiveAt).format("DD MMM YYYY") : "—"}</Td>
                 </Tr>
               ))}
             </Tbody>
