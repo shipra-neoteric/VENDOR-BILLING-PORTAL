@@ -18,8 +18,8 @@ exports.listTemplates = asyncHandler(async (req, res) => {
 exports.createTemplate = asyncHandler(async (req, res) => {
   const { name, description, entityType, isActive, stages } = req.body;
   if (!name) return badRequest(res, 'Name is required');
-  if (!['WorkOrder', 'BillRequest', 'Custom'].includes(entityType)) {
-    return badRequest(res, 'entityType must be WorkOrder, BillRequest, or Custom');
+  if (!['WorkOrder', 'BillRequest', 'AccountsPayment', 'Custom'].includes(entityType)) {
+    return badRequest(res, 'entityType must be WorkOrder, BillRequest, AccountsPayment, or Custom');
   }
   if (!Array.isArray(stages) || stages.length === 0) {
     return badRequest(res, 'At least one stage is required');

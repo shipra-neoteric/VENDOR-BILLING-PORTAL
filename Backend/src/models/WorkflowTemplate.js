@@ -17,7 +17,7 @@ const workflowTemplateSchema = new mongoose.Schema(
   {
     name:        { type: String, required: true, trim: true },
     description: { type: String, default: '' },
-    entityType:  { type: String, enum: ['WorkOrder', 'BillRequest', 'Custom'], required: true },
+    entityType:  { type: String, enum: ['WorkOrder', 'BillRequest', 'AccountsPayment', 'Custom'], required: true },
     isActive:    { type: Boolean, default: true },
     stages:      [stageSchema],
     createdBy:   { type: mongoose.Schema.Types.ObjectId, ref: 'User' },

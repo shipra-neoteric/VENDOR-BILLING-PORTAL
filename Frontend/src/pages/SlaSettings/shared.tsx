@@ -7,6 +7,7 @@ import SField from "../../ui/SField";
 export const ENTITY_OPTIONS: { label: string; value: WorkflowEntityType }[] = [
   { label: "Work Order",   value: "WorkOrder" },
   { label: "Bill Request", value: "BillRequest" },
+  { label: "Accounts Payment", value: "AccountsPayment" },
   { label: "Custom",       value: "Custom" },
 ];
 
@@ -22,6 +23,19 @@ export const ROLE_OPTIONS = [
 export const DAY_OPTIONS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"].map(d => ({
   label: d[0].toUpperCase() + d.slice(1), value: d,
 }));
+
+// Suggested stages for an "Accounts Payment" workflow — one per step a bill goes through after it is raised (verification → L1 AGM → L2 Director →
+// payment initiated → payment released). Names, people and hours can be edited freely.
+export function accountsPaymentStages(): WorkflowTemplateStage[] {
+  const mk = (name: string, slaHours: number, assignedRole: string): WorkflowTemplateStage => ({ ...newStage(), name, slaHours, assignedRole });
+  return [
+    mk("Accounts Verification", 9, "accounts"),
+    mk("L1 AGM Approval", 9, "agm"),
+    mk("L2 Director Approval", 9, "owner"),
+    mk("Payment Initiated", 9, "accounts"),
+    mk("Payment Released", 18, "accounts"),
+  ];
+}
 
 export interface UserOption { _id: string; name: string; email: string; }
 

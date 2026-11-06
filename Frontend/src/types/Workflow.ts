@@ -1,4 +1,4 @@
-export type WorkflowEntityType = "WorkOrder" | "BillRequest" | "Custom";
+export type WorkflowEntityType = "WorkOrder" | "BillRequest" | "AccountsPayment" | "Custom";
 
 export interface WorkflowTemplateStage {
   _id?: string;

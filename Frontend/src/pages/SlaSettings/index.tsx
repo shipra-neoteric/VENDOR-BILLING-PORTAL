@@ -18,7 +18,7 @@ import Modal from "../../ui/Modal";
 import Btn from "../../ui/Btn";
 import Field from "../../ui/Field";
 import SField from "../../ui/SField";
-import { ENTITY_OPTIONS, StageBuilder, type UserOption } from "./shared";
+import { ENTITY_OPTIONS, StageBuilder, accountsPaymentStages, type UserOption } from "./shared";
 import WorkingTimeCard from "./WorkingTimeCard";
 
 // NxBadge (see ui/nexora/Badge.tsx) has no "purple", so BillRequest maps onto
@@ -26,6 +26,7 @@ import WorkingTimeCard from "./WorkingTimeCard";
 const ENTITY_BADGE_COLOR: Record<string, NxBadgeColor> = {
   WorkOrder: "blue",
   BillRequest: "indigo",
+  AccountsPayment: "teal",
 };
 
 // Empty-state shape for the "New Workflow" drawer — same fields
@@ -50,6 +51,7 @@ export default function SlaSettings() {
   const [newForm, setNewForm] = useState(emptyForm());
   const [newStages, setNewStages] = useState<WorkflowTemplateStage[]>([]);
   const [creating, setCreating] = useState(false);
+  const [addingAccounts, setAddingAccounts] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true); setError("");
@@ -60,6 +62,22 @@ export default function SlaSettings() {
       setError((e as Error).message || "Failed to load SLA templates");
     } finally { setLoading(false); }
   }, []);
+
+  // One click: creates the standard Accounts Payment workflow (stages are editable afterwards, like any other workflow).
+  async function addAccountsPaymentWorkflow() {
+    setAddingAccounts(true);
+    try {
+      await apiClient.post("/workflows/templates", {
+        name: "Accounts Payment Chain",
+        description: "Accounts payment steps of a bill: verification, L1 AGM and L2 Director approval, payment initiation and release. Hours are working hours.",
+        entityType: "AccountsPayment", isActive: true, stages: accountsPaymentStages(),
+      });
+      toast.success("Accounts Payment workflow added");
+      await load();
+    } catch (e: unknown) {
+      toast.error((e as { response?: { data?: { message?: string } } }).response?.data?.message || "Could not add the Accounts Payment workflow");
+    } finally { setAddingAccounts(false); }
+  }
 
   function openNewDrawer() {
     setNewForm(emptyForm());
@@ -130,6 +148,20 @@ export default function SlaSettings() {
       />
 
       <WorkingTimeCard />
+
+      {!templates.some(t => t.entityType === "AccountsPayment") && (
+        <Card className="mb-4 border-dashed">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div className="font-bold text-sm text-[#1A1A2E] dark:text-[#F1F5F9]">Accounts Payment workflow — not set up yet</div>
+              <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                Adds the Accounts Payment steps to this list — Accounts Verification, L1 AGM, L2 Director, Payment Initiated and Payment Released — each with its own SLA hours.
+              </div>
+            </div>
+            <NxBtn label="Add Accounts Payment Workflow" icon={Plus} color="primary" loading={addingAccounts} onClick={addAccountsPaymentWorkflow} />
+          </div>
+        </Card>
+      )}
 
       {templates.length === 0 ? (
         <Card padded={false}>
@@ -209,7 +241,11 @@ export default function SlaSettings() {
               />
               <SField
                 label="Applies To" required value={newForm.entityType} options={ENTITY_OPTIONS}
-                onChange={v => setNewForm(f => ({ ...f, entityType: v as typeof f.entityType }))}
+                onChange={v => {
+                  setNewForm(f => ({ ...f, entityType: v as typeof f.entityType }));
+                  // choosing Accounts Payment on an empty workflow pre-fills the usual accounts steps (still fully editable)
+                  if (v === "AccountsPayment" && newStages.length === 0) setNewStages(accountsPaymentStages());
+                }}
               />
             </div>
             <div className="mb-4">
