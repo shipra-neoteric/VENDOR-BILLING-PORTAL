@@ -68,7 +68,7 @@ const share = (v: number | null, bad: boolean) => (
 // separately underneath and are NOT part of any employee average.
 export function UserTable({ rows, average, onSelect }: { rows: UserRow[]; average: UserAverage; unitLabel?: string; onSelect?: (u: UserRow) => void }) {
   const people = rows.filter(r => r.userId !== "unassigned");
-  const widths = [15, 8, 7, 7, 7, 7.5, 8, 7.5, 8.5, 8.5, 8.5, 7.5];
+  const widths = [13.5, 7, 6.5, 6.5, 6.5, 7, 7.5, 7, 7.5, 8, 8, 8, 7];
 
   const cells = (r: UserRow) => (
     <>
@@ -78,6 +78,7 @@ export function UserTable({ rows, average, onSelect }: { rows: UserRow[]; averag
       <Td dense className={`text-right ${GROUP_BORDER}`}>{num(r.onTime, "text-emerald-600")}</Td>
       <Td dense className="text-right">{num(r.late, "text-amber-600")}</Td>
       <Td dense className="text-right">{num(r.breached, "text-red-600")}</Td>
+      <Td dense className="text-right tabular-nums whitespace-nowrap">{r.avgDelayMinutes === null ? <span className="text-gray-300 dark:text-gray-600">—</span> : <span className="font-semibold text-red-600">{fmtDuration(r.avgDelayMinutes)}</span>}</Td>
       <Td dense className={`text-right ${GROUP_BORDER}`}>{share(r.notDonePct, true)}</Td>
       <Td dense className="text-right">{share(r.onTimePct, false)}</Td>
       <Td dense className="text-right">{share(r.latePct, true)}</Td>
@@ -92,7 +93,7 @@ export function UserTable({ rows, average, onSelect }: { rows: UserRow[]; averag
         <Tr>
           <Th dense colSpan={2} className={grp}>User Details</Th>
           <Th dense colSpan={3} className={`${grp} ${GROUP_BORDER}`}>Work Summary</Th>
-          <Th dense colSpan={3} className={`${grp} ${GROUP_BORDER}`}>SLA Breakdown</Th>
+          <Th dense colSpan={4} className={`${grp} ${GROUP_BORDER}`}>SLA Breakdown</Th>
           <Th dense colSpan={3} className={`${grp} ${GROUP_BORDER}`}>Performance</Th>
           <Th dense colSpan={1} className={`${grp} ${GROUP_BORDER}`}>Productivity</Th>
         </Tr>
@@ -102,6 +103,7 @@ export function UserTable({ rows, average, onSelect }: { rows: UserRow[]; averag
           <Th dense className={`${th} text-right ${GROUP_BORDER}`} title="Completed within the SLA time">Done On Time</Th>
           <Th dense className={`${th} text-right`} title="Completed after the SLA due time">Done Not On Time</Th>
           <Th dense className={`${th} text-right`} title="Done late + still open past the due time">SLA Breached</Th>
+          <Th dense className={`${th} text-right`} title="Average delay per delayed stage: how late it finished, or how long it has been overdue">Avg Delay Time</Th>
           <Th dense className={`${th} text-right ${GROUP_BORDER}`} title="Not done ÷ Planned">% Not Done</Th>
           <Th dense className={`${th} text-right`} title="Done on time ÷ Work Done">% Done On Time</Th>
           <Th dense className={`${th} text-right`} title="Done not on time ÷ Work Done">% Done Not On Time</Th>
@@ -109,7 +111,7 @@ export function UserTable({ rows, average, onSelect }: { rows: UserRow[]; averag
         </Tr>
       </Thead>
       <Tbody>
-        {rows.length === 0 && <Tr><Td dense colSpan={12} className="text-center text-gray-400 py-6">No planned work in this period</Td></Tr>}
+        {rows.length === 0 && <Tr><Td dense colSpan={13} className="text-center text-gray-400 py-6">No planned work in this period</Td></Tr>}
         {people.map(r => (
           <Tr key={r.userId} className={onSelect ? "cursor-pointer hover:bg-orange-50/50 dark:hover:bg-gray-800/60" : ""} onClick={onSelect ? () => onSelect(r) : undefined}>
             <Td dense><div className="font-semibold">{r.name}</div>{r.department && <div className="text-[11px] text-gray-400 capitalize">{r.department}</div>}</Td>
@@ -126,6 +128,7 @@ export function UserTable({ rows, average, onSelect }: { rows: UserRow[]; averag
             <Td dense className={`text-right tabular-nums ${GROUP_BORDER}`}>{fmtNum(average.avgOnTime)}</Td>
             <Td dense className="text-right tabular-nums">{fmtNum(average.avgLate)}</Td>
             <Td dense className="text-right tabular-nums">{fmtNum(average.avgBreached)}</Td>
+            <Td dense className="text-right tabular-nums whitespace-nowrap">{fmtDuration(average.avgDelayMinutes)}</Td>
             <Td dense className={`text-right ${GROUP_BORDER}`}>{share(average.weightedNotDonePct, true)}</Td>
             <Td dense className="text-right">{share(average.weightedOnTimePct, false)}</Td>
             <Td dense className="text-right">{share(average.weightedLatePct, true)}</Td>

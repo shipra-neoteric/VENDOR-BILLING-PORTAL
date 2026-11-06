@@ -112,9 +112,9 @@ export function MisReportDocument({ d, preparedBy }: { d: Performance; preparedB
   const BW = [13, 25, 8, 9, 8, 8, 7, 9, 8, 9];
   const heads = ["Month", unit, "Planned", "Work Done", "Not Done", "On Time", "Late", "Completion", "Difference", "MIS (Gap)"];
   const DW = [30, 7, 9, 9, 9, 8, 8, 10, 10];
-  const UW = [12.5, 8, 7, 7, 7, 7.5, 8, 7.5, 8.5, 8.5, 8.5, 10];
+  const UW = [10.5, 8, 6.5, 6.5, 6.5, 7, 7.5, 7, 7.5, 8, 8, 8, 9];
   const sumW = (a: number, b: number) => UW.slice(a, b).reduce((x, y) => x + y, 0);
-  const userGroups = [{ label: "User Details", width: sumW(0, 2) }, { label: "Work Summary", width: sumW(2, 5) }, { label: "SLA Breakdown", width: sumW(5, 8) }, { label: "Performance", width: sumW(8, 11) }, { label: "Productivity", width: sumW(11, 12) }];
+  const userGroups = [{ label: "User Details", width: sumW(0, 2) }, { label: "Work Summary", width: sumW(2, 5) }, { label: "SLA Breakdown", width: sumW(5, 9) }, { label: "Performance", width: sumW(9, 12) }, { label: "Productivity", width: sumW(12, 13) }];
   return (
     <Document title={`${unit}ly MIS Report`}>
       <Page size="A4" style={S.page} wrap>
@@ -168,13 +168,13 @@ export function MisReportDocument({ d, preparedBy }: { d: Performance; preparedB
             <View style={[S.thead, { backgroundColor: SOFT }]} fixed>
               {userGroups.map(g => <Text key={g.label} style={[S.th, { width: `${g.width}%`, textAlign: "center", color: DARK }]}>{g.label}</Text>)}
             </View>
-            <Head widths={UW} labels={["User", "Role", "Planned", "Work Done", "Not Done", "Done On Time", "Done Not On Time", "SLA Breached", "% Not Done", "% On Time", "% Not On Time", "Avg TAT"]} />
-            {d.users.filter(r => r.userId !== "unassigned").map(r => <Cells key={r.userId} widths={UW} style={S.tr} cells={[r.name, r.role || "—", fmtNum(r.planned), fmtNum(r.done), fmtNum(r.notDone), fmtNum(r.onTime), fmtNum(r.late), fmtNum(r.breached), fmtPct(r.notDonePct), fmtPct(r.onTimePct), fmtPct(r.latePct), fmtDuration(r.avgTatMinutes)]} />)}
-            <Cells widths={UW} style={S.trTotal} bold cells={["Average per user", "", fmtNum(d.userAverage.avgPlanned), fmtNum(d.userAverage.avgDone), fmtNum(d.userAverage.avgNotDone), fmtNum(d.userAverage.avgOnTime), fmtNum(d.userAverage.avgLate), fmtNum(d.userAverage.avgBreached), fmtPct(d.userAverage.weightedNotDonePct), fmtPct(d.userAverage.weightedOnTimePct), fmtPct(d.userAverage.weightedLatePct), fmtDuration(d.userAverage.avgTatMinutes)]} />
+            <Head widths={UW} labels={["User", "Role", "Planned", "Work Done", "Not Done", "Done On Time", "Done Not On Time", "SLA Breached", "Avg Delay", "% Not Done", "% On Time", "% Not On Time", "Avg TAT"]} />
+            {d.users.filter(r => r.userId !== "unassigned").map(r => <Cells key={r.userId} widths={UW} style={S.tr} cells={[r.name, r.role || "—", fmtNum(r.planned), fmtNum(r.done), fmtNum(r.notDone), fmtNum(r.onTime), fmtNum(r.late), fmtNum(r.breached), fmtDuration(r.avgDelayMinutes), fmtPct(r.notDonePct), fmtPct(r.onTimePct), fmtPct(r.latePct), fmtDuration(r.avgTatMinutes)]} />)}
+            <Cells widths={UW} style={S.trTotal} bold cells={["Average per user", "", fmtNum(d.userAverage.avgPlanned), fmtNum(d.userAverage.avgDone), fmtNum(d.userAverage.avgNotDone), fmtNum(d.userAverage.avgOnTime), fmtNum(d.userAverage.avgLate), fmtNum(d.userAverage.avgBreached), fmtDuration(d.userAverage.avgDelayMinutes), fmtPct(d.userAverage.weightedNotDonePct), fmtPct(d.userAverage.weightedOnTimePct), fmtPct(d.userAverage.weightedLatePct), fmtDuration(d.userAverage.avgTatMinutes)]} />
             {d.users.some(r => r.userId === "unassigned") && (
               <View>
                 <View style={[S.tr, { backgroundColor: HEAD }]} wrap={false}><Text style={[S.td, { fontSize: 7, color: GRAY, fontFamily: "Helvetica-Bold" }]}>UNASSIGNED — stages assigned to a role only (not part of the averages above)</Text></View>
-                {d.users.filter(r => r.userId === "unassigned").map(r => <Cells key={r.userId} widths={UW} style={S.tr} cells={[r.name, r.role || "—", fmtNum(r.planned), fmtNum(r.done), fmtNum(r.notDone), fmtNum(r.onTime), fmtNum(r.late), fmtNum(r.breached), fmtPct(r.notDonePct), fmtPct(r.onTimePct), fmtPct(r.latePct), fmtDuration(r.avgTatMinutes)]} />)}
+                {d.users.filter(r => r.userId === "unassigned").map(r => <Cells key={r.userId} widths={UW} style={S.tr} cells={[r.name, r.role || "—", fmtNum(r.planned), fmtNum(r.done), fmtNum(r.notDone), fmtNum(r.onTime), fmtNum(r.late), fmtNum(r.breached), fmtDuration(r.avgDelayMinutes), fmtPct(r.notDonePct), fmtPct(r.onTimePct), fmtPct(r.latePct), fmtDuration(r.avgTatMinutes)]} />)}
               </View>
             )}
           </View>

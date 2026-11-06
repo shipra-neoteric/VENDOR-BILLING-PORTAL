@@ -6,14 +6,14 @@ export interface Stats {
   planned: number; done: number; notDone: number; pending: number; overdue: number;
   onTime: number; late: number; breached: number;
   completionPct: number | null; notDonePct: number | null; onTimePct: number | null; latePct: number | null;
-  difference: number; gapPct: number | null; avgTatMinutes: number | null;
+  difference: number; gapPct: number | null; avgDelayMinutes: number | null; avgTatMinutes: number | null;
 }
 export interface PeriodRow extends Stats { key: string; label: string; monthLabel: string; monthKey: string; weekNo: number | null; start: string; end: string }
 export interface MonthGroup { monthKey: string; monthLabel: string; rows: PeriodRow[]; total: Stats }
 export interface DeptRow extends Stats { name: string; users: number; plannedPerUser: number | null; donePerUser: number | null }
 export interface UserRow extends Stats { userId: string; name: string; role: string; department: string; avgPlannedPerPeriod: number; avgDonePerPeriod: number }
 export interface UserAverage { users: number; avgPlanned: number | null; avgDone: number | null; avgNotDone: number | null; avgDonePerPeriod: number | null; weightedCompletionPct: number | null; meanCompletionPct: number | null; weightedOnTimePct: number | null; avgTatMinutes: number | null;
-  avgOnTime: number | null; avgLate: number | null; avgBreached: number | null; weightedNotDonePct: number | null; weightedLatePct: number | null }
+  avgOnTime: number | null; avgLate: number | null; avgBreached: number | null; weightedNotDonePct: number | null; weightedLatePct: number | null; avgDelayMinutes: number | null }
 export interface DeptAverage { departments: number; avgPlanned: number | null; avgDone: number | null; weightedCompletionPct: number | null; meanCompletionPct: number | null; weightedOnTimePct: number | null; avgUsersPerDept: number | null }
 export interface Person { id: string; name: string; role: string; department: string }
 export interface Performance {

@@ -36,11 +36,13 @@ const monthKeyOf = (d) => { const p = istParts(d); return `${p.y}-${String(p.m +
 const monthLabelOf = (d) => { const p = istParts(d); return `${MONTHS[p.m]} ${p.y}`; };
 
 // ── aggregation ──
-const newAgg = () => ({ planned: 0, done: 0, onTime: 0, late: 0, overdue: 0, tatSum: 0, tatCount: 0 });
+const newAgg = () => ({ planned: 0, done: 0, onTime: 0, late: 0, overdue: 0, tatSum: 0, tatCount: 0, delaySum: 0, delayCount: 0 });
 function addCase(a, c) {
   a.planned++;
   if (c.done) { a.done++; if (c.late) a.late++; else a.onTime++; if (c.tatMinutes !== null) { a.tatSum += c.tatMinutes; a.tatCount++; } }
   else if (c.overdue) a.overdue++;
+  // delay time: how far past its due time each delayed stage is (late completions: how late it finished; overdue: how long it has been overdue)
+  if ((c.late || c.overdue) && c.delayMinutes > 0) { a.delaySum += c.delayMinutes; a.delayCount++; }
 }
 const r1 = (v) => Math.round(v * 10) / 10;
 const r2 = (v) => Math.round(v * 100) / 100; // the % Not Done / On Time / Not On Time shares keep two decimals
@@ -55,6 +57,7 @@ function finish(a) {
     latePct: a.done ? r2((a.late / a.done) * 100) : null,
     difference: a.planned - a.done,
     gapPct: a.planned ? r1(((a.done - a.planned) / a.planned) * 100) : null,
+    avgDelayMinutes: a.delayCount ? Math.round(a.delaySum / a.delayCount) : null, // average delay per delayed stage; null = nothing delayed
     avgTatMinutes: a.tatCount ? Math.round(a.tatSum / a.tatCount) : null, // null = no completed stage yet; 0 = finished in under a minute
   };
 }
@@ -98,6 +101,7 @@ async function loadCases() {
         dueAt: new Date(st.dueAt), done,
         late: done ? (st.delayMinutes || 0) > 0 : false,
         overdue: done ? false : overdueMinutesFor(st, now) > 0,
+        delayMinutes: done ? (st.delayMinutes || 0) : overdueMinutesFor(st, now),
         tatMinutes: done && st.completedAt ? Math.round((new Date(st.completedAt) - new Date(st.startedAt)) / 60000) : null,
         userId: uid || null,
         userName: user ? user.name : null,
@@ -211,7 +215,7 @@ async function buildPerformance(query) {
     avgDonePerPeriod: mean(named.map(u => u.avgDonePerPeriod)), weightedCompletionPct: namedFin.completionPct, meanCompletionPct: mean(named.filter(u => u.completionPct !== null).map(u => u.completionPct)),
     avgOnTime: mean(named.map(u => u.onTime)), avgLate: mean(named.map(u => u.late)), avgBreached: mean(named.map(u => u.breached)),
     // weighted = from the summed totals of the named users (unassigned role-based stages are not in any employee average)
-    weightedNotDonePct: namedFin.notDonePct, weightedOnTimePct: namedFin.onTimePct, weightedLatePct: namedFin.latePct, avgTatMinutes: namedFin.avgTatMinutes,
+    weightedNotDonePct: namedFin.notDonePct, weightedOnTimePct: namedFin.onTimePct, weightedLatePct: namedFin.latePct, avgDelayMinutes: namedFin.avgDelayMinutes, avgTatMinutes: namedFin.avgTatMinutes,
   };
   const activeDepts = deptRows.filter(d => d.planned > 0);
   const departmentAverage = {
@@ -241,7 +245,12 @@ exports.getMisPerformance = asyncHandler(async (req, res) => {
 
 // ── Excel export (same data as the screen, laid out like the weekly MIS report) ──
 const ORANGE = 'FFFF7A00', LIGHT = 'FFFFF3E6', GREY = 'FFF3F4F6';
-const hours = (m) => (m === null || m === undefined ? '—' : m === 0 ? '<1m' : `${Math.floor(m / 60)}h ${m % 60}m`);
+const hours = (m) => { // same look as the screen: 2d 3h / 5h 10m / 12m
+  if (m === null || m === undefined) return '—';
+  if (m === 0) return '<1m';
+  const d = Math.floor(m / 1440), h = Math.floor((m % 1440) / 60);
+  return d > 0 ? `${d}d ${h}h` : h > 0 ? `${h}h ${m % 60}m` : `${m}m`;
+};
 const pct = (v) => (v === null || v === undefined ? '—' : `${v}%`);
 const gap = (v) => (v === null || v === undefined ? '—' : `${v > 0 ? '+' : ''}${v}%`);
 
@@ -319,15 +328,15 @@ exports.exportMisPerformanceXlsx = asyncHandler(async (req, res) => {
 
   // Users — five grouped sections; employees first with the average row, role-only (unassigned) stages separately underneath
   const us = wb.addWorksheet('Users');
-  us.columns = [{ width: 28 }, { width: 18 }, { width: 14 }, { width: 11 }, { width: 11 }, { width: 11 }, { width: 13 }, { width: 15 }, { width: 13 }, { width: 14 }, { width: 14 }, { width: 16 }, { width: 12 }];
-  const groupRow = us.addRow(['User Details', '', '', 'Work Summary', '', '', 'SLA Breakdown', '', '', 'Performance', '', '', 'Productivity']);
-  [[1, 3], [4, 6], [7, 9], [10, 12]].forEach(([a, b]) => us.mergeCells(1, a, 1, b));
+  us.columns = [{ width: 28 }, { width: 18 }, { width: 14 }, { width: 11 }, { width: 11 }, { width: 11 }, { width: 13 }, { width: 15 }, { width: 13 }, { width: 14 }, { width: 14 }, { width: 14 }, { width: 16 }, { width: 12 }];
+  const groupRow = us.addRow(['User Details', '', '', 'Work Summary', '', '', 'SLA Breakdown', '', '', '', 'Performance', '', '', 'Productivity']);
+  [[1, 3], [4, 6], [7, 10], [11, 13]].forEach(([a, b]) => us.mergeCells(1, a, 1, b));
   groupRow.eachCell(c => { c.font = { bold: true, color: { argb: 'FF7A3E00' } }; c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: LIGHT } }; c.alignment = { horizontal: 'center' }; c.border = { bottom: { style: 'medium', color: { argb: ORANGE } } }; });
-  headerRow(us, ['User', 'Role', 'Department', 'Planned', 'Work Done', 'Not Done', 'Done On Time', 'Done Not On Time', 'SLA Breached', '% Not Done', '% Done On Time', '% Done Not On Time', 'Avg TAT']);
-  const userLine = (x) => [x.name, x.role, x.department, x.planned, x.done, x.notDone, x.onTime, x.late, x.breached, pct(x.notDonePct), pct(x.onTimePct), pct(x.latePct), hours(x.avgTatMinutes)];
+  headerRow(us, ['User', 'Role', 'Department', 'Planned', 'Work Done', 'Not Done', 'Done On Time', 'Done Not On Time', 'SLA Breached', 'Avg Delay', '% Not Done', '% Done On Time', '% Done Not On Time', 'Avg TAT']);
+  const userLine = (x) => [x.name, x.role, x.department, x.planned, x.done, x.notDone, x.onTime, x.late, x.breached, hours(x.avgDelayMinutes), pct(x.notDonePct), pct(x.onTimePct), pct(x.latePct), hours(x.avgTatMinutes)];
   d.users.filter(x => x.userId !== 'unassigned').forEach(x => styleRow(us.addRow(userLine(x))));
   const ua = d.userAverage;
-  styleRow(us.addRow(['Average per user', '', '', ua.avgPlanned ?? '—', ua.avgDone ?? '—', ua.avgNotDone ?? '—', ua.avgOnTime ?? '—', ua.avgLate ?? '—', ua.avgBreached ?? '—',
+  styleRow(us.addRow(['Average per user', '', '', ua.avgPlanned ?? '—', ua.avgDone ?? '—', ua.avgNotDone ?? '—', ua.avgOnTime ?? '—', ua.avgLate ?? '—', ua.avgBreached ?? '—', hours(ua.avgDelayMinutes),
     pct(ua.weightedNotDonePct), pct(ua.weightedOnTimePct), pct(ua.weightedLatePct), hours(ua.avgTatMinutes)]), { bold: true, fill: GREY });
   const un = d.users.filter(x => x.userId === 'unassigned');
   if (un.length) {

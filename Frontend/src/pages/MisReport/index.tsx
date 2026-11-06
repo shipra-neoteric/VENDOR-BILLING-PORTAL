@@ -66,9 +66,10 @@ export default function MisReport() {
 
       {loading && !data ? <div className="p-10"><Spinner label="Loading…" /></div> : data && k && (
         <NxCard className="mb-5">
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-6">
             <Tile label="Planned" value={fmtNum(k.planned)} sub="Stages due in the period" />
             <Tile label="Work Done" value={fmtNum(k.done)} sub={`${fmtPct(k.completionPct)} completion · ${fmtNum(k.onTime)} on time, ${fmtNum(k.late)} late`} color="#16a34a" />
+            <Tile label="Late" value={fmtNum(k.late)} sub={`${fmtPct(k.latePct)} of completed work · done after the SLA due time`} color={k.late ? "#f59e0b" : undefined} />
             <Tile label="Difference" value={fmtNum(k.difference)} sub={`Not done · ${fmtNum(k.overdue)} overdue, ${fmtNum(k.breached)} SLA breached`} />
             <Tile label="MIS (Gap)" value={fmtGap(k.gapPct)} sub={k.planned ? `Achieved ${fmtPct(k.completionPct)} of plan` : "No planned work"} color={gapColor(k.gapPct)} />
           </div>
