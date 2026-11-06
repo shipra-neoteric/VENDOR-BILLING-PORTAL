@@ -39,6 +39,7 @@ const ADMIN_GROUPS: NavGroup[] = [
       { name: "Dashboard", path: "/dashboard", icon: <LayoutDashboard className="w-4 h-4" />, moduleId: "dashboard" },
       { name: "Final Approval", path: "/md-approvals", icon: <CheckSquare className="w-4 h-4" />, moduleId: "md-approvals" },
       { name: "SLA Report", path: "/sla-dashboard", icon: <Clock className="w-4 h-4" />, moduleId: "sla-dashboard" },
+      { name: "MIS Report", path: "/mis-report", icon: <LineChart className="w-4 h-4" />, moduleId: "sla-dashboard" },
       { name: "User MIS", path: "/user-mis", icon: <Users className="w-4 h-4" />, moduleId: "user-mis" },
     ],
   },

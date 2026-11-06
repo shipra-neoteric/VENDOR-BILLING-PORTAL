@@ -4,6 +4,7 @@ const {
   listTemplates, createTemplate, updateTemplate, deleteTemplate,
   listInstances, getInstance, completeStage, getMISReport,
 } = require('../controllers/workflowController');
+const { getSlaByModule } = require('../controllers/slaModuleReportController');
 
 router.use(authenticate);
 
@@ -33,5 +34,6 @@ router.get('/instances/:id', authorizeOr('sla-dashboard', 'view'), getInstance);
 router.patch('/instances/:id/complete-stage', completeStage); // stage-assignment check happens in the controller
 
 router.get('/mis-report', authorizeOr('sla-dashboard', 'view'), getMISReport);
+router.get('/sla-by-module', authorizeOr('sla-dashboard', 'view', 'owner'), getSlaByModule);
 
 module.exports = router;
