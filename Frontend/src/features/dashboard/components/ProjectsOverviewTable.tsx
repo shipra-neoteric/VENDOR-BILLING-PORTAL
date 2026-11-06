@@ -122,7 +122,7 @@ export default function ProjectsOverviewTable({ projects, stage = "" }: {
                 <SortHeader label="Project" sortKey="name" active={sortKey === "name"} dir={sortDir} onClick={toggleSort} className="w-[34%]" />
                 <Th className="w-[20%]">Stage</Th>
                 <SortHeader label="Paid" sortKey="paidAmount" active={sortKey === "paidAmount"} dir={sortDir} onClick={toggleSort} className="w-[18%] text-right" />
-                <SortHeader label="Remaining" sortKey="pendingBillsAmount" active={sortKey === "pendingBillsAmount"} dir={sortDir} onClick={toggleSort} className="w-[18%] text-right" />
+                <SortHeader label="Unpaid" sortKey="pendingBillsAmount" active={sortKey === "pendingBillsAmount"} dir={sortDir} onClick={toggleSort} className="w-[18%] text-right" />
                 <Th className="w-[10%] text-center">Action</Th>
               </Tr>
             </Thead>
