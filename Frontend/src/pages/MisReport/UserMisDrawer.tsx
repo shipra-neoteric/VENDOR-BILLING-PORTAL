@@ -7,7 +7,7 @@ import Btn from "../../ui/Btn";
 import Spinner from "../../ui/Spinner";
 import NxBadge from "../../ui/nexora/Badge";
 import type { NxBadgeColor } from "../../ui/nexora/Badge";
-import { fmtDuration, slaColor, type UserMisRow } from "./shared";
+import { fmtDuration, slaColor, perWeek, docsOf, type UserMisRow } from "./shared";
 
 interface ActivityItem {
   type: "created" | "approved" | "rejected" | "sent-back" | "sentBack" | "sla";
@@ -86,10 +86,12 @@ export default function UserMisDrawer({ user, from, to, onClose }: { user: UserM
         <Stat label="Sent back" value={row.sentBack} tone="text-amber-600" />
         <Stat label="SLA compliance" value={row.slaPct === null ? "—" : `${row.slaPct}%`} />
       </div>
-      <div className="grid grid-cols-3 gap-2.5 mb-5">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 mb-5">
         <Stat label="On time" value={row.slaOnTime} tone="text-emerald-600" />
         <Stat label="Delayed" value={row.slaDelayed} tone="text-red-600" />
         <Stat label="Avg TAT" value={fmtDuration(row.avgTatMinutes)} />
+        <Stat label="Docs / week" value={perWeek(docsOf(row), row, from, to) || "—"} />
+        <Stat label="Approvals / week" value={perWeek(row.approved, row, from, to) || "—"} tone="text-emerald-600" />
       </div>
       {row.slaPct !== null && (
         <div className="h-1.5 rounded-full bg-gray-100 dark:bg-gray-700 overflow-hidden mb-5 -mt-2">

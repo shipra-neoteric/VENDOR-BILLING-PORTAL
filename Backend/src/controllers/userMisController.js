@@ -69,9 +69,14 @@ async function buildRows(range) {
     workOrders: 0, billRequests: 0, bills: 0,
     approved: 0, rejected: 0, sentBack: 0,
     slaTotal: 0, slaOnTime: 0, slaDelayed: 0, slaPending: 0, tatSum: 0, tatCount: 0,
-    lastActiveAt: null,
+    lastActiveAt: null, firstActiveAt: null,
   }]));
-  const touch = (row, at) => { if (at && (!row.lastActiveAt || new Date(at) > new Date(row.lastActiveAt))) row.lastActiveAt = at; };
+  const touch = (row, at, first) => {
+    if (!at) return;
+    if (!row.lastActiveAt || new Date(at) > new Date(row.lastActiveAt)) row.lastActiveAt = at;
+    const f = first || at;
+    if (!row.firstActiveAt || new Date(f) < new Date(row.firstActiveAt)) row.firstActiveAt = f;
+  };
 
   await Promise.all([
     ...DOCS.map(async ({ key, Model, createdField }) => {
@@ -80,25 +85,25 @@ async function buildRows(range) {
       const [created, decided] = await Promise.all([
         Model.aggregate([
           { $match: createdMatch },
-          { $group: { _id: `$${createdField}`, n: { $sum: 1 }, last: { $max: '$createdAt' } } },
+          { $group: { _id: `$${createdField}`, n: { $sum: 1 }, last: { $max: '$createdAt' }, first: { $min: '$createdAt' } } },
         ]),
         Model.aggregate([
           { $match: { 'approvalHistory.0': { $exists: true } } },
           { $unwind: '$approvalHistory' },
           { $match: { 'approvalHistory.by': { $ne: null }, 'approvalHistory.action': { $in: Object.keys(ACTION_GROUP) },
             ...(range ? { 'approvalHistory.at': range } : {}) } },
-          { $group: { _id: { by: '$approvalHistory.by', action: '$approvalHistory.action' }, n: { $sum: 1 }, last: { $max: '$approvalHistory.at' } } },
+          { $group: { _id: { by: '$approvalHistory.by', action: '$approvalHistory.action' }, n: { $sum: 1 }, last: { $max: '$approvalHistory.at' }, first: { $min: '$approvalHistory.at' } } },
         ]),
       ]);
       for (const c of created) {
         const row = rows.get(String(c._id));
         if (!row) continue;
-        row[key] += c.n; touch(row, c.last);
+        row[key] += c.n; touch(row, c.last, c.first);
       }
       for (const d of decided) {
         const row = rows.get(String(d._id.by));
         if (!row) continue;
-        row[ACTION_GROUP[d._id.action]] += d.n; touch(row, d.last);
+        row[ACTION_GROUP[d._id.action]] += d.n; touch(row, d.last, d.first);
       }
     }),
     slaCases(range).then(cases => {

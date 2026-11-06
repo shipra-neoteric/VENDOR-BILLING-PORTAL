@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import dayjs from "dayjs";
-import { BarChart3, Timer, CheckCircle2, Clock, AlertTriangle, Award, TrendingUp, Download, RefreshCw, X } from "lucide-react";
+import { BarChart3, FileText, ClipboardList, Receipt, CheckCircle2, Award, TrendingUp, Download, RefreshCw, X } from "lucide-react";
 import apiClient from "../../services/apiClient";
 import PageHeader from "../../ui/PageHeader";
 import NxStatCard from "../../ui/nexora/StatCard";
@@ -10,7 +10,7 @@ import Spinner from "../../ui/Spinner";
 import Alert from "../../ui/Alert";
 import { Table, Thead, Tbody, Tr, Th, Td } from "../../ui/Table";
 import UserMisDrawer from "./UserMisDrawer";
-import { fmtDuration, slaColor, type UserMisRow } from "./shared";
+import { fmtDuration, slaColor, perWeek, docsOf, type UserMisRow } from "./shared";
 
 const num = (n: number, tone = "") => (
   <span className={`tabular-nums ${n ? `font-semibold ${tone}` : "text-gray-300 dark:text-gray-600"}`}>{n || "—"}</span>
@@ -28,6 +28,17 @@ function SlaCell({ row }: { row: UserMisRow }) {
       </div>
       <span className="text-[10px] text-gray-400 tabular-nums">{row.slaOnTime}/{row.slaTotal} on time</span>
     </div>
+  );
+}
+
+const avgCaption = (total: number, users: number) => `${total} total · ${users} user${users !== 1 ? "s" : ""}`;
+function avgValue(loading: boolean, value: React.ReactNode | null, caption: string) {
+  if (loading) return "—";
+  return (
+    <>
+      {value === null ? "—" : value}
+      <div className="text-[11px] font-normal text-gray-400 mt-0.5 leading-snug">{value === null ? "No activity" : caption}</div>
+    </>
   );
 }
 
@@ -57,20 +68,34 @@ export default function MisReport() {
     (!role || u.role === role) && (!department || u.department === department)
     && (!search.trim() || u.name.toLowerCase().includes(search.trim().toLowerCase()))), [users, role, department, search]);
 
-  // KPI cards add up exactly the people shown in the table, from the same workflow-stage records.
-  const kpi = useMemo(() => {
-    const t = { total: 0, onTime: 0, pending: 0, delayed: 0, tatSum: 0, tatCount: 0 };
-    for (const r of rows) { t.total += r.slaTotal; t.onTime += r.slaOnTime; t.pending += r.slaPending; t.delayed += r.slaDelayed; t.tatSum += r.tatSum; t.tatCount += r.tatCount; }
-    return { ...t, pct: t.total ? Math.round((t.onTime / t.total) * 100) : null, avgTat: t.tatCount ? Math.round(t.tatSum / t.tatCount) : 0 };
+  // Per-user averages over the people shown (after role / department / search / date filters). Each activity average divides that
+  // metric's total by the users who have any of that activity, so people with none do not pull it down. SLA compliance is weighted by
+  // cases (all on-time ÷ all cases). TAT is the mean of each person's own average handling time, over people with a completed stage.
+  const avg = useMemo(() => {
+    const round1 = (v: number) => Math.round(v * 10) / 10;
+    const metric = (f: (r: UserMisRow) => number) => {
+      const eligible = rows.filter(r => f(r) > 0);
+      const total = eligible.reduce((s, r) => s + f(r), 0);
+      return { total, users: eligible.length, value: eligible.length ? round1(total / eligible.length) : null };
+    };
+    const tatUsers = rows.filter(r => r.tatCount > 0);
+    const sla = rows.reduce((s, r) => ({ total: s.total + r.slaTotal, onTime: s.onTime + r.slaOnTime, users: s.users + (r.slaTotal > 0 ? 1 : 0), tatSum: s.tatSum + r.tatSum, tatCount: s.tatCount + r.tatCount }),
+      { total: 0, onTime: 0, users: 0, tatSum: 0, tatCount: 0 });
+    return {
+      wo: metric(r => r.workOrders), br: metric(r => r.billRequests), bills: metric(r => r.bills), approvals: metric(r => r.approved),
+      tat: { users: tatUsers.length, value: tatUsers.length ? Math.round(tatUsers.reduce((s, r) => s + r.avgTatMinutes, 0) / tatUsers.length) : null,
+        weighted: sla.tatCount ? Math.round(sla.tatSum / sla.tatCount) : null },
+      sla: { ...sla, pct: sla.total ? Math.round((sla.onTime / sla.total) * 1000) / 10 : null },
+    };
   }, [rows]);
 
   const filtered = !!(search || role || department || from || to);
   const clear = () => { setSearch(""); setRole(""); setDepartment(""); setFrom(""); setTo(""); };
 
   function exportCsv() {
-    const head = ["User", "Role", "Department", "Work Orders", "Bill Requests", "Bills", "Approved", "Rejected", "Sent Back", "SLA Cases", "On Time", "Delayed", "Pending", "SLA Compliance %", "Avg TAT", "Last Active"];
+    const head = ["User", "Role", "Department", "Work Orders", "Bill Requests", "Bills", "Approved", "Rejected", "Sent Back", "SLA Cases", "On Time", "Delayed", "Pending", "SLA Compliance %", "Avg TAT", "Docs / Week", "Approvals / Week", "Last Active"];
     const lines = rows.map(r => [r.name, r.role, r.department, r.workOrders, r.billRequests, r.bills, r.approved, r.rejected, r.sentBack,
-      r.slaTotal, r.slaOnTime, r.slaDelayed, r.slaPending, r.slaPct ?? "", fmtDuration(r.avgTatMinutes), r.lastActiveAt ? dayjs(r.lastActiveAt).format("DD MMM YYYY") : ""]);
+      r.slaTotal, r.slaOnTime, r.slaDelayed, r.slaPending, r.slaPct ?? "", fmtDuration(r.avgTatMinutes), perWeek(docsOf(r), r, from, to), perWeek(r.approved, r, from, to), r.lastActiveAt ? dayjs(r.lastActiveAt).format("DD MMM YYYY") : ""]);
     const csv = [head, ...lines].map(l => l.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
     const a = document.createElement("a");
     a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
@@ -108,12 +133,20 @@ export default function MisReport() {
       {error && <Alert type="error" message={error} />}
 
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 mb-5">
-        <NxStatCard label="Total Cases" value={loading ? "—" : kpi.total} icon={Timer} />
-        <NxStatCard label="Completed (on time)" value={loading ? "—" : kpi.onTime} icon={CheckCircle2} />
-        <NxStatCard label="Pending" value={loading ? "—" : kpi.pending} icon={Clock} />
-        <NxStatCard label="Breached" value={loading ? "—" : kpi.delayed} icon={AlertTriangle} />
-        <NxStatCard label="SLA Compliance" value={loading || kpi.pct === null ? "—" : `${kpi.pct}%`} icon={Award} />
-        <NxStatCard label="Avg TAT" value={loading ? "—" : fmtDuration(kpi.avgTat)} icon={TrendingUp} />
+        <NxStatCard label="Avg Work Orders / User" value={avgValue(loading, avg.wo.value, avgCaption(avg.wo.total, avg.wo.users))} icon={FileText} />
+        <NxStatCard label="Avg Bill Requests / User" value={avgValue(loading, avg.br.value, avgCaption(avg.br.total, avg.br.users))} icon={ClipboardList} />
+        <NxStatCard label="Avg Bills / User" value={avgValue(loading, avg.bills.value, avgCaption(avg.bills.total, avg.bills.users))} icon={Receipt} />
+        <NxStatCard label="Avg Approvals / User" value={avgValue(loading, avg.approvals.value, avgCaption(avg.approvals.total, avg.approvals.users))} icon={CheckCircle2} />
+        <NxStatCard
+          label="Avg TAT / User"
+          value={avgValue(loading, avg.tat.value === null ? null : fmtDuration(avg.tat.value), `${avg.tat.users} user${avg.tat.users !== 1 ? "s" : ""}${avg.tat.weighted ? ` · ${fmtDuration(avg.tat.weighted)} per stage` : ""}`)}
+          icon={TrendingUp}
+        />
+        <NxStatCard
+          label="SLA Compliance"
+          value={avgValue(loading, avg.sla.pct === null ? null : `${avg.sla.pct}%`, `Weighted · ${avg.sla.onTime}/${avg.sla.total} on time · ${avg.sla.users} user${avg.sla.users !== 1 ? "s" : ""}`)}
+          icon={Award}
+        />
       </div>
 
       <NxCard padded={false}>
@@ -125,11 +158,14 @@ export default function MisReport() {
                 <Th className="text-right">Work Orders</Th><Th className="text-right">Bill Requests</Th><Th className="text-right">Bills</Th>
                 <Th className="text-right">Approved</Th><Th className="text-right">Rejected</Th><Th className="text-right">Sent Back</Th>
                 <Th className="text-right">SLA Compliance</Th>
+                <Th className="text-right" title="This user's own average time to complete a stage">Avg TAT</Th>
+                <Th className="text-right" title="Work Orders + Bill Requests + Bills created, per week of the selected period">Docs / Week</Th>
+                <Th className="text-right" title="Approved decisions per week of the selected period">Approvals / Week</Th>
                 <Th>Last Active</Th>
               </Tr>
             </Thead>
             <Tbody>
-              {rows.length === 0 && <Tr><Td colSpan={10} className="text-center text-gray-400 py-8">No users found</Td></Tr>}
+              {rows.length === 0 && <Tr><Td colSpan={13} className="text-center text-gray-400 py-8">No users found</Td></Tr>}
               {rows.map(r => (
                 <Tr
                   key={r.userId}
@@ -147,6 +183,9 @@ export default function MisReport() {
                   <Td className="text-right">{num(r.rejected, "text-red-600")}</Td>
                   <Td className="text-right">{num(r.sentBack, "text-amber-600")}</Td>
                   <Td className="text-right"><div className="flex justify-end"><SlaCell row={r} /></div></Td>
+                  <Td className="text-right tabular-nums whitespace-nowrap">{fmtDuration(r.avgTatMinutes)}</Td>
+                  <Td className="text-right">{num(perWeek(docsOf(r), r, from, to))}</Td>
+                  <Td className="text-right">{num(perWeek(r.approved, r, from, to), "text-emerald-600")}</Td>
                   <Td className="whitespace-nowrap text-xs text-gray-500">{r.lastActiveAt ? dayjs(r.lastActiveAt).format("DD MMM YYYY") : "—"}</Td>
                 </Tr>
               ))}
