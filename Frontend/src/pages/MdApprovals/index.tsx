@@ -59,7 +59,7 @@ function hasAnyMdApprovalsAccess(user: ReturnType<typeof useAuth>["user"]): bool
   // aggregator too. Explicit confirmation: access must come from the
   // Permission Matrix's own "Final Approval" card, nothing else.
   return perms.some((p) =>
-    p.module === "md-approvals" && (p.actions.includes("view") || p.actions.includes("approve") || p.actions.includes("reject"))
+    p.module === "md-approvals" && p.actions.some((a) => a === "view" || a.startsWith("approve") || a.startsWith("reject"))
   );
 }
 
@@ -67,20 +67,31 @@ function hasAnyMdApprovalsAccess(user: ReturnType<typeof useAuth>["user"]): bool
 // scope restriction as hasAnyMdApprovalsAccess above. Someone who can act on
 // the real per-system route (bill-requests' gm-approve, etc.) still can,
 // just from that system's own page, not from here.
+// "Any" approve / reject right at all (all types, or one specific type) — decides whether the bulk bar shows up.
 function hasMdApprovalsApprovePermission(user: ReturnType<typeof useAuth>["user"]): boolean {
   if (!user) return false;
   if (user.role === "owner") return true;
   const perms = user.permissions ?? [];
-  return perms.some((p) => p.module === "md-approvals" && p.actions.includes("approve"));
+  return perms.some((p) => p.module === "md-approvals" && p.actions.some((a) => a.startsWith("approve")));
 }
 
 function hasMdApprovalsRejectPermission(user: ReturnType<typeof useAuth>["user"]): boolean {
   if (!user) return false;
   if (user.role === "owner") return true;
   const perms = user.permissions ?? [];
-  return perms.some((p) =>
-    (p.module === "md-approvals" && p.actions.includes("reject"))
-  );
+  return perms.some((p) => p.module === "md-approvals" && p.actions.some((a) => a.startsWith("reject")));
+}
+
+// Which Final Approval type a row belongs to — an Approve / Reject grant can be all-types ("approve" / "reject") or one type only
+// ("approve-work-orders", "reject-bill-requests", "approve-accounts-payment", ...).
+const MD_KIND_OF_SYSTEM: Record<string, string> = {
+  WorkOrder: "work-orders", BillRequest: "bill-requests", "RunningBill-Manual": "bill-requests", "RunningBill-Accounts": "accounts-payment",
+};
+function mdCan(user: ReturnType<typeof useAuth>["user"], verb: "approve" | "reject", system: string): boolean {
+  if (!user) return false;
+  if (user.role === "owner") return true;
+  const actions = (user.permissions ?? []).find((p) => p.module === "md-approvals")?.actions ?? [];
+  return actions.includes(verb) || actions.includes(`${verb}-${MD_KIND_OF_SYSTEM[system]}`);
 }
 
 // Endpoint map per row.system — every action from this screen goes through
@@ -249,6 +260,8 @@ export default function MdApprovals() {
   const hasAccess = hasAnyMdApprovalsAccess(user);
   const canApprove = hasMdApprovalsApprovePermission(user);
   const canReject = hasMdApprovalsRejectPermission(user);
+  const canApproveRow = (r: MdApprovalRow) => mdCan(user, "approve", r.system);
+  const canRejectRow = (r: MdApprovalRow) => mdCan(user, "reject", r.system);
 
   // Per system-group counts for the pill row below — counted off the
   // currently active tab's own items (before the other filters/search
@@ -388,7 +401,7 @@ export default function MdApprovals() {
   }
 
   const handleBulkApprove = async () => {
-    const rows = filtered.filter((r) => selected.has(`${r.system}-${r.id}`));
+    const rows = filtered.filter((r) => selected.has(`${r.system}-${r.id}`) && canApproveRow(r));
     if (rows.length === 0) return;
     setBulkSaving(true);
     try {
@@ -415,7 +428,7 @@ export default function MdApprovals() {
   // across every selected row with one shared reason — matches the single
   // reject flow's own requirement that a reason is never optional.
   const handleBulkReject = async () => {
-    const rows = filtered.filter((r) => selected.has(`${r.system}-${r.id}`));
+    const rows = filtered.filter((r) => selected.has(`${r.system}-${r.id}`) && canRejectRow(r));
     if (rows.length === 0 || !bulkReason.trim()) return;
     setBulkSaving(true);
     try {
@@ -473,9 +486,9 @@ export default function MdApprovals() {
       <NxBtn color="icon-blue" title="Review" icon={Eye} onClick={() => setReviewRow(row)} />
       {!isDecidedTab && (
         <>
-          {canApprove && <NxBtn color="icon-green" title="Approve" icon={Check} onClick={() => setApproveTarget(row)} />}
-          {canReject && <NxBtn color="icon-red" title="Reject" icon={X} onClick={() => setRejectTarget(row)} />}
-          {canReject && row.system === "WorkOrder" && (
+          {canApproveRow(row) && <NxBtn color="icon-green" title="Approve" icon={Check} onClick={() => setApproveTarget(row)} />}
+          {canRejectRow(row) && <NxBtn color="icon-red" title="Reject" icon={X} onClick={() => setRejectTarget(row)} />}
+          {canRejectRow(row) && row.system === "WorkOrder" && (
             <NxBtn color="icon-gray" title="Send Back" icon={Undo2} onClick={() => setSendBackTarget(row)} />
           )}
         </>
@@ -708,7 +721,7 @@ export default function MdApprovals() {
           footer={
             !isDecidedTab ? (
               <div className="flex flex-col gap-3 w-full">
-                {canApprove && (reviewRow.system === "BillRequest" || reviewRow.system === "RunningBill-Manual") && (() => {
+                {canApproveRow(reviewRow) && (reviewRow.system === "BillRequest" || reviewRow.system === "RunningBill-Manual") && (() => {
                   const key = rowKey(reviewRow);
                   const mine = deduct.key === key ? deduct : { key, amount: "", remark: "" };
                   const cut = deductionFor(reviewRow);
@@ -739,11 +752,11 @@ export default function MdApprovals() {
                   );
                 })()}
                 <div className="flex justify-end gap-2">
-                {canReject && reviewRow.system === "WorkOrder" && (
+                {canRejectRow(reviewRow) && reviewRow.system === "WorkOrder" && (
                   <Btn outline icon={Undo2} label="Send Back" onClick={() => { setSendBackTarget(reviewRow); setReviewRow(null); }} />
                 )}
-                {canReject && <Btn color="red" icon={X} label="Reject" onClick={() => { setRejectTarget(reviewRow); setReviewRow(null); }} />}
-                {canApprove && <Btn color="green" icon={Check} label="Approve" disabled={deductionFor(reviewRow).amount > 0 && deductionFor(reviewRow).amount >= (reviewRow.amount || 0)} onClick={() => { setApproveTarget(reviewRow); setReviewRow(null); }} />}
+                {canRejectRow(reviewRow) && <Btn color="red" icon={X} label="Reject" onClick={() => { setRejectTarget(reviewRow); setReviewRow(null); }} />}
+                {canApproveRow(reviewRow) && <Btn color="green" icon={Check} label="Approve" disabled={deductionFor(reviewRow).amount > 0 && deductionFor(reviewRow).amount >= (reviewRow.amount || 0)} onClick={() => { setApproveTarget(reviewRow); setReviewRow(null); }} />}
                 </div>
               </div>
             ) : undefined

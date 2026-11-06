@@ -117,8 +117,12 @@ const authorizeAnyOr = (module, actions, ...roles) => (req, res, next) => {
 // [module, action] pair instead of one extra role name. Lets an admin grant
 // someone "can act on Final Approval's queue" without separately picking
 // through work-orders/bill-requests/accounts-payment's own action lists.
+// altAction may be a single action or a list of them (any one is enough) — Final Approval has an all-types grant (approve / reject) and
+// one per type (approve-work-orders, approve-bill-requests, approve-accounts-payment, and the reject- twins).
+const canAlt = (user, altModule, altAction) => (Array.isArray(altAction) ? altAction.some((a) => can(user, altModule, a)) : can(user, altModule, altAction));
+
 const authorizeOrAlt = (module, action, altModule, altAction, ...roles) => (req, res, next) => {
-  if (can(req.user, module, action, ...roles) || can(req.user, altModule, altAction)) return next();
+  if (can(req.user, module, action, ...roles) || canAlt(req.user, altModule, altAction)) return next();
   return res.status(403).json({
     message: `Role '${req.user.role}' does not have access to this action`,
   });
@@ -129,7 +133,7 @@ const authorizeOrAlt = (module, action, altModule, altAction, ...roles) => (req,
 // routes, where whoever's turn it currently is should be allowed, plus
 // anyone holding the Final Approval Reject grant.
 const authorizeAnyOrAlt = (module, actions, altModule, altAction, ...roles) => (req, res, next) => {
-  if (roles.includes(req.user.role) || can(req.user, altModule, altAction)) return next();
+  if (roles.includes(req.user.role) || canAlt(req.user, altModule, altAction)) return next();
   const perm = (req.user.permissions || []).find(p => p.module === module);
   if (perm && actions.some(a => perm.actions.includes(a))) return next();
   return res.status(403).json({

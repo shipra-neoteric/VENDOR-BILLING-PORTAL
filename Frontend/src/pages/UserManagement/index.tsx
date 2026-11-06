@@ -106,7 +106,7 @@ const APPROVAL_LEVEL_STAGES: {
   { stage: "l4",  short: "L4",       rolesKey: "l4Roles",  usersKey: "l4Users" },
 ];
 
-export type PermAction = "view" | "create" | "edit" | "delete" | "invalidate" | "approve" | "request" | "maker" | "checker" | "approver" | "reject" | "ceo-approve" | "send-back" | "agm-approve" | "gm-approve" | "l3-approve" | "verify" | "l1-agm-approve" | "l2-director-approve" | "hold" | "release-hold" | "retry-tms" | "l1-review" | "l2-draw" | "l3-review" | "l4-approve" | "co-l1-approve" | "co-l2-approve" | "edit-bill" | "delete-bill";
+export type PermAction = "view" | "create" | "edit" | "delete" | "invalidate" | "approve" | "request" | "maker" | "checker" | "approver" | "reject" | "ceo-approve" | "send-back" | "agm-approve" | "gm-approve" | "l3-approve" | "verify" | "l1-agm-approve" | "l2-director-approve" | "hold" | "release-hold" | "retry-tms" | "l1-review" | "l2-draw" | "l3-review" | "l4-approve" | "co-l1-approve" | "co-l2-approve" | "edit-bill" | "delete-bill" | "approve-work-orders" | "reject-work-orders" | "approve-bill-requests" | "reject-bill-requests" | "approve-accounts-payment" | "reject-accounts-payment";
 
 interface ModuleDef {
   id: string;
@@ -162,6 +162,14 @@ export const ACTION_CFG: Record<PermAction, { label: string; bg: string }> = {
   // draft); once it is past L1 only an admin (Owner) can, regardless of this.
   "edit-bill":   { label: "Edit Bill",   bg: "#2563eb" },
   "delete-bill": { label: "Delete Bill", bg: "#dc2626" },
+  // Final Approval, one pair per type: grants the person Approve / Reject on that type of item ONLY (and only that type shows in their queue),
+  // unlike the plain Approve / Reject above, which cover every type.
+  "approve-work-orders":      { label: "Approve — Work Orders",     bg: "#7c3aed" },
+  "reject-work-orders":       { label: "Reject — Work Orders",      bg: "#dc2626" },
+  "approve-bill-requests":    { label: "Approve — Bill Requests",   bg: "#7c3aed" },
+  "reject-bill-requests":     { label: "Reject — Bill Requests",    bg: "#dc2626" },
+  "approve-accounts-payment": { label: "Approve — Accounts Payment", bg: "#7c3aed" },
+  "reject-accounts-payment":  { label: "Reject — Accounts Payment",  bg: "#dc2626" },
 };
 
 // Grouped and ordered to match the left Sidebar's own section layout
@@ -178,7 +186,9 @@ export const MODULE_DEFS: ModuleDef[] = [
   // l2-director-approve + reject — see authorizeOrAlt/authorizeAnyOrAlt in
   // those routes) — granting either here is an alternative to separately
   // picking through those 3 modules' own action lists one by one.
-  { id: "md-approvals",     name: "Final Approval",    icon: "✅", group: "Overview",      actions: ["view", "approve", "reject"] },
+  // "Approve" / "Reject" cover every type of item. To give someone only one type, tick its own pair instead (e.g. Approve + Reject — Accounts
+  // Payment): then only that type shows in their Final Approval queue and only that type can be acted on.
+  { id: "md-approvals",     name: "Final Approval",    icon: "✅", group: "Overview",      actions: ["view", "approve", "reject", "approve-work-orders", "reject-work-orders", "approve-bill-requests", "reject-bill-requests", "approve-accounts-payment", "reject-accounts-payment"] },
   { id: "sla-dashboard",    name: "SLA Report",        icon: "⏱️", group: "Overview",      actions: ["view"] },
   { id: "mis-report",       name: "MIS Report",        icon: "📈", group: "Overview",      actions: ["view"] },
   { id: "projects",         name: "Projects",           icon: "🏗️", group: "Overview",      actions: ["view","create","edit","delete"] },

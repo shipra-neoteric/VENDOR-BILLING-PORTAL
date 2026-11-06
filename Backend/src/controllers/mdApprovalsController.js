@@ -140,12 +140,29 @@ const finalStageName = (levels) => (levels >= 4 ? 'l4' : levels === 3 ? 'l3' : '
 // approverAllowed/woApproverAllowed/can() check in the builders below —
 // never the real approve/reject endpoints, which stay independently gated
 // by the genuine per-system permission regardless of any of this.
-function hasViewOnlyGrant(user) {
+// Final Approval grants come in two kinds: the all-types ones (view / approve / reject — every queue) and one approve- / reject- pair per type
+// (work-orders, bill-requests, accounts-payment). A person holding only a per-type grant sees, opens and acts on that type's rows only.
+const MD_KINDS = ['work-orders', 'bill-requests', 'accounts-payment'];
+const KIND_OF_SYSTEM = { WorkOrder: 'work-orders', BillRequest: 'bill-requests', 'RunningBill-Manual': 'bill-requests', 'RunningBill-Accounts': 'accounts-payment' };
+
+function hasAllTypesGrant(user) {
   return (
     can(user, 'md-approvals', 'view', 'owner') ||
     can(user, 'md-approvals', 'approve', 'owner') ||
     can(user, 'md-approvals', 'reject', 'owner')
   );
+}
+function hasKindGrant(user) {
+  return MD_KINDS.some((k) => can(user, 'md-approvals', `approve-${k}`) || can(user, 'md-approvals', `reject-${k}`));
+}
+// null = every type; otherwise the set of types this person may see.
+function allowedKinds(user) {
+  if (hasAllTypesGrant(user)) return null;
+  return new Set(MD_KINDS.filter((k) => can(user, 'md-approvals', `approve-${k}`) || can(user, 'md-approvals', `reject-${k}`)));
+}
+
+function hasViewOnlyGrant(user) {
+  return hasAllTypesGrant(user) || hasKindGrant(user);
 }
 
 async function buildPendingItems(user) {
@@ -490,13 +507,12 @@ exports.listMdApprovals = asyncHandler(async (req, res) => {
   // approve permission (work-orders' ceo-approve, bill-requests' gm/l3/l4-
   // approve, accounts-payment's l2-director-approve) does NOT unlock this
   // aggregator on its own — only the dedicated grant does.
-  const hasAnyBaseAccess =
-    can(user, 'md-approvals', 'view', 'owner') ||
-    can(user, 'md-approvals', 'approve', 'owner') ||
-    can(user, 'md-approvals', 'reject', 'owner');
+  const hasAnyBaseAccess = hasViewOnlyGrant(user);
   if (!hasAnyBaseAccess) return forbidden(res, 'You are not configured for Final Approval access — ask an admin to grant it in the Permission Matrix.');
 
-  const items = tab === 'pending' ? await buildPendingItems(user) : await buildDecidedItems(user, tab);
+  let items = tab === 'pending' ? await buildPendingItems(user) : await buildDecidedItems(user, tab);
+  const kinds = allowedKinds(user);
+  if (kinds) items = items.filter((i) => kinds.has(KIND_OF_SYSTEM[i.system]));
 
   // Vendor Group of each row's vendor — the queue shows the group, not the individual vendor (display only).
   await attachVendorGroups(items, (i) => i.vendorCode);
@@ -511,6 +527,8 @@ exports.getMdApprovalDetail = asyncHandler(async (req, res) => {
   const user = req.user;
   const Model = SYSTEM_MODELS[system];
   if (!Model) return badRequest(res, `Unknown system '${system}'`);
+  const kinds = allowedKinds(user);
+  if (kinds && !kinds.has(KIND_OF_SYSTEM[system])) return forbidden(res, 'You do not have Final Approval access for this type of item.');
 
   const populateField = system === 'BillRequest' ? 'requestedBy' : 'createdBy';
   let query = Model.findById(id).populate(populateField, 'name email');

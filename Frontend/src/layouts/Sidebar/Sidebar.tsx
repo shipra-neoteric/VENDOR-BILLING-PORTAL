@@ -145,7 +145,7 @@ export function canView(moduleId: string, perms: PermEntry[] | undefined, role?:
   if (moduleId === "md-approvals") {
     if (role === "owner") return true;
     return !!perms?.some((p) =>
-      p.module === "md-approvals" && (p.actions.includes("view") || p.actions.includes("approve") || p.actions.includes("reject"))
+      p.module === "md-approvals" && p.actions.some((a) => a === "view" || a.startsWith("approve") || a.startsWith("reject"))
     );
   }
   // No permission-matrix entry for this module (including a user with no permissions at all)
