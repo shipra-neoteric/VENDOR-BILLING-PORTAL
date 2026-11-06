@@ -38,7 +38,7 @@ const ADMIN_GROUPS: NavGroup[] = [
       { name: "Dashboard", path: "/dashboard", icon: <LayoutDashboard className="w-4 h-4" />, moduleId: "dashboard" },
       { name: "Final Approval", path: "/md-approvals", icon: <CheckSquare className="w-4 h-4" />, moduleId: "md-approvals" },
       { name: "SLA Report", path: "/sla-dashboard", icon: <Clock className="w-4 h-4" />, moduleId: "sla-dashboard" },
-      { name: "MIS Report", path: "/mis-report", icon: <LineChart className="w-4 h-4" />, moduleId: "sla-dashboard" },
+      { name: "MIS Report", path: "/mis-report", icon: <LineChart className="w-4 h-4" />, moduleId: "mis-report" },
     ],
   },
   {
@@ -140,6 +140,8 @@ export function canView(moduleId: string, perms: PermEntry[] | undefined, role?:
   // someone act on their own system's own page, not open this aggregator
   // too. Explicit confirmation: access must come from the Permission
   // Matrix's own "Final Approval" card, nothing else.
+  // MIS Report: new module, so an owner's stored permission list has no entry for it yet — owner always sees it, others need the grant.
+  if (moduleId === "mis-report" && role === "owner") return true;
   if (moduleId === "md-approvals") {
     if (role === "owner") return true;
     return !!perms?.some((p) =>

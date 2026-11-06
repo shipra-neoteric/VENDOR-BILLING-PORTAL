@@ -180,6 +180,7 @@ export const MODULE_DEFS: ModuleDef[] = [
   // picking through those 3 modules' own action lists one by one.
   { id: "md-approvals",     name: "Final Approval",    icon: "✅", group: "Overview",      actions: ["view", "approve", "reject"] },
   { id: "sla-dashboard",    name: "SLA Report",        icon: "⏱️", group: "Overview",      actions: ["view"] },
+  { id: "mis-report",       name: "MIS Report",        icon: "📈", group: "Overview",      actions: ["view"] },
   { id: "projects",         name: "Projects",           icon: "🏗️", group: "Overview",      actions: ["view","create","edit","delete"] },
   { id: "contractors",      name: "Contractors",        icon: "👷", group: "Execution",     actions: ["view","create","edit","delete"] },
   { id: "vendor-groups",    name: "Vendor Groups",      icon: "🔗", group: "Execution",     actions: ["view","create","edit"] },

@@ -8,6 +8,9 @@ const WorkOrder = require('../models/WorkOrder');
 const BillRequest = require('../models/BillRequest');
 const RunningBill = require('../models/RunningBill');
 
+// Shared/system accounts left out of the report (not real individual staff).
+const HIDDEN_USERS = ['Admin', 'DRI 1'];
+
 const DOCS = [
   { key: 'workOrders', Model: WorkOrder, createdField: 'createdBy' },
   { key: 'billRequests', Model: BillRequest, createdField: 'requestedBy' },
@@ -26,7 +29,7 @@ function dateRange(query) {
 
 exports.getUserMis = asyncHandler(async (req, res) => {
   const range = dateRange(req.query);
-  const users = await User.find({ isActive: { $ne: false } }).select('name role department').lean();
+  const users = await User.find({ isActive: { $ne: false }, name: { $nin: HIDDEN_USERS } }).select('name role department').lean();
   const rows = new Map(users.map(u => [String(u._id), {
     userId: String(u._id), name: u.name, role: u.role || '', department: u.department || '',
     workOrders: 0, billRequests: 0, bills: 0,

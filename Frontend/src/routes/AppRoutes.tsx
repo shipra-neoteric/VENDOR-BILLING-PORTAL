@@ -235,6 +235,8 @@ function AdminRoutes() {
             </Route>
             <Route element={<RequireModule moduleId="sla-dashboard" />}>
               <Route path="/sla-dashboard"   element={<SlaDashboard />} />
+            </Route>
+            <Route element={<RequireModule moduleId="mis-report" />}>
               <Route path="/mis-report"      element={<MisReport />} />
             </Route>
             <Route element={<RequireModule moduleId="audit-logs" />}>
