@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import type { WorkflowTemplateStage, WorkflowEntityType } from "../../types/Workflow";
 import Btn from "../../ui/Btn";
@@ -57,6 +58,10 @@ export function StageBuilder({
   const upd = (i: number, patch: Partial<WorkflowTemplateStage>) =>
     onChange(stages.map((s, idx) => idx === i ? { ...s, ...patch } : s));
 
+  // What the user is typing in an SLA-hours box, kept as text so clearing the box or typing "0." does not snap to another number. The stage
+  // only takes the value once it is a valid number (0.5 or more); on leaving the box the draft is dropped and the stage's real value shows.
+  const [hoursDraft, setHoursDraft] = useState<Record<number, string>>({});
+
   const userOptions = users.map(u => ({ label: `${u.name} (${u.email})`, value: u._id }));
 
   return (
@@ -97,8 +102,14 @@ export function StageBuilder({
             />
             <Field
               label="SLA (working hours)" type="number" min={0.5} step={0.5}
-              value={s.slaHours}
-              onChange={e => upd(i, { slaHours: Number(e.target.value) || 1 })}
+              value={hoursDraft[i] ?? s.slaHours}
+              onChange={e => {
+                const raw = e.target.value;
+                setHoursDraft(d => ({ ...d, [i]: raw }));
+                const n = Number(raw);
+                if (raw !== "" && Number.isFinite(n) && n >= 0.5) upd(i, { slaHours: n });
+              }}
+              onBlur={() => setHoursDraft(d => { const next = { ...d }; delete next[i]; return next; })}
             />
             <Field
               label="Escalate After (min)" type="number" min={0} placeholder="0 = none"

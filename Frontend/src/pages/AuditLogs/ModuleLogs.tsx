@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate, useSearchParams, Link } from "react-router-dom";
 import dayjs from "dayjs";
 import { FileText, History } from "lucide-react";
@@ -130,8 +130,11 @@ export default function ModuleLogs() {
 
   const [userOptions, setUserOptions] = useState<{ label: string; value: string }[]>([]);
 
+  // Only the newest request may fill the table (a slow older one from a previous search / page / filter is ignored).
+  const loadGen = useRef(0);
   const load = () => {
     if (!module) return;
+    const gen = ++loadGen.current;
     setLoading(true);
     apiClient
       .get("/audit-logs", {
@@ -148,11 +151,12 @@ export default function ModuleLogs() {
         },
       })
       .then((res) => {
+        if (gen !== loadGen.current) return;
         setLogs(res.data.logs ?? []);
         setTotal(res.data.total ?? 0);
       })
       .catch(() => {})
-      .finally(() => setLoading(false));
+      .finally(() => { if (gen === loadGen.current) setLoading(false); });
   };
 
   useEffect(() => {

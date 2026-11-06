@@ -222,6 +222,9 @@ function ProjectDetail({
   const [wos, setWOs] = useState<WORow[]>([]);
   const [stats, setStats] = useState<ProjectStats | null>(null);
   const [activity, setActivity] = useState<ProjectEvent[]>([]);
+  // Events of the work order whose timeline is open. The project feed above only keeps the latest 30 events, so on a busy project the older
+  // work orders would lose steps (e.g. "Issued to DRI") and the "current" marker would land on the wrong step.
+  const [timelineEvents, setTimelineEvents] = useState<ProjectEvent[]>([]);
   const [billRequests, setBillRequests] = useState<BillDetailRequest[]>([]);
   const [contractors, setContractors] = useState<ContractorRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -246,6 +249,7 @@ function ProjectDetail({
   // Work Orders tab: narrow the table to one vendor.
   const [woVendorFilter, setWoVendorFilter] = useState("");
   useEffect(() => {
+    let live = true; // a late response for a project the user has already left must not overwrite the one on screen
     setLoading(true);
     setSelectedCategory(null);
     Promise.all([
@@ -259,6 +263,7 @@ function ProjectDetail({
       apiClient.get(`/projects/${id}/breakdown`).catch(() => ({ data: { billed: [] } })),
     ])
       .then(([wosR, statsR, actR, brR, contR, consR, bdR]) => {
+        if (!live) return;
         const loadedWOs: WORow[] = wosR.data.workOrders ?? [];
         setWOs(loadedWOs);
         setStats(statsR.data.stats ?? null);
@@ -277,8 +282,19 @@ function ProjectDetail({
         }
       })
       .catch(() => { })
-      .finally(() => setLoading(false));
+      .finally(() => { if (live) setLoading(false); });
+    return () => { live = false; };
   }, [id]);
+
+  useEffect(() => {
+    const wo = wos.find(w => w.workOrderNo === selectedWONo);
+    if (!wo?._id) { setTimelineEvents([]); return; }
+    let live = true;
+    apiClient.get(`/projects/${id}/activity`, { params: { workOrderId: wo._id, limit: 300 } })
+      .then(r => { if (live) setTimelineEvents(r.data.events ?? []); })
+      .catch(() => { if (live) setTimelineEvents([]); });
+    return () => { live = false; };
+  }, [id, selectedWONo, wos]);
 
   const completedCount = wos.filter(w => w.status === "completed").length;
 
@@ -542,7 +558,7 @@ function ProjectDetail({
                       ))}
                     </div>
                   </div>
-                  <WorkflowTimeline steps={selectedWONo ? buildTimelineSteps(activity, selectedWONo) : []} />
+                  <WorkflowTimeline steps={selectedWONo ? buildTimelineSteps(timelineEvents.length ? timelineEvents : activity, selectedWONo) : []} />
                 </Card>
               )}
             </>

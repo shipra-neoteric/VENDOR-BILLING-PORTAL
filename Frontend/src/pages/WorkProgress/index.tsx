@@ -288,7 +288,9 @@ function WorkProgressAdmin() {
   useEffect(() => {
     // Empty selProject means "All Projects" now, not "nothing chosen yet" —
     // just omit the projectId filter entirely rather than skipping the fetch.
+    let live = true; // a late list for a project / category the user has already changed must not fill the dropdown
     apiClient.get(selProject ? `/work-orders?projectId=${selProject}` : "/work-orders").then(r => {
+      if (!live) return;
       let wos = r.data.workOrders ?? [];
       if (selCategory) {
         const cat = categories.find(c => c._id === selCategory);
@@ -296,9 +298,12 @@ function WorkProgressAdmin() {
       }
       setWorkOrders(wos);
     });
+    return () => { live = false; };
   }, [selProject, selCategory, categories]);
 
+  const progressGen = useRef(0); // only the newest request may fill the page
   const loadProgress = async () => {
+    const gen = ++progressGen.current;
     setLoading(true);
     try {
       if (selWorkOrder) {
@@ -306,6 +311,7 @@ function WorkProgressAdmin() {
           apiClient.get(`/work-orders/${selWorkOrder}`),
           apiClient.get(`/bill-requests?workOrderId=${selWorkOrder}`),
         ]);
+        if (gen !== progressGen.current) return;
         setWODetail(woR.data.workOrder ?? null);
         setBillReqs(brR.data.billRequests ?? []);
         setWOList([]);
@@ -313,14 +319,15 @@ function WorkProgressAdmin() {
       } else {
         const cat = categories.find(c => c._id === selCategory);
         const r   = await apiClient.get(selProject ? `/work-orders?projectId=${selProject}` : "/work-orders");
+        if (gen !== progressGen.current) return;
         let wos   = r.data.workOrders ?? [];
         if (cat) wos = wos.filter((w: WorkOrder) => w.category === cat.name);
         setWOList(wos);
         setWODetail(null); setBillReqs([]);
         setMode("overview");
       }
-    } catch { toast.error("Failed to load progress data"); }
-    finally  { setLoading(false); }
+    } catch { if (gen === progressGen.current) toast.error("Failed to load progress data"); }
+    finally  { if (gen === progressGen.current) setLoading(false); }
   };
 
   const todayStr   = dayjs().format("YYYY-MM-DD");

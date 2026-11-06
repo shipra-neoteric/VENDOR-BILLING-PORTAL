@@ -200,7 +200,9 @@ export default function MdApprovals() {
   const [bulkRejectOpen, setBulkRejectOpen] = useState(false);
   const [bulkReason, setBulkReason] = useState("");
   const [bulkSaving, setBulkSaving] = useState(false);
-  useEffect(() => { setSelected(new Set()); }, [tab]);
+  // Also cleared when any filter changes — otherwise rows that are now hidden stay selected, the bar still says "Approve 30" and the
+  // bulk action quietly acts only on the few that are visible.
+  useEffect(() => { setSelected(new Set()); }, [tab, search, systemGroupKey, deptFilter, projectFilter, showArchived, dateFrom, dateTo]);
 
   const [reviewRow, setReviewRow] = useState<MdApprovalRow | null>(null);
   const [approveTarget, setApproveTarget] = useState<MdApprovalRow | null>(null);
@@ -217,13 +219,19 @@ export default function MdApprovals() {
   const [sendBackTarget, setSendBackTarget] = useState<MdApprovalRow | null>(null);
   const [reason, setReason] = useState("");
 
+  // The tab that is on screen right now — a response that belongs to a tab the user has already left (a slow request, or the quiet
+  // refetch scheduled after an approve) must not overwrite the list of the tab they are looking at.
+  const tabRef = useRef(tab);
+  useEffect(() => { tabRef.current = tab; }, [tab]);
+
   const load = useCallback((silent = false) => {
     if (!silent) setLoading(true);
     const backendTab = tab === "aging" ? "pending" : tab;
+    const requestedTab = tab;
     apiClient.get<{ items: MdApprovalRow[] }>("/md/approvals", { params: { tab: backendTab } })
-      .then((res) => setItems(res.data.items ?? []))
-      .catch(() => { if (!silent) setItems([]); })
-      .finally(() => { if (!silent) setLoading(false); });
+      .then((res) => { if (requestedTab === tabRef.current) setItems(res.data.items ?? []); })
+      .catch(() => { if (!silent && requestedTab === tabRef.current) setItems([]); })
+      .finally(() => { if (!silent && requestedTab === tabRef.current) setLoading(false); });
   }, [tab]);
 
   useEffect(() => { load(); }, [load]);
@@ -303,6 +311,10 @@ export default function MdApprovals() {
     return list;
   }, [items, tab, systemGroupKey, deptFilter, projectFilter, showArchived, search, dateFrom, dateTo]);
 
+  // Hooks must all run on every render, so this one lives above the early return below.
+  const reconcileTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (reconcileTimer.current) clearTimeout(reconcileTimer.current); }, []);
+
   if (!hasAccess) return null;
 
   const hasActiveFilters =
@@ -321,12 +333,10 @@ export default function MdApprovals() {
 
   // After an action the row is taken out of the list and the tiles are nudged right away — no spinner, no full reload. One quiet
   // refetch a moment later (debounced, so a run of approvals triggers only one) keeps everything in step with the server.
-  const reconcileTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scheduleReconcile = () => {
     if (reconcileTimer.current) clearTimeout(reconcileTimer.current);
     reconcileTimer.current = setTimeout(() => { load(true); loadTileStats(); }, 2500);
   };
-  useEffect(() => () => { if (reconcileTimer.current) clearTimeout(reconcileTimer.current); }, []);
 
   const dropRowsLocally = (rows: MdApprovalRow[], kind: "approve" | "reject" | "other") => {
     if (rows.length === 0) return;

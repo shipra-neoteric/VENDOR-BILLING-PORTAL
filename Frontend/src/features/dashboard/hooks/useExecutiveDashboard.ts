@@ -2,12 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import apiClient from "../../../services/apiClient";
 import type { ExecutiveDashboardReport } from "../../../types/ExecutiveDashboard";
+import { reportCache } from "../reportCache";
 
 const DEBOUNCE_MS = 350;
 // Reports already loaded this session, by filter set. Going Dashboard -> Projects -> back (or between the pages that share this
 // hook) shows the last report at once and refreshes it quietly, instead of an empty page and a spinner for every visit.
 const FRESH_MS = 30_000;
-const reportCache = new Map<string, { data: ExecutiveDashboardReport; at: number }>();
 
 // Reads project/category/contractor/date filters straight off the URL (so a
 // refresh or a shared link reproduces the exact same view) and calls GET

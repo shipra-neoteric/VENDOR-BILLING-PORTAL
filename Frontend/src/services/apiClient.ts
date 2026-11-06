@@ -1,5 +1,6 @@
 import axios from "axios";
 import toast from "react-hot-toast";
+import { clearExecutiveDashboardCache } from "../features/dashboard/reportCache";
 
 // Lets specific optional/background calls opt out of the response
 // interceptor's auto-toast below, without silencing the interceptor
@@ -69,6 +70,8 @@ function forceReLogin(msg: string, offendingToken: string | null) {
 
 apiClient.interceptors.response.use(
   (response) => {
+    // Anything that saved a change (POST/PUT/PATCH/DELETE) makes the cached dashboard reports out of date — drop them so the next visit refetches.
+    if ((response.config?.method || "get").toLowerCase() !== "get") clearExecutiveDashboardCache();
     // Unwrap the { success, message, data } envelope added by the backend responseFormatter
     // so every caller can still do `res.data.bills`, `res.data.token`, etc.
     if (

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import type { ReactNode } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
@@ -422,13 +422,15 @@ export default function AccountsPayment() {
 
   // ── Load data ────────────────────────────────────────────────
 
+  const billsGen = useRef(0); // only the newest request may fill the list
   const loadBills = useCallback((archived: boolean) => {
+    const gen = ++billsGen.current;
     setLoading(true);
     apiClient
       .get<{ bills: Record<string, unknown>[] }>(`/bills?accountsReady=true${archived ? "&archived=true" : ""}`)
-      .then((r) => setBills((r.data.bills || []).map((b) => normalizeId(b) as unknown as Bill)))
+      .then((r) => { if (gen === billsGen.current) setBills((r.data.bills || []).map((b) => normalizeId(b) as unknown as Bill)); })
       .catch(() => { })
-      .finally(() => setLoading(false));
+      .finally(() => { if (gen === billsGen.current) setLoading(false); });
   }, []);
 
   useEffect(() => {

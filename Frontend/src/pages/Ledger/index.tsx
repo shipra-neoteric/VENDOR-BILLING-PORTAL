@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useCallback } from "react";
+import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import type { Dayjs } from "dayjs";
 import { ArrowLeft, BookOpen, RotateCw, Wallet, Receipt, CheckCircle2, FileText, Landmark, Scale, Archive } from "lucide-react";
@@ -190,7 +190,9 @@ export default function Ledger() {
   const [dateTo, setDateTo]                 = useState<Dayjs | null>(null);
   const [includeArchived, setIncludeArchived] = useState(false);
 
+  const loadGen = useRef(0); // only the newest request may fill the ledger
   const load = useCallback(async (withArchived: boolean) => {
+    const gen = ++loadGen.current;
     setLoading(true);
     setError("");
     try {
@@ -200,14 +202,16 @@ export default function Ledger() {
         apiClient.get("/projects"),
         apiClient.get("/contractors"),
       ]);
+      if (gen !== loadGen.current) return;
       setWorkOrders(woRes.data.workOrders ?? woRes.data ?? []);
       setBills(excludeDuplicateBills<Bill>(billRes.data.bills ?? billRes.data ?? []));
       setProjects(projRes.data.projects ?? projRes.data ?? []);
       setContractors(ctrRes.data.contractors ?? ctrRes.data ?? []);
     } catch (e: unknown) {
+      if (gen !== loadGen.current) return;
       setError((e as Error).message || "Failed to load ledger data");
     } finally {
-      setLoading(false);
+      if (gen === loadGen.current) setLoading(false);
     }
   }, []);
 

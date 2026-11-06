@@ -36,13 +36,13 @@ function timestampForFilename() {
 // same owner-only API and would be rejected server-side regardless.
 export default function Backup() {
   const { user } = useAuth();
-  if (user?.role !== "owner") return <Navigate to="/" replace />;
-
   const [downloading, setDownloading] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const [confirmText, setConfirmText] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // After all the hooks (hooks must run on every render, so the redirect cannot sit above them).
+  if (user?.role !== "owner") return <Navigate to="/" replace />;
 
   const downloadBackup = async () => {
     setDownloading(true);

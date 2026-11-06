@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import dayjs from "dayjs";
 import toast from "react-hot-toast";
@@ -138,17 +138,21 @@ export default function SlaDashboard() {
     document.getElementById("detail-workflows")?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
+  const loadGen = useRef(0);
   const load = useCallback(async () => {
+    const gen = ++loadGen.current;
     setLoading(true); setError("");
     try {
       const params: Record<string, string> = {};
       if (entityFilter !== "all") params.entityType = entityFilter;
       if (rangeFilter !== "all") params.days = rangeFilter;
       const res = await apiClient.get("/workflows/mis-report", { params });
+      if (gen !== loadGen.current) return; // a newer filter change already asked again
       setReport(res.data);
     } catch (e: unknown) {
+      if (gen !== loadGen.current) return;
       setError((e as Error).message || "Failed to load SLA report");
-    } finally { setLoading(false); }
+    } finally { if (gen === loadGen.current) setLoading(false); }
   }, [entityFilter, rangeFilter]);
 
   useEffect(() => { load(); }, [load]);
@@ -184,7 +188,7 @@ export default function SlaDashboard() {
 
   if (loading && !report) return <Spinner label="Loading SLA report…" />;
 
-  if (error) return <div className="m-6"><Alert type="error" message={error} /></div>;
+  if (error && !report) return <div className="m-6"><Alert type="error" message={error} /></div>;
   if (!report) return null;
 
   const { pipeline, byAssignee, drilldown, recentActivity } = report;
@@ -222,13 +226,14 @@ export default function SlaDashboard() {
         subtitle="Real-time overview of work order and bill request SLA compliance across every stage."
         actions={
           <>
-            <SelectFilter value={entityFilter} onChange={v => setEntityFilter(v as WorkflowEntityType | "all")}
+            <SelectFilter value={entityFilter} onChange={v => setEntityFilter((v || "all") as WorkflowEntityType | "all")}
               options={[{ label: "All Types", value: "all" }, { label: "Work Order", value: "WorkOrder" }, { label: "Bill Request", value: "BillRequest" }, { label: "Custom", value: "Custom" }]} />
-            <SelectFilter value={rangeFilter} onChange={v => setRangeFilter(v as "all" | "7" | "30" | "90")}
+            <SelectFilter value={rangeFilter} onChange={v => setRangeFilter((v || "all") as "all" | "7" | "30" | "90")}
               options={[{ label: "All Time", value: "all" }, { label: "7 Days", value: "7" }, { label: "30 Days", value: "30" }, { label: "90 Days", value: "90" }]} />
           </>
         }
       />
+      {error && report && <div className="mb-4"><Alert type="error" message={error} /></div>}
 
       {/* ══════════════ Row 3: Live Activity ══════════════ */}
       <NxCard className="mb-5">
@@ -357,11 +362,11 @@ export default function SlaDashboard() {
                 <button type="button" onClick={() => setWfStageFilter(null)} className="hover:opacity-70" aria-label="Clear stage filter">✕</button>
               </span>
             )}
-            <SelectFilter value={wfTypeFilter} onChange={v => { setWfTypeFilter(v as WorkflowEntityType | "all"); setWfStageFilter(null); }}
+            <SelectFilter value={wfTypeFilter} onChange={v => { setWfTypeFilter((v || "all") as WorkflowEntityType | "all"); setWfStageFilter(null); }}
               options={[{ label: "All Types", value: "all" }, { label: "Work Order", value: "WorkOrder" }, { label: "Bill Request", value: "BillRequest" }, { label: "Custom", value: "Custom" }]} />
-            <SelectFilter value={wfStatusFilter} onChange={v => setWfStatusFilter(v as "all" | "overdue" | "ontrack")}
+            <SelectFilter value={wfStatusFilter} onChange={v => setWfStatusFilter((v || "all") as "all" | "overdue" | "ontrack")}
               options={[{ label: "All Status", value: "all" }, { label: "Overdue", value: "overdue" }, { label: "On Track", value: "ontrack" }]} />
-            <SelectFilter value={wfAssigneeFilter} onChange={v => setWfAssigneeFilter(v)}
+            <SelectFilter value={wfAssigneeFilter} onChange={v => setWfAssigneeFilter(v || "all")}
               options={[{ label: "All Assignees", value: "all" }, ...wfAssigneeOptions.map(a => ({ label: a, value: a }))]} />
           </div>
         </div>

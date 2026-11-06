@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import { Eye, Pencil, Trash2, PenTool } from "lucide-react";
@@ -59,7 +59,10 @@ export default function DrawingRequests() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Only the newest request may fill the list or stop the spinner — a slow older one (fired by an earlier keystroke / filter) is ignored.
+  const loadGen = useRef(0);
   const load = () => {
+    const gen = ++loadGen.current;
     setLoading(true);
     apiClient.get("/drawing-requests", {
       params: {
@@ -72,9 +75,9 @@ export default function DrawingRequests() {
         dateTo: dateTo || undefined,
       },
     })
-      .then(res => setRequests(res.data.requests ?? []))
+      .then(res => { if (gen === loadGen.current) setRequests(res.data.requests ?? []); })
       .catch(() => {})
-      .finally(() => setLoading(false));
+      .finally(() => { if (gen === loadGen.current) setLoading(false); });
   };
 
   useEffect(() => { load(); }, [search, statusFilter, reviewStatusFilter, priorityFilter, typeFilter, dateFrom, dateTo]);

@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useCallback } from "react";
 import type { ReactNode } from "react";
 import apiClient from "../services/apiClient";
+import { clearExecutiveDashboardCache } from "../features/dashboard/reportCache";
 
 export interface PermEntry {
   module: string;
@@ -51,6 +52,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(() => {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
+    clearExecutiveDashboardCache(); // the next person to sign in on this tab must not see this user's report
     setToken(null);
     setUser(null);
   }, []);
@@ -58,6 +60,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const setSession = useCallback((newToken: string, newUser: AuthUser) => {
     localStorage.setItem("token", newToken);
     localStorage.setItem("user", JSON.stringify(newUser));
+    clearExecutiveDashboardCache();
     setToken(newToken);
     setUser(newUser);
   }, []);
