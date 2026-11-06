@@ -186,8 +186,8 @@ export const MODULE_DEFS: ModuleDef[] = [
   // l2-director-approve + reject — see authorizeOrAlt/authorizeAnyOrAlt in
   // those routes) — granting either here is an alternative to separately
   // picking through those 3 modules' own action lists one by one.
-  // "Approve" / "Reject" cover every type of item. To give someone only one type, tick its own pair instead (e.g. Approve + Reject — Accounts
-  // Payment): then only that type shows in their Final Approval queue and only that type can be acted on.
+  // "Approve" / "Reject" cover every type of item. To let someone act on only one type, tick that type's own pair instead (e.g. Approve +
+  // Reject — Accounts Payment): with View on they still SEE every type's queue (read-only), but can approve / reject only that type.
   { id: "md-approvals",     name: "Final Approval",    icon: "✅", group: "Overview",      actions: ["view", "approve", "reject", "approve-work-orders", "reject-work-orders", "approve-bill-requests", "reject-bill-requests", "approve-accounts-payment", "reject-accounts-payment"] },
   { id: "sla-dashboard",    name: "SLA Report",        icon: "⏱️", group: "Overview",      actions: ["view"] },
   { id: "mis-report",       name: "MIS Report",        icon: "📈", group: "Overview",      actions: ["view"] },

@@ -156,12 +156,13 @@ function hasKindGrant(user) {
   return MD_KINDS.some((k) => can(user, 'md-approvals', `approve-${k}`) || can(user, 'md-approvals', `reject-${k}`));
 }
 // null = every type; otherwise the set of types this person may see.
-// The Permission Matrix switches "View" on by itself whenever ANY other action of the module is ticked, so a plain "view" cannot be read as
-// "see every type" for someone who was given a per-type pair: the per-type grants decide, and "view" only matters on its own (read-only, all).
+// "View" (which the Permission Matrix switches on by itself with any other Final Approval action) and the plain Approve / Reject show every
+// type's queue. A per-type pair decides what the person can ACT on — the routes and the page's buttons check it per type — so someone with
+// View + "Approve — Accounts Payment" sees the Work Order and Bill Request queues read-only and can approve only Accounts Payment. Only a
+// person holding per-type grants WITHOUT View sees just those types.
 function allowedKinds(user) {
-  if (user.role === 'owner' || can(user, 'md-approvals', 'approve') || can(user, 'md-approvals', 'reject')) return null; // all-types Approve / Reject
-  const kinds = MD_KINDS.filter((k) => can(user, 'md-approvals', `approve-${k}`) || can(user, 'md-approvals', `reject-${k}`));
-  return kinds.length ? new Set(kinds) : null; // per-type grants, or View alone (read-only, every type)
+  if (hasAllTypesGrant(user)) return null;
+  return new Set(MD_KINDS.filter((k) => can(user, 'md-approvals', `approve-${k}`) || can(user, 'md-approvals', `reject-${k}`)));
 }
 
 function hasViewOnlyGrant(user) {
