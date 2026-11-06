@@ -37,12 +37,14 @@ function dateRange(query) {
 // Every started workflow stage that can be pinned on a person (the one who completed it, else the one it is assigned to).
 // kind: onTime = completed within SLA · delayed = completed late, or still open and past due · pending = open, not due yet.
 async function slaCases(range, onlyUserId) {
-  const instances = await WorkflowInstance.find({}).select('entityType entityLabel projectName vendorName amount stages').lean();
+  const instances = await WorkflowInstance.find({}).select('entityType entityLabel projectName vendorName amount status currentStageIndex stages').lean();
   const now = new Date();
   const cases = [];
   for (const inst of instances) {
-    for (const st of inst.stages) {
+    for (const [idx, st] of inst.stages.entries()) {
       if (st.status === 'pending' || !st.startedAt || SLA_EXCLUDED_STAGES.has(st.name)) continue;
+      // an open stage only counts while its workflow is really sitting on it (not left open on a finished / cancelled one)
+      if (st.status !== 'completed' && !(inst.status === 'in-progress' && idx === inst.currentStageIndex)) continue;
       const userId = st.completedBy || st.assignedUserId;
       if (!userId) continue;
       if (onlyUserId && String(userId) !== String(onlyUserId)) continue;
