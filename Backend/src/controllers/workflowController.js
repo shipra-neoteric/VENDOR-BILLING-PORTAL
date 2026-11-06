@@ -5,7 +5,7 @@ const WorkOrder         = require('../models/WorkOrder');
 const BillRequest       = require('../models/BillRequest');
 const asyncHandler = require('../utils/asyncHandler');
 const { success, created, notFound, badRequest, conflict, forbidden } = require('../utils/responseFormatter');
-const { completeStageById, isStageBreached, captureDailySnapshotIfNeeded, overdueMinutesFor } = require('../utils/slaEngine');
+const { completeStageById, isStageBreached, captureDailySnapshotIfNeeded, overdueMinutesFor, normalizeInstances } = require('../utils/slaEngine');
 const { logAudit, diffFields } = require('../utils/auditLog');
 
 // ── Templates ────────────────────────────────────────────────────
@@ -115,6 +115,7 @@ exports.listInstances = asyncHandler(async (req, res) => {
     .populate('stages.completedBy', 'name email role')
     .sort({ createdAt: -1 })
     .limit(500);
+  normalizeInstances(instances);
 
   let decorated = instances.map(decorateInstance);
   if (breachedOnly === 'true') decorated = decorated.filter(i => i.isBreached);
@@ -127,6 +128,7 @@ exports.getInstance = asyncHandler(async (req, res) => {
     .populate('stages.assignedUserId', 'name email role')
     .populate('stages.completedBy', 'name email role');
   if (!instance) return notFound(res, 'Workflow instance not found');
+  normalizeInstances(instance);
   success(res, { instance: decorateInstance(instance) });
 });
 
@@ -240,6 +242,7 @@ async function buildSlaMisReport(query) {
     .populate('stages.assignedUserId', 'name role')
     .populate('stages.completedBy', 'name role')
     .sort({ createdAt: -1 });
+  normalizeInstances(allInstances);
 
   const now = new Date();
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());

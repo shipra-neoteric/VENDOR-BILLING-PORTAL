@@ -11,7 +11,7 @@ const WorkOrder = require('../models/WorkOrder');
 const BillRequest = require('../models/BillRequest');
 const RunningBill = require('../models/RunningBill');
 const WorkflowInstance = require('../models/WorkflowInstance');
-const { overdueMinutesFor } = require('../utils/slaEngine');
+const { overdueMinutesFor, normalizeInstances } = require('../utils/slaEngine');
 
 // Shared/system accounts left out of the report (not real individual staff).
 const HIDDEN_USERS = ['Admin', 'DRI 1'];
@@ -37,7 +37,7 @@ function dateRange(query) {
 // Every started workflow stage that can be pinned on a person (the one who completed it, else the one it is assigned to).
 // kind: onTime = completed within SLA · delayed = completed late, or still open and past due · pending = open, not due yet.
 async function slaCases(range, onlyUserId) {
-  const instances = await WorkflowInstance.find({}).select('entityType entityLabel projectName vendorName amount status currentStageIndex stages').lean();
+  const instances = await WorkflowInstance.find({}).select('entityType entityLabel projectName vendorName amount status currentStageIndex stages').lean().then(normalizeInstances);
   const now = new Date();
   const cases = [];
   for (const inst of instances) {

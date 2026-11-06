@@ -19,6 +19,7 @@ import Btn from "../../ui/Btn";
 import Field from "../../ui/Field";
 import SField from "../../ui/SField";
 import { ENTITY_OPTIONS, StageBuilder, type UserOption } from "./shared";
+import WorkingTimeCard from "./WorkingTimeCard";
 
 // NxBadge (see ui/nexora/Badge.tsx) has no "purple", so BillRequest maps onto
 // the closest allowed Nexora color instead.
@@ -127,6 +128,8 @@ export default function SlaSettings() {
         icon={Clock}
         actions={<NxBtn label="New Workflow" icon={Plus} color="primary" onClick={openNewDrawer} />}
       />
+
+      <WorkingTimeCard />
 
       {templates.length === 0 ? (
         <Card padded={false}>

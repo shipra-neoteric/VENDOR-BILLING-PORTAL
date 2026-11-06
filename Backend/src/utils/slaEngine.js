@@ -1,80 +1,86 @@
 const WorkflowTemplate = require('../models/WorkflowTemplate');
 const WorkflowInstance  = require('../models/WorkflowInstance');
 const MISSnapshot       = require('../models/MISSnapshot');
+const SlaConfig         = require('../models/SlaConfig');
+const mongoose          = require('mongoose');
 
 const DAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
-const BUSINESS_START_HOUR = 9;
-const BUSINESS_END_HOUR   = 18;
+const IST_MS = 330 * 60000;
 
-// Simple, dependency-free business-hours clock: walks forward hour by hour,
-// skipping non-working days and hours outside the fixed 9am-6pm window.
-function computeDueAt(startedAt, slaHours, businessHoursOnly, workingDays) {
-  const start = new Date(startedAt);
-  if (!businessHoursOnly) {
-    return new Date(start.getTime() + slaHours * 60 * 60 * 1000);
-  }
+// ── Working time ──────────────────────────────────────────────────────────
+// Every SLA clock runs only inside the working time — by default Monday–Saturday, 9am–6pm IST (never Sunday) — whatever a stage's own
+// "business hours" flag says. It is edited from Masters → SLA and loaded from the SlaConfig document (kept in memory, refreshed every minute).
+const DEFAULT_CONFIG = { workingDays: ['mon', 'tue', 'wed', 'thu', 'fri', 'sat'], startHour: 9, endHour: 18 };
+let slaConfig = { ...DEFAULT_CONFIG };
 
-  const days = workingDays && workingDays.length ? workingDays : ['mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
-  let remainingMinutes = slaHours * 60;
-  const cursor = new Date(start);
+function sanitizeConfig(c) {
+  const days = DAY_KEYS.filter(d => c && Array.isArray(c.workingDays) && c.workingDays.includes(d));
+  let start = c && Number.isInteger(c.startHour) ? c.startHour : DEFAULT_CONFIG.startHour;
+  let end = c && Number.isInteger(c.endHour) ? c.endHour : DEFAULT_CONFIG.endHour;
+  if (start < 0 || start > 23) start = DEFAULT_CONFIG.startHour;
+  if (end <= start || end > 24) end = Math.min(24, Math.max(start + 1, DEFAULT_CONFIG.endHour));
+  return { workingDays: days.length ? days : [...DEFAULT_CONFIG.workingDays], startHour: start, endHour: end };
+}
+const getSlaConfig = () => slaConfig;
+const setSlaConfig = (c) => { slaConfig = sanitizeConfig(c); return slaConfig; };
+async function loadSlaConfig() {
+  try {
+    const doc = await SlaConfig.findById('default').lean();
+    slaConfig = doc ? sanitizeConfig(doc) : { ...DEFAULT_CONFIG };
+  } catch (_err) { /* keep whatever is in memory */ }
+}
+if (mongoose.connection.readyState === 1) loadSlaConfig(); else mongoose.connection.once('open', loadSlaConfig);
+setInterval(loadSlaConfig, 60000).unref();
 
-  // Clamp starting point into the business window
-  if (cursor.getHours() < BUSINESS_START_HOUR) {
-    cursor.setHours(BUSINESS_START_HOUR, 0, 0, 0);
-  } else if (cursor.getHours() >= BUSINESS_END_HOUR) {
-    cursor.setDate(cursor.getDate() + 1);
-    cursor.setHours(BUSINESS_START_HOUR, 0, 0, 0);
-  }
-  while (!days.includes(DAY_KEYS[cursor.getDay()])) {
-    cursor.setDate(cursor.getDate() + 1);
-    cursor.setHours(BUSINESS_START_HOUR, 0, 0, 0);
-  }
+// Wall-clock helpers: a Date shifted by +5:30 and read with the getUTC* methods is the IST clock, on any server timezone.
+const toIst = (d) => new Date(new Date(d).getTime() + IST_MS);
+const fromIst = (d) => new Date(d.getTime() - IST_MS);
+
+// Due time = start + slaHours counted only inside the working time (the stage's own flags are ignored on purpose).
+function computeDueAt(startedAt, slaHours) {
+  const { workingDays: days, startHour, endHour } = slaConfig;
+  let remainingMinutes = Math.round(slaHours * 60);
+  const c = toIst(startedAt);
+  const nextDayStart = () => { c.setUTCDate(c.getUTCDate() + 1); c.setUTCHours(startHour, 0, 0, 0); };
+
+  if (c.getUTCHours() < startHour) c.setUTCHours(startHour, 0, 0, 0);
+  else if (c.getUTCHours() >= endHour) nextDayStart();
+  while (!days.includes(DAY_KEYS[c.getUTCDay()])) nextDayStart();
 
   while (remainingMinutes > 0) {
-    const minutesLeftToday = (BUSINESS_END_HOUR - cursor.getHours()) * 60 - cursor.getMinutes();
+    const minutesLeftToday = (endHour - c.getUTCHours()) * 60 - c.getUTCMinutes();
     if (remainingMinutes <= minutesLeftToday) {
-      cursor.setMinutes(cursor.getMinutes() + remainingMinutes);
+      c.setUTCMinutes(c.getUTCMinutes() + remainingMinutes);
       remainingMinutes = 0;
     } else {
       remainingMinutes -= minutesLeftToday;
-      cursor.setDate(cursor.getDate() + 1);
-      cursor.setHours(BUSINESS_START_HOUR, 0, 0, 0);
-      while (!days.includes(DAY_KEYS[cursor.getDay()])) {
-        cursor.setDate(cursor.getDate() + 1);
-      }
+      nextDayStart();
+      while (!days.includes(DAY_KEYS[c.getUTCDay()])) nextDayStart();
     }
   }
-  return cursor;
+  return fromIst(c);
 }
 
-// Minutes actually spent inside the business window (9am-6pm, working days
-// only) between two timestamps — the same clock computeDueAt uses to set a
-// business-hours deadline in the first place. Used to measure "how overdue"
-// a business-hours stage is; measuring that with a plain calendar-time diff
-// (as this codebase used to) wildly overstates overdue time whenever a
-// breach spans a night or a weekend, e.g. a stage missed by 1 real hour on a
-// Friday evening would otherwise show as ~60 hours overdue by Monday.
-function businessMinutesBetween(from, to, workingDays) {
-  const start = new Date(from);
-  const end = new Date(to);
+// Minutes actually spent inside the working time between two timestamps — how overdue a stage is. Plain calendar time would count
+// nights and Sundays, so a stage missed by one hour on Saturday evening would look about a day late by Monday.
+function businessMinutesBetween(from, to) {
+  const { workingDays: days, startHour, endHour } = slaConfig;
+  const start = toIst(from);
+  const end = toIst(to);
   if (end <= start) return 0;
 
-  const days = workingDays && workingDays.length ? workingDays : ['mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
   let total = 0;
-  const dayCursor = new Date(start.getFullYear(), start.getMonth(), start.getDate());
-  const lastDay = new Date(end.getFullYear(), end.getMonth(), end.getDate());
-
-  while (dayCursor <= lastDay) {
-    if (days.includes(DAY_KEYS[dayCursor.getDay()])) {
-      const winStart = new Date(dayCursor); winStart.setHours(BUSINESS_START_HOUR, 0, 0, 0);
-      const winEnd   = new Date(dayCursor); winEnd.setHours(BUSINESS_END_HOUR, 0, 0, 0);
+  const dayCursor = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate()));
+  const lastDay = Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate());
+  while (dayCursor.getTime() <= lastDay) {
+    if (days.includes(DAY_KEYS[dayCursor.getUTCDay()])) {
+      const winStart = new Date(dayCursor); winStart.setUTCHours(startHour, 0, 0, 0);
+      const winEnd = new Date(dayCursor); winEnd.setUTCHours(endHour, 0, 0, 0);
       const overlapStart = start > winStart ? start : winStart;
-      const overlapEnd   = end < winEnd ? end : winEnd;
-      if (overlapEnd > overlapStart) {
-        total += Math.round((overlapEnd - overlapStart) / (60 * 1000));
-      }
+      const overlapEnd = end < winEnd ? end : winEnd;
+      if (overlapEnd > overlapStart) total += Math.round((overlapEnd - overlapStart) / 60000);
     }
-    dayCursor.setDate(dayCursor.getDate() + 1);
+    dayCursor.setUTCDate(dayCursor.getUTCDate() + 1);
   }
   return total;
 }
@@ -89,19 +95,41 @@ function businessMinutesBetween(from, to, workingDays) {
 // an entry here (not the stage/template) once TMS callbacks are trustworthy.
 const SLA_EXCLUDED_STAGES = new Set(['Payment Released']);
 
-// How overdue a stage actually is, in minutes — business-hours-aware when
-// the stage itself is (matching the clock its own dueAt was computed with),
-// plain calendar-time otherwise. Returns 0 if not overdue, or if this stage
-// is temporarily excluded from SLA counting (see SLA_EXCLUDED_STAGES).
+// The due time a stage is held to now: its start + SLA hours counted in the working time (so old stages that were saved with a
+// calendar-time due date are judged by the same rule as new ones).
+function effectiveDueAt(stage) {
+  if (stage && stage.startedAt && stage.slaHours) return computeDueAt(stage.startedAt, stage.slaHours);
+  return stage && stage.dueAt ? new Date(stage.dueAt) : null;
+}
+
+// How overdue a stage actually is, in working minutes. Returns 0 if not overdue, or if this stage is temporarily excluded from SLA
+// counting (see SLA_EXCLUDED_STAGES).
 function overdueMinutesFor(stage, now) {
-  if (!stage || !stage.dueAt) return 0;
+  if (!stage) return 0;
   if (SLA_EXCLUDED_STAGES.has(stage.name)) return 0;
-  const due = new Date(stage.dueAt);
+  const due = effectiveDueAt(stage);
+  if (!due) return 0;
   const at = now || new Date();
   if (at <= due) return 0;
-  return stage.businessHoursOnly
-    ? businessMinutesBetween(due, at, stage.workingDays)
-    : Math.round((at - due) / (60 * 1000));
+  return businessMinutesBetween(due, at);
+}
+
+// Re-judges loaded workflow instances (one or a list, lean or hydrated) by the current working-time rule, in memory only (nothing is
+// saved): every started stage gets its due time recalculated, and a completed stage's delay is recalculated from its real completion time.
+function normalizeInstances(instances) {
+  const list = Array.isArray(instances) ? instances : [instances];
+  for (const inst of list) {
+    if (!inst || !inst.stages) continue;
+    for (const st of inst.stages) {
+      if (st.status === 'pending' || !st.startedAt || !st.slaHours) continue;
+      const due = computeDueAt(st.startedAt, st.slaHours);
+      st.dueAt = due;
+      if (st.status === 'completed' && st.completedAt) {
+        st.delayMinutes = new Date(st.completedAt) > due ? businessMinutesBetween(due, st.completedAt) : 0;
+      }
+    }
+  }
+  return instances;
 }
 
 function buildInstanceStage(templateStage, startedAt) {
@@ -116,7 +144,7 @@ function buildInstanceStage(templateStage, startedAt) {
     escalateAfterMinutes: templateStage.escalateAfterMinutes,
     escalateToUserId:     templateStage.escalateToUserId || null,
     startedAt,
-    dueAt: computeDueAt(startedAt, templateStage.slaHours, templateStage.businessHoursOnly, templateStage.workingDays),
+    dueAt: computeDueAt(startedAt, templateStage.slaHours),
     status: 'in-progress',
   };
 }
@@ -229,7 +257,7 @@ function completeStageAt(instance, stageIndex, completedByUserId, remarks) {
   const nextStage = instance.stages[stageIndex + 1];
   if (nextStage) {
     nextStage.startedAt = now;
-    nextStage.dueAt = computeDueAt(now, nextStage.slaHours, nextStage.businessHoursOnly, nextStage.workingDays);
+    nextStage.dueAt = computeDueAt(now, nextStage.slaHours);
     nextStage.status = 'in-progress';
     instance.currentStageIndex = stageIndex + 1;
   } else {
@@ -281,7 +309,7 @@ async function completeStageById(instanceId, stageId, completedByUserId, remarks
 // Computed, read-time breach check — never persisted while a stage is open.
 function isStageBreached(stage) {
   if (SLA_EXCLUDED_STAGES.has(stage.name)) return false;
-  return stage.status === 'in-progress' && stage.dueAt && new Date(stage.dueAt) < new Date();
+  return stage.status === 'in-progress' && overdueMinutesFor(stage) > 0;
 }
 
 // Captures one MISSnapshot row per calendar day, the first time this is called that
@@ -300,6 +328,11 @@ module.exports = {
   computeDueAt,
   businessMinutesBetween,
   overdueMinutesFor,
+  effectiveDueAt,
+  normalizeInstances,
+  getSlaConfig,
+  setSlaConfig,
+  loadSlaConfig,
   startInstance,
   advanceInstance,
   cancelInstance,

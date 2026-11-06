@@ -10,7 +10,7 @@ const WorkflowInstance = require('../models/WorkflowInstance');
 const asyncHandler = require('../utils/asyncHandler');
 const { success, badRequest } = require('../utils/responseFormatter');
 const { billFinancialsForBill } = require('../utils/billFinancials');
-const { isStageBreached } = require('../utils/slaEngine');
+const { isStageBreached, normalizeInstances } = require('../utils/slaEngine');
 const {
   computeProjectStageInfo, buildProjectAlerts, stableAlertId, computeBudgetRiskForecast,
   daysSince, lastStatusChangeAt, HEALTH_THRESHOLDS, isWoApproved, isCountableWo, scopeLines,
@@ -336,7 +336,7 @@ async function buildExecutiveDashboardData(query) {
       entityType: { $in: ['WorkOrder', 'BillRequest'] },
       entityId: { $in: slaEntityIds },
       status: 'in-progress',
-    }).select('entityType entityId currentStageIndex stages').lean()
+    }).select('entityType entityId currentStageIndex stages').lean().then(normalizeInstances)
     : [];
   const slaBreachedIds = new Set(
     breachedInstances

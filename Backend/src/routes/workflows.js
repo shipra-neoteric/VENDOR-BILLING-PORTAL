@@ -5,6 +5,7 @@ const {
   listInstances, getInstance, completeStage, getMISReport,
 } = require('../controllers/workflowController');
 const { getSlaByModule } = require('../controllers/slaModuleReportController');
+const slaConfigController = require('../controllers/slaConfigController');
 
 router.use(authenticate);
 
@@ -32,6 +33,10 @@ function authorizeInstanceView(req, res, next) {
 router.get('/instances',     authorizeInstanceView, listInstances);
 router.get('/instances/:id', authorizeOr('sla-dashboard', 'view'), getInstance);
 router.patch('/instances/:id/complete-stage', completeStage); // stage-assignment check happens in the controller
+
+// The working time (days + hours) every SLA clock runs on — edited from Masters → SLA.
+router.get('/sla-config', authorizeOr('sla-settings', 'view', 'owner'), slaConfigController.getSlaConfig);
+router.put('/sla-config', authorizeOr('sla-settings', 'edit', 'owner'), slaConfigController.updateSlaConfig);
 
 router.get('/mis-report', authorizeOr('sla-dashboard', 'view'), getMISReport);
 router.get('/sla-by-module', authorizeOr('mis-report', 'view', 'owner'), getSlaByModule);

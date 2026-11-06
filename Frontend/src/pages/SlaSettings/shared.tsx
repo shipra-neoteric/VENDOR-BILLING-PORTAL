@@ -3,8 +3,6 @@ import type { WorkflowTemplateStage, WorkflowEntityType } from "../../types/Work
 import Btn from "../../ui/Btn";
 import Field from "../../ui/Field";
 import SField from "../../ui/SField";
-import MultiSelect from "../../ui/MultiSelect";
-import Switch from "../../ui/Switch";
 
 export const ENTITY_OPTIONS: { label: string; value: WorkflowEntityType }[] = [
   { label: "Work Order",   value: "WorkOrder" },
@@ -30,7 +28,7 @@ export interface UserOption { _id: string; name: string; email: string; }
 export function newStage(): WorkflowTemplateStage {
   return {
     name: "", order: 0, assignedRole: "any", assignedUserId: null,
-    slaHours: 24, businessHoursOnly: false, workingDays: ["mon", "tue", "wed", "thu", "fri", "sat"],
+    slaHours: 24, businessHoursOnly: true, workingDays: ["mon", "tue", "wed", "thu", "fri", "sat"],
     reminderBeforeMinutes: 0, escalateAfterMinutes: 0, escalateToUserId: null,
   };
 }
@@ -84,7 +82,7 @@ export function StageBuilder({
               onChange={v => upd(i, { assignedUserId: v || null })}
             />
             <Field
-              label="SLA (hours)" type="number" min={0.5} step={0.5}
+              label="SLA (working hours)" type="number" min={0.5} step={0.5}
               value={s.slaHours}
               onChange={e => upd(i, { slaHours: Number(e.target.value) || 1 })}
             />
@@ -94,24 +92,6 @@ export function StageBuilder({
               onChange={e => upd(i, { escalateAfterMinutes: Number(e.target.value) || 0 })}
             />
           </div>
-
-          <div className="mt-2.5">
-            <Switch
-              checked={s.businessHoursOnly}
-              onChange={v => upd(i, { businessHoursOnly: v })}
-              offLabel="Business hours only (9am–6pm)"
-              onLabel="Business hours only (9am–6pm)"
-            />
-          </div>
-
-          {s.businessHoursOnly && (
-            <div className="mt-2.5">
-              <MultiSelect
-                label="Working Days" values={s.workingDays} options={DAY_OPTIONS}
-                onChange={v => upd(i, { workingDays: v })}
-              />
-            </div>
-          )}
 
           {s.escalateAfterMinutes > 0 && (
             <div className="mt-2.5 max-w-[50%]">

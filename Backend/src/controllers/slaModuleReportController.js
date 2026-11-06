@@ -6,7 +6,7 @@
 const asyncHandler = require('../utils/asyncHandler');
 const { success } = require('../utils/responseFormatter');
 const WorkflowInstance = require('../models/WorkflowInstance');
-const { overdueMinutesFor } = require('../utils/slaEngine');
+const { overdueMinutesFor, normalizeInstances } = require('../utils/slaEngine');
 
 const MODULE_LABEL = { WorkOrder: 'Work Order', BillRequest: 'Bill Request', Custom: 'Custom' };
 
@@ -26,7 +26,7 @@ exports.getSlaByModule = asyncHandler(async (req, res) => {
   const toD = to ? new Date(to) : null;
   if (toD) toD.setHours(23, 59, 59, 999);
 
-  const instances = await WorkflowInstance.find(filter).select('entityType stages.name stages.status stages.startedAt stages.completedAt stages.dueAt stages.delayMinutes stages.businessHoursOnly stages.workingDays').lean();
+  const instances = await WorkflowInstance.find(filter).select('entityType stages.name stages.status stages.startedAt stages.completedAt stages.dueAt stages.delayMinutes stages.slaHours').lean().then(normalizeInstances);
   const now = new Date();
   const all = newBucket();
   const byModule = new Map();

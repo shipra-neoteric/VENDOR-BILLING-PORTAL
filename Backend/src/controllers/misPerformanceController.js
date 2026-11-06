@@ -16,7 +16,7 @@ const User = require('../models/User');
 const WorkOrder = require('../models/WorkOrder');
 const BillRequest = require('../models/BillRequest');
 const WorkflowInstance = require('../models/WorkflowInstance');
-const { overdueMinutesFor } = require('../utils/slaEngine');
+const { overdueMinutesFor, normalizeInstances } = require('../utils/slaEngine');
 
 const HIDDEN_USERS = ['Admin', 'DRI 1']; // shared/system accounts, left out like on the User table
 const SLA_EXCLUDED_STAGES = new Set(['Payment Released']); // silenced in the SLA engine (TMS callback not reliable yet)
@@ -72,7 +72,7 @@ const deptLabel = (doc) => {
 // All planned stages (with who / which department / which role), before the range and filters are applied.
 async function loadCases() {
   const [instances, users] = await Promise.all([
-    WorkflowInstance.find({}).select('entityType entityId status currentStageIndex stages').lean(),
+    WorkflowInstance.find({}).select('entityType entityId status currentStageIndex stages').lean().then(normalizeInstances),
     User.find({}).select('name role department isActive').lean(),
   ]);
   const woIds = instances.filter(i => i.entityType === 'WorkOrder').map(i => i.entityId);
