@@ -38,7 +38,6 @@ const PublicForms       = lazy(() => import("../pages/PublicForms"));
 const SlaSettings       = lazy(() => import("../pages/SlaSettings"));
 const SlaSettingsDetail = lazy(() => import("../pages/SlaSettings/Detail"));
 const SlaDashboard      = lazy(() => import("../pages/SlaDashboard"));
-const UserMis           = lazy(() => import("../pages/UserMis"));
 const MisReport         = lazy(() => import("../pages/MisReport"));
 const AuditLogs         = lazy(() => import("../pages/AuditLogs"));
 const AuditLogModule    = lazy(() => import("../pages/AuditLogs/ModuleLogs"));
@@ -237,9 +236,6 @@ function AdminRoutes() {
             <Route element={<RequireModule moduleId="sla-dashboard" />}>
               <Route path="/sla-dashboard"   element={<SlaDashboard />} />
               <Route path="/mis-report"      element={<MisReport />} />
-            </Route>
-            <Route element={<RequireModule moduleId="user-mis" />}>
-              <Route path="/user-mis"        element={<UserMis />} />
             </Route>
             <Route element={<RequireModule moduleId="audit-logs" />}>
               <Route path="/audit-logs"      element={<AuditLogs />} />

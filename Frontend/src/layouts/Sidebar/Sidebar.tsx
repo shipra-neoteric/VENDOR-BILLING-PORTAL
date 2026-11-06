@@ -8,7 +8,6 @@ import {
   Clock, History,
   FileSearch, CalendarClock, CreditCard, CheckSquare,
   GitCompare, PenLine, ShieldCheck, Truck,
-  Users,
 } from "lucide-react";
 import { MASTERS_OVERVIEW_ITEM, isMastersPath } from "./mastersNav";
 import { VENDORS_ITEMS, isVendorsPath } from "./vendorsNav";
@@ -40,7 +39,6 @@ const ADMIN_GROUPS: NavGroup[] = [
       { name: "Final Approval", path: "/md-approvals", icon: <CheckSquare className="w-4 h-4" />, moduleId: "md-approvals" },
       { name: "SLA Report", path: "/sla-dashboard", icon: <Clock className="w-4 h-4" />, moduleId: "sla-dashboard" },
       { name: "MIS Report", path: "/mis-report", icon: <LineChart className="w-4 h-4" />, moduleId: "sla-dashboard" },
-      { name: "User MIS", path: "/user-mis", icon: <Users className="w-4 h-4" />, moduleId: "user-mis" },
     ],
   },
   {
@@ -142,8 +140,6 @@ export function canView(moduleId: string, perms: PermEntry[] | undefined, role?:
   // someone act on their own system's own page, not open this aggregator
   // too. Explicit confirmation: access must come from the Permission
   // Matrix's own "Final Approval" card, nothing else.
-  // User MIS: new module, so an owner's stored permission list has no entry for it yet — owner always sees it, others need the grant.
-  if (moduleId === "user-mis" && role === "owner") return true;
   if (moduleId === "md-approvals") {
     if (role === "owner") return true;
     return !!perms?.some((p) =>

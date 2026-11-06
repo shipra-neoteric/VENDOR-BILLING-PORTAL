@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import dayjs from "dayjs";
 import { BarChart3, Timer, CheckCircle2, Clock, AlertTriangle, Award, TrendingUp, Download, RefreshCw } from "lucide-react";
 import apiClient from "../../services/apiClient";
 import PageHeader from "../../ui/PageHeader";
@@ -10,9 +11,12 @@ import Alert from "../../ui/Alert";
 import { Table, Thead, Tbody, Tr, Th, Td } from "../../ui/Table";
 
 interface Stats { total: number; onTime: number; delayed: number; pending: number; ratePct: number; avgTatMinutes: number; avgBreachMinutes: number }
-interface ModuleRow extends Stats { key: string; label: string }
-interface StageRow extends Stats { module: string; moduleLabel: string; stage: string }
-interface Report { cards: Stats; modules: ModuleRow[]; stages: StageRow[] }
+interface UserMisRow {
+  userId: string; name: string; role: string; department: string;
+  workOrders: number; billRequests: number; bills: number;
+  approved: number; rejected: number; sentBack: number;
+  total: number; lastActiveAt: string | null;
+}
 
 function fmtDuration(min: number): string {
   if (!min || min <= 0) return "—";
@@ -21,60 +25,45 @@ function fmtDuration(min: number): string {
   if (h > 0) return `${h}h ${m}m`;
   return `${m}m`;
 }
-const rateColor = (p: number) => (p >= 90 ? "#16a34a" : p >= 60 ? "#f59e0b" : "#e03b3b");
+const num = (n: number, tone = "") => (
+  <span className={`tabular-nums ${n ? `font-semibold ${tone}` : "text-gray-300 dark:text-gray-600"}`}>{n || "—"}</span>
+);
 const dateInput = "h-10 px-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0F172A] text-[13px] text-[#1A1A2E] dark:text-[#F1F5F9] focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary";
-const MODULE_OPTIONS = [{ value: "WorkOrder", label: "Work Order" }, { value: "BillRequest", label: "Bill Request" }];
-const GROUP_OPTIONS = [{ value: "module", label: "Group by Module" }, { value: "stage", label: "Group by Stage" }];
-
-function RateCell({ pct }: { pct: number }) {
-  return (
-    <div className="flex flex-col items-center gap-1">
-      <span className="text-[13px] font-semibold tabular-nums" style={{ color: rateColor(pct) }}>{pct}%</span>
-      <div className="w-24 h-1 rounded-full bg-gray-100 dark:bg-gray-700 overflow-hidden">
-        <div className="h-full rounded-full" style={{ width: `${Math.min(100, pct)}%`, background: rateColor(pct) }} />
-      </div>
-    </div>
-  );
-}
 
 export default function MisReport() {
-  const [report, setReport] = useState<Report | null>(null);
+  const [cards, setCards] = useState<Stats | null>(null);
+  const [users, setUsers] = useState<UserMisRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
-  const [moduleFilter, setModuleFilter] = useState("");
-  const [groupBy, setGroupBy] = useState("module");
+  const [role, setRole] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
 
   const load = useCallback(() => {
     setLoading(true); setError("");
-    apiClient.get("/workflows/sla-by-module", { params: { entityType: moduleFilter || undefined, from: from || undefined, to: to || undefined } })
-      .then(r => setReport(r.data))
+    const params = { from: from || undefined, to: to || undefined };
+    Promise.all([
+      apiClient.get("/workflows/sla-by-module", { params }),
+      apiClient.get("/user-mis", { params }),
+    ])
+      .then(([sla, mis]) => { setCards(sla.data?.cards ?? null); setUsers(mis.data?.users ?? []); })
       .catch(() => setError("Could not load the MIS report."))
       .finally(() => setLoading(false));
-  }, [moduleFilter, from, to]);
+  }, [from, to]);
   useEffect(load, [load]);
 
-  const rows = useMemo(() => {
-    if (!report) return [];
-    const q = search.trim().toLowerCase();
-    if (groupBy === "stage") {
-      return report.stages.filter(s => !q || s.stage.toLowerCase().includes(q) || s.moduleLabel.toLowerCase().includes(q))
-        .map(s => ({ key: `${s.module}:${s.stage}`, name: s.stage, sub: s.moduleLabel, ...s }));
-    }
-    return report.modules.filter(m => !q || m.label.toLowerCase().includes(q)).map(m => ({ ...m, name: m.label, sub: "" }));
-  }, [report, groupBy, search]);
-
-  const totals = useMemo(() => {
-    const t = { total: 0, onTime: 0, delayed: 0, pending: 0 };
-    for (const r of rows) { t.total += r.total; t.onTime += r.onTime; t.delayed += r.delayed; t.pending += r.pending; }
-    return { ...t, ratePct: t.total ? Math.round((t.onTime / t.total) * 1000) / 10 : 0 };
-  }, [rows]);
+  const roleOptions = useMemo(
+    () => Array.from(new Set(users.map(u => u.role).filter(Boolean))).sort().map(r => ({ value: r, label: r })),
+    [users],
+  );
+  const rows = useMemo(() => users.filter(u =>
+    (!role || u.role === role) && (!search.trim() || u.name.toLowerCase().includes(search.trim().toLowerCase()))), [users, role, search]);
 
   function exportCsv() {
-    const head = [groupBy === "stage" ? "Stage" : "Module", ...(groupBy === "stage" ? ["Module"] : []), "Total", "On Time", "Delayed", "Pending", "Rate %", "Avg TAT", "Avg Breach"];
-    const lines = rows.map(r => [r.name, ...(groupBy === "stage" ? [r.sub] : []), r.total, r.onTime, r.delayed, r.pending, r.ratePct, fmtDuration(r.avgTatMinutes), fmtDuration(r.avgBreachMinutes)]);
+    const head = ["User", "Role", "Department", "Work Orders", "Bill Requests", "Bills", "Approved", "Rejected", "Sent Back", "Last Active"];
+    const lines = rows.map(r => [r.name, r.role, r.department, r.workOrders, r.billRequests, r.bills, r.approved, r.rejected, r.sentBack,
+      r.lastActiveAt ? dayjs(r.lastActiveAt).format("DD MMM YYYY") : ""]);
     const csv = [head, ...lines].map(l => l.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
     const a = document.createElement("a");
     a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
@@ -83,7 +72,6 @@ export default function MisReport() {
     URL.revokeObjectURL(a.href);
   }
 
-  const c = report?.cards;
   const actionBtn = "inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-[13px] font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800";
 
   return (
@@ -91,7 +79,7 @@ export default function MisReport() {
       <PageHeader
         icon={BarChart3}
         title="MIS Report"
-        subtitle="SLA performance of Work Order and Bill Request approvals: on time, delayed and pending."
+        subtitle="SLA performance of approvals, and what each person did: documents created and approvals taken."
         actions={
           <div className="flex items-center gap-1">
             <button type="button" className={actionBtn} onClick={exportCsv} disabled={!rows.length}><Download className="w-4 h-4" /> Excel</button>
@@ -101,9 +89,8 @@ export default function MisReport() {
       />
 
       <FilterRow>
-        <SearchFilter value={search} onChange={setSearch} placeholder="Search module / stage…" />
-        <div className="w-44"><SelectFilter value={moduleFilter} onChange={setModuleFilter} options={MODULE_OPTIONS} placeholder="All Modules" /></div>
-        <div className="w-48"><SelectFilter value={groupBy} onChange={v => setGroupBy(v || "module")} options={GROUP_OPTIONS} placeholder="Group by Module" /></div>
+        <SearchFilter value={search} onChange={setSearch} placeholder="Search by name…" />
+        <div className="w-44"><SelectFilter value={role} onChange={setRole} options={roleOptions} placeholder="All roles" /></div>
         <input type="date" className={dateInput} value={from} max={to || undefined} onChange={e => setFrom(e.target.value)} title="From" />
         <span className="text-xs text-gray-400 pb-3">to</span>
         <input type="date" className={dateInput} value={to} min={from || undefined} onChange={e => setTo(e.target.value)} title="To" />
@@ -112,59 +99,42 @@ export default function MisReport() {
       {error && <Alert type="error" message={error} />}
 
       <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3 mb-5">
-        <NxStatCard label="Total SLA Cases" value={c?.total ?? "—"} icon={Timer} />
-        <NxStatCard label="Completed" value={c?.onTime ?? "—"} icon={CheckCircle2} />
-        <NxStatCard label="Pending" value={c?.pending ?? "—"} icon={Clock} />
-        <NxStatCard label="Breached" value={c?.delayed ?? "—"} icon={AlertTriangle} />
-        <NxStatCard label="Compliance %" value={c ? `${Math.round(c.ratePct)}%` : "—"} icon={Award} />
-        <NxStatCard label="Avg TAT" value={c ? fmtDuration(c.avgTatMinutes) : "—"} icon={TrendingUp} />
-        <NxStatCard label="Avg Breach Duration" value={c ? fmtDuration(c.avgBreachMinutes) : "—"} icon={AlertTriangle} />
+        <NxStatCard label="Total SLA Cases" value={cards?.total ?? "—"} icon={Timer} />
+        <NxStatCard label="Completed" value={cards?.onTime ?? "—"} icon={CheckCircle2} />
+        <NxStatCard label="Pending" value={cards?.pending ?? "—"} icon={Clock} />
+        <NxStatCard label="Breached" value={cards?.delayed ?? "—"} icon={AlertTriangle} />
+        <NxStatCard label="Compliance %" value={cards ? `${Math.round(cards.ratePct)}%` : "—"} icon={Award} />
+        <NxStatCard label="Avg TAT" value={cards ? fmtDuration(cards.avgTatMinutes) : "—"} icon={TrendingUp} />
+        <NxStatCard label="Avg Breach Duration" value={cards ? fmtDuration(cards.avgBreachMinutes) : "—"} icon={AlertTriangle} />
       </div>
 
       <NxCard padded={false}>
-        <div className="px-4 pt-4 pb-2 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-[#1A1A2E] dark:text-[#F1F5F9]">{groupBy === "stage" ? "SLA by Stage" : "SLA by Module"}</h2>
-          <span className="text-[11px] text-gray-400">{from || to ? `${from || "start"} → ${to || "today"}` : "All period"}</span>
-        </div>
         {loading ? <div className="p-10"><Spinner label="Loading…" /></div> : (
           <Table>
             <Thead>
               <Tr>
-                <Th>#</Th><Th>{groupBy === "stage" ? "Stage" : "Module"}</Th>
-                <Th className="text-right">Total</Th><Th className="text-right">On Time</Th><Th className="text-right">Delayed</Th><Th className="text-right">Pending</Th>
-                <Th className="text-center">Rate %</Th><Th className="text-right">Avg TAT</Th><Th className="text-right">Avg Breach</Th>
+                <Th>User</Th><Th>Role</Th>
+                <Th className="text-right">Work Orders</Th><Th className="text-right">Bill Requests</Th><Th className="text-right">Bills</Th>
+                <Th className="text-right">Approved</Th><Th className="text-right">Rejected</Th><Th className="text-right">Sent Back</Th>
+                <Th>Last Active</Th>
               </Tr>
             </Thead>
             <Tbody>
-              {rows.length === 0 && <Tr><Td colSpan={9} className="text-center text-gray-400 py-8">No SLA cases found</Td></Tr>}
-              {rows.map((r, i) => (
-                <Tr key={r.key}>
-                  <Td className="text-gray-400 tabular-nums">{i + 1}</Td>
-                  <Td><div className="font-semibold">{r.name}</div>{r.sub && <div className="text-[11px] text-gray-400">{r.sub}</div>}</Td>
-                  <Td className="text-right font-semibold tabular-nums text-primary">{r.total}</Td>
-                  <Td className="text-right tabular-nums">{r.onTime}</Td>
-                  <Td className="text-right tabular-nums text-red-600">{r.delayed}</Td>
-                  <Td className="text-right tabular-nums text-amber-600">{r.pending}</Td>
-                  <Td><RateCell pct={r.ratePct} /></Td>
-                  <Td className="text-right tabular-nums">{fmtDuration(r.avgTatMinutes)}</Td>
-                  <Td className="text-right tabular-nums">{fmtDuration(r.avgBreachMinutes)}</Td>
+              {rows.length === 0 && <Tr><Td colSpan={9} className="text-center text-gray-400 py-8">No users found</Td></Tr>}
+              {rows.map(r => (
+                <Tr key={r.userId}>
+                  <Td><div className="font-semibold">{r.name}</div>{r.department && <div className="text-[11px] text-gray-400 capitalize">{r.department}</div>}</Td>
+                  <Td className="whitespace-nowrap">{r.role || "—"}</Td>
+                  <Td className="text-right">{num(r.workOrders)}</Td>
+                  <Td className="text-right">{num(r.billRequests)}</Td>
+                  <Td className="text-right">{num(r.bills)}</Td>
+                  <Td className="text-right">{num(r.approved, "text-emerald-600")}</Td>
+                  <Td className="text-right">{num(r.rejected, "text-red-600")}</Td>
+                  <Td className="text-right">{num(r.sentBack, "text-amber-600")}</Td>
+                  <Td className="whitespace-nowrap text-xs text-gray-500">{r.lastActiveAt ? dayjs(r.lastActiveAt).format("DD MMM YYYY") : "—"}</Td>
                 </Tr>
               ))}
             </Tbody>
-            {rows.length > 0 && (
-              <tfoot>
-                <Tr>
-                  <Td />
-                  <Td className="font-bold">TOTAL ({rows.length})</Td>
-                  <Td className="text-right font-bold tabular-nums text-primary">{totals.total}</Td>
-                  <Td className="text-right font-bold tabular-nums">{totals.onTime}</Td>
-                  <Td className="text-right font-bold tabular-nums text-red-600">{totals.delayed}</Td>
-                  <Td className="text-right font-bold tabular-nums text-amber-600">{totals.pending}</Td>
-                  <Td><RateCell pct={totals.ratePct} /></Td>
-                  <Td /><Td />
-                </Tr>
-              </tfoot>
-            )}
           </Table>
         )}
       </NxCard>
