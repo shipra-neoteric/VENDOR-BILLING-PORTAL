@@ -30,6 +30,8 @@ import type { WODocument } from "../../components/DocumentsUpload";
 
 interface LineItem {
   key: number;
+  // The work order item's "Notes / Remarks" — carried onto the bill so the printed bill shows it under the description.
+  remarks?: string;
   scopeItemId?: string;
   // Set only when this row bills one particular within scopeItemId rather
   // than the scope item as a whole — a scope item that HAS particulars is
@@ -80,8 +82,8 @@ interface ExistingBill {
 interface ProjectOpt { id: string; name: string; code: string; parentId?: string | null; }
 interface CompanyOpt { id: string; name: string; shortCode: string; isActive?: boolean; }
 // balanceAmount: what's still owed on the item once its quantity is fully billed (see Backend utils/balanceAmounts.js).
-interface SubItemOpt { id: string; description: string; unit: string; plannedQty: number; lastBilledQty: number; rate?: number; balanceAmount?: number; }
-interface ScopeItemOpt { id: string; description: string; unit: string; plannedQty: number; lastBilledQty: number; rate?: number; balanceAmount?: number; subItems?: SubItemOpt[]; }
+interface SubItemOpt { id: string; description: string; remarks?: string; unit: string; plannedQty: number; lastBilledQty: number; rate?: number; balanceAmount?: number; }
+interface ScopeItemOpt { id: string; description: string; remarks?: string; unit: string; plannedQty: number; lastBilledQty: number; rate?: number; balanceAmount?: number; subItems?: SubItemOpt[]; }
 // `amount` is the milestone's pre-GST base figure (for a percent-mode
 // milestone, already resolved against the contract value — see WorkItems'
 // milestoneDraftToPayload/calcPayable). This bill's own GST Slab
@@ -589,6 +591,7 @@ export default function NewBillDrawer({
         subItemId: sub || undefined,
         groupLabel: sb ? si?.description : undefined,
         description: String(li.description || ""),
+        remarks: String(li.remarks || t?.remarks || "").trim() || undefined,
         unit: String(li.unit || ""),
         plannedQty: planned,
         // The WO's counter already includes THIS bill's qty — take it back out
@@ -737,6 +740,7 @@ export default function NewBillDrawer({
           subItemId: sub.id,
           groupLabel: si.description,
           description: sub.description,
+          remarks: (sub.remarks || "").trim() || undefined,
           unit: sub.unit || "",
           plannedQty: sub.plannedQty || 0,
           lastBilledQty: sub.lastBilledQty || 0,
@@ -751,6 +755,7 @@ export default function NewBillDrawer({
         key: nextKey(),
         scopeItemId: si.id,
         description: si.description,
+        remarks: (si.remarks || "").trim() || undefined,
         unit: si.unit || "",
         plannedQty: si.plannedQty || 0,
         lastBilledQty: si.lastBilledQty || 0,
