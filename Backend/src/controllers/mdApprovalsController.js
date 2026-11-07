@@ -52,6 +52,7 @@ const BillRequest = require('../models/BillRequest');
 const RunningBill = require('../models/RunningBill');
 const User = require('../models/User');
 const { attachVendorGroups } = require('../utils/vendorGroupHelpers');
+const { sumDeductions } = require('../utils/finalDeduction');
 
 const DAY_MS = 86400000;
 const dayFloor = (from, to) => Math.max(0, Math.floor((new Date(to).getTime() - new Date(from).getTime()) / DAY_MS));
@@ -236,6 +237,9 @@ async function buildPendingItems(user) {
       requester: br.requestedBy?.name || null,
       department: departmentOf(br),
       amount: (br.items || []).reduce((s, it) => s + (it.amount ?? (it.rate || 0) * it.billedQty), 0),
+      // Cuts of the gross total already made at earlier approval levels, and the gross as it stands after them.
+      deductedSoFar: sumDeductions(br.deductions),
+      amountAfterDeductions: (br.items || []).reduce((s, it) => s + (it.amount ?? (it.rate || 0) * it.billedQty), 0) - sumDeductions(br.deductions),
       submittedAt: br.createdAt,
       pendingSince,
       daysPending: dayFloor(pendingSince, now),
@@ -270,6 +274,8 @@ async function buildPendingItems(user) {
       requester: bill.createdBy?.name || bill.generatedBy || null,
       department: departmentOf(bill),
       amount: bill.amount || 0,
+      deductedSoFar: bill.finalDeduction?.amount || 0,
+      amountAfterDeductions: bill.amount || 0,
       submittedAt: bill.createdAt,
       pendingSince,
       daysPending: dayFloor(pendingSince, now),

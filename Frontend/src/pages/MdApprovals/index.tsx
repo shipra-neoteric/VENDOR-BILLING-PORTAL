@@ -725,10 +725,14 @@ export default function MdApprovals() {
                   const key = rowKey(reviewRow);
                   const mine = deduct.key === key ? deduct : { key, amount: "", remark: "" };
                   const cut = deductionFor(reviewRow);
-                  const tooBig = cut.amount > 0 && cut.amount >= (reviewRow.amount || 0);
+                  const baseAmount = reviewRow.amountAfterDeductions ?? reviewRow.amount ?? 0; // the gross as it stands after earlier levels' cuts
+                  const tooBig = cut.amount > 0 && cut.amount >= baseAmount;
                   return (
                     <div className="rounded-lg border border-amber-300 dark:border-amber-500/40 bg-amber-50 dark:bg-amber-500/10 p-3">
                       <div className="text-[11px] font-bold uppercase tracking-wide text-amber-700 dark:text-amber-400 mb-2">Deduct from gross total (optional)</div>
+                      {(reviewRow.deductedSoFar ?? 0) > 0 && (
+                        <div className="text-xs text-gray-600 dark:text-gray-300 mb-2">Already deducted at earlier levels: <b>{fmt(reviewRow.deductedSoFar ?? 0)}</b> — what you cut here is added to it.</div>
+                      )}
                       <div className="grid grid-cols-1 sm:grid-cols-[180px_1fr] gap-2">
                         <input
                           type="number" min="0" step="any" inputMode="decimal" placeholder="Amount to deduct (₹)" value={mine.amount}
@@ -745,7 +749,7 @@ export default function MdApprovals() {
                         <div className={`mt-2 text-xs ${tooBig ? "text-red-600" : "text-gray-600 dark:text-gray-300"}`}>
                           {tooBig
                             ? "The deduction must be less than the gross total."
-                            : `Gross total ${fmt(reviewRow.amount || 0)} → ${fmt((reviewRow.amount || 0) - cut.amount)} (GST and net payable are worked out on this).`}
+                            : `Gross total ${fmt(baseAmount)} → ${fmt(baseAmount - cut.amount)} (GST and net payable are worked out on this).`}
                         </div>
                       )}
                     </div>
@@ -756,7 +760,7 @@ export default function MdApprovals() {
                   <Btn outline icon={Undo2} label="Send Back" onClick={() => { setSendBackTarget(reviewRow); setReviewRow(null); }} />
                 )}
                 {canRejectRow(reviewRow) && <Btn color="red" icon={X} label="Reject" onClick={() => { setRejectTarget(reviewRow); setReviewRow(null); }} />}
-                {canApproveRow(reviewRow) && <Btn color="green" icon={Check} label="Approve" disabled={deductionFor(reviewRow).amount > 0 && deductionFor(reviewRow).amount >= (reviewRow.amount || 0)} onClick={() => { setApproveTarget(reviewRow); setReviewRow(null); }} />}
+                {canApproveRow(reviewRow) && <Btn color="green" icon={Check} label="Approve" disabled={deductionFor(reviewRow).amount > 0 && deductionFor(reviewRow).amount >= (reviewRow.amountAfterDeductions ?? reviewRow.amount ?? 0)} onClick={() => { setApproveTarget(reviewRow); setReviewRow(null); }} />}
                 </div>
               </div>
             ) : undefined

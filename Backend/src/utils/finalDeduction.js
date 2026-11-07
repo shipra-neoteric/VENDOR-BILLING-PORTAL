@@ -20,4 +20,12 @@ function finalDeductionSnapshot(grossBefore, amount, remark, user) {
   return { amount, remark: remark || '', grossBefore: round2(grossBefore), by: user._id, byName: user.name, at: new Date() };
 }
 
-module.exports = { parseFinalDeduction, finalDeductionSnapshot, round2 };
+// Cuts can now be made at any approval level (L1, L2, L3, L4) and they add up. `entries` is the list of every cut made so far
+// ({ level, amount, remark }); this is the one-line summary kept on finalDeduction.remark, e.g. "L1: ₹1,000 — damaged goods · L2: ₹500".
+function composeDeductionRemark(entries) {
+  const text = (entries || []).map((e) => `${e.level ? e.level + ': ' : ''}₹${Number(e.amount || 0).toLocaleString('en-IN')}${e.remark ? ' — ' + e.remark : ''}`).join(' · ');
+  return text.slice(0, 500);
+}
+const sumDeductions = (entries) => round2((entries || []).reduce((s, e) => s + (Number(e.amount) || 0), 0));
+
+module.exports = { parseFinalDeduction, finalDeductionSnapshot, composeDeductionRemark, sumDeductions, round2 };

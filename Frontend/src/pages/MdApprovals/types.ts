@@ -16,6 +16,9 @@ export interface MdApprovalRow {
   department?: string | null;
   isArchived?: boolean;
   amount: number;
+  // BillRequest / RunningBill-Manual: cuts of the gross total already made at earlier approval levels, and the gross as it stands after them.
+  deductedSoFar?: number;
+  amountAfterDeductions?: number;
   submittedAt?: string;
   pendingSince?: string | null;
   daysPending?: number | null;

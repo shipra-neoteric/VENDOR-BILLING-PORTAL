@@ -1,3 +1,4 @@
+import DeductionFields, { type DeductionValue } from "../../components/DeductionFields";
 import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import {
@@ -65,6 +66,7 @@ interface BillRequestRow {
   vendorGroupName?: string;
   department?: string; customDepartment?: string;
   items: BillItem[]; remarks?: string; documents?: { name: string; url: string }[];
+  deductions?: { level?: string; amount: number; remark?: string }[];
   periodFrom?: string; periodTo?: string;
   status: "pending" | "pending-gm" | "pending-l3" | "pending-l4" | "approved" | "rejected";
   requestedBy?: { name: string; email: string };
@@ -106,6 +108,7 @@ interface ManualBillRow {
   manualApprovalStatus: "pending" | "pending-gm" | "pending-l3" | "pending-l4" | "approved" | "rejected";
   department?: string; customDepartment?: string;
   retentionAmount?: number; advanceRecovery?: number; supersedeDeduction?: number; gstPercent?: number;
+  finalDeduction?: { amount?: number } | null;
   updatedAt?: string;
   manualAgmApprovedAt?: string;
   manualGmApprovedAt?: string;
@@ -695,6 +698,12 @@ export default function BillApproval() {
     }
   }
   const [approveModal, setApproveModal] = useState(false); // AGM (L1)
+  // "Deduct from gross total" — shared by the L1 / L2 / L3 / L4 / manual-bill approve dialogs (only one is ever open); cleared whenever another opens.
+  const [deduct, setDeduct] = useState<DeductionValue>({ amount: "", remark: "" });
+  const deductionBody = (): Record<string, unknown> => {
+    const n = Number(deduct.amount);
+    return Number.isFinite(n) && n > 0 ? { deductionAmount: n, deductionRemark: deduct.remark.trim() } : {};
+  };
   const [approveTarget, setApproveTarget] = useState<string | null>(null);
   const [approveRetention, setApproveRetention] = useState<number | null>(null);
   const [approveAdvance, setApproveAdvance] = useState<number | null>(null);
@@ -810,7 +819,7 @@ export default function BillApproval() {
         }
         if (recoveries.length) body.advanceRecoveries = recoveries;
       }
-      const res = await apiClient.put(`/bill-requests/${approveTarget}/agm-approve`, body);
+      const res = await apiClient.put(`/bill-requests/${approveTarget}/agm-approve`, { ...body, ...deductionBody() });
       toast.success(res.data.message || "L1 approved — moved to L2 approval");
       setApproveModal(false); setApproveTarget(null); setViewReq(null);
       load();
@@ -876,7 +885,7 @@ export default function BillApproval() {
         }
         if (recoveries.length) body.advanceRecoveries = recoveries;
       }
-      const res = await apiClient.put(`/bill-requests/${gmTarget}/gm-approve`, body);
+      const res = await apiClient.put(`/bill-requests/${gmTarget}/gm-approve`, { ...body, ...deductionBody() });
       toast.success(res.data.message || "Approved & bill generated");
       setGmModal(false); setGmTarget(null); setViewReq(null);
       load();
@@ -922,7 +931,7 @@ export default function BillApproval() {
       if (l3Gst != null) body.gstPercent = l3Gst;
       body.retentionReleaseAmount = l3RetentionReleaseAmount;
       body.retentionReleaseRemark = l3RetentionReleaseRemark;
-      const res = await apiClient.put(`/bill-requests/${l3Target}/l3-approve`, body);
+      const res = await apiClient.put(`/bill-requests/${l3Target}/l3-approve`, { ...body, ...deductionBody() });
       toast.success(res.data.message || "L3 approved");
       setL3Modal(false); setL3Target(null); setViewReq(null);
       load();
@@ -965,7 +974,7 @@ export default function BillApproval() {
       if (l4Gst != null) body.gstPercent = l4Gst;
       body.retentionReleaseAmount = l4RetentionReleaseAmount;
       body.retentionReleaseRemark = l4RetentionReleaseRemark;
-      const res = await apiClient.put(`/bill-requests/${l4Target}/l4-approve`, body);
+      const res = await apiClient.put(`/bill-requests/${l4Target}/l4-approve`, { ...body, ...deductionBody() });
       toast.success(res.data.message || "L4 approved & bill generated");
       setL4Modal(false); setL4Target(null); setViewReq(null);
       load();
@@ -1007,6 +1016,10 @@ export default function BillApproval() {
     setManualGst(manualApproveTarget?.gstPercent ?? null);
   }, [manualApproveTarget]);
 
+  useEffect(() => { setDeduct({ amount: "", remark: "" }); }, [approveTarget, gmTarget, l3Target, l4Target, manualApproveTarget]);
+  // Gross total of a bill request as it stands now (its line total less what earlier levels already cut) and what was already cut.
+  const grossNowOf = (br?: BillRequestRow) => (br?.items ?? []).reduce((s, it) => s + (it.amount ?? (it.rate ?? 0) * (it.billedQty || 0)), 0) - deductedOf(br);
+  const deductedOf = (br?: BillRequestRow) => (br?.deductions ?? []).reduce((s, d) => s + (d.amount || 0), 0);
   const handleManualApprove = async (bill: ManualBillRow) => {
     setSaving(true);
     try {
@@ -1019,7 +1032,7 @@ export default function BillApproval() {
       if (manualRetention != null) body.retentionAmount = manualRetention;
       if (manualAdvance != null) body.advanceRecovery = manualAdvance;
       if (manualGst != null) body.gstPercent = manualGst;
-      const res = await apiClient.patch(`/bills/${bill._id}/${endpoint}`, body);
+      const res = await apiClient.patch(`/bills/${bill._id}/${endpoint}`, { ...body, ...deductionBody() });
       toast.success(res.data.message || "Approved");
       setManualApproveTarget(null);
       load();
@@ -1887,6 +1900,7 @@ export default function BillApproval() {
               </div>
             );
           })()}
+          <DeductionFields value={deduct} onChange={setDeduct} gross={grossNowOf(billReqs.find(r => r._id === approveTarget))} already={deductedOf(billReqs.find(r => r._id === approveTarget))} />
         </Modal>
       )}
 
@@ -1967,6 +1981,7 @@ export default function BillApproval() {
             />
           </div>
           <Field textarea label="Remarks (optional)" placeholder="Remarks (optional)" value={gmRemarks} onChange={(e) => setGmRemarks(e.target.value)} />
+          <DeductionFields value={deduct} onChange={setDeduct} gross={grossNowOf(billReqs.find(r => r._id === gmTarget))} already={deductedOf(billReqs.find(r => r._id === gmTarget))} />
         </Modal>
       )}
 
@@ -2035,6 +2050,7 @@ export default function BillApproval() {
             />
           </div>
           <Field textarea label="Remarks (optional)" placeholder="Remarks (optional)" value={l3Remarks} onChange={(e) => setL3Remarks(e.target.value)} />
+          <DeductionFields value={deduct} onChange={setDeduct} gross={grossNowOf(billReqs.find(r => r._id === l3Target))} already={deductedOf(billReqs.find(r => r._id === l3Target))} />
         </Modal>
       )}
 
@@ -2102,6 +2118,7 @@ export default function BillApproval() {
             />
           </div>
           <Field textarea label="Remarks (optional)" placeholder="Remarks (optional)" value={l4Remarks} onChange={(e) => setL4Remarks(e.target.value)} />
+          <DeductionFields value={deduct} onChange={setDeduct} gross={grossNowOf(billReqs.find(r => r._id === l4Target))} already={deductedOf(billReqs.find(r => r._id === l4Target))} />
         </Modal>
       )}
 
@@ -2177,6 +2194,7 @@ export default function BillApproval() {
               />
             );
           })()}
+          <DeductionFields value={deduct} onChange={setDeduct} gross={manualApproveTarget.amount || 0} already={manualApproveTarget.finalDeduction?.amount || 0} />
         </Modal>
       )}
 

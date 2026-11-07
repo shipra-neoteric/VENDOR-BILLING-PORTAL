@@ -18,7 +18,7 @@ const { canActOnDepartment } = require('../utils/departmentAccess');
 const { can } = require('../middleware/auth');
 const { getApprovalConfig, approverAllowed } = require('../utils/approvalRules');
 const { notifyStageInApp, notifyUser } = require('../utils/notificationService');
-const { parseFinalDeduction, finalDeductionSnapshot, round2: roundMoney } = require('../utils/finalDeduction');
+const { parseFinalDeduction, composeDeductionRemark, sumDeductions, round2: roundMoney } = require('../utils/finalDeduction');
 
 // The segregation-of-duty checks below (agm≠gm, gm≠l3, l3≠l4) exist so one
 // person can't rubber-stamp their own prior stage BY DEFAULT — but an admin
@@ -450,6 +450,10 @@ exports.agmApprove = asyncHandler(async (req, res) => {
   br.agmApprovedBy   = req.user._id;
   br.agmApprovedAt   = new Date();
   if (req.body.sentForL2ApprovalTo) br.sentForL2ApprovalTo = req.body.sentForL2ApprovalTo;
+  if (approvalConfig?.requiredApprovals !== 1) {
+    const dErr = recordLevelDeduction(br, req, 'L1');
+    if (dErr) return badRequest(res, dErr);
+  }
   br.status          = 'pending-gm';
   br.approvalHistory.push({ stage: 'agm', action: 'approved', by: req.user._id, byName: req.user.name, byRole: req.user.role, remarks: req.body.remarks || '' });
   await br.save();
@@ -491,6 +495,25 @@ exports.agmApprove = asyncHandler(async (req, res) => {
 
   success(res, { billRequest: br }, `L1 approved — Stage ${br.stageNo} moved to L2 approval`);
 });
+
+
+// Any approval level may cut the gross total (deductionAmount + optional deductionRemark in the request body) — the cuts add up. A level that
+// is not the last one records its cut here on the request ("deductions"); the bill is only built at the final level, which subtracts every
+// recorded cut plus the final approver's own. The gross used here is the request's own line total (the final level re-checks against the
+// work order's real rates). Returns an error message, or null when recorded / nothing asked.
+function recordLevelDeduction(br, req, level) {
+  const gross = (br.items || []).reduce((s, it) => s + (it.amount ?? (it.rate || 0) * (it.billedQty || 0)), 0);
+  const already = sumDeductions(br.deductions);
+  const cut = parseFinalDeduction(req.body, gross - already);
+  if (cut.error) return cut.error;
+  if (cut.amount > 0) {
+    br.deductions = [
+      ...((br.deductions || []).map((d) => (d.toObject ? d.toObject() : d))),
+      { level, amount: cut.amount, remark: cut.remark || '', grossBefore: roundMoney(gross - already), by: req.user._id, byName: req.user.name, at: new Date() },
+    ];
+  }
+  return null;
+}
 
 // The actual bill-creation logic — reached from whichever stage handler
 // (gm/l3/l4) turns out to be this department's LAST configured level. On
@@ -565,11 +588,21 @@ async function finalizeBillRequest(br, wo, req, res, finalStage) {
   });
 
   const itemsTotal = lineItems.reduce((s, l) => s + l.amount, 0);
-  // The final approver may cut the gross total (amount + optional remark); GST etc. are then worked out on what is left.
-  const cut = parseFinalDeduction(req.body, itemsTotal);
+  // Cuts of the gross total: whatever the earlier levels recorded plus the final approver's own (amount + optional remark); they add up, and
+  // GST etc. are then worked out on what is left.
+  const earlierCuts = (br.deductions || []).map((d) => (d.toObject ? d.toObject() : d));
+  const earlierTotal = sumDeductions(earlierCuts);
+  if (earlierTotal >= itemsTotal) { badRequest(res, `The deductions made at earlier levels (₹${earlierTotal.toLocaleString('en-IN')}) are not less than this bill's gross total (₹${roundMoney(itemsTotal).toLocaleString('en-IN')}).`); return null; }
+  const cut = parseFinalDeduction(req.body, itemsTotal - earlierTotal);
   if (cut.error) { badRequest(res, cut.error); return null; }
-  const totalAmount     = roundMoney(itemsTotal - cut.amount);
-  const finalDeduction  = cut.amount > 0 ? finalDeductionSnapshot(itemsTotal, cut.amount, cut.remark, req.user) : undefined;
+  const allCuts = cut.amount > 0
+    ? [...earlierCuts, { level: finalStage === 'agm' ? 'L1' : finalStage === 'gm' ? 'L2' : finalStage === 'l3' ? 'L3' : 'L4', amount: cut.amount, remark: cut.remark || '', grossBefore: roundMoney(itemsTotal - earlierTotal), by: req.user._id, byName: req.user.name, at: new Date() }]
+    : earlierCuts;
+  const totalCut        = sumDeductions(allCuts);
+  const totalAmount     = roundMoney(itemsTotal - totalCut);
+  const finalDeduction  = totalCut > 0
+    ? { amount: totalCut, remark: composeDeductionRemark(allCuts), grossBefore: roundMoney(itemsTotal), by: req.user._id, byName: req.user.name, at: new Date() }
+    : undefined;
   const retentionAmount = br.retentionAmount || 0;
   const advanceRecovery = br.advanceRecovery || 0;
   const billNo = await nextBillNo();
@@ -591,7 +624,7 @@ async function finalizeBillRequest(br, wo, req, res, finalStage) {
     billDate:    new Date(),
     lineItems,
     amount:           totalAmount,
-    ...(finalDeduction ? { finalDeduction } : {}),
+    ...(finalDeduction ? { finalDeduction, deductions: allCuts } : {}),
     retentionPercent: wo.retentionPercent ?? 0,
     retentionAmount,
     advanceRecovery,
@@ -629,7 +662,7 @@ async function finalizeBillRequest(br, wo, req, res, finalStage) {
     rate:   lineItems[i].rate,
     amount: lineItems[i].amount,
   }));
-  if (finalDeduction) br.finalDeduction = finalDeduction;
+  if (finalDeduction) { br.finalDeduction = finalDeduction; br.deductions = allCuts; }
   br.status      = 'approved';
   br.billId      = runningBill._id;
   br.processedBy = req.user._id;
@@ -748,6 +781,8 @@ async function gmApproveHandler(req, res) {
 
   const totalLevels = approvalConfig?.requiredApprovals ?? 2;
   if (totalLevels >= 3) {
+    const dErr = recordLevelDeduction(br, req, 'L2');
+    if (dErr) return badRequest(res, dErr);
     br.status = 'pending-l3';
     await br.save();
     await advanceInstance('BillRequest', br._id, req.user._id, 'L2 approved');
@@ -827,6 +862,8 @@ async function l3ApproveHandler(req, res) {
 
   const totalLevels = approvalConfig?.requiredApprovals ?? 2;
   if (totalLevels >= 4) {
+    const dErr = recordLevelDeduction(br, req, 'L3');
+    if (dErr) return badRequest(res, dErr);
     br.status = 'pending-l4';
     await br.save();
     await advanceInstance('BillRequest', br._id, req.user._id, 'L3 approved');

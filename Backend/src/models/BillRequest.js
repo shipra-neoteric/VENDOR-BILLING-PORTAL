@@ -104,6 +104,18 @@ const billRequestSchema = new Schema(
       byName:      { type: String },
       at:          { type: Date },
     },
+    // Every cut of the gross total made at an approval level (L1…L4), in order — they add up. finalDeduction above is their running total
+    // (amount, combined remark, the original gross); this keeps who cut how much, at which level, and why.
+    deductions: [{
+      level:       { type: String, default: '' },
+      amount:      { type: Number, required: true },
+      remark:      { type: String, default: '' },
+      grossBefore: { type: Number },
+      by:          { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      byName:      { type: String },
+      at:          { type: Date },
+      _id: false,
+    }],
     // Which real AdvanceSlip(s) advanceRecovery is actually settling — set by
     // AGM alongside advanceRecovery, but not applied (slip balances updated)
     // until gmApprove actually creates the RunningBill, exactly like the

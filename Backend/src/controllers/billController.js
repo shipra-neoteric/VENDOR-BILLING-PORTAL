@@ -24,17 +24,29 @@ const { notifyStagePending, settleAllPendingForEntity } = require('../utils/slac
 const { getApprovalConfig, approverAllowed, DEFAULT_AGM_ROLES, DEFAULT_GM_ROLES, DEFAULT_L3_ROLES, DEFAULT_L4_ROLES } = require('../utils/approvalRules');
 const { notifyStageInApp, notifyByPermission } = require('../utils/notificationService');
 const User = require('../models/User');
-const { parseFinalDeduction, finalDeductionSnapshot, round2: roundMoney } = require('../utils/finalDeduction');
+const { parseFinalDeduction, composeDeductionRemark, round2: roundMoney } = require('../utils/finalDeduction');
 const { billFinancialsForBill } = require('../utils/billFinancials');
 
-// The final approver of a manual bill may cut its gross total (deductionAmount + optional deductionRemark in the request
-// body); GST etc. are then worked out on what is left. Returns an error message, or null when applied / nothing asked.
-function applyFinalDeductionToBill(bill, req) {
+// Any approval level of a manual bill (L1, L2, L3, L4) may cut its gross total (deductionAmount + optional deductionRemark in the request
+// body); the cuts add up, and GST etc. are worked out on what is left. bill.amount is already net of the earlier levels' cuts, so checking the
+// new cut against it keeps the total below the original gross. Returns an error message, or null when applied / nothing asked.
+function applyFinalDeductionToBill(bill, req, level) {
   const cut = parseFinalDeduction(req.body, bill.amount || 0);
   if (cut.error) return cut.error;
   if (cut.amount > 0) {
-    bill.finalDeduction = finalDeductionSnapshot(bill.amount, cut.amount, cut.remark, req.user);
-    bill.amount = roundMoney((bill.amount || 0) - cut.amount);
+    const before = roundMoney(bill.amount || 0);
+    const entries = [
+      ...((bill.deductions || []).map((d) => (d.toObject ? d.toObject() : d))),
+      { level: level || '', amount: cut.amount, remark: cut.remark || '', grossBefore: before, by: req.user._id, byName: req.user.name, at: new Date() },
+    ];
+    bill.deductions = entries;
+    bill.finalDeduction = {
+      amount: roundMoney((bill.finalDeduction?.amount || 0) + cut.amount),
+      remark: composeDeductionRemark(entries),
+      grossBefore: bill.finalDeduction?.grossBefore ?? before, // the original gross, from the first cut
+      by: req.user._id, byName: req.user.name, at: new Date(),
+    };
+    bill.amount = roundMoney(before - cut.amount);
   }
   return null;
 }
@@ -1185,7 +1197,7 @@ exports.manualAgmApprove = asyncHandler(async (req, res) => {
   // bill.manualGmApprovedBy/'manual-gm' history entry onto this same AGM's
   // action, which is wrong for a department with no real L2 stage at all.
   const isFinal = (bill.requiredApprovalsOverride ?? approvalConfig?.requiredApprovals) === 1;
-  if (isFinal) { const dErr = applyFinalDeductionToBill(bill, req); if (dErr) return badRequest(res, dErr); }
+  { const dErr = applyFinalDeductionToBill(bill, req, 'L1'); if (dErr) return badRequest(res, dErr); }
   bill.manualApprovalStatus = isFinal ? 'approved' : 'pending-gm';
   // This department's chain ends here — swap the "BR-####" placeholder
   // (see createBill's own comment) for a real "RA-####" number now that the
@@ -1245,6 +1257,8 @@ async function manualGmApproveHandler(req, res) {
   bill.manualGmApprovedAt = new Date();
   pushHistory(bill, 'manual-gm', 'approved', req.user._id, req.body.remarks || '');
 
+  { const dErr = applyFinalDeductionToBill(bill, req, 'L2'); if (dErr) return badRequest(res, dErr); }
+
   const totalLevels = bill.requiredApprovalsOverride ?? approvalConfig?.requiredApprovals ?? 2;
   if (totalLevels >= 3) {
     bill.manualApprovalStatus = 'pending-l3';
@@ -1253,7 +1267,6 @@ async function manualGmApproveHandler(req, res) {
     return success(res, { bill }, 'L2 approved — moved to L3 approval');
   }
 
-  { const dErr = applyFinalDeductionToBill(bill, req); if (dErr) return badRequest(res, dErr); }
   bill.manualApprovalStatus = 'approved';
   // Swap the "BR-####" placeholder for a real "RA-####" number now that this
   // department's (2-level) chain is genuinely complete.
@@ -1307,6 +1320,8 @@ async function manualL3ApproveHandler(req, res) {
   bill.manualL3ApprovedAt = new Date();
   pushHistory(bill, 'manual-l3', 'approved', req.user._id, req.body.remarks || '');
 
+  { const dErr = applyFinalDeductionToBill(bill, req, 'L3'); if (dErr) return badRequest(res, dErr); }
+
   const totalLevels = bill.requiredApprovalsOverride ?? approvalConfig?.requiredApprovals ?? 2;
   if (totalLevels >= 4) {
     bill.manualApprovalStatus = 'pending-l4';
@@ -1315,7 +1330,6 @@ async function manualL3ApproveHandler(req, res) {
     return success(res, { bill }, 'L3 approved — moved to L4 approval');
   }
 
-  { const dErr = applyFinalDeductionToBill(bill, req); if (dErr) return badRequest(res, dErr); }
   bill.manualApprovalStatus = 'approved';
   // Swap the "BR-####" placeholder for a real "RA-####" number now that this
   // department's (3-level) chain is genuinely complete.
@@ -1362,7 +1376,7 @@ exports.manualL4Approve = asyncHandler(async (req, res) => {
 
   bill.manualL4ApprovedBy = req.user._id;
   bill.manualL4ApprovedAt = new Date();
-  { const dErr = applyFinalDeductionToBill(bill, req); if (dErr) return badRequest(res, dErr); }
+  { const dErr = applyFinalDeductionToBill(bill, req, 'L4'); if (dErr) return badRequest(res, dErr); }
   bill.manualApprovalStatus = 'approved';
   // Always the department's last configurable level — swap the "BR-####"
   // placeholder for a real "RA-####" number now that the chain is complete.
