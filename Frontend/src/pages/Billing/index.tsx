@@ -50,6 +50,8 @@ interface BillLineItem {
 interface Bill {
   id: string;
   billNo: string;
+  discountAmount?: number;
+  discountRemark?: string;
   workOrderId?: string;
   workOrderNo?: string;
   projectId?: string;
@@ -776,8 +778,26 @@ export default function Billing() {
                 ))}
               </Tbody>
               <Tfoot>
+                {(viewBill.discountAmount ?? 0) > 0 && (
+                  <>
+                    <Tr>
+                      <Td colSpan={4} className="text-right font-semibold text-gray-500 dark:text-gray-400">Items total</Td>
+                      <Td className="text-right font-mono font-semibold">{fmt((viewBill.lineItems || []).reduce((s, li) => s + (li.amount || 0), 0))}</Td>
+                    </Tr>
+                    <Tr className="bg-sky-50 dark:bg-sky-500/10">
+                      <Td colSpan={4} className="text-right font-semibold text-sky-700 dark:text-sky-400">
+                        Discount{(viewBill.gstPercent ?? 0) > 0 ? " (incl. GST)" : ""}
+                        {viewBill.discountRemark ? <span className="block text-[11px] font-normal">Remark: {viewBill.discountRemark}</span> : null}
+                      </Td>
+                      <Td className="text-right font-mono font-semibold text-sky-700 dark:text-sky-400">
+                        − {fmt(viewBill.discountAmount! * (1 + (viewBill.gstPercent ?? 0) / 100))}
+                        {(viewBill.gstPercent ?? 0) > 0 && <span className="block text-[11px] font-normal">{fmt(viewBill.discountAmount!)} off the taxable value</span>}
+                      </Td>
+                    </Tr>
+                  </>
+                )}
                 <Tr className="bg-primary/5">
-                  <Td colSpan={4} className="font-bold text-right text-primary">Gross Total</Td>
+                  <Td colSpan={4} className="font-bold text-right text-primary">{(viewBill.discountAmount ?? 0) > 0 ? "Taxable value (after discount)" : "Gross Total"}</Td>
                   <Td className="font-bold text-right text-[#1A1A2E] dark:text-[#F1F5F9]">{fmt(viewBill.amount)}</Td>
                 </Tr>
               </Tfoot>

@@ -46,6 +46,8 @@ export interface RunningBillLineItem {
 
 export interface RunningBillDetail {
   // The final approver's cut of the gross total (amount, remark, who) — bill.amount is already reduced by it.
+  discountAmount?: number;
+  discountRemark?: string;
   finalDeduction?: { amount: number; remark?: string; byName?: string; at?: string; grossBefore?: number } | null;
   id: string;
   billNo: string;
@@ -91,7 +93,7 @@ export interface RunningBillDetail {
 export const fmt = (n: number) => "₹" + (n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export const getLineItemsGross = (bill: RunningBillDetail) =>
-  (bill.lineItems || []).reduce((sum, li) => sum + (Number(li.amount) || 0), 0) - (Number(bill.finalDeduction?.amount) || 0);
+  (bill.lineItems || []).reduce((sum, li) => sum + (Number(li.amount) || 0), 0) - (Number(bill.discountAmount) || 0) - (Number(bill.finalDeduction?.amount) || 0);
 
 export const netAfterAdvance = (b: RunningBillDetail) =>
   billFinancials({
@@ -519,12 +521,25 @@ export default function RunningBillDetailView({
             ))}
           </Tbody>
           <Tfoot>
-            {(bill.finalDeduction?.amount ?? 0) > 0 && (
+            {((bill.finalDeduction?.amount ?? 0) > 0 || (bill.discountAmount ?? 0) > 0) && (
               <>
                 <Tr>
                   <Td colSpan={4} className="text-right font-semibold text-gray-500 dark:text-gray-400">Items total</Td>
-                  <Td className="text-right font-mono font-semibold">{fmt(getLineItemsGross(bill) + bill.finalDeduction!.amount)}</Td>
+                  <Td className="text-right font-mono font-semibold">{fmt(getLineItemsGross(bill) + (bill.finalDeduction?.amount || 0) + (bill.discountAmount || 0))}</Td>
                 </Tr>
+                {(bill.discountAmount ?? 0) > 0 && (
+                  <Tr className="bg-sky-50 dark:bg-sky-500/10">
+                    <Td colSpan={4} className="text-right font-semibold text-sky-700 dark:text-sky-400">
+                      Discount{(bill.gstPercent ?? 0) > 0 ? " (incl. GST)" : ""}
+                      {bill.discountRemark ? <span className="block text-[11px] font-normal">Remark: {bill.discountRemark}</span> : null}
+                    </Td>
+                    <Td className="text-right font-mono font-semibold text-sky-700 dark:text-sky-400">
+                      − {fmt(bill.discountAmount! * (1 + (bill.gstPercent ?? 0) / 100))}
+                      {(bill.gstPercent ?? 0) > 0 && <span className="block text-[11px] font-normal">{fmt(bill.discountAmount!)} off the taxable value</span>}
+                    </Td>
+                  </Tr>
+                )}
+                {(bill.finalDeduction?.amount ?? 0) > 0 && (
                 <Tr className="bg-red-50 dark:bg-red-500/10">
                   <Td colSpan={4} className="text-right font-semibold text-red-600 dark:text-red-400">
                     Amount reduced{bill.finalDeduction!.byName ? ` by ${bill.finalDeduction!.byName}` : ""}
@@ -532,6 +547,7 @@ export default function RunningBillDetailView({
                   </Td>
                   <Td className="text-right font-mono font-semibold text-red-600 dark:text-red-400">− {fmt(bill.finalDeduction!.amount)}</Td>
                 </Tr>
+                )}
               </>
             )}
             <Tr>
@@ -571,6 +587,22 @@ export default function RunningBillDetailView({
         const rows: SummaryRow[] = [
           { label: "Gross Amount", value: fmt(gross), colorClass: "text-[#1A1A2E] dark:text-[#F1F5F9]" },
         ];
+        if ((bill.discountAmount ?? 0) > 0 && gstPct > 0) {
+          // GST-inclusive picture first (e.g. 590 - 90), then the taxable value that GST is actually charged on.
+          const f = 1 + gstPct / 100;
+          const disc = bill.discountAmount || 0;
+          const itemsPre = getLineItemsGross(bill) + disc + (bill.finalDeduction?.amount || 0);
+          rows.unshift(
+            { label: `Bill amount incl. ${gstPct}% GST (before discount)`, value: fmt(itemsPre * f), colorClass: "text-gray-500 dark:text-gray-400" },
+            { label: "Less: Discount (incl. GST)", value: `− ${fmt(disc * f)}`, colorClass: "text-sky-700 dark:text-sky-400" },
+          );
+          // The old "Gross Amount" row is the taxable value once a discount has come off — name it that, and show the working.
+          const grossRow = rows.find((r) => r.label === "Gross Amount");
+          if (grossRow) grossRow.label = "Taxable value (after discount)";
+          rows.splice(rows.indexOf(grossRow!) + 1, 0, {
+            label: `  ${fmt(itemsPre)} − ${fmt(disc)} discount (before GST) = ${fmt(gross)}`, value: "", colorClass: "text-gray-400 text-[11px]",
+          });
+        }
         if (retAmt > 0) rows.push({ label: `Hold / Retention${retPct > 0 ? ` @ ${retPct}%` : ""}`, value: `− ${fmt(retAmt)}`, colorClass: "text-red-600" });
         if (advRec > 0) rows.push({ label: "Less: Advance Recovery", value: `− ${fmt(advRec)}`, colorClass: "text-amber-600" });
         if (gstAmt > 0) rows.push({ label: `GST @ ${gstPct}%`, value: `+ ${fmt(gstAmt)}`, colorClass: "text-emerald-600" });

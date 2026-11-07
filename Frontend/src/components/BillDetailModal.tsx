@@ -155,6 +155,10 @@ export interface BillDetailItem {
 
 export interface BillDetailRequest {
   _id: string;
+  // A manual bill's discount (before GST) — shown between the items total and what the deduction rows work from.
+  discountAmount?: number;
+  discountRemark?: string;
+  gstPercent?: number;
   // The final approver's cut of the gross total (amount, remark, who) — shown under Gross Total once approved.
   finalDeduction?: { amount: number; remark?: string; byName?: string; at?: string } | null;
   reqNo: string;
@@ -465,6 +469,24 @@ export default function BillDetailModal({
                   <Td colSpan={4} className="font-bold text-right text-primary">Gross Total</Td>
                   <Td className="font-bold text-right text-[#1A1A2E] dark:text-[#F1F5F9]">{fmt(viewTotal)}</Td>
                 </Tr>
+                {(billRequest.discountAmount ?? 0) > 0 && (
+                  <>
+                    <Tr className="bg-sky-50 dark:bg-sky-500/10">
+                      <Td colSpan={4} className="text-right font-semibold text-sky-700 dark:text-sky-400">
+                        Discount{(billRequest.gstPercent ?? 0) > 0 ? " (incl. GST)" : ""}
+                        {billRequest.discountRemark ? <span className="block text-[11px] font-normal">{billRequest.discountRemark}</span> : null}
+                      </Td>
+                      <Td className="text-right font-semibold font-mono text-sky-700 dark:text-sky-400">
+                        − {fmt(billRequest.discountAmount! * (1 + (billRequest.gstPercent ?? 0) / 100))}
+                        {(billRequest.gstPercent ?? 0) > 0 && <span className="block text-[11px] font-normal">{fmt(billRequest.discountAmount!)} off the taxable value</span>}
+                      </Td>
+                    </Tr>
+                    <Tr className="bg-primary/5">
+                      <Td colSpan={4} className="font-bold text-right text-primary">Taxable value (after discount)</Td>
+                      <Td className="font-bold text-right text-[#1A1A2E] dark:text-[#F1F5F9]">{fmt(viewTotal - billRequest.discountAmount!)}</Td>
+                    </Tr>
+                  </>
+                )}
                 {(billRequest.finalDeduction?.amount ?? 0) > 0 && (
                   <>
                     <Tr className="bg-red-50 dark:bg-red-500/10">
@@ -476,7 +498,7 @@ export default function BillDetailModal({
                     </Tr>
                     <Tr className="bg-primary/5">
                       <Td colSpan={4} className="font-bold text-right text-primary">Gross after deduction</Td>
-                      <Td className="font-bold text-right text-[#1A1A2E] dark:text-[#F1F5F9]">{fmt(viewTotal - billRequest.finalDeduction!.amount)}</Td>
+                      <Td className="font-bold text-right text-[#1A1A2E] dark:text-[#F1F5F9]">{fmt(viewTotal - (billRequest.discountAmount ?? 0) - billRequest.finalDeduction!.amount)}</Td>
                     </Tr>
                   </>
                 )}

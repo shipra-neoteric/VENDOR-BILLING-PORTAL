@@ -60,6 +60,8 @@ interface ApprovalHistoryEntry {
 }
 interface BillRequestRow {
   _id: string; reqNo: string; stageNo?: number;
+  // Running total of the cuts made at approval levels (L1…L4) on this request, with the combined remark.
+  finalDeduction?: { amount?: number; remark?: string; byName?: string } | null;
   workOrderId?: string; workOrderNo: string;
   projectId?: string; projectName: string; projectLocation?: string;
   vendorCode?: string; vendorName: string; companyName?: string; category?: string; subCategory?: string;
@@ -344,7 +346,9 @@ async function printBillRequest(br: BillRequestRow) {
       generatedBy: br.requestedBy?.name,
       billDate: br.createdAt,
       lineItems: br.items.map(it => ({ description: it.description, progressRemarks: it.progressRemarks, location: it.location, unit: it.unit, billedQty: it.billedQty, rate: it.rate ?? 0, amount: (it.rate ?? 0) * it.billedQty })),
-      amount: br.items.reduce((s, it) => s + (it.rate ?? 0) * it.billedQty, 0),
+      // cuts recorded at approval levels so far come off the gross (finalDeduction is their running total)
+      amount: br.items.reduce((s, it) => s + (it.rate ?? 0) * it.billedQty, 0) - (br.finalDeduction?.amount ?? 0),
+      finalDeduction: br.finalDeduction ?? null,
       retentionAmount: br.retentionAmount ?? 0,
       advanceRecovery: br.advanceRecovery ?? 0,
       gstPercent: br.gstPercentOverride ?? undefined,
@@ -2339,8 +2343,26 @@ export default function BillApproval() {
                 ))}
               </Tbody>
               <Tfoot>
+                {(viewManualBill.discountAmount ?? 0) > 0 && (
+                  <>
+                    <Tr>
+                      <Td colSpan={4} className="text-right font-semibold text-gray-500 dark:text-gray-400">Items total</Td>
+                      <Td className="text-right font-mono font-semibold">{fmt((viewManualBill.lineItems || []).reduce((s, li) => s + (li.amount || 0), 0))}</Td>
+                    </Tr>
+                    <Tr className="bg-sky-50 dark:bg-sky-500/10">
+                      <Td colSpan={4} className="text-right font-semibold text-sky-700 dark:text-sky-400">
+                        Discount{(viewManualBill.gstPercent ?? 0) > 0 ? " (incl. GST)" : ""}
+                        {viewManualBill.discountRemark ? <span className="block text-[11px] font-normal">Remark: {viewManualBill.discountRemark}</span> : null}
+                      </Td>
+                      <Td className="text-right font-mono font-semibold text-sky-700 dark:text-sky-400">
+                        − {fmt(viewManualBill.discountAmount! * (1 + (viewManualBill.gstPercent ?? 0) / 100))}
+                        {(viewManualBill.gstPercent ?? 0) > 0 && <span className="block text-[11px] font-normal">{fmt(viewManualBill.discountAmount!)} off the taxable value</span>}
+                      </Td>
+                    </Tr>
+                  </>
+                )}
                 <Tr className="!bg-primary/5">
-                  <Td colSpan={4} className="font-bold text-right text-primary">Gross Total</Td>
+                  <Td colSpan={4} className="font-bold text-right text-primary">{(viewManualBill.discountAmount ?? 0) > 0 ? "Taxable value (after discount)" : "Gross Total"}</Td>
                   <Td className="font-bold text-right">{fmt(viewManualBill.amount)}</Td>
                 </Tr>
               </Tfoot>

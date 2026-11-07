@@ -70,6 +70,8 @@ const runningBillSchema = new mongoose.Schema(
     // clearing together) — milestoneId/milestoneStage above still get set
     // to the first one for any older code/UI that only reads those.
     milestoneIds:     [{ type: mongoose.Schema.Types.ObjectId }],
+    // How much of each milestone THIS bill claims (percent, 0-100) — summed across a WO's bills to stop a milestone being billed past 100%.
+    milestonePercents: [{ _id: false, milestoneId: { type: mongoose.Schema.Types.ObjectId }, percent: { type: Number } }],
     milestoneStages:  [{ type: String }],
     projectId:   { type: mongoose.Schema.Types.ObjectId, ref: 'Project' },
     projectName: { type: String },
@@ -346,6 +348,10 @@ const runningBillSchema = new mongoose.Schema(
     // nonzero, same convention as adjustmentAmount below.
     retentionReleased:       { type: Number, default: 0 },
     retentionReleaseRemark:  { type: String, default: '' },
+    // Flat rupee discount the maker gave on this bill at creation — the bill's own `amount` is already reduced by it
+    // (before hold / GST); this keeps the figure and the reason.
+    discountAmount:          { type: Number, default: 0 },
+    discountRemark:          { type: String, default: '' },
     // The final approver's cut of the gross total (see utils/finalDeduction.js) — the bill's own `amount` is already
     // reduced by it; this keeps the figure, the reason, who and when.
     finalDeduction: {

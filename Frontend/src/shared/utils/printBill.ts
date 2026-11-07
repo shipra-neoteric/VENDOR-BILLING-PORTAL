@@ -5,6 +5,45 @@ import { BILL_STATUS_LABEL } from "../constants/billStatus";
 import type { BillStatus } from "../constants/billStatus";
 import { billFinancials } from "./billMath";
 
+// The discount remark is free text typed by a user and is written into the print window's HTML.
+const escapeHtml = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] as string));
+
+const money2 = (n: number) => (n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+// Every cut taken off the bill's gross total at an approval level; an older bill only carries the running total.
+function approvalCuts(bill: PrintableBill) {
+  if (bill.deductions && bill.deductions.length) return bill.deductions.filter((d) => (d.amount || 0) > 0);
+  const fd = bill.finalDeduction;
+  return fd && (fd.amount ?? 0) > 0 ? [{ level: "", amount: fd.amount as number, remark: fd.remark, byName: fd.byName }] : [];
+}
+
+// Label of the row that holds the bill's own `amount`: it is the taxable value once a discount or deduction has come off.
+function amountRowLabel(bill: PrintableBill) {
+  const disc = (bill.discountAmount ?? 0) > 0, cut = approvalCuts(bill).length > 0;
+  if (disc && cut) return "Taxable value (after discount & deduction)";
+  if (disc) return "Taxable value (after discount)";
+  if (cut) return "Gross after deduction";
+  return "Gross Amount";
+}
+
+// Rows above the amount row: items total, the discount, and each approval-level deduction — nothing that reduced the gross is left out.
+function cutRowsHtml(bill: PrintableBill) {
+  const disc = bill.discountAmount ?? 0, cuts = approvalCuts(bill), gst = bill.gstPercent ?? 0;
+  if (disc <= 0 && cuts.length === 0) return "";
+  const row = (extra: string) => `<div style="display:flex;justify-content:space-between;padding:9px 14px;border-bottom:1px solid #eee${extra}">`;
+  const small = (s: string) => `<br><small style="font-family:sans-serif">${s}</small>`;
+  let html = `${row("")}<span>Items total</span><span>₹${money2((bill.lineItems || []).reduce((s, li) => s + (li.amount || 0), 0))}</span></div>`;
+  if (disc > 0) {
+    html += `${row(";color:#0369a1")}<span>Discount${gst > 0 ? " (incl. GST)" : ""}${bill.discountRemark ? small(escapeHtml(String(bill.discountRemark))) : ""}</span>` +
+      `<span style="text-align:right">− ₹${money2(disc * (1 + gst / 100))}${gst > 0 ? small(`₹${money2(disc)} off the taxable value`) : ""}</span></div>`;
+  }
+  for (const c of cuts) {
+    html += `${row(";color:#dc2626")}<span>Deduction${c.level ? ` (${escapeHtml(c.level)})` : ""}${c.byName ? ` by ${escapeHtml(c.byName)}` : ""}${c.remark ? small(escapeHtml(String(c.remark))) : ""}</span>` +
+      `<span style="text-align:right">− ₹${money2(c.amount)}</span></div>`;
+  }
+  return html;
+}
+
 // printBill only ever learned the Contractor shape — a Consultant (billed for
 // professional-services work orders) carries the exact same bank/tax fields
 // under different identity field names (firmName vs companyName, etc.), so
@@ -106,6 +145,12 @@ export interface PrintableBill {
   billDate?: string;
   lineItems: PrintableLineItem[];
   amount: number;
+  // Flat ₹ discount given on the bill, BEFORE GST (the bill's own `amount` is already reduced by it).
+  discountAmount?: number;
+  discountRemark?: string;
+  // Cuts made on the gross total at approval levels (L1…L4); finalDeduction is their running total (older bills only have that).
+  deductions?: { level?: string; amount: number; remark?: string; byName?: string }[];
+  finalDeduction?: { amount?: number; remark?: string; byName?: string } | null;
   gstPercent?: number;
   retentionPercent?: number;
   retentionAmount?: number;
@@ -345,8 +390,9 @@ body{font-family:Arial,sans-serif;padding:30px;color:#333;font-size:13px;-webkit
 
 <div style="display:flex;justify-content:flex-end;margin-bottom:24px">
   <div style="min-width:${(bill.linkedBills ?? []).some(l => l.relationshipType === 'SUPERSEDES' && l.description) ? 480 : 320}px;border:1px solid #e8e8e8;border-radius:6px;overflow:hidden;font-family:monospace">
+    ${isHoldRelease ? "" : cutRowsHtml(bill)}
     ${isHoldRelease ? "" : `<div style="display:flex;justify-content:space-between;padding:9px 14px;border-bottom:1px solid #eee">
-      <span>Gross Amount</span><span>₹${(bill.amount || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+      <span>${amountRowLabel(bill)}</span><span>₹${(bill.amount || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
     </div>`}
     ${(bill.retentionAmount ?? 0) > 0 ? `
     <div style="display:flex;justify-content:space-between;padding:9px 14px;border-bottom:1px solid #eee;color:#dc2626">

@@ -27,6 +27,41 @@ const User = require('../models/User');
 const { parseFinalDeduction, composeDeductionRemark, round2: roundMoney } = require('../utils/finalDeduction');
 const { billFinancialsForBill } = require('../utils/billFinancials');
 
+// How much of a milestone is already claimed by the WO's other live bills (percent). A bill that stored its percent counts that;
+// an older bill without one counts as the whole milestone unless it was billed through scope-item quantities (those are guarded there).
+async function milestoneUsedPercent(workOrderId, milestoneId, excludeBillId) {
+  const bills = await RunningBill.find({
+    workOrderId, isActive: { $ne: false }, status: { $ne: 'rejected' },
+    ...(excludeBillId ? { _id: { $ne: excludeBillId } } : {}),
+    $or: [{ milestoneId }, { milestoneIds: milestoneId }],
+  }).select('milestonePercents lineItems').lean();
+  let used = 0;
+  for (const b of bills) {
+    const mine = (b.milestonePercents || []).find((p) => String(p.milestoneId) === String(milestoneId));
+    if (mine) used += Number(mine.percent) || 0;
+    else if (!(b.lineItems || []).some((li) => li.scopeItemId)) used += 100;
+  }
+  return used;
+}
+
+// Returns { error } when this bill would take a milestone past 100%, else { stored } = the percent list to keep on the bill.
+async function checkMilestoneCapacity(workOrder, milestones, body, excludeBillId) {
+  const sent = body.milestonePercents && typeof body.milestonePercents === 'object' ? body.milestonePercents : {};
+  const stored = [];
+  for (const m of milestones) {
+    const asked = sent[String(m._id)];
+    const percent = asked === undefined || asked === null ? 100 : Math.max(0, Math.min(100, Number(asked) || 0));
+    const used = await milestoneUsedPercent(workOrder._id, m._id, excludeBillId);
+    const label = m.stage || m.type || 'This milestone';
+    if (used + percent > 100.0001) {
+      const left = Math.max(0, Math.round((100 - used) * 100) / 100);
+      return { error: left <= 0 ? `"${label}" is already fully billed (100%).` : `"${label}" has only ${left}% left to bill — this bill asks for ${percent}%.` };
+    }
+    stored.push({ milestoneId: m._id, percent });
+  }
+  return { stored };
+}
+
 // Same-person (segregation of duties) rule for a manual bill's L1 → L4 chain, identical to the Bill Request one: whoever gave one level may
 // give the next too only when the Permission Matrix gives them BOTH levels' approval (Bill Approval → L1 / L2 / L3 / L4); Owner and CEO may always.
 function hasBothBillPermissions(user, action1, action2) {
@@ -89,8 +124,9 @@ function notifySlack(approvalType, bill) {
 // owner/gm) get a heads-up before it's fully exhausted.
 async function notifyContractLimitIfNear(workOrder) {
   if (!workOrder || !workOrder.contractValue) return;
-  const bills = await RunningBill.find({ workOrderId: workOrder._id, isActive: { $ne: false } }).select('amount').lean();
-  const totalBilled = bills.reduce((s, b) => s + (b.amount || 0), 0);
+  const bills = await RunningBill.find({ workOrderId: workOrder._id, isActive: { $ne: false } }).select('amount discountAmount').lean();
+  // a discount given on a bill is still part of the contract that bill used up
+  const totalBilled = bills.reduce((s, b) => s + (b.amount || 0) + (b.discountAmount || 0), 0);
   const pct = totalBilled / workOrder.contractValue;
   if (pct < 0.9) return;
   await notifyByPermission({
@@ -498,7 +534,8 @@ exports.createBill = asyncHandler(async (req, res) => {
   if (req.body.workOrderId && !workOrder) {
     return notFound(res, 'Work order not found');
   }
-  if (workOrder && !isWorkOrderApproved(workOrder)) {
+  // A draft (never submitted) may sit against a not-yet-approved work order; the check is enforced when it is submitted.
+  if (workOrder && req.body.saveAsDraft !== true && !isWorkOrderApproved(workOrder)) {
     return badRequest(res, `"${workOrder.workOrderNo}" has not completed its own approval chain yet (currently ${workOrder.approvalStatus}) — no bill can be raised against it until Final Approval is given.`);
   }
 
@@ -583,7 +620,13 @@ exports.createBill = asyncHandler(async (req, res) => {
     }
   }
 
-  const amount = lineItems.reduce((sum, li) => sum + (Number(li.amount) || 0), 0);
+  const lineTotal = lineItems.reduce((sum, li) => sum + (Number(li.amount) || 0), 0);
+  const discountAmount = roundMoney(Math.max(0, Number(req.body.discountAmount) || 0));
+  if (discountAmount > 0) {
+    if (!String(req.body.discountRemark || '').trim()) return badRequest(res, 'A remark is required when giving a discount');
+    if (discountAmount >= lineTotal) return badRequest(res, 'Discount must be less than the bill amount');
+  }
+  const amount = roundMoney(lineTotal - discountAmount);
   // A manually-created bill doesn't earn its real "RA-####" bill number until
   // its own AGM/GM(/L3/L4) sign-off chain fully clears (manualApprovalStatus
   // reaches 'approved') — same principle as a BillRequest-originated bill,
@@ -630,17 +673,12 @@ exports.createBill = asyncHandler(async (req, res) => {
   // billing — findOverbilledLineItem above only checks scope-item-linked
   // lines. So for that lump-sum case specifically, block raising a second
   // bill against the same milestone outright (one active bill per milestone).
-  if (milestones.length && !lineItems.some((li) => li.scopeItemId)) {
-    for (const m of milestones) {
-      const alreadyBilled = await RunningBill.exists({
-        workOrderId: workOrder._id,
-        $or: [{ milestoneId: m._id }, { milestoneIds: m._id }],
-        isActive: { $ne: false }, status: { $ne: 'rejected' },
-      });
-      if (alreadyBilled) {
-        return badRequest(res, `"${m.stage || m.type || 'This milestone'}" has already been billed — a lump-sum milestone can only be billed once.`);
-      }
-    }
+  // (Replaces the old "lump-sum milestone can only be billed once": a milestone may be billed in parts, never past 100% in total.)
+  let milestonePercentsToStore = [];
+  if (milestones.length) {
+    const cap = await checkMilestoneCapacity(workOrder, milestones, req.body, null);
+    if (cap.error) return badRequest(res, cap.error);
+    milestonePercentsToStore = cap.stored;
   }
 
   // Releasing held retention at creation time needs the same server-side
@@ -665,11 +703,14 @@ exports.createBill = asyncHandler(async (req, res) => {
     linkedBills,
     retentionReleased: Number(req.body.retentionReleaseAmount) || 0,
     retentionReleaseRemark: req.body.retentionReleaseRemark || '',
+    discountAmount,
+    discountRemark: discountAmount > 0 ? String(req.body.discountRemark).trim() : '',
     billingCycle: cycleCount + 1,
     milestoneId:    milestone ? milestone._id : null,
     milestoneStage: milestone ? (milestone.stage || milestone.type || '') : '',
     milestoneIds:    milestones.map((m) => m._id),
     milestoneStages: milestones.map((m) => m.stage || m.type || ''),
+    milestonePercents: milestonePercentsToStore,
     ...(workOrder ? {
       workOrderNo: workOrder.workOrderNo,
       projectId:   workOrder.projectId,
@@ -913,7 +954,7 @@ exports.editManualBill = asyncHandler(async (req, res) => {
     ? (oldWO && String(oldWO._id) === String(newWOId) ? oldWO : await WorkOrder.findById(newWOId))
     : null;
   if (newWOId && !workOrder) return notFound(res, 'Work order not found');
-  if (workOrder && !isWorkOrderApproved(workOrder)) {
+  if (workOrder && !bill.isUnsubmittedDraft && !isWorkOrderApproved(workOrder)) {
     return badRequest(res, `"${workOrder.workOrderNo}" has not completed its own approval chain yet (currently ${workOrder.approvalStatus}) — no bill can be raised against it until Final Approval is given.`);
   }
   let company = null;
@@ -979,6 +1020,12 @@ exports.editManualBill = asyncHandler(async (req, res) => {
     ? req.body.milestoneIds : (req.body.milestoneId ? [req.body.milestoneId] : []);
   const milestones = workOrder ? requestedMilestoneIds.map((id) => workOrder.paymentMilestones.id(id)).filter(Boolean) : [];
   const milestone = milestones[0] || null;
+  let editMilestonePercents = [];
+  if (workOrder && milestones.length) {
+    const cap = await checkMilestoneCapacity(workOrder, milestones, req.body, bill._id);
+    if (cap.error) return badRequest(res, cap.error);
+    editMilestonePercents = cap.stored;
+  }
 
   // 3) All checks passed — undo the old advance recovery, then write.
   if (bill.advanceRecovery) { await reverseAdvanceRecoveries(bill.billNo); bill.advanceRecovery = 0; }
@@ -990,12 +1037,21 @@ exports.editManualBill = asyncHandler(async (req, res) => {
   for (const k of EDITABLE) if (req.body[k] !== undefined) bill[k] = req.body[k];
   bill.workOrderId = newWOId || undefined;
   bill.lineItems = lineItems;
-  bill.amount = roundMoney(lineItems.reduce((sum, li) => sum + (Number(li.amount) || 0), 0) - (Number(bill.finalDeduction?.amount) || 0)); // keeps a final-approval deduction if the bill is edited afterwards
+  const editLineTotal = lineItems.reduce((sum, li) => sum + (Number(li.amount) || 0), 0);
+  const editDiscount = roundMoney(Math.max(0, Number(req.body.discountAmount) || 0));
+  if (editDiscount > 0) {
+    if (!String(req.body.discountRemark || '').trim()) return badRequest(res, 'A remark is required when giving a discount');
+    if (editDiscount >= editLineTotal) return badRequest(res, 'Discount must be less than the bill amount');
+  }
+  bill.discountAmount = editDiscount;
+  bill.discountRemark = editDiscount > 0 ? String(req.body.discountRemark).trim() : '';
+  bill.amount = roundMoney(editLineTotal - editDiscount - (Number(bill.finalDeduction?.amount) || 0)); // keeps a final-approval deduction if the bill is edited afterwards
   bill.linkedBills = Array.isArray(req.body.linkedBills) ? req.body.linkedBills : [];
   bill.retentionReleased = Number(req.body.retentionReleaseAmount) || 0;
   bill.milestoneId = milestone ? milestone._id : null;
   bill.milestoneStage = milestone ? (milestone.stage || milestone.type || '') : '';
   bill.milestoneIds = milestones.map((m) => m._id);
+  bill.milestonePercents = editMilestonePercents;
   bill.milestoneStages = milestones.map((m) => m.stage || m.type || '');
   bill.vendorCode = payee.vendorCode;
   bill.vendorName = payee.vendorName;
@@ -1503,6 +1559,11 @@ exports.submitDraft = asyncHandler(async (req, res) => {
   const isCreator = bill.createdBy && bill.createdBy.toString() === req.user._id.toString();
   if (!isOwner && !isCreator) {
     return forbidden(res, 'Only this draft\'s creator can submit it.');
+  }
+
+  const draftWO = bill.workOrderId ? await WorkOrder.findById(bill.workOrderId) : null;
+  if (draftWO && !isWorkOrderApproved(draftWO)) {
+    return badRequest(res, `"${draftWO.workOrderNo}" has not completed its own approval chain yet (currently ${draftWO.approvalStatus}) — this draft can be submitted only after Final Approval is given.`);
   }
 
   bill.isUnsubmittedDraft = false;

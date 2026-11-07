@@ -72,7 +72,8 @@ interface LineItem {
 }
 
 interface ExistingBill {
-  id: string; billNo: string; amount: number; status: string; isActive?: boolean;
+  id: string; billNo: string; amount: number; discountAmount?: number; status: string; isActive?: boolean;
+  milestoneId?: string; milestoneIds?: string[]; milestonePercents?: { milestoneId: string; percent: number }[];
   lineItems?: { scopeItemId?: string; subItemId?: string; billedQty: number; description?: string }[];
 }
 
@@ -88,8 +89,8 @@ interface ScopeItemOpt { id: string; description: string; unit: string; plannedQ
 // items, so milestone rows must be built from this pre-GST `amount`, never
 // from the milestone's own (GST-inclusive) `payable` — that would double
 // the GST.
-interface PaymentMilestoneOpt { _id: string; stage: string; type?: string; amount: number; date?: string; scopeItemIds?: string[]; }
-interface WorkOrderOpt { id: string; workOrderNo: string; projectId: string; projectName: string; vendorCode: string; vendorName: string; contractType?: string; department?: string; customDepartment?: string; scopeItems: ScopeItemOpt[]; paymentMilestones?: PaymentMilestoneOpt[]; }
+interface PaymentMilestoneOpt { _id: string; stage: string; type?: string; amount: number; gstPercent?: number; date?: string; scopeItemIds?: string[]; }
+interface WorkOrderOpt { id: string; workOrderNo: string; projectId: string; projectName: string; vendorCode: string; vendorName: string; contractType?: string; department?: string; customDepartment?: string; scopeItems: ScopeItemOpt[]; paymentMilestones?: PaymentMilestoneOpt[]; discount?: number; gstPercent?: number; }
 interface AdvanceSlipOpt { _id: string; slipNo: string; amount: number; amountRecovered: number; balance: number; date?: string; reference?: string; }
 
 const fmt = (n: number) => "₹" + (n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -329,6 +330,12 @@ export default function NewBillDrawer({
   const [retentionReleaseAmount, setRetentionReleaseAmount] = useState<number>(0);
   const [retentionReleaseRemark, setRetentionReleaseRemark] = useState<string>("");
   const [retentionHeldForWO, setRetentionHeldForWO] = useState<number>(0);
+  // Flat rupee discount as the maker sees and types it: GST-INCLUSIVE (what comes off the payable, like a work order's discount).
+  // It is converted to the pre-GST figure the bill actually stores (discountValue below).
+  const [discountAmount, setDiscountAmount] = useState<number | null>(null);
+  const [discountRemark, setDiscountRemark] = useState<string>("");
+  // Once the maker types their own discount, the work order's discount stops being pre-filled.
+  const [discountTouched, setDiscountTouched] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -372,6 +379,9 @@ export default function NewBillDrawer({
     setRetentionReleaseAmount(0);
     setRetentionReleaseRemark("");
     setRetentionHeldForWO(0);
+    setDiscountAmount(null);
+    setDiscountRemark("");
+    setDiscountTouched(false);
 
     apiClient.get<{ projects: Record<string, unknown>[] }>("/projects")
       .then((r) => setProjects((r.data.projects || []).map((p) => normalizeId(p) as unknown as ProjectOpt)))
@@ -623,6 +633,11 @@ export default function NewBillDrawer({
     setRecoveryAmount(Number(editBill.advanceRecovery) > 0 ? Number(editBill.advanceRecovery) : null);
     setRetentionReleaseAmount(Number(editBill.retentionReleased) || 0);
     setRetentionReleaseRemark(editBill.retentionReleaseRemark || "");
+    setDiscountAmount(Number(editBill.discountAmount) > 0
+      ? Math.round(Number(editBill.discountAmount) * (1 + Number(editBill.gstPercent ?? 18) / 100) * 100) / 100
+      : null);
+    setDiscountRemark(editBill.discountRemark || "");
+    setDiscountTouched(true);
     setPrefillStage(2);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, editBill, prefillStage, partyType, selectedContractor, selectedConsultant, woList]);
@@ -775,7 +790,7 @@ export default function NewBillDrawer({
         }
       }
     }
-    const billed = woExistingBills.filter((b) => b.isActive !== false).reduce((s, b) => s + (b.amount || 0), 0);
+    const billed = woExistingBills.filter((b) => b.isActive !== false).reduce((s, b) => s + (b.amount || 0) + (b.discountAmount || 0), 0);
     return { wo, contract, billed, remaining: Math.max(0, contract - billed), qtyPart, balancePart, balanceTargets };
   }
 
@@ -951,14 +966,28 @@ export default function NewBillDrawer({
     // by design the moment any milestone is checked, so `hasEnteredData`
     // read that as "you've entered data" even with zero manual edits).
     const nextIds = checked ? [...selectedMilestoneIds, id] : selectedMilestoneIds.filter((mid) => mid !== id);
-    const nextPercents = checked ? { ...milestonePercents, [id]: milestonePercents[id] ?? 100 } : milestonePercents;
+    const nextPercents = checked ? { ...milestonePercents, [id]: milestonePercents[id] ?? milestoneLeftPct(id) } : milestonePercents;
     setSelectedMilestoneIds(nextIds);
     setMilestonePercents(nextPercents);
     recomputeMilestoneRows(nextIds, nextPercents);
   }
 
+  // Percent of a milestone the WO's other live bills already claim — the same rule the server enforces.
+  function milestoneUsedPct(id: string): number {
+    let used = 0;
+    for (const b of woExistingBills) {
+      if (b.isActive === false || b.status === "rejected") continue;
+      if (!(b.milestoneIds ?? []).map(String).includes(id) && String(b.milestoneId ?? "") !== id) continue;
+      const mine = (b.milestonePercents ?? []).find((p) => String(p.milestoneId) === id);
+      if (mine) used += Number(mine.percent) || 0;
+      else if (!(b.lineItems ?? []).some((li) => li.scopeItemId)) used += 100;
+    }
+    return used;
+  }
+  const milestoneLeftPct = (id: string) => Math.max(0, Math.round((100 - milestoneUsedPct(id)) * 100) / 100);
+
   function setMilestonePercentFor(id: string, percent: number) {
-    const clamped = Math.max(0, Math.min(100, percent || 0));
+    const clamped = Math.max(0, Math.min(milestoneLeftPct(id), percent || 0));
     const nextPercents = { ...milestonePercents, [id]: clamped };
     setMilestonePercents(nextPercents);
     recomputeMilestoneRows(selectedMilestoneIds, nextPercents);
@@ -985,7 +1014,30 @@ export default function NewBillDrawer({
     [lineItems]
   );
 
-  const gross = totalLineAmount;
+  // A work order's own discount is spread over its bills in proportion to what each bill claims: this bill's share of the WO's
+  // (pre-GST) total. The WO discount is entered against the GST-inclusive figure, so it is brought back to pre-GST first.
+  useEffect(() => {
+    if (editBill || discountTouched) return;
+    const woDiscount = Number(linkedWO?.discount) || 0;
+    if (!linkedWO || woDiscount <= 0 || totalLineAmount <= 0) { setDiscountAmount(null); return; }
+    const milestoneBase = (linkedWO.paymentMilestones ?? []).reduce((s, m) => s + (Number(m.amount) || 0), 0);
+    const scopeBase = linkedWO.scopeItems.reduce((s, si) => s + (si.subItems?.length
+      ? si.subItems.reduce((a, sub) => a + (Number(sub.plannedQty) || 0) * (Number(sub.rate) || 0), 0)
+      : (Number(si.plannedQty) || 0) * (Number(si.rate) || 0)), 0);
+    const base = milestoneBase > 0 ? milestoneBase : scopeBase;
+    if (base <= 0) { setDiscountAmount(null); return; }
+    // The WO discount is a GST-inclusive rupee figure, and so is this box: just this bill's share of it. How much of it
+    // comes off the taxable value follows from the GST slab chosen on this bill (discountValue below).
+    const share = Math.round(woDiscount * Math.min(1, totalLineAmount / base) * 100) / 100;
+    if (share > 0 && share < totalLineAmount * (1 + gstPercent / 100)) {
+      setDiscountAmount(share);
+      setDiscountRemark((r) => r || `Work order ${linkedWO.workOrderNo} discount`);
+    } else setDiscountAmount(null);
+  }, [editBill, discountTouched, linkedWO, totalLineAmount, gstPercent]);
+  const discountInclusive = Math.max(0, discountAmount || 0);
+  // What is stored and taken off the taxable value: the inclusive figure brought back to pre-GST by this bill's GST slab.
+  const discountValue = Math.min(Math.round(discountInclusive / (1 + gstPercent / 100) * 100) / 100, totalLineAmount);
+  const gross = Math.round((totalLineAmount - discountValue) * 100) / 100;
   const holdAmount = holdMode === "percent"
     ? holdAmountFromPercent(gross, holdPercent || 0)
     : Math.round(holdAmountInput || 0);
@@ -1076,6 +1128,10 @@ export default function NewBillDrawer({
       formErrors.setError("department", "Enter the custom team's name");
       hasError = true;
     }
+    if (discountValue > 0 && !discountRemark.trim()) {
+      toast.error("Please enter the reason for the discount");
+      hasError = true;
+    }
     if (retentionReleaseAmount > 0 && !retentionReleaseRemark.trim()) {
       formErrors.setError("retentionReleaseRemark", "Required when releasing held retention");
       hasError = true;
@@ -1132,12 +1188,14 @@ export default function NewBillDrawer({
       relationshipType: (relType === "ADVANCE_FOR" || relType === "RETENTION_RELEASE_OF" || linkedBills.length > 0) ? relType : "NONE",
       linkedBills: linkedBills.length > 0 ? linkedBills : [],
       workOrderId: linkedToScopeItems ? (importedFromWOId || selectedWOId || undefined) : (selectedWOId || undefined),
-      ...(selectedMilestoneIds.length ? { milestoneIds: selectedMilestoneIds } : {}),
+      ...(selectedMilestoneIds.length ? { milestoneIds: selectedMilestoneIds, milestonePercents: Object.fromEntries(selectedMilestoneIds.map((id) => [id, milestonePercents[id] ?? 100])) } : {}),
       ...(needsCompany ? { companyId } : {}),
       retentionPercent: holdMode === "percent" ? (holdPercent || 0) : (gross > 0 ? Math.round((holdAmount / gross) * 10000) / 100 : 0),
       retentionAmount: holdAmount,
       retentionReleaseAmount: retentionReleaseAmount || 0,
       retentionReleaseRemark: retentionReleaseRemark ?? "",
+      discountAmount: discountValue,
+      discountRemark: discountValue > 0 ? discountRemark.trim() : "",
       supersedeDeduction: supersedeDeductionAmount,
       ...(recoveries.length ? { advanceRecoveries: recoveries } : {}),
       lineItems: validItems.map(({ key: _k, lastBilledQty: _l, percentComplete: _p, groupLabel: _g, balanceCap: _c, balanceSubItemId, ...rest }) => ({
@@ -1511,19 +1569,26 @@ export default function NewBillDrawer({
                             <input
                               type="checkbox"
                               checked={checked}
+                              disabled={!checked && milestoneLeftPct(m._id) <= 0}
                               onChange={(e) => toggleMilestone(m._id, e.target.checked)}
                               className="w-4 h-4 shrink-0 accent-purple-600"
                             />
                             {/* Pre-GST base — matches what this milestone actually
                                 contributes to the bill's line items; the bill's own
                                 GST Slab (below) adds GST once, on top of the total. */}
-                            <span className="truncate">{m.type || m.stage || "Milestone"} — {fmt(m.amount)}</span>
+                            <span className="truncate">{m.type || m.stage || "Milestone"} — {fmt(m.amount)}
+                              {milestoneUsedPct(m._id) > 0 && (
+                                <span className="ml-1.5 text-[11px] font-semibold text-purple-600 dark:text-purple-300">
+                                  ({milestoneLeftPct(m._id) <= 0 ? "fully billed" : `${milestoneUsedPct(m._id)}% billed, ${milestoneLeftPct(m._id)}% left`})
+                                </span>
+                              )}
+                            </span>
                           </label>
                           {checked && (
                             <div className="flex items-center gap-1 shrink-0">
                               <input
-                                type="number" min="0" max="100"
-                                value={milestonePercents[m._id] ?? 100}
+                                type="number" min="0" max={milestoneLeftPct(m._id)}
+                                value={milestonePercents[m._id] ?? milestoneLeftPct(m._id)}
                                 onChange={(e) => setMilestonePercentFor(m._id, Number(e.target.value))}
                                 className="w-16 text-[12px] text-right rounded-md border border-purple-200 dark:border-purple-500/30 bg-white dark:bg-gray-800 px-2 py-1"
                               />
@@ -1828,8 +1893,36 @@ export default function NewBillDrawer({
               <span className="font-bold text-xs text-primary uppercase tracking-wide">Financial Summary</span>
             </div>
             <div className="font-mono text-[13px]">
+              {discountValue > 0 && (
+                <div className="flex justify-between px-3.5 py-1.5 border-b border-gray-100 dark:border-gray-700/40">
+                  <span>Bill Total</span><span>{fmt(totalLineAmount)}</span>
+                </div>
+              )}
               <div className="flex justify-between px-3.5 py-1.5 border-b border-gray-100 dark:border-gray-700/40">
-                <span>Gross Amount</span><span>{fmt(gross)}</span>
+                <span>Gross Amount{discountValue > 0 ? " (after discount)" : ""}</span><span>{fmt(gross)}</span>
+              </div>
+            </div>
+
+            {/* Discount — flat ₹ off the bill total, taken first; Hold and GST below are on what is left. */}
+            <div className="p-3.5 border-b border-gray-100 dark:border-gray-700/40 bg-sky-50 dark:bg-sky-500/10">
+              <div className="font-bold text-xs text-sky-800 dark:text-sky-300 mb-2">Discount (₹){gstPercent > 0 ? " — incl. GST" : ""}</div>
+              <Field
+                type="number" min="0" max={Math.round(totalLineAmount * (1 + gstPercent / 100) * 100) / 100} placeholder="0 — leave blank to skip"
+                value={discountAmount ?? ""} onChange={(e) => { setDiscountTouched(true); setDiscountAmount(e.target.value ? Number(e.target.value) : null); }}
+              />
+              {discountValue > 0 && (
+                <div className="mt-2">
+                  <Field
+                    placeholder="Reason for discount (required)"
+                    value={discountRemark} onChange={(e) => setDiscountRemark(e.target.value)}
+                  />
+                </div>
+              )}
+              <div className="flex justify-between text-xs mt-1.5 text-sky-700 dark:text-sky-400 font-mono">
+                <span>Discount on this bill{gstPercent > 0 ? " (incl. GST)" : ""}</span><span>− {fmt(discountInclusive)}</span>
+              </div>
+              <div className="flex justify-between text-[11px] mt-0.5 text-sky-600/80 dark:text-sky-400/80 font-mono">
+                <span>{gstPercent > 0 ? `Off the taxable value (before ${gstPercent}% GST)` : "Off the bill amount"}</span><span>− {fmt(discountValue)}</span>
               </div>
             </div>
 
