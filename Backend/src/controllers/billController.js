@@ -27,6 +27,14 @@ const User = require('../models/User');
 const { parseFinalDeduction, composeDeductionRemark, round2: roundMoney } = require('../utils/finalDeduction');
 const { billFinancialsForBill } = require('../utils/billFinancials');
 
+// Same-person (segregation of duties) rule for a manual bill's L1 → L4 chain, identical to the Bill Request one: whoever gave one level may
+// give the next too only when the Permission Matrix gives them BOTH levels' approval (Bill Approval → L1 / L2 / L3 / L4); Owner and CEO may always.
+function hasBothBillPermissions(user, action1, action2) {
+  if (user.role === 'owner' || user.role === 'CEO') return true;
+  const actions = (user.permissions || []).find((p) => p.module === 'bill-requests')?.actions || [];
+  return actions.includes(action1) && actions.includes(action2);
+}
+
 // Any approval level of a manual bill (L1, L2, L3, L4) may cut its gross total (deductionAmount + optional deductionRemark in the request
 // body); the cuts add up, and GST etc. are worked out on what is left. bill.amount is already net of the earlier levels' cuts, so checking the
 // new cut against it keeps the total below the original gross. Returns an error message, or null when applied / nothing asked.
@@ -1233,8 +1241,8 @@ async function manualGmApproveHandler(req, res) {
   if (bill.manualApprovalStatus !== 'pending-gm') {
     return badRequest(res, `This bill's AGM/GM sign-off is already ${bill.manualApprovalStatus}`);
   }
-  if (bill.manualAgmApprovedBy && bill.manualAgmApprovedBy.toString() === req.user._id.toString() && req.user.role !== 'owner' && req.user.role !== 'CEO') {
-    return badRequest(res, 'The L1 approver cannot also give L2 sign-off — segregation of duties requires a different approver.');
+  if (bill.manualAgmApprovedBy && bill.manualAgmApprovedBy.toString() === req.user._id.toString() && !hasBothBillPermissions(req.user, 'agm-approve', 'gm-approve')) {
+    return badRequest(res, 'The L1 approver can give L2 sign-off only if they hold both the L1 and L2 approval permissions — otherwise a different approver is needed.');
   }
 
   const approvalConfig = await getApprovalConfig(bill);
@@ -1296,8 +1304,8 @@ async function manualL3ApproveHandler(req, res) {
   if (bill.manualApprovalStatus !== 'pending-l3') {
     return badRequest(res, `This bill's AGM/GM sign-off is already ${bill.manualApprovalStatus}`);
   }
-  if (bill.manualGmApprovedBy && bill.manualGmApprovedBy.toString() === req.user._id.toString() && req.user.role !== 'owner') {
-    return badRequest(res, 'The L2 approver cannot also give L3 sign-off — segregation of duties requires a different approver.');
+  if (bill.manualGmApprovedBy && bill.manualGmApprovedBy.toString() === req.user._id.toString() && !hasBothBillPermissions(req.user, 'gm-approve', 'l3-approve')) {
+    return badRequest(res, 'The L2 approver can give L3 sign-off only if they hold both the L2 and L3 approval permissions — otherwise a different approver is needed.');
   }
 
   const approvalConfig = await getApprovalConfig(bill);
@@ -1357,8 +1365,8 @@ exports.manualL4Approve = asyncHandler(async (req, res) => {
   if (bill.manualApprovalStatus !== 'pending-l4') {
     return badRequest(res, `This bill's AGM/GM sign-off is already ${bill.manualApprovalStatus}`);
   }
-  if (bill.manualL3ApprovedBy && bill.manualL3ApprovedBy.toString() === req.user._id.toString() && req.user.role !== 'owner') {
-    return badRequest(res, 'The L3 approver cannot also give L4 sign-off — segregation of duties requires a different approver.');
+  if (bill.manualL3ApprovedBy && bill.manualL3ApprovedBy.toString() === req.user._id.toString() && !hasBothBillPermissions(req.user, 'l3-approve', 'l4-approve')) {
+    return badRequest(res, 'The L3 approver can give L4 sign-off only if they hold both the L3 and L4 approval permissions — otherwise a different approver is needed.');
   }
 
   const approvalConfig = await getApprovalConfig(bill);

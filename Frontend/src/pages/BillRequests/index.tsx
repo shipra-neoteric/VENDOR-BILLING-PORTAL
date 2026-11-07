@@ -511,16 +511,9 @@ export default function BillApproval() {
   const pendingL3Reqs = useMemo(() => billReqs.filter(r => r.status === "pending-l3" && !r.isArchived), [billReqs]);
   const pendingL4Reqs = useMemo(() => billReqs.filter(r => r.status === "pending-l4" && !r.isArchived), [billReqs]);
   const pendingManualAgm = useMemo(() => manualBills.filter(b => b.manualApprovalStatus === "pending"), [manualBills]);
-  // Hides a bill from the L2 queue when the CURRENT user is also the one who
-  // already gave its L1 (AGM) sign-off — segregation of duties means they'd
-  // just hit "The L1 approver cannot also give L2 sign-off" clicking it
-  // anyway. Matched by name (manualAgmApprovedBy is only populated with
-  // name/role here, no id) — good enough since two users sharing an exact
-  // display name is not a real scenario in this org.
-  const pendingManualGm = useMemo(() => manualBills.filter(b =>
-    b.manualApprovalStatus === "pending-gm" &&
-    !(user?.name && b.manualAgmApprovedBy?.name === user.name)
-  ), [manualBills, user?.name]);
+  // Every manual bill waiting at L2 is listed, including the ones the CURRENT user gave L1 for. What a person can do is decided by the
+  // Permission Matrix alone (L1 / L2 / L3 / L4 approve): holding both levels lets them give both on the same bill; the server enforces it.
+  const pendingManualGm = useMemo(() => manualBills.filter(b => b.manualApprovalStatus === "pending-gm"), [manualBills]);
   const pendingManualL3 = useMemo(() => manualBills.filter(b => b.manualApprovalStatus === "pending-l3"), [manualBills]);
   const pendingManualL4 = useMemo(() => manualBills.filter(b => b.manualApprovalStatus === "pending-l4"), [manualBills]);
   // Which manual bills belong under a given reqTab — mirrors the BillRequest
