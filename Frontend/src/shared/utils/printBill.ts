@@ -531,20 +531,44 @@ ${mode === 'pre' ? (() => {
   // stale verifiedBy that finalizeBillRequest used to (wrongly) stamp with
   // whoever triggered it, which would otherwise outrank the real gmApprovedBy
   // here and show the wrong name.
-  const l1 = bill.l1ApprovedBy || bill.agmApprovedBy || bill.manualAgmApprovedBy;
-  const l1At = bill.l1ApprovedAt || bill.agmApprovedAt || bill.manualAgmApprovedAt;
-  const l2 = bill.l2ApprovedBy || bill.gmApprovedBy || bill.manualGmApprovedBy;
-  const l2At = bill.l2ApprovedAt || bill.gmApprovedAt || bill.manualGmApprovedAt;
+  // L1/L2 on the print are the Bill Request-time AGM / GM approvals
+  // (agmApprovedBy / gmApprovedBy) — the l1/l2ApprovedBy pair belongs to the
+  // later Accounts Payment chain (Accounts users) and is only a fallback for
+  // bills that never had an AGM/GM stage.
+  // Accounts-role approvers (Accounts Payment verify/L1/L2 steps) never print —
+  // those steps still run, they just are not part of the signed approval block.
+  const notAccounts = <T extends { role?: string } | null | undefined>(p: T) =>
+    p && String((p as { role?: string }).role || "").toLowerCase() !== "accounts" ? p : undefined;
+  const agm = bill.agmApprovedBy || bill.manualAgmApprovedBy;
+  const gm = bill.gmApprovedBy || bill.manualGmApprovedBy;
+  const l1Alt = notAccounts(bill.l1ApprovedBy);
+  const l2Alt = notAccounts(bill.l2ApprovedBy);
+  const l1 = agm || l1Alt;
+  const l1At = agm ? (bill.agmApprovedAt || bill.manualAgmApprovedAt) : (l1Alt ? bill.l1ApprovedAt : undefined);
+  let l2 = gm || l2Alt;
+  let l2At = gm ? (bill.gmApprovedAt || bill.manualGmApprovedAt) : (l2Alt ? bill.l2ApprovedAt : undefined);
+  let l3 = bill.l3ApprovedBy || bill.manualL3ApprovedBy;
+  let l3At = bill.l3ApprovedAt || bill.manualL3ApprovedAt;
+  const l4 = bill.l4ApprovedBy || bill.manualL4ApprovedBy;
+  const l4At = bill.l4ApprovedAt || bill.manualL4ApprovedAt;
+
+  // Akhilesh's bills have no GM step: L2 on the print is the CEO instead.
+  // The CEO is whichever of the later approvers (l2 / l3) has the CEO role;
+  // when that was recorded at L3 it moves up to L2 so it is not printed twice.
+  const isCeo = (p?: PrintableBillUser | null) => !!p && String(p.role || "").toLowerCase() === "ceo";
+  if (!gm && agm && /akhilesh/i.test(agm.name || "")) {
+    if (isCeo(bill.l2ApprovedBy)) {
+      l2 = bill.l2ApprovedBy; l2At = bill.l2ApprovedAt;
+    } else if (isCeo(l3)) {
+      l2 = l3; l2At = l3At; l3 = undefined; l3At = undefined;
+    }
+  }
 
   const cols = [
     signatureCol("Contractor", { name: bill.vendorName || "—" }, undefined),
     signatureCol("L1 Approval", l1, l1At),
     signatureCol("L2 Approval", l2, l2At),
   ];
-  const l3 = bill.l3ApprovedBy || bill.manualL3ApprovedBy;
-  const l3At = bill.l3ApprovedAt || bill.manualL3ApprovedAt;
-  const l4 = bill.l4ApprovedBy || bill.manualL4ApprovedBy;
-  const l4At = bill.l4ApprovedAt || bill.manualL4ApprovedAt;
   if (l3) cols.push(signatureCol("L3 Approval", l3, l3At));
   if (l4) cols.push(signatureCol("L4 Approval", l4, l4At));
 
