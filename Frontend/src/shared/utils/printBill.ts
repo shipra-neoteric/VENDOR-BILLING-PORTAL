@@ -545,10 +545,10 @@ ${mode === 'pre' ? (() => {
   const l2Alt = notAccounts(bill.l2ApprovedBy);
   const l1 = agm || l1Alt;
   const l1At = agm ? (bill.agmApprovedAt || bill.manualAgmApprovedAt) : (l1Alt ? bill.l1ApprovedAt : undefined);
-  let l2 = gm || l2Alt;
-  let l2At = gm ? (bill.gmApprovedAt || bill.manualGmApprovedAt) : (l2Alt ? bill.l2ApprovedAt : undefined);
-  let l3 = bill.l3ApprovedBy || bill.manualL3ApprovedBy;
-  let l3At = bill.l3ApprovedAt || bill.manualL3ApprovedAt;
+  let l2: PrintableBillUser | null | undefined = gm || l2Alt;
+  let l2At: string | undefined = gm ? (bill.gmApprovedAt || bill.manualGmApprovedAt) : (l2Alt ? bill.l2ApprovedAt : undefined);
+  let l3: PrintableBillUser | null | undefined = bill.l3ApprovedBy || bill.manualL3ApprovedBy;
+  let l3At: string | undefined = bill.l3ApprovedAt || bill.manualL3ApprovedAt;
   const l4 = bill.l4ApprovedBy || bill.manualL4ApprovedBy;
   const l4At = bill.l4ApprovedAt || bill.manualL4ApprovedAt;
 
