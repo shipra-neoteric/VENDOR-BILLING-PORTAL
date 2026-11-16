@@ -167,6 +167,7 @@ async function buildPerformance(query) {
   const total = newAgg();
   const byDept = new Map();
   const byUser = new Map();
+  const byUserWeek = new Map();
   for (const c of cases) {
     const key = groupBy === 'month' ? monthKeyOf(c.dueAt) : ymd(mondayOf(c.dueAt));
     const agg = aggByKey.get(key);
@@ -179,6 +180,13 @@ async function buildPerformance(query) {
     const uKey = c.userId || 'unassigned';
     if (!byUser.has(uKey)) byUser.set(uKey, newAgg());
     addCase(byUser.get(uKey), c);
+    // per-user weekly counts (always by week, whatever the grouping) for the SLA MIS PDF
+    const wk = ymd(mondayOf(c.dueAt));
+    if (!byUserWeek.has(uKey)) byUserWeek.set(uKey, {});
+    const uw = byUserWeek.get(uKey);
+    if (!uw[wk]) uw[wk] = { planned: 0, onTime: 0 };
+    uw[wk].planned++;
+    if (c.done && !c.late) uw[wk].onTime++;
   }
 
   const rows = buckets.map(b => ({ key: b.key, label: b.label, monthLabel: b.monthLabel, monthKey: b.monthKey, weekNo: b.weekNo, start: b.start, end: b.end, ...finish(aggByKey.get(b.key)) }));
@@ -201,7 +209,7 @@ async function buildPerformance(query) {
   const userRows = [...byUser.entries()].map(([id, agg]) => {
     const u = id === 'unassigned' ? null : userById.get(id);
     const f = finish(agg);
-    return { userId: id, name: u ? u.name : 'Unassigned (role-based)', role: u ? (u.role || '') : '', department: u ? (u.department || '') : '', ...f,
+    return { userId: id, name: u ? u.name : 'Unassigned (role-based)', role: u ? (u.role || '') : '', department: u ? (u.department || '') : '', ...f, weeks: byUserWeek.get(id) || {},
       avgPlannedPerPeriod: r1(f.planned / periodCount), avgDonePerPeriod: r1(f.done / periodCount) };
   }).sort((a, b) => b.planned - a.planned || a.name.localeCompare(b.name));
 

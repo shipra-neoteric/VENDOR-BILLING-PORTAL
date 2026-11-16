@@ -7,9 +7,8 @@ import Spinner from "../../ui/Spinner";
 import Alert from "../../ui/Alert";
 import { useAuth } from "../../context/AuthContext";
 import MisFilterBar from "../MisPerformance/MisFilterBar";
-import { UserTable } from "../MisPerformance/BreakdownTables";
-import { defaultFilters, downloadExcel, fmtGap, fmtNum, fmtPct, gapColor, useMisPerformance, type MisFilters } from "../MisPerformance/shared";
-import { downloadMisReportPdf } from "./MisReportPdf";
+import { defaultFilters, downloadExcel, fmtNum, useMisPerformance, type MisFilters } from "../MisPerformance/shared";
+import { buildSlaReport, downloadMisReportPdf } from "./MisReportPdf";
 
 function Tile({ label, value, sub, color }: { label: string; value: string; sub: string; color?: string }) {
   return (
@@ -29,7 +28,6 @@ export default function MisReport() {
   const { user } = useAuth();
   const [busy, setBusy] = useState<"pdf" | "xlsx" | null>(null);
   const preparedBy = user?.name || "—";
-  const unit = filters.groupBy === "month" ? "Month" : "Week";
 
   async function run(kind: "pdf" | "xlsx") {
     if (!data) return;
@@ -42,7 +40,7 @@ export default function MisReport() {
     } finally { setBusy(null); }
   }
   const btn = "inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg text-[13px] font-medium border transition-colors disabled:opacity-50";
-  const k = data?.kpis;
+  const rep = data ? buildSlaReport(data) : null;
 
   return (
     <div>
@@ -64,19 +62,43 @@ export default function MisReport() {
       <MisFilterBar filters={filters} onChange={setFilters} options={data?.options} />
       {error && <Alert type="error" message={error} />}
 
-      {loading && !data ? <div className="p-10"><Spinner label="Loading…" /></div> : data && k && (
+      {loading && !data ? <div className="p-10"><Spinner label="Loading…" /></div> : data && rep && (
         <NxCard className="mb-5">
-          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-6">
-            <Tile label="Planned" value={fmtNum(k.planned)} sub="Stages due in the period" />
-            <Tile label="Work Done" value={fmtNum(k.done)} sub={`${fmtPct(k.completionPct)} completion · ${fmtNum(k.onTime)} on time, ${fmtNum(k.late)} late`} color="#16a34a" />
-            <Tile label="Late" value={fmtNum(k.late)} sub={`${fmtPct(k.latePct)} of completed work · done after the SLA due time`} color={k.late ? "#f59e0b" : undefined} />
-            <Tile label="Difference" value={fmtNum(k.difference)} sub={`Not done · ${fmtNum(k.overdue)} overdue, ${fmtNum(k.breached)} SLA breached`} />
-            <Tile label="MIS (Gap)" value={fmtGap(k.gapPct)} sub={k.planned ? `Achieved ${fmtPct(k.completionPct)} of plan` : "No planned work"} color={gapColor(k.gapPct)} />
+          <div className="grid grid-cols-3 gap-3 mb-6">
+            <Tile label="Total Cases" value={fmtNum(rep.total)} sub="Stages due in the period" />
+            <Tile label="Completed" value={fmtNum(rep.completed)} sub="Done within the SLA" color="#16a34a" />
+            <Tile label="Breached" value={fmtNum(rep.breached)} sub="Late or not done" color={rep.breached ? "#e03b3b" : undefined} />
           </div>
 
-          <h3 className="text-[11px] font-bold tracking-widest text-gray-700 dark:text-gray-200 mb-2">USER-WISE PERFORMANCE</h3>
-          <div className="mb-6"><UserTable rows={data.users} average={data.userAverage} unitLabel={unit} /></div>
+          <h3 className="text-sm font-bold text-gray-800 dark:text-gray-100 mb-2">SLA by User</h3>
+          <div className="overflow-x-auto mb-6 border border-gray-200 dark:border-gray-700/60 rounded-lg">
+            <table className="w-full text-[13px]">
+              <thead className="bg-gray-50 dark:bg-gray-800/60"><tr>{["User", "Total", "Work Done", "Done On Time", "Done Late", "Work Not Done", "Rate %"].map(h => <th key={h} className="text-left font-semibold px-3 py-2 whitespace-nowrap">{h}</th>)}</tr></thead>
+              <tbody>{rep.slaRows.map((r, i) => <tr key={i} className="border-t border-gray-200 dark:border-gray-700/60">{r.map((c, j) => <td key={j} className="px-3 py-2 tabular-nums">{c}</td>)}</tr>)}</tbody>
+            </table>
+          </div>
 
+          <h3 className="text-sm font-bold text-gray-800 dark:text-gray-100 mb-2">Weekly Breakdown — On-Time vs Late/Breached (by User)</h3>
+          {rep.blocks.map((blk, bi) => {
+            const last = bi === rep.blocks.length - 1;
+            return (
+              <div key={bi} className="overflow-x-auto mb-4 border border-gray-200 dark:border-gray-700/60 rounded-lg">
+                <table className="w-full text-[13px]">
+                  <thead className="bg-gray-50 dark:bg-gray-800/60"><tr>
+                    <th className="text-left font-semibold px-3 py-2">Executive</th>
+                    {blk.flatMap(w => [`${rep.wkLabel(w)} — On-Time`, `${rep.wkLabel(w)} — Late/Breached`]).map(h => <th key={h} className="text-left font-semibold px-3 py-2 text-xs">{h}</th>)}
+                    {last && <><th className="text-left font-semibold px-3 py-2">Total On-Time</th><th className="text-left font-semibold px-3 py-2">Total Late/Breached</th></>}
+                  </tr></thead>
+                  <tbody>{rep.byName.map(u => (
+                    <tr key={u.userId} className="border-t border-gray-200 dark:border-gray-700/60">
+                      <td className="px-3 py-2">{u.name}</td>
+                      {blk.flatMap(w => { const x = u.weeks?.[w]; return [x?.onTime || 0, (x?.planned || 0) - (x?.onTime || 0)]; }).map((v, i) => <td key={i} className="px-3 py-2 tabular-nums">{v}</td>)}
+                      {last && <><td className="px-3 py-2 tabular-nums">{u.onTime}</td><td className="px-3 py-2 tabular-nums">{u.planned - u.onTime}</td></>}
+                    </tr>))}</tbody>
+                </table>
+              </div>
+            );
+          })}
         </NxCard>
       )}
     </div>

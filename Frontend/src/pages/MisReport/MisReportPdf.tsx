@@ -1,199 +1,115 @@
-import { Document, Page, View, Text, Svg, G, Rect, Line, Polyline, StyleSheet, pdf } from "@react-pdf/renderer";
-import type { Style } from "@react-pdf/types";
+import { Document, Page, View, Text, StyleSheet, pdf } from "@react-pdf/renderer";
 import dayjs from "dayjs";
-import { fmtDuration, fmtGap, fmtNum, fmtPct, type Performance, type Stats } from "../MisPerformance/shared";
+import type { Performance, UserRow } from "../MisPerformance/shared";
 
-const ORANGE = "#FF7A00", DARK = "#111827", GRAY = "#6B7280", BORDER = "#E5E7EB", SOFT = "#FFF3E6", HEAD = "#F3F4F6", RED = "#DC2626", GREEN = "#16A34A";
+// "IMS SLA MIS Report" layout: header band, 3 summary tiles, SLA by User, Weekly Breakdown (on-time vs late/breached, by user).
+const NAVY = "#1F2937", ORANGE = "#FF7A00", GRAY = "#6B7280", BORDER = "#E5E7EB", HEAD = "#F3F4F6", ZEBRA = "#F9FAFB", DARK = "#111827";
 
 const S = StyleSheet.create({
-  page: { paddingTop: 30, paddingHorizontal: 30, paddingBottom: 46, fontSize: 8.5, fontFamily: "Helvetica", color: DARK, backgroundColor: "#fff" },
-  kicker: { fontSize: 8, color: ORANGE, fontFamily: "Helvetica-Bold", letterSpacing: 1 },
-  title: { fontSize: 22, fontFamily: "Helvetica-Bold", marginTop: 3 },
-  period: { fontSize: 10, color: GRAY, marginTop: 3, marginBottom: 12 },
-  metaRow: { flexDirection: "row", borderTopWidth: 1, borderBottomWidth: 1, borderColor: BORDER, paddingVertical: 7, marginBottom: 12 },
-  metaCell: { flex: 1, paddingRight: 8 },
-  metaLabel: { fontSize: 6.5, color: GRAY, fontFamily: "Helvetica-Bold", letterSpacing: 0.6 },
-  metaVal: { fontSize: 8.5, marginTop: 2 },
-  tiles: { flexDirection: "row", marginBottom: 14 },
-  tile: { flex: 1, borderWidth: 1, borderColor: BORDER, borderRadius: 4, padding: 9, marginRight: 8 },
-  tileLabel: { fontSize: 6.5, color: GRAY, fontFamily: "Helvetica-Bold", letterSpacing: 0.6 },
-  tileVal: { fontSize: 19, fontFamily: "Helvetica-Bold", marginTop: 3 },
-  tileSub: { fontSize: 7, color: GRAY, marginTop: 2 },
-  secRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 5, marginTop: 4 },
-  secTitle: { fontSize: 8, fontFamily: "Helvetica-Bold", letterSpacing: 0.8 },
-  secHint: { fontSize: 7.5, color: GRAY },
-  table: { borderWidth: 1, borderColor: BORDER, borderRadius: 3, marginBottom: 12 },
-  thead: { flexDirection: "row", backgroundColor: HEAD },
+  page: { paddingTop: 30, paddingHorizontal: 30, paddingBottom: 46, fontSize: 9, fontFamily: "Helvetica", color: DARK, backgroundColor: "#fff" },
+  band: { backgroundColor: NAVY, borderBottomWidth: 3, borderBottomColor: ORANGE, paddingVertical: 9, alignItems: "center" },
+  bandText: { color: "#fff", fontSize: 9.5, fontFamily: "Helvetica-Bold", letterSpacing: 0.6 },
+  title: { fontSize: 20, fontFamily: "Helvetica-Bold", textAlign: "center", marginTop: 14 },
+  gen: { fontSize: 8.5, color: GRAY, textAlign: "center", marginTop: 4, marginBottom: 12 },
+  tiles: { flexDirection: "row", borderWidth: 1, borderColor: BORDER, borderLeftWidth: 4, borderLeftColor: ORANGE, backgroundColor: ZEBRA, marginBottom: 16 },
+  tile: { flex: 1, paddingVertical: 8, paddingHorizontal: 10, borderRightWidth: 1, borderRightColor: BORDER },
+  tileLabel: { fontSize: 7.5, color: GRAY, letterSpacing: 0.3 },
+  tileVal: { fontSize: 11, fontFamily: "Helvetica-Bold", marginTop: 3 },
+  sec: { fontSize: 11.5, fontFamily: "Helvetica-Bold", marginBottom: 7 },
+  table: { borderWidth: 1, borderColor: BORDER, marginBottom: 18 },
   tr: { flexDirection: "row", borderTopWidth: 1, borderTopColor: BORDER },
-  trSub: { flexDirection: "row", borderTopWidth: 1, borderTopColor: BORDER, backgroundColor: SOFT },
-  trTotal: { flexDirection: "row", borderTopWidth: 1.5, borderTopColor: DARK, backgroundColor: HEAD },
-  th: { fontSize: 6.8, fontFamily: "Helvetica-Bold", color: GRAY, paddingVertical: 5, paddingHorizontal: 4, textTransform: "uppercase" },
-  td: { fontSize: 8, paddingVertical: 4, paddingHorizontal: 4 },
-  notes: { borderWidth: 1, borderColor: BORDER, borderRadius: 3, backgroundColor: "#FAFAFA", padding: 8, marginTop: 4 },
-  notesTitle: { fontSize: 7, fontFamily: "Helvetica-Bold", letterSpacing: 0.6, marginBottom: 3 },
-  notesText: { fontSize: 7.5, color: GRAY, lineHeight: 1.45 },
-  footer: { position: "absolute", left: 30, right: 30, bottom: 18, flexDirection: "row", justifyContent: "space-between", fontSize: 7, color: GRAY, borderTopWidth: 1, borderTopColor: BORDER, paddingTop: 5 },
+  thead: { flexDirection: "row", backgroundColor: HEAD },
+  th: { fontSize: 8, fontFamily: "Helvetica-Bold", paddingVertical: 7, paddingHorizontal: 6 },
+  td: { fontSize: 8.5, paddingVertical: 7, paddingHorizontal: 6 },
+  footer: { position: "absolute", left: 30, right: 30, bottom: 18, flexDirection: "row", justifyContent: "space-between", fontSize: 7.5, color: GRAY, borderTopWidth: 1, borderTopColor: BORDER, paddingTop: 5 },
 });
 
-const left = { textAlign: "left" as const }, right = { textAlign: "right" as const };
-const gapColor = (g: number | null) => (g === null ? GRAY : g >= 0 ? GREEN : RED);
+const pct = (n: number, of: number) => (of > 0 ? `${(Math.round((n / of) * 1000) / 10).toFixed(1)}%` : "0.0%");
+const dmy = (d: dayjs.Dayjs) => d.format("D/M/YYYY");
 
-function Cells({ widths, cells, style, bold }: { widths: number[]; cells: (string | number)[]; style: Style; bold?: boolean }) {
-  return (
-    <View style={style} wrap={false}>
-      {cells.map((c, i) => (
-        <Text key={i} style={[S.td, { width: `${widths[i]}%` }, i < 2 ? left : right, bold ? { fontFamily: "Helvetica-Bold" } : {}]}>{String(c)}</Text>
-      ))}
-    </View>
-  );
-}
-const statCells = (x: Stats) => [fmtNum(x.planned), fmtNum(x.done), fmtNum(x.notDone), fmtNum(x.onTime), fmtNum(x.late), fmtPct(x.completionPct), fmtNum(x.difference), fmtGap(x.gapPct)];
-
-function Head({ widths, labels }: { widths: number[]; labels: string[] }) {
-  return (
-    <View style={S.thead} fixed>
-      {labels.map((l, i) => <Text key={i} style={[S.th, { width: `${widths[i]}%` }, i < 2 ? left : right]}>{l}</Text>)}
-    </View>
-  );
+// ISO week number of a date (Monday-based; same numbering the reference report uses)
+function isoWeek(d: dayjs.Dayjs): number {
+  const t = new Date(Date.UTC(d.year(), d.month(), d.date()));
+  const day = t.getUTCDay() || 7;
+  t.setUTCDate(t.getUTCDate() + 4 - day);
+  const y0 = Date.UTC(t.getUTCFullYear(), 0, 1);
+  return Math.ceil(((t.getTime() - y0) / 86400000 + 1) / 7);
 }
 
-// Planned (light) vs Work Done (orange) per period, with the completion % line — drawn with SVG primitives so it prints crisply.
-function PdfChart({ rows }: { rows: Performance["rows"] }) {
-  const W = 535, H = 150, padL = 26, padB = 28, padT = 8, padR = 8;
-  const max = Math.max(1, ...rows.flatMap(r => [r.planned, r.done]));
-  const step = Math.max(1, Math.pow(10, Math.floor(Math.log10(max))) / (max / Math.pow(10, Math.floor(Math.log10(max))) > 5 ? 1 : 2));
-  const top = Math.ceil(max / step) * step;
-  const iw = W - padL - padR, ih = H - padT - padB;
-  const slot = iw / Math.max(1, rows.length);
-  const bw = Math.min(14, slot / 2.6);
-  const y = (v: number) => padT + ih - (v / top) * ih;
-  const ticks = Array.from({ length: Math.round(top / step) + 1 }, (_, i) => i * step);
-  const line = rows.map((r, i) => (r.completionPct === null ? null : `${padL + slot * i + slot / 2},${padT + ih - (r.completionPct / 100) * ih}`)).filter(Boolean).join(" ");
+function Row({ cells, widths, zebra, head }: { cells: string[]; widths: number[]; zebra?: boolean; head?: boolean }) {
   return (
-    <Svg width={W} height={H}>
-      {ticks.map(t => (
-        <G key={t}>
-          <Line x1={padL} x2={W - padR} y1={y(t)} y2={y(t)} stroke={BORDER} strokeWidth={0.5} />
-        </G>
-      ))}
-      {rows.map((r, i) => {
-        const cx = padL + slot * i + slot / 2;
-        return (
-          <G key={r.key}>
-            <Rect x={cx - bw - 1} y={y(r.planned)} width={bw} height={Math.max(0, padT + ih - y(r.planned))} fill="#FDD7B0" />
-            <Rect x={cx + 1} y={y(r.done)} width={bw} height={Math.max(0, padT + ih - y(r.done))} fill={ORANGE} />
-          </G>
-        );
-      })}
-      {line && <Polyline points={line} stroke={DARK} strokeWidth={1.2} fill="none" />}
-    </Svg>
-  );
-}
-
-function Labels({ rows, groupBy }: { rows: Performance["rows"]; groupBy: "week" | "month" }) {
-  const padL = 26, W = 535, padR = 8, slot = (W - padL - padR) / Math.max(1, rows.length);
-  return (
-    <View style={{ flexDirection: "row", marginLeft: padL, marginTop: -26, marginBottom: 6 }}>
-      {rows.map(r => (
-        <Text key={r.key} style={{ width: slot, fontSize: rows.length > 14 ? 5.5 : 6.5, color: GRAY, textAlign: "center" }}>
-          {groupBy === "month" ? r.label.slice(0, 3) + " " + r.label.slice(-2) : `${r.monthLabel.slice(0, 3)} W${r.weekNo}`}
-        </Text>
-      ))}
+    <View style={[head ? S.thead : S.tr, zebra ? { backgroundColor: ZEBRA } : {}]} wrap={false}>
+      {cells.map((c, i) => <Text key={i} style={[head ? S.th : S.td, { width: `${widths[i]}%` }]}>{c}</Text>)}
     </View>
   );
 }
 
-export function MisReportDocument({ d, preparedBy }: { d: Performance; preparedBy: string }) {
-  const unit = d.meta.groupBy === "month" ? "Month" : "Week";
-  const f = d.meta.filters;
-  const k = d.kpis;
-  const gen = dayjs(d.meta.generatedAt).format("DD MMM YYYY, hh:mm a");
-  const periodText = `${dayjs(d.meta.from).format("DD-MMM-YYYY")} – ${dayjs(d.meta.to).format("DD-MMM-YYYY")}`;
-  const BW = [13, 25, 8, 9, 8, 8, 7, 9, 8, 9];
-  const heads = ["Month", unit, "Planned", "Work Done", "Not Done", "On Time", "Late", "Completion", "Difference", "MIS (Gap)"];
-  const DW = [30, 7, 9, 9, 9, 8, 8, 10, 10];
-  const UW = [10.5, 8, 6.5, 6.5, 6.5, 7, 7.5, 7, 7.5, 8, 8, 8, 9];
-  const sumW = (a: number, b: number) => UW.slice(a, b).reduce((x, y) => x + y, 0);
-  const userGroups = [{ label: "User Details", width: sumW(0, 2) }, { label: "Work Summary", width: sumW(2, 5) }, { label: "SLA Breakdown", width: sumW(5, 9) }, { label: "Performance", width: sumW(9, 12) }, { label: "Productivity", width: sumW(12, 13) }];
+// Shared by the PDF and the on-screen MIS Report page so both show the same numbers.
+export function buildSlaReport(d: Performance, perBlock = 4) {
+  const users: UserRow[] = d.users.filter(u => u.userId !== "unassigned" && u.planned > 0).sort((a, b) => b.planned - a.planned || a.name.localeCompare(b.name));
+  const total = users.reduce((s, u) => s + u.planned, 0);
+  const completed = users.reduce((s, u) => s + u.onTime, 0);
+  const breached = total - completed;
+  // SLA by User: Done On Time / Done Late are shares of Work Done, Work Not Done is a share of Total, Rate % = (On Time − Total) ÷ Total
+  const slaRows = users.map(u => [
+    u.name, String(u.planned), String(u.done),
+    `${u.onTime} (${pct(u.onTime, u.done)})`, `${u.late} (${pct(u.late, u.done)})`, `${u.notDone} (${pct(u.notDone, u.planned)})`,
+    u.planned ? `${(Math.round(((u.onTime - u.planned) / u.planned) * 1000) / 10).toFixed(1)}%` : "—",
+  ]);
+  // Weekly Breakdown: weeks that have any work, split into blocks so the columns stay readable
+  const weekKeys = [...new Set(users.flatMap(u => Object.keys(u.weeks || {})))].sort();
+  const blocks: string[][] = [];
+  for (let i = 0; i < Math.max(1, weekKeys.length); i += perBlock) blocks.push(weekKeys.slice(i, i + perBlock));
+  const wkLabel = (k: string) => { const s = dayjs(k); return `Week ${isoWeek(s)} (${dmy(s)} – ${dmy(s.add(6, "day"))})`; };
+  const byName = [...users].sort((a, b) => a.name.localeCompare(b.name));
+  return { users, total, completed, breached, slaRows, blocks, wkLabel, byName };
+}
+
+export function MisReportDocument({ d }: { d: Performance; preparedBy: string }) {
+  const gen = dayjs(d.meta.generatedAt).format("DD/MM/YYYY, HH:mm");
+  const { total, completed, breached, slaRows, blocks, wkLabel, byName } = buildSlaReport(d);
+  const SW = [22, 10, 12, 17, 15, 14, 10];
+
   return (
-    <Document title={`${unit}ly MIS Report`}>
+    <Document title="SLA MIS Report">
       <Page size="A4" style={S.page} wrap>
-        <Text style={S.kicker}>MIS REPORT · USER PERFORMANCE</Text>
-        <Text style={S.title}>{unit}ly MIS Reports</Text>
-        <Text style={S.period}>{periodText}</Text>
-
-        <View style={S.metaRow}>
-          {[["REPORTING PERIOD", periodText], ["GROUPED BY", unit], ["DEPARTMENT", f.department || "All"], ["USER / ROLE", `${f.userName || "All users"} / ${f.role || "All roles"}`], ["PREPARED BY", preparedBy], ["GENERATED ON", gen]].map(([l, v]) => (
-            <View key={l} style={S.metaCell}><Text style={S.metaLabel}>{l}</Text><Text style={S.metaVal}>{v}</Text></View>
-          ))}
-        </View>
+        <View style={S.band}><Text style={S.bandText}>VENDOR MANAGEMENT SYSTEM</Text></View>
+        <Text style={S.title}>VMS SLA MIS Report</Text>
+        <Text style={S.gen}>Generated: {gen}</Text>
 
         <View style={S.tiles} wrap={false}>
-          <View style={S.tile}><Text style={S.tileLabel}>PLANNED</Text><Text style={S.tileVal}>{fmtNum(k.planned)}</Text><Text style={S.tileSub}>Stages due in the period</Text></View>
-          <View style={S.tile}><Text style={S.tileLabel}>WORK DONE</Text><Text style={[S.tileVal, { color: GREEN }]}>{fmtNum(k.done)}</Text><Text style={S.tileSub}>{fmtPct(k.completionPct)} completion · {fmtNum(k.onTime)} on time, {fmtNum(k.late)} late</Text></View>
-          <View style={S.tile}><Text style={S.tileLabel}>DIFFERENCE</Text><Text style={S.tileVal}>{fmtNum(k.difference)}</Text><Text style={S.tileSub}>Not done · {fmtNum(k.overdue)} overdue, {fmtNum(k.breached)} SLA breached</Text></View>
-          <View style={[S.tile, { marginRight: 0 }]}><Text style={S.tileLabel}>MIS (GAP)</Text><Text style={[S.tileVal, { color: gapColor(k.gapPct) }]}>{fmtGap(k.gapPct)}</Text><Text style={S.tileSub}>{k.planned ? `Achieved ${fmtPct(k.completionPct)} of plan` : "No planned work"}</Text></View>
+          <View style={S.tile}><Text style={S.tileLabel}>TOTAL CASES</Text><Text style={S.tileVal}>{total}</Text></View>
+          <View style={S.tile}><Text style={S.tileLabel}>COMPLETED</Text><Text style={S.tileVal}>{completed}</Text></View>
+          <View style={[S.tile, { borderRightWidth: 0 }]}><Text style={S.tileLabel}>BREACHED</Text><Text style={S.tileVal}>{breached}</Text></View>
         </View>
 
-        <View wrap={false}>
-          <View style={S.secRow}><Text style={S.secTitle}>WORK DONE VS PLAN</Text><Text style={S.secHint}>{d.rows.length} {unit.toLowerCase()}s · light = planned, orange = work done, line = completion %</Text></View>
-          <PdfChart rows={d.rows} />
-          <Labels rows={d.rows} groupBy={d.meta.groupBy} />
-        </View>
-
-        <View style={S.secRow}><Text style={S.secTitle}>DETAILED BREAKDOWN</Text><Text style={S.secHint}>Totals in the last row</Text></View>
+        <Text style={S.sec}>SLA by User</Text>
         <View style={S.table}>
-          <Head widths={BW} labels={heads} />
-          {d.meta.groupBy === "week"
-            ? d.groups.map(g => (
-              <View key={g.monthKey}>
-                {g.rows.map((r, i) => <Cells key={r.key} widths={BW} style={S.tr} cells={[i === 0 ? g.monthLabel : "", r.label, ...statCells(r)]} />)}
-                <Cells widths={BW} style={S.trSub} bold cells={["", `${g.monthLabel} total`, ...statCells(g.total)]} />
-              </View>
-            ))
-            : d.rows.map(r => <Cells key={r.key} widths={BW} style={S.tr} cells={["", r.label, ...statCells(r)]} />)}
-          <Cells widths={BW} style={S.trTotal} bold cells={["", `Total ${unit}s`, ...statCells(d.total)]} />
+          <Row head widths={SW} cells={["User", "Total", "Work Done", "Done On Time", "Done Late", "Work Not Done", "Rate %"]} />
+          {slaRows.map((r, i) => <Row key={i} widths={SW} cells={r} zebra={i % 2 === 1} />)}
         </View>
 
-        <View break>
-          <View style={S.secRow}><Text style={S.secTitle}>DEPARTMENT-WISE PERFORMANCE</Text><Text style={S.secHint}>Overall completion {fmtPct(d.departmentAverage.weightedCompletionPct)} weighted · {fmtPct(d.departmentAverage.meanCompletionPct)} mean</Text></View>
-          <View style={S.table}>
-            <Head widths={DW} labels={["Department", "Users", "Planned", "Work Done", "Not Done", "On Time", "Late", "Completion", "MIS (Gap)"]} />
-            {d.departments.map(r => <Cells key={r.name} widths={DW} style={S.tr} cells={[r.name, r.users || "—", fmtNum(r.planned), fmtNum(r.done), fmtNum(r.notDone), fmtNum(r.onTime), fmtNum(r.late), fmtPct(r.completionPct), fmtGap(r.gapPct)]} />)}
-            <Cells widths={DW} style={S.trTotal} bold cells={["Overall average", fmtNum(d.departmentAverage.avgUsersPerDept), fmtNum(d.departmentAverage.avgPlanned), fmtNum(d.departmentAverage.avgDone), "", "", "", fmtPct(d.departmentAverage.weightedCompletionPct), ""]} />
-          </View>
-
-          <View style={S.secRow}><Text style={S.secTitle}>USER-WISE PERFORMANCE</Text><Text style={S.secHint}>Average per user: {fmtNum(d.userAverage.avgPlanned)} planned · {fmtNum(d.userAverage.avgDone)} done · avg TAT {fmtDuration(d.userAverage.avgTatMinutes)}</Text></View>
-          <View style={S.table}>
-            <View style={[S.thead, { backgroundColor: SOFT }]} fixed>
-              {userGroups.map(g => <Text key={g.label} style={[S.th, { width: `${g.width}%`, textAlign: "center", color: DARK }]}>{g.label}</Text>)}
+        <Text style={S.sec}>Weekly Breakdown — On-Time vs Late/Breached (by User)</Text>
+        {blocks.map((blk, bi) => {
+          const last = bi === blocks.length - 1;
+          const nCols = blk.length * 2 + (last ? 2 : 0);
+          const first = 16, w = (100 - first) / Math.max(1, nCols);
+          const widths = [first, ...Array.from({ length: nCols }, () => w)];
+          const heads = ["Executive", ...blk.flatMap(k => [`${wkLabel(k)} — On-Time`, `${wkLabel(k)} — Late/Breached`]), ...(last ? ["Total On-Time", "Total Late/ Breached"] : [])];
+          return (
+            <View key={bi} style={S.table}>
+              <Row head widths={widths} cells={heads} />
+              {byName.map((u, i) => {
+                const cells = [u.name, ...blk.flatMap(k => { const x = u.weeks?.[k]; return [String(x?.onTime || 0), String((x?.planned || 0) - (x?.onTime || 0))]; })];
+                if (last) cells.push(String(u.onTime), String(u.planned - u.onTime));
+                return <Row key={u.userId} widths={widths} cells={cells} zebra={i % 2 === 1} />;
+              })}
             </View>
-            <Head widths={UW} labels={["User", "Role", "Planned", "Work Done", "Not Done", "Done On Time", "Done Not On Time", "SLA Breached", "Avg Delay", "% Not Done", "% On Time", "% Not On Time", "Avg TAT"]} />
-            {d.users.filter(r => r.userId !== "unassigned").map(r => <Cells key={r.userId} widths={UW} style={S.tr} cells={[r.name, r.role || "—", fmtNum(r.planned), fmtNum(r.done), fmtNum(r.notDone), fmtNum(r.onTime), fmtNum(r.late), fmtNum(r.breached), fmtDuration(r.avgDelayMinutes), fmtPct(r.notDonePct), fmtPct(r.onTimePct), fmtPct(r.latePct), fmtDuration(r.avgTatMinutes)]} />)}
-            <Cells widths={UW} style={S.trTotal} bold cells={["Average per user", "", fmtNum(d.userAverage.avgPlanned), fmtNum(d.userAverage.avgDone), fmtNum(d.userAverage.avgNotDone), fmtNum(d.userAverage.avgOnTime), fmtNum(d.userAverage.avgLate), fmtNum(d.userAverage.avgBreached), fmtDuration(d.userAverage.avgDelayMinutes), fmtPct(d.userAverage.weightedNotDonePct), fmtPct(d.userAverage.weightedOnTimePct), fmtPct(d.userAverage.weightedLatePct), fmtDuration(d.userAverage.avgTatMinutes)]} />
-            {d.users.some(r => r.userId === "unassigned") && (
-              <View>
-                <View style={[S.tr, { backgroundColor: HEAD }]} wrap={false}><Text style={[S.td, { fontSize: 7, color: GRAY, fontFamily: "Helvetica-Bold" }]}>UNASSIGNED — stages assigned to a role only (not part of the averages above)</Text></View>
-                {d.users.filter(r => r.userId === "unassigned").map(r => <Cells key={r.userId} widths={UW} style={S.tr} cells={[r.name, r.role || "—", fmtNum(r.planned), fmtNum(r.done), fmtNum(r.notDone), fmtNum(r.onTime), fmtNum(r.late), fmtNum(r.breached), fmtDuration(r.avgDelayMinutes), fmtPct(r.notDonePct), fmtPct(r.onTimePct), fmtPct(r.latePct), fmtDuration(r.avgTatMinutes)]} />)}
-              </View>
-            )}
-          </View>
-
-          <View style={S.notes} wrap={false}>
-            <Text style={S.notesTitle}>NOTES · HOW TO READ THIS REPORT</Text>
-            <Text style={S.notesText}>
-              Planned = approval stages (Work Order / Bill Request workflows) whose SLA due time falls in the {unit.toLowerCase()}; only stages already due are counted against the plan.
-              Work Done = those stages that were completed; Not Done = Planned − Work Done. On Time = completed within the SLA; Late = completed after the due time;
-              SLA Breached = Late + still open past the due time. Completion % = Work Done ÷ Planned. Difference = Planned − Work Done.
-              MIS (Gap) = (Work Done − Planned) ÷ Planned — a minus sign means behind plan, a plus sign ahead.
-              A week belongs to the month its Monday falls in. Dates are IST. Admin and DRI 1 accounts are left out; stages assigned to a role only appear as Unassigned.
-            </Text>
-          </View>
-        </View>
+          );
+        })}
 
         <View style={S.footer} fixed>
-          <Text>Neoteric Properties · Confidential — for internal use only</Text>
-          <Text>Generated {gen} by {preparedBy}</Text>
+          <Text>Generated: {gen}</Text>
           <Text render={({ pageNumber, totalPages }) => `Page ${pageNumber} of ${totalPages}`} />
         </View>
       </Page>
@@ -206,7 +122,7 @@ export async function downloadMisReportPdf(d: Performance, preparedBy: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `mis-${d.meta.groupBy}ly-report-${d.meta.from}-to-${d.meta.to}.pdf`;
+  a.download = `vms-sla-mis-report-${d.meta.from}-to-${d.meta.to}.pdf`;
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
