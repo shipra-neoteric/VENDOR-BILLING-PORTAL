@@ -1174,7 +1174,7 @@ function WOFormFields({
 }: {
   values: WOFormValues;
   onChange: (patch: Partial<WOFormValues>) => void;
-  errors?: Partial<Record<"projectId" | "issueDate" | "vendorCode" | "description" | "companyId", string>>;
+  errors?: Partial<Record<"projectId" | "issueDate" | "vendorCode" | "description" | "companyId" | "assignedDRI", string>>;
   isEdit?: boolean;
   nextWONo: string;
   nextCWONo: string;
@@ -1442,12 +1442,13 @@ function WOFormFields({
       {(isProfessionalServices ? agmGmList : driList).length > 0 && (
         <div className="mt-4">
           <MultiSelect
-            label={isProfessionalServices ? "Assign" : "Assign DRI (Site Engineer)"}
-            placeholder={isProfessionalServices ? "Select AGM/GM to assign (optional)" : "Select DRI(s) to assign (optional)"}
+            label={isProfessionalServices ? "Assign" : "Assign DRI (Site Engineer) *"}
+            placeholder={isProfessionalServices ? "Select AGM/GM to assign (optional)" : "Select DRI(s) to assign (required)"}
             values={values.assignedDRI}
             onChange={v => onChange({ assignedDRI: v })}
             options={(isProfessionalServices ? agmGmList : driList).map(d => ({ label: `${d.name} (${d.email})`, value: d._id }))}
           />
+          {!isProfessionalServices && errors?.assignedDRI && <span className="block text-xs text-red-500 mt-1">{errors.assignedDRI}</span>}
         </div>
       )}
 
@@ -1670,8 +1671,8 @@ export default function WorkItems() {
 
   const [createValues, setCreateValues] = useState<WOFormValues>(blankWOForm());
   const [editValues,   setEditValues]   = useState<WOFormValues>(blankWOForm());
-  const createErrors = useFormErrors<"projectId" | "issueDate" | "vendorCode" | "description" | "companyId">();
-  const editErrors   = useFormErrors<"projectId" | "issueDate" | "vendorCode" | "description" | "companyId">();
+  const createErrors = useFormErrors<"projectId" | "issueDate" | "vendorCode" | "description" | "companyId" | "assignedDRI">();
+  const editErrors   = useFormErrors<"projectId" | "issueDate" | "vendorCode" | "description" | "companyId" | "assignedDRI">();
 
   const patchCreate = (patch: Partial<WOFormValues>) => setCreateValues(prev => ({ ...prev, ...patch }));
   const patchEdit    = (patch: Partial<WOFormValues>) => setEditValues(prev => ({ ...prev, ...patch }));
@@ -2084,15 +2085,9 @@ export default function WorkItems() {
     return `CWO-${String(max + 1).padStart(4, "0")}`;
   }, [workOrders]);
 
-  // Default DRI for new work orders — always pre-select dri1@neotericgrp.in
-  const defaultDRIIds = useMemo(
-    () => driList.filter(d => d.email === 'dri1@neotericgrp.in').map(d => d._id),
-    [driList]
-  );
-
   // ── Handlers ─────────────────────────────────────────────────
 
-  function validateWOForm(values: WOFormValues, errs: ReturnType<typeof useFormErrors<"projectId" | "issueDate" | "vendorCode" | "description" | "companyId">>): boolean {
+  function validateWOForm(values: WOFormValues, errs: ReturnType<typeof useFormErrors<"projectId" | "issueDate" | "vendorCode" | "description" | "companyId" | "assignedDRI">>): boolean {
     errs.clearAll();
     let ok = true;
     if (!values.projectId) { errs.setError("projectId", "Select a project"); ok = false; }
@@ -2100,6 +2095,8 @@ export default function WorkItems() {
     if (!values.vendorCode && !values.noVendorYet) { errs.setError("vendorCode", values.contractType === "professional-services" ? "Select a consultant" : "Select a vendor"); ok = false; }
     if (!values.description?.trim()) { errs.setError("description", "Required — this is printed as the Work Title / Scope on the WO PDF"); ok = false; }
     if (!values.companyId) { errs.setError("companyId", "Select the issuing company"); ok = false; }
+    // a DRI (site engineer) must be assigned on execution work orders, otherwise nobody can log progress on it
+    if (values.contractType !== "professional-services" && driList.length > 0 && !(values.assignedDRI || []).length) { errs.setError("assignedDRI", "Assign at least one DRI (site engineer)"); ok = false; }
     return ok;
   }
 
@@ -2503,7 +2500,7 @@ export default function WorkItems() {
                 setCreateValues({
                   ...blankWOForm(),
                   status: "draft",
-                  assignedDRI: defaultDRIIds,
+                  assignedDRI: [], // no default DRI — the creator must pick one
                   // Default to whichever type the list is currently filtered to
                   // (e.g. clicking "New" while viewing Consultancy Orders).
                   contractType: contractTypeFilter === "professional-services" ? "professional-services" : "execution",

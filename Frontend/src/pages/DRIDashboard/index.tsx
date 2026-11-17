@@ -35,7 +35,7 @@ import MeasurementInput, {
 } from "./MeasurementRows";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
-interface DRIUser { _id: string; name: string; email: string; }
+interface DRIUser { _id: string; name: string; email: string; isActive?: boolean; }
 
 interface WORow {
   _id: string;
@@ -825,7 +825,8 @@ export default function DRIDashboard() {
       pendingBills: bills.filter(b => b.status === "pending").length,
       approvedBills: bills.filter(b => b.status === "approved").length,
     };
-  }), [allDRIs, allWOs, allBills]);
+    // an inactive DRI with no work order assigned has nothing to show, so leave them out of the list
+  }).filter(r => r.dri.isActive !== false || r.total > 0), [allDRIs, allWOs, allBills]);
 
   // ── Navigation helpers ────────────────────────────────────────────────────────
   const selectDRI = (dri: DRIUser) => {
@@ -883,7 +884,7 @@ export default function DRIDashboard() {
         <Header />
 
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 sm:gap-4 mb-6">
-          <KPICard label="Total DRIs" value={allDRIs.length} icon={Users} accent="var(--theme-primary)" />
+          <KPICard label="Total DRIs" value={driStats.length} icon={Users} accent="var(--theme-primary)" />
           <KPICard label="Total Work Orders" value={allWOs.length} icon={Briefcase} accent="var(--theme-primary)" />
           <KPICard label="In Progress" value={totalActive} icon={Activity} accent="#3B82F6" />
           <KPICard label="Completed" value={totalCompleted} icon={CheckCircle2} accent="#10B981" />
@@ -898,7 +899,7 @@ export default function DRIDashboard() {
           </div>
 
 
-          {allDRIs.length === 0 ? (
+          {driStats.length === 0 ? (
             <EmptyState icon={Users} title="No DRI users found." />
           ) : (
             <Table className="min-w-[1080px]">
