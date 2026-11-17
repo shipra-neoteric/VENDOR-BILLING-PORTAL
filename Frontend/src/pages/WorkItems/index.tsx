@@ -1170,7 +1170,7 @@ function WOFormFields({
   values, onChange, errors, isEdit = false, nextWONo, nextCWONo,
   contractorsList, consultantsList, projectsList, categoriesList, companiesList = [],
   driList = [], agmGmList = [], preparedByName, preparedByContact, onExtracted,
-  onDocsUploadingChange,
+  onDocsUploadingChange, onGstChange,
 }: {
   values: WOFormValues;
   onChange: (patch: Partial<WOFormValues>) => void;
@@ -1194,6 +1194,7 @@ function WOFormFields({
   // Lets the parent (Save button) know a document upload is in flight, so it
   // can't be saved mid-upload — see DocumentsUpload's own onUploadingChange.
   onDocsUploadingChange?: (uploading: boolean) => void;
+  onGstChange?: (gst: number) => void;
 }) {
   const [extracting, setExtracting] = useState(false);
   const [extractNote, setExtractNote] = useState("");
@@ -1415,7 +1416,7 @@ function WOFormFields({
       <div className={`grid grid-cols-1 ${isProfessionalServices ? "" : "sm:grid-cols-2"} gap-4 mt-4`}>
         <div>
           <span className="block text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wide mb-1.5">GST Slab</span>
-          <GstSelect value={values.gstPercent} onChange={v => onChange({ gstPercent: v })} />
+          <GstSelect value={values.gstPercent} onChange={v => { onChange({ gstPercent: v }); onGstChange?.(v); }} />
         </div>
         {/* No retention/hold for a professional-services engagement — there's
             no defect-liability-period measurement concept to hold security
@@ -3006,6 +3007,7 @@ export default function WorkItems() {
               preparedByContact={user?.email}
               onExtracted={applyAiExtraction}
               onDocsUploadingChange={setCreateDocsUploading}
+              onGstChange={g => setCreateScopeItems(items => items.map(i => ({ ...i, gstPercent: g })))}
             />
           </FormSection>
           <FormSection title="Work Items">
@@ -3072,6 +3074,7 @@ export default function WorkItems() {
               preparedByName={currentEditWO?.preparedByName}
               preparedByContact={currentEditWO?.preparedByContact}
               onDocsUploadingChange={setEditDocsUploading}
+              onGstChange={g => setEditScopeItems(items => items.map(i => ({ ...i, gstPercent: g })))}
             />
           </FormSection>
           <FormSection title="Work Items">
