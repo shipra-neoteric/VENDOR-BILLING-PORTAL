@@ -1,4 +1,4 @@
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import type { ReactNode, MouseEvent } from "react";
 import { Link2, Lock, Pencil, ChevronsDown, ChevronsUp } from "lucide-react";
 import toast from "react-hot-toast";
@@ -149,6 +149,19 @@ export default function WorkOrderDetailView({
   const wo = workOrder;
   const isProfessionalServices = wo.contractType === "professional-services";
   const contractVal = wo.contractValue ?? 0;
+
+  // Right after a create / update / approve the API can hand back assignedDRI as bare ids (not populated) —
+  // look the names up once so the "Assigned DRI" row never shows a raw id.
+  const hasDriIds = (wo.assignedDRI ?? []).some(d => typeof d === "string");
+  const [driNames, setDriNames] = useState<Record<string, string>>({});
+  useEffect(() => {
+    if (!hasDriIds) return;
+    let live = true;
+    apiClient.get("/auth/users")
+      .then(r => { if (live) setDriNames(Object.fromEntries((r.data.users ?? []).map((u: { _id: string; name: string }) => [String(u._id), u.name]))); })
+      .catch(() => {});
+    return () => { live = false; };
+  }, [hasDriIds]);
 
   // Derived, display-only — no stored contract-period field exists on
   // WorkOrder, so this is the earliest/latest planned date across scope
@@ -314,7 +327,7 @@ export default function WorkOrderDetailView({
             {
               label: "Assigned DRI",
               value: (wo.assignedDRI ?? []).length > 0
-                ? (wo.assignedDRI ?? []).map(d => (typeof d === "string" ? d : d.name)).join(", ")
+                ? (wo.assignedDRI ?? []).map(d => (typeof d === "string" ? (driNames[d] || "…") : d.name)).join(", ")
                 : undefined,
             },
             { label: isProfessionalServices ? "Principal" : "Owner", value: wo.ownerName },

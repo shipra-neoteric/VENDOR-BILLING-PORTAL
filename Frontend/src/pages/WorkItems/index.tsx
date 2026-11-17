@@ -956,7 +956,7 @@ function ScopeItemsBuilder({ items, onChange, allCategories = [], topCatId = nul
             <span className="font-mono font-bold text-gray-600 dark:text-gray-300 text-sm">{total > 0 ? fmt(total) : "—"}</span>
           </div>
           <div className="flex justify-between items-center mt-2.5">
-            <span className="font-semibold text-gray-600 dark:text-gray-300">GST (per work item, see above)</span>
+            <span className="font-semibold text-gray-600 dark:text-gray-300">GST</span>
             <span className="font-mono text-gray-600 dark:text-gray-300 text-[13px]">{total > 0 ? fmt(totalInclGst - total) : "—"}</span>
           </div>
           <div className="flex justify-between items-center mt-2.5 pt-2.5 border-t border-primary/20">
