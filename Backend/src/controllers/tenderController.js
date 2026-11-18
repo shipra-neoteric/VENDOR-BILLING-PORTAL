@@ -58,11 +58,6 @@ exports.submitTender = asyncHandler(async (req, res) => {
   if (await hasExistingBill(workOrderId)) {
     return badRequest(res, 'A bill has already been raised against this work order — tenders are closed');
   }
-  // The same contractor re-submitting while their earlier tender is still
-  // pending just creates duplicate cards to compare.
-  if (await ContractorTender.exists({ workOrderId, contractorMobile: String(contractorMobile).trim(), status: 'submitted' })) {
-    return badRequest(res, 'You have already submitted a tender for this work order. Please contact us if you need to change it.');
-  }
 
   const items = quotedItems.map(i => ({
     scopeItemId: i.scopeItemId || null,
