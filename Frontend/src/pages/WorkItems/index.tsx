@@ -1398,7 +1398,7 @@ function WOFormFields({
                 checked={values.noVendorYet}
                 onChange={e => onChange({ noVendorYet: e.target.checked, ...(e.target.checked ? { vendorCode: "", vendorName: "", ownerName: "", mobile: "" } : {}) })}
               />
-              No vendor yet — select later via Quotation Comparison
+              No vendor yet — select later via Tender Documentation
             </label>
           )}
         </div>

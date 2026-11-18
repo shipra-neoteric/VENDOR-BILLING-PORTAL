@@ -63,7 +63,7 @@ const FORMS: PublicFormDef[] = [
   {
     key: "quotation",
     name: "Contractor Quotation",
-    description: "Lets a contractor submit a competing quote against one specific draft work order — no login required. Each link is scoped to a single work order; generate one from Quotation Comparison.",
+    description: "Lets a contractor submit a competing quote against one specific draft work order — no login required. Each link is scoped to a single work order; generate one from Tender Documentation.",
     path: "/quotation-comparison",
     icon: GitCompare,
     color: "#7c3aed",
@@ -123,7 +123,7 @@ export default function PublicForms() {
               {f.perRecord ? (
                 <NxBtn
                   color="primary"
-                  label="Go to Quotation Comparison"
+                  label="Go to Tender Documentation"
                   icon={ExternalLink}
                   className="w-full"
                   style={{ backgroundColor: f.color }}

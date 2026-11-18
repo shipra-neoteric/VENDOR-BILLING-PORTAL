@@ -616,7 +616,7 @@ export default function QuotationComparison() {
   return (
     <div>
       <PageHeader
-        title="Quotation Comparison"
+        title="Tender Documentation"
         subtitle="Compare contractor quotes against draft work orders before rates are locked in"
         icon={Diff}
       />
