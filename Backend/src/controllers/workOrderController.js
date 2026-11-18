@@ -446,7 +446,7 @@ exports.createWorkOrder = asyncHandler(async (req, res) => {
   // Professional-services WOs resolve their party against Consultant instead
   // of Contractor — vendorCode doubles as the lookup key into either
   // collection (CN-/VC- prefixes never collide). A blank vendorCode is the
-  // "No vendor yet — select later via Quotation Comparison" path (see
+  // "No vendor yet — select later via Tender Documentation" path (see
   // WorkItems/index.tsx) — no party to look up yet, so this skips straight
   // past the lookup instead of 404ing on an empty code.
   const isProfessionalServices = req.body.contractType === 'professional-services';

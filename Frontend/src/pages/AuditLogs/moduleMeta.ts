@@ -26,7 +26,7 @@ export const AUDIT_MODULES: ModuleMeta[] = [
   { key: "categories", label: "Categories", icon: Tags, subtitle: "Category master data" },
   { key: "vendor-groups", label: "Vendor Groups", icon: Network, subtitle: "Vendor grouping" },
   { key: "work-orders", label: "Work Orders", icon: FileText, subtitle: "Work order lifecycle and approvals" },
-  { key: "quotations", label: "Quotations", icon: GitCompare, subtitle: "Contractor quotation approvals" },
+  { key: "quotations", label: "Tenders", icon: GitCompare, subtitle: "Contractor tender approvals" },
   { key: "bill-requests", label: "Bill Requests", icon: FileSearch, subtitle: "Bill request approval chain" },
   { key: "accounts-payment", label: "Accounts Payment", icon: Wallet, subtitle: "Bill verification, approval, payment" },
   { key: "drawing-requests", label: "Drawing Requests", icon: PenLine, subtitle: "Drawing request review chain" },

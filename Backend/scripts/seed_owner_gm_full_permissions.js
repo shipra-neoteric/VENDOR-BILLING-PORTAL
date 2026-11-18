@@ -17,7 +17,7 @@ const MODULE_DEFS = [
   { id: 'contractors', actions: ['view', 'create', 'edit', 'delete'] },
   { id: 'vendor-groups', actions: ['view', 'create', 'edit'] },
   { id: 'work-orders', actions: ['view', 'create', 'edit', 'delete', 'maker', 'checker', 'approver', 'ceo-approve', 'send-back'] },
-  { id: 'quotation-comparison', actions: ['view', 'create', 'approve'] },
+  { id: 'tender-documentation', actions: ['view', 'create', 'approve'] },
   { id: 'work-progress', actions: ['view', 'create', 'edit', 'delete'] },
   { id: 'daily-progress-report', actions: ['view', 'create'] },
   { id: 'drawing-requests', actions: ['view', 'create', 'edit', 'delete', 'l1-review', 'l2-draw', 'l3-review', 'l4-approve'] },

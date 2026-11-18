@@ -15,7 +15,7 @@ const quotedItemSchema = new mongoose.Schema(
   { _id: true }
 );
 
-const contractorQuotationSchema = new mongoose.Schema(
+const contractorTenderSchema = new mongoose.Schema(
   {
     quotationNo: { type: String, required: true, unique: true },
     workOrderId: { type: mongoose.Schema.Types.ObjectId, ref: 'WorkOrder', required: true },
@@ -46,6 +46,7 @@ const contractorQuotationSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-contractorQuotationSchema.index({ workOrderId: 1, createdAt: -1 });
+contractorTenderSchema.index({ workOrderId: 1, createdAt: -1 });
 
-module.exports = mongoose.model('ContractorQuotation', contractorQuotationSchema);
+// Collection name pinned to the original so existing tender records are untouched by the model rename.
+module.exports = mongoose.model('ContractorTender', contractorTenderSchema, 'contractorquotations');

@@ -62,8 +62,8 @@ interface ScopeItemContext {
 
 // A vendor's own extra line item, not tied to any of the work order's
 // pre-listed scope items — has no scopeItemId, so it flows through
-// approveQuotation's existing "append as a new scope item" branch instead of
-// being matched onto one (see Backend/src/controllers/contractorQuotationController.js).
+// approveTender's existing "append as a new scope item" branch instead of
+// being matched onto one (see Backend/src/controllers/tenderController.js).
 interface CustomItem {
   key: string;
   description: string;
@@ -118,7 +118,7 @@ function NewQuotationModal({
   useEffect(() => {
     setCustomItems([]);
     setExcludedIds(new Set());
-    apiClient.get(`/quotations/work-order/${workOrder._id}/context`)
+    apiClient.get(`/tenders/work-order/${workOrder._id}/context`)
       .then(res => setScopeItems(res.data.workOrder.scopeItems || []))
       .catch(() => {})
       .finally(() => setLoadingCtx(false));
@@ -150,7 +150,7 @@ function NewQuotationModal({
 
     setSubmitting(true);
     try {
-      await apiClient.post(`/quotations/work-order/${workOrder._id}`, {
+      await apiClient.post(`/tenders/work-order/${workOrder._id}`, {
         vendorCode, contractorName, contractorMobile, contractorEmail, remarks, quotedItems,
       });
       toast.success("Tender submitted");
@@ -482,7 +482,7 @@ function CompareQuotationsInline({
 
   function load() {
     setLoading(true);
-    apiClient.get(`/quotations/work-order/${workOrder._id}`)
+    apiClient.get(`/tenders/work-order/${workOrder._id}`)
       .then(res => setQuotations(res.data.quotations || []))
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -495,10 +495,10 @@ function CompareQuotationsInline({
     setActing(true);
     try {
       if (confirm.action === "approve") {
-        await apiClient.patch(`/quotations/${confirm.quotation._id}/approve`);
+        await apiClient.patch(`/tenders/${confirm.quotation._id}/approve`);
         toast.success("Tender approved — the work order's rates have been updated");
       } else {
-        await apiClient.patch(`/quotations/${confirm.quotation._id}/reject`);
+        await apiClient.patch(`/tenders/${confirm.quotation._id}/reject`);
         toast.success("Tender rejected");
       }
       setConfirm(null);
@@ -558,7 +558,7 @@ function CompareQuotationsInline({
 
 // ── Main page ──
 
-export default function QuotationComparison() {
+export default function TenderDocumentation() {
   const [workOrders, setWorkOrders] = useState<DraftWorkOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -568,7 +568,7 @@ export default function QuotationComparison() {
 
   function load() {
     setLoading(true);
-    apiClient.get("/quotations/draft-work-orders")
+    apiClient.get("/tenders/draft-work-orders")
       .then(res => setWorkOrders(res.data.workOrders || []))
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -607,7 +607,7 @@ export default function QuotationComparison() {
   }, [workOrders, search, category]);
 
   function copyPublicLink(workOrderId: string) {
-    const url = `${window.location.origin}/public/quotation/${workOrderId}`;
+    const url = `${window.location.origin}/public/tender/${workOrderId}`;
     navigator.clipboard.writeText(url)
       .then(() => toast.success("Public tender link copied"))
       .catch(() => toast.error("Couldn't copy — copy it manually"));

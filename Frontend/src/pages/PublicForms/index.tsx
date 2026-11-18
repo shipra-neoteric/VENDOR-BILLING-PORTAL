@@ -64,7 +64,7 @@ const FORMS: PublicFormDef[] = [
     key: "quotation",
     name: "Contractor Tender",
     description: "Lets a contractor submit a competing quote against one specific draft work order — no login required. Each link is scoped to a single work order; generate one from Tender Documentation.",
-    path: "/quotation-comparison",
+    path: "/tender-documentation",
     icon: GitCompare,
     color: "#7c3aed",
     perRecord: true,
@@ -116,7 +116,7 @@ export default function PublicForms() {
               <div className="flex items-center gap-2 bg-gray-50 dark:bg-gray-800/40 border border-dashed border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2.5 mb-4">
                 <Link2 className="w-3.5 h-3.5 text-gray-400 shrink-0" />
                 <span className="font-mono text-xs text-gray-500 dark:text-gray-400 overflow-hidden text-ellipsis whitespace-nowrap flex-1 min-w-0">
-                  {f.perRecord ? `${origin}/public/quotation/<work order id>` : `${origin}${f.path}`}
+                  {f.perRecord ? `${origin}/public/tender/<work order id>` : `${origin}${f.path}`}
                 </span>
               </div>
 

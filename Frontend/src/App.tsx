@@ -8,7 +8,7 @@ import PublicContractorForm from "./pages/PublicContractorForm";
 import PublicConsultantForm from "./pages/PublicConsultantForm";
 import PublicDailyProgressReportForm from "./pages/PublicDailyProgressReportForm";
 import PublicDrawingRequestForm from "./pages/PublicDrawingRequestForm";
-import PublicQuotationForm from "./pages/PublicQuotationForm";
+import PublicTenderForm from "./pages/PublicTenderForm";
 import { AuthProvider } from "./context/AuthContext";
 import { ThemeProvider, useTheme } from "./context/ThemeContext";
 import baseTheme from "./theme/theme";
@@ -54,12 +54,12 @@ function ThemedApp() {
     );
   }
 
-  // Per-work-order-scoped link (/public/quotation/<workOrderId>) and the
+  // Per-work-order-scoped link (/public/tender/<workOrderId>) and the
   // Daily Progress Report form — built entirely with the new
   // Frontend/src/ui/ component library, so they render standalone rather
   // than joining the antd ConfigProvider the other public forms below still need.
-  if (pathname.startsWith("/public/quotation/")) {
-    return <PublicQuotationForm />;
+  if (pathname.startsWith("/public/tender/") || pathname.startsWith("/public/quotation/")) {
+    return <PublicTenderForm />;
   }
 
   if (pathname === "/public/daily-progress-report") {

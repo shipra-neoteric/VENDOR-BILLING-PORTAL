@@ -88,7 +88,7 @@ exports.createPublicReport = asyncHandler(async (req, res) => {
 // Slack fetches image_url with no custom auth headers at all, so this has to be
 // reachable without a token. The report's Mongo ObjectId is the access control
 // (unguessable, never listed anywhere) — the same pattern this app already uses
-// for its public quotation-comparison links.
+// for its public tender-documentation links.
 exports.getReportImage = asyncHandler(async (req, res) => {
   const report = await DailyProgressReport.findById(req.params.id).select('workEntries');
   if (!report) return notFound(res, 'Report not found');

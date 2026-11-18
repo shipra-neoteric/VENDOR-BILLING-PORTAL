@@ -17,7 +17,7 @@ const { createPublicReport: createLegacyProjectReport } = require('../controller
 const { createPublicReport: createLegacyLabourReport } = require('../controllers/dailyLabourReportController');
 const { createPublicReport: createProgressReport, getReportImage } = require('../controllers/dailyProgressReportController');
 const { createPublicRequest: createDrawingRequest } = require('../controllers/drawingRequestController');
-const { getWorkOrderQuotationContext, submitQuotation } = require('../controllers/contractorQuotationController');
+const { getWorkOrderTenderContext, submitTender } = require('../controllers/tenderController');
 const { signUpload } = require('../utils/cloudinary');
 const { extractIdDocument } = require('../utils/ocrIdDocument');
 
@@ -83,7 +83,7 @@ router.post('/uploads/sign', (_req, res) => {
 
 // ── Serve one Daily Progress Report photo (no auth) — Slack's image_url
 // fetch carries no auth of its own; the report's ObjectId is the access
-// control, same pattern as the quotation-comparison links below. ──
+// control, same pattern as the tender-documentation links below. ──
 router.get('/daily-progress-reports/:id/images/:index', getReportImage);
 
 // ── Submit new work order (no auth) ────────────────────────────
@@ -158,12 +158,14 @@ router.post('/drawing-requests', createDrawingRequest);
 router.post('/legacy-daily-project-reports', createLegacyProjectReport);
 router.post('/legacy-daily-labour-reports', createLegacyLabourReport);
 
-// ── Quotation Comparison — per-work-order-scoped public link (no auth) ──
+// ── Tender Documentation — per-work-order-scoped public link (no auth) ──
 // Unlike every other public route above, this one is scoped to a single
 // record (the WorkOrder's own _id in the URL) rather than a generic,
 // unscoped creation endpoint — the link itself is the access control.
-router.get('/quotations/work-order/:workOrderId/context', getWorkOrderQuotationContext);
-router.post('/quotations/work-order/:workOrderId', submitQuotation);
+router.get('/tenders/work-order/:workOrderId/context', getWorkOrderTenderContext);
+router.get('/quotations/work-order/:workOrderId/context', getWorkOrderTenderContext);
+router.post('/tenders/work-order/:workOrderId', submitTender);
+router.post('/quotations/work-order/:workOrderId', submitTender);
 
 // ── PAN / Aadhaar auto-fill (no auth) — each call costs a Gemini request, so
 // it gets its own much tighter cap on top of the router-wide one, and only

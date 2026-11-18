@@ -19,7 +19,7 @@ const VendorGroups      = lazy(() => import("../pages/VendorGroups"));
 const Companies         = lazy(() => import("../features/companies"));
 const Categories        = lazy(() => import("../features/categories"));
 const WorkItems         = lazy(() => import("../features/work-items"));
-const QuotationComparison = lazy(() => import("../pages/QuotationComparison"));
+const TenderDocumentation = lazy(() => import("../pages/TenderDocumentation"));
 const WorkProgress      = lazy(() => import("../features/work-progress"));
 const AccountsPayment   = lazy(() => import("../pages/AccountsPayment"));
 const Billing           = lazy(() => import("../pages/Billing"));
@@ -187,8 +187,9 @@ function AdminRoutes() {
             <Route element={<RequireModule moduleId="work-orders" />}>
               <Route path="/work-items/:id"   element={<WorkOrderDashboard />} />
             </Route>
-            <Route element={<RequireModule moduleId="quotation-comparison" />}>
-              <Route path="/quotation-comparison" element={<QuotationComparison />} />
+            <Route element={<RequireModule moduleId="tender-documentation" />}>
+              <Route path="/tender-documentation" element={<TenderDocumentation />} />
+              <Route path="/quotation-comparison" element={<Navigate to="/tender-documentation" replace />} />
             </Route>
             <Route element={<RequireModule moduleId="work-progress" />}>
               <Route path="/work-progress"    element={<WorkProgress />} />

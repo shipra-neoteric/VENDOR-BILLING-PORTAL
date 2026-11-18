@@ -1,17 +1,17 @@
 const asyncHandler = require('../utils/asyncHandler');
 const { success, created, notFound, badRequest } = require('../utils/responseFormatter');
-const ContractorQuotation = require('../models/ContractorQuotation');
+const ContractorTender = require('../models/ContractorTender');
 const WorkOrder  = require('../models/WorkOrder');
 const Contractor = require('../models/Contractor');
 const RunningBill = require('../models/RunningBill');
-const { nextQuotationNo } = require('../utils/codeGen');
+const { nextTenderNo } = require('../utils/codeGen');
 const { logAudit } = require('../utils/auditLog');
 
 function computeTotal(items) {
   return items.reduce((sum, i) => sum + (Number(i.plannedQty) || 0) * (Number(i.rate) || 0), 0);
 }
 
-// Quotation Comparison's real cutoff — a WO's rate can still be discovered/
+// Tender Documentation's real cutoff — a WO's rate can still be discovered/
 // changed via a quotation for as long as no bill has actually been raised
 // against it yet, regardless of isLocked (isLocked flips the moment the WO's
 // OWN approval chain finishes, which routinely happens well before any
@@ -24,7 +24,7 @@ async function hasExistingBill(workOrderId) {
 // (/api/public/quotations/work-order/:workOrderId) routes — a quote can be
 // entered internally on a contractor's behalf just as easily as submitted by
 // the contractor themselves via the public link.
-exports.submitQuotation = asyncHandler(async (req, res) => {
+exports.submitTender = asyncHandler(async (req, res) => {
   const { workOrderId } = req.params;
   const { vendorCode, contractorName, contractorMobile, contractorEmail, quotedItems, remarks } = req.body;
 
@@ -35,13 +35,13 @@ exports.submitQuotation = asyncHandler(async (req, res) => {
     return badRequest(res, 'Enter a valid 10-digit mobile number');
   }
   if (!Array.isArray(quotedItems) || quotedItems.length === 0) {
-    return badRequest(res, 'At least one quoted item is required');
+    return badRequest(res, 'At least one tendered item is required');
   }
 
   const workOrder = await WorkOrder.findById(workOrderId);
   if (!workOrder) return notFound(res, 'Work order not found');
   if (await hasExistingBill(workOrderId)) {
-    return badRequest(res, 'A bill has already been raised against this work order — quotations are closed');
+    return badRequest(res, 'A bill has already been raised against this work order — tenders are closed');
   }
 
   const items = quotedItems.map(i => ({
@@ -53,9 +53,9 @@ exports.submitQuotation = asyncHandler(async (req, res) => {
     amount:      (Number(i.plannedQty) || 0) * (Number(i.rate) || 0),
   }));
 
-  const quotationNo = await nextQuotationNo();
+  const quotationNo = await nextTenderNo();
 
-  const quotation = await ContractorQuotation.create({
+  const quotation = await ContractorTender.create({
     quotationNo,
     workOrderId,
     vendorCode:       vendorCode || '',
@@ -69,17 +69,17 @@ exports.submitQuotation = asyncHandler(async (req, res) => {
 
   await logAudit({
     action: 'CREATE', module: 'quotations', user: req.user,
-    description: `Quotation ${quotationNo} submitted by ${contractorName} for ${workOrder.workOrderNo} (₹${quotation.totalQuoted.toLocaleString('en-IN')})`,
-    entityType: 'ContractorQuotation', entityId: quotation._id, entityLabel: quotation.quotationNo,
+    description: `Tender ${quotationNo} submitted by ${contractorName} for ${workOrder.workOrderNo} (₹${quotation.totalQuoted.toLocaleString('en-IN')})`,
+    entityType: 'ContractorTender', entityId: quotation._id, entityLabel: quotation.quotationNo,
   });
 
-  created(res, { quotation }, `Quotation ${quotationNo} submitted successfully`);
+  created(res, { quotation }, `Tender ${quotationNo} submitted successfully`);
 });
 
 // Internal, authenticated — the read-only draft WO context also used to seed
 // the internal-entry Modal, plus the public form fetches this via the
 // unscoped public route below.
-exports.getWorkOrderQuotationContext = asyncHandler(async (req, res) => {
+exports.getWorkOrderTenderContext = asyncHandler(async (req, res) => {
   const workOrder = await WorkOrder.findById(req.params.workOrderId)
     .select('workOrderNo projectName vendorName description isLocked scopeItems.description scopeItems.unit scopeItems.plannedQty')
     .lean();
@@ -92,7 +92,7 @@ exports.getWorkOrderQuotationContext = asyncHandler(async (req, res) => {
       projectName: workOrder.projectName,
       description: workOrder.description || '',
       // isLocked kept for reference, but it's no longer what actually gates
-      // whether quotations are accepted (see submitQuotation/approveQuotation
+      // whether quotations are accepted (see submitTender/approveTender
       // above) — quotationsClosed reflects the real cutoff (a bill already
       // exists), so the public form's "closed" banner matches reality.
       isLocked: workOrder.isLocked,
@@ -104,8 +104,8 @@ exports.getWorkOrderQuotationContext = asyncHandler(async (req, res) => {
   });
 });
 
-exports.listQuotationsForWorkOrder = asyncHandler(async (req, res) => {
-  const quotations = await ContractorQuotation.find({ workOrderId: req.params.workOrderId })
+exports.listTendersForWorkOrder = asyncHandler(async (req, res) => {
+  const quotations = await ContractorTender.find({ workOrderId: req.params.workOrderId })
     .sort({ createdAt: -1 }).lean();
   success(res, { quotations });
 });
@@ -121,7 +121,7 @@ exports.listDraftWorkOrders = asyncHandler(async (req, res) => {
     .select('workOrderNo projectName vendorName contractValue createdAt category subCategory')
     .sort({ createdAt: -1 }).lean();
 
-  const counts = await ContractorQuotation.aggregate([
+  const counts = await ContractorTender.aggregate([
     { $match: { status: 'submitted' } },
     { $group: { _id: '$workOrderId', count: { $sum: 1 } } },
   ]);
@@ -139,15 +139,15 @@ exports.listDraftWorkOrders = asyncHandler(async (req, res) => {
 // already-approved/locked WO as long as no bill has been raised against it
 // yet — only bill-creation, not the WO's approval-lock, actually finalizes
 // its rate for billing purposes.
-exports.approveQuotation = asyncHandler(async (req, res) => {
-  const quotation = await ContractorQuotation.findById(req.params.id);
-  if (!quotation) return notFound(res, 'Quotation not found');
-  if (quotation.status !== 'submitted') return badRequest(res, 'Only a submitted quotation can be approved');
+exports.approveTender = asyncHandler(async (req, res) => {
+  const quotation = await ContractorTender.findById(req.params.id);
+  if (!quotation) return notFound(res, 'Tender not found');
+  if (quotation.status !== 'submitted') return badRequest(res, 'Only a submitted tender can be approved');
 
   const workOrder = await WorkOrder.findById(quotation.workOrderId);
   if (!workOrder) return notFound(res, 'Work order not found');
   if (await hasExistingBill(workOrder._id)) {
-    return badRequest(res, 'A bill has already been raised against this work order — its rates can no longer be changed via quotation');
+    return badRequest(res, 'A bill has already been raised against this work order — its rates can no longer be changed via tender');
   }
   // A quotation already approved for this WO is never auto-rejected by
   // approving a different one (only still-'submitted' quotations get
@@ -155,9 +155,9 @@ exports.approveQuotation = asyncHandler(async (req, res) => {
   // would silently overwrite the WO's rates with the newer contractor's
   // numbers while BOTH quotations keep showing "approved" in the UI, with no
   // way to tell which one's rates actually ended up live on the WO.
-  const alreadyApproved = await ContractorQuotation.exists({ workOrderId: workOrder._id, status: 'approved', _id: { $ne: quotation._id } });
+  const alreadyApproved = await ContractorTender.exists({ workOrderId: workOrder._id, status: 'approved', _id: { $ne: quotation._id } });
   if (alreadyApproved) {
-    return badRequest(res, 'Another quotation is already approved for this work order — reject it first before approving a different one');
+    return badRequest(res, 'Another tender is already approved for this work order — reject it first before approving a different one');
   }
 
   let vendorName = quotation.contractorName;
@@ -204,31 +204,31 @@ exports.approveQuotation = asyncHandler(async (req, res) => {
   quotation.approvedAt = new Date();
   await quotation.save();
 
-  await ContractorQuotation.updateMany(
+  await ContractorTender.updateMany(
     { workOrderId: workOrder._id, status: 'submitted', _id: { $ne: quotation._id } },
-    { status: 'rejected', rejectedBy: req.user._id, rejectedAt: new Date(), rejectReason: 'Another quotation was approved for this work order' }
+    { status: 'rejected', rejectedBy: req.user._id, rejectedAt: new Date(), rejectReason: 'Another tender was approved for this work order' }
   );
 
   await logAudit({
     action: 'APPROVE', module: 'quotations', user: req.user,
-    description: `Quotation ${quotation.quotationNo} approved and applied to work order ${workOrder.workOrderNo}`,
-    entityType: 'ContractorQuotation', entityId: quotation._id, entityLabel: quotation.quotationNo,
+    description: `Tender ${quotation.quotationNo} approved and applied to work order ${workOrder.workOrderNo}`,
+    entityType: 'ContractorTender', entityId: quotation._id, entityLabel: quotation.quotationNo,
   });
 
-  success(res, { quotation, workOrder }, 'Quotation approved and applied to the work order');
+  success(res, { quotation, workOrder }, 'Tender approved and applied to the work order');
 });
 
-exports.rejectQuotation = asyncHandler(async (req, res) => {
-  const quotation = await ContractorQuotation.findById(req.params.id);
-  if (!quotation) return notFound(res, 'Quotation not found');
+exports.rejectTender = asyncHandler(async (req, res) => {
+  const quotation = await ContractorTender.findById(req.params.id);
+  if (!quotation) return notFound(res, 'Tender not found');
   // Also allowed from 'approved' — lets someone undo a wrong approval (see
-  // approveQuotation's own guard against two simultaneously-approved
+  // approveTender's own guard against two simultaneously-approved
   // quotations for the same WO) without needing a separate "unapprove"
   // action; this does NOT revert the WO's scopeItems rates that approving it
-  // already applied — only a fresh approveQuotation on a different quotation
+  // already applied — only a fresh approveTender on a different quotation
   // (or a manual WO edit) changes those.
   if (quotation.status !== 'submitted' && quotation.status !== 'approved') {
-    return badRequest(res, 'Only a submitted or approved quotation can be rejected');
+    return badRequest(res, 'Only a submitted or approved tender can be rejected');
   }
 
   quotation.status       = 'rejected';
@@ -239,9 +239,9 @@ exports.rejectQuotation = asyncHandler(async (req, res) => {
 
   await logAudit({
     action: 'REJECT', module: 'quotations', user: req.user,
-    description: `Quotation ${quotation.quotationNo} rejected${quotation.rejectReason ? ` — ${quotation.rejectReason}` : ''}`,
-    entityType: 'ContractorQuotation', entityId: quotation._id, entityLabel: quotation.quotationNo,
+    description: `Tender ${quotation.quotationNo} rejected${quotation.rejectReason ? ` — ${quotation.rejectReason}` : ''}`,
+    entityType: 'ContractorTender', entityId: quotation._id, entityLabel: quotation.quotationNo,
   });
 
-  success(res, { quotation }, 'Quotation rejected');
+  success(res, { quotation }, 'Tender rejected');
 });

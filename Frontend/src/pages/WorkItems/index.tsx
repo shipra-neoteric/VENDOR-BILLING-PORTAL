@@ -1139,9 +1139,9 @@ interface WOFormValues {
   department: string;
   customDepartment: string;
   // Opts out of the vendor requirement at creation — the WO goes straight
-  // into Quotation Comparison's draft-WO list (any WO with no bill raised
+  // into Tender Documentation's draft-WO list (any WO with no bill raised
   // yet already shows up there) and gets a vendor once a quotation is
-  // approved (see contractorQuotationController.js's approveQuotation).
+  // approved (see tenderController.js's approveTender).
   noVendorYet: boolean;
   status: string;
   gstPercent: number;
@@ -2215,7 +2215,7 @@ export default function WorkItems() {
       customDepartment: wo.customDepartment || "",
       // A WO created with "No vendor yet" still has no vendorCode here — it
       // isn't meant to be forced on through this generic Edit form, only
-      // through Quotation Comparison's own approveQuotation. The checkbox
+      // through Tender Documentation's own approveTender. The checkbox
       // itself stays hidden on Edit either way (isEdit guards it below),
       // this just carries the same bypass through to validateWOForm.
       noVendorYet: !wo.vendorCode,

@@ -48,7 +48,7 @@ const ADMIN_GROUPS: NavGroup[] = [
     label: "Execution",
     items: [
       { name: "Work Orders", path: "/work-items", icon: <FileText className="w-4 h-4" />, moduleId: "work-orders" },
-      { name: "Tender Documentation", path: "/quotation-comparison", icon: <GitCompare className="w-4 h-4" />, moduleId: "quotation-comparison" },
+      { name: "Tender Documentation", path: "/tender-documentation", icon: <GitCompare className="w-4 h-4" />, moduleId: "tender-documentation" },
       { name: "Work Progress", path: "/work-progress", icon: <LineChart className="w-4 h-4" />, moduleId: "work-progress" },
       { name: "Daily Progress Report", path: "/daily-progress-report", icon: <CalendarClock className="w-4 h-4" />, moduleId: "daily-progress-report" },
       { name: "Drawing Requests", path: "/drawing-requests", icon: <PenLine className="w-4 h-4" />, moduleId: "drawing-requests" },

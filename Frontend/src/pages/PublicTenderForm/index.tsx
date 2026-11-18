@@ -42,8 +42,8 @@ const fmt = (n: number) => "₹" + (n || 0).toLocaleString("en-IN", { minimumFra
 
 // A contractor's own extra line item, not tied to any of the work order's
 // pre-listed scope items — has no scopeItemId, so it flows through
-// approveQuotation's existing "append as a new scope item" branch instead of
-// being matched onto one (see Backend/src/controllers/contractorQuotationController.js).
+// approveTender's existing "append as a new scope item" branch instead of
+// being matched onto one (see Backend/src/controllers/tenderController.js).
 interface CustomItem {
   key: string;
   description: string;
@@ -55,14 +55,29 @@ let _customItemKey = 0;
 const newCustomItem = (): CustomItem => ({ key: String(++_customItemKey), description: "", unit: "", plannedQty: "", rate: "" });
 
 function workOrderIdFromPath(): string {
-  // /public/quotation/:workOrderId — the first per-record-scoped public link
+  // /public/tender/:workOrderId — the first per-record-scoped public link
   // in this app; every other public form is a generic unscoped endpoint.
   const parts = window.location.pathname.split("/").filter(Boolean);
   return parts[parts.length - 1] || "";
 }
 
-export default function PublicQuotationForm() {
+export default function PublicTenderForm() {
   const workOrderId = workOrderIdFromPath();
+
+  // This page's surfaces are hard-coded light, but the shared ui/ components
+  // (Field, Table, ...) follow the saved app theme — in dark mode they render
+  // dark inputs and faint text on the white page. Force light while mounted.
+  useEffect(() => {
+    const root = document.documentElement;
+    const wasDark = root.classList.contains("dark");
+    const prevTheme = root.getAttribute("data-theme");
+    root.classList.remove("dark");
+    root.setAttribute("data-theme", "light");
+    return () => {
+      if (wasDark) root.classList.add("dark");
+      if (prevTheme) root.setAttribute("data-theme", prevTheme);
+    };
+  }, []);
 
   const [context, setContext] = useState<WorkOrderContext | null>(null);
   const [loading, setLoading] = useState(true);
@@ -83,7 +98,7 @@ export default function PublicQuotationForm() {
 
   useEffect(() => {
     if (!workOrderId) { setLoadError("No work order specified in this link."); setLoading(false); return; }
-    pub.get(`/quotations/work-order/${workOrderId}/context`)
+    pub.get(`/tenders/work-order/${workOrderId}/context`)
       .then(res => setContext(res.data.workOrder))
       .catch(err => setLoadError(err?.response?.data?.message || "Couldn't load this work order."))
       .finally(() => setLoading(false));
@@ -116,7 +131,7 @@ export default function PublicQuotationForm() {
 
     setSubmitting(true);
     try {
-      const res = await pub.post(`/quotations/work-order/${workOrderId}`, {
+      const res = await pub.post(`/tenders/work-order/${workOrderId}`, {
         vendorCode, contractorName, contractorMobile, contractorEmail, remarks, quotedItems,
       });
       setSubmitted({ quotationNo: res.data?.quotation?.quotationNo || "—" });

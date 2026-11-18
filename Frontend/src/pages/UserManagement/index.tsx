@@ -195,7 +195,7 @@ export const MODULE_DEFS: ModuleDef[] = [
   { id: "contractors",      name: "Contractors",        icon: "👷", group: "Execution",     actions: ["view","create","edit","delete"] },
   { id: "vendor-groups",    name: "Vendor Groups",      icon: "🔗", group: "Execution",     actions: ["view","create","edit"] },
   { id: "work-orders",      name: "Work Orders",        icon: "📋", group: "Execution",     actions: ["view","create","edit","delete","maker","checker","approver","ceo-approve","send-back"] },
-  { id: "quotation-comparison", name: "Tender Documentation", icon: "📑", group: "Execution", actions: ["view","create","approve"] },
+  { id: "tender-documentation", name: "Tender Documentation", icon: "📑", group: "Execution", actions: ["view","create","approve"] },
   { id: "work-progress",    name: "Work Progress",      icon: "📊", group: "Execution",     actions: ["view","create","edit","delete"] },
   { id: "daily-progress-report", name: "Daily Progress Report", icon: "📅", group: "Execution", actions: ["view","create"] },
   { id: "drawing-requests", name: "Drawing Requests",   icon: "✏️", group: "Execution",     actions: ["view","create","edit","delete","l1-review","l2-draw","l3-review","l4-approve"] },

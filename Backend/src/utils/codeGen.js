@@ -13,14 +13,14 @@ const nextBillNo      = () => nextCode('billNo', 'RA-', 4);
 // itself (not a new field) until the bill's last required manual sign-off
 // replaces it with a real nextBillNo() RA-number.
 const nextBillRequestReqNo = () => nextCode('billRequestReqNo', 'BR-', 4);
-const nextQuotationNo = () => nextCode('quotationNo', 'QT-', 4);
+const nextTenderNo = () => nextCode('quotationNo', 'TN-', 4); // counter key kept so numbering continues
 const nextConsultantCode     = () => nextCode('consultantCode', 'CN-', 4);
 const nextConsultancyOrderNo = () => nextCode('consultancyOrderNo', 'CWO-', 4);
 const nextVendorGroupCode    = () => nextCode('vendorGroupCode', 'VG-', 4);
 const nextDrawingRequestTicketNo = () => nextCode('drawingRequestTicketNo', 'DR-', 4);
 
 module.exports = {
-  nextVendorCode, nextProjectCode, nextWorkOrderNo, nextBillNo, nextQuotationNo,
+  nextVendorCode, nextProjectCode, nextWorkOrderNo, nextBillNo, nextTenderNo,
   nextConsultantCode, nextConsultancyOrderNo, nextVendorGroupCode, nextDrawingRequestTicketNo,
   nextBillRequestReqNo,
 };
