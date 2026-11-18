@@ -153,10 +153,10 @@ function NewQuotationModal({
       await apiClient.post(`/quotations/work-order/${workOrder._id}`, {
         vendorCode, contractorName, contractorMobile, contractorEmail, remarks, quotedItems,
       });
-      toast.success("Quotation submitted");
+      toast.success("Tender submitted");
       onSubmitted();
     } catch (err: any) {
-      toast.error(err?.response?.data?.message || "Couldn't submit the quotation");
+      toast.error(err?.response?.data?.message || "Couldn't submit the tender");
     } finally {
       setSubmitting(false);
     }
@@ -164,7 +164,7 @@ function NewQuotationModal({
 
   return (
     <Modal
-      title="New Quotation"
+      title="New Tender"
       subtitle={`${workOrder.workOrderNo} · ${workOrder.projectName}`}
       icon={Plus}
       onClose={onClose}
@@ -172,7 +172,7 @@ function NewQuotationModal({
       footer={
         <div className="flex justify-end gap-2">
           <Btn label="Cancel" outline onClick={onClose} disabled={submitting} />
-          <Btn label="Submit Quotation" color="primary" onClick={submit} loading={submitting} />
+          <Btn label="Submit Tender" color="primary" onClick={submit} loading={submitting} />
         </div>
       }
     >
@@ -189,7 +189,7 @@ function NewQuotationModal({
         </div>
 
         <div>
-          <div className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">Quote a rate per item</div>
+          <div className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">Tender a rate per item</div>
           {loadingCtx ? (
             <SkeletonTable rows={3} cols={4} />
           ) : (
@@ -236,7 +236,7 @@ function NewQuotationModal({
             <Btn small outline icon={Plus} label="Add Item" onClick={() => setCustomItems(items => [...items, newCustomItem()])} />
           </div>
           {customItems.length > 0 && (
-            // Styled to match the "Quote a rate per item" Table above (same
+            // Styled to match the "Tender a rate per item" Table above (same
             // border/rounded wrapper, gray header band, row dividers) — but
             // NOT the actual <Table> component, since its wrapper div is
             // overflow-x-auto, which clips the Unit dropdown's popup menu
@@ -274,10 +274,10 @@ function NewQuotationModal({
           )}
         </div>
 
-        <Field label="Remarks" textarea value={remarks} onChange={e => setRemarks(e.target.value)} placeholder="Optional notes about this quote" />
+        <Field label="Remarks" textarea value={remarks} onChange={e => setRemarks(e.target.value)} placeholder="Optional notes about this tender" />
 
         <div className="flex justify-end text-sm">
-          <span className="text-gray-500 dark:text-gray-400 mr-2">Total Quoted:</span>
+          <span className="text-gray-500 dark:text-gray-400 mr-2">Total Tendered:</span>
           <span className="font-bold font-mono text-primary">{fmt(total)}</span>
         </div>
       </div>
@@ -365,7 +365,7 @@ function QuotationDetailsPanel({
       <div className="relative w-full max-w-[560px] h-full bg-white dark:bg-[#0F172A] shadow-2xl flex flex-col animate-in slide-in-from-right duration-200">
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-700/40 shrink-0">
           <div>
-            <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Quotation</div>
+            <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Tender</div>
             <div className="text-lg font-bold text-[#1A1A2E] dark:text-[#F1F5F9]">{q.quotationNo}</div>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 p-1">
@@ -410,7 +410,7 @@ function QuotationDetailsPanel({
 
           <div>
             <div className="flex items-center gap-1.5 text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">
-              <FileText className="w-3.5 h-3.5" /> Quoted Items ({q.quotedItems.length})
+              <FileText className="w-3.5 h-3.5" /> Tendered Items ({q.quotedItems.length})
             </div>
             <Table>
               <Thead>
@@ -496,10 +496,10 @@ function CompareQuotationsInline({
     try {
       if (confirm.action === "approve") {
         await apiClient.patch(`/quotations/${confirm.quotation._id}/approve`);
-        toast.success("Quotation approved — the work order's rates have been updated");
+        toast.success("Tender approved — the work order's rates have been updated");
       } else {
         await apiClient.patch(`/quotations/${confirm.quotation._id}/reject`);
-        toast.success("Quotation rejected");
+        toast.success("Tender rejected");
       }
       setConfirm(null);
       load();
@@ -517,11 +517,11 @@ function CompareQuotationsInline({
         {loading ? (
           <SkeletonTable rows={4} cols={5} />
         ) : quotations.length === 0 ? (
-          <div className="text-center text-sm text-gray-400 py-10">No quotations submitted yet for this work order.</div>
+          <div className="text-center text-sm text-gray-400 py-10">No tenders submitted yet for this work order.</div>
         ) : (
           <>
             <div className="text-sm text-gray-500 dark:text-gray-400 mb-3">
-              Comparing {quotations.length} quotation{quotations.length !== 1 ? "s" : ""} for <span className="font-semibold">{workOrder.workOrderNo}</span> ({workOrder.category})
+              Comparing {quotations.length} tender{quotations.length !== 1 ? "s" : ""} for <span className="font-semibold">{workOrder.workOrderNo}</span> ({workOrder.category})
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {quotations.map(q => (
@@ -539,11 +539,11 @@ function CompareQuotationsInline({
 
       {confirm && (
         <ConfirmModal
-          title={confirm.action === "approve" ? "Approve this quotation?" : "Reject this quotation?"}
+          title={confirm.action === "approve" ? "Approve this tender?" : "Reject this tender?"}
           message={
             confirm.action === "approve"
-              ? `This will lock ${confirm.quotation.contractorName}'s rates onto ${workOrder.workOrderNo} and reject any other pending quotations for it.`
-              : `${confirm.quotation.contractorName}'s quotation will be marked rejected.`
+              ? `This will lock ${confirm.quotation.contractorName}'s rates onto ${workOrder.workOrderNo} and reject any other pending tenders for it.`
+              : `${confirm.quotation.contractorName}'s tender will be marked rejected.`
           }
           confirmLabel={confirm.action === "approve" ? "Approve" : "Reject"}
           danger={confirm.action === "reject"}
@@ -609,7 +609,7 @@ export default function QuotationComparison() {
   function copyPublicLink(workOrderId: string) {
     const url = `${window.location.origin}/public/quotation/${workOrderId}`;
     navigator.clipboard.writeText(url)
-      .then(() => toast.success("Public quotation link copied"))
+      .then(() => toast.success("Public tender link copied"))
       .catch(() => toast.error("Couldn't copy — copy it manually"));
   }
 
@@ -617,7 +617,7 @@ export default function QuotationComparison() {
     <div>
       <PageHeader
         title="Tender Documentation"
-        subtitle="Compare contractor quotes against draft work orders before rates are locked in"
+        subtitle="Compare contractor tenders against draft work orders before rates are locked in"
         icon={Diff}
       />
 
@@ -632,7 +632,7 @@ export default function QuotationComparison() {
       {loading ? (
         <SkeletonTable rows={4} cols={4} />
       ) : filtered.length === 0 ? (
-        <EmptyState icon={Diff} title="No draft work orders" message="No draft work orders are awaiting quotation right now." />
+        <EmptyState icon={Diff} title="No draft work orders" message="No draft work orders are awaiting tender right now." />
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {filtered.map(w => {
@@ -653,10 +653,10 @@ export default function QuotationComparison() {
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <NxBtn
-                    color="secondary" label={isExpanded ? "Hide Quotes" : "Compare Quotes"}
+                    color="secondary" label={isExpanded ? "Hide Tenders" : "Compare Tenders"}
                     onClick={() => setExpandedId(isExpanded ? null : w._id)}
                   />
-                  <NxBtn color="primary" icon={Plus} label="New Quotation" onClick={() => setNewQuoteFor(w)} />
+                  <NxBtn color="primary" icon={Plus} label="New Tender" onClick={() => setNewQuoteFor(w)} />
                   <NxBtn color="secondary" icon={LinkIcon} label="Copy Public Link" onClick={() => copyPublicLink(w._id)} />
                 </div>
 

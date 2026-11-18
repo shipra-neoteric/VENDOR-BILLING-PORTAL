@@ -62,7 +62,7 @@ const FORMS: PublicFormDef[] = [
   },
   {
     key: "quotation",
-    name: "Contractor Quotation",
+    name: "Contractor Tender",
     description: "Lets a contractor submit a competing quote against one specific draft work order — no login required. Each link is scoped to a single work order; generate one from Tender Documentation.",
     path: "/quotation-comparison",
     icon: GitCompare,

@@ -121,7 +121,7 @@ export default function PublicQuotationForm() {
       });
       setSubmitted({ quotationNo: res.data?.quotation?.quotationNo || "—" });
     } catch (err: any) {
-      toast.error(err?.response?.data?.message || "Couldn't submit your quotation");
+      toast.error(err?.response?.data?.message || "Couldn't submit your tender");
     } finally {
       setSubmitting(false);
     }
@@ -160,7 +160,7 @@ export default function PublicQuotationForm() {
 
         {!loading && context && context.quotationsClosed && !submitted && (
           <div className="bg-white border border-amber-100 rounded-xl p-8 text-center">
-            <div className="text-amber-600 font-bold mb-1">Quotations are closed</div>
+            <div className="text-amber-600 font-bold mb-1">Tenders are closed</div>
             <div className="text-sm text-gray-500">
               A bill has already been raised against {context.workOrderNo}.
             </div>
@@ -170,7 +170,7 @@ export default function PublicQuotationForm() {
         {!loading && context && !context.quotationsClosed && !submitted && (
           <div className="space-y-5">
             <div>
-              <h1 className="text-xl font-bold text-[#1A1A2E]">Submit a Quotation</h1>
+              <h1 className="text-xl font-bold text-[#1A1A2E]">Submit a Tender</h1>
               <p className="text-sm text-gray-500 mt-1">
                 {context.workOrderNo} · {context.projectName}
               </p>
@@ -194,7 +194,7 @@ export default function PublicQuotationForm() {
             </div>
 
             <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
-              <div className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Quote a Rate Per Item</div>
+              <div className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Tender a Rate Per Item</div>
               <Table className="min-w-[760px] sm:min-w-0">
                 <Thead>
                   <Tr><Th>Description</Th><Th>Unit</Th><Th>Qty</Th><Th>Your Rate (₹)</Th><Th>Amount</Th><Th></Th></Tr>
@@ -266,17 +266,17 @@ export default function PublicQuotationForm() {
               )}
 
               <div className="flex justify-end text-sm mt-4">
-                <span className="text-gray-500 mr-2">Total Quoted:</span>
+                <span className="text-gray-500 mr-2">Total Tendered:</span>
                 <span className="font-bold font-mono text-primary text-lg">{fmt(total)}</span>
               </div>
             </div>
 
             <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
-              <Field label="Remarks" textarea value={remarks} onChange={e => setRemarks(e.target.value)} placeholder="Anything else you'd like to note about this quote (optional)" />
+              <Field label="Remarks" textarea value={remarks} onChange={e => setRemarks(e.target.value)} placeholder="Anything else you'd like to note about this tender (optional)" />
             </div>
 
             <div className="flex justify-end">
-              <Btn label="Submit Quotation" icon={Send} color="primary" onClick={submit} loading={submitting} />
+              <Btn label="Submit Tender" icon={Send} color="primary" onClick={submit} loading={submitting} />
             </div>
           </div>
         )}
@@ -286,8 +286,8 @@ export default function PublicQuotationForm() {
             <div className="w-14 h-14 rounded-full bg-emerald-50 flex items-center justify-center mx-auto mb-4">
               <FileCheck2 className="w-7 h-7 text-emerald-500" />
             </div>
-            <h2 className="text-lg font-bold text-[#1A1A2E] mb-1">Quotation Submitted!</h2>
-            <p className="text-sm text-gray-500 mb-4">Your quote has been recorded successfully.</p>
+            <h2 className="text-lg font-bold text-[#1A1A2E] mb-1">Tender Submitted!</h2>
+            <p className="text-sm text-gray-500 mb-4">Your tender has been recorded successfully.</p>
             <div className="inline-block bg-primary/10 text-primary font-bold rounded-lg px-4 py-2">
               {submitted.quotationNo}
             </div>
