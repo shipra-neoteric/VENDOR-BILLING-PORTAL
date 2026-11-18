@@ -517,6 +517,14 @@ exports.createBill = asyncHandler(async (req, res) => {
   if (Array.isArray(req.body.documents) && req.body.documents.length > MAX_BILL_DOCUMENTS) {
     return badRequest(res, `A bill can have at most ${MAX_BILL_DOCUMENTS} attached documents`);
   }
+  // Releasing held retention is a positive amount — a negative or non-numeric
+  // value would otherwise be saved as-is and skew the work order's held retention.
+  if (req.body.retentionReleaseAmount != null && req.body.retentionReleaseAmount !== '') {
+    const rra = Number(req.body.retentionReleaseAmount);
+    if (!Number.isFinite(rra) || rra < 0) {
+      return badRequest(res, 'Retention release amount must be zero or more');
+    }
+  }
 
   // A Mobilisation Advance raised as ADVANCE_FOR is money paid out ahead of any
   // work, so it goes through the same L1..L4 approval chain as every other

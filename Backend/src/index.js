@@ -31,6 +31,11 @@ connectDB().then(async () => {
 });
 
 const app = express();
+// Render (and most hosts) put one reverse proxy in front of the app. Without
+// this, req.ip is the proxy's address for EVERY visitor, so the public-form
+// rate limiter counted all contractors/DRIs as one client (100 requests per
+// 15 min shared by everyone). 1 = trust exactly one proxy hop.
+app.set('trust proxy', 1);
 
 const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:5173')
   .split(',')
