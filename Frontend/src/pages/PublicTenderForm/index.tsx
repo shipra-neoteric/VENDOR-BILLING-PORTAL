@@ -7,6 +7,7 @@ import Btn from "../../ui/Btn";
 import SField from "../../ui/SField";
 import { Table, Thead, Tbody, Tr, Th, Td, TdText } from "../../ui/Table";
 import { Skeleton } from "../../ui/Skeleton";
+import { useForceLightTheme } from "../../hooks/useForceLightTheme";
 import { UNIT_OPTIONS } from "../../shared/constants/unitOptions";
 
 const BASE = (import.meta.env.VITE_API_URL || "http://localhost:5000/api").replace(/^﻿/, "");
@@ -64,20 +65,7 @@ function workOrderIdFromPath(): string {
 export default function PublicTenderForm() {
   const workOrderId = workOrderIdFromPath();
 
-  // This page's surfaces are hard-coded light, but the shared ui/ components
-  // (Field, Table, ...) follow the saved app theme — in dark mode they render
-  // dark inputs and faint text on the white page. Force light while mounted.
-  useEffect(() => {
-    const root = document.documentElement;
-    const wasDark = root.classList.contains("dark");
-    const prevTheme = root.getAttribute("data-theme");
-    root.classList.remove("dark");
-    root.setAttribute("data-theme", "light");
-    return () => {
-      if (wasDark) root.classList.add("dark");
-      if (prevTheme) root.setAttribute("data-theme", prevTheme);
-    };
-  }, []);
+  useForceLightTheme();
 
   const [context, setContext] = useState<WorkOrderContext | null>(null);
   const [loading, setLoading] = useState(true);
@@ -223,7 +211,7 @@ export default function PublicTenderForm() {
                       <Td>
                         <input
                           type="number"
-                          min={0}
+                          min={0} step="any"
                           value={rates[item._id] ?? ""}
                           onChange={e => setRates(r => ({ ...r, [item._id]: e.target.value }))}
                           className="w-24 h-8 px-2 rounded-md border border-gray-200 text-[13px] text-[#1A1A2E] focus:outline-none focus:ring-2 focus:ring-primary/30"
@@ -263,12 +251,12 @@ export default function PublicTenderForm() {
                         />
                         <SField value={item.unit} onChange={v => updateCustomItem(item.key, { unit: v })} options={UNIT_OPTIONS} placeholder="Unit" />
                         <input
-                          type="number" min={0} value={item.plannedQty} placeholder="Qty"
+                          type="number" min={0} step="any" value={item.plannedQty} placeholder="Qty"
                           onChange={e => updateCustomItem(item.key, { plannedQty: e.target.value })}
                           className="w-full h-8 px-2 rounded-md border border-gray-200 text-[13px] text-[#1A1A2E] focus:outline-none focus:ring-2 focus:ring-primary/30"
                         />
                         <input
-                          type="number" min={0} value={item.rate} placeholder="Rate"
+                          type="number" min={0} step="any" value={item.rate} placeholder="Rate"
                           onChange={e => updateCustomItem(item.key, { rate: e.target.value })}
                           className="w-full h-8 px-2 rounded-md border border-gray-200 text-[13px] text-[#1A1A2E] focus:outline-none focus:ring-2 focus:ring-primary/30"
                         />

@@ -11,6 +11,7 @@ import Card from "../../ui/Card";
 import SField from "../../ui/SField";
 import { DatePicker } from "../../ui/DatePicker";
 import Spinner from "../../ui/Spinner";
+import { useForceLightTheme } from "../../hooks/useForceLightTheme";
 
 const BASE = (import.meta.env.VITE_API_URL || "http://localhost:5000/api").replace(/^﻿/, "");
 const pub = axios.create({ baseURL: BASE.replace(/\/api$/, "/api/public") });
@@ -26,6 +27,7 @@ const emptyForm: { projectId: string; driName: string; date: string } & Partial<
 };
 
 export default function PublicDailyReportForm() {
+  useForceLightTheme();
   const [projects, setProjects] = useState<Lookup[]>([]);
   const [driUsers, setDriUsers] = useState<Lookup[]>([]);
   const [loading, setLoading]   = useState(true);

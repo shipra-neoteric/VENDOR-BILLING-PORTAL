@@ -8,6 +8,7 @@ import Field from "../../ui/Field";
 import SField from "../../ui/SField";
 import Btn from "../../ui/Btn";
 import Badge from "../../ui/Badge";
+import { useForceLightTheme } from "../../hooks/useForceLightTheme";
 
 const BASE = (import.meta.env.VITE_API_URL || "http://localhost:5000/api").replace(/^﻿/, "");
 const pub  = axios.create({ baseURL: BASE.replace(/\/api$/, "/api/public") });
@@ -104,6 +105,7 @@ function SoftwareTagPicker({ values, onChange }: { values: string[]; onChange: (
 }
 
 export default function PublicConsultantForm() {
+  useForceLightTheme();
   const [values, setValues] = useState<FormValues>(blankForm());
   const errors = useFormErrors<RequiredField>();
   const [submitting, setSubmitting] = useState(false);

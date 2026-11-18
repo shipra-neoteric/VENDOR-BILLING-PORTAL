@@ -380,7 +380,7 @@ export default function RecurringBilling() {
             {form.entityType === "Bill" && (
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
                 <Field label="Contractor Ref. No. (optional)" placeholder="e.g. ABCI/2026/003" value={form.contractorRefNo} onChange={(e) => setForm((f) => ({ ...f, contractorRefNo: e.target.value }))} />
-                <Field label="GST %" type="number" value={form.gstPercent} onChange={(e) => setForm((f) => ({ ...f, gstPercent: e.target.value }))} />
+                <Field label="GST %" type="number" min={0} max={100} value={form.gstPercent} onChange={(e) => setForm((f) => ({ ...f, gstPercent: e.target.value }))} />
                 <SField label="Bill Type" value={form.billType} onChange={(v) => setForm((f) => ({ ...f, billType: v }))} options={BILL_TYPE_OPTIONS} />
               </div>
             )}
@@ -388,7 +388,7 @@ export default function RecurringBilling() {
             <Field label="Description" required textarea rows={2} placeholder="What this recurring charge is for" value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} className="mb-4" />
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <Field label="Amount (₹, fixed each period)" required type="number" value={form.amount} onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))} />
+              <Field label="Amount (₹, fixed each period)" required type="number" min={0} value={form.amount} onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))} />
             </div>
           </div>
         </Modal>

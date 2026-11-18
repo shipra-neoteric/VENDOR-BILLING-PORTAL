@@ -37,11 +37,31 @@ exports.submitTender = asyncHandler(async (req, res) => {
   if (!Array.isArray(quotedItems) || quotedItems.length === 0) {
     return badRequest(res, 'At least one tendered item is required');
   }
+  // Public, no-login endpoint — cap the payload and reject values the form
+  // itself would never send (negative / non-numeric / unnamed lines).
+  if (quotedItems.length > 200) {
+    return badRequest(res, 'Too many items in one tender (max 200)');
+  }
+  for (const i of quotedItems) {
+    const rate = Number(i?.rate);
+    const qty  = i?.plannedQty === undefined || i?.plannedQty === '' ? 0 : Number(i.plannedQty);
+    if (!i || typeof i.description !== 'string' || !i.description.trim()) {
+      return badRequest(res, 'Every tendered item needs a description');
+    }
+    if (!Number.isFinite(rate) || rate < 0 || !Number.isFinite(qty) || qty < 0) {
+      return badRequest(res, 'Rates and quantities must be zero or more');
+    }
+  }
 
   const workOrder = await WorkOrder.findById(workOrderId);
   if (!workOrder) return notFound(res, 'Work order not found');
   if (await hasExistingBill(workOrderId)) {
     return badRequest(res, 'A bill has already been raised against this work order — tenders are closed');
+  }
+  // The same contractor re-submitting while their earlier tender is still
+  // pending just creates duplicate cards to compare.
+  if (await ContractorTender.exists({ workOrderId, contractorMobile: String(contractorMobile).trim(), status: 'submitted' })) {
+    return badRequest(res, 'You have already submitted a tender for this work order. Please contact us if you need to change it.');
   }
 
   const items = quotedItems.map(i => ({
@@ -60,7 +80,7 @@ exports.submitTender = asyncHandler(async (req, res) => {
     workOrderId,
     vendorCode:       vendorCode || '',
     contractorName,
-    contractorMobile,
+    contractorMobile: String(contractorMobile).trim(),
     contractorEmail:  contractorEmail || '',
     quotedItems: items,
     totalQuoted: computeTotal(items),

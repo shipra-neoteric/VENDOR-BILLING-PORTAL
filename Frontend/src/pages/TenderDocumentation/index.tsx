@@ -213,7 +213,7 @@ function NewQuotationModal({
                     <Td>
                       <input
                         type="number"
-                        min={0}
+                        min={0} step="any"
                         value={rates[item._id] ?? ""}
                         onChange={e => setRates(r => ({ ...r, [item._id]: e.target.value }))}
                         className="w-28 h-8 px-2 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0F172A] text-[13px] text-[#1A1A2E] dark:text-[#F1F5F9] focus:outline-none focus:ring-2 focus:ring-primary/30"
@@ -256,12 +256,12 @@ function NewQuotationModal({
                     />
                     <SField value={item.unit} onChange={v => updateCustomItem(item.key, { unit: v })} options={UNIT_OPTIONS} placeholder="Unit" />
                     <input
-                      type="number" min={0} value={item.plannedQty} placeholder="Qty"
+                      type="number" min={0} step="any" value={item.plannedQty} placeholder="Qty"
                       onChange={e => updateCustomItem(item.key, { plannedQty: e.target.value })}
                       className="w-full h-8 px-2 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0F172A] text-[13px] text-[#1A1A2E] dark:text-[#F1F5F9] focus:outline-none focus:ring-2 focus:ring-primary/30"
                     />
                     <input
-                      type="number" min={0} value={item.rate} placeholder="Rate"
+                      type="number" min={0} step="any" value={item.rate} placeholder="Rate"
                       onChange={e => updateCustomItem(item.key, { rate: e.target.value })}
                       className="w-full h-8 px-2 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0F172A] text-[13px] text-[#1A1A2E] dark:text-[#F1F5F9] focus:outline-none focus:ring-2 focus:ring-primary/30"
                     />

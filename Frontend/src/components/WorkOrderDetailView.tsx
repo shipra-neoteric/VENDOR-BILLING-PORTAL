@@ -657,7 +657,7 @@ export default function WorkOrderDetailView({
                 <Td><span className="font-mono font-semibold text-gray-700 dark:text-gray-300">{fmt(itemsSubtotal)}</span></Td>
               </Tr>
               <Tr className="hover:bg-transparent dark:hover:bg-transparent">
-                <Td colSpan={5} className="text-right font-semibold text-gray-500 dark:text-gray-400">GST (per work item)</Td>
+                <Td colSpan={5} className="text-right font-semibold text-gray-500 dark:text-gray-400">GST</Td>
                 <Td><span className="font-mono font-semibold text-gray-700 dark:text-gray-300">{fmt(gstAmount)}</span></Td>
               </Tr>
               {(wo.discount ?? 0) > 0 && (

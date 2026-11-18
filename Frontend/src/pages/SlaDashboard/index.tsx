@@ -389,7 +389,7 @@ export default function SlaDashboard() {
                 {filteredDrilldown.map(d => {
                   const remainingMs = d.dueAt ? new Date(d.dueAt).getTime() - Date.now() : null;
                   return (
-                    <Tr key={d.instanceId}>
+                    <Tr key={d.instanceId} className={d.entityType === "WorkOrder" || d.entityType === "BillRequest" ? "cursor-pointer" : ""} onClick={() => { if (d.entityType === "WorkOrder") setViewWorkOrderId(d.entityId); else if (d.entityType === "BillRequest") setViewBillRequestId(d.entityId); }}>
                       <Td className="whitespace-nowrap truncate">
                         {d.entityType === "WorkOrder" ? (
                           <span className="text-primary font-semibold cursor-pointer hover:underline" onClick={() => setViewWorkOrderId(d.entityId)}>{d.entityLabel}</span>

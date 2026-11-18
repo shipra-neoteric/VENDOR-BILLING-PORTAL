@@ -187,9 +187,10 @@ function AdminRoutes() {
             <Route element={<RequireModule moduleId="work-orders" />}>
               <Route path="/work-items/:id"   element={<WorkOrderDashboard />} />
             </Route>
+            {/* Old URL — redirect for everyone; the new route below does the permission check */}
+            <Route path="/quotation-comparison" element={<Navigate to="/tender-documentation" replace />} />
             <Route element={<RequireModule moduleId="tender-documentation" />}>
               <Route path="/tender-documentation" element={<TenderDocumentation />} />
-              <Route path="/quotation-comparison" element={<Navigate to="/tender-documentation" replace />} />
             </Route>
             <Route element={<RequireModule moduleId="work-progress" />}>
               <Route path="/work-progress"    element={<WorkProgress />} />

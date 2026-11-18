@@ -12,6 +12,7 @@ import Field from "../../ui/Field";
 import SField from "../../ui/SField";
 import { DatePicker } from "../../ui/DatePicker";
 import Spinner from "../../ui/Spinner";
+import { useForceLightTheme } from "../../hooks/useForceLightTheme";
 
 const BASE = (import.meta.env.VITE_API_URL || "http://localhost:5000/api").replace(/^﻿/, "");
 const pub = axios.create({ baseURL: BASE.replace(/\/api$/, "/api/public") });
@@ -29,6 +30,7 @@ const emptyForm: DailyProgressReportFormValues = {
 };
 
 export default function PublicDailyProgressReportForm() {
+  useForceLightTheme();
   const [projects, setProjects] = useState<Lookup[]>([]);
   const [contractors, setContractors] = useState<ContractorLookup[]>([]);
   const [loading, setLoading]   = useState(true);

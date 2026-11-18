@@ -8,6 +8,7 @@ import Card from "../../ui/Card";
 import Field from "../../ui/Field";
 import SField from "../../ui/SField";
 import Spinner from "../../ui/Spinner";
+import { useForceLightTheme } from "../../hooks/useForceLightTheme";
 
 const BASE = (import.meta.env.VITE_API_URL || "http://localhost:5000/api").replace(/^﻿/, "");
 const pub = axios.create({ baseURL: BASE.replace(/\/api$/, "/api/public") });
@@ -21,6 +22,7 @@ interface Lookup { _id: string; name: string; }
 const emptyForm = { projectId: "", description: "", drawingType: "", source: "", driName: "" };
 
 export default function PublicDrawingRequestForm() {
+  useForceLightTheme();
   const [projects, setProjects] = useState<Lookup[]>([]);
   const [loading, setLoading]   = useState(true);
   const [submitting, setSubmitting] = useState(false);

@@ -8,6 +8,7 @@ import Field from "../../ui/Field";
 import Btn from "../../ui/Btn";
 import Checkbox from "../../ui/Checkbox";
 import Badge from "../../ui/Badge";
+import { useForceLightTheme } from "../../hooks/useForceLightTheme";
 
 const BASE = (import.meta.env.VITE_API_URL || "http://localhost:5000/api").replace(/^﻿/, "");
 const pub  = axios.create({ baseURL: BASE.replace(/\/api$/, "/api/public") });
@@ -53,6 +54,7 @@ const blankForm = (): FormValues => ({
 type RequiredField = "companyName" | "ownerName" | "mobile" | "email" | "address" | "accountHolderName" | "bankName" | "accountNumber" | "ifscCode" | "branchName" | "gstNumber" | "panNumber" | "aadhaarNumber";
 
 export default function PublicContractorForm() {
+  useForceLightTheme();
   const [values, setValues] = useState<FormValues>(blankForm());
   const errors = useFormErrors<RequiredField>();
   const [submitting, setSubmitting] = useState(false);

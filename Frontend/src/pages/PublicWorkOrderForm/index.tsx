@@ -16,6 +16,7 @@ import GstSelect from "../../components/GstSelect";
 import DocumentsUpload from "../../components/DocumentsUpload";
 import type { WODocument } from "../../components/DocumentsUpload";
 import { UNIT_OPTIONS } from "../../shared/constants/unitOptions";
+import { useForceLightTheme } from "../../hooks/useForceLightTheme";
 
 const BASE = (import.meta.env.VITE_API_URL || "http://localhost:5000/api").replace(/^﻿/, "");
 const pub  = axios.create({ baseURL: BASE.replace(/\/api$/, "/api/public") });
@@ -324,6 +325,7 @@ const blankForm = (): FormValues => ({
 // ── Main Component ───────────────────────────────────────────────
 
 export default function PublicWorkOrderForm() {
+  useForceLightTheme();
   const [values, setValues] = useState<FormValues>(blankForm());
   const errors = useFormErrors<"preparedByName" | "preparedByContact" | "projectId" | "issueDate" | "vendorCode">();
   const patch = (p: Partial<FormValues>) => setValues(prev => ({ ...prev, ...p }));
@@ -588,7 +590,7 @@ export default function PublicWorkOrderForm() {
                     <span className="font-semibold text-[14px]">{fmt(contractValue)}</span>
                   </div>
                   <div className="flex justify-end items-center gap-3 mt-1.5">
-                    <span className="text-gray-400 text-sm">GST (per work item, see above):</span>
+                    <span className="text-gray-400 text-sm">GST:</span>
                     <span className="text-[13px]">{fmt(contractValueInclGst - contractValue)}</span>
                   </div>
                   <div className="flex justify-end items-center gap-3 mt-1.5">

@@ -600,11 +600,11 @@ export default function SiteProgress({ embeddedEditBRId, onEmbeddedClose }: {
                       const m = ev.metadata || {};
                       const level = m.plannedQty != null && m.completedQty != null ? varianceLevel(m.plannedQty, m.completedQty) : "none";
                       return (
-                        <Tr key={ev._id}>
+                        <Tr key={ev._id} onClick={() => openFromActivity(ev)} className="cursor-pointer">
                           <Td className="whitespace-nowrap">{dayjs(ev.createdAt).format("DD MMM, hh:mm a")}</Td>
                           <Td className="whitespace-nowrap truncate">
                             <div className="font-semibold truncate">{typeof ev.projectId === "object" ? ev.projectId?.name : "—"}</div>
-                            <button type="button" onClick={() => openFromActivity(ev)} className="text-primary text-xs hover:underline">
+                            <button type="button" onClick={(e) => { e.stopPropagation(); openFromActivity(ev); }} className="text-primary text-xs hover:underline">
                               {ev.workOrderNo}
                             </button>
                           </Td>
