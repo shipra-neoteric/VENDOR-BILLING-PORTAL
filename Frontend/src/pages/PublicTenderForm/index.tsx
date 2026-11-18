@@ -212,7 +212,7 @@ export default function PublicTenderForm() {
               <div className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Tender a Rate Per Item</div>
               <Table className="min-w-[760px] sm:min-w-0">
                 <Thead>
-                  <Tr><Th>Description</Th><Th>Unit</Th><Th>Qty</Th><Th>Your Rate (₹)</Th><Th>Amount</Th><Th></Th></Tr>
+                  <Tr><Th>Description</Th><Th>Unit</Th><Th>Qty</Th><Th>Your Rate (₹ per Qty)</Th><Th>Amount</Th><Th></Th></Tr>
                 </Thead>
                 <Tbody>
                   {visibleScopeItems.map(item => (
@@ -251,7 +251,7 @@ export default function PublicTenderForm() {
                 // auto too, per the CSS Overflow spec).
                 <div className="rounded-lg border border-gray-200 overflow-visible">
                   <div className="grid grid-cols-[2fr_1fr_0.8fr_0.9fr_0.9fr_44px] gap-2 px-4 py-3 bg-gray-50 text-[11px] font-bold text-gray-500 uppercase tracking-wider rounded-t-lg">
-                    <span>Description</span><span>Unit</span><span>Qty</span><span>Rate (₹)</span><span>Amount</span><span />
+                    <span>Description</span><span>Unit</span><span>Qty</span><span>Rate (₹ per Qty)</span><span>Amount</span><span />
                   </div>
                   <div className="divide-y divide-gray-100">
                     {customItems.map(item => (

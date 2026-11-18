@@ -199,7 +199,7 @@ function NewQuotationModal({
                   <Th>Item</Th>
                   <Th>Unit</Th>
                   <Th>Qty</Th>
-                  <Th>Rate (₹)</Th>
+                  <Th>Rate (₹ per Qty)</Th>
                   <Th>Amount</Th>
                   <Th></Th>
                 </Tr>
@@ -244,7 +244,7 @@ function NewQuotationModal({
             // too, per the CSS Overflow spec).
             <div className="rounded-lg border border-gray-200 dark:border-gray-700/40 overflow-visible">
               <div className="grid grid-cols-[2fr_1fr_0.8fr_0.9fr_0.9fr_44px] gap-2 px-4 py-3 bg-gray-50 dark:bg-[#1E293B] text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider rounded-t-lg">
-                <span>Description</span><span>Unit</span><span>Qty</span><span>Rate (₹)</span><span>Amount</span><span />
+                <span>Description</span><span>Unit</span><span>Qty</span><span>Rate (₹ per Qty)</span><span>Amount</span><span />
               </div>
               <div className="divide-y divide-gray-100 dark:divide-gray-700/40">
                 {customItems.map(item => (
