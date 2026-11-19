@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback } from "react";
+import { createContext, useContext, useState, useCallback, useEffect } from "react";
 import type { ReactNode } from "react";
 import apiClient from "../services/apiClient";
 import { clearExecutiveDashboardCache } from "../features/dashboard/reportCache";
@@ -64,6 +64,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(newToken);
     setUser(newUser);
   }, []);
+
+  // The role and permissions saved at login go stale the moment an admin changes them in the Permission Matrix (buttons for things the user
+  // can no longer do would keep showing until they signed in again). So when the app opens with a saved session, ask the server for the
+  // current ones — the same merged role + own permissions the server itself checks — and keep the rest of the saved user as it is.
+  useEffect(() => {
+    if (!token) return;
+    let live = true;
+    apiClient.get("/auth/me")
+      .then((res) => {
+        const fresh = res.data?.user;
+        if (!live || !fresh || !Array.isArray(fresh.permissions)) return;
+        setUser((prev) => {
+          if (!prev) return prev;
+          const next = { ...prev, role: fresh.role ?? prev.role, permissions: fresh.permissions };
+          localStorage.setItem("user", JSON.stringify(next));
+          return next;
+        });
+      })
+      .catch(() => { /* offline / expired: keep what is saved (a 401 is handled by the API client) */ });
+    return () => { live = false; };
+  }, [token]);
 
   return (
     <AuthContext.Provider value={{ user, token, login, logout, setSession, isAuthenticated: !!token }}>

@@ -4,6 +4,7 @@ const asyncHandler = require('../utils/asyncHandler');
 const { success, created, notFound, badRequest } = require('../utils/responseFormatter');
 const { nextVendorCode } = require('../utils/codeGen');
 const { logAudit, diffFields } = require('../utils/auditLog');
+const { archiveDeleted } = require('../utils/recycleBin');
 const { notifyByPermission } = require('../utils/notificationService');
 const { syncVendorToQc } = require('../utils/syncVendorToQc');
 
@@ -163,6 +164,7 @@ exports.updateContractor = asyncHandler(async (req, res) => {
 exports.deleteContractor = asyncHandler(async (req, res) => {
   const contractor = await Contractor.findById(req.params.id);
   if (!contractor) return notFound(res, 'Contractor not found');
+  await archiveDeleted('Contractor', contractor, req.user, req.body?.reason); // Recycle Bin copy first
   await contractor.deleteOne();
 
   await logAudit({

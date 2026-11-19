@@ -105,6 +105,8 @@ app.use('/api/drawing-requests', require('./routes/drawingRequests'));
 app.use('/api/dri-home',      require('./routes/driHome'));
 app.use('/api/uploads',       require('./routes/uploads'));
 app.use('/api/backup',        require('./routes/backup'));
+app.use('/api/recycle-bin',   require('./routes/recycleBin'));
+app.use('/api/records',       require('./routes/records'));
 app.use('/api/notifications', require('./routes/notifications'));
 
 app.get('/api/health', (_req, res) =>

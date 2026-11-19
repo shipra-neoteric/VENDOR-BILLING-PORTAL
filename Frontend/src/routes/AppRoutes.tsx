@@ -45,6 +45,8 @@ const DailyProgressReport = lazy(() => import("../pages/DailyProgressReport"));
 const DrawingRequests    = lazy(() => import("../pages/DrawingRequests"));
 const DriHome            = lazy(() => import("../pages/DriHome"));
 const Backup              = lazy(() => import("../pages/Backup"));
+const PermissionManagement = lazy(() => import("../pages/PermissionManagement"));
+const Records              = lazy(() => import("../pages/Records"));
 const RecurringBilling    = lazy(() => import("../pages/RecurringBilling"));
 const NexoraPreview        = lazy(() => import("../pages/NexoraPreview"));
 const ContractorMatrix     = lazy(() => import("../pages/ContractorMatrix"));
@@ -221,6 +223,7 @@ function AdminRoutes() {
             </Route>
             <Route element={<RequireModule moduleId="user-management" />}>
               <Route path="/users"            element={<UserManagement />} />
+              <Route path="/permissions"      element={<PermissionManagement />} />
               <Route path="/users/roles/:id"  element={<RolePermissions />} />
               <Route path="/users/new"        element={<EditUser />} />
               <Route path="/users/:id/edit"   element={<EditUser />} />
@@ -249,6 +252,10 @@ function AdminRoutes() {
             </Route>
             <Route element={<RequireModule moduleId="backup" />}>
               <Route path="/backup"          element={<Backup />} />
+            </Route>
+            <Route element={<RequireModule moduleId="recycle-bin" />}>
+              <Route path="/records"         element={<Records />} />
+              <Route path="/recycle-bin"     element={<Navigate to="/records?tab=deleted" replace />} />
             </Route>
             <Route element={<RequireModule moduleId="recurring-billing" />}>
               <Route path="/recurring-billing" element={<RecurringBilling />} />

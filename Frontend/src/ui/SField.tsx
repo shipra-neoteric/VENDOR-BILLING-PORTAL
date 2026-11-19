@@ -33,6 +33,7 @@ export default function SField({ label, required, placeholder = "Select…", hin
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     function onDocClick(e: MouseEvent) {
@@ -79,6 +80,7 @@ export default function SField({ label, required, placeholder = "Select…", hin
         </span>
       )}
       <button
+        ref={triggerRef}
         type="button"
         disabled={disabled}
         onClick={() => setOpen((o) => !o)}
@@ -101,6 +103,15 @@ export default function SField({ label, required, placeholder = "Select…", hin
               autoFocus
               value={query}
               onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  // Close only the dropdown — keep a parent modal open.
+                  e.stopPropagation();
+                  setOpen(false);
+                  setQuery("");
+                  triggerRef.current?.focus();
+                }
+              }}
               placeholder="Search…"
               className="w-full text-[13px] bg-transparent outline-none text-[#1A1A2E] dark:text-[#F1F5F9] placeholder:text-gray-400"
             />

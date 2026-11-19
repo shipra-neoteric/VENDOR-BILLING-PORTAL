@@ -6,6 +6,7 @@ const asyncHandler  = require('../utils/asyncHandler');
 const { success, notFound, badRequest } = require('../utils/responseFormatter');
 const { nextCode } = require('../utils/sequence');
 const { logAudit } = require('../utils/auditLog');
+const { archiveDeleted } = require('../utils/recycleBin');
 const { notifyByPermission } = require('../utils/notificationService');
 
 const nextSlipNo = () => nextCode('advanceSlipNo', 'ADV-', 4);
@@ -156,6 +157,7 @@ exports.deleteAdvanceSlip = asyncHandler(async (req, res) => {
   const slip = await AdvanceSlip.findById(req.params.id);
   if (!slip) return notFound(res, 'Advance slip not found');
   if (slip.amountRecovered > 0) return badRequest(res, 'Cannot delete a slip with recorded recoveries');
+  await archiveDeleted('AdvanceSlip', slip, req.user, req.body?.reason); // Recycle Bin copy first
   await slip.deleteOne();
 
   await logAudit({

@@ -7,7 +7,7 @@ import {
   Monitor,
   Clock, History,
   FileSearch, CalendarClock, CreditCard, CheckSquare,
-  GitCompare, PenLine, ShieldCheck, Truck,
+  GitCompare, PenLine, ShieldCheck, Truck, Shield,
 } from "lucide-react";
 import { MASTERS_OVERVIEW_ITEM, isMastersPath } from "./mastersNav";
 import { VENDORS_ITEMS, isVendorsPath } from "./vendorsNav";
@@ -95,6 +95,7 @@ const ADMIN_GROUPS: NavGroup[] = [
       { name: "Masters", path: MASTERS_OVERVIEW_ITEM.path, icon: <ShieldCheck className="w-4 h-4" />, moduleId: "masters" },
 
       { name: "Audit Logs", path: "/audit-logs", icon: <History className="w-4 h-4" />, moduleId: "audit-logs" },
+      { name: "Permission Matrix", path: "/permissions", icon: <Shield className="w-4 h-4" />, moduleId: "user-management" },
     ],
   },
 ];
@@ -119,6 +120,8 @@ export function canView(moduleId: string, perms: PermEntry[] | undefined, role?:
   // simply hasn't been assigned granular permissions yet (canView's own
   // fallback below treats an empty perms array as "can see everything").
   if (moduleId === "backup") return role === "owner";
+  // Recycle Bin (restore deleted records) — Admin/owner only, same gate as Backup.
+  if (moduleId === "recycle-bin") return role === "owner";
   // Masters groups together the master-data admin pages (Projects,
   // Companies, Categories, Users, SLA, Backup) — same owner-only gate as
   // Backup above, since there's no separate "admin" role in this app and
