@@ -119,8 +119,21 @@ router.post('/work-orders', asyncHandler(async (req, res) => {
 
   // Spread the full payload (scopeItems, contractValue, scopeOfWork, documentUrl/Name, etc.)
   // so nothing the public form collects is silently dropped, then override computed/trusted fields.
+  // An anonymous caller must never set lock/approval/audit fields themselves —
+  // a forged approvalHistory or isLocked would fake an approval trail.
+  const safeBody = { ...req.body };
+  for (const k of [
+    '_id', 'id', '__v', 'createdAt', 'updatedAt', 'createdBy',
+    'approvalStatus', 'approvalHistory',
+    'makerBy', 'makerAt', 'checkerBy', 'checkerAt', 'checkerRemarks',
+    'approverBy', 'approverAt', 'approverRemarks',
+    'finalApprovedBy', 'finalApprovedAt', 'finalRemarks',
+    'isLocked', 'lockedBy', 'lockedAt',
+    'cancelReason', 'cancelledBy', 'cancelledAt',
+  ]) delete safeBody[k];
+
   const workOrder = await WorkOrder.create({
-    ...req.body,
+    ...safeBody,
     workOrderNo,
     projectName: project.name,
     projectLocation: req.body.projectLocation || '',
@@ -129,7 +142,7 @@ router.post('/work-orders', asyncHandler(async (req, res) => {
     mobile:      contractor.mobile,
     companyId:   companyId || null,
     companyName,
-    status:      req.body.status || 'draft',
+    status:      'draft',
     gstPercent:  req.body.gstPercent ?? 18,
     assignedDRI: req.body.assignedDRI || [],
     // Same as the authenticated create path — must actually travel the full

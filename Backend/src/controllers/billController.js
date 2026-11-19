@@ -824,6 +824,25 @@ exports.createBill = asyncHandler(async (req, res) => {
   created(res, { bill }, bill.isUnsubmittedDraft ? 'Bill saved as draft' : 'Bill created — awaiting maker confirmation');
 });
 
+const UPDATE_BILL_PROTECTED_FIELDS = [
+  '_id', 'id', 'billNo', 'createdBy', 'createdAt', 'updatedAt', '__v',
+  'status', 'approvalHistory', 'manualApprovalStatus', 'requiredApprovalsOverride', 'isUnsubmittedDraft',
+  'agmApprovedBy', 'agmApprovedAt', 'gmApprovedBy', 'gmApprovedAt',
+  'l3ApprovedBy', 'l3ApprovedAt', 'l4ApprovedBy', 'l4ApprovedAt',
+  'makerBy', 'makerAt', 'checkerBy', 'checkerAt', 'approvedBy', 'approvedAt',
+  'verifiedBy', 'verifiedAt', 'verificationBy', 'verificationAt',
+  'l1ApprovedBy', 'l1ApprovedAt', 'l2ApprovedBy', 'l2ApprovedAt',
+  'paymentInitiatedBy', 'paymentInitiatedAt',
+  'manualAgmApprovedBy', 'manualAgmApprovedAt', 'manualGmApprovedBy', 'manualGmApprovedAt',
+  'manualL3ApprovedBy', 'manualL3ApprovedAt', 'manualL4ApprovedBy', 'manualL4ApprovedAt',
+  'manualRejectedBy', 'manualRejectReason', 'rejectedBy', 'rejectReason',
+  'holdBy', 'holdAt', 'holdReason', 'holdReleasedBy', 'holdReleasedAt',
+  'tmsSentAt', 'tmsSendAttempts', 'tmsLastAttemptAt', 'tmsLastError', 'tmsCallbackReceivedAt',
+  'paymentUTR', 'paymentChequeNo', 'paymentDate', 'paymentBank', 'paymentMode', 'paymentReleasedBy',
+  'finalDeduction', 'deductions', 'advanceSlipId',
+  'hideFromFinalApproval', 'finalApprovalPendingSince', 'isArchived', 'archivedAt',
+];
+
 exports.updateBill = asyncHandler(async (req, res) => {
   const bill = await RunningBill.findById(req.params.id);
   if (!bill) return notFound(res, 'Bill not found');
@@ -862,11 +881,18 @@ exports.updateBill = asyncHandler(async (req, res) => {
     }
   }
 
+  // This generic edit must never move a bill through (or around) its approval
+  // chain — status, sign-off stamps, history, hold/TMS/payment and identity
+  // fields change only via their own guarded action endpoints (verify,
+  // l1-agm-approve, l2-director-approve, hold, send-to-tms, reject, ...).
+  const body = { ...req.body };
+  for (const k of UPDATE_BILL_PROTECTED_FIELDS) delete body[k];
+
   const before = bill.toObject();
-  Object.assign(bill, req.body);
+  Object.assign(bill, body);
   await bill.save();
 
-  const changes = diffFields(before, bill.toObject(), Object.keys(req.body));
+  const changes = diffFields(before, bill.toObject(), Object.keys(body));
   await logAudit({
     action: 'UPDATE', module: MODULE, user: req.user,
     description: `Bill ${bill.billNo} updated`,

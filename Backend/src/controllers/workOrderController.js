@@ -562,6 +562,16 @@ function preserveServerOwnedScopeFields(liveItems, incomingItems) {
   return mergeLiveFields(liveItems, incomingItems, true);
 }
 
+const UPDATE_WO_PROTECTED_FIELDS = [
+  '_id', 'id', '__v', 'createdAt', 'updatedAt', 'createdBy',
+  'approvalStatus', 'approvalHistory',
+  'makerBy', 'makerAt', 'checkerBy', 'checkerAt', 'checkerRemarks',
+  'approverBy', 'approverAt', 'approverRemarks',
+  'finalApprovedBy', 'finalApprovedAt', 'finalRemarks',
+  'isLocked', 'lockedBy', 'lockedAt',
+  'cancelReason', 'cancelledBy', 'cancelledAt',
+];
+
 exports.updateWorkOrder = asyncHandler(async (req, res) => {
   // vendorName/ownerName/mobile are snapshotted onto the WO ONLY at creation
   // time (createWorkOrder) and must never be re-written by a general edit —
@@ -574,6 +584,13 @@ exports.updateWorkOrder = asyncHandler(async (req, res) => {
   // data — defeating the whole purpose of a snapshot (e.g. for a
   // previously-issued PDF).
   const { workOrderNo: _wo, vendorName: _vn, ownerName: _on, mobile: _mb, ...updateData } = req.body;
+  // The approval chain (maker → checker → approver → final), lock state and
+  // history are written only by their own guarded endpoints (submit/approve/
+  // send-back/lock/unlock) — never by a general edit. Stripped here so a body
+  // like {approvalStatus:'approved', isLocked:true} cannot skip the chain; the
+  // only approval change this route makes itself is the server-side "reopen"
+  // below, which is applied after this strip.
+  for (const k of UPDATE_WO_PROTECTED_FIELDS) delete updateData[k];
   const before = await WorkOrder.findById(req.params.id).lean();
   if (!before) return notFound(res, 'Work order not found');
   if (before.isLocked) return badRequest(res, 'This work order is locked and cannot be edited. Unlock it first.');
