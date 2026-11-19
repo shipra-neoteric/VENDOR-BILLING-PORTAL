@@ -6,7 +6,10 @@ const { register, login, getMe, changePassword, listUsers, switchUser } = requir
 
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 20, // limit each IP to 20 login attempts per 15 min window
+  max: 20, // limit each IP to 20 FAILED login attempts per 15 min window
+  // Successful logins are not counted: a whole office shares one public IP, so counting them
+  // locked staff out during the morning rush. Only wrong-password attempts (brute force) count.
+  skipSuccessfulRequests: true,
   standardHeaders: true,
   legacyHeaders: false,
   message: {
