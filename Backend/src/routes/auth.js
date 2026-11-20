@@ -2,6 +2,7 @@ const router = require('express').Router();
 const rateLimit = require('express-rate-limit');
 const { authenticate, authorize } = require('../middleware/auth');
 const { registerRules, loginRules } = require('../validators/auth.validator');
+const { loginLock } = require('../utils/adminOnlyLock');
 const { register, login, getMe, changePassword, listUsers, switchUser } = require('../controllers/authController');
 
 const loginLimiter = rateLimit({
@@ -19,7 +20,7 @@ const loginLimiter = rateLimit({
 });
 
 router.post('/register', registerRules, register);
-router.post('/login',    loginLimiter, loginRules, login);
+router.post('/login',    loginLock, loginLimiter, loginRules, login);
 router.get('/me',        authenticate,  getMe);
 router.patch('/change-password', authenticate, changePassword);
 // Read-only staff directory (name/email/role/isActive — no passwords) used

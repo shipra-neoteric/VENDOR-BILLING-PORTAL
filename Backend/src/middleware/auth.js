@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const Role = require('../models/Role');
+const { isBlocked, MESSAGE: ADMIN_LOCK_MESSAGE } = require('../utils/adminOnlyLock');
 
 // In-memory cache for the Role lookup below — this ran on EVERY single
 // authenticated request (every page load fires several), and this app's
@@ -64,6 +65,9 @@ const authenticate = async (req, res, next) => {
     req.user = await User.findById(decoded.id).select('-password');
     if (!req.user) return res.status(401).json({ message: 'User no longer exists' });
     if (!req.user.isActive) return res.status(403).json({ message: 'Account is deactivated' });
+    // Admin-only lock: 401 (not 403) so the app signs a locked-out user out cleanly
+    // instead of showing an error toast on every background request.
+    if (isBlocked(req.user.email)) return res.status(401).json({ message: ADMIN_LOCK_MESSAGE });
     await mergeRolePermissions(req.user);
     next();
   } catch {
