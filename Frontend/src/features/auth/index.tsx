@@ -33,7 +33,14 @@ export default function Login() {
       await login(email, password);
       navigate(from ? `${from.pathname}${from.search || ""}` : "/", { replace: true });
     } catch (err: unknown) {
-      setError((err as { response?: { data?: { message?: string } } }).response?.data?.message || "Invalid email or password");
+      const res = (err as { response?: { status?: number; data?: { message?: string } } }).response;
+      // No response at all (server unreachable / suspended) or a 5xx is NOT a wrong password —
+      // only a 4xx from the server means the credentials were rejected.
+      if (!res || (res.status ?? 0) >= 500) {
+        setError("Server is currently unavailable (suspended or offline). Please try again later or contact your administrator.");
+      } else {
+        setError(res.data?.message || "Invalid email or password");
+      }
     } finally {
       setLoading(false);
     }
