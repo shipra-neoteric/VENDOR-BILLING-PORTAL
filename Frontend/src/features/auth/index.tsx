@@ -37,7 +37,7 @@ export default function Login() {
       // No response at all (server unreachable / suspended) or a 5xx is NOT a wrong password —
       // only a 4xx from the server means the credentials were rejected.
       if (!res || (res.status ?? 0) >= 500) {
-        setError("Server is currently unavailable (suspended or offline). Please try again later or contact your administrator.");
+        setError("Server is down. Please try again later or contact your administrator.");
       } else {
         setError(res.data?.message || "Invalid email or password");
       }
